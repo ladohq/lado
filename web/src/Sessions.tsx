@@ -3,7 +3,19 @@
 // the list collapses to a strip of the sessions' icons (remembered too). On a phone the list
 // is the Sessions page and a session's page shows the session alone (docs/design/ui.md,
 // Phone layout).
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FocusEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   Link,
@@ -22,6 +34,7 @@ import { Artifacts } from "./ArtifactsTable";
 import { getSessionAbout, setSessionTitle, type SessionAbout, type SessionInfo, type SessionStatus } from "./api";
 import { Chat, FOCUS_CHAT, focusChat } from "./Chat";
 import { duration } from "./ChatText";
+import { fitColumns, LIST_STRIP, listMax } from "./columns";
 import { Flows, isOpen } from "./Flows";
 import { ForgetManyDialog } from "./ForgetMany";
 import { GroupHead, type Tone } from "./GroupHead";
@@ -40,32 +53,36 @@ import {
 } from "./icons";
 import { useLaunch, type StartedState } from "./Launch";
 import { isLive, useLive, useLiveStore, type Loaded } from "./live";
-import { useBelow, useDismiss } from "./Menu";
+import { escapeIsTaken, useBelow, useDismiss } from "./Menu";
 import { SessionActions } from "./SessionControl";
 import { label } from "./sessionLabel";
 import { SessionRowMenu } from "./SessionRowMenu";
-import { MAIN_MIN, TerminalPanel, usePutBackTerminals } from "./Terminals";
+import { TerminalPanel, usePutBackTerminals, type PanelColumn } from "./Terminals";
 import { NotFound } from "./pages";
 import { FIND_PARAM, isTab, projectPath, sessionPath, TABS, VIEW_PARAM, type Tab } from "./paths";
 import {
-  PANEL_WIDTH,
   SESSIONS_WIDTH,
   storeAgentMessages,
-  storedAgentMessages,
+  storedLastColumn,
+  storedPanel,
   storedSessionGroups,
   storedSessionsList,
+  storeLastColumn,
+  storePanel,
   storeSessionGroups,
   storeSessionsList,
+  useAgentMessages,
+  type Column,
   type ColumnPrefs,
   type SessionGroup,
 } from "./prefs";
-import { usePhone } from "./phone";
+import { useMedia, usePhone } from "./phone";
 import { DetailsPopover, GitTip, SessionDetails } from "./SessionDetails";
 import { useSkipSlot, useTitle, useTopBar } from "./Shell";
-import { fitWidth, Splitter, useStripFocus, useWidth } from "./Splitter";
-import { Team } from "./Team";
+import { Splitter, useStripFocus, useWidth } from "./Splitter";
+import { HeadTeam, Team } from "./Team";
 import { TitleEdit } from "./TitleEdit";
-import { Tooltip } from "./Tooltip";
+import { focusQuietly, Tooltip } from "./Tooltip";
 
 // What each status means to the human, in the words of `lado ls`.
 const STATUS: Record<SessionStatus, string> = {
@@ -122,54 +139,88 @@ export function Sessions() {
       action={id === "stopped" ? forgetStopped : undefined}
     />
   );
-  const [list, setList] = useState(storedSessionsList);
-  const focus = useStripFocus(list.collapsed);
   const [page, room] = useWidth<HTMLDivElement>();
-  // The list leaves the session and the terminals their least widths; collapsed, the strip
-  // gives the session the rest.
-  const width = fitWidth(list.width, SESSIONS_WIDTH, room === null ? null : room - MAIN_MIN - PANEL_WIDTH.min);
-  const keep = (change: Partial<ColumnPrefs>) => {
-    const next = { ...list, ...change };
-    setList(next);
-    storeSessionsList(next);
-  };
-  const collapse = (collapsed: boolean) => {
+  const columns = useSessionColumns(room);
+  const { list } = columns;
+  // On a phone (phone.ts) Sessions is the list and a session's page the session alone: no
+  // strip, no edge, nothing of the computer's list read or written.
+  const phone = usePhone();
+  // At 601 to 900 px the strip is always there and the open list lies over the session.
+  const over = phone === null && list.over;
+  const strip = phone === null && (list.folded || over);
+  const showsList = phone === null ? !list.folded : current === undefined;
+  const focus = useStripFocus(list.folded);
+  const openList = (open: boolean) => {
     focus.toggled();
-    keep({ collapsed });
+    if (open) list.open();
+    else list.fold();
   };
+  const box = useRef<HTMLDivElement>(null);
+  // A press beside the list closes it, the focus back on Sessions, after the press's own default.
+  // The strip's Sessions closes it by its own click, and what takes the focus by the press keeps
+  // it.
+  const { open: stripOpen } = focus;
+  const pressedAway = useCallback(
+    (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (target.closest(".sessions-open")) return;
+      list.fold();
+      if (!target.closest(TAKES_FOCUS)) setTimeout(() => stripOpen.current?.focus());
+    },
+    [stripOpen, list],
+  );
+  useDismiss(over, box, pressedAway);
+  useEffect(() => {
+    if (!over) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || escapeIsTaken(event.target)) return;
+      focus.toggled();
+      list.fold();
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [over, focus, list]);
   const newSession = (
     <button type="button" className="plus" aria-label="New session" title="New session" onClick={() => launch()}>
       <span aria-hidden="true">+</span>
     </button>
   );
-  // On a phone (phone.ts) Sessions is the list and a session's page the session alone: no
-  // strip, no edge, nothing of the computer's list read or written.
-  const phone = usePhone();
-  const strip = phone === null && list.collapsed;
-  const showsList = phone === null || current === undefined;
   // The session keeps its place in the page whether the list is open or not: its terminals
   // stay connected.
   return (
     <div
       ref={page}
       className={strip ? "sessions collapsed" : "sessions"}
-      style={phone ? undefined : ({ "--list-width": `${strip ? STRIP_WIDTH : width}px` } as CSSProperties)}
+      style={phone ? undefined : ({ "--list-width": `${strip ? LIST_STRIP : list.width}px` } as CSSProperties)}
     >
       {phone === null && !strip && (
         <Splitter
           label="Resize the session list"
           edge="right"
-          width={width}
-          bounds={SESSIONS_WIDTH}
-          onChange={(next) => keep({ width: next })}
+          width={list.width}
+          bounds={{ ...SESSIONS_WIDTH, max: list.max }}
+          onChange={list.setWidth}
         />
       )}
-      {strip ? (
-        <SessionStrip loaded={loaded} openRef={focus.open} onOpen={() => collapse(false)}>
+      {strip && (
+        <SessionStrip
+          loaded={loaded}
+          current={current}
+          open={!list.folded}
+          openRef={focus.open}
+          onToggle={() => openList(list.folded)}
+        >
           {newSession}
         </SessionStrip>
-      ) : showsList ? (
-        <div className="session-list">
+      )}
+      {showsList && (
+        <div
+          ref={box}
+          className={over ? "session-list over" : "session-list"}
+          onClick={(event) => {
+            if (over && (event.target as Element).closest("a.session-link")) list.fold();
+          }}
+        >
           <div className="session-list-head">
             <h2>Sessions</h2>
             {newSession}
@@ -180,7 +231,7 @@ export function Sessions() {
                 className="ghost"
                 aria-label="Collapse sessions"
                 title="Collapse sessions"
-                onClick={() => collapse(true)}
+                onClick={() => openList(false)}
               >
                 <CollapsePanelIcon side="left" />
               </button>
@@ -210,37 +261,168 @@ export function Sessions() {
             )}
           </nav>
         </div>
-      ) : null}
+      )}
       <div className="session-detail">
-        <Outlet context={loaded} />
+        <Outlet context={{ loaded, panel: columns.panel } satisfies SessionsOutlet} />
       </div>
       {forgetting && <ForgetManyDialog sessions={forgetting} onClose={() => setForgetting(null)} />}
     </div>
   );
 }
 
-// The width of the list collapsed to a strip, in pixels.
-const STRIP_WIDTH = 44;
+// What the page gives what it shows: the sessions, and the terminal panel's part of the columns.
+type SessionsOutlet = { loaded: Loaded; panel: PanelColumn };
 
-// The list collapsed to a strip: Sessions opens it again, then New session (`children`), then
-// an icon per session not stopped, in the open list's order (those that need the human first,
-// a line after them). While the list loads the icons' column is empty and busy; when it
-// cannot load, an alert says why, as the open list does.
+// The window where a session's page stands still and its columns lie over it (styles.css).
+const NARROW = "(max-width: 900px)";
+
+// The session list's part of the columns: `max`, the widest its edge goes now; `over`, it lies
+// open over the session (601 to 900 px).
+type ListColumn = {
+  folded: boolean;
+  width: number;
+  max: number;
+  over: boolean;
+  open: () => void;
+  fold: () => void;
+  setWidth: (width: number) => void;
+};
+
+// A column's stored prefs and their one writer: what comes through it is the human's choice.
+function useColumnPrefs(stored: () => ColumnPrefs, store: (prefs: ColumnPrefs) => void) {
+  const [prefs, setPrefs] = useState(stored);
+  const keep = useCallback(
+    (change: Partial<ColumnPrefs>) => {
+      setPrefs((now) => {
+        const next = { ...now, ...change, chosen: true };
+        store(next);
+        return next;
+      });
+    },
+    [store],
+  );
+  return [prefs, keep] as const;
+}
+
+// The columns beside the chat, what `fitColumns` makes of the human's choices. Each stored key
+// has its one writer here, and only what the human does reaches it: at 601 to 900 px both
+// columns start folded whatever is stored, and what opens there lies over the session and
+// is not remembered.
+function useSessionColumns(room: number | null): { list: ListColumn; panel: PanelColumn } {
+  const [list, keepList] = useColumnPrefs(storedSessionsList, storeSessionsList);
+  const [panel, keepPanel] = useColumnPrefs(storedPanel, storePanel);
+  const [last, setLast] = useState<Column | null>(storedLastColumn);
+  const openedLast = useCallback((column: Column) => {
+    setLast(column);
+    storeLastColumn(column);
+  }, []);
+  const [control, setControl] = useState(false);
+  // Taking control opens the panel last, for this page's life: the next press of Sessions still
+  // wins, and no control outlives a reload.
+  const holdControl = useCallback((inControl: boolean) => {
+    setControl(inControl);
+    if (inControl) setLast("panel");
+  }, []);
+  const [over, setOver] = useState<"list" | "terminals" | null>(null);
+  const narrow = useMedia(NARROW);
+  useEffect(() => {
+    if (!narrow) setOver(null);
+  }, [narrow]);
+  const width = list.width ?? SESSIONS_WIDTH.initial;
+  // Before the first measure nothing folds: the stored choice shows, and no terminal is made.
+  const input = { room: room ?? Infinity, list: { ...list, width }, panel, last, control };
+  const fit = fitColumns(input);
+  const max = Math.max(SESSIONS_WIDTH.min, Math.min(SESSIONS_WIDTH.max, listMax(input)));
+  const listColumn = useMemo(
+    () => ({
+      folded: narrow ? over !== "list" : fit.listFolded,
+      width,
+      max,
+      over: narrow && over === "list",
+      open: () => {
+        if (narrow) return setOver("list");
+        openedLast("list");
+        keepList({ collapsed: false });
+      },
+      fold: () => {
+        if (narrow) setOver(null);
+        else keepList({ collapsed: true });
+      },
+      setWidth: (next: number) => keepList({ width: next }),
+    }),
+    [narrow, over, fit.listFolded, width, max, keepList, openedLast],
+  );
+  const panelColumn = useMemo(
+    () => ({
+      folded: narrow ? over !== "terminals" : fit.panelFolded,
+      width: fit.panelWidth,
+      over: narrow,
+      ready: room !== null || typeof ResizeObserver === "undefined",
+      open: () => {
+        if (narrow) return setOver("terminals");
+        openedLast("panel");
+        keepPanel({ collapsed: false });
+      },
+      fold: () => {
+        if (narrow) setOver(null);
+        else keepPanel({ collapsed: true });
+      },
+      setWidth: (next: number | null) => keepPanel({ width: next }),
+      setControl: holdControl,
+    }),
+    [narrow, over, fit.panelFolded, fit.panelWidth, room, keepPanel, openedLast, holdControl],
+  );
+  return { list: listColumn, panel: panelColumn };
+}
+
+// The list collapsed to a strip: Sessions opens it again (and at 601 to 900 px, where the strip
+// stays under the open list, closes it), then New session (`children`), then an icon per
+// session not stopped, in the open list's order (those that need the human first, a line after
+// them), the open session's scrolled into view. While the list loads the icons' column is empty
+// and busy; when it cannot load, an alert says why, as the open list does.
 function SessionStrip({
   loaded,
+  current,
+  open,
   openRef,
-  onOpen,
+  onToggle,
   children,
 }: {
   loaded: Loaded;
+  current?: string;
+  open: boolean;
   openRef: RefObject<HTMLButtonElement | null>;
-  onOpen: () => void;
+  onToggle: () => void;
   children: ReactNode;
 }) {
   const groups = loaded && "sessions" in loaded ? grouped(loaded.sessions) : null;
+  const marks = badges([...(groups?.["needs-you"] ?? []), ...(groups?.running ?? [])]);
+  // By the list's own scroll: Chromium's Tab would start from an icon scrolled to with
+  // scrollIntoView (Terminals.tsx).
+  const icons = useRef<HTMLUListElement>(null);
+  const known = groups !== null;
+  useLayoutEffect(() => {
+    const list = icons.current;
+    const on = list?.querySelector('[aria-current="page"]');
+    if (!list || !on) return;
+    const box = list.getBoundingClientRect();
+    const icon = on.getBoundingClientRect();
+    list.scrollLeft += Math.min(0, icon.left - box.left) + Math.max(0, icon.right - box.right);
+    list.scrollTop += Math.min(0, icon.top - box.top) + Math.max(0, icon.bottom - box.bottom);
+  }, [current, known]);
+  const icon = (session: SessionInfo) => (
+    <StripIcon key={session.name} session={session} mark={marks.get(session.name) ?? ""} />
+  );
   return (
     <nav className="sessions-strip" aria-label="Sessions">
-      <button ref={openRef} type="button" className="strip-open sessions-open" title="Show the sessions" onClick={onOpen}>
+      <button
+        ref={openRef}
+        type="button"
+        className="strip-open sessions-open"
+        title={open ? "Hide the sessions" : "Show the sessions"}
+        aria-expanded={open}
+        onClick={onToggle}
+      >
         Sessions
       </button>
       {children}
@@ -251,12 +433,12 @@ function SessionStrip({
           </span>
         </Tooltip>
       ) : (
-        <ul className="strip-icons" aria-busy={groups === null || undefined}>
-          {groups?.["needs-you"].map((session) => <StripIcon key={session.name} session={session} />)}
+        <ul ref={icons} className="strip-icons" aria-busy={groups === null || undefined}>
+          {groups?.["needs-you"].map(icon)}
           {groups && groups["needs-you"].length > 0 && groups.running.length > 0 && (
             <li className="strip-gap" aria-hidden="true" />
           )}
-          {groups?.running.map((session) => <StripIcon key={session.name} session={session} />)}
+          {groups?.running.map(icon)}
         </ul>
       )}
     </nav>
@@ -264,15 +446,34 @@ function SessionStrip({
 }
 
 // A session's two letters: the first of its first two words, else its first two letters.
-// Two sessions may share them: the tooltip and the label tell them apart. Letters are whole
-// characters (code points), as a title may start with an emoji.
+// Letters are whole characters (code points), as a title may start with an emoji.
 const initials = (name: string) => {
   const words = name.split(/[-_./\s]+/).filter(Boolean);
   const first = (text: string) => [...text][0];
   return (words.length > 1 ? first(words[0]) + first(words[1]) : [...name].slice(0, 2).join("")).toUpperCase();
 };
 
-function StripIcon({ session }: { session: SessionInfo }) {
+// A session's badge: the last 3 digits of a title (or name) that starts with `<word>-<number>`,
+// as a task's session does, else its two letters.
+const badge = (session: SessionInfo) => {
+  const called = label(session);
+  return called.match(/^\p{L}+-(\d+)/u)?.[1].slice(-3) ?? initials(called);
+};
+
+// The sessions' badges in the strip's order, by name: a later one alike gets a mark (`154·2`).
+function badges(sessions: SessionInfo[]): Map<string, string> {
+  const seen = new Map<string, number>();
+  return new Map(
+    sessions.map((session) => {
+      const text = badge(session);
+      const times = (seen.get(text) ?? 0) + 1;
+      seen.set(text, times);
+      return [session.name, times === 1 ? text : `${text}·${times}`];
+    }),
+  );
+}
+
+function StripIcon({ session, mark }: { session: SessionInfo; mark: string }) {
   const needsYou = waits(session);
   const working = workWord(session);
   const called = label(session);
@@ -281,10 +482,11 @@ function StripIcon({ session }: { session: SessionInfo }) {
       <Tooltip tip={<SessionTip session={session} />}>
         <NavLink
           to={sessionPath(session.name)}
-          className={`strip-session${needsYou ? " waits" : ""}`}
+          className={`strip-session${needsYou ? " waits" : ""}${[...mark].length > 3 ? " long" : ""}`}
           aria-label={needsYou ? `${called}, needs you` : working ? `${called}, ${working}` : called}
         >
-          {initials(called)}
+          {mark}
+          {needsYou && <span className="dot dot-small dot-waiting" aria-hidden="true" />}
           {working && <span className={`dot dot-small activity-${working}`} aria-hidden="true" />}
         </NavLink>
       </Tooltip>
@@ -539,7 +741,7 @@ export function StatusDot({ session, stop = true }: { session: SessionInfo; stop
 
 export function NoSession() {
   useTitle("Sessions");
-  const loaded = useOutletContext<Loaded>();
+  const { loaded } = useOutletContext<SessionsOutlet>();
   const phone = usePhone(); // the list is the page: nothing to select beside it
   if (loaded && "sessions" in loaded && loaded.sessions.length === 0) {
     return <p className="empty">No sessions yet. Start one with Launch.</p>;
@@ -567,14 +769,26 @@ const TAB_ICONS: Record<Tab, typeof ActivityIcon> = {
 
 export function Session() {
   const { name = "", tab = "activity", item } = useParams();
-  const loaded = useOutletContext<Loaded>();
+  const { loaded, panel } = useOutletContext<SessionsOutlet>();
   // Only the Flows, Agents and Artifacts tabs have pages of their own: their runs', agents'
   // and artifacts'.
   if (!isTab(tab) || (item !== undefined && tab === "activity")) return <NotFound />;
-  return <SessionTab name={name} tab={tab} item={item} loaded={loaded} />;
+  return <SessionTab name={name} tab={tab} item={item} loaded={loaded} panel={panel} />;
 }
 
-function SessionTab({ name, tab, item, loaded }: { name: string; tab: Tab; item?: string; loaded: Loaded }) {
+function SessionTab({
+  name,
+  tab,
+  item,
+  loaded,
+  panel,
+}: {
+  name: string;
+  tab: Tab;
+  item?: string;
+  loaded: Loaded;
+  panel: PanelColumn;
+}) {
   const started = (useLocation().state as StartedState | null)?.started;
   // Just started here: the change feed may bring it a moment after the start's answer.
   const session =
@@ -595,7 +809,7 @@ function SessionTab({ name, tab, item, loaded }: { name: string; tab: Tab; item?
   }
   return (
     // The panel keeps its terminals while the tabs change: keyed by the session only.
-    <TerminalPanel key={name} session={name}>
+    <TerminalPanel key={name} session={name} column={panel}>
       <SessionView name={name} tab={tab} item={item} session={session} />
     </TerminalPanel>
   );
@@ -615,37 +829,16 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
     artifacts: artifacts && "items" in artifacts ? artifacts.items.length : 0,
   };
   const stopped = session.status === "stopped";
+  const phone = usePhone();
   const view = useSearchParams()[0].get(VIEW_PARAM); // a chip's record, in the panel over the tab
   return (
     <section className="session" aria-label={`Session ${name}`}>
       <SessionHead session={session} tab={tab} />
       <StartedNotice name={name} />
-      <nav className="tab-bar session-tabs" aria-label="Session sections">
-        {TABS.map((one) => {
-          const SectionIcon = TAB_ICONS[one];
-          return (
-            <Link
-              key={one}
-              to={sessionPath(name, one)}
-              className="tab-item"
-              aria-current={one === tab ? "page" : undefined}
-            >
-              <SectionIcon />
-              {TAB_NAMES[one]}
-              {counts[one] ? (
-                <>
-                  {" "}
-                  {/* Named "Agents · 3"; the dot is for the ear only. */}
-                  <span className="tab-count">
-                    <span className="visually-hidden">·</span> {counts[one]}
-                  </span>
-                </>
-              ) : null}
-            </Link>
-          );
-        })}
+      <SessionTabs name={name} tab={tab} counts={counts}>
         {FINDS[tab] !== undefined && item === undefined && <Find key={tab} label={FINDS[tab]} />}
-      </nav>
+        {tab === "activity" && !phone && <MessagesChoice />}
+      </SessionTabs>
       {tab === "agents" ? (
         <Agents session={name} agent={item} stopped={stopped} />
       ) : tab === "activity" ? (
@@ -657,6 +850,228 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
       )}
       {view && <ArtifactPanel session={name} record={view} />}
     </section>
+  );
+}
+
+// How the tabs give way when they do not fit their bar (styles.css, `data-fit`): 0 as they are,
+// 1 no icons, 2 no counts either, 3 the bar's tool takes its short form, 4 they scroll sideways
+// behind a fade, with ‹ and ›. Before any of them a tool's word at the bar's end goes
+// (`data-short`). With no short form level 3 changes nothing, so the trial passes on to 4.
+const LAST_FIT = 4;
+const TAB_ROOM = 56; // what `.session-tabs-more` covers at an end: a tab in view stands clear of it
+
+// The row's scrollLeft that keeps a tab clear of `room` at each end; the row clamps it, so the
+// row's own ends need no room. A tab too wide for what is left keeps its start.
+export function tabScroll(
+  view: { left: number; width: number },
+  tab: { left: number; width: number },
+  room: number,
+): number {
+  const left = Math.max(view.left, tab.left + tab.width + room - view.width);
+  return Math.min(left, tab.left - room);
+}
+
+// By the row's own scroll: Chromium's Tab would start from a tab scrolled to with
+// scrollIntoView (Terminals.tsx).
+function keepInView(tabs: HTMLElement, on: HTMLElement) {
+  const view = { left: tabs.scrollLeft, width: tabs.clientWidth };
+  tabs.scrollLeft = tabScroll(view, { left: on.offsetLeft, width: on.offsetWidth }, TAB_ROOM);
+}
+
+// What puts the focus back after a trial, which hides the form of the bar's tool that has it,
+// for a moment or for good: on that form while it shows, else on the other.
+function holdToolFocus(bar: HTMLElement): () => void {
+  const held = document.activeElement as HTMLElement | null;
+  if (!held || !bar.contains(held) || !held.closest(".between-wrap, .between-toggle")) return () => {};
+  return () => {
+    const forms = [held, ...bar.querySelectorAll<HTMLElement>('.between-toggle, .between [aria-checked="true"]')];
+    const back = forms.find((one) => one.offsetParent !== null);
+    if (back && back !== document.activeElement) focusQuietly(back);
+  };
+}
+
+// The tab bar: the tabs, which give way by the levels above, and at its right end what stays
+// outside them (`children`, a tab's search). The level is chosen by trying each before the
+// paint, again when the tabs' row or a tab changes its width (the bar, the search coming, a
+// count, the font).
+function SessionTabs({
+  name,
+  tab,
+  counts,
+  children,
+}: {
+  name: string;
+  tab: Tab;
+  counts: Partial<Record<Tab, number>>;
+  children: ReactNode;
+}) {
+  const bar = useRef<HTMLElement>(null);
+  const row = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState(0);
+  const [ends, setEnds] = useState({ start: true, end: true });
+  const lookAtEnds = useCallback(() => {
+    const tabs = row.current;
+    if (!tabs) return;
+    const start = tabs.scrollLeft <= 0;
+    const end = tabs.scrollLeft + tabs.clientWidth >= tabs.scrollWidth - 1;
+    setEnds((now) => (now.start === start && now.end === end ? now : { start, end }));
+  }, []);
+  useLayoutEffect(() => {
+    const box = bar.current;
+    const tabs = row.current;
+    if (!box || !tabs) return;
+    const choose = () => {
+      const putBack = holdToolFocus(box);
+      let level = 0;
+      delete box.dataset.short;
+      box.dataset.fit = "0";
+      if (tabs.scrollWidth > tabs.clientWidth) box.dataset.short = "";
+      for (; level < LAST_FIT; level++) {
+        box.dataset.fit = String(level);
+        if (tabs.scrollWidth <= tabs.clientWidth) break;
+      }
+      box.dataset.fit = String(level);
+      putBack();
+      setFit(level);
+      lookAtEnds();
+    };
+    choose();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(choose);
+    observer.observe(tabs);
+    for (const one of tabs.children) observer.observe(one);
+    return () => observer.disconnect();
+  }, [lookAtEnds]);
+  // The tab shown stays in view.
+  useLayoutEffect(() => {
+    const tabs = row.current;
+    const on = tabs?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!tabs || !on) return;
+    keepInView(tabs, on);
+    lookAtEnds();
+  }, [tab, fit, lookAtEnds]);
+  // So does the tab the keyboard reaches; not a press's: the row moving under the pointer would
+  // lose the click.
+  const focused = (event: FocusEvent<HTMLDivElement>) => {
+    if (event.target.matches(":focus-visible")) keepInView(event.currentTarget, event.target);
+  };
+  const scroll = (side: 1 | -1) => row.current?.scrollBy({ left: side * row.current.clientWidth });
+  return (
+    <nav ref={bar} className="tab-bar session-tabs" aria-label="Session sections" data-fit={fit}>
+      <div className="session-tabs-box">
+        <div ref={row} className="session-tabs-scroll" onScroll={lookAtEnds} onFocus={focused}>
+          {TABS.map((one) => {
+            const SectionIcon = TAB_ICONS[one];
+            return (
+              <Link
+                key={one}
+                to={sessionPath(name, one)}
+                className="tab-item"
+                aria-current={one === tab ? "page" : undefined}
+              >
+                <SectionIcon />
+                {TAB_NAMES[one]}
+                {counts[one] ? (
+                  <>
+                    {" "}
+                    {/* Named "Agents · 3"; the dot is for the ear only. */}
+                    <span className="tab-count">
+                      <span className="visually-hidden">·</span> {counts[one]}
+                    </span>
+                  </>
+                ) : null}
+              </Link>
+            );
+          })}
+        </div>
+        {fit === LAST_FIT && !ends.start && (
+          <div className="session-tabs-more start">
+            <button type="button" className="icon-button" aria-label="Earlier tabs" onClick={() => scroll(-1)}>
+              ‹
+            </button>
+          </div>
+        )}
+        {fit === LAST_FIT && !ends.end && (
+          <div className="session-tabs-more end">
+            <button type="button" className="icon-button" aria-label="More tabs" onClick={() => scroll(1)}>
+              ›
+            </button>
+          </div>
+        )}
+      </div>
+      {children}
+    </nav>
+  );
+}
+
+// The icon toggle Messages between agents (pressed, the feed also shows what agents write to
+// each other; it changes only what the feed shows, and is remembered; decided 2026-10-15,
+// LAD-77, mockup-placement.html variant Б): the end of a phone's team row, the short form of
+// MessagesChoice.
+function MessagesToggle() {
+  const agentMessages = useAgentMessages();
+  const tip = (
+    <>
+      <div className="tooltip-line">Messages between agents: {agentMessages ? "shown" : "hidden"}</div>
+      <div className="tooltip-line">
+        {agentMessages ? "Click to show only your conversation with the agents." : "Click to also show what agents write to each other."}
+      </div>
+    </>
+  );
+  return (
+    <Tooltip tip={tip}>
+      <button
+        type="button"
+        className="icon-button between-toggle"
+        aria-label="Messages between agents"
+        aria-pressed={agentMessages}
+        onClick={() => storeAgentMessages(!agentMessages)}
+      >
+        <BetweenIcon />
+      </button>
+    </Tooltip>
+  );
+}
+
+// Which messages the Activity feed shows, at the right end of the tab bar above a phone. Tab
+// reaches the chosen one, the arrows choose the other (a radio group's keys). LAD-197. On a
+// narrow bar the icon stands for it (`data-fit`: both are there, CSS shows one, so the trial
+// needs no render).
+function MessagesChoice() {
+  const all = useAgentMessages();
+  const keyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return; // Alt+← goes back
+    event.preventDefault();
+    event.currentTarget.querySelector<HTMLElement>('[aria-checked="false"]')?.focus();
+    storeAgentMessages(!all);
+  };
+  const radio = (word: string, tip: string, shows: boolean) => (
+    <Tooltip tip={tip}>
+      <button
+        type="button"
+        role="radio"
+        aria-checked={all === shows}
+        tabIndex={all === shows ? 0 : -1}
+        onClick={() => storeAgentMessages(shows)}
+      >
+        {word}
+      </button>
+    </Tooltip>
+  );
+  return (
+    <>
+      <div className="between-wrap">
+        <span className="between-label" aria-hidden="true">
+          Messages
+        </span>
+        <div className="between" role="radiogroup" aria-label="Messages between agents" onKeyDown={keyDown}>
+          {radio("Yours", "Only your conversation with the agents", false)}
+          {radio("All", "Also what agents write to each other", true)}
+        </div>
+      </div>
+      <MessagesToggle />
+    </>
   );
 }
 
@@ -778,13 +1193,15 @@ const TAKES_FOCUS = "a, button, input, textarea, select, [contenteditable]";
 // The head on a computer, one line of the top bar (docs/design/ui.md, Structure and Session
 // head): the status as a dot, the project as a breadcrumb, the title as a button that opens
 // Details, a broken session's status in words, the run time, the branch on a wide window
-// (styles.css), the actions. The rest of the facts are in Details (DetailsPopover).
+// (styles.css), the team (Team.tsx: HeadTeam), the actions. The rest of the facts are in
+// Details (DetailsPopover).
 function HeadLine({ session }: { session: SessionInfo }) {
   const { status } = session;
   const about = useAbout(session);
   const repository = about?.repos[0];
   const trouble = status === "tmux_gone" || status === "loop_down";
   const ran = useRan(session);
+  const { lost } = useLive(); // the link's mark is wider then
   const [details, setDetails] = useState(false);
   const title = useRef<HTMLButtonElement>(null);
   const box = useRef<HTMLDivElement>(null); // the title and Details: a second click is no press outside
@@ -816,6 +1233,7 @@ function HeadLine({ session }: { session: SessionInfo }) {
   // The title edited in place (Session title), from Details; the focus goes back to the
   // title when the field closes.
   const { editing, edit, closed } = useTitleEdit(() => title.current?.focus());
+  const titleText = useRef<HTMLSpanElement>(null); // what the team leaves room for
   return (
     <div className="session-head">
       <StatusDot session={session} stop={false} />
@@ -841,7 +1259,9 @@ function HeadLine({ session }: { session: SessionInfo }) {
               aria-expanded={details}
               onClick={() => (details ? close() : setDetails(true))}
             >
-              <span className="session-title-text">{label(session)}</span>
+              <span ref={titleText} className="session-title-text">
+                {label(session)}
+              </span>
               <span className="session-chevron">
                 <ChevronIcon />
               </span>
@@ -873,6 +1293,13 @@ function HeadLine({ session }: { session: SessionInfo }) {
           </span>
         </Tooltip>
       )}
+      <HeadTeam
+        session={session.name}
+        line={[label(session), about?.project?.title, about?.project?.id, repository?.branch, status, lost].join("\n")}
+        ran={ran}
+        titleText={titleText}
+        editing={editing}
+      />
       <div className="session-head-actions">
         <SessionActions session={session} />
       </div>
@@ -1052,39 +1479,20 @@ function StartedNotice({ name }: { name: string }) {
   );
 }
 
-// The Activity tab: the team, ended by the icon toggle Messages between agents (pressed, the
-// feed also shows what agents write to each other; it changes only what the feed shows, and
-// is remembered; decided 2026-10-15, LAD-77, mockup-placement.html variant Б), and the feed
-// with the composer.
+// The Activity tab: the feed with the composer; on a phone, above them, the team, ended by the
+// icon toggle Messages between agents. Above a phone the team is in the head and the choice in
+// the tab bar (MessagesChoice).
 function Activity({ session, stopped }: { session: string; stopped: boolean }) {
-  const [agentMessages, setAgentMessages] = useState(storedAgentMessages);
-  const tip = (
-    <>
-      <div className="tooltip-line">Messages between agents: {agentMessages ? "shown" : "hidden"}</div>
-      <div className="tooltip-line">
-        {agentMessages ? "Click to show only your conversation with the agents." : "Click to also show what agents write to each other."}
-      </div>
-    </>
-  );
+  const phone = usePhone();
+  const agentMessages = useAgentMessages();
   return (
     <div className="activity">
-      <div className="team-row">
-        <Team session={session} />
-        <Tooltip tip={tip}>
-          <button
-            type="button"
-            className="icon-button between-toggle"
-            aria-label="Messages between agents"
-            aria-pressed={agentMessages}
-            onClick={() => {
-              setAgentMessages(!agentMessages);
-              storeAgentMessages(!agentMessages);
-            }}
-          >
-            <BetweenIcon />
-          </button>
-        </Tooltip>
-      </div>
+      {phone && (
+        <div className="team-row">
+          <Team session={session} />
+          <MessagesToggle />
+        </div>
+      )}
       <Chat session={session} stopped={stopped} agentMessages={agentMessages} />
     </div>
   );

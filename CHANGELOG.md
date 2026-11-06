@@ -43,6 +43,14 @@
   start` and the launch window. `docs/install.md` says what to expect of small models.
 - **OpenCode no longer stalls without internet.** Its first start on a model of a server takes
   seconds where it took over a minute. An agent keeps your TUI settings from the first run.
+- **Your agents stay in sight in the session's head, and the chat gets taller.** On every tab
+  the head shows the team with its statuses, as names or avatars by the room, and a list of all
+  agents; `Yours | All` moved to the tabs, and the keys hint shows only in an empty field.
+
+- **LADO tells you whether your decision got through.** When the connection drops, the Live
+  mark warns and Approve, Send, Stop and the like wait. If it drops mid-click, LADO checks by
+  itself once it can: the card goes, or the error says it was not delivered, with Retry.
+
 - **A session's head is one line at any width.** The folder, git, kits, CLI, Rename and Copy
   link moved to Details, which a click on the title opens; the chat gets the height back,
   and `Skip to chat` takes the keyboard straight to it.
@@ -51,6 +59,10 @@
   comment or choices and the buttons stay in sight, only the context scrolls, and the card
   is as high as its content. While you write your own answer, the composer folds into a line.
   On Needs you the card is whole and the page scrolls, with nothing to expand.
+
+- **A session's page fits any window.** The chat never gets narrower than 420 px: the terminals
+  and the list fold by themselves and come back when there is room. A tablet's page stands
+  still with the composer in sight, and a window of 600 px or less gets the phone layout.
 
 ### Fixed
 
@@ -63,6 +75,14 @@
   refusal for context reads the same way, with the server's text under it.
 - **A failed turn is not called a reply.** A message whose turn ended on an error no longer shows
   "replied only in its terminal"; the next clean turn decides.
+- **A session's four tabs stay whole in a narrow chat.** Beside the terminals `Yours | All`
+  folds into an icon that does the same, and a tab you reach with Tab no longer hides under
+  the fade or the arrow.
+
+- **An agent's status reads the same everywhere.** The Agents tab, an agent's page and the
+  update's list say `working`, `waits for you` and `in the background`, as the agent's popup
+  does. The team's list button now has a tooltip with its name.
+
 - **A tooltip no longer pops up when you come back to LADO's tab.** A session's card and
   other tooltips stay hidden on your return; Tab or the pointer shows them as usual.
 

@@ -1330,6 +1330,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   by `make web-types` and committed. `src/attachFiles.tsx` is the human's files in one
   module (attach by the server's limits, paste, drop zone, chips, upload, `AnswerBox`), used
   by the composer and the waiting card's fields (docs/design/ui.md, Files in the composer).
+  `src/attempts.ts` is the store of actions without an answer, held by the live store;
+  `src/closedRefusals.cases.json` is the one table of the core's refusals its Retry takes as
+  closed, for vitest and `tests/test_closed_refusals.py` (docs/design/ui.md, A lost connection).
 - `tests/`: pytest tests; `tests/integration/`: integration tests with a fake agent;
   `tests/ui/`: UI end-to-end tests in a browser; `tests/live/`: live tests with real agent
   CLIs; `tests/js/`: Node tests of the OpenCode-family plugin; `web/src/*.test.tsx`: the

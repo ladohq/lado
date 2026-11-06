@@ -202,7 +202,7 @@ def test_a_runs_page_shows_its_flow_and_steps_and_its_gate_is_answered_there(
     # With the terminals collapsed the session's column is wide enough for the list and the
     # page side by side.
     page.get_by_role("button", name="Collapse terminals").click()
-    page.get_by_role("link", name="Flows · 2").click()
+    page.get_by_role("link", name=re.compile("^Flows")).click()
     # The overview across the whole column, also when it is wide: no run opens by itself.
     runs_list = page.get_by_role("navigation", name="Flow runs")
     expect(runs_list).to_be_visible()
@@ -334,14 +334,14 @@ def test_in_a_narrow_column_the_overview_is_searched_from_the_tab_bar_and_a_run_
 ):
     # Wide enough for the four tabs with their counts (Agents, Flows, Artifacts), narrow
     # enough for the overview alone.
-    page.set_viewport_size({"width": 1480, "height": 900})
+    page.set_viewport_size({"width": 1120, "height": 900})
     session = flows_session(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}/activity")
     # The terminals are open: the session's column is narrower than 900 px.
     expect(page.get_by_role("button", name="Collapse terminals")).to_be_visible()
     expect(page.get_by_role("button", name="Find a run")).to_have_count(0)
-    page.get_by_role("link", name="Flows · 2").click()
+    page.get_by_role("link", name=re.compile("^Flows")).click()
     runs_list = page.get_by_role("navigation", name="Flow runs")
     expect(runs_list).to_be_visible()
     expect(page).to_have_url(f"{server['url']}/sessions/{session}/flows")

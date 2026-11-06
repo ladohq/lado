@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { Tooltip, TOOLTIP_DELAY_MS } from "./Tooltip";
+import { focusQuietly, Tooltip, TOOLTIP_DELAY_MS } from "./Tooltip";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -251,4 +251,52 @@ test("a card pushed by the window's edge keeps its arrow at the trigger, off its
   tip = placed({ left: 0, top: 100, width: 4, height: 20 });
   expect(left(tip)).toBe(8);
   expect(arrowX(tip)).toBe(16);
+});
+
+function Silenced({ tip }: { tip: string | null }) {
+  return (
+    <Tooltip tip={tip}>
+      <button type="button">list</button>
+    </Tooltip>
+  );
+}
+
+test("with no tip neither the pointer nor the focus shows anything, also after the tip comes", () => {
+  const { rerender } = render(<Silenced tip={null} />);
+  const button = screen.getByRole("button", { name: "list" });
+  fireEvent.mouseEnter(button);
+  act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS));
+  fireEvent.focus(button);
+  expect(screen.queryByRole("tooltip")).toBeNull();
+  rerender(<Silenced tip="All 12 agents" />);
+  expect(screen.queryByRole("tooltip")).toBeNull();
+});
+
+test("a tip that goes hides the tooltip that is up, and one still on its delay", () => {
+  const { rerender } = render(<Silenced tip="All 12 agents" />);
+  const button = screen.getByRole("button", { name: "list" });
+  fireEvent.mouseEnter(button);
+  act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS));
+  expect(screen.getByRole("tooltip").textContent).toBe("All 12 agents");
+  rerender(<Silenced tip={null} />);
+  expect(screen.queryByRole("tooltip")).toBeNull();
+  expect(button.getAttribute("aria-describedby")).toBeNull();
+  rerender(<Silenced tip="All 12 agents" />);
+  expect(screen.queryByRole("tooltip")).toBeNull(); // the pointer stayed: it asked once, for the list
+  fireEvent.mouseLeave(button);
+  fireEvent.mouseEnter(button);
+  rerender(<Silenced tip={null} />);
+  rerender(<Silenced tip="All 12 agents" />);
+  act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS));
+  expect(screen.queryByRole("tooltip")).toBeNull();
+});
+
+test("a focus given back quietly shows nothing, and the next focus shows as usual", () => {
+  const button = visiblyFocusable();
+  act(() => focusQuietly(button));
+  expect(document.activeElement).toBe(button);
+  expect(screen.queryByRole("tooltip")).toBeNull();
+  act(() => button.blur());
+  act(() => button.focus());
+  expect(screen.getByRole("tooltip")).toBeTruthy();
 });

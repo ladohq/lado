@@ -1,6 +1,7 @@
 // What the UI remembers per browser: the theme, the rail, the columns of a session page and
 // a few choices. Browser storage may be missing or refuse (private windows, blocked site data); then the defaults
 // hold and nothing breaks.
+import { useEffect, useState } from "react";
 
 export type Theme = "system" | "light" | "dark";
 
@@ -75,11 +76,10 @@ export function chooseTheme(theme: Theme): void {
   write(THEME, theme);
 }
 
-// Collapsed by default on a narrow window (< 900 px).
-export function storedRailCollapsed(): boolean {
+// The human's choice, or null: the rail then follows the window (Shell.tsx).
+export function storedRailCollapsed(): boolean | null {
   const rail = read(RAIL);
-  if (rail !== null) return rail === "collapsed";
-  return window.matchMedia?.("(max-width: 899px)").matches ?? false;
+  return rail === null ? null : rail === "collapsed";
 }
 
 export function storeRailCollapsed(collapsed: boolean): void {
@@ -104,29 +104,38 @@ const widthIn = (value: unknown, bounds: Bounds) => {
   return width >= bounds.min && width <= bounds.max ? width : bounds.initial;
 };
 
-// A column of a session page that collapses to a strip: its width, and whether it is
-// collapsed. Collapsed by default on a narrow window (≤ 900 px, where the columns stack); a
-// value stored before it could collapse is open.
-export type ColumnPrefs = { width: number; collapsed: boolean };
+// A column of a session page that collapses to a strip: the width set on its edge (null: none,
+// the column's own), whether it is collapsed, and whether the human chose anything at all.
+// Open by default, also a value stored before it could collapse. A fold for room is no choice
+// and never comes here (columns.ts).
+export type ColumnPrefs = { width: number | null; collapsed: boolean; chosen: boolean };
 
 export function storedColumn(key: string, bounds: Bounds): ColumnPrefs {
   const stored = readJson(key);
-  const collapsed =
-    stored === null ? (window.matchMedia?.("(max-width: 900px)").matches ?? false) : stored.collapsed === true;
-  return { width: widthIn(stored?.width, bounds), collapsed };
+  const width = Number(stored?.width);
+  return {
+    width: width >= bounds.min && width <= bounds.max ? width : null,
+    collapsed: stored?.collapsed === true,
+    chosen: stored !== null,
+  };
 }
 
-export function storeColumn(key: string, column: ColumnPrefs): void {
-  write(key, JSON.stringify(column));
+export function storeColumn(key: string, { width, collapsed }: Pick<ColumnPrefs, "width" | "collapsed">): void {
+  write(key, JSON.stringify(width === null ? { collapsed } : { width, collapsed }));
 }
 
-// The terminal panel on the right of a session page.
+// The terminal panel on the right of a session page. Its width by default is the rule's
+// (columns.ts); `initial` is what an older LADO stored beside `collapsed`, no width the human
+// set.
 const PANEL = "lado.terminals";
 export const PANEL_WIDTH: Bounds = { initial: 480, min: 280, max: 1200 };
 
-export const storedPanel = (): ColumnPrefs => storedColumn(PANEL, PANEL_WIDTH);
+export function storedPanel(): ColumnPrefs {
+  const panel = storedColumn(PANEL, PANEL_WIDTH);
+  return panel.width === PANEL_WIDTH.initial ? { ...panel, width: null } : panel;
+}
 
-export const storePanel = (panel: ColumnPrefs): void => storeColumn(PANEL, panel);
+export const storePanel = (panel: Pick<ColumnPrefs, "width" | "collapsed">): void => storeColumn(PANEL, panel);
 
 // The session list on the left of the Sessions page.
 const SESSIONS_LIST = "lado.sessionsList";
@@ -134,7 +143,21 @@ export const SESSIONS_WIDTH: Bounds = { initial: 260, min: 200, max: 480 };
 
 export const storedSessionsList = (): ColumnPrefs => storedColumn(SESSIONS_LIST, SESSIONS_WIDTH);
 
-export const storeSessionsList = (list: ColumnPrefs): void => storeColumn(SESSIONS_LIST, list);
+export const storeSessionsList = (list: Pick<ColumnPrefs, "width" | "collapsed">): void =>
+  storeColumn(SESSIONS_LIST, list);
+
+// The column of a session page the human opened last, which stays when both do not fit
+// (columns.ts).
+export type Column = "list" | "panel";
+
+const LAST_COLUMN = "lado.lastColumn";
+
+export function storedLastColumn(): Column | null {
+  const column = read(LAST_COLUMN);
+  return column === "list" || column === "panel" ? column : null;
+}
+
+export const storeLastColumn = (column: Column): void => write(LAST_COLUMN, column);
 
 // The artifact panel over a session's page: the width the human chose, and whether it is
 // expanded to all the room there is. One value for every session.
@@ -195,10 +218,31 @@ export function storeAskControl(ask: boolean): void {
 // Whether the Activity feed shows the agents' messages to each other (off by default).
 const AGENT_MESSAGES = "lado.agentMessages";
 
-export const storedAgentMessages = (): boolean => read(AGENT_MESSAGES) === "shown";
+// What the browser refused to store: the choice holds until the page is closed.
+let agentMessagesHeld: boolean | null = null;
+
+export const storedAgentMessages = (): boolean => agentMessagesHeld ?? read(AGENT_MESSAGES) === "shown";
+
+const agentMessagesHeard = new Set<(shown: boolean) => void>();
 
 export function storeAgentMessages(shown: boolean): void {
-  write(AGENT_MESSAGES, shown ? "shown" : "hidden");
+  const word = shown ? "shown" : "hidden";
+  write(AGENT_MESSAGES, word);
+  agentMessagesHeld = read(AGENT_MESSAGES) === word ? null : shown;
+  for (const hear of agentMessagesHeard) hear(shown);
+}
+
+// The choice as it stands, for the switch in the tab bar and the feed under it, which an
+// agent's page changes too.
+export function useAgentMessages(): boolean {
+  const [shown, setShown] = useState(storedAgentMessages);
+  useEffect(() => {
+    agentMessagesHeard.add(setShown);
+    return () => {
+      agentMessagesHeard.delete(setShown);
+    };
+  }, []);
+  return shown;
 }
 
 // Whether the browser notifies when something new waits for the human (off by default;

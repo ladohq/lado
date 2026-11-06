@@ -136,6 +136,7 @@ def test_a_gate_answered_with_lado_answer_goes_without_a_reload(page: Page, serv
         session,
     )
     state.set_status(session, "supervisor", state.WAITING)
+    page.set_viewport_size({"width": 1600, "height": 900})  # the rail expanded
     log_in(page, server)
     page.goto(f"{server['url']}/needs-you")
     group = page.get_by_role("region", name=f"Session {session}")

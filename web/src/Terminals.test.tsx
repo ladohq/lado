@@ -49,9 +49,11 @@ const AGENTS: AgentInfo[] = [
 const BASE = "ws://localhost:3000/api/sessions/lado/agents";
 
 let narrow = false;
+let served = AGENTS;
 
 beforeEach(() => {
   localStorage.clear();
+  served = AGENTS;
   FakeSocket.all = [];
   FakeXterm.all = [];
   FakeEventSource.all = [];
@@ -71,7 +73,7 @@ beforeEach(() => {
     vi.fn(async (path: string) => {
       if (path.endsWith("/about")) return new Response("{}", { status: 404 }); // the head without its about
       const body = path.endsWith("/agents")
-        ? AGENTS
+        ? served
         : path === "/api/sessions"
           ? [SESSION]
           : path.includes("/messages?")
@@ -99,7 +101,7 @@ async function open(path = "/sessions/lado") {
   await screen.findByRole("region", { name: "Session lado" });
 }
 
-const team = () => screen.findByRole("group", { name: "Team" });
+const team = () => screen.findByLabelText("Team"); // a toolbar in the head, a group on a phone
 
 // The chip of an agent in the team above the chat: it opens or selects its terminal.
 async function chip(agent: string) {
@@ -236,14 +238,14 @@ test("?terminal= naming no agent of the session says so", async () => {
 // Collapsed to a strip
 
 const collapse = () => fireEvent.click(within(panel()).getByRole("button", { name: "Collapse terminals" }));
-const expandPanel = () => fireEvent.click(within(panel()).getByRole("button", { name: "Terminals" }));
+const expandPanel = () => fireEvent.click(within(panel()).getByRole("button", { name: "Show the terminals" }));
 
-test("Collapse terminals leaves a strip whose Terminals button opens the panel again; remembered", async () => {
+test("Collapse terminals leaves a strip whose Show the terminals opens the panel again; remembered", async () => {
   await open();
   collapse();
   expect(panel().classList.contains("collapsed")).toBe(true);
   expect(within(panel()).queryByRole("tab")).toBeNull();
-  expect(JSON.parse(localStorage.getItem("lado.terminals")!)).toEqual({ width: 480, collapsed: true });
+  expect(JSON.parse(localStorage.getItem("lado.terminals")!)).toEqual({ collapsed: true });
   expect((await chip("supervisor")).getAttribute("aria-pressed")).toBe("false"); // nothing is shown
   cleanup();
 
@@ -263,7 +265,7 @@ test("after Collapse terminals the focus is on Terminals, after Terminals on Col
   expandPanel();
   expect(document.activeElement).toBe(within(panel()).getByRole("button", { name: "Collapse terminals" }));
   collapse();
-  expect(document.activeElement).toBe(within(panel()).getByRole("button", { name: "Terminals" }));
+  expect(document.activeElement).toBe(within(panel()).getByRole("button", { name: "Show the terminals" }));
   const chipOf = await chip("w1");
   chipOf.focus();
   await openTerminal("w1"); // a chip opens the panel and keeps the focus
@@ -306,7 +308,7 @@ test("collapsing the panel keeps its sockets", async () => {
 });
 
 test("a hidden tab in control keeps its control and tells the server no new size", async () => {
-  columnWidth(null);
+  columnWidth(1400);
   localStorage.setItem("lado.askControl", "never");
   await open();
   const view = within(panel()).getByRole("tabpanel", { name: "supervisor" });
@@ -316,7 +318,7 @@ test("a hidden tab in control keeps its control and tells the server no new size
   act(() => control.open());
   expect(control.frames).toEqual([{ type: "resize", cols: 120, rows: 30 }]);
   await openTerminal("w1");
-  FakeResizeObserver.resize(() => 0); // hidden: its terminal has no room
+  FakeResizeObserver.resize((target) => (target.classList.contains("sessions") ? 1400 : 0)); // hidden: its terminal has no room
   expect(control.frames).toEqual([{ type: "resize", cols: 120, rows: 30 }]);
   expect(control.closed).toBe(false);
   fireEvent.click(tab("supervisor"));
@@ -338,7 +340,7 @@ test("a terminal closed for good has Reconnect, which opens a new socket", async
 });
 
 test("a terminal closed for good opens again when its agent comes back, also with the team not shown", async () => {
-  await open("/sessions/lado/flows"); // no team on this tab: the panel follows the agents itself
+  await open("/sessions/lado/flows");
   await waitFor(() => expect(socketOf("supervisor", "view")).toHaveLength(1));
   act(() => socketOf("supervisor", "view")[0].end(4404, 'session "lado" is stopped'));
   agentChange(null, "supervisor"); // stopped: its agents are gone
@@ -489,7 +491,7 @@ test("on a phone no panel shows until a chip opens the terminal over the screen;
   FakeScreen.phone();
   await open();
   expect(aside().hidden).toBe(true);
-  expect(within(aside()).queryByRole("button", { name: "Terminals", hidden: true })).toBeNull(); // no strip
+  expect(within(aside()).queryByRole("button", { name: "Show the terminals", hidden: true })).toBeNull(); // no strip
   expect(FakeSocket.all).toHaveLength(0); // nothing shown, nothing opened
   expect((await chip("supervisor")).getAttribute("aria-pressed")).toBe("false");
 
@@ -527,7 +529,7 @@ test("on a phone Esc closes the terminal, but goes to the agent the human contro
   expect(panel().hidden).toBe(false);
 });
 
-test("a phone that stops being one (a mouse plugged in) closes its terminal and its control", async () => {
+test("a phone that stops being one (a window widened) closes its terminal and its control", async () => {
   localStorage.setItem("lado.askControl", "never");
   const phone = FakeScreen.phone();
   await open();
@@ -537,9 +539,9 @@ test("a phone that stops being one (a mouse plugged in) closes its terminal and 
   fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
   const [control] = socketOf("w1", "control");
   act(() => control.open());
-  phone.set({ pointer: "fine" });
+  phone.set({ pointer: "fine", width: 1280 });
   expect(control.closed).toBe(true); // control ended
-  phone.set({ pointer: "coarse" });
+  phone.set({ pointer: "coarse", width: 390 });
   expect(aside().hidden).toBe(true); // back on the phone, no terminal over the screen
 });
 
@@ -555,20 +557,114 @@ test("each tab shows its agent's status as a small dot that follows the agent; a
   expect(dotOf(tab("w1"))).toBe("dot dot-small dot-busy");
   agentChange({ ...AGENTS[1], status: "waiting" });
   expect(dotOf(tab("w1"))).toBe("dot dot-small dot-waiting");
-  expect(tab("w1").getAttribute("aria-label")).toBe("w1, waiting");
+  expect(tab("w1").getAttribute("aria-label")).toBe("w1, waits for you");
   agentChange(null, "w1");
   expect(dotOf(tab("w1"))).toBe("dot dot-small dot-stopped");
   expect(tab("w1").getAttribute("aria-label")).toBe("w1, stopped");
 });
 
-test("the collapsed strip shows a small dot per open terminal, named by its agent and status", async () => {
+test("the strip's button shows the agent's mark, as the head does, and its popup", async () => {
+  served = [AGENTS[0]!, { ...AGENTS[1]!, name: "developer-2" }, { ...AGENTS[1]!, name: "developer-3" }];
   await open();
-  await openTerminal("w1");
+  await team();
   collapse();
-  const dots = within(panel()).getByRole("list", { name: "Open terminals" });
-  const items = within(dots).getAllByRole("listitem");
-  expect(items.map((item) => item.getAttribute("title"))).toEqual(["supervisor: idle", "w1: busy"]);
-  expect(items.map(dotOf)).toEqual(["dot dot-small dot-idle", "dot dot-small dot-busy"]);
+  const buttons = within(within(panel()).getByRole("list", { name: "Agents" })).getAllByRole("button");
+  expect(buttons.map((button) => button.firstChild?.textContent)).toEqual(["S", "D2", "D3"]);
+  fireEvent.focus(buttons[1]!);
+  const lines = [...screen.getByRole("tooltip").querySelectorAll(".tooltip-line")].map((line) => line.textContent);
+  expect(lines[0]).toBe("developer-2");
+  expect(lines.at(-1)).toBe("Click to open the terminal");
+});
+
+test("the collapsed strip has a button per agent of the session, with its letter and status, then the caption", async () => {
+  await open();
+  await team();
+  collapse();
+  const buttons = within(within(panel()).getByRole("list", { name: "Agents" })).getAllByRole("button");
+  expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual([
+    "Open supervisor's terminal",
+    "Open w1's terminal",
+  ]);
+  expect(buttons.map((button) => button.textContent)).toEqual(["S", "W"]);
+  expect(buttons.map(dotOf)).toEqual(["dot dot-small dot-idle", "dot dot-small dot-busy"]);
+  expect(within(panel()).getByText("Terminals").className).toBe("strip-caption");
+});
+
+test("a button of the strip opens the panel on that agent's terminal, with its tab", async () => {
+  await open();
+  await team();
+  collapse();
+  fireEvent.click(within(panel()).getByRole("button", { name: "Open w1's terminal" }));
+  expect(panel().classList.contains("collapsed")).toBe(false);
+  expect(tab("w1").getAttribute("aria-selected")).toBe("true");
+  expect(document.activeElement).toBe(within(panel()).getByRole("button", { name: "Collapse terminals" }));
+});
+
+test("at 601 to 900 px what opens lies over the session and is stored nowhere; Esc folds it to the strip", async () => {
+  localStorage.setItem("lado.terminals", JSON.stringify({ width: 600, collapsed: false }));
+  const stored = localStorage.getItem("lado.terminals");
+  narrow = true;
+  await open();
+  await team();
+  expect(panel().classList.contains("collapsed")).toBe(true); // whatever is stored
+  expandPanel();
+  expect(panel().classList.contains("over")).toBe(true);
+  expect(panel().style.width).toBe("");
+  expect(within(panel()).queryByRole("separator")).toBeNull();
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(panel().classList.contains("collapsed")).toBe(true);
+  expect(document.activeElement).toBe(within(panel()).getByRole("button", { name: "Show the terminals" }));
+  await openTerminal("w1");
+  expect(panel().classList.contains("over")).toBe(true);
+  expect(localStorage.getItem("lado.terminals")).toBe(stored);
+});
+
+test("a panel the page has not measured makes no terminal", async () => {
+  columnWidth(null);
+  await open();
+  await team();
+  expect(FakeSocket.all).toHaveLength(0);
+  FakeResizeObserver.resize(() => 1400);
+  expect(socketOf("supervisor", "view")).toHaveLength(1);
+});
+
+test("control holds the panel against an old choice of the list; pressing Sessions now opens the list", async () => {
+  columnWidth(1400);
+  localStorage.setItem("lado.askControl", "never");
+  localStorage.setItem("lado.lastColumn", "list");
+  await open();
+  await team();
+  const view = within(panel()).getByRole("tabpanel", { name: "supervisor" });
+  act(() => socketOf("supervisor", "view")[0].open());
+  fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
+  const [control] = socketOf("supervisor", "control");
+  act(() => control.open());
+  FakeResizeObserver.resize(() => 964); // the list and the panel do not fit together
+  expect(panel().classList.contains("collapsed")).toBe(false);
+  expect(control.closed).toBe(false);
+  expect(localStorage.getItem("lado.lastColumn")).toBe("list"); // control is not stored
+
+  const strip = document.querySelector<HTMLElement>("nav.sessions-strip")!;
+  fireEvent.click(within(strip).getByRole("button", { name: "Sessions" }));
+  expect(document.querySelector(".session-list")).toBeTruthy();
+  expect(panel().classList.contains("collapsed")).toBe(true);
+  expect(control.closed).toBe(true);
+});
+
+test("a panel folded for room opens no socket, ends control, and the stored choice stays", async () => {
+  columnWidth(1400);
+  localStorage.setItem("lado.askControl", "never");
+  await open();
+  await team();
+  const view = within(panel()).getByRole("tabpanel", { name: "supervisor" });
+  act(() => socketOf("supervisor", "view")[0].open());
+  fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
+  const [control] = socketOf("supervisor", "control");
+  act(() => control.open());
+  FakeResizeObserver.resize(() => 500); // not even the panel in control fits
+  expect(panel().classList.contains("collapsed")).toBe(true);
+  expect(control.closed).toBe(true);
+  expect(localStorage.getItem("lado.terminals")).toBeNull();
 });
 
 test("a tab's name is cut to fit (its whole name in its tooltip), and the selected tab is scrolled into view", async () => {
@@ -603,23 +699,27 @@ test("the panel's width changes with its edge and is remembered", async () => {
   expect(panel().style.width).toBe(`${after}px`);
 });
 
+test("a double click on the edge takes the width away", async () => {
+  localStorage.setItem("lado.terminals", JSON.stringify({ width: 600, collapsed: false }));
+  await open();
+  fireEvent.doubleClick(within(panel()).getByRole("separator", { name: "Resize the terminals" }));
+  expect(JSON.parse(localStorage.getItem("lado.terminals")!)).toEqual({ collapsed: false });
+});
+
 test("a collapsed panel has no edge", async () => {
   await open();
   collapse();
   expect(within(panel()).queryByRole("separator")).toBeNull();
 });
 
-test("in a narrow window the panel is narrowed to leave the session its room, and its width stays remembered", async () => {
+test("short of room the human's panel narrows to leave the chat its room, and its width stays remembered", async () => {
   columnWidth(null);
   localStorage.setItem("lado.terminals", JSON.stringify({ width: 600, collapsed: false }));
   await open();
-  FakeResizeObserver.resize((target) => (target.classList.contains("session-page") ? 800 : 1000));
+  FakeResizeObserver.resize(() => 964);
   const edge = within(panel()).getByRole("separator", { name: "Resize the terminals" });
-  expect(Number(edge.getAttribute("aria-valuenow"))).toBe(800 - 360);
-  expect(panel().style.width).toBe("440px");
-  expect(screen.getByRole("region", { name: "Session lado" }).closest<HTMLElement>(".session-main")!.style.minWidth).toBe(
-    "360px",
-  );
+  expect(Number(edge.getAttribute("aria-valuenow"))).toBe(964 - 48 - 420);
+  expect(panel().style.width).toBe("496px");
   expect(JSON.parse(localStorage.getItem("lado.terminals")!).width).toBe(600);
   FakeResizeObserver.resize(() => 1400);
   expect(panel().style.width).toBe("600px");

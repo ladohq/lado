@@ -19,10 +19,13 @@ import {
   type SessionInfo,
   type StopPreview,
 } from "./api";
+import { closedBy, looks, stopAttempt } from "./attempts";
 import { ForgetIcon, ResumeIcon, StopIcon } from "./icons";
 import { useLaunch } from "./Launch";
+import { useLive, useLiveStore, useLocked } from "./live";
 import { useBelow, useDismiss } from "./Menu";
 import { Tooltip } from "./Tooltip";
+import { ActionProblem, Waits } from "./waitingParts";
 
 type Action = "stop" | "resume" | "forget";
 
@@ -53,8 +56,11 @@ export function SessionActions({ session }: { session: SessionInfo }) {
   const box = useRef<HTMLDivElement>(null);
   const popover = useRef<HTMLDivElement>(null);
   const close = () => setShown(null);
+  // A Stop settled later closes its popover, never the Forget window opened meanwhile.
+  const closeStop = () => setShown((now) => (now === "stop" ? null : now));
   useDismiss(shown === "stop", box, close);
   const below = useBelow(box, popover, shown === "stop", true);
+  const { lost } = useLive();
 
   const act = (action: Action) => {
     if (action === "resume") {
@@ -67,22 +73,34 @@ export function SessionActions({ session }: { session: SessionInfo }) {
 
   return (
     <div ref={box} className="session-actions">
-      {actionsOf(session).map((action) => (
-        <Tooltip key={action} tip={LABELS[action]}>
+      {actionsOf(session).map((action) => {
+        const button = (
           <button
             type="button"
             className={`icon-button${action === "forget" ? " danger-icon" : ""}`}
             aria-label={LABELS[action]}
             aria-haspopup={action === "resume" ? undefined : "dialog"}
             aria-expanded={action === "resume" ? undefined : shown === action}
+            disabled={lost && action !== "forget"}
             onClick={() => act(action)}
           >
             {ICONS[action]}
             {action === "stop" && <span className="session-action-word">Stop</span>}
           </button>
-        </Tooltip>
-      ))}
-      {shown === "stop" && <StopPopover session={session.name} ref={popover} style={below} onClose={close} />}
+        );
+        return action === "forget" ? (
+          <Tooltip key={action} tip={LABELS[action]}>
+            {button}
+          </Tooltip>
+        ) : (
+          <Waits key={action} tip={LABELS[action]}>
+            {button}
+          </Waits>
+        );
+      })}
+      {shown === "stop" && (
+        <StopPopover session={session.name} ref={popover} style={below} onClose={close} onStopped={closeStop} />
+      )}
       {shown === "forget" && <ForgetDialog session={session.name} onClose={close} />}
     </div>
   );
@@ -138,11 +156,13 @@ function StopPopover({
   ref: panel,
   style,
   onClose,
+  onStopped,
 }: {
   session: string;
   ref: RefObject<HTMLDivElement | null>;
   style?: CSSProperties;
   onClose: () => void;
+  onStopped: () => void; // a stop without an answer found reached, maybe long after
 }) {
   const preview = usePreview(() => getStopPreview(session));
   const navigate = useNavigate();
@@ -153,29 +173,38 @@ function StopPopover({
   useEffect(() => {
     panel.current?.focus();
   }, []);
-  const stop = async () => {
-    setBusy("stop");
+  const live = useLiveStore();
+  const attempt = stopAttempt(session);
+  const locked = useLocked(attempt);
+  // The stop of both buttons: without an answer LADO settles the stop alone, whichever was
+  // pressed, so a forget only ever follows an answered stop or the human's asking again.
+  const stopped = async (): Promise<boolean> => {
     setRefused(null);
+    live.attempts.clear(attempt);
     try {
-      await stopSession(session);
-      onClose();
+      const answered = await live.attempts.send(attempt, {
+        what: "Stop",
+        repeat: () => stopSession(session),
+        look: looks.stop(session),
+        closed: closedBy.stop,
+        reached: onStopped,
+      });
+      if (answered) return true;
     } catch (error) {
       setRefused(messageOf(error));
-      setBusy(null);
     }
+    setBusy(null);
+    return false;
+  };
+  const stop = async () => {
+    setBusy("stop");
+    if (await stopped()) onClose();
   };
   // The core's stop, then the core's forget without force: a session with open runs is not
   // offered it (D6), and a refused forget leaves the session stopped, its reason shown.
   const stopAndForget = async () => {
     setBusy("stop-to-forget");
-    setRefused(null);
-    try {
-      await stopSession(session);
-    } catch (error) {
-      setRefused(messageOf(error));
-      setBusy(null);
-      return;
-    }
+    if (!(await stopped())) return;
     setBusy("forget");
     try {
       await forgetSession(session, false);
@@ -227,20 +256,23 @@ function StopPopover({
         <button type="button" className="quiet" onClick={onClose} disabled={busy !== null && busy !== "stopped"}>
           Cancel
         </button>
-        <Tooltip tip="Stops it, then deletes its history for good">
+        <Waits tip="Stops it, then deletes its history for good">
           <button
             type="button"
             className="danger"
-            disabled={busy !== null || loaded === null || hasRuns}
+            disabled={busy !== null || loaded === null || hasRuns || locked}
             onClick={() => void stopAndForget()}
           >
             {busy === "stop-to-forget" ? "Stopping…" : busy === "forget" ? "Forgetting…" : "Stop and forget"}
           </button>
-        </Tooltip>
-        <button type="button" className="danger" disabled={busy !== null || loaded === null} onClick={() => void stop()}>
-          {busy === "stop" ? "Stopping…" : `Stop ${session}`}
-        </button>
+        </Waits>
+        <Waits>
+          <button type="button" className="danger" disabled={busy !== null || loaded === null || locked} onClick={() => void stop()}>
+            {busy === "stop" ? "Stopping…" : `Stop ${session}`}
+          </button>
+        </Waits>
       </div>
+      <ActionProblem attempt={attempt} />
     </div>
   );
 }

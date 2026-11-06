@@ -44,6 +44,8 @@ def set_default(name: str = QWEN) -> None:
 
 def new_window(page: Page, server, repo, cli: str = CLI) -> Locator:
     log_in(page, server)
+    if page.viewport_size["width"] <= 600:  # a phone: the rail is a drawer
+        page.get_by_role("banner").get_by_role("button", name="Menu").click()
     page.get_by_role("navigation", name="Sections").get_by_role("button", name="Launch").click()
     dialog = page.get_by_role("dialog", name="New session")
     dialog.get_by_role("button", name="Folder", exact=True).click()  # no sessions: From scratch

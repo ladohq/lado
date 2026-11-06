@@ -306,7 +306,12 @@ Decided in the live updates task (2026-10-03).
   answer's head; the rest of the API may work while the feed does not), shows it, and
   opens a new stream after
   3 s from the latest journal id it got (`?after=`); after a 401 it shows how to get in and
-  stops. While no stream is open the top bar says "reconnecting…" with the reason.
+  stops. `LOST_AFTER_MS` (2 s) after the stream goes the store says `lost`, which the top
+  bar's mark and every button that writes read (A lost connection, below): a shorter drop
+  changes nothing on the screen. A load that fails keeps what the page shows, its error only
+  with nothing to show, since a failed reload would take the open gates and their comments;
+  whatever failed loads again when the stream opens after a drop, as a resumed stream sends
+  no reset.
 
 ### Terminal
 
@@ -415,22 +420,26 @@ Decided in the agent terminal task (2026-10-03).
 - **Tabs** (the human's additions to the UI polish, 2026-10-03): left of its agent's name
   a tab shows the agent's status as the team chip's dot, smaller (`StatusDot`, one
   component, `dot-small`), from the session's agents list, live; an agent not in the list
-  shows as stopped; the tab's accessible name has the status too. The collapsed strip shows
-  a column of these dots under **Terminals**, one per open tab, each titled with the agent
-  and its status. Many tabs stay on one line: a name is cut with an ellipsis down to about
+  shows as stopped; the tab's accessible name has the status too. The collapsed strip, 32 px
+  wide, holds **Show the terminals**, a button of 24×24 per agent of the session (not per
+  open tab; decided in LAD-189's spec, F26), then the caption Terminals: a button has the
+  agent's avatar colour and its mark, as in the session's head (`D2`), its status dot of 8 px in
+  its corner on a ring of 1.5 px in `--panel`, the agent's popup, the
+  name `Open <agent>'s terminal`, and opens the panel on that agent; the buttons scroll, the
+  caption stays. Many tabs stay on one line: a name is cut with an ellipsis down to about
   72 px (a shorter name stays whole), then the row scrolls sideways (the wheel too) under a
   thin bar; the supervisor's tab stays at the left (sticky), the tab selected here or by a
   chip scrolls into view, and Expand and Collapse at the right never move. The whole name
   is in the tab's tooltip (below), not in a `title`. The tabs look as every tab of the UI
   (Look, Tabs).
 - **Focus** (2026-10-05, task feature/sessions-list-collapse): after **Collapse
-  terminals** the focus is on the strip's **Terminals**, after Terminals on Collapse
-  terminals, as for the session list's strip (`Splitter.useStripFocus`). Only those buttons
-  move it: a page that opens collapsed, or a chip that opens the panel, leaves it where it
-  is.
+  terminals** the focus is on the strip's **Show the terminals**, after it or an agent's
+  button on Collapse terminals, as for the session list's strip (`Splitter.useStripFocus`).
+  Only those buttons move it: a page that opens collapsed, or a chip that opens the panel,
+  leaves it where it is.
 - **Expand**: the panel's **Expand terminal** shows it over the whole content (the rail
   and the top bar stay; `position: absolute; inset: 0` in the content, so no widths are
-  written twice; on a narrow window over the whole window), with the same terminals and
+  written twice), with the same terminals and
   sockets, the mode kept; **Restore terminal** puts it back, and so does Esc, except in a
   terminal the human controls: there Esc goes to the agent. Not remembered.
 - **Needs tmux 3.2** (`attach -f ignore-size`); `lado doctor` warns before it, and
@@ -447,19 +456,19 @@ Sessions for now. The UI's texts are in English.
   (one page for the kits and their marketplaces: Kits below); Report a bug (a bug icon:
   Report a bug, below) and Settings apart at the bottom. A button collapses it to icons (each with its
   name as tooltip and accessible name; the button has `aria-expanded`). The browser
-  remembers the choice; a window narrower than 900 px starts collapsed. On a phone the rail
+  remembers the choice and it wins; with none the rail follows the window, collapsed below
+  1600 px (LAD-193). On a phone the rail
   is a drawer that Menu opens (Phone layout, below).
 - **Top bar**: the page's title on the left, or on a session's page the session's head
   (Session head, below); on the right the change feed's link (`live`, or `reconnecting…`
-  with the reason), with the server's address in its tooltip ("The LADO server this page
-  talks to: <host>"). `live` is a button (`aria-haspopup`, `aria-expanded`) that opens the
+  on the warning ground: A lost connection, below), with the server's address in its tooltip
+  ("The LADO server this page talks to: <host>"). `live` is a button (`aria-haspopup`, `aria-expanded`) that opens the
   system panel (System panel, below); while a newer LADO is out, `↑ X.Y.Z` is beside it
   (mockup M2) and its tooltip says so. A page draws its head there through `Shell.useTopBar`, a slot of the
   top bar it fills with a portal; the Shell draws its own title only while no page claims
   the bar. Sticky at the window's top, z-index 10: over the session's splitter and the
   expanded terminals, so what drops from it (the copy notes, the Stop popover) shows over
-  them, and under the narrow window's fixed terminals, the artifact panel and the
-  lightbox. Its content sets its height (at least 52 px).
+  them, and under a phone's fixed terminals, the artifact panel and the lightbox. Its content sets its height (at least 52 px).
 - **Bare pages** outside the Shell: `/view/<session>/<record>`, one record alone
   (Artifacts, The artifact's tab, below); no rail, top bar, feed or Needs-you title. A
   later bare page follows this one.
@@ -572,37 +581,55 @@ Sessions for now. The UI's texts are in English.
   others close with ×, the supervisor's then shown. A tab's socket opens the first time
   it shows in the open panel, then a hidden tab keeps it and a closed tab closes it. The
   price: each session page opened with the panel open makes one viewer (a tmux session) on
-  the server, closed with the page. **Collapse terminals** leaves a strip with a
-  **Terminals** button that opens it again; collapsed, its terminals keep their sockets
+  the server, closed with the page. **Collapse terminals** leaves a strip (Terminal, above)
+  that opens it again; collapsed, its terminals keep their sockets
   but are hidden, so nothing is resized, and go back to view (folded control is
   forgotten control, Terminal, Modes), and a panel collapsed when the
-  page opens opens no socket until it is opened. A chip opens a collapsed panel. Collapsed
-  is remembered in the browser (`lado.terminals`) and is the default below 900 px.
+  page opens, or about to fold before the page is measured, opens no socket until it shows.
+  A chip opens a collapsed panel. Collapsed is remembered in the browser (`lado.terminals`).
 - **The list collapsed to a strip** (decided 2026-10-05, task
   feature/sessions-list-collapse; mockup `.lado/mockups/sessions-list-collapse/index.html`,
   https://claude.ai/artifact/TTZcaWXnyooRPxyYBqEB3g version 2): **Collapse sessions** in
   the list's head, after "+", with Collapse terminals' icon mirrored, folds the list to a
-  strip of 44 px, `nav "Sessions"`, and the session gets the room (no edge to drag; the
+  strip of 48 px, `nav "Sessions"`, and the session gets the room (no edge to drag; the
   list's width stays remembered for when it opens). On the strip, in order: **Sessions**
-  (the Terminals button's look, read from the bottom up; it opens the list), "+" (New
+  (read from the bottom up; it opens the list), "+" (New
   session), and a column of icons that scrolls while the two buttons stay: one per session
   not stopped (`live.isLive`), Needs you first, then Running, as the open list orders them,
   with a line between the two when both have sessions. An icon is a link to the session at
-  the row's address (`aria-current` as the row's): two letters in the mono font in a
-  neutral square, the first of the name's first two words (split at `-`, `_`, `.`, `/`,
-  space) or else its first two (`crm-api` CA, `lado` LA); two sessions may share them. One
-  that needs the human is marked by colour only (`--human` on `--human-ground`, no count),
-  and its label says `<name>, needs you`. On hover or focus it shows the session's card,
+  the row's address (`aria-current` as the row's): a badge in the mono font in a neutral
+  square. A title (or a name without one) that starts with `<word>-<number>` gives that
+  number's last 3 digits, whatever follows (`lad-189 (session UI review)` 189); else two
+  letters, the first of its first two words (split at `-`, `_`, `.`, `/`, space) or else its
+  first two (`crm-api` CA, `lado` LA). A later badge alike in the strip gets a mark (`154·2`,
+  at 10 px so that it fits). The open session's icon is scrolled into view. One that needs the
+  human is marked by colour (`--human` on `--human-ground`, no count) and the waiting diamond on
+  its corner, where the others have their dot, and its label says `<name>, needs you`. On hover or focus it shows the session's card,
   the row's (above). While the list loads the column is empty and `aria-busy`; when
   `/api/sessions` fails, an alert icon in `--danger` takes its place with the error in its
   label and tooltip, the open list's text; Sessions and "+" work either way. Collapsed is
-  remembered with the width (`lado.sessionsList`, `{ width, collapsed }`) and is the
-  default below 900 px, the same rule as the terminals' (`prefs.storedColumn`: nothing
-  stored and `(max-width: 900px)` collapsed; a value stored before it could collapse is
-  open). Below 900 px, where the columns stack, the strip is a row over the session:
-  Sessions, "+", then the icons in a row that scrolls sideways. After Collapse sessions the
+  remembered with the width (`lado.sessionsList`, `{ width, collapsed }`; a value stored
+  before it could collapse is open). After Collapse sessions the
   focus is on Sessions, after Sessions on Collapse sessions, only after those buttons (not
   when a page opens collapsed).
+- **601 to 900 px** (LAD-193, spec §2, frame g2-768): a session's page stands still, as a wide
+  window does (The window never scrolls, below). Top to bottom: the top bar, the session strip
+  as a row of 48 px (Sessions, "+", then the icons in a row that scrolls sideways), the tabs,
+  the feed, the waiting card and the composer; the terminals' strip stays on the
+  right. Both columns start folded whatever is stored, and what opens is written nowhere, so
+  a wide window's choice stays. Sessions opens the list as a panel of 300 px over the session,
+  on its left under the row; choosing a session, Esc, a click beside it and Sessions close it,
+  the focus back on Sessions (not after a choice; what takes the focus by the press keeps
+  it). The terminals open over the session on the right, `min(560px, 100% − 48px)` wide; Esc
+  folds them to the strip with the focus on it, in control Esc stays the terminal's. Neither
+  moves the session under it. A window too low for the card and the composer (460 px or less)
+  hides the composer while a card shows.
+- **A touch screen wider than a phone**: the app is as high as the part of the window the human
+  sees, as on a phone (`usePhoneViewport`, `(pointer: coarse) and (min-width: 601px)`), since no
+  page scroll brings the composer above the keyboard: a session's page at 601 to 900 px, every
+  page above, where `100dvh` is taller than the visible part on iPadOS 26 Safari. Other pages at
+  601 to 900 px scroll as before. Here it is tested with a faked height; the iOS Simulator is the
+  human's check.
 - **List and page** (task feature/flows-list, 2026-10-04, boards 14–15 of the canvas; one
   component, `ListPage.tsx`, for every tab with a list: Agents (Artifacts is a table of its
   own, Artifacts below); since task
@@ -635,9 +662,22 @@ Sessions for now. The UI's texts are in English.
   (`Splitter.tsx`: a `separator`, dragged, the arrow keys, a double click for the default
   width; a wide grip with a `col-resize` cursor and a line on hover and focus), within
   bounds (list 200–480 px, panel 280–1200 px), and remembered in the browser
-  (`lado.sessionsList`, `lado.terminals`). The session in the middle keeps at least
-  360 px: in a narrower window the list and the panel are drawn narrower, but their chosen
-  widths stay remembered for a wider window. A drag captures the pointer, so it goes on
+  (`lado.sessionsList`, `lado.terminals`). With no width set on its edge the panel is 40 % of
+  the session's area (the page beside the rail and the list), 360 to 640 px; a double click
+  takes its width away (a stored 480 px is an older LADO's default, no width of the human's).
+  **What shows** is one pure rule, `columns.ts`'s `fitColumns` (LAD-193): above 900 px the
+  chat keeps 420 px (`--chat-min`). Short of room terminals the human did not open fold first;
+  opened by the human (stored open, or a terminal in control) the list folds instead, unless
+  the list was opened last (`lado.lastColumn`, so a reload shows what the human left; taking
+  control counts as opening the panel last, unstored); then a
+  panel the human opened narrows to its least 280 px, its width
+  kept, then folds, and a terminal in control then goes back to view with no message of its own
+  (the human's decision, LAD-193). The rail never folds by
+  itself. A fold for room is derived, never stored: the column comes back when it and 420 px
+  fit, the list before the terminals, to what the human chose. The list's edge stops where the
+  chat keeps 420 px beside terminals that stay (`listMax`), so a drag never folds the list under
+  the pointer. `useSessionColumns` in
+  `Sessions.tsx` is the one writer of both keys. A drag captures the pointer, so it goes on
   over an iframe and ends on the release or a cancel. The artifact panel's edge is the
   same component (Artifacts, The panel), and so is the edge above the waiting card in a
   session's chat (The waiting card, Height): `edge="top"`, horizontal, a `row-resize`
@@ -645,8 +685,8 @@ Sessions for now. The UI's texts are in English.
 - **The window never scrolls** on a wide window: `html` and `body` do not scroll or bounce
   (`overflow: hidden`, `overscroll-behavior: none`) and the frame is the window's height;
   only regions inside scroll (the session list, the feed, the session's column, a page's
-  content, a terminal), each without passing its scroll on. Below 900 px
-  the columns stack and the page scrolls, as before.
+  content, a terminal), each without passing its scroll on. At 601 to 900 px a session's
+  page does the same (the rules key on `.sessions`); every other page scrolls there, as before.
   `/sessions` with no name says "Select a session" (nothing is selected for the human); a
   name `/api/sessions` does not know says "Session <name> not found" with a link to the
   list, and the address stays as it was.
@@ -966,7 +1006,8 @@ Built in the chat task (2026-10-03):
 - **The waiting card** (decided 2026-10-13, LAD-28, mockup
   `task/lad-28/mockup-question-card-final.html`; it replaces the open question's card of
   feature/question-answer, whose field beside the composer's read as a second place to
-  write, and the hint over the composer). `WaitingCard.tsx`, between the feed and the
+  write, and the hint over the composer). Its buttons wait for the connection and an answer
+  without a reply shows under them (A lost connection, below). `WaitingCard.tsx`, between the feed and the
   composer while anything waits in the session, and nowhere else in the chat does the human
   answer it. Its open questions come from what waits for the human (the list `waiting`,
   `state.waiting_items`, Needs you's), its gates from the session's gates (also in a
@@ -1059,19 +1100,15 @@ Built in the chat task (2026-10-03):
   radius `0 10px 10px 10px`; the shown tab lies on it, tinted with 10 % of its colour, its
   text `--ink` 600; the others `--raised` and `--muted`. **Height** (LAD-194): as high as its
   content. Title and context together are at most 40 % of the chat, measured (`useHeight` on
-  `.chat`, `--waiting-top-max`), and of the window (`40dvh`) where the chat has no height of its
-  own (a window of 900 px or less): a percentage or a size container there would
-  measure itself. The footer is not in that limit and is not cut by it. Short of room the feed
+  `.chat`, `--waiting-top-max`), and of the window (`40dvh`) until it is measured.
+  The footer is not in that limit and is not cut by it. Short of room the feed
   goes first (no least height while a card shows), then the context and the title, then the
   choices' area to one row, an opened recommendation to one line, then the field stops at its
   height and scrolls inside; the buttons stay. The order is a ratio of `flex-shrink` weights
   (styles.css), no measuring in JS; on a phone a field in the footer takes the choices out at
-  once (Phone layout). On a window of 900 px or less, which scrolls as a page, the chat's card
-  sticks to its lower edge over the feed, at most the room from the chat's top down
-  (`--chat-top`, measured also when a block above the chat comes or goes), so the footer stays
-  in sight wherever the page stands (the human's decision of 2026-11-05; the composer past the edge is LAD-193's). It keeps at least 220 px and
-  half the window: under an open sessions' list, or in a window under about 400 px, the page's
-  scroll brings the footer up. In a session's chat on a window wider than 900 px, the edge above the card is a splitter (decided
+  once (Phone layout). At 601 to 900 px, where a session's page stands still (LAD-193), the
+  card stands above the composer as in a wide window, so its footer and the composer are in
+  sight at once. In a session's chat on a window wider than 900 px, the edge above the card is a splitter (decided
   2026-10-14, LAD-54, mockup `task/lad-54/mockup-gate-card.html`, screen D; before, the
   card could not be made smaller, and the human talking a gate over with the supervisor
   read the replies in the other half): dragged, or ↑ / ↓ on it by 40 px, it gives the
@@ -1085,8 +1122,8 @@ Built in the chat task (2026-10-03):
   the edge still holds the pointer, so the release lands on no line or tab of the
   minimized card (`Splitter`'s `onEnd`); ↓ past it minimizes at once. The card keeps its
   height for the restore. No edge
-  while the card is minimized or expanded, on Needs you, or on a narrow window, whose page
-  scrolls. **Minimize** (LAD-54, screens 2 and 2a: the pair of icons): in a session's chat
+  while the card is minimized or expanded, on Needs you, or on a narrow window, where the card
+  stays as the human knew it (LAD-193). **Minimize** (LAD-54, screens 2 and 2a: the pair of icons): in a session's chat
   only, an icon button left of the expand one, in its style, "Minimize the card" (a line,
   `MinimizeIcon`). Minimized, the card is its tabs, none shown, and one button-line on the
   "waits for you" ground with the shown tab's first item's question (a gate's question, an
@@ -1114,9 +1151,9 @@ Built in the chat task (2026-10-03):
   team row seen and usable (but on a phone, which hides the tabs and the team row too:
   Phone layout, The chat); Needs you has no Expand (Needs you, above).
   Its host hides the rest by CSS (`:has(.waiting-card.expanded)`), so the artifact panel
-  and its scrim, fixed over the page, are over the card too. On a window of 900 px or
-  less, which scrolls, it is the window's height under the top bar, expanding scrolls
-  it there, again when the window resizes, and the page stays there until it folds (LAD-194). Its other icon ("Collapse the card") or Esc brings it back, the focus
+  and its scrim, fixed over the page, are over the card too. At 601 to 900 px it is the
+  window's height under the top bar: the session strip and the tabs go with the
+  feed and the composer, the terminals' strip stays beside it (LAD-193). Its other icon ("Collapse the card") or Esc brings it back, the focus
   returning to the expand button, and it comes back by itself when nothing waits. While
   an artifact panel is open (`?view=`), Esc closes the panel only; the next Esc folds the
   card. **Lines lead to tabs**: an open question's or gate's line in the feed
@@ -1232,12 +1269,18 @@ Built in the chat task (2026-10-03):
 - **The composer** (shared with an agent's page in Agents): one frame, the field without a
   resize handle growing with its text from 1 to 8 lines (by its `scrollHeight`), then
   scrolling; Send inside at the bottom right (`--raised` / `--muted` while off); on focus
-  an `--action` frame and an `--action-ground` ring. Under it "to <agent>" and "Enter to
-  send · Shift+Enter for a new line" (with no files, "· paste or drop files to attach").
-  Enter sends, Shift+Enter is a new line; a refusal shows at the field and the text stays;
+  an `--action` frame and an `--action-ground` ring. The line under it lies in the page's
+  bottom padding, out of the flow, so nothing moves when it fills (LAD-197; on an agent's page,
+  which scrolls, and on a phone it stays in the flow): "to <agent>" only for an agent other
+  than the supervisor, whom the placeholder names; the files' count and size; and, only while
+  the field is empty and has the focus (`textarea:focus:placeholder-shown`, no state), "Enter
+  to send · Shift+Enter for a new line" (with no files, "· paste or drop files"), cut with "…",
+  gone in a column under 560 px. On a phone an empty line takes no height. Enter sends, Shift+Enter is a new line; a refusal shows at the field and the text stays;
   a stopped session's composer is off and says so, its paperclip too.
 - **Files in the composer** (`Composer.tsx`; run feature/chat-attachments, mockup
   `mockup-composer.html` of the run): the human attaches files to a message to any agent.
+  Send waits for the connection (A lost connection, below); a file not uploaded for lack of
+  it reads `<file> was not uploaded: no connection.`, and nothing was sent.
   The handling below is one module (`attachFiles.tsx`, LAD-86) that the waiting card's
   fields share (The waiting card, Files in the fields); the composer's drop leaves the
   waiting card to them.
@@ -1338,9 +1381,17 @@ Built in the layout task (2026-10-03, schema 14):
   gates as cards or lines (Flow gates above); their events as quiet lines grouped by run
   (Flow events in Look of the feed), the kinds shown as lines named in one list in the UI
   (`Chat.tsx`, `RUN_EVENT_LINES`; `gate_answer` is not in it, the human's move stands for
-  it, nor `gate_open`, the gate's row stands for it); and behind the toggle **Messages
-  between agents** (not pressed by default, remembered in the browser) the agents'
-  messages to each other. The toggle is an icon
+  it, nor `gate_open`, the gate's row stands for it); and behind the choice **Messages
+  between agents** (`Yours` by default, remembered in the browser) the agents' messages to
+  each other. Above a phone it is `Yours | All`, a `role="radiogroup"` of that name at the tab
+  bar's end on Activity, 26 px, after the word `Messages`, which goes before the tabs give up
+  anything (so it depends on the bar's content too: LAD-197, critique F10); Tab reaches the
+  chosen one and the arrows choose; the tooltips say "Only your conversation with the agents"
+  and "Also what agents write to each other". When the tabs without counts do not fit beside
+  it, the phone's icon stands in its place (the tabs' level 3, Look, Tabs; LAD-218): both forms
+  are in the page and CSS shows one, and the focus passes from one to the other with no
+  tooltip. The state lives in `useAgentMessages`, as the bar
+  and the feed both read it and an agent's page writes it. On a phone the toggle is an icon
   button at the end of the team's row (two speech bubbles, `BetweenIcon`; 26 px, quiet and
   muted unpressed, the pressed team chip's border with the icon in the action colour when
   `aria-pressed`), its name the same in both states; the UI's tooltip says the state and
@@ -1373,11 +1424,68 @@ Built in the layout task (2026-10-03, schema 14):
   message by its id, a gate by its time), then scrolled to; one that is still not there
   (a message the chat does not show) scrolls nowhere.
 
+### A lost connection (decided 2026-11-06, LAD-195, mockup `mockup-connection.html`)
+
+One question gets a straight answer: did my decision go through? No strip and no green state
+(the human dropped both from LAD-189's spec §4, F44 with them): the head is on every page, so
+the mark does the job, and Live coming back with the buttons awake says the rest.
+
+- **A request with no answer** is its own kind, `Unreached` (`api.ts`): an `ApiError` of status
+  0 with the text `No connection`, wherever the UI prints a reason. The exception goes to the
+  browser's console only (the server's error journal is out of reach at that moment). A request
+  the UI aborted stays silent, and a refusal shows the server's words as ever.
+- **The mark**: 2 s after the feed goes, `reconnecting…` on `--warn-ground` with the no-network
+  icon; on a phone the icon alone, the word hidden for the ear. A reason the server answered (a
+  503) stands in its tooltip; a server out of reach has none. Live is back the moment the feed
+  opens.
+- **For the ear**: one `role="status"` region (`LinkState`, Shell.tsx), hidden, stands in the
+  top bar from the first paint, with the mark's word; empty while the stream is refused, when
+  there is no mark and the page's alert says why. A region that comes with its text is read out unreliably, so the mark has no status role.
+- **What waits**: while lost, a gate's buttons wherever it shows (the chat, Needs you, its
+  run's page), Send answer, Send (Enter too), Stop, Stop and forget and Resume are disabled.
+  `Waiting for connection` stands beside a gate's buttons; the others say it in a tooltip, on
+  a span around the button (`Waits`, waitingParts.tsx), as React sends a disabled button no
+  mouse events. Fields stay active and keep what is in them. Forget, Rename and New session's
+  Start are not locked; a failure of theirs reads `No connection`.
+- **An action without an answer** (`attempts.ts`): one store for the tab, held by the live
+  store, so its error survives a change of page and shows the same wherever the item shows.
+  `ActionProblem` under the buttons says `<What> not confirmed` with Retry off until LADO has
+  read the outcome, then `<What> not delivered` with Retry on; nothing else stands beside the
+  two words, and there is no "Checking…". `<What>`: Approval, Rejection, Answer (a gate's other
+  buttons, Send answer), Message, Stop (Stop and forget too), Resume. Until the outcome is
+  known the item's buttons stay off, also with the feed back; a stopped session's Retry
+  follows its buttons.
+- **The look**: at once, on each open of the feed, and every 3 s while the feed is open and the
+  outcome unknown; by the API, as a resumed stream has no end of its replay. The connection
+  coming back alone never clears an error.
+
+  | Action | Read | Reached when |
+  |---|---|---|
+  | A gate's button | the session's gates | it has an answer or is gone |
+  | Send answer | what waits | none of the questions sent is there |
+  | Send | the messages after the last one known at the click | one from the human to that agent, with the same text and files |
+  | Stop | the sessions | stopped or gone |
+  | Resume | the sessions | running or `loop_down` (gone: the attempt is dropped) |
+
+  Send compares ids, not times: a phone's clock is not the server's. A window with no message
+  says nothing of the history, so the composer then asks the server for the latest id; with no
+  id to be had, no message counts and Retry is the human's. Found, the error goes, the
+  files sent leave, and the field is cleared only if its text did not change. Reached, Stop's
+  popover closes; Resume's window closes on the session's page.
+- **Retry** repeats what was pressed, whatever the fields say now. A refusal that says the item
+  is closed counts as reached: `gate #N is closed already`, `question #N is` answered,
+  dismissed, closed, stopped or gone, `is stopped already`, `is already running`;
+  `closedRefusals.cases.json` pins those words on both sides, for vitest and pytest. Another
+  refusal shows as any refusal. Another decision on the item takes the error's place. Stop and
+  forget settles and repeats its stop alone, so it never forgets by itself.
+
 ### Launch and session control (decided 2026-10-04, task feature/launch)
 
 The human starts, stops, resumes and forgets sessions from the browser. The server calls
 the same core functions as the CLI (`runtime.start_session`, `stop_session`,
 `forget_session`), so the decisions and their texts are the core's; the UI shows them.
+Stop and Resume wait for the connection, and their errors show under their buttons (A lost
+connection, above).
 
 - **New session window** (`Launch.tsx`, a modal `<dialog>`; the rail's Launch and the
   list's "+"): **Where** is a new folder made from scratch, a folder, a clone of a git
@@ -1775,7 +1883,7 @@ New session (LAD-137) is in Launch and session control.
   `/projects/<id>`; on a phone the list fills the screen and a project opens in its place
   with `← All projects` above it; the list and the project each scroll by themselves
   under the top bar, the window still (LAD-159). Not cards. A desktop window of at most 900 px stacks
-  the list over the project, as Sessions does, and shows no `Select a project` pane
+  the list over the project and shows no `Select a project` pane
   (`NoProject`, LAD-138, M1).
 - **The list** (`GET /api/projects`): a row is the title (the id without one), the mark
   `folder not found` when its folder is missing, then `<id> · <N> repositories · <N>
@@ -1911,18 +2019,63 @@ layout, below).
   sessions: `SessionHead` draws itself into the top bar's slot (`useTopBar`); while the
   sessions load or a session is not found nothing claims the bar and it keeps the title
   "Sessions".
+- While the connection is lost the line's Stop or Resume waits, and the change feed's mark at
+  its end warns (A lost connection, above).
 - The line, left to right: the status dot (the session list's mark, its words in its
   tooltip; LAD-108; no Tab stop on a computer), the project and `/`, the title with a
   chevron, a broken session's status in words (`tmux session is gone`), the run time, on a
   window of 1600 px or more the branch (at most 24ch; the remote and the path in its
-  tooltip; no Tab stop), then at the right end the actions, a line and the link. Stop is 32
+  tooltip; no Tab stop), then at the right end the team (below), the actions, a line and the
+  link. Stop is 32
   px high, with its word above 900 px, only its icon at 900 px and less; the link has its
   word above 1100 px, only its dot and the tooltip `live · LADO server` at 1100 px and less
   (on every page: `LiveButton` does not know the page, so a narrow window's tooltip has no
   server address; the system panel has it). Resume and Forget stay icons.
 - What lacks room is cut with "…" by `flex-shrink`, largest first: the title down to 8ch of
-  its text, the project (at most 16ch), the run time, then the words; the actions and the
-  link never.
+  its text, the project (at most 16ch), the run time, the team's box, by its levels, then the
+  words; the actions and the link never.
+- **The team** (`HeadTeam`, decided with the human 2026-11-06, LAD-197; it replaces LAD-189
+  spec §6 and the team's row above a phone) stands in the head on every tab, 16 px before Stop:
+  the head's width depends on the window alone, never on the terminals, and the feed gets the
+  row's height. With no agents, or before they load, the head is as without it; a team that
+  fails to load shows `team not loaded`, the cause in its tooltip.
+  - It gives way in four levels, one for all agents, so no row mixes names and avatars: 0 the
+    word `Team` and whole names; 1 names cut to one length, from the longest stem down to 4
+    (`fitLabel`: `deve…-2`, `fron…-lead`, `anal…·2`), no word, branch or run time, and a chevron
+    `All N agents`; 2 avatars and the chevron; 3 the first avatars that fit and `+M`, or with
+    none the Agents icon and the number. The level is chosen by trial before the paint
+    (`teamFit.ts`, `useTeamFit`), again when the top bar's width, the agents, what else stands
+    in the line (the title, the project and the branch, which come late, the link's mark) or
+    the fonts change, and with the run time at level 0, where it shows; a trial keeps the
+    keyboard's focus (an item gone behind the button leaves it on the button) and an open list;
+    an agent's status never changes it, as level 3 counts the button with its diamond.
+  - A level with names stands only while the title shows its first 24 characters, or all of a
+    shorter one (the human's rule: a wide window must not leave less of the title than a
+    narrow one). They are measured by a `Range` over the text, as `24ch` is the digit's width,
+    about 31 letters. Avatars take no limit: agents behind `+N` cost more than a few letters.
+    Opening the title's field runs no trial, and with it open the limit does not count.
+  - An avatar is the terminals' strip's button, 24×24, its mark (`agentMarks`, one per team:
+    `S`, `D2`, `042`, `FL`, `AB2`; letters and digits carry the difference, not colour) at
+    10.5 px, its status on a ring of 1.5 px in `--panel`. The terminal shown has a ring of 3 px
+    in `--action`; the focus ring stands clear of it, 5 px off, and may cross a neighbour's
+    edge, never its status. Marks in the head and the list do not pulse on any tab; the
+    session's dot does.
+  - The list (`TeamList`) opens from the button: a non-modal `role="dialog"` named `Team`, 320
+    px, under the button at its right edge, `Team · N agents`, every agent by its whole name
+    with its status in words, each run under a dashed line with a link to its page. It closes
+    as Details does (Esc and a second click back on the button, a press away or the focus going
+    past it leave the focus there). Left open as the team reaches level 0, it keeps its button
+    until it closes, then the focus goes to the team's first item. On a touch screen, with no tooltips, it is the way to whole names.
+  - An agent's popup, here and on the terminals' strip (`AgentPopup`): the whole name; the
+    status in words and how long, in `--human` when it waits; `role · provider`, the role left
+    out when it is the name; `flow <run>`; `Click to open the terminal`. A terminal's tab and a
+    phone's chip keep `AgentTip`.
+  - The keyboard: a `role="toolbar"` named `Team`, one Tab stop, the arrows, Home and End move
+    among agents, run links and the button. An agent is named `<name>, <role>, <status>` by the
+    popup's words; the button `All N agents`, `<M> more agents`, or with no avatar `<M> agents`,
+    with `, 1 waits for you` or `, <K> wait for you`. The UI's tooltip of the button says that
+    name, on the pointer and the keyboard's focus, but not while its list is open (a `null` tip
+    keeps `Tooltip` silent; LAD-218).
 - The title is a button in the page's `h1` (`aria-haspopup="dialog"`, `aria-expanded`), on a
   `--raised` ground on hover and while Details is open. No double click: one click opens
   Details and a second would only close it.
@@ -1946,7 +2099,7 @@ layout, below).
   selected tab of an expanded card, which hides the feed; expanded terminals, which lie over
   the chat, go back to their place. The terminals' selected tab scrolls
   into view when it changes, not as the page opens: Chromium's Tab would start from it, past
-  this link. The head has four stops: project, title, Stop, link.
+  this link. The head has five stops: project, title, the team, Stop, link.
 - A session in a project (LAD-125, LAD-192) has the project as a breadcrumb before the
   title: its title (its id without one) in `--muted` at 14 px, at most 16ch, then a `/` in
   `--line` hidden from assistive technology; `--ink` and underlined on hover and focus. It
@@ -2268,17 +2421,18 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
 
 | Screen | Pointer | Layout |
 |---|---|---|
-| ≤ 600 px wide | coarse | phone, `data-phone="tall"` (`short` when also ≤ 500 px high) |
+| ≤ 600 px wide | any | phone, `data-phone="tall"` (`short` when also ≤ 500 px high) |
 | ≤ 500 px high | coarse | phone, `data-phone="short"` |
-| any | fine (a mouse, a trackpad) | as before |
-| a tablet (820×1180, 1180×820) | coarse | as before |
+| wider than 600 px | fine (a mouse, a trackpad) | as before, however low |
+| a tablet (820×1180, 1180×820), a touch laptop (1440×900) | coarse | as before |
 
 - **One query**, in `web/src/phone.ts` (`PHONE_QUERY`, `SHORT_QUERY`, `usePhone()`), which
   follows the screen as it turns or resizes. The Shell mirrors it to `<html data-phone>`;
   every phone rule of `styles.css` is in its last section, "Phone layout", under
-  `:root[data-phone]`. A mouse never matches, so a computer's window of any size never gets
-  a phone rule; components branch on `usePhone()` only where the structure changes. No
-  setting or switch.
+  `:root[data-phone]`. A window of 600 px or less is a phone with a mouse too (the human's
+  decision of 2026-11-05, LAD-193: the computer's layout had no room there); a wider window
+  with a mouse never is. Components branch on `usePhone()` only where the structure changes.
+  No setting or switch.
 - **The app's window**: as a wide window's, the window does not scroll and each page's
   content does. The app is as high as the part of the window the human sees (LAD-109,
   `openspec/changes/phone-visible-height/`): fixed in place, at `window.visualViewport`'s
@@ -2296,7 +2450,8 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
   back on Menu. The computer's collapsed rail (`lado.rail`) is neither read nor written.
 - **Top bar**: one line, 52 px upright, 44 px sideways. On a session's page: Menu, the
   status dot, the title (or name) with a chevron as a button cut with "…", the change feed's
-  mark (a dot while live, "reconnecting…" otherwise; it opens the system panel), Stop. Menu
+  mark (a dot that opens the system panel while live, the no-network icon named
+  "reconnecting…" while lost), Stop. Menu
   and the session's actions are 44 by 44 px (LAD-192). No breadcrumb or branch.
 - **The session's details**: the title opens a sheet over the page's bottom
   (`SessionDetails`, a modal `<dialog>` named by the session) around the content of Details
@@ -2799,10 +2954,12 @@ default: none does yet.
 ### Activity
 
 A session's tab: the chat with the human (The human in the session, above), flow
-transitions as they happen, agent-to-agent messages behind the toggle Messages between
-agents; the team as chips;
+transitions as they happen, agent-to-agent messages behind the choice Messages between
+agents; on a phone the team as chips (above it, in the head: Session head);
 the selected agent's terminal on the right. Built (Layout task); the notes of each step
-are in Flows.
+are in Flows. Above a phone no gap and no row stand between the tabs and the feed: at 1440×900
+it starts at y = 88 and is 742 px high, whatever the agents, the runs and the terminals
+(LAD-197; the targets 90 and 744 of LAD-189 are replaced).
 
 ### Agents
 
@@ -2823,7 +2980,9 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
   core's reason). Finish and the UI's dialog go by the same preview: the UI has no rules
   of its own about runs.
 - **The list** (left): the supervisor first, then the live agents by spawn; a
-  row: status dot, name, `status · since`, and the run with its state, or the first line
+  row: status dot, name, `status · since` by the popup's words (`STATUS_WORDS`, also on its
+  page, in the update's list of what to restart and in the accessible names of a terminal's
+  tab and a phone's chip; LAD-218), and the run with its state, or the first line
   of the task; an agent in `waiting` is orange with the first line of why, an agent in
   `stopped` whose process ended by itself shows the first line of why it stopped
   (`AgentInfo.status_reason`, `runtime.status_reason`: its `ended` event). Only live
@@ -2833,8 +2992,8 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
   and run. On a narrow page
   the facts' names stand above their values and Write takes the page's width.
 - **An agent's page**: the head (name; `role · provider · model`, the model's name or
-  `CLI default model` while its CLI has named none; status and for how long, when it
-  was spawned, for which run and step with the visit, from the run in the store), Open
+  `CLI default model` while its CLI has named none; status and for how long, as
+  `waits for you · 6 min · spawned 16:02`, when it was spawned, for which run and step with the visit, from the run in the store), Open
   terminal, **Write to <agent>** (the Activity composer with `to` fixed; the supervisor
   gets a one-line copy from LADO of what the human writes to another agent, docs/design/agents.md) and **Finish…** (not for the supervisor); why it waits, or why it
   stopped ("Stopped: <reason>", its way out is Finish…); **Model** and **Effort** first
@@ -2850,7 +3009,7 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
   from and to it, only in its lifetime (a name is used again: one request,
   `agent=<name>&since=<spawned_at>&limit=10`; the server and the feed's rule filter, the
   page does not), and
-  **All in Activity**, which presses Messages between agents.
+  **All in Activity**, which chooses `All` in Messages between agents.
 - **Finish…** asks in a dialog with what the preview says: the branch and worktree go,
   or, for a worker of a run that keeps its worktree, only its window closes. A refusal
   shows its reason and **Discard work…**, which asks again with what is lost (commits not
@@ -3355,3 +3514,10 @@ Agents, Flows, Artifacts), the terminal panel (the wrapper of each tab with its 
 `.tab-item`; the pinned supervisor's tab is opaque and draws the line itself, its divider
 a shadow) and Kits (no icons). A new tab bar takes these classes; a UI test
 (`tests/ui/test_tabs.py`) compares the three places in both themes.
+
+A session's tabs give way by `data-fit`, chosen by trial (`SessionTabs`): first a tool's word
+at the bar's end goes (`data-short`), then 1 no icons, 2 no counts, 3 a tool with a short form
+takes it (`Yours | All` the icon; on a bar with no short form the level changes nothing, so
+Find stays), 4 they scroll behind a fade of 56 px with ‹ and ›. The tab shown and a tab reached
+by the keyboard stand clear of those 56 px at each end that has more (`tabScroll`), by the
+row's own scroll; a press's focus moves nothing, or the click would be lost (LAD-218).

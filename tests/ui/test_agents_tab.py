@@ -38,7 +38,7 @@ def test_a_workers_page_shows_its_work_and_finish_discards_it(page: Page, server
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}/activity")
     page.get_by_role("button", name="Collapse terminals").click()
-    page.get_by_role("link", name="Agents · 2").click()
+    page.get_by_role("link", name=re.compile("^Agents")).click()
     # Without an agent the tab opens the supervisor, beside the list.
     expect(page).to_have_url(f"{server['url']}/sessions/{session}/agents/supervisor")
     expect(page.get_by_role("link", name="Agents · 2")).to_be_visible()
@@ -139,13 +139,13 @@ def test_an_agents_page_says_the_session_s_model_or_that_it_is_for_another_cli(
 def test_in_a_narrow_column_the_agents_take_it_and_a_page_is_not_squeezed(
     page: Page, server, repo, shot
 ):
-    page.set_viewport_size({"width": 1440, "height": 900})
+    page.set_viewport_size({"width": 1120, "height": 900})
     session, worktree = session_with_worker(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}/activity")
     # The terminals are open: the session's column is narrower than 900 px.
     expect(page.get_by_role("button", name="Collapse terminals")).to_be_visible()
-    page.get_by_role("link", name="Agents · 2").click()
+    page.get_by_role("link", name=re.compile("^Agents")).click()
     agents = page.get_by_role("navigation", name="Agents")
     expect(agents).to_be_visible()
     expect(page).to_have_url(f"{server['url']}/sessions/{session}/agents")

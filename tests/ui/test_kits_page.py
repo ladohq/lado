@@ -245,7 +245,6 @@ def test_kits_are_cards_in_a_grid_and_the_up_arrow_plans_the_version_found(
 
     tabs.get_by_role("link", name="Installed 5").click()
     page.set_viewport_size({"width": 390, "height": 844})
-    page.get_by_role("button", name="Collapse menu").click()  # the rail stays open by itself
     expect(cards).to_have_count(5)
     assert len({box["x"] for box in boxes(cards)}) == 1
     shot(page, "installed-phone")

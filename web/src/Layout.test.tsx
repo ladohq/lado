@@ -9,7 +9,8 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
 import { AGENT_REST, columnWidth, FakeEventSource, FakeResizeObserver, FakeScreen, FakeSocket, stream, stubDialogs } from "./fakes";
-import { ranText, sessionMark } from "./Sessions";
+import { LOST_AFTER_MS } from "./live";
+import { ranText, sessionMark, tabScroll } from "./Sessions";
 import { Shell, useTitle, useTopBar } from "./Shell";
 import { TOOLTIP_DELAY_MS } from "./Tooltip";
 
@@ -64,6 +65,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 function open(path = "/sessions/lado") {
@@ -85,12 +87,12 @@ test("the team shows every agent as a chip, the supervisor first, with its statu
     agent("w4", "developer", "stopped"),
   ];
   open();
-  const team = await screen.findByRole("group", { name: "Team" });
+  const team = await screen.findByRole("toolbar", { name: "Team" });
   const chips = await within(team).findAllByRole("button");
   expect(chips.map((chip) => chip.getAttribute("aria-label"))).toEqual([
-    "supervisor, supervisor, idle",
-    "w1, developer, busy",
-    "w2, reviewer, waiting",
+    "supervisor, idle",
+    "w1, developer, working",
+    "w2, reviewer, waits for you",
     "w3, developer, starting",
     "w4, developer, stopped",
   ]);
@@ -103,13 +105,14 @@ test("the team shows every agent as a chip, the supervisor first, with its statu
   expect(chips.map((chip) => chip.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false", "false"]);
 });
 
-test("a chip's tooltip: name · role · provider, and its flow run on a second line", async () => {
+test("a chip's popup: its name, status and how long, role · provider, its flow run and what a click does", async () => {
+  const since = new Date(Date.now() - 4 * 60_000).toISOString();
   agents = [
-    agent("supervisor", "supervisor", "idle"),
-    agent("w1", "developer", "busy", { provider: "kilo", run: "feature/ui-polish", task: "Build it" }),
+    agent("supervisor", "supervisor", "idle", { since }),
+    agent("w1", "developer", "busy", { provider: "kilo", run: "feature/ui-polish", task: "Build it", since }),
   ];
   open();
-  const team = await screen.findByRole("group", { name: "Team" });
+  const team = await screen.findByRole("toolbar", { name: "Team" });
   const tip = async (name: string) => {
     const chip = await within(team).findByRole("button", { name: new RegExp(`^${name},`) });
     fireEvent.focus(chip);
@@ -119,8 +122,14 @@ test("a chip's tooltip: name · role · provider, and its flow run on a second l
     fireEvent.blur(chip);
     return lines;
   };
-  expect(await tip("w1")).toEqual(["w1 · developer · kilo", "flow feature/ui-polish"]); // no task, no status
-  expect(await tip("supervisor")).toEqual(["supervisor · claude"]); // the role is its name
+  expect(await tip("w1")).toEqual([
+    "w1",
+    "working · 4 min",
+    "developer · kilo",
+    "flow feature/ui-polish",
+    "Click to open the terminal",
+  ]); // no task
+  expect(await tip("supervisor")).toEqual(["supervisor", "idle · 4 min", "claude", "Click to open the terminal"]); // the role is its name
 });
 
 test("a run's agents are chips in a frame coloured by the run, with a link to its page in Flows", async () => {
@@ -138,7 +147,7 @@ test("a run's agents are chips in a frame coloured by the run, with a link to it
     { name: "feature/x", status: "active", created_at: "2026-10-04T10:01:00.000Z" },
   ];
   open();
-  const team = await screen.findByRole("group", { name: "Team" });
+  const team = await screen.findByRole("toolbar", { name: "Team" });
   await within(team).findAllByRole("button");
   const frames = within(team).getAllByRole("group");
   expect(frames.map((frame) => frame.getAttribute("aria-label"))).toEqual(["run feature/x", "run fix/y"]);
@@ -149,14 +158,14 @@ test("a run's agents are chips in a frame coloured by the run, with a link to it
   expect(link.getAttribute("href")).toBe(`/sessions/lado/flows/${encodeURIComponent("feature/x")}`);
   expect(x.textContent).toBe("devrev"); // no name, no state of the run, no roles
   const inX = within(x).getAllByRole("button");
-  expect(inX.map((chip) => chip.getAttribute("aria-label"))).toEqual(["dev, developer, busy", "rev, reviewer, waiting"]);
+  expect(inX.map((chip) => chip.getAttribute("aria-label"))).toEqual(["dev, developer, working", "rev, reviewer, waits for you"]);
   expect(within(y).getAllByRole("button").map((chip) => chip.getAttribute("aria-label"))).toEqual([
     "dev-2, developer, starting",
   ]);
   // The supervisor and its own workers: first, outside every frame, the same chips.
   const chips = within(team).getAllByRole("button");
   expect(chips.slice(0, 2).map((chip) => chip.getAttribute("aria-label"))).toEqual([
-    "supervisor, supervisor, idle",
+    "supervisor, idle",
     "w1, researcher, idle",
   ]);
   expect(chips.slice(0, 2).some((chip) => chip.closest(".team-run") !== null)).toBe(false);
@@ -171,7 +180,7 @@ test("until the session's runs are loaded, a run's frame has no colour", async (
   agents = [agent("supervisor", "supervisor", "idle"), agent("dev", "developer", "busy", { run: "feature/x" })];
   runs = "pending";
   open();
-  const team = await screen.findByRole("group", { name: "Team" });
+  const team = await screen.findByRole("toolbar", { name: "Team" });
   const frame = await within(team).findByRole("group", { name: "run feature/x" });
   expect(frame.hasAttribute("data-colour")).toBe(false);
   expect(within(frame).getByRole("link", { name: "run feature/x in Flows" })).toBeTruthy();
@@ -180,11 +189,240 @@ test("until the session's runs are loaded, a run's frame has no colour", async (
 test("a chip follows its agent's changes", async () => {
   agents = [agent("supervisor", "supervisor", "idle")];
   open();
-  const team = await screen.findByRole("group", { name: "Team" });
-  await within(team).findByRole("button", { name: "supervisor, supervisor, idle" });
+  const team = await screen.findByRole("toolbar", { name: "Team" });
+  await within(team).findByRole("button", { name: "supervisor, idle" });
   const busy = agent("supervisor", "supervisor", "busy");
   stream().send("change", { kind: "agents", session: "lado", key: "supervisor", op: "update", item: busy }, "11");
-  expect(within(team).getByRole("button", { name: "supervisor, supervisor, busy" })).toBeTruthy();
+  expect(within(team).getByRole("button", { name: "supervisor, working" })).toBeTruthy();
+});
+
+// The team in the head: jsdom measures nothing, so what fits is said here, by the level the
+// team shows and its avatars.
+function teamFits(fits: (level: number, visible: number) => boolean) {
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+    const team = this.closest<HTMLElement>(".head-team");
+    const fit = Number(team?.dataset.fit ?? 0);
+    const visible = team?.querySelectorAll(".strip-agent").length ?? 0;
+    const right = team && this !== team && !fits(fit, visible) ? 100 : 0;
+    return new DOMRect(0, 0, right, 0);
+  });
+}
+
+async function headTeam(names: string[], fits: (level: number, visible: number) => boolean) {
+  teamFits(fits);
+  agents = [agent("supervisor", "supervisor", "idle"), ...names.map((name) => agent(name, "developer", "idle"))];
+  open();
+  return screen.findByRole("toolbar", { name: "Team" });
+}
+
+test("with no agents the head holds no room for a team", async () => {
+  agents = [];
+  open();
+  await screen.findByRole("region", { name: "Session lado" });
+  await act(async () => {
+    await new Promise((done) => setTimeout(done)); // the agents arrive
+  });
+  expect(document.querySelector(".head-team")).toBeNull();
+});
+
+test("the team stands in the head on every tab, and no row of it on Activity", async () => {
+  agents = [agent("supervisor", "supervisor", "idle")];
+  open("/sessions/lado/artifacts");
+  const team = await screen.findByRole("toolbar", { name: "Team" });
+  expect(team.closest(".topbar")).toBeTruthy();
+  expect(team.nextElementSibling?.className).toBe("session-head-actions");
+  expect(screen.queryByRole("group", { name: "Team" })).toBeNull();
+});
+
+test("no level mixes names and avatars: names at 1, avatars at 2 with the chevron", async () => {
+  const team = await headTeam(["developer-2", "reviewer"], (level) => level >= 2);
+  await waitFor(() => expect(team.dataset.fit).toBe("2"));
+  expect(team.querySelectorAll(".team-chip")).toHaveLength(0);
+  expect([...team.querySelectorAll(".strip-agent")].map((one) => one.firstChild?.textContent)).toEqual(["S", "D2", "R"]);
+  expect(within(team).getByRole("button", { name: "All 3 agents" }).className).toBe("team-more chevron");
+});
+
+test("at level 1 every name is cut to one length, whole in its name and popup", async () => {
+  const team = await headTeam(["developer-2", "reviewer"], (level) => level >= 1);
+  await waitFor(() => expect(team.dataset.fit).toBe("1"));
+  expect(team.querySelector(".team-label")).toBeNull();
+  expect([...team.querySelectorAll(".team-chip-name")].map((one) => one.textContent)).toEqual([
+    "supervisor",
+    "developer-2",
+    "reviewer",
+  ]);
+  expect(within(team).getByRole("button", { name: "developer-2, developer, idle" })).toBeTruthy();
+});
+
+test("at level 3 the first avatars that fit show, and the button stands for the rest", async () => {
+  const team = await headTeam(["w1", "w2", "w3"], (level, visible) => level === 3 && visible <= 2);
+  await waitFor(() => expect(team.querySelectorAll(".strip-agent")).toHaveLength(2));
+  const more = within(team).getByRole("button", { name: "2 more agents" });
+  expect(more.textContent).toBe("+2");
+  expect(more.querySelector(".dot")).toBeNull(); // the diamond's room counted, not shown
+});
+
+test("a status change leaves the level, and a hidden agent's wait shows on the button", async () => {
+  const team = await headTeam(["w1", "w2"], (level, visible) => level === 3 && visible <= 1);
+  await waitFor(() => expect(team.querySelectorAll(".strip-agent")).toHaveLength(1));
+  const waits = agent("w2", "developer", "waiting");
+  stream().send("change", { kind: "agents", session: "lado", key: "w2", op: "update", item: waits }, "11");
+  const more = await within(team).findByRole("button", { name: "2 more agents, 1 waits for you" });
+  expect(more.querySelector(".dot-waiting")).toBeTruthy();
+  expect(team.querySelectorAll(".strip-agent")).toHaveLength(1);
+});
+
+test("with no avatar left the button shows the Agents icon and the number, no plus", async () => {
+  const team = await headTeam(["w1"], () => false);
+  const more = await within(team).findByRole("button", { name: "2 agents" });
+  expect(more.textContent).toBe("2");
+  expect(more.querySelector("svg")).toBeTruthy();
+});
+
+test("a level with names stands only while the title keeps its limit; avatars take no limit", async () => {
+  vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 300, 0));
+  const team = await headTeam(["w1"], () => true);
+  await waitFor(() => expect(team.dataset.fit).toBe("2"));
+});
+
+test("the team's list shows every agent; a row opens its terminal and closes the list", async () => {
+  const team = await headTeam(["w1", "w2"], (level, visible) => level === 3 && visible <= 1);
+  await waitFor(() => expect(team.querySelectorAll(".strip-agent")).toHaveLength(1));
+  const more = within(team).getByRole("button", { name: "2 more agents" });
+  fireEvent.click(more);
+  const dialog = screen.getByRole("dialog", { name: "Team" });
+  expect(within(dialog).getByRole("heading").textContent).toBe("Team · 3 agents");
+  const rows = within(dialog).getAllByRole("button");
+  expect(rows.map((row) => row.querySelector(".team-popover-name")!.textContent)).toEqual(["supervisor", "w1", "w2"]);
+  expect(rows[0]!.getAttribute("aria-current")).toBe("true");
+  expect(document.activeElement).toBe(rows[0]);
+  fireEvent.click(rows[2]!);
+  expect(screen.queryByRole("dialog", { name: "Team" })).toBeNull();
+  expect(more.hasAttribute("data-shown")).toBe(true); // the terminal shown is among the hidden
+  fireEvent.click(more);
+  expect(within(screen.getByRole("dialog", { name: "Team" })).getAllByRole("button")[2]!.getAttribute("aria-current")).toBe("true");
+});
+
+test("the list's button says its name as a tooltip, on the chevron and on +N", async () => {
+  const team = await headTeam(["w1", "w2", "w3"], (level, visible) => level === 3 && visible <= 2);
+  await waitFor(() => expect(team.querySelectorAll(".strip-agent")).toHaveLength(2));
+  for (const name of ["w2", "w3"]) {
+    const waits = agent(name, "developer", "waiting");
+    stream().send("change", { kind: "agents", session: "lado", key: name, op: "update", item: waits }, "11");
+  }
+  const more = await within(team).findByRole("button", { name: "2 more agents, 2 wait for you" });
+  fireEvent.mouseEnter(more);
+  expect((await screen.findByRole("tooltip")).textContent).toBe("2 more agents, 2 wait for you");
+});
+
+test("with the list open its button shows no tooltip, and the one that was up goes", async () => {
+  const team = await headTeam(["w1"], (level) => level === 2);
+  await waitFor(() => expect(team.dataset.fit).toBe("2"));
+  const button = within(team).getByRole("button", { name: "All 2 agents" });
+  fireEvent.mouseEnter(button);
+  expect((await screen.findByRole("tooltip")).textContent).toBe("All 2 agents");
+  fireEvent.click(button);
+  expect(screen.getByRole("dialog", { name: "Team" })).toBeTruthy();
+  expect(screen.queryByRole("tooltip")).toBeNull();
+  fireEvent.mouseLeave(button);
+  fireEvent.mouseEnter(button);
+  await act(() => new Promise((done) => setTimeout(done, TOOLTIP_DELAY_MS + 20)));
+  expect(screen.queryByRole("tooltip")).toBeNull();
+});
+
+test("Esc and a second click close the list with the focus on its button; a press away leaves the focus", async () => {
+  const team = await headTeam(["w1"], (level) => level === 2);
+  await waitFor(() => expect(team.dataset.fit).toBe("2"));
+  const button = within(team).getByRole("button", { name: "All 2 agents" });
+  fireEvent.click(button);
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  expect(screen.queryByRole("dialog", { name: "Team" })).toBeNull();
+  expect(document.activeElement).toBe(button);
+  fireEvent.click(button);
+  fireEvent.click(button);
+  expect(screen.queryByRole("dialog", { name: "Team" })).toBeNull();
+  expect(document.activeElement).toBe(button);
+  fireEvent.click(button);
+  fireEvent.mouseDown(document.body);
+  expect(screen.queryByRole("dialog", { name: "Team" })).toBeNull();
+});
+
+test("the team is one Tab stop, and the arrows, Home and End move among its items", async () => {
+  agents = [agent("supervisor", "supervisor", "idle"), agent("w1", "developer", "idle"), agent("w2", "developer", "idle", { run: "x" })];
+  open();
+  const team = await screen.findByRole("toolbar", { name: "Team" });
+  const items = await waitFor(() => {
+    const all = [...team.querySelectorAll<HTMLElement>("button, a")];
+    expect(all).toHaveLength(4); // the run's link too
+    return all;
+  });
+  expect(items.map((one) => one.tabIndex)).toEqual([0, -1, -1, -1]);
+  items[0]!.focus();
+  fireEvent.keyDown(items[0]!, { key: "ArrowRight" });
+  expect(document.activeElement).toBe(items[1]);
+  expect(items.map((one) => one.tabIndex)).toEqual([-1, 0, -1, -1]);
+  fireEvent.keyDown(items[1]!, { key: "End" });
+  expect(document.activeElement).toBe(items[3]);
+  fireEvent.keyDown(items[3]!, { key: "Home" });
+  expect(document.activeElement).toBe(items[0]);
+  fireEvent.keyDown(items[0]!, { key: "ArrowLeft" });
+  expect(document.activeElement).toBe(items[3]);
+});
+
+test("a new agent leaves the open list and the focus in it where they were", async () => {
+  const team = await headTeam(["w1", "w2"], (level) => level === 2);
+  await waitFor(() => expect(team.dataset.fit).toBe("2"));
+  fireEvent.click(within(team).getByRole("button", { name: "All 3 agents" }));
+  const dialog = screen.getByRole("dialog", { name: "Team" });
+  const row = within(dialog).getAllByRole("button")[2]!;
+  row.focus();
+  const w3 = agent("w3", "developer", "idle");
+  stream().send("change", { kind: "agents", session: "lado", key: "w3", op: "update", item: w3 }, "11");
+  await within(team).findByRole("button", { name: "All 4 agents" });
+  await waitFor(() => expect(within(screen.getByRole("dialog", { name: "Team" })).getAllByRole("button")).toHaveLength(4));
+  expect(document.activeElement?.textContent).toContain("w2");
+});
+
+test("the run time growing chooses the level again, while the team shows whole names", async () => {
+  const fits = vi.fn(() => true);
+  const team = await headTeam(["w1"], fits);
+  await waitFor(() => expect(fits).toHaveBeenCalled());
+  await act(async () => {
+    await new Promise((done) => setTimeout(done));
+  });
+  const before = fits.mock.calls.length;
+  const grown = session("lado", { ran_seconds: 7200 });
+  stream().send("change", { kind: "sessions", session: "lado", key: "", op: "update", item: grown }, "11");
+  await waitFor(() => expect(fits.mock.calls.length).toBeGreaterThan(before));
+  expect(team.dataset.fit).toBe("0");
+});
+
+test("a list left open at level 0 keeps its button until it closes, the focus then on the team", async () => {
+  let least = 2;
+  const team = await headTeam(["w1"], (level) => level >= least);
+  await waitFor(() => expect(team.dataset.fit).toBe("2"));
+  fireEvent.click(within(team).getByRole("button", { name: "All 2 agents" }));
+  least = 0;
+  const w2 = agent("w2", "developer", "idle");
+  stream().send("change", { kind: "agents", session: "lado", key: "w2", op: "update", item: w2 }, "11");
+  await waitFor(() => expect(team.dataset.fit).toBe("0"));
+  expect(screen.getByRole("dialog", { name: "Team" })).toBeTruthy();
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  expect(screen.queryByRole("dialog", { name: "Team" })).toBeNull();
+  expect(team.querySelector(".team-more")).toBeNull();
+  expect(document.activeElement).toBe(team.querySelector(".team-chip"));
+});
+
+test("the toolbar leaves a key with a modifier to the browser", async () => {
+  agents = [agent("supervisor", "supervisor", "idle"), agent("w1", "developer", "idle")];
+  open();
+  const team = await screen.findByRole("toolbar", { name: "Team" });
+  const [first] = await within(team).findAllByRole("button");
+  first!.focus();
+  for (const modifier of ["altKey", "ctrlKey", "metaKey", "shiftKey"]) {
+    expect(fireEvent.keyDown(first!, { key: "ArrowRight", [modifier]: true })).toBe(true); // not prevented
+    expect(document.activeElement).toBe(first);
+  }
 });
 
 // The session list
@@ -521,7 +759,7 @@ test("a Running row's card and its icon in the strip say whether it works, then 
   expect(icon("calm").getAttribute("aria-label")).toBe("calm, idle");
   expect(icon("calm").querySelector(".dot")!.className).toContain("activity-idle");
   expect(icon("gated").getAttribute("aria-label")).toBe("gated, needs you");
-  expect(icon("gated").querySelector(".dot")).toBeNull();
+  expect(icon("gated").querySelector(".dot")!.className).toContain("dot-waiting");
   fireEvent.focus(icon("busy"));
   expect(nameFirst(screen.getByRole("tooltip"))).toBe("busy");
   fireEvent.blur(icon("busy"));
@@ -585,19 +823,47 @@ test("the list's width changes with its edge and is remembered", async () => {
   expect(columns()).toBe("260px");
 });
 
-test("in a narrow window the list is narrowed to leave the session and its terminals room, and its width stays remembered", async () => {
+test("short of room the list folds to its strip and comes back, and nothing is stored", async () => {
   columnWidth(null);
   localStorage.setItem("lado.sessionsList", JSON.stringify({ width: 400 }));
   open("/sessions");
-  const edge = screen.getByRole("separator", { name: "Resize the session list" });
-  // The session's least width (360) and the terminals' (280) come first.
-  FakeResizeObserver.resize(() => 1000);
-  expect(Number(edge.getAttribute("aria-valuenow"))).toBe(1000 - 360 - 280);
-  FakeResizeObserver.resize(() => 700);
-  expect(Number(edge.getAttribute("aria-valuenow"))).toBe(200);
+  FakeResizeObserver.resize(() => 800); // 400 + the terminals' strip leave the chat 368 px
+  expect(document.querySelector("nav.sessions-strip")).toBeTruthy();
+  expect(document.querySelector<HTMLElement>(".sessions")!.style.getPropertyValue("--list-width")).toBe("48px");
   expect(JSON.parse(localStorage.getItem("lado.sessionsList")!)).toEqual({ width: 400 });
   FakeResizeObserver.resize(() => 1600);
+  expect(document.querySelector("nav.sessions-strip")).toBeNull();
+  const edge = screen.getByRole("separator", { name: "Resize the session list" });
   expect(Number(edge.getAttribute("aria-valuenow"))).toBe(400);
+});
+
+test("the strip's badges tell sessions apart: a task's number, a title's letters, a mark on a clash", async () => {
+  sessions = [
+    session("lad-154-epic"),
+    session("x1", { title: "lad-189 (session UI review)" }),
+    session("lad-77-checkout", { title: "Checkout redesign" }),
+    session("web-2154"),
+    session("kilo-ui"),
+  ];
+  localStorage.setItem("lado.sessionsList", JSON.stringify({ collapsed: true }));
+  open("/sessions");
+  await waitFor(() => expect(document.querySelectorAll(".strip-session")).toHaveLength(5));
+  const badges = [...document.querySelectorAll(".strip-session")].map((one) => one.textContent);
+  expect(badges).toEqual(["154", "189", "CR", "154·2", "KU"]);
+  expect(document.querySelectorAll(".strip-session.long")).toHaveLength(1);
+});
+
+test("with nothing stored the rail follows the window; the human's choice wins", () => {
+  const screen_ = new FakeScreen("fine", 1599, 900);
+  open("/sessions");
+  const app = document.querySelector(".app")!;
+  expect(app.classList.contains("collapsed")).toBe(true);
+  screen_.set({ width: 1600 });
+  expect(app.classList.contains("collapsed")).toBe(false);
+  fireEvent.click(screen.getByRole("button", { name: "Collapse menu" }));
+  expect(localStorage.getItem("lado.rail")).toBe("collapsed");
+  screen_.set({ width: 2000 });
+  expect(app.classList.contains("collapsed")).toBe(true);
 });
 
 // The session list collapsed to a strip (docs/design/ui.md, Structure: Sessions)
@@ -806,8 +1072,11 @@ test("the top bar has the title and the link; the server's address is in the lin
   fireEvent.focus(link);
   expect(screen.getByRole("tooltip").textContent).toBe(`The LADO server this page talks to: ${window.location.host}`);
   fireEvent.blur(link);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   stream().fail(false);
-  expect(within(bar).getByRole("status").textContent).toMatch(/reconnecting/);
+  act(() => vi.advanceTimersByTime(LOST_AFTER_MS));
+  vi.useRealTimers();
+  expect(within(bar).getByRole("status").textContent).toBe("reconnecting…");
 });
 
 // The session's head in the top bar (docs/design/ui.md, Session head; feature/session-head-topbar)
@@ -1279,4 +1548,31 @@ test("an icon's letters from a title that starts with an emoji are whole charact
   open("/sessions");
   await within(strip()!).findByRole("link", { name: "🚀 Релиз, idle" });
   expect(icons().map((icon) => icon.textContent)).toEqual(["🚀Р", "𝒜𝒷"]);
+});
+
+// The tabs' bar
+
+test("a tab is kept clear of the room at each end, and a tab in the clear does not move the row", () => {
+  const view = { left: 100, width: 300 };
+  expect(tabScroll(view, { left: 200, width: 80 }, 56)).toBe(100); // stands in the clear
+  expect(tabScroll(view, { left: 350, width: 80 }, 56)).toBe(186); // under the right end
+  expect(tabScroll(view, { left: 120, width: 80 }, 56)).toBe(64); // under the left end
+  expect(tabScroll({ left: 100, width: 150 }, { left: 300, width: 80 }, 56)).toBe(244); // too wide for the room left: its start
+});
+
+test("on Activity the bar holds both forms of the choice, which say the same", async () => {
+  open();
+  const radios = await screen.findByRole("radiogroup", { name: "Messages between agents" });
+  const icon = document.querySelector<HTMLElement>(".session-tabs .between-toggle")!;
+  expect(icon.getAttribute("aria-label")).toBe("Messages between agents");
+  expect(icon.getAttribute("aria-pressed")).toBe("false");
+  fireEvent.click(icon);
+  expect(icon.getAttribute("aria-pressed")).toBe("true");
+  expect(within(radios).getByRole("radio", { name: "All" }).getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(within(radios).getByRole("radio", { name: "Yours" }));
+  expect(icon.getAttribute("aria-pressed")).toBe("false");
+  fireEvent.mouseEnter(icon);
+  expect((await screen.findByRole("tooltip")).textContent).toBe(
+    "Messages between agents: hiddenClick to also show what agents write to each other.",
+  );
 });

@@ -35,9 +35,9 @@ def test_the_list_collapses_to_a_strip_that_gives_the_session_room_and_opens_ses
     strip = page.locator("nav.sessions-strip")
     expect(strip).to_be_visible()
     expect(edge).to_have_count(0)
-    assert box(strip)["width"] == 44
+    assert box(strip)["width"] == 48
     expect(strip.get_by_role("button", name="Sessions")).to_be_focused()
-    assert box(detail)["width"] >= before + 300 - 44 - 1  # the session takes the room
+    assert box(detail)["width"] >= before + 300 - 48 - 1  # the session takes the room
     icons = strip.get_by_role("link")
     expect(icons).to_have_count(2)
     expect(icons.first).to_have_accessible_name(f"{asking}, needs you")  # the one waiting first

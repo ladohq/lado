@@ -8,7 +8,7 @@ import type { AttachmentInfo, GateInfo, MessageInfo, MessagePage, RunEventInfo, 
 import { App } from "./App";
 import { messageText } from "./Chat";
 import { clock, day, dayName } from "./ChatText";
-import { FakeEventSource, FakeIntersectionObserver, FakeSocket, stream } from "./fakes";
+import { FakeEventSource, FakeIntersectionObserver, FakeScreen, FakeSocket, stream } from "./fakes";
 import { storeAgentMessages } from "./prefs";
 import { sendQuote } from "./quotes";
 
@@ -497,9 +497,9 @@ test("the composer is one frame with Send inside, says to whom and how to send",
   expect(within(frame as HTMLElement).getByRole("button", { name: "Send" })).toBeTruthy();
   expect(field.rows).toBe(1);
   const form = field.closest("form")!;
-  expect(form.querySelector(".composer-to")?.textContent).toBe("to supervisor");
+  expect(form.querySelector(".composer-to")).toBeNull(); // the field's placeholder says it
   expect(form.querySelector(".composer-keys")?.textContent).toBe(
-    "Enter to send · Shift+Enter for a new line · paste or drop files to attach",
+    "Enter to send · Shift+Enter for a new line · paste or drop files",
   );
 });
 
@@ -713,10 +713,12 @@ test("the agents' messages to each other show behind a toggle that loads the win
   await within(log).findByText("merged");
   expect(headings(log)).toEqual(["merge w1", "merged"]);
   expect(queries).toEqual([{ with: "human", limit: "50" }]);
-  const toggle = screen.getByRole("button", { name: "Messages between agents" });
-  expect(toggle.getAttribute("aria-pressed")).toBe("false");
-  fireEvent.click(toggle);
-  expect(toggle.getAttribute("aria-pressed")).toBe("true");
+  const radios = within(screen.getByRole("radiogroup", { name: "Messages between agents" }));
+  const yours = radios.getByRole("radio", { name: "Yours" });
+  const all = radios.getByRole("radio", { name: "All" });
+  expect(yours.getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(all);
+  expect(all.getAttribute("aria-checked")).toBe("true");
   await within(log).findByText("please merge");
   expect(headings(log)).toEqual(["merge w1", "please merge", "merged"]);
   expect(queries.at(-1)).toEqual({ limit: "50" });
@@ -725,45 +727,61 @@ test("the agents' messages to each other show behind a toggle that loads the win
   expect(between.className).toContain("between");
   stream().send("change", changed(message(4, "w1", "supervisor", "done")), "11");
   expect(headings(log)).toContain("done");
-  fireEvent.click(toggle);
+  fireEvent.click(yours);
   await waitFor(() => expect(headings(log)).toEqual(["merge w1", "merged"]));
-  fireEvent.click(toggle);
+  fireEvent.click(all);
   await within(log).findByText("please merge");
   cleanup();
   open();
   const again = await chat();
   await within(again).findByText("please merge");
-  expect(screen.getByRole("button", { name: "Messages between agents" }).getAttribute("aria-pressed")).toBe("true");
+  expect(screen.getByRole("radio", { name: "All" }).getAttribute("aria-checked")).toBe("true");
 });
 
-test("the toggle for messages between agents is an icon at the team row's end whose tooltip says its state", async () => {
+test("Yours | All ends the tab bar: one Tab stop, the arrows choose, each says what it shows", async () => {
   serve([message(1, "human", "supervisor", "merge w1")]);
   open();
   await chat();
+  const group = screen.getByRole("radiogroup", { name: "Messages between agents" });
+  expect(group.closest(".session-tabs")).toBeTruthy();
+  expect(document.querySelector(".team-row")).toBeNull();
+  const yours = within(group).getByRole("radio", { name: "Yours" });
+  const all = within(group).getByRole("radio", { name: "All" });
+  expect([yours.tabIndex, all.tabIndex]).toEqual([0, -1]);
+  yours.focus();
+  expect(fireEvent.keyDown(yours, { key: "ArrowLeft", altKey: true })).toBe(true); // the browser's Back
+  expect(yours.getAttribute("aria-checked")).toBe("true");
+  fireEvent.keyDown(yours, { key: "ArrowRight" });
+  expect(all.getAttribute("aria-checked")).toBe("true");
+  expect(document.activeElement).toBe(all);
+  expect([yours.tabIndex, all.tabIndex]).toEqual([-1, 0]);
+  fireEvent.focus(all); // the keyboard's focus: at once
+  expect(screen.getByRole("tooltip").textContent).toBe("Also what agents write to each other");
+  fireEvent.blur(all);
+  fireEvent.mouseEnter(yours);
+  expect((await screen.findByRole("tooltip")).textContent).toBe("Only your conversation with the agents");
+  fireEvent.mouseLeave(yours);
+  expect(screen.queryByRole("tooltip")).toBeNull();
+});
+
+test("on a phone the toggle stays an icon at the team row's end, whose tooltip says its state", async () => {
+  FakeScreen.phone();
+  serve([message(1, "human", "supervisor", "merge w1")]);
+  open();
+  await chat();
+  expect(screen.queryByRole("radiogroup")).toBeNull();
   const row = document.querySelector(".team-row")!;
   const toggle = within(row as HTMLElement).getByRole("button", { name: "Messages between agents" });
   expect(row.lastElementChild).toBe(toggle);
   expect(toggle.querySelector("svg")).toBeTruthy();
   expect(toggle.textContent).toBe("");
-  expect(screen.queryByText(/Show agent messages/)).toBeNull();
   const lines = async () =>
     [...(await screen.findByRole("tooltip")).querySelectorAll(".tooltip-line")].map((line) => line.textContent);
   fireEvent.mouseEnter(toggle);
   expect(await lines()).toEqual(["Messages between agents: hidden", "Click to also show what agents write to each other."]);
-  expect(toggle.getAttribute("aria-describedby")).toBe(screen.getByRole("tooltip").id);
   fireEvent.mouseLeave(toggle);
-  expect(screen.queryByRole("tooltip")).toBeNull();
   fireEvent.click(toggle);
-  fireEvent.focus(toggle); // the keyboard's focus: at once
-  expect([...screen.getByRole("tooltip").querySelectorAll(".tooltip-line")].map((line) => line.textContent)).toEqual([
-    "Messages between agents: shown",
-    "Click to show only your conversation with the agents.",
-  ]);
-  fireEvent.keyDown(document, { key: "Escape" });
-  expect(screen.queryByRole("tooltip")).toBeNull();
-  fireEvent.focus(toggle);
-  fireEvent.blur(toggle);
-  expect(screen.queryByRole("tooltip")).toBeNull();
+  expect(toggle.getAttribute("aria-pressed")).toBe("true");
 });
 
 // Flow events (docs/design/ui.md, Flow events): a run's events in a group under its name.

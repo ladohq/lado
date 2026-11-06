@@ -244,7 +244,8 @@ test("the supervisor comes first, then the agents by spawn; a waiting one is ora
     "developer-2",
     "developer",
   ]);
-  expect(rows[2].textContent).toContain("busy");
+  expect(rows[2].textContent).toMatch(/working · \d+ (min|h|d)/);
+  expect(rows[1].textContent).toMatch(/waits for you · \d+ (min|h|d)/);
   expect(rows[2].textContent).toContain("feature/agents-tab · implement");
   expect(rows[2].getAttribute("aria-current")).toBe("page");
   expect(rows[1].className).toContain("waits");
@@ -344,7 +345,7 @@ test("an agent's page has its head with the run and step, its branch, work, work
   const head = within(region).getByRole("banner");
   expect(within(head).getByRole("heading", { name: "developer" })).toBeTruthy();
   expect(head.textContent).toContain("developer · claude");
-  expect(head.textContent).toMatch(/busy for \d+ (min|h|d)/);
+  expect(head.textContent).toMatch(/working · \d+ (min|h|d) · spawned/);
   expect(head.textContent).toContain("step implement (visit 2)");
   expect(within(head).getByRole("link", { name: "feature/agents-tab" }).getAttribute("href")).toBe(
     "/sessions/lado/flows/feature%2Fagents-tab",
@@ -577,7 +578,7 @@ test("an agent's page has its latest 10 messages of its own lifetime, and All in
   fireEvent.click(within(box).getByRole("button", { name: "All in Activity" }));
   expect(address()).toBe("/sessions/lado/activity");
   expect(localStorage.getItem("lado.agentMessages")).toBe("shown");
-  expect(screen.getByRole("button", { name: "Messages between agents" }).getAttribute("aria-pressed")).toBe("true");
+  expect(screen.getByRole("radio", { name: "All" }).getAttribute("aria-checked")).toBe("true");
 });
 
 test("a message from the feed keeps the page at the latest 10, the new one last", async () => {

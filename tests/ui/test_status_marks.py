@@ -36,32 +36,36 @@ def test_busy_and_background_are_green_and_pulse_and_background_is_half_filled(
         log_in(page, server)
         page.goto(f"{server['url']}/sessions/{session}")
         page.get_by_role("button", name="Collapse terminals").click()
-        team = page.get_by_role("group", name="Team")
+        team = page.get_by_role("toolbar", name="Team")
         supervisor, w1 = team.get_by_role("button").all()
-        expect(supervisor).to_have_accessible_name("supervisor, supervisor, busy")
-        expect(w1).to_have_accessible_name("w1, worker, background")
+        expect(supervisor).to_have_accessible_name("supervisor, working")
+        expect(w1).to_have_accessible_name("w1, worker, in the background")
         for theme in ("light", "dark"):
             page.emulate_media(color_scheme=theme)
             green = GREEN[theme]
-            assert dot_style(supervisor, "backgroundColor", "animationName") == [
-                green,
-                "activity-pulse",
-            ]
+            # The agents' marks stand still in the head; the session's dot keeps the pulse.
+            assert dot_style(supervisor, "backgroundColor", "animationName") == [green, "none"]
+            assert (
+                page.locator(".session-head .session-dot").evaluate(
+                    "e => getComputedStyle(e).animationName"
+                )
+                == "activity-pulse"
+            )
             image, border, animation = dot_style(
                 w1, "backgroundImage", "borderTopColor", "animationName"
             )
             assert image == f"linear-gradient(90deg, {green} 50%, rgba(0, 0, 0, 0) 50%)"
-            assert (border, animation) == (green, "activity-pulse")
+            assert (border, animation) == (green, "none")
             shot(page, f"team-{theme}")
-        page.emulate_media(reduced_motion="reduce")
-        assert dot_style(w1, "animationName") == ["none"]
-        assert dot_style(supervisor, "animationName") == ["none"]
-        page.emulate_media(reduced_motion="no-preference")
 
         page.get_by_role("link", name="Agents · 2").click()
         agents = page.get_by_role("navigation", name="Agents")
         row = agents.get_by_role("link", name="w1")
         expect(row).to_contain_text("background")
+        assert dot_style(row, "animationName") == ["activity-pulse"]
+        page.emulate_media(reduced_motion="reduce")
+        assert dot_style(row, "animationName") == ["none"]
+        page.emulate_media(reduced_motion="no-preference")
         for theme in ("light", "dark"):
             page.emulate_media(color_scheme=theme)
             shot(page, f"agents-{theme}")

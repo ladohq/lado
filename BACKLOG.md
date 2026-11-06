@@ -592,6 +592,19 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
+## With the rail opened by hand a narrow window's column buttons do nothing
+
+Size: S. Why here: the human accepted it for LAD-193; a press with no answer on the screen is
+still a small puzzle, and only with the rail opened by hand on a window of about 960 px or less.
+
+With the rail opened by hand there is no room for the terminals beside 420 px of chat in a window
+of up to about 963 px, nor for the list up to about 927 px: the rule folds them again at once
+(`columns.ts`, answer #3750). So Show the terminals, an agent's button, a team chip, `?terminal=`
+and Sessions store the choice and change nothing on the screen. Wanted: a press that shows the
+column, by folding the rail for the moment or by opening the column over the session, or a word
+that says why not.
+Found: 2026-11-06, branch lado/lad-193/task-lad-193 (LAD-193, review F5).
+
 ## `lado server stop` by hand in the container stops every session
 
 Size: S. Why here: only a human in the container's shell gets there, and a restart of the
@@ -1898,6 +1911,32 @@ Wanted: the installer run with `UV_TOOL_DIR` (the prefix's parent) and `UV_TOOL_
 (the receipt's install-path), or `PIPX_HOME` (`<home>/venvs/<name>`), as
 `self_update._install_by_hand` names them.
 Found: 2026-10-25, hotfix/lad-144-by-hand-way-back.
+
+## `test_kits_lists_the_same_kits_in_every_folder` depends on the checkout's path
+
+Size: S. Why here: it fails only in a checkout whose path has the word, but then `make test` is
+red with nothing wrong.
+
+`tests/test_cli.py` asserts that `team` and `crew` are not in the output of `lado kits`, and that
+output holds the built-in kits' full paths. A worktree such as `.../task-lad-197-team-head` fails
+it. Wanted: the test looks at the kits' names, not at the whole text.
+Found: 2026-11-06, branch lado/lad-197/task-lad-197-team-head (LAD-197).
+
+## Flaky: an OpenCode test of `LoginSheet.test.tsx` in a full vitest run
+
+Size: S. Why here: seen once, and a rerun passes, but a flake in `make web` costs a round.
+
+It failed once in a full run of `make web` and passed 3 times alone and in the next full run; the
+change under review did not touch the file. Wanted: its cause found and the test made stable.
+Found: 2026-11-06, review of branch lado/lad-197/task-lad-197-team-head (LAD-197).
+
+## Flaky UI test: `test_the_strips_badges_tell_task_sessions_apart`
+
+Size: S. Why here: seen once in a parallel run under load; alone it passes.
+
+Its check that the badge's text fits read a wider text than the box, likely before the font had
+loaded. Wanted: the test waits for the fonts.
+Found: 2026-11-06, branch lado/lad-197/task-lad-197-team-head (LAD-197).
 
 # P3: maybe never
 

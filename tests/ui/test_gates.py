@@ -229,8 +229,8 @@ def test_a_gates_long_comment_shows_its_ring_whole(page: Page, server, repo, sho
 
 
 def test_a_gates_comment_in_a_narrow_window_shows_its_ring_whole(page: Page, server, repo, shot):
-    """LAD-78: in a window 600 px wide the comment's focus ring is whole too."""
-    page.set_viewport_size({"width": 600, "height": 900})
+    """LAD-78: in a computer's narrowest window the comment's focus ring is whole too."""
+    page.set_viewport_size({"width": 601, "height": 900})
     session = gated_session(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
@@ -245,7 +245,7 @@ def test_a_gates_long_comment_on_the_flows_tab_shows_its_ring_whole(page: Page, 
     """LAD-78: on the Flows tab's gate card, a comment of 12 lines grows to the page's lower
     edge and is scrolled into view with its focus ring whole: the run's page (`.list-main`)
     scrolls there; it opens 3 lines high, as it did."""
-    page.set_viewport_size({"width": 1280, "height": 640})
+    page.set_viewport_size({"width": 1280, "height": 480})
     session = gated_session(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}/flows/ship%2Fx")
@@ -327,9 +327,8 @@ def in_sight(page: Page, *parts) -> None:
 def test_a_window_768_wide_keeps_the_footer_in_sight(
     page: Page, server, repo, shot, height, expanded, tab
 ):
-    """A window of 900 px or less scrolls as a page, its chat with no height of its own: the
-    footer stays in the window wherever the page stands, the card under the top bar. The
-    composer past the window's edge is LAD-193's."""
+    """At 601 to 900 px a session's page stands still: the footer stays in the window, the card
+    under the top bar, whatever the wheel does."""
     session = gated_session(repo, LONG_NOTE)
     recommended(session, VIEW, choice="approve")
     if tab == "question":
@@ -404,8 +403,11 @@ def test_a_low_window_keeps_a_grown_footer_at_the_pages_top(page: Page, server, 
     shot(page, full_page=False)
 
 
-@pytest.mark.parametrize("own", [False, True], ids=["choices", "own-answer"])
-@pytest.mark.parametrize("height", [700, 500, 420])
+@pytest.mark.parametrize(
+    ("height", "own"),
+    [(700, False), (500, False), (420, False), (700, True), (500, True)],
+    ids=["700", "500", "420", "700-own-answer", "500-own-answer"],
+)
 def test_a_low_window_keeps_six_choices_buttons_at_the_pages_top(
     page: Page, server, repo, shot, height, own
 ):
@@ -462,34 +464,8 @@ def test_a_window_narrowed_keeps_the_expanded_cards_footer(
     shot(page, full_page=False)
 
 
-def test_a_chat_low_on_the_page_keeps_the_context_and_the_footer(page: Page, server, repo, shot):
-    """The sessions' list open over the session pushes the chat down: the card stays half the
-    window, its context seen, and the page's scroll brings the footer up."""
-    session = gated_session(repo, LONG_NOTE)
-    page.set_viewport_size({"width": 768, "height": 700})
-    log_in(page, server)
-    page.goto(f"{server['url']}/sessions/{session}")
-    page.get_by_role("button", name="Sessions", exact=True).click()
-    card = waiting_card(page, session)
-    expect(page.locator(".session-list")).to_be_visible()
-    page.add_style_tag(content=".session-list { min-height: 500px; }")  # many sessions
-    page.wait_for_function(
-        "c => c.getBoundingClientRect().height >= window.innerHeight / 2",
-        arg=card.element_handle(),
-        timeout=3000,
-    )
-    context = card.get_by_role("region", name="Context of the card")
-    assert context.bounding_box()["height"] > 40
-    page.get_by_role("banner").hover()
-    page.mouse.wheel(0, 5000)
-    page.wait_for_timeout(200)
-    in_sight(page, card.get_by_role("button", name="Approve", exact=True))
-    shot(page, full_page=False)
-
-
 def narrow_session(page: Page, server, repo):
-    """A long note's gate in a window 768×700: its card, Approve, and the card's height, which
-    the room from the chat's top down limits, with the chat at its usual place."""
+    """A long note's gate in a window 768×700: its card, Approve, and the card's height."""
     session = gated_session(repo, LONG_NOTE)
     page.set_viewport_size({"width": 768, "height": 700})
     log_in(page, server)
@@ -519,29 +495,18 @@ def gets_its_height_back(page: Page, card, height: float) -> None:
     )
 
 
-def test_the_sessions_list_opening_leaves_the_footer_in_sight(page: Page, server, repo, shot):
-    """The list moves the chat down with no change of its height: the card follows."""
-    card, approve, _ = narrow_session(page, server, repo)
-    page.get_by_role("button", name="Sessions", exact=True).click()
-    expect(page.locator(".session-list")).to_be_visible()
-    settles_in_sight(page, approve)
-    shot(page, full_page=False)
-
-
-def test_the_sessions_list_closing_gives_the_card_its_room_back(page: Page, server, repo, shot):
-    """Opened with the list standing open, the card has the less room; the list closing gives
-    it back."""
+def test_the_sessions_list_leaves_the_card_where_it_is(page: Page, server, repo, shot):
+    """The list lies over the chat: opening and closing it moves nothing under it."""
     card, approve, height = narrow_session(page, server, repo)
+    before = card.bounding_box()
     page.get_by_role("button", name="Sessions", exact=True).click()
     expect(page.locator(".session-list")).to_be_visible()
-    page.reload()
-    expect(page.locator(".session-list")).to_be_visible()
-    expect(approve).to_be_visible()
-    page.get_by_role("button", name="Collapse sessions").click()
-    expect(page.locator(".session-list")).to_have_count(0)
-    gets_its_height_back(page, card, height)
-    in_sight(page, approve)
+    assert card.bounding_box() == before
     shot(page, full_page=False)
+    page.keyboard.press("Escape")
+    expect(page.locator(".session-list")).to_have_count(0)
+    assert card.bounding_box() == before
+    in_sight(page, approve)
 
 
 def test_a_block_over_the_chat_moves_the_cards_limit_with_it(page: Page, server, repo, shot):

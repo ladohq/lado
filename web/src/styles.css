@@ -33,6 +33,7 @@ a {
 :root {
   --ring-room: 4px;
   --head-h: 48px; /* the top bar's height, on a computer */
+  --row-h: 48px; /* the session strip's height as a row, at 601 to 900 px */
 }
 
 :focus-visible {
@@ -74,7 +75,8 @@ button {
 
 /* A wide window is the app's window: it never scrolls, nor bounces; the regions inside
    scroll by themselves (the session list, the feed, a page's content, a terminal). A
-   narrow one keeps its stacked layout, which the window scrolls. */
+   narrow one keeps its stacked layout, which the window scrolls; only a session's page is
+   the app's window there too (the rules after this). */
 @media (min-width: 901px) {
   html,
   body {
@@ -101,6 +103,61 @@ button {
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
+  }
+}
+
+/* 601 to 900 px: a session's page stands still as a wide window does, so its composer and an
+   open gate are in sight at once. The rules key on .sessions: every other page scrolls. A
+   phone held sideways has this width too, and its own frame ("Phone layout"). */
+@media (min-width: 601px) and (max-width: 900px) {
+  :root:not([data-phone]):has(.sessions),
+  :root:not([data-phone]):has(.sessions) body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  :root:not([data-phone]) .app:has(.sessions) {
+    grid-template-rows: minmax(0, 1fr);
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  :root:not([data-phone]) .app:has(.sessions) .rail {
+    height: 100%;
+  }
+
+  :root:not([data-phone]) .main:has(.sessions) {
+    min-height: 0;
+  }
+
+  :root:not([data-phone]) .content:has(> .sessions) {
+    flex: 1;
+    min-height: 0;
+  }
+}
+
+/* A touch screen wider than a phone, where the app stands still (a session's page at 601 to
+   900 px, every page above): Safari's bars and keyboard cover the window's bottom, 100dvh is
+   taller than the part left (LAD-109), and no scroll brings the composer above them. So the app
+   is as high as the part the human sees, as on a phone (phone.ts, usePhoneViewport). */
+@media (pointer: coarse) and (min-width: 601px) and (max-width: 900px) {
+  :root:not([data-phone]) .app:has(.sessions) {
+    position: fixed;
+    inset-inline: 0;
+    top: var(--phone-top, 0px);
+    height: var(--phone-height, 100dvh);
+    min-height: 0;
+  }
+}
+
+@media (pointer: coarse) and (min-width: 901px) {
+  :root:not([data-phone]) .app {
+    position: fixed;
+    inset-inline: 0;
+    top: var(--phone-top, 0px);
+    height: var(--phone-height, 100dvh);
+    min-height: 0;
   }
 }
 
@@ -289,8 +346,8 @@ button.rail-link {
   background: var(--line);
 }
 
-/* The change feed's link at the top bar's right end: live, or reconnecting with the reason
-   cut to one line; the server's address in its tooltip. */
+/* The change feed's link at the top bar's right end: live, or reconnecting on the warning
+   ground; the server's address, or why it refuses, in its tooltip. */
 .link {
   min-width: 0;
   overflow: hidden;
@@ -311,9 +368,31 @@ button.rail-link {
   vertical-align: 1px;
 }
 
-/* Live and connecting are short and stay whole; only reconnecting's reason is cut. */
+/* All three are short and stay whole. */
 .link-open,
-.link-connecting {
+.link-connecting,
+.link.reconnecting {
+  flex: none;
+}
+
+.link.reconnecting {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--warn-ground);
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.link.reconnecting::before {
+  content: none;
+}
+
+.link.reconnecting .icon {
+  width: 16px;
+  height: 16px;
   flex: none;
 }
 
@@ -918,9 +997,8 @@ h3 {
   font-size: 16px;
 }
 
-/* The list collapsed to a strip (Sessions.tsx), the terminals' strip mirrored: Sessions read
-   from the bottom up, New session, then a column of the sessions' icons that scrolls while
-   the buttons stay. */
+/* The list collapsed to a strip (Sessions.tsx): Sessions read from the bottom up, New session,
+   then a column of the sessions' icons that scrolls while the buttons stay. */
 .sessions-strip {
   display: flex;
   flex-direction: column;
@@ -974,6 +1052,11 @@ h3 {
   color: var(--ink);
   font: 500 12px/1 var(--mono);
   text-decoration: none;
+}
+
+/* A badge with its mark, `154·2`, within the 32 px. */
+.strip-session.long {
+  font-size: 10px;
 }
 
 .strip-session:hover {
@@ -1229,10 +1312,11 @@ h3 {
   border: 1.5px solid var(--muted);
 }
 
+/* On the corner, clear of a badge's digits. */
 .strip-session .dot {
   position: absolute;
-  top: 3px;
-  right: 3px;
+  top: -3px;
+  right: -3px;
 }
 
 @keyframes activity-pulse {
@@ -1263,7 +1347,7 @@ h3 {
 }
 
 /* One line that never wraps: what lacks room is cut by flex-shrink, the title down to 8ch,
-   then the project, then the run time, then the words; the actions and the link never. Shrinking
+   then the project, then the run time, then the team's box, then the words; the actions and the link never. Shrinking
    is shared in proportion, and a share of a pixel already shows the "…": the weights stand a
    million apart, so each item's share is nothing until the one before it is at its least.
    The box-sizing keeps the bar's border inside --head-h. */
@@ -1861,7 +1945,7 @@ h3 {
 
 /* A window too narrow for the link's word: its dot, the word in its tooltip (LiveButton). */
 @media (max-width: 1100px) {
-  .topbar:has(.session-head) .link-word {
+  .topbar:has(.session-head) .system-button .link-word {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -1869,8 +1953,11 @@ h3 {
     clip-path: inset(50%);
   }
 
-  /* Only the dot (and the update mark) is left of `live`. */
+  /* Only the dot (and the update mark) is left of `live`, in a target of its own. */
   .topbar:has(.session-head) .system-button {
+    justify-content: center;
+    min-width: 24px;
+    min-height: 28px;
     padding-inline: 4px;
   }
 
@@ -1957,11 +2044,61 @@ h3 {
 }
 
 /* The session's tabs: the band runs from edge to edge of the session's column; an open
-   search (.tab-find.open) lies over it. */
+   search (.tab-find.open) lies over it. The tabs scroll inside it, the search stays at its
+   end. Short of room they give way by `data-fit` (Sessions.tsx): no icons, no counts, the tool's
+   short form, then a fade with a button at each end that has more. */
 .session-tabs {
   position: relative;
   margin: 0 calc(-1 * var(--main-pad)) 12px;
-  padding-inline: calc(var(--main-pad) - 4px);
+  padding-inline: calc(var(--main-pad) - 4px) min(12px, calc(var(--main-pad) - 4px));
+  overflow: hidden;
+}
+
+.session-tabs-box {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.session-tabs-scroll {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.session-tabs:not([data-fit="0"]) .tab-item > svg,
+.session-tabs:is([data-fit="2"], [data-fit="3"], [data-fit="4"]) .tab-count {
+  display: none;
+}
+
+.session-tabs-more {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  width: 56px;
+  pointer-events: none;
+}
+
+.session-tabs-more.end {
+  right: 0;
+  justify-content: flex-end;
+  background: linear-gradient(90deg, transparent, var(--raised) 55%);
+}
+
+.session-tabs-more.start {
+  left: 0;
+  background: linear-gradient(270deg, transparent, var(--raised) 55%);
+}
+
+.session-tabs-more .icon-button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  pointer-events: auto;
 }
 
 .status::before {
@@ -2717,6 +2854,13 @@ h3 {
   padding: 0 var(--main-pad) 16px;
 }
 
+/* The columns beside it fold to leave it this (columns.ts). */
+@media (min-width: 901px) {
+  .session-main {
+    min-width: var(--chat-min);
+  }
+}
+
 /* The alert of a terminal not in the session (Terminals.tsx), as the start notice: 12 px
    under the top bar, 10 px above the tabs. */
 .session-main > .problem {
@@ -2747,11 +2891,71 @@ h3 {
 }
 
 .terminals.collapsed {
-  width: 36px;
+  width: var(--strip-w);
   align-items: center;
 }
 
-/* The vertical button that opens a column collapsed to a strip: Terminals, Sessions. */
+/* The terminals' strip: the button that opens the panel, a button per agent, which scroll, and
+   the caption under them. */
+.strip-show {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: 6px 0 4px;
+  padding: 0;
+}
+
+.strip-agents {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 2px 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  list-style: none;
+}
+
+.strip-agent {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  color: var(--on-avatar);
+  font: 600 11px var(--sans);
+}
+
+.strip-agent .dot {
+  --dot: 8px;
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  box-sizing: border-box;
+  outline: 1.5px solid var(--panel); /* any status reads on any avatar's colour; the pulse has the box-shadow */
+}
+
+/* A ring on an avatar's colour needs its own ground. */
+.strip-agent :is(.dot-idle, .dot-starting) {
+  background: var(--panel);
+}
+
+.strip-caption {
+  flex: none;
+  padding: 10px 0;
+  color: var(--muted);
+  font-size: 13px;
+  writing-mode: vertical-rl;
+}
+
+/* The vertical button that opens the list collapsed to a strip. */
 .strip-open {
   flex: none;
   width: 100%;
@@ -2766,24 +2970,6 @@ h3 {
 .strip-open:hover {
   background: var(--raised);
   color: var(--ink);
-}
-
-/* Under it, a small dot per open terminal. */
-.terminals-dots {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  margin: 4px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.terminals-dots li {
-  display: grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
 }
 
 /* Over text the human selected (SelectionBar.tsx): Copy and Quote in reply, or a note in
@@ -3229,9 +3415,9 @@ h3 {
   transform: rotate(45deg);
 }
 
-/* Activity: the team and the switch, then the feed, oldest first, which takes the rest of
-   the page's height and scrolls by itself, and the composer under it. Orange marks only
-   what waits for the human. */
+/* Activity: on a phone the team and the switch, then the feed, oldest first, which takes the
+   rest of the page's height and scrolls by itself, and the composer under it. Orange marks
+   only what waits for the human. */
 .activity {
   display: flex;
   flex: 1;
@@ -3275,6 +3461,74 @@ h3 {
 .between-toggle .icon {
   width: 18px;
   height: 18px;
+}
+
+/* Yours | All at the tab bar's right end, where a tab's tools stand (Find on Flows). Its word
+   goes first, before the tabs give up anything (data-short). */
+.between-wrap {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  align-self: center;
+  gap: 8px;
+  margin: -5px 0 0 12px;
+}
+
+.between-label {
+  color: var(--muted);
+  font: 12px var(--mono);
+}
+
+.session-tabs[data-short] .between-label {
+  display: none;
+}
+
+/* The icon for Yours | All, from the level of the tool's short form. */
+.session-tabs .between-toggle {
+  display: none;
+  align-self: center;
+  margin: -5px 0 0 12px;
+}
+
+.session-tabs:is([data-fit="3"], [data-fit="4"]) .between-toggle {
+  display: grid;
+}
+
+.session-tabs:is([data-fit="3"], [data-fit="4"]) .between-wrap {
+  display: none;
+}
+
+.between {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.between button {
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: 12px/1 var(--mono);
+}
+
+.between button:hover {
+  color: var(--ink);
+}
+
+.between button[aria-checked="true"] {
+  border-color: var(--action);
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--action);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* The feed starts at the band: on Activity, above a phone, no gap under the tabs. */
+:root:not([data-phone]) .session:has(> .activity) > .session-tabs {
+  margin-bottom: 0;
 }
 
 .team {
@@ -3378,6 +3632,251 @@ h3 {
 .team-run-link:hover,
 .team-run-link:focus-visible {
   background: color-mix(in srgb, currentColor 18%, transparent);
+}
+
+/* The team in the head: after the facts, at the right before Stop. It gives way after the
+   title, the project and the run time (their weights above), before the status words; its box
+   narrows and the trial (Team.tsx) chooses the level by it. */
+.topbar .team.head-team {
+  flex: 0 1000 auto;
+  flex-wrap: nowrap;
+  gap: 8px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.head-team + .session-head-actions {
+  margin-left: 6px; /* 16 px from the team to Stop, with the bar's 10 */
+}
+
+/* The agents' marks stand still in the head: it stays on every tab, and the session's dot
+   keeps the pulse. */
+.head-team .dot,
+.team-popover .dot {
+  animation: none;
+}
+
+.head-team .team-run {
+  flex: none;
+  flex-wrap: nowrap;
+}
+
+.head-team .team-chip {
+  flex: none;
+}
+
+/* Level 1 on: closer together, so names stay longer. */
+.head-team:not([data-fit="0"]) {
+  gap: 6px;
+}
+
+.head-team[data-fit="1"] .team-chip {
+  gap: 5px;
+  padding: 0 7px;
+}
+
+.head-team[data-fit="1"] .team-run {
+  gap: 4px;
+}
+
+.head-team:is([data-fit="2"], [data-fit="3"]) .team-run {
+  gap: 4px;
+  padding-right: 5px;
+}
+
+/* Level 1 on: the room of the branch and the run time goes to the names. A run time cut to a
+   digit says nothing, and Details has both. */
+.topbar:has(.head-team:not([data-fit="0"])) :is(.session-branch, .session-ran) {
+  display: none;
+}
+
+/* An avatar in the head: the strip's button; the terminal shown has the pressed chip's frame. */
+.head-team .strip-agent {
+  flex: none;
+  font-size: 10.5px;
+  letter-spacing: -0.02em;
+}
+
+.head-team .strip-agent[aria-pressed="true"] {
+  box-shadow:
+    0 0 0 1.5px var(--panel),
+    0 0 0 3px var(--action);
+}
+
+/* Focus stands clear of the pressed frame, with a gap of the ground between them; it may cross
+   a neighbour's edge, never its status. */
+.head-team .strip-agent:focus-visible {
+  z-index: 1;
+  outline-offset: 5px;
+}
+
+.head-team .strip-agent .dot {
+  z-index: 2;
+}
+
+/* The team's list: +N when agents do not fit, a chevron when all show. Its box holds the
+   button and the popover, which lies out of the row. */
+.team-list {
+  display: inline-flex;
+  flex: none;
+}
+
+.team-more {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--ink);
+  font: 600 12px var(--mono);
+}
+
+.team-more:hover,
+.team-more[aria-expanded="true"] {
+  background: var(--raised);
+}
+
+.team-more.chevron {
+  padding: 0;
+  color: var(--muted);
+}
+
+.team-more .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.team-more[data-shown] {
+  border-color: var(--action);
+  box-shadow: inset 0 0 0 1px var(--action);
+}
+
+/* The popover of the team: Details' frame, 320 px, every agent by its whole name. */
+.team-popover {
+  position: fixed;
+  z-index: 5;
+  box-sizing: border-box;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - var(--head-h) - 16px);
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px var(--shadow);
+  white-space: normal;
+}
+
+.team-popover h2 {
+  margin: 4px 6px 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.team-popover ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.team-popover-run {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 2px;
+  padding: 2px 6px;
+  border-top: 1.5px dashed var(--run, var(--line));
+  color: var(--run, var(--muted));
+  font: 12px var(--mono);
+}
+
+.team-popover-run[data-colour="1"] {
+  --run: var(--run-1);
+}
+
+.team-popover-run[data-colour="2"] {
+  --run: var(--run-2);
+}
+
+.team-popover-run[data-colour="3"] {
+  --run: var(--run-3);
+}
+
+.team-popover-run[data-colour="4"] {
+  --run: var(--run-4);
+}
+
+.team-popover-run .icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.team-popover-run a {
+  display: flex;
+  min-width: 0;
+  color: inherit;
+}
+
+.team-popover-run span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-popover-agent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink);
+  font-size: 13px;
+  text-align: left;
+}
+
+.team-popover-agent:hover,
+.team-popover-agent[aria-current="true"] {
+  background: var(--raised);
+}
+
+.team-popover-name {
+  overflow-wrap: anywhere;
+  font: 600 13px var(--mono);
+}
+
+.team-popover-about {
+  flex: none;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.team-popover-about.waits {
+  color: var(--human);
+}
+
+/* The agent's popup: the tooltip, its first line the whole name. */
+.tooltip .tip-agent {
+  color: var(--ink);
+  font: 600 12.5px var(--mono);
+}
+
+.tooltip .tip-status.waits {
+  color: var(--human);
 }
 
 /* An agent's status: colour and shape, so it reads without colour too. busy: a full green
@@ -4604,7 +5103,7 @@ button.rec-bar-line {
 
 /* The height the human gave it by its edge (--waiting-height, WaitingCard.tsx) goes to the
    top, less the tabs and the footer (--waiting-rest), so the footer never gives way to it.
-   Not on a narrow window, which scrolls and has no edge. */
+   Not on a narrow window, which has no edge. */
 @media (min-width: 901px) {
   .waiting-card.sized .waiting-top {
     height: max(0px, var(--waiting-height) - var(--waiting-rest, 0px));
@@ -4623,8 +5122,8 @@ button.rec-bar-line {
   background: var(--human-ground);
 }
 
-/* Title and context. Where the chat has no height of its own the limit is the window's;
-   on a phone the meta under the title is cut first, then the title. */
+/* Title and context. Until the chat is measured the limit is the window's; on a phone the
+   meta under the title is cut first, then the title. */
 .waiting-top {
   display: flex;
   flex: 0 10000 auto;
@@ -4992,38 +5491,32 @@ button.rec-bar-line {
   overflow: visible;
 }
 
-/* A narrow window scrolls, so the chat has no height of its own: the card sticks to the
-   window's lower edge, so its footer stays in sight wherever the page stands. It sticks no
-   higher than the chat's top, so it is at most the room from there down (--chat-top, Chat.tsx),
-   its parts giving way as in any low chat, but never less than a footer's least height nor
-   half the window, for a chat low on the page (the sessions' list open over it), which the
-   page's scroll then brings up. `.content` clips instead of hiding, which would make it the
-   box the card sticks in. Expanded it is the window's height under the top bar, expanding
-   scrolls it there, and the page stays there until it folds. */
+/* At 601 to 900 px expanded it is the window's height under the top bar: what stands above it
+   goes, as on a phone, the row of the session strip too; the terminals' strip stays beside it.
+   It has no edge there. */
 @media (max-width: 900px) {
-  .content:has(> .sessions .chat > .waiting-card) {
-    overflow: clip;
+  .sessions:has(.waiting-card.expanded) {
+    grid-template-rows: minmax(0, 1fr);
   }
 
-  html:has(.waiting-card.expanded) {
-    overflow: hidden;
+  .sessions:has(.waiting-card.expanded) > .sessions-strip,
+  .session:has(.waiting-card.expanded) .session-tabs {
+    display: none;
   }
 
-  .chat > .waiting-card {
-    position: sticky;
-    bottom: 0;
-    z-index: 2;
-    max-height: max(220px, 50vh, 100vh - var(--chat-top, var(--head-h)));
-    max-height: max(220px, 50dvh, 100dvh - var(--chat-top, var(--head-h)));
-    background: var(--ground);
+  .waiting-card > .splitter-top {
+    display: none;
+  }
+}
+
+/* A window too low for the card and the composer keeps the card's buttons. */
+@media (min-width: 601px) and (max-width: 900px) and (max-height: 460px) {
+  :root:not([data-phone]) .chat:has(> .waiting-card:not(.minimized)) > .chat-feed {
+    min-height: 0;
   }
 
-  .waiting-card.expanded {
-    min-height: calc(100vh - var(--head-h));
-    min-height: calc(100dvh - var(--head-h));
-    max-height: calc(100vh - var(--head-h));
-    max-height: calc(100dvh - var(--head-h));
-    scroll-margin-top: var(--head-h);
+  :root:not([data-phone]) .chat:has(> .waiting-card:not(.minimized)) > .composer {
+    display: none;
   }
 }
 
@@ -5728,10 +6221,120 @@ button.rec-bar-line {
   font-weight: 500;
 }
 
+/* The composer's line lies in the page's bottom padding, out of the flow, so nothing moves
+   when it comes or goes. On a phone it stays in the flow, and it has no keys there. */
+.composer-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+:root:not([data-phone]) .composer-meta {
+  position: absolute;
+  top: calc(100% + 1px);
+  right: 0;
+  left: 0;
+  flex-wrap: nowrap;
+  height: 14px;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+/* An agent's page scrolls, with no fixed padding to lie in: the line stays in the flow, and
+   the keys only turn visible, so nothing moves there either. */
+:root:not([data-phone]) .agent-composer .composer-meta {
+  position: static;
+  height: auto;
+  line-height: normal;
+}
+
+.composer-to {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:root:not([data-phone]) .chat > .composer > :is(.field-problem, .action-problem) {
+  margin-top: 10px; /* clear of the line under the frame */
+}
+
+.composer-meta:not(:has(.composer-to)) {
+  justify-content: flex-end;
+}
+
+.composer-keys {
+  visibility: hidden;
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.composer:has(textarea:focus:placeholder-shown) .composer-keys {
+  visibility: visible;
+}
+
 .primary:disabled,
 .quiet:disabled {
   cursor: default;
   opacity: 0.55;
+}
+
+/* What waits for the connection (docs/design/ui.md, A lost connection): `.lost-wait` is the
+   span with the button's tooltip, which takes the pointer, as a disabled button does not.
+   (`.waits` is another thing: what waits for the human.) */
+.lost-wait {
+  display: inline-flex;
+  cursor: not-allowed;
+}
+
+.lost-wait > button {
+  pointer-events: none;
+}
+
+.lost-note {
+  align-self: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.lost-wait button:disabled,
+button.locked:disabled,
+.action-problem button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* An action without an answer: under its buttons, Retry at the row's end or, with no room
+   left, under the words. */
+.action-problem {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--danger-ground);
+  color: var(--danger);
+}
+
+.action-problem .icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.action-problem b {
+  flex: 1;
+  min-width: 0;
+}
+
+.action-problem button {
+  flex: none;
 }
 
 .field-problem {
@@ -5758,22 +6361,30 @@ button.rec-bar-line {
   }
 }
 
-/* A narrow window: the list over the session, the terminals under it; the page scrolls. */
+/* 601 to 900 px, the page standing still (the frame's rules): the session strip is a row over
+   the session, the terminals' strip stays on the right, and what opens lies over the session,
+   which keeps its place: the list on the left under the row, the terminals on the right. */
 @media (max-width: 900px) {
   .sessions {
     grid-template-columns: minmax(0, 1fr);
-    height: auto;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
-  .session-list {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
+  .session-list.over {
+    position: absolute;
+    top: var(--row-h);
+    bottom: 0;
+    left: 0;
+    z-index: 4;
+    width: 300px;
+    box-shadow: 0 8px 28px var(--shadow);
   }
 
-  /* The collapsed list: a row over the session, as the terminals' strip under it; the icons
-     scroll sideways while Sessions and + stay. */
+  /* The icons scroll sideways while Sessions and + stay. */
   .sessions-strip {
     flex-direction: row;
+    box-sizing: border-box;
+    height: var(--row-h);
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
@@ -5814,55 +6425,19 @@ button.rec-bar-line {
     margin: 0 0 0 6px;
   }
 
-  .session-page {
-    flex-direction: column;
+  .terminals.over {
+    position: absolute;
+    top: var(--row-h);
+    right: 0;
+    bottom: 0;
+    z-index: 3;
+    width: min(560px, calc(100% - 48px));
+    box-shadow: 0 8px 28px var(--shadow);
   }
 
-  /* The window less the top bar. A phone's bar is not --head-h, so there this is a few
-     pixels off; accepted, as the window scrolls here anyway. */
-  .session-main {
-    min-width: 0 !important;
-    min-height: calc(100vh - var(--head-h));
-    overflow: visible;
-  }
-
-  .terminals {
-    width: 100% !important;
-    max-width: none;
-    height: 60vh;
-    border-left: 0;
-    border-top: 1px solid var(--line);
-  }
-
-  .terminals.collapsed {
-    flex-direction: row;
-    height: auto;
-  }
-
-  .terminals .strip-open {
-    flex: 1;
-    writing-mode: horizontal-tb;
-  }
-
-  .terminals-dots {
-    flex-direction: row;
-    margin: 0 12px;
-  }
-
-  /* Expanded over the whole window: the content is as tall as the page here, not the
-     window. */
-  .terminals.expanded {
-    position: fixed;
-    z-index: 20;
-    height: auto;
-  }
-
-  /* The page's columns stack: their edges go. The artifact panel, drawn inside the session
-     page, keeps its own. */
-  .terminals > .splitter,
-  .sessions > .splitter,
-  .waiting-card > .splitter-top {
-    display: none;
+  /* The strip's room stays under the open panel: the session does not move. */
+  .session-main:has(+ .terminals.over) {
+    margin-right: var(--strip-w);
   }
 }
 
@@ -6956,7 +7531,7 @@ button.rec-bar-line {
 .tab-find.open {
   position: absolute;
   top: 5px;
-  right: calc(var(--main-pad) - 4px);
+  right: min(12px, calc(var(--main-pad) - 4px));
   bottom: 1px;
   max-width: calc(100% - 2 * (var(--main-pad) - 4px));
   padding: 0 0 4px 6px;
@@ -7080,7 +7655,7 @@ button.rec-bar-line {
     margin-top: 8px;
   }
 
-  .agent-composer .composer-keys {
+  .composer-keys {
     display: none;
   }
 }
@@ -11132,12 +11707,12 @@ button.quiet.danger-text {
   font-size: 18px;
 }
 
-/* Phone layout (docs/design/ui.md, Phone layout; decided 2026-10-18, LAD-95): a touch
-   screen no wider than 600 px or no higher than 500 px. Every rule of the phone is here and
-   starts with :root[data-phone], which the Shell sets from phone.ts's one query: a computer,
-   with a mouse, never gets one. "short" is the phone held sideways. A phone matches the
-   narrow window's rules above too (max-width: 900px), which stack the page for a window
-   that scrolls; these put the app's window back and take what a phone has no room for. */
+/* Phone layout (docs/design/ui.md, Phone layout; decided 2026-10-18, LAD-95, LAD-193): a window
+   no wider than 600 px, with any pointer, or a touch screen no higher than 500 px. Every rule
+   of the phone is here and starts with :root[data-phone], which the Shell sets from phone.ts's
+   one query. "short" is the phone held sideways. A phone matches the narrow window's rules
+   above too (max-width: 900px); these put the app's window back and take what a phone has no
+   room for. */
 
 /* The app's window, as a wide one's: the window never scrolls, the content does; the rail
    is the menu (Shell.tsx), out of the grid. The app is as high as the part of the window
@@ -11246,7 +11821,7 @@ button.quiet.danger-text {
   height: 44px;
 }
 
-/* The change feed's mark: a dot while live; "reconnecting…" keeps its word. */
+/* The change feed's mark: a dot while live, the icon while lost, the word for the ear. */
 :root[data-phone] .topbar .link-word {
   position: absolute;
   width: 1px;
@@ -11255,16 +11830,28 @@ button.quiet.danger-text {
   clip-path: inset(50%);
 }
 
-:root[data-phone] .topbar .system-button {
-  padding-inline: 4px;
-}
-
 :root[data-phone] .topbar .system-button::before {
   margin-right: 0;
 }
 
-:root[data-phone] .topbar .reconnecting-why {
-  display: none;
+/* Its target, 44×33: the gaps at its sides and the bar above and under it, taken back by the
+   margins, so that the title loses nothing. */
+:root[data-phone] .topbar .system-button {
+  min-height: 44px;
+  margin: -10px -8px;
+  padding-inline: 12px;
+}
+
+:root[data-phone] .topbar .system-button:hover {
+  background: none;
+}
+
+/* The lost mark: the same room as the dot's, icon alone. */
+:root[data-phone] .topbar .link.reconnecting {
+  justify-content: center;
+  min-width: 33px;
+  min-height: 33px;
+  padding: 0;
 }
 
 /* A session's head (Sessions.tsx, PhoneHead): Menu, the status dot, the title as a button
@@ -11274,6 +11861,13 @@ button.quiet.danger-text {
   align-items: center;
   gap: 8px;
   padding-block: 0;
+}
+
+/* The toggle of the Team row: spec §9's size, second to the card's 44 px. */
+:root[data-phone] .icon-button.between-toggle {
+  width: 36px;
+  height: 36px;
+  margin-top: 0;
 }
 
 :root[data-phone] .session-head .session-title {
@@ -11289,7 +11883,8 @@ button.quiet.danger-text {
   align-items: center;
   gap: 4px;
   max-width: 100%;
-  padding: 6px 0;
+  min-height: 44px;
+  padding: 0;
   border: 0;
   background: none;
   color: inherit;
@@ -11392,7 +11987,7 @@ button.quiet.danger-text {
 }
 
 :root[data-phone] .session-list {
-  border-bottom: 0;
+  border-right: 0;
 }
 
 :root[data-phone] .session-main {
@@ -11403,7 +11998,7 @@ button.quiet.danger-text {
 }
 
 /* The terminals (Terminals.tsx): none until one is opened, then over the whole screen, the
-   top bar too, as the narrow window's expanded panel. */
+   top bar too. */
 :root[data-phone] .terminals[hidden] {
   display: none;
 }
@@ -11546,6 +12141,16 @@ button.quiet.danger-text {
 
 :root[data-phone] .composer-keys {
   display: none;
+}
+
+/* With nothing to say the line takes no height. */
+:root[data-phone] .composer-meta:not(:has(.composer-to)) {
+  display: none;
+}
+
+/* Spec §9's target. */
+:root[data-phone] .composer .send {
+  min-height: 44px;
 }
 
 /* Sideways: the chat's room is for the feed; the card is minimized (WaitingCard.tsx). */

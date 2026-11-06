@@ -2,8 +2,8 @@
 
 ## Purpose
 How a session's head reads on a computer: one line of the top bar that never wraps, with the
-project, the title, the run time, Stop and the link, and the session's facts in a popover
-Details opened from the title, with the same content as the phone's sheet.
+project, the title, the run time, the team in its levels, Stop and the link, and the session's
+facts in a popover Details opened from the title, with the same content as the phone's sheet.
 
 ## Requirements
 
@@ -12,8 +12,8 @@ Details opened from the title, with the same content as the phone's sheet.
 Outside the phone layout, on a window wider than 600 px, the session's head SHALL be one
 line `--head-h` (48 px) high that SHALL not wrap, while the title is edited too. It SHALL
 hold, left to right: the status dot, the project and a `/`, the title with a chevron, a
-broken session's status in words, the run time, the branch, then at the right end the
-session's actions, a vertical line and the link, and no other fact or Copy button.
+broken session's status in words, the run time, the branch, then at the right end the team,
+the session's actions, a vertical line and the link, and no other fact or Copy button.
 
 #### Scenario: Only the line's items
 - **WHEN** a session of 4 kits in a git repository is open in a window 1440 px wide
@@ -23,11 +23,15 @@ session's actions, a vertical line and the link, and no other fact or Copy butto
 - **WHEN** the session's tmux session is gone
 - **THEN** `tmux session is gone` shows after the title, before the run time
 
+#### Scenario: Editing the title beside the team
+- **WHEN** the human renames a session of 12 agents in a window 1024 px wide
+- **THEN** the field stands in the title's place and the line stays one line 48 px high
+
 ### Requirement: What lacks room in the head's line is cut, never wrapped
 
 What lacks room in the line SHALL be cut with "…": first the title down to 8ch of its text,
-then the project, then the run time, then the status words. The actions and the link SHALL
-never be cut.
+then the project, then the run time, then the team's box, by its levels, then the status words.
+The actions and the link SHALL never be cut.
 
 #### Scenario: A broken session on the narrowest line
 - **WHEN** a session in `session loop not running` with a long title in a project with a long
@@ -43,11 +47,16 @@ never be cut.
 ### Requirement: The branch shows in the head on a wide window only
 
 On a window of 1600 px or more the head SHALL show the repository's branch after the run
-time, with the remote and the path in its tooltip; on a narrower one it SHALL not.
+time, with the remote and the path in its tooltip, unless the team is past level 0; on a
+narrower one it SHALL not.
 
 #### Scenario: A wide window
 - **WHEN** the window is 1600 px wide and the session's repository is on `main`
 - **THEN** the head shows `main`; at 1599 px it does not
+
+#### Scenario: A large team
+- **WHEN** the window is 1920 px wide and the team is at level 1
+- **THEN** the head shows neither the branch nor the run time
 
 ### Requirement: The head shows a session's project as a breadcrumb
 
@@ -92,8 +101,8 @@ scrolling inside beyond that, with no focus trap. Opening it SHALL put the focus
 sheet. Until the about comes, or when it fails, it SHALL show the session's settings alone.
 
 #### Scenario: A narrow window
-- **WHEN** the window is 480 px wide and the human opens Details
-- **THEN** it is 448 px wide and lies inside the window
+- **WHEN** the window is 601 px wide and the human opens Details
+- **THEN** it is 470 px wide and lies inside the window
 
 ### Requirement: Details names every fact of the session
 
@@ -176,8 +185,8 @@ focus SHALL be on the title.
 A session's page SHALL start with a link `Skip to chat`, hidden until it has the focus, that
 SHALL put the focus on the Activity tab's feed, opening that tab when another is open, or on
 the selected tab of the waiting card when the card is expanded and hides the feed; expanded
-terminals, which lie over the chat, SHALL be put back. On a computer the head of a running session SHALL have four Tab stops, in order: the project, the
-title, Stop, the link; the status dot SHALL be no stop.
+terminals, which lie over the chat, SHALL be put back. On a computer the head of a running session SHALL have five Tab stops, in order: the project, the
+title, the team, Stop, the link; the status dot SHALL be no stop.
 
 #### Scenario: From another tab
 - **WHEN** the Flows tab is open and the human presses Tab once and then Enter
@@ -193,4 +202,215 @@ title, Stop, the link; the status dot SHALL be no stop.
 
 #### Scenario: Through the head
 - **WHEN** the focus is before the head of a running session in a project
-- **THEN** Tab goes to the project, the title, Stop and the link, in this order
+- **THEN** Tab goes to the project, the title, the team, Stop and the link, in this order
+
+### Requirement: Above a phone the team stands in the head
+
+Outside the phone layout the head SHALL show the session's team on every tab, after the facts
+and 16 px before the actions, and the Activity tab SHALL have no team row. Agents SHALL keep
+`teamGroups`' order, each run in its frame; a frame with no visible agent SHALL not show. With
+no agents, or before they load, the head SHALL be as without a team and hold no room for it.
+When the agents fail to load it SHALL show `team not loaded` in `--danger`, the cause in a
+tooltip.
+
+#### Scenario: On another tab
+- **WHEN** a session of 4 agents is open on Artifacts in a window 1440 px wide and an agent
+  starts to wait for the human
+- **THEN** the head shows the four agents and the agent's waiting diamond
+
+#### Scenario: The team fails to load
+- **WHEN** the session's agents cannot be read
+- **THEN** the head shows `team not loaded` with `role="alert"`, and its tooltip says why
+
+#### Scenario: Clicking an agent
+- **WHEN** the human clicks an agent in the head
+- **THEN** that agent's terminal opens in the panel and its chip or avatar shows as pressed
+
+### Requirement: The team gives way in four levels, one for all its agents
+
+The team SHALL show the first level that fits: 0 the word `Team` and whole names; 1 shortened
+names, every agent to one length from the longest down to 4, with no word, run time or branch,
+and a list button `All N agents`; 2 avatars and that button; 3 the first avatars that fit and a
+button with the rest. No level SHALL mix names and avatars. A status change SHALL not change the level.
+
+#### Scenario: Four agents
+- **WHEN** a session of 4 agents and a run, titled with 20 characters, is open in a window 1920, 1440
+  or 1280 px wide
+- **THEN** the team is at level 0
+
+#### Scenario: Twelve agents
+- **WHEN** a session of 12 agents and 3 runs, titled with 47 characters, is open in a window 1440,
+  1280 or 1024 px wide
+- **THEN** the team shows 12 avatars and `All 12 agents`; at 768 px it shows 8 avatars and `+4`,
+  at 601 px 4 avatars and `+8`
+
+#### Scenario: A status changes
+- **WHEN** the team is at level 3 and a hidden agent starts to wait for the human
+- **THEN** the button gets the diamond and the number of avatars stays
+
+#### Scenario: Nothing left to show
+- **WHEN** no avatar fits at level 3
+- **THEN** the button shows the Agents icon and the number of agents, with no plus
+
+#### Scenario: The level follows
+- **WHEN** the window's width, the agents, the title or the fonts change
+- **THEN** the level is chosen again before the paint
+
+### Requirement: A team with names leaves the title its first 24 characters
+
+Levels 0 and 1 SHALL fit only while the title shows its first 24 characters, or the whole title
+when it is shorter; otherwise the next one SHALL be tried. Levels 2 and 3 SHALL have no such
+limit, and the title SHALL give way there down to 8ch as elsewhere. While the title's field is
+open the limit SHALL not count.
+
+#### Scenario: Many agents on a wide window
+- **WHEN** a session of 12 agents and 3 runs, titled with 47 characters, is open in a window 1920 px
+  wide
+- **THEN** the team is at level 1 with names of 4 letters (`deve…-2`) and the title shows at
+  least its first 24 characters
+
+#### Scenario: The title before the names
+- **WHEN** a session of 4 agents and a run, titled with 20 characters, is open in a window 1024 px
+  wide
+- **THEN** the team is at level 1 with whole names and the title is whole; at 768 px it is at
+  level 2 and the title is whole
+
+#### Scenario: A short title
+- **WHEN** a session of 12 agents and 3 runs, titled `lad-197 fix`, is open in a window 1920 px wide
+- **THEN** the title is whole and the team is at level 1
+
+#### Scenario: Avatars take no more room from the agents
+- **WHEN** a session of 12 agents and 3 runs, titled with 47 characters, is open in a window 1024 px
+  wide
+- **THEN** all 12 avatars show, though the title shows fewer than 24 characters
+
+### Requirement: A shortened name keeps what tells agents apart
+
+At level 1 a name SHALL be its stem cut to the length, `…` and its tail, the tail being
+`[-_.]<digits>` at its end; a stem within the length SHALL leave the name whole. Shortened names
+alike SHALL take the last word after `-`, `_` or `.` as the tail; those still alike SHALL take
+`·2`, `·3` after the later one. The accessible name and the tooltip SHALL have the whole name.
+
+#### Scenario: A number
+- **WHEN** `developer-2` is cut to 4
+- **THEN** it shows `deve…-2`
+
+#### Scenario: A clash
+- **WHEN** `frontend-lead` and `frontend-dev` are cut to 4
+- **THEN** they show `fron…-lead` and `fron…-dev`
+
+### Requirement: An agent's mark is told from the whole team
+
+An agent's mark SHALL be its first letter in capitals, then the number of its tail when that has
+fewer than 3 digits; otherwise the number's last 3 digits. Marks alike SHALL take the first
+letter at which the group's stems part, `-`, `_` and `.` left out, before the number. Those still
+alike SHALL take a digit after the later one. Colour SHALL carry no difference.
+
+#### Scenario: Numbers
+- **WHEN** the team has `supervisor`, `developer-2` and `worker-1042`
+- **THEN** their marks are `S`, `D2` and `042`
+
+#### Scenario: One letter
+- **WHEN** the team has `frontend-lead`, `frontend-dev`, `designer` and `developer`
+- **THEN** their marks are `FL`, `FD`, `DS` and `DV`
+
+### Requirement: An avatar's status reads on its own ground
+
+An avatar in the head SHALL be 24×24 px, with its mark at 10.5 px, its avatar colour and the
+status mark in its corner on a 1.5 px ring in `--panel`. The terminal shown SHALL have a ring of
+3 px in `--action` with a gap in `--panel`, and the focus ring SHALL stand clear of it. Agents'
+marks in the head and the team's list SHALL not pulse on any tab; the session's dot SHALL.
+
+#### Scenario: The terminal shown has the focus
+- **WHEN** the keyboard's focus is on the avatar of the terminal shown
+- **THEN** the pressed ring and the focus ring both show, a band of the ground between them
+
+#### Scenario: A busy agent
+- **WHEN** an agent works and the session's dot pulses
+- **THEN** the agent's mark in the head stands still
+
+### Requirement: The team's list shows every agent by its whole name
+
+From level 1 the team's button SHALL open a non-modal `role="dialog"` named `Team`, 320 px wide
+and at most the window less 32 px, under the button at its right edge, scrolling inside, headed
+`Team · N agents`. It SHALL list every agent in the team's order with its status mark, whole name
+and status in words, each run under a dashed line in its colour with a link to its page.
+
+#### Scenario: Opening a terminal from the list
+- **WHEN** the human presses `+4` and then a hidden agent's row
+- **THEN** the agent's terminal opens and the list closes; opened again, that row is marked
+  `aria-current`
+
+#### Scenario: Closing the list
+- **WHEN** the list is open and the human presses Esc or the button again
+- **THEN** the list closes and the focus is on the button
+
+#### Scenario: Going away
+- **WHEN** the list is open and the human clicks elsewhere or the focus leaves it
+- **THEN** the list closes and the focus stays where it went
+
+#### Scenario: What the button says
+- **WHEN** a hidden agent waits for the human, or the terminal shown is among the hidden
+- **THEN** the button shows the diamond, or the pressed frame, and is named `4 more agents, 1
+  waits for you`
+
+### Requirement: An agent's popup says who it is and what it does
+
+An agent's tooltip, in the head and on the terminal strip, SHALL read: the whole name; the status
+in words (`working`, `in the background`, `idle`, `waits for you`, `starting`, `stopped`) and how
+long, in `--human` when it waits; `<role> · <provider>`, the role left out when it is the name;
+`flow <run>` when it has one; `Click to open the terminal`.
+
+#### Scenario: A waiting reviewer
+- **WHEN** the human holds the pointer over `reviewer`, which works for run `task/x` and waits
+- **THEN** the tooltip reads `reviewer`, `waits for you` with the time, the provider, `flow
+  task/x` and `Click to open the terminal`
+
+### Requirement: The team is one stop of the keyboard
+
+Outside the phone layout the team SHALL be a `role="toolbar"` named `Team`, one Tab stop, in which
+the arrows, Home and End move among its agents, run links and list button. An agent SHALL be named
+`<name>, <role>, <status>`, the role left out when it is the name, by the popup's words. The
+button SHALL be named `All N agents`, `<M> more agents` or, with no avatar, `<M> agents`, with `,
+<K> waits for you` when one hidden agent waits and `, <K> wait for you` when more do.
+
+#### Scenario: Arrows
+- **WHEN** the focus is on the team's first agent and the human presses the right arrow, then End
+- **THEN** the focus moves to the next item, then to the team's last item, and one Tab leaves the
+  team for Stop
+
+#### Scenario: A name
+- **WHEN** a screen reader reads `reviewer`, with role `reviewer`, while it waits
+- **THEN** it says `reviewer, waits for you`
+
+### Requirement: The team's list button says its name in a tooltip
+
+The team's list button SHALL show its accessible name as the UI's tooltip, on hover and on the
+keyboard's focus, but not while the list is open.
+
+#### Scenario: The button's tooltip
+- **WHEN** the human holds the pointer over the chevron of a team of 12, or over `+8` with two of
+  the hidden agents waiting
+- **THEN** a tooltip reads `All 12 agents`, or `8 more agents, 2 wait for you`
+
+#### Scenario: With the list open
+- **WHEN** the human opens the list and the pointer stays on the button
+- **THEN** no tooltip shows
+
+### Requirement: An agent's status reads the same wherever the UI names it
+
+The UI SHALL name an agent's status by the popup's words (`working`, `in the background`, `idle`,
+`waits for you`, `starting`, `stopped`) in the Agents tab's rows and on an agent's page, in the
+update's list of what to restart, and in an accessible name of a terminal's tab or a phone's chip.
+
+#### Scenario: A row of the Agents tab
+- **WHEN** an agent has waited for 6 minutes
+- **THEN** its row reads `waits for you · 6 min`
+
+#### Scenario: An agent's page
+- **WHEN** the human opens the page of an agent that has waited for 6 minutes
+- **THEN** its line reads `waits for you · 6 min · spawned` with the time
+
+#### Scenario: What to restart
+- **WHEN** an update lists a session whose supervisor is busy
+- **THEN** the list reads `supervisor working`

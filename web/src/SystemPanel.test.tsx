@@ -280,6 +280,16 @@ test("on a Mac the panel says where the server and LADO's tmux server run", asyn
   expect(none.nextElementSibling!.textContent).toBe("process no-gui · no tmux server");
 });
 
+test("the update's plan shows a status it has no words for as it is", async () => {
+  update = info({ latest: "99.0.0", available: "99.0.0" });
+  plan = { ...PLAN, sessions: [{ ...PLAN.sessions[0]!, agents: [{ name: "supervisor", status: "resting" }] }] };
+  serve();
+  open();
+  fireEvent.click(within(await panel()).getByRole("button", { name: "Update…" }));
+  const dialog = await screen.findByRole("dialog", { name: `Update LADO ${BUNDLE_VERSION} → 99.0.0?` });
+  expect(await within(dialog).findByText(/supervisor resting/)).toBeTruthy();
+});
+
 test("the update's plan shows the core's line on where the agents resume", async () => {
   update = info({ latest: "99.0.0", available: "99.0.0" });
   plan = { ...PLAN, agents_note: "tmux server will be started in the graphical session (launchd)" };
@@ -453,7 +463,7 @@ test("Update… shows the plan, starts the update and waits for a restarted serv
   fireEvent.click(within(await panel()).getByRole("button", { name: "Update…" }));
   const dialog = await screen.findByRole("dialog", { name: `Update LADO ${BUNDLE_VERSION} → 99.0.0?` });
   expect(await within(dialog).findByText(/session/)).toBeTruthy();
-  expect(dialog.textContent).toContain("session lado: supervisor busy, developer idle · 1 open run");
+  expect(dialog.textContent).toContain("session lado: supervisor working, developer idle · 1 open run");
   expect(dialog.textContent).toContain("this UI server");
   expect(dialog.textContent).toContain("Busy agents lose their current turn.");
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"], now: Date.now() });

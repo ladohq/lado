@@ -1,10 +1,10 @@
-// The phone layout's one query (docs/design/ui.md, Phone layout): a touch screen no wider
-// than 600 px or no higher than 500 px; never a mouse.
+// The phone layout's one query (docs/design/ui.md, Phone layout): a window no wider than 600 px,
+// or a touch screen no higher than 500 px.
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { FakeScreen } from "./fakes";
-import { type Phone, usePhone, usePhoneViewport } from "./phone";
+import { PHONE_QUERY, type Phone, usePhone, usePhoneViewport } from "./phone";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -15,10 +15,20 @@ test("a touch screen upright is a tall phone, sideways a short one", () => {
   expect(renderHook(usePhone).result.current).toBe("short");
 });
 
-test("a mouse is never a phone, whatever its window", () => {
+test("a window of 600 px or less is a phone with a mouse too; a wider one, however low, is not", () => {
+  expect(PHONE_QUERY).toBe("(max-width: 600px), (pointer: coarse) and (max-height: 500px)");
   new FakeScreen("fine", 390, 844);
+  expect(renderHook(usePhone).result.current).toBe("tall");
+  new FakeScreen("fine", 601, 844);
   expect(renderHook(usePhone).result.current).toBeNull();
   new FakeScreen("fine", 844, 390);
+  expect(renderHook(usePhone).result.current).toBeNull();
+  new FakeScreen("fine", 1280, 400);
+  expect(renderHook(usePhone).result.current).toBeNull();
+});
+
+test("a touch laptop is no phone", () => {
+  new FakeScreen("coarse", 1440, 900);
   expect(renderHook(usePhone).result.current).toBeNull();
 });
 
@@ -37,7 +47,7 @@ test("the layout follows the phone as it turns, without a reload", () => {
   expect(result.current).toBe("short");
   screen.set({ width: 390, height: 844 });
   expect(result.current).toBe("tall");
-  screen.set({ pointer: "fine" }); // a mouse plugged in
+  screen.set({ pointer: "fine", width: 700 }); // a computer's window, widened
   expect(result.current).toBeNull();
 });
 
@@ -92,6 +102,27 @@ test("leaving the phone layout takes the variables away", () => {
   expect(variable("--phone-height")).toBe("");
   expect(variable("--phone-top")).toBe("");
   fake.move({ height: 300 }, "resize");
+  expect(variable("--phone-height")).toBe("");
+});
+
+test("a tablet's page follows the visible part of the window too; a computer of its width does not", () => {
+  viewport();
+  for (const [width, height] of [
+    [768, 1024],
+    [1180, 734],
+    [1032, 1366],
+  ]) {
+    new FakeScreen("coarse", width, height);
+    const { unmount } = renderHook(() => usePhoneViewport(null));
+    expect(variable("--phone-height")).toBe("544px");
+    unmount();
+  }
+  new FakeScreen("fine", 1180, 734);
+  const { unmount } = renderHook(() => usePhoneViewport(null));
+  expect(variable("--phone-height")).toBe("");
+  unmount();
+  new FakeScreen("fine", 768, 1024);
+  renderHook(() => usePhoneViewport(null));
   expect(variable("--phone-height")).toBe("");
 });
 

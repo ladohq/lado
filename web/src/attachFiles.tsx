@@ -7,7 +7,7 @@
 // URLs: `release` revokes them when the files go.
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type RefObject } from "react";
 
-import { ApiError, getLimits, uploadFile, type Limits } from "./api";
+import { ApiError, getLimits, Unreached, uploadFile, type Limits } from "./api";
 import { kindOf, size } from "./artifacts";
 import { KindIcon } from "./ArtifactView";
 import { CARD_LINES, MOST_LINES, useGrow } from "./fieldHeight";
@@ -146,7 +146,7 @@ export async function uploadFiles(
     } catch (error) {
       const reason = error instanceof ApiError ? error.message : String(error);
       change(one.key, { state: "failed", reason });
-      failed.push(`${one.name} was not uploaded: ${reason}.`);
+      failed.push(`${one.name} was not uploaded: ${error instanceof Unreached ? reason.toLowerCase() : reason}.`);
     }
   }
   if (failed.length === 0) return { names };

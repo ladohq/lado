@@ -2084,11 +2084,11 @@ below it.
 ### Requirement: A narrow desktop window stacks the Projects section
 
 In a window of at most 900 px that is not a phone, the Projects section SHALL show the
-project list over the project, as Sessions does, and SHALL show no `Select a project` pane
-beside the list.
+project list over the project, as it did before a session's page stood still, and SHALL show no
+`Select a project` pane beside the list.
 
 #### Scenario: A narrow window
-- **WHEN** the human opens `/projects` in a desktop window 390 px wide
+- **WHEN** the human opens `/projects` in a desktop window 700 px wide
 - **THEN** the list fills the width and no `Select a project` pane shows
 
 ### Requirement: The unpushed check does not count a project's repositories as its folder's changes

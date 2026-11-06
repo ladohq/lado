@@ -25,6 +25,7 @@ import { useSearchParams } from "react-router";
 
 import { answerQuestions, ApiError, type GateInfo, type Limits, type MessageInfo, type Reply, type RunInfo } from "./api";
 import { AnswerBox, release, uploadFiles, useLimits, type Attached, type SetFiles } from "./attachFiles";
+import { closedBy, looks, questionsAttempt } from "./attempts";
 import { Attachments } from "./Attachments";
 import { Body } from "./ChatText";
 import { avatar } from "./FeedRow";
@@ -32,6 +33,7 @@ import { GatePanel } from "./GateCard";
 import { escapeIsTaken } from "./Menu";
 import { RecommendationBar } from "./Recommendation";
 import { ExpandIcon, FlowsIcon, MinimizeIcon, RestoreIcon } from "./icons";
+import { useLive, useLiveStore, useLocked } from "./live";
 import { VIEW_PARAM } from "./paths";
 import { storedMinimized, storedWaitingHeight, storeMinimized, storeWaitingHeight, WAITING_MIN } from "./prefs";
 import { quoteArea } from "./quote";
@@ -40,7 +42,7 @@ import { usePhone } from "./phone";
 import { fitWidth, Splitter, useHeight } from "./Splitter";
 import { runColours } from "./Team";
 import { Tooltip } from "./Tooltip";
-import { CardFoot, cardLines, CardTop, STOPPED_NOTE, useMore, type CardShape } from "./waitingParts";
+import { ActionProblem, CardFoot, cardLines, CardTop, STOPPED_NOTE, useMore, Waits, type CardShape } from "./waitingParts";
 
 type AgentTab = { key: string; agent: string; questions: MessageInfo[]; since: string };
 export type WaitingTab = AgentTab | { key: string; gate: GateInfo; since: string };
@@ -93,7 +95,6 @@ function pickOf(picks: Picks, question: MessageInfo): Pick | undefined {
 const MARKED_FOR = 1500; // ms an item asked for stays marked
 const FEED_MIN = 160; // the chat feed's least height (styles.css, .chat-feed)
 const FIELD = "textarea.waiting-field"; // an answer field (attachFiles.AnswerBox)
-export const NARROW = "(max-width: 900px)"; // the window that scrolls (styles.css)
 const TOP_SHARE = 0.4; // of the chat's height: the most its title and context take
 const PANEL_EDGES = 2; // the panel's borders, in pixels
 
@@ -173,6 +174,7 @@ export function WaitingCard({
   const limits = useLimits(); // with the card, before any field shows
   const [sending, setSending] = useState(false);
   const [problem, setProblem] = useState<{ key: string; text: string } | null>(null);
+  const live = useLiveStore();
   const [expanded, setExpanded] = useState(false);
   const [typing, setTyping] = useState(false); // a phone: a field of the chat's card has the focus
   // On a phone (phone.ts) the card has no edge; held sideways, the chat's card is minimized
@@ -308,16 +310,7 @@ export function WaitingCard({
   useEffect(() => {
     if (!expanded) return;
     card.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
-    // A narrow window scrolls (styles.css): the card goes under the top bar. A wide one
-    // scrolls nothing, nor a frame that hides its overflow, nor a phone's window.
-    const underTheBar = () => {
-      if (window.matchMedia?.(NARROW).matches && !phone) card.current?.scrollIntoView?.({ block: "start" });
-    };
-    underTheBar();
-    // The page stays while it is expanded: narrowed or turned, only this brings it back.
-    window.addEventListener("resize", underTheBar);
-    return () => window.removeEventListener("resize", underTheBar);
-  }, [expanded, phone]);
+  }, [expanded]);
   useEffect(() => {
     if (!expanded || viewing) return;
     const escape = (event: KeyboardEvent) => {
@@ -420,6 +413,8 @@ export function WaitingCard({
   async function send(tab: AgentTab) {
     setSending(true);
     setProblem(null);
+    const attempt = questionsAttempt(session, tab.agent);
+    live.attempts.clear(attempt);
     try {
       const keys = tab.questions.filter((one) => fieldOf(pickOf(picks, one))).map((one) => questionFiles(one.id));
       const all = keys.flatMap(filesOf);
@@ -432,14 +427,18 @@ export function WaitingCard({
         return;
       }
       const names = new Map(all.map((one, n) => [one.key, uploaded.names[n]]));
-      await answerQuestions(
-        session,
-        tab.questions.map((one) => {
-          const pick = pickOf(picks, one)!;
-          const given = fieldOf(pick) ? filesOf(questionFiles(one.id)).map((f) => names.get(f.key)!) : [];
-          return toReply(one.id, pick, given);
-        }),
-      );
+      const replies = tab.questions.map((one) => {
+        const pick = pickOf(picks, one)!;
+        const given = fieldOf(pick) ? filesOf(questionFiles(one.id)).map((f) => names.get(f.key)!) : [];
+        return toReply(one.id, pick, given);
+      });
+      await live.attempts.send(attempt, {
+        what: "Answer",
+        repeat: () => answerQuestions(session, replies),
+        look: looks.questions(session, tab.questions.map((one) => one.id)),
+        closed: closedBy.questions,
+        reached: () => {}, // the tab goes by the live lists
+      });
     } catch (error) {
       setProblem({ key: tab.key, text: error instanceof ApiError ? error.message : String(error) });
     } finally {
@@ -776,6 +775,9 @@ function AgentPanel({
   const many = tab.questions.length > 1;
   const done = tab.questions.filter((one) => answered(pickOf(picks, one), filesOf(one.id))).length;
   const all = done === tab.questions.length;
+  const { lost } = useLive();
+  const attempt = questionsAttempt(session, tab.agent);
+  const locked = useLocked(attempt);
   const propsOf = (question: MessageInfo): QuestionProps => ({
     card,
     question,
@@ -794,13 +796,15 @@ function AgentPanel({
     </>
   );
   const sendButton = (
-    <button type="button" className="primary" disabled={!all || off} onClick={send}>
+    <button type="button" className="primary" disabled={!all || off || locked} onClick={send}>
       {many ? `Send ${tab.questions.length} answers to ${tab.agent}` : `Send answer to ${tab.agent}`}
     </button>
   );
   const row = (skip?: MessageInfo) => (
     <div className="waiting-send">
-      {!all && !off ? (
+      {lost ? (
+        <Waits>{sendButton}</Waits>
+      ) : !all && !off ? (
         // A button that is off takes no pointer or focus: the hint is around it.
         <Tooltip tip="Choose an answer first">
           <span className="waiting-send-off" tabIndex={0}>
@@ -822,6 +826,7 @@ function AgentPanel({
           {problem}
         </p>
       )}
+      <ActionProblem attempt={attempt} off={stopped} />
     </div>
   );
   if (!many) {

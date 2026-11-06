@@ -28,7 +28,7 @@ import { ListPage, type Entry } from "./ListPage";
 import { agentPath, runPath, sessionPath } from "./paths";
 import { storeAgentMessages } from "./prefs";
 import { quoteArea } from "./quote";
-import { StatusDot, SUPERVISOR } from "./Team";
+import { STATUS_WORDS, StatusDot, SUPERVISOR } from "./Team";
 import { useOpenTerminal } from "./Terminals";
 
 const MESSAGES = 10; // the latest messages of an agent its page shows
@@ -129,7 +129,7 @@ function liveEntry(session: string, agent: AgentInfo, runs: RunInfo[]): Entry {
           <span className="agent-row-name">{agent.name}</span>
         </span>
         <span className="agent-row-about">
-          {agent.status} · {since(agent.since)}
+          {STATUS_WORDS[agent.status]} · {since(agent.since)}
         </span>
         {detail && <span className="agent-row-about">{detail}</span>}
       </>
@@ -201,7 +201,7 @@ function AgentPage({ session, agent, lists }: { session: string; agent: AgentInf
           </span>
         </div>
         <p className="agent-now">
-          <StatusDot status={agent.status} /> {agent.status} for {since(agent.since)} · spawned{" "}
+          <StatusDot status={agent.status} /> {STATUS_WORDS[agent.status]} · {since(agent.since)} · spawned{" "}
           <time dateTime={agent.spawned_at}>{clock(agent.spawned_at)}</time>
           {agent.run && (
             <>

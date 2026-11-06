@@ -2634,6 +2634,13 @@ def check_starts(session: str, now: datetime | None = None) -> None:
             loop.log(session, f"{agent.name}: {START_SILENCE_REASON}")
 
 
+def start_note(session: str, name: str, note: str) -> None:
+    """What the agent's CLI says of a start that made it ready (Event.note): one line to its
+    lead, and in loop.log."""
+    loop.log(session, f"{name}: {note}")
+    _tell_lead(session, name, f"{name}: {note}")
+
+
 def heard_at_start(session: str, name: str) -> None:
     """The agent's first hook, which is not its session start: an agent that check_starts
     made wait is starting again, so whatever its hooks say next applies."""

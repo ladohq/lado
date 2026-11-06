@@ -162,3 +162,41 @@ def test_a_queue_waits_for_a_late_session_start_and_goes_in_once(
     wait_for(delivered, "the task delivered", session)
     assert state.get_message(session, task.id).attempts == 1
     assert runtime.status_reason(session, "w1") is None
+
+
+SILENT = "no report from its TUI"
+
+
+def test_a_silent_tui_s_agent_is_ready_its_lead_is_told_and_its_task_is_typed_in(
+    repo, session, monkeypatch, tmp_path
+):
+    """The server plugin is alive and the TUI said nothing: LADO types in as it did."""
+    start(repo, session)
+    ready = tmp_path / "ready"
+    monkeypatch.setenv("FAKE_AGENT_START_HOLD", str(ready))
+    monkeypatch.setenv("FAKE_AGENT_START_NOTE", SILENT)
+    runtime.spawn_worker(session, "sleep 0", name="w1")
+    [task] = [m for m in state.list_messages(session) if m.recipient == "w1"]
+    typed = lambda: state.get_message(session, task.id).attempts >= 1  # noqa: E731
+    wait_for(typed, "the task typed in", session)
+    told = [m.summary for m in state.list_messages(session) if m.recipient == "supervisor"]
+    assert f"w1: {SILENT}" in told
+
+
+def test_what_a_silent_tui_lost_goes_in_when_it_opens_after_all(
+    repo, session, monkeypatch, tmp_path
+):
+    """Every attempt went into a window with no input field, and the message failed: the TUI's
+    late report brings it back (state.seen), and it arrives."""
+    start(repo, session)
+    ready = tmp_path / "ready"
+    monkeypatch.setenv("FAKE_AGENT_START_HOLD", str(ready))
+    monkeypatch.setenv("FAKE_AGENT_START_NOTE", SILENT)
+    runtime.spawn_worker(session, "sleep 0", name="w1")
+    [task] = [m for m in state.list_messages(session) if m.recipient == "w1"]
+    failed = lambda: state.get_message(session, task.id).state == state.FAILED  # noqa: E731
+    wait_for(failed, "the task failed", session)
+
+    ready.touch()
+    delivered = lambda: state.get_message(session, task.id).state in (state.DELIVERED, state.READ)  # noqa: E731
+    wait_for(delivered, "the task delivered", session)

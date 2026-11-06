@@ -47,9 +47,12 @@ In the same step, what is left of LAD-211's local models:
 
 - An OpenCode or Kilo agent stays `starting` until its TUI's prompt has focus; only then is it
   idle and its queue handed over. The plugin's init is no longer reported.
-- A message sent while the TUI is not ready waits in the queue with no attempt counted, however
-  long the start takes. Past 30 s the existing `Waiting for an answer in its terminal` reason
+- A message sent while the TUI is not ready waits in the queue with no attempt counted. With no
+  sign from the CLI at all, past 30 s the existing `Waiting for an answer in its terminal` reason
   shows, and goes when the TUI is ready.
+- By the human's comment at the gate: when the TUI stays silent for 30 s while the server plugin
+  lives, the agent is ready, its lead is told, and messages are typed in as before. A TUI that
+  opens later gets what failed meanwhile.
 - A server's refusal for context (`exceed_context_size_error`) reads in LADO's words, as an
   overflow does, with the server's whole text in the message's body.
 - The message of a stopped turn holds only the server's text in its body.
@@ -64,8 +67,9 @@ In: the above, for OpenCode and Kilo.
 
 ## Out of scope
 
-- Claude Code and Codex: their session start already means they take input; the queue, the sweep
-  and `hooks.py` do not change. Their work on servers is the epic's next steps.
+- Claude Code and Codex: their session start already means they take input; the queue and the
+  sweep do not change, and `hooks.py` gains only what two fields they never set ask (design.md,
+  D1a, D1b). Their work on servers is the epic's next steps.
 - `--prompt` for the first lines of a queue (`notice_on_argv`): it works, and Codex shares it.
   With the new signal OpenCode and Kilo may not need it, but removing it is a change of its own,
   with no defect behind it.

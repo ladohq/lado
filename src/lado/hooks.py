@@ -171,9 +171,16 @@ def handle(
         # hook says the human answered. Any other wait stays: a compaction starts a session
         # too.
         held = current and current.status == state.WAITING and agent in state.block_reasons(session)
-        if current and (current.status == state.STARTING or held):
+        # Messages that went nowhere made it wait, and state.seen has just brought them back: a
+        # CLI that says it takes input now gets them. A dialog's wait, with its key, stays.
+        lost = (
+            current and event.ready and current.status == state.WAITING and not current.waiting_for
+        )
+        if current and (current.status == state.STARTING or held or lost):
             # Ready: its first input (a worker's task, a resumed supervisor's messages from
             # LADO) is in its queue.
+            if event.note:
+                runtime.start_note(session, agent, event.note)
             _idle(provider, session, agent)
     elif event.kind == providers.PROMPT_SUBMIT:
         state.set_status(session, agent, state.BUSY)

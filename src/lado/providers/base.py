@@ -99,6 +99,12 @@ class Event:
     # effort, with no name.
     model: str = ""
     effort: str | None = None
+    # For SESSION_START: what the lead should know of a start that made the agent ready
+    # (lado.hooks); "" for a start with nothing to say.
+    note: str = ""
+    # For SESSION_START: the CLI says it takes input now, so a wait for messages that went
+    # nowhere is over (lado.hooks). A wait with a key is a dialog's, and stays.
+    ready: bool = False
 
 
 ERROR_LIMIT = 160  # characters of an Event.error

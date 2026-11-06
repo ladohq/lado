@@ -65,6 +65,12 @@ export const LadoPlugin = async ({ client }, options = {}) => {
   const stopped = new Set()
   const ended = new Set()
   const summaries = new Set()
+  // This plugin lives and the TUI's own may not report (opencode_family.TUI_SILENT): LADO lets a
+  // report that came first win, so this one needs not know of it.
+  const silence = hooks["tui.silent"]
+    ? setTimeout(() => run(hooks["tui.silent"], {}), options.tuiWait)
+    : null
+  silence?.unref?.()
   return {
     "chat.message": async (input, output) => {
       try {
@@ -149,6 +155,7 @@ export const LadoPlugin = async ({ client }, options = {}) => {
       } catch {}
     },
     dispose: async () => {
+      clearTimeout(silence)
       await run(hooks["dispose"], {})
     },
   }

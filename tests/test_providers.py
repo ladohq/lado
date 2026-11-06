@@ -976,7 +976,8 @@ def test_opencode_declares_its_permission_modes_and_version():
 @pytest.mark.parametrize(
     ("native", "payload", "expected"),
     [
-        ("tui.ready", {}, Event(providers.SESSION_START)),
+        ("tui.ready", {}, Event(providers.SESSION_START, ready=True)),
+        ("tui.silent", {}, Event(providers.SESSION_START, note=opencode_family.TUI_SILENT_NOTE)),
         ("plugin.init", {"directory": "/r"}, None),  # the server's start says nothing of the TUI
         ("chat.message", {"sessionID": "x", "prompt": "hi"}, Event(providers.PROMPT_SUBMIT, "hi")),
         ("session.idle", {"sessionID": "x"}, Event(providers.TURN_END)),
@@ -1172,6 +1173,18 @@ def test_the_server_plugin_is_not_given_the_tuis_report(repo, lado_home, provide
     launch = providers.get(provider).launch_command(agent, sess, providers.AgentSpec("the role"))
     [[_, options]] = json.loads(launch.env[FAMILY[provider]])["plugin"]
     assert "tui.ready" not in options["hooks"] and "plugin.init" not in options["hooks"]
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_server_plugin_waits_for_the_tui_as_long_as_a_silent_start(repo, lado_home, provider):
+    sess = state.Session("s", str(repo), None, provider)
+    agent = state.Agent(
+        "s", "w1", "worker", str(repo), None, None, state.STARTING, provider, instance="i1"
+    )
+    launch = providers.get(provider).launch_command(agent, sess, providers.AgentSpec("the role"))
+    [[_, options]] = json.loads(launch.env[FAMILY[provider]])["plugin"]
+    assert options["tuiWait"] == runtime.START_SILENCE * 1000
+    assert options["hooks"]["tui.silent"] == base.hook_argv(agent, "tui.silent")
 
 
 def test_the_tui_plugin_ships_inside_the_package():

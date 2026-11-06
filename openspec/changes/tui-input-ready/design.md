@@ -5,12 +5,31 @@ Root cause and the options weighed: `proposal.md`. Measured on Kilo 7.8.8 and Op
 ## Decisions
 
 **D1. The TUI plugin's report is the session start.** `EVENTS` maps a new native event `tui.ready` to
-`base.SESSION_START`, and `plugin.init` leaves `EVENTS` and `opencode_plugin.js`. `hooks.handle` does not
-change: a session start moves a `starting` agent to idle and hands its queue over, and does nothing to an
-agent already `busy`. No neutral event is added, so the core stays as it is for every provider.
-Against keeping `plugin.init` as a sign of life: an agent seen but not ready would never reach
-`runtime.check_starts`, and a TUI plugin that fails to load would leave it `starting` in silence. With one
-signal, that case gets the 30 s reason (No silent drops).
+`base.SESSION_START`, and `plugin.init` leaves `EVENTS` and `opencode_plugin.js`: a session start moves a
+`starting` agent to idle and hands its queue over, and does nothing to an agent already `busy`. No neutral
+event is added.
+
+**D1a. A silent TUI, by the human's comment at the gate.** When the TUI plugin has not reported and the
+server plugin lives, the agent is ready after 30 s and messages are typed in as before, so a CLI that stops
+loading the TUI plugin (a renamed variable, a changed `tui.json`) never leaves it `starting` with a silent
+chat. The server plugin's timer is that sign of life: at init it waits `tuiWait` (`TUI_WAIT`, 30 s, as
+`runtime.START_SILENCE`), not holding the process and dropped at `dispose`, then runs the hook `tui.silent`,
+a `SESSION_START` with `Event.note`. `hooks.handle` tells the lead that note (`runtime.start_note`) when the
+start makes the agent ready; after `tui.ready` the agent is no longer `starting`, so it says nothing. This
+departs from "the core does not change": `base.Event`, `hooks.py` and `runtime.py` each gain a few lines,
+accepted by the supervisor. Claude Code and Codex set neither field, and a test holds that. The label is that
+line in the chat, not a mark on the agent's card: `status_reason` shows only for `waiting` and `stopped`, and
+this is a rare case.
+
+The price, named to the human: 30 s cannot tell a TUI plugin that did not load from a TUI that is slow. With
+hanging outside traffic the server plugin lives at 3 s and the window stays blank for minutes, so messages are
+typed into it again, and the agent is `busy` without them. The protection against that is whole for 30 s only.
+What D1b brings back softens it.
+
+**D1b. A late TUI gets what was lost.** Messages that failed leave the agent `waiting`, and `state.seen`
+brings them back at the next hook, but a session start ends no such wait, as a compaction starts a session
+too. So `tui.ready` carries `Event.ready`, and `hooks.handle` ends a wait with no key (`waiting_for`) on it:
+the queue goes in. A dialog's wait has its key and stays.
 
 **D2. A plugin file of its own.** `src/lado/providers/opencode_tui_plugin.js`, default export
 `{ id: "lado-ready", tui }`. Both CLIs require the `id` of a file plugin and pass the entry's options as
@@ -57,6 +76,7 @@ variables`. The anchor reaches `main` with the epic's merge.
 | Ready on focus, once, the callback removed, a renderer without the API, never throws | plugin (`make test-js`) | new `tests/js/opencode_tui_plugin.test.mjs`, a fake `api` |
 | `tui.ready` is the session start, `plugin.init` is gone, `tui.json` and the variable per CLI | unit | `tests/test_providers.py` |
 | A queue waits past every retry delay while no session start comes, then goes in once; the 30 s reason comes and goes | integration, fake agent | `tests/integration/`, a fake agent that delays its session start |
+| A silent TUI: the agent ready, the lead told, the queue typed in; a late TUI gets what failed; a dialog's wait stays; Claude Code and Codex set neither field | plugin, unit, integration, smoke | `tests/js/opencode_plugin.test.mjs`, `tests/test_runtime.py`, `tests/integration/test_session_loop.py`, `tests/smoke/test_smoke.py` |
 | A message right after the start, `attempts` 1, on the real CLI | smoke, `kilo` and `opencode` | `tests/smoke/test_smoke.py` |
 | The two errors' lines and bodies, another `UnknownError` as it is | unit, plugin, integration | `tests/test_providers.py`, `tests/js/opencode_plugin.test.mjs`, the integration test of the server's words with the key's canary |
 | The link, no link on another warning | vitest, UI e2e | `web/src/Launch.test.tsx`, `tests/ui/test_launch_model.py` |
@@ -67,9 +87,10 @@ Kilo, and OpenCode the same: CI's smoke gives one start per CLI with no load of 
 ## Principles and what comes next
 
 - Events, not screens: the signal is the CLI's own plugin API; the terminal is not read.
-- Neutral core: nothing above `providers/` changes. It works on the two CLIs of the family; Claude Code and
+- Neutral core: above `providers/` only `Event.note` and `Event.ready`, neutral fields (D1a, D1b), and what
+  reads them. It works on the two CLIs of the family; Claude Code and
   Codex need none of it, as their session start already means input.
-- One source of truth: one readiness signal (D1), LADO's words in one place (D6).
+- One source of truth: one readiness signal and its fallback (D1, D1a), LADO's words in one place (D6).
 - Never touch the user's global config: D4.
 - The coming steps put Claude Code and Codex on servers and do not touch this path.
 
@@ -79,4 +100,5 @@ Kilo, and OpenCode the same: CI's smoke gives one start per CLI with no load of 
   test only. A change shows in the smoke, and `lado doctor` warns off the tested versions.
 - The 30 s reason now also fires for a CLI merely slow to open its TUI (the human's choice to keep it).
 - With hanging outside traffic Kilo once took a pasted line while its window was blank, and no hook confirmed
-  it; not understood, and not reachable any more, as nothing is typed before the prompt has focus.
+  it; not understood. Nothing is typed before the prompt has focus for 30 s; after that (D1a) this path is
+  reachable again.

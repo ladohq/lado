@@ -55,6 +55,24 @@ test("init reports nothing: the TUI plugin says when the agent is ready", async 
   assert.deepEqual(calls(), [])
 })
 
+test("a live server plugin says the TUI was silent when its wait is over", async () => {
+  const client = fakeClient()
+  const hooks = { "tui.silent": hook("tui.silent") }
+  await LadoPlugin({ client, directory: "/repo" }, { hooks, tuiWait: 10 })
+  for (let n = 0; n < 200 && calls().length === 0; n++) {
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  assert.deepEqual(calls(), [{ event: "tui.silent", payload: {} }])
+})
+
+test("a plugin disposed of in its wait says nothing of the TUI", async () => {
+  const hooks = { "tui.silent": hook("tui.silent") }
+  const plugin = await LadoPlugin({ client: fakeClient(), directory: "/repo" }, { hooks, tuiWait: 50 })
+  await plugin.dispose()
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  assert.deepEqual(calls(), [])
+})
+
 test("chat.message passes the prompt without synthetic parts", async () => {
   const { plugin } = await load({ "chat.message": hook("chat.message") })
   await plugin["chat.message"](

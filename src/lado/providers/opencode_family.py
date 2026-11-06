@@ -25,6 +25,15 @@ PLUGIN = Path(__file__).with_name("opencode_plugin.js")
 TUI_PLUGIN = Path(__file__).with_name("opencode_tui_plugin.js")
 TUI_READY = "tui.ready"  # the TUI plugin's one report: the prompt has focus
 TUI_CONFIG = "tui.json"  # the agent's TUI config, beside its config
+# The server plugin is alive and the TUI said nothing for so long (runtime.START_SILENCE): its
+# plugin did not load (a CLI's change), or the TUI is slow, which no sign tells apart. The agent
+# is ready then, so a CLI that stopped loading the TUI plugin never leaves it `starting`.
+TUI_SILENT = "tui.silent"
+TUI_WAIT = 30
+TUI_SILENT_NOTE = (
+    f"no report from its TUI {TUI_WAIT} s after its start; messages are typed in as they come, "
+    "and one may be lost"
+)
 
 # Events the plugin reports and the neutral events they stand for, by the same names in Kilo
 # 7.8.3 and OpenCode 1.18.34. A request for the human and its answer carry the request's id
@@ -35,6 +44,7 @@ EVENTS = {
     # The session start is the TUI's, not the server plugin's: that one's init comes 1.5 to 3 s
     # before the TUI takes input (Kilo 7.8.8, OpenCode 1.18.35).
     TUI_READY: base.SESSION_START,
+    TUI_SILENT: base.SESSION_START,
     "chat.message": base.PROMPT_SUBMIT,
     "session.idle": base.TURN_END,
     "permission.asked": base.WAITING,
@@ -350,7 +360,13 @@ class OpenCodeFamily(base.Provider):
             # The plugin gets the entry's options as its second argument (Kilo 7.8.3,
             # OpenCode 1.18.34).
             "plugin": [
-                [self.plugin.as_uri(), {"hooks": {e: base.hook_argv(agent, e) for e in events}}]
+                [
+                    self.plugin.as_uri(),
+                    {
+                        "hooks": {e: base.hook_argv(agent, e) for e in events},
+                        "tuiWait": TUI_WAIT * 1000,
+                    },
+                ]
             ],
             "permission": self.permission(mode, spec),
             # An update during a session can break the global install (Kilo 7.8.3 emptied it
@@ -431,6 +447,10 @@ class OpenCodeFamily(base.Provider):
     def parse_event(self, native: str, payload: str) -> base.Event | None:
         if native not in EVENTS:
             return None
+        if native == TUI_READY:
+            return base.Event(EVENTS[native], ready=True)
+        if native == TUI_SILENT:
+            return base.Event(EVENTS[native], note=TUI_SILENT_NOTE)
         data = json.loads(payload) if payload.strip() else {}
         error = data.get("error") or {}
         if error and error.get("name") != ABORTED:

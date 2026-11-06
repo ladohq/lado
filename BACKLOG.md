@@ -1913,6 +1913,16 @@ Found: 2026-10-25, hotfix/lad-144-by-hand-way-back.
 
 # P3: maybe never
 
+## The line about a failed turn can lose its `; it is idle`
+
+Size: S. Why here: the turn's error itself is said, and the agent's status shows on its own; only
+the tail of one line goes.
+
+`runtime._tell_lead` cuts its summary to 200 characters, and `turn of <agent> ended on an error: `
+with an error of up to 160 (`base.error_line`) leaves no room for the tail `; it is idle`. Wanted:
+the status before the error, or the error cut to what is left.
+Found: 2026-11-06, branch lado/lad-154-epic/task-lad-211 (LAD-211).
+
 ## A relative LADO_HOME breaks the reads of lado.db
 
 Size: S. Why here: LADO_HOME is absolute in every documented setup; a relative one is a

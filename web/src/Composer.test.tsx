@@ -44,6 +44,7 @@ function serve(refuse: Record<string, { status: number; detail: string }> = {}, 
       const full = `${name.replace(/\.(\w+)$/, "")}-1a2b3c4d${/\.\w+$/.exec(name)?.[0] ?? ""}`;
       return new Response(JSON.stringify({ id: `a-${name}`, full_name: full, name: full, scope: "" }));
     }
+    if (init?.method !== "POST") return new Response(JSON.stringify({ items: [], earlier: false })); // Send's cursor
     calls.push({ path: url.pathname, body: JSON.parse(String(init?.body)) });
     return new Response(JSON.stringify({ result: "sent" }));
   });

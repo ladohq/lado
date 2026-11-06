@@ -52,7 +52,9 @@ every human message of their kind. `look` is `getMessages(session, { after })`, 
 text in `body` unless the summary is exactly it) and the same attachment names. Ids, not the time
 of the click: the phone's clock is not the server's, and spec's "after the click" means this.
 `reached` clears the field by `setText((now) => (now === sent ? "" : now))` and releases the files
-sent. With no window loaded the cursor is 0, a false match only for a Send before the page loaded.
+sent. A window with no message says nothing of the history (an agent's starts at its spawn, and one
+may still load), so then `Live.messageCursor` asks the server for the latest id. If it cannot, the
+cursor is null and no message counts: a look that the server answers ends in Retry, never in "reached".
 
 **D6. What counts as closed.** The refusals are status 400 with the core's text, so
 `attempts.ts` matches them, and `web/src/closedRefusals.cases.json` pins both sides as

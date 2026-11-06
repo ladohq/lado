@@ -184,9 +184,11 @@ export const looks = {
   },
   // A message of the human to the same agent with the same text and files, after the last
   // one known at the click: ids, as the phone's clock is not the server's. The server keeps
-  // the whole text in the body unless the summary is exactly it.
-  send: (session: string, to: string, after: number, text: string, names: string[]) => async (): Promise<Outcome> => {
-    const { items } = await getMessages(session, { with: "human", after });
+  // the whole text in the body unless the summary is exactly it. With no such cursor nothing
+  // tells a message of this click from an older one, so none counts: Retry is the human's.
+  send: (session: string, to: string, after: number | null, text: string, names: string[]) => async (): Promise<Outcome> => {
+    const { items } = await getMessages(session, after === null ? { with: "human", limit: 1 } : { with: "human", after });
+    if (after === null) return "missed";
     const sent = text.trim();
     const found = items.some(
       (one) =>

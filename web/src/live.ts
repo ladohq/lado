@@ -436,11 +436,22 @@ export class Live {
     });
   }
 
-  // The highest id of the session's messages any page holds: 0 with none. What came after it
-  // is what the human has not seen yet (attempts.ts, Send).
+  // The highest id of the session's messages any page holds: 0 with none.
   lastMessage(session: string): number {
     const windows = Object.values(this.state.messages[session] ?? {});
     return Math.max(0, ...windows.flatMap((one) => (one && "items" in one ? one.items.map((item) => item.id) : [])));
+  }
+
+  // What a Send's look reads after (attempts.ts). A window with nothing in it says nothing of
+  // the history: an agent's starts when it was spawned, and one may still load. So the server
+  // says; null when it cannot.
+  async messageCursor(session: string): Promise<number | null> {
+    const known = this.lastMessage(session);
+    if (known > 0) return known;
+    return getMessages(session, { with: "human", limit: 1 }).then(
+      (page) => page.items[page.items.length - 1]?.id ?? 0,
+      () => null,
+    );
   }
 
   private windowOf(watched: Watched): WindowLoaded {

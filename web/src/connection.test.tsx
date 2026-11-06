@@ -61,10 +61,12 @@ const question = (id: number): MessageInfo =>
 const session = (status: SessionInfo["status"]) =>
   ({ name: "s", repo: "/src/s", status, kits: ["default"], provider: "claude", permission_mode: null, without: [] }) as unknown as SessionInfo;
 
-// The server as the test sets it: `down` answers nothing, `refuse` refuses a write; each list
-// answers what stands here.
+// The server as the test sets it: `down` answers nothing, `writesLost` answers reads only,
+// after `onWrite`, `refuse` refuses a write; each list answers what stands here.
 let server: {
   down: boolean;
+  writesLost: boolean;
+  onWrite: () => void;
   refuse: string | null;
   gates: GateInfo[];
   waiting: { session: string; question: MessageInfo }[];
@@ -75,7 +77,7 @@ let posted: { path: string; body: unknown }[];
 let live: Live;
 
 beforeEach(() => {
-  server = { down: false, refuse: null, gates: [], waiting: [], messages: [], sessions: [session("running")] };
+  server = { down: false, writesLost: false, onWrite: () => {}, refuse: null, gates: [], waiting: [], messages: [], sessions: [session("running")] };
   posted = [];
   stubDialogs();
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -87,6 +89,10 @@ beforeEach(() => {
     vi.fn(async (path: string, init?: RequestInit) => {
       if (server.down) throw new TypeError("Failed to fetch");
       if (init?.method === "POST") {
+        if (server.writesLost) {
+          server.onWrite();
+          throw new TypeError("Failed to fetch");
+        }
         if (server.refuse !== null) return new Response(JSON.stringify({ detail: server.refuse }), { status: 400 });
         posted.push({ path, body: init.body ? JSON.parse(String(init.body)) : undefined });
         if (path.endsWith("/resume")) return new Response(JSON.stringify({ session: session("running") }));
@@ -101,8 +107,10 @@ beforeEach(() => {
       if (path === "/api/waiting") return new Response(JSON.stringify(server.waiting));
       if (path.endsWith("/gates")) return new Response(JSON.stringify(server.gates));
       if (path.includes("/messages")) {
-        const after = Number(new URL(path, "http://lado").searchParams.get("after") ?? 0);
-        const items = server.messages.filter((one) => one.id! > after);
+        const query = new URL(path, "http://lado").searchParams;
+        const after = Number(query.get("after") ?? 0);
+        const limit = Number(query.get("limit") ?? server.messages.length);
+        const items = server.messages.filter((one) => one.id! > after).slice(-limit);
         return new Response(JSON.stringify({ items, earlier: false }));
       }
       if (path.endsWith("/stop-preview")) {
@@ -128,17 +136,18 @@ function Place() {
   return <span data-testid="at">{useLocation().pathname}</span>;
 }
 
-const show = (children: ReactNode) =>
-  render(
-    <LiveContext.Provider value={live}>
-      <MemoryRouter initialEntries={["/somewhere"]}>
-        <LaunchProvider>
-          {children}
-          <Place />
-        </LaunchProvider>
-      </MemoryRouter>
-    </LiveContext.Provider>,
-  );
+const inShell = (children: ReactNode) => (
+  <LiveContext.Provider value={live}>
+    <MemoryRouter initialEntries={["/somewhere"]}>
+      <LaunchProvider>
+        {children}
+        <Place />
+      </LaunchProvider>
+    </MemoryRouter>
+  </LiveContext.Provider>
+);
+
+const show = (children: ReactNode) => render(inShell(children));
 
 function lose() {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -435,14 +444,32 @@ test("Send's tooltip says why it waits", () => {
   expect(screen.getByRole("tooltip").textContent).toBe("Waiting for connection");
 });
 
+function Window() {
+  const [stop] = useState(() => live.watchMessages("s", { with: "human", limit: 10 }));
+  useEffect(() => stop, [stop]);
+  return null;
+}
+
+// A composer under a window that holds `id`, the session's latest message of the human.
+async function composerAfter(id: number, text = "earlier") {
+  server.messages = [human(id, text)];
+  show(
+    <>
+      <Window />
+      {composer()}
+    </>,
+  );
+  await waitFor(() => expect(live.lastMessage("s")).toBe(id));
+}
+
 test("the answer lost: found in the feed, no second message, the field empty", async () => {
-  show(composer());
+  await composerAfter(1);
   type("hi");
   server.down = true;
   await press("Send");
   expect(screen.getByText("Message not confirmed")).toBeTruthy();
   expect(field().value).toBe("hi");
-  server.messages = [human(8, "hi")];
+  server.messages.push(human(8, "hi"));
   await back();
   await waitFor(() => expect(field().value).toBe(""));
   expect(screen.queryByRole("alert")).toBeNull();
@@ -450,19 +477,54 @@ test("the answer lost: found in the feed, no second message, the field empty", a
 });
 
 test("found, the words changed meanwhile: the field keeps them", async () => {
-  show(composer());
+  await composerAfter(1);
   type("hi");
   server.down = true;
   await press("Send");
   type("hi again");
-  server.messages = [human(8, "hi")];
+  server.messages.push(human(8, "hi"));
   await back();
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   expect(field().value).toBe("hi again");
 });
 
-test("not found: Retry sends the words of the click, the field keeps the new ones", async () => {
+test("an empty window with the same words in the history: the server's latest id is the cursor", async () => {
+  server.messages = [human(4, "hi")];
   show(composer());
+  type("hi");
+  server.writesLost = true;
+  await press("Send");
+  await screen.findByText("Message not delivered");
+  expect(button("Retry").disabled).toBe(false);
+  expect(field().value).toBe("hi");
+});
+
+test("an empty window, the answer lost: still found by the server's latest id", async () => {
+  server.messages = [human(4, "hi")];
+  show(composer());
+  type("hi");
+  server.writesLost = true;
+  server.onWrite = () => server.messages.push(human(9, "hi"));
+  await press("Send");
+  await waitFor(() => expect(field().value).toBe(""));
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("no cursor to be had: the old words never count, and Retry waits for the server", async () => {
+  server.messages = [human(4, "hi")];
+  show(composer());
+  type("hi");
+  server.down = true;
+  await press("Send");
+  expect(screen.getByText("Message not confirmed")).toBeTruthy();
+  await back();
+  await screen.findByText("Message not delivered");
+  expect(button("Retry").disabled).toBe(false);
+  expect(field().value).toBe("hi");
+});
+
+test("not found: Retry sends the words of the click, the field keeps the new ones", async () => {
+  await composerAfter(1);
   type("hi");
   server.down = true;
   await press("Send");
@@ -476,19 +538,7 @@ test("not found: Retry sends the words of the click, the field keeps the new one
 });
 
 test("the same words sent before the click do not count", async () => {
-  server.messages = [human(4, "hi")];
-  const Window = () => {
-    const [stop] = useState(() => live.watchMessages("s", { with: "human", limit: 10 }));
-    useEffect(() => stop, [stop]);
-    return null;
-  };
-  show(
-    <>
-      <Window />
-      {composer()}
-    </>,
-  );
-  await waitFor(() => expect(live.lastMessage("s")).toBe(4));
+  await composerAfter(4, "hi");
   type("hi");
   server.down = true;
   await press("Send");
@@ -536,6 +586,22 @@ test("Stop without an answer: not confirmed, and the popover closes once it is s
   server.sessions = [session("stopped")];
   await back();
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+});
+
+test("Stop reached with its popover closed leaves the Forget window the human opened", async () => {
+  const view = show(actions());
+  await openStop();
+  server.down = true;
+  await press("Stop s");
+  await press("Cancel");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  view.rerender(inShell(actions("stopped")));
+  await press("Forget…");
+  expect(screen.getByRole("dialog", { name: 'Forget session "s"?' })).toBeTruthy();
+  server.sessions = [session("stopped")];
+  await back();
+  await waitFor(() => expect(live.get().attempts).toEqual({}));
+  expect(screen.getByRole("dialog", { name: 'Forget session "s"?' })).toBeTruthy();
 });
 
 test("Stop not delivered: Retry stops it, and a refusal as stopped closes too", async () => {

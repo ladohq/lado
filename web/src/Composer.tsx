@@ -105,8 +105,8 @@ export function Composer({
     setBusy(true);
     setProblem(null);
     live.attempts.clear(attempt);
-    const after = live.lastMessage(session); // the same words before this click do not count
     try {
+      const after = await live.messageCursor(session); // the same words before this click do not count
       const uploaded = await uploadFiles(session, files, setFiles, "Send again");
       if ("problem" in uploaded) {
         setProblem(uploaded.problem);

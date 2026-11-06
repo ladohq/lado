@@ -1453,7 +1453,9 @@ the mark does the job, and Live coming back with the buttons awake says the rest
   | Stop | the sessions | stopped or gone |
   | Resume | the sessions | running or `loop_down` (gone: the attempt is dropped) |
 
-  Send compares ids, not times: a phone's clock is not the server's. Found, the error goes, the
+  Send compares ids, not times: a phone's clock is not the server's. A window with no message
+  says nothing of the history, so the composer then asks the server for the latest id; with no
+  id to be had, no message counts and Retry is the human's. Found, the error goes, the
   files sent leave, and the field is cleared only if its text did not change. Reached, Stop's
   popover closes; Resume's window closes on the session's page.
 - **Retry** repeats what was pressed, whatever the fields say now. A refusal that says the item

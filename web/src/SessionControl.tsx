@@ -56,6 +56,8 @@ export function SessionActions({ session }: { session: SessionInfo }) {
   const box = useRef<HTMLDivElement>(null);
   const popover = useRef<HTMLDivElement>(null);
   const close = () => setShown(null);
+  // A Stop settled later closes its popover, never the Forget window opened meanwhile.
+  const closeStop = () => setShown((now) => (now === "stop" ? null : now));
   useDismiss(shown === "stop", box, close);
   const below = useBelow(box, popover, shown === "stop", true);
   const { lost } = useLive();
@@ -96,7 +98,9 @@ export function SessionActions({ session }: { session: SessionInfo }) {
           </Waits>
         );
       })}
-      {shown === "stop" && <StopPopover session={session.name} ref={popover} style={below} onClose={close} />}
+      {shown === "stop" && (
+        <StopPopover session={session.name} ref={popover} style={below} onClose={close} onStopped={closeStop} />
+      )}
       {shown === "forget" && <ForgetDialog session={session.name} onClose={close} />}
     </div>
   );
@@ -152,11 +156,13 @@ function StopPopover({
   ref: panel,
   style,
   onClose,
+  onStopped,
 }: {
   session: string;
   ref: RefObject<HTMLDivElement | null>;
   style?: CSSProperties;
   onClose: () => void;
+  onStopped: () => void; // a stop without an answer found reached, maybe long after
 }) {
   const preview = usePreview(() => getStopPreview(session));
   const navigate = useNavigate();
@@ -181,7 +187,7 @@ function StopPopover({
         repeat: () => stopSession(session),
         look: looks.stop(session),
         closed: closedBy.stop,
-        reached: onClose,
+        reached: onStopped,
       });
       if (answered) return true;
     } catch (error) {

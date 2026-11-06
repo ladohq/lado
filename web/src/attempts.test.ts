@@ -256,6 +256,14 @@ test("Send: the message after the click is found by its text", async () => {
   expect(asked).toContain("after=7");
 });
 
+test("Send: with no cursor nothing counts, once the server answers", async () => {
+  answers(page([message({})]));
+  await expect(looks.send("s", "supervisor", null, "hi", [])()).resolves.toBe("missed");
+  vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("Failed to fetch"))));
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  await expect(looks.send("s", "supervisor", null, "hi", [])()).rejects.toBeInstanceOf(Unreached);
+});
+
 test("Send: a long text stands in the body", async () => {
   answers(page([message({ summary: "first line", body: "first line\nsecond" })]));
   await expect(looks.send("s", "supervisor", 7, "first line\nsecond", [])()).resolves.toBe("reached");

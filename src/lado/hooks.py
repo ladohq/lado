@@ -202,7 +202,9 @@ def handle(
         # Before the agent is idle: a resume planned for it holds while it stays idle, and
         # is dropped when the queue makes it busy now (state.schedule_resume).
         if event.error:
-            runtime.turn_failed(session, agent, event.error, event.transient, event.background)
+            runtime.turn_failed(
+                session, agent, event.error, event.transient, event.background, event.details
+            )
         else:
             state.reset_resumes(session, agent)
         me = state.get_agent(session, agent)

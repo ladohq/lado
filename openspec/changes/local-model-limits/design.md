@@ -46,8 +46,12 @@ compares; it holds no CLI's number. `0` warns never.
 
 `model_settings.context_warning(start, provider, limit)`, one text for the CLI and the window:
 `<name> on <server> has a context of 16,000 tokens; <CLI title> needs about 49,152 for its instructions
-and tools: load the model with a larger context`. It joins the warnings as the key's does, so
-`web/` changes nothing: `SessionModelCheck.warnings` and `LaunchModel.tsx` show it already.
+and tools: <how>; see "What to expect of a small model" in docs/install.md`. `<how>` names the place by
+the server's saved type, from its own documents: LM Studio's `lms load --context-length`, Ollama's
+`OLLAMA_CONTEXT_LENGTH` or app setting, and for any other `load the model with a larger context`. It
+joins the warnings as the key's does. `web/` changes in one line: the folded Advanced said `key over
+http` of any warning (found in design QA), so `SessionModelCheck.peek`, which a refusal already fills,
+holds the warnings' few words, `key over http, context too small` for two. No API model changes.
 
 ### D6. The stop lives in the plugin
 
@@ -58,9 +62,10 @@ in the loop the compaction's own small request succeeds on every round (seen on 
 that step would reset the count for ever. A compaction's message is told by `summary: true` of its
 `message.updated`. At 3 it records the error with the words of D7, marks the session stopped, so the
 abort's `MessageAbortedError` does not replace it, and calls `client.session.abort`.
-`session.compacted` no longer clears a stopped session's error. The abort gives two `session.idle` on
-OpenCode 1.18.35: the first ends the turn on the error, and the plugin drops any more until the next
-`chat.message`, or the second would pass as a clean end and mark the message.
+`session.compacted` no longer clears a stopped session's error. Any turn that ends on an error gives
+two `session.idle` 20 ms apart, an abort's and a server's 500 alike (seen on OpenCode 1.18.35 and Kilo
+7.8.8): the first ends the turn on the error, and the plugin drops any more until the next
+`chat.message`, or the second would pass as a clean end and mark the message (D8).
 
 Checked in the real TUI on a fake of context 2000: OpenCode 1.18.35 sent 6 requests and came to
 `session.idle` with the error, where it sent 1001 in 30 s without the stop; Kilo 7.8.8 sent 7 and did
@@ -70,8 +75,9 @@ the same.
 
 `{name: "ContextOverflowError", message: "LADO stopped the turn after 3 attempts: the model's context
 is too small for the agent's request; <the server's message>"}`. LADO's words go first, as
-`base.error_line` cuts an error to 160 characters and a server's message takes them all. `parse_event`
-and `turn_failed` stay as they are.
+`base.error_line` cuts an error to 160 characters and a server's message takes them all. `Event.details`
+keeps a cut error whole, and `turn_failed` puts it in the message's body. The line's end, `; it is idle`,
+stays: the error gives way to it within the summary's 200.
 
 ### D8. The reply check skips a failed turn
 
@@ -110,7 +116,8 @@ the scheduler yield always: red 5 of 5 before the fix, with LAD-210's error, gre
 
 ## Risks
 
-- Ollama's `/api/ps` is from memory: the server was out of reach. A wrong shape only means no limit.
+- Ollama's `/api/ps` is from its API documents (`context_length`), not seen on a server, which was out
+  of reach. A wrong shape only means no limit.
   It is in the human's check.
 - A model reloaded with another context mid-session keeps the old limit until a resume.
 - `min_context` goes stale as kits and CLIs grow: a warning too early or too late, never a refusal.

@@ -50,6 +50,14 @@ WOULD_EXPAND = f"the agent CLI would expand ({' or '.join(EXPANDED)})"
 # 1.18.35 then stops and prints the text with the key, Kilo 7.8.8 drops all of the config, checked
 # with `debug config`): a key that holds one of these cannot reach them.
 BREAKS_CONFIG = ('"', "\\")
+# Where a server of a known type sets a model's context, from its own documents (LM Studio's `lms
+# load`, Ollama's Context length); "" for any other.
+CONTEXT_HOW = {
+    "": "load the model with a larger context",
+    model_servers.LMSTUDIO: "load the model with a larger context (lms load --context-length)",
+    model_servers.OLLAMA: "raise OLLAMA_CONTEXT_LENGTH, or the context in the Ollama app",
+}
+CONTEXT_PEEK = "context too small"  # the folded Advanced's words for that warning
 
 
 # The field of a form a refusal concerns, for the UI ("" for none); the CLI ignores it.
@@ -1108,10 +1116,11 @@ def context_warning(
     if limit is None or limit.context >= provider.min_context:
         return None
     where = f" on {start.server.name}" if start.server is not None else ""
+    how = CONTEXT_HOW.get(start.server.kind if start.server else "", CONTEXT_HOW[""])
     return (
         f"{start.name}{where} has a context of {limit.context:,} tokens; {provider.title} needs "
-        f"about {provider.min_context:,} for its instructions and tools: load the model with a "
-        "larger context"
+        f'about {provider.min_context:,} for its instructions and tools: {how}; see "What to '
+        'expect of a small model" in docs/install.md'
     )
 
 

@@ -3825,9 +3825,9 @@ export interface components {
         /**
          * SessionModelCheck
          * @description The check a start would make of a model, for the launch window: `text` the line under
-         *     its field. For a refusal, `short` the same to point at the field, `peek` a few words for
-         *     the folded Advanced, `retry` whether a new check can help. `warnings` of the chosen
-         *     model's server only; `server` its name.
+         *     its field. For a refusal, `short` the same to point at the field, `retry` whether a new
+         *     check can help. `peek` a few words for the folded Advanced, of a refusal or of the
+         *     `warnings`, those of the chosen model's server only; `server` its name.
          */
         SessionModelCheck: {
             /**

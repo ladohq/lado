@@ -153,9 +153,11 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   compaction, whose message has `summary: true`) starting the count again, and at the third
   keeps that error with LADO's words before the server's, as an error is cut to one short line,
   and calls `client.session.abort`, whose
-  `MessageAbortedError` does not replace it. The abort gives two `session.idle`: the first ends
+  `MessageAbortedError` does not replace it. Any turn that ends on an error gives two
+  `session.idle` 20 ms apart (a server's 500 and an abort alike, on both CLIs): the first ends
   the turn on that error, and any more before the next prompt end no turn, or the second would
-  pass as a clean end and decide the reply check; checked in the TUI of OpenCode 1.18.35 and Kilo
+  pass as a clean end and decide the reply check. An error past `base.ERROR_LIMIT` keeps its
+  whole text in `Event.details`, which `turn_failed` puts in the message's body; checked in the TUI of OpenCode 1.18.35 and Kilo
   7.8.8 on a server of a small context, 6 and 7 requests to the idle. Claude Code runs no hook when
   the human interrupts a turn with Esc, while text streams, while a tool runs or on a
   permission dialog (checked by hand with 2.1.292): the agent stays `busy`, or `waiting`

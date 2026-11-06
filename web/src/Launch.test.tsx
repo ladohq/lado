@@ -1236,7 +1236,7 @@ test("a key over plain http warns and leaves Start on", async () => {
     name: "",
     retry: false,
     short: "",
-    peek: "",
+    peek: "key over http",
     warnings: [warning],
     server: HOME,
   });
@@ -1246,6 +1246,26 @@ test("a key over plain http warns and leaves Start on", async () => {
   expect(startButton().disabled).toBe(false);
   fireEvent.click(advancedRow().querySelector("summary")!);
   await waitFor(() => expect(summary()).toBe(`Advanced: model ${QWEN} on ${HOME} ⚠ key over http`));
+});
+
+test("folded, Advanced says what the warning is about, not always the key", async () => {
+  const qwen = saved(QWEN, "qwen3-8b");
+  modelEntries = { models: [qwen], servers: [], defaults: [defaultOf(qwen)] };
+  sessionCheck = () => ({
+    kind: "ok",
+    text: `${HOME} lists qwen3-8b among its models.`,
+    field: "",
+    name: "",
+    retry: false,
+    short: "",
+    peek: "context too small",
+    warnings: [`${QWEN} on ${HOME} has a context of 4,000 tokens`],
+    server: HOME,
+  });
+  await kiloWindow();
+  await screen.findByText(`✓ ${HOME} lists qwen3-8b among its models.`);
+  fireEvent.click(advancedRow().querySelector("summary")!);
+  await waitFor(() => expect(summary()).toBe(`Advanced: model ${QWEN} on ${HOME} ⚠ context too small`));
 });
 
 test("folded, Advanced names the model and its server, or a built-in model alone", async () => {

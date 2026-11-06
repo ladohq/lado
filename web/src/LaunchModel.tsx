@@ -356,7 +356,7 @@ export function useLaunchModel({
           Advanced: model <span className="launch-first-peek">{named}</span>
           {server !== null && ` on ${server}`}
         </span>
-        {!wrong && (checked?.warnings.length ?? 0) > 0 && <span className="launch-first-mark"> ⚠ key over http</span>}
+        {!wrong && checked?.peek && <span className="launch-first-mark">{` ⚠ ${checked.peek}`}</span>}
         {wrong && (
           <b className="launch-first-mark launch-first-bad">{` ! ${missing ? "not in Settings" : refused?.peek}`}</b>
         )}

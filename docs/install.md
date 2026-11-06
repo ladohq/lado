@@ -285,7 +285,11 @@ model, Ollama's running one, a gateway's `max_input_tokens`) and tells the agent
 compacts in time; a model below that need is warned about in `lado start` and the launch window,
 and starts all the same. A model reloaded with another context keeps the old limit until a resume.
 On a model too small, the turn ends on an error in the chat after three attempts; a lighter agent
-for such models does not exist yet. What else to expect:
+for such models does not exist yet. Where to set the context: in LM Studio when you load the
+model, `lms load <model> --context-length 65536`; in Ollama with `OLLAMA_CONTEXT_LENGTH=65536 ollama
+serve` or the slider in the app's settings, and `ollama ps` shows what a running model has; in
+LiteLLM, `max_input_tokens` of the model in its config says what the model behind it can take. What
+else to expect:
 
 - A server that reports nothing, or a model not loaded yet, leaves the CLI with no limit: it
   compacts only when the server refuses a request. Ollama cuts a long prompt silently instead, so

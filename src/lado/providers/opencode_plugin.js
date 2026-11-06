@@ -65,9 +65,10 @@ export const LadoPlugin = async ({ client, directory }, options = {}) => {
   // "session.idle" of the same session. The error goes with that idle. A context overflow
   // the CLI compacts its way out of ("session.compacted") ends no turn.
   const errors = new Map()
-  // Overflows in a row by session, the sessions stopped for them, those whose stop has ended
-  // the turn, and the compactions' messages, whose steps do not count as the turn's. An abort
-  // gives two "session.idle" (OpenCode 1.18.35): the second, with no error, ends no turn.
+  // Overflows in a row by session, the sessions stopped for them, those whose turn has ended on
+  // an error, and the compactions' messages, whose steps do not count as the turn's. A turn
+  // that ends on an error gives two "session.idle", 20 ms apart, an abort's too (OpenCode
+  // 1.18.35, Kilo 7.8.8): the second, with no error, would pass as a clean end.
   const overflows = new Map()
   const stopped = new Set()
   const ended = new Set()
@@ -133,10 +134,11 @@ export const LadoPlugin = async ({ client, directory }, options = {}) => {
           if (ended.has(props.sessionID)) return
           const payload = { sessionID: props.sessionID }
           overflows.delete(props.sessionID)
-          if (stopped.delete(props.sessionID)) ended.add(props.sessionID)
+          stopped.delete(props.sessionID)
           if (errors.has(props.sessionID)) {
             payload.error = errors.get(props.sessionID)
             errors.delete(props.sessionID)
+            ended.add(props.sessionID)
           }
           const text = await run(hooks["session.idle"], payload)
           if (text) {

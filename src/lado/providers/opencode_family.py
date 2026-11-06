@@ -389,8 +389,10 @@ class OpenCodeFamily(base.Provider):
         data = json.loads(payload) if payload.strip() else {}
         error = data.get("error") or {}
         if error and error.get("name") != ABORTED:
-            text = base.error_line(error.get("name") or "UnknownError", error.get("message", ""))
-            return base.Event(EVENTS[native], error=text)
+            name, message = error.get("name") or "UnknownError", error.get("message", "")
+            whole = f"{name}: {message}"
+            details = whole if len(whole) > base.ERROR_LIMIT else ""
+            return base.Event(EVENTS[native], error=base.error_line(name, message), details=details)
         # The plugin's chat.message names the model of the prompt and its variant, the
         # reasoning effort (opencode_plugin.js). A model with no variant runs its default
         # one: OpenCode drops the variant when the human picks the default (1.18.35, read

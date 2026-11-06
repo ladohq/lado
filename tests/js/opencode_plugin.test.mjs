@@ -126,6 +126,7 @@ test("an error, then idle, give one turn end with the error", async () => {
   const { plugin } = await load({ "session.idle": hook("session.idle") })
   await plugin.event(sessionEvent("session.error", "s1", { error: API_ERROR }))
   await plugin.event(sessionEvent("session.idle", "s1"))
+  await plugin["chat.message"]({ sessionID: "s1" }, { parts: [] })
   await plugin.event(sessionEvent("session.idle", "s1"))
   assert.deepEqual(calls(), [
     {
@@ -134,6 +135,27 @@ test("an error, then idle, give one turn end with the error", async () => {
     },
     { event: "session.idle", payload: { sessionID: "s1" } },
   ])
+})
+
+// A server's 500 (OpenCode 1.18.35, Kilo 7.8.8): "session.error", then two "session.idle".
+test("the second idle of a turn that ended on an error is no turn's end", async () => {
+  const { plugin } = await load({ "session.idle": hook("session.idle") })
+  await plugin.event(sessionEvent("session.error", "s1", { error: API_ERROR }))
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  assert.deepEqual(calls(), [
+    {
+      event: "session.idle",
+      payload: { sessionID: "s1", error: { name: "APIError", message: "Overloaded" } },
+    },
+  ])
+})
+
+test("a clean turn's idles all reach the hook", async () => {
+  const { plugin } = await load({ "session.idle": hook("session.idle") })
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  assert.equal(calls().length, 2)
 })
 
 test("an error without a message is passed by its name", async () => {

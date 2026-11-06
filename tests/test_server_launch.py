@@ -1258,6 +1258,7 @@ def test_the_check_warns_of_a_key_over_http_of_the_chosen_model_only(
         "The key of LM Studio дома goes unencrypted (http) to an address outside your machine "
         "and network."
     ]
+    assert answer.json()["peek"] == "key over http"
     assert "KEY-CANARY" not in answer.text
     asked["model"] = "opencode/big-pickle"
     assert client.post(CHECK, json=asked).json()["warnings"] == []
@@ -1275,8 +1276,22 @@ def test_the_check_warns_of_a_context_too_small_and_lets_the_start_go(
     assert found["kind"] == "ok"
     assert found["warnings"] == [
         "Локальная Qwen on LM Studio дома has a context of 16,000 tokens; OpenCode needs about "
-        "32,768 for its instructions and tools: load the model with a larger context"
+        "32,768 for its instructions and tools: load the model with a larger context (lms load "
+        '--context-length); see "What to expect of a small model" in docs/install.md'
     ]
+    assert found["peek"] == "context too small"
+
+
+def test_two_warnings_are_both_named_for_the_folded_advanced(client, monkeypatch, fake_clis):
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    server_launch.forget_model_lists()
+    saved = _saved(address="http://llm.example.com")
+    model_settings._write_key(saved.server, "KEY-CANARY")
+    limits = {"qwen3-8b": providers.base.Limit(16000)}
+    _server_answers(monkeypatch, "qwen3-8b", limits=limits)
+    found = client.post(CHECK, json={"cli": "opencode", "model": "Локальная Qwen"}).json()
+    assert len(found["warnings"]) == 2
+    assert found["peek"] == "key over http, context too small"
 
 
 def test_the_check_of_a_model_of_enough_or_unknown_context_does_not_warn(

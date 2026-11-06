@@ -82,5 +82,5 @@ Named as limits, in `docs/install.md`:
 
 `src/lado/model_servers.py`, `model_settings.py`, `hooks.py`, `server/model_entries.py`,
 `providers/base.py`, `opencode_family.py`, `opencode.py`, `kilo.py`, `opencode_plugin.js`;
-`web/src/` only for LAD-210. No schema change, no MCP or CLI change, no API model change. Part of the
+`web/src/` for LAD-210 and the folded Advanced's mark. No schema change, no MCP or CLI change, no API model change. Part of the
 minor 0.45.0 (a feature).

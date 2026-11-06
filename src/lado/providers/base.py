@@ -77,6 +77,8 @@ class Event:
     # For TURN_END: why the turn ended on an error (an API error, a rate limit), one short
     # line; "" for a turn that ended as usual, or that the human cancelled.
     error: str = ""
+    # For TURN_END with an error cut to that line: its whole text, "" for one that fits.
+    details: str = ""
     # For TURN_END with an error: the provider says the error passes by itself (an
     # overloaded or failing API), so LADO resumes the agent after a while (lado.hooks).
     transient: bool = False

@@ -1632,8 +1632,27 @@ def test_a_start_below_the_cli_s_need_warns(serve, cli, need):
     server = serve("gateway-limits")
     assert warned(server, cli) == [
         f"Малая on {server.url} has a context of 16,000 tokens; {cli.title} needs about "
-        f"{need} for its instructions and tools: load the model with a larger context"
+        f"{need} for its instructions and tools: load the model with a larger context; see "
+        '"What to expect of a small model" in docs/install.md'
     ]
+
+
+@pytest.mark.parametrize(
+    ("kind", "how"),
+    [
+        (
+            model_servers.LMSTUDIO,
+            "load the model with a larger context (lms load --context-length)",
+        ),
+        (model_servers.OLLAMA, "raise OLLAMA_CONTEXT_LENGTH, or the context in the Ollama app"),
+        (model_servers.OPENAI, "load the model with a larger context"),
+    ],
+)
+def test_the_warning_says_where_a_server_of_a_known_kind_sets_the_context(kind, how):
+    server = state.ModelServer("id", "Дома", "http://localhost:1", kind, (CHAT,), "")
+    start = model_settings.StartModel(name="m", model="m", server=server)
+    warning = model_settings.context_warning(start, OPENCODE, base.Limit(4000))
+    assert f"tools: {how}; see " in warning
 
 
 def test_a_context_at_the_need_does_not_warn():

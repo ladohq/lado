@@ -1059,6 +1059,15 @@ def test_a_stopped_turn_says_why_past_the_cut_of_a_long_server_message(provider,
     subprocess.run(["node", "--input-type=module", "-e", script], check=True, timeout=30)
     event = providers.get(provider).parse_event("session.idle", out.read_text())
     assert "the model's context is too small for the agent's request" in event.error
+    assert event.error.endswith("…") and len(event.error) == base.ERROR_LIMIT
+    assert event.details.count("maximum context length") == 8
+    assert event.details.startswith("ContextOverflowError: LADO stopped the turn")
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_an_error_that_fits_has_no_details(provider):
+    payload = json.dumps({"error": {"name": "APIError", "message": "Overloaded"}})
+    assert providers.get(provider).parse_event("session.idle", payload).details == ""
 
 
 def test_opencode_family_shares_one_plugin_inside_the_package():

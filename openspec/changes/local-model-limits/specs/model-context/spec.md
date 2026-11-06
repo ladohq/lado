@@ -59,8 +59,10 @@ no known context SHALL have no `limit`.
 
 When the known context of the model an agent starts on is below what its CLI needs (OpenCode 32768,
 Kilo 49152), `lado start`, the start's warnings and the launch window SHALL warn, naming the model,
-its context and the need, and the agent SHALL start. An unknown context, or a model the agent does not
-start on, SHALL give no such warning.
+its context and the need, and the agent SHALL start. The warning SHALL say where to change the context:
+the setting of a server of a known type, and the section of `docs/install.md`. An unknown context, or a
+model the agent does not start on, SHALL give no such warning. The folded Advanced SHALL name each
+warning of the chosen model in a few words of its own.
 
 #### Scenario: Too small a model
 
@@ -71,6 +73,17 @@ start on, SHALL give no such warning.
 
 - **WHEN** the window checks a model whose context is below the need
 - **THEN** the Model field shows the warning, and Start stays on
+
+#### Scenario: A server of a known type
+
+- **WHEN** the model too small is on LM Studio
+- **THEN** the warning names `lms load --context-length`
+
+#### Scenario: The folded Advanced
+
+- **WHEN** the chosen model is too small and its key goes over plain http
+- **THEN** the folded Advanced reads `⚠ key over http, context too small`; with the context alone,
+  `⚠ context too small`
 
 #### Scenario: Enough context
 
@@ -84,6 +97,12 @@ between them, and the turn SHALL end on that error, whatever the abort itself re
 SHALL say the context is too small for the agent's request. A successful step of the turn or a new prompt
 SHALL reset the count; the step of a compaction SHALL not, as its own small request succeeds in the loop
 this stops.
+
+#### Scenario: A long message of the server
+
+- **WHEN** a turn is stopped and the server's message passes the limit of an error's line
+- **THEN** the chat's line still says the context is too small and ends `; it is idle`, and the
+  message's body holds the whole text
 
 #### Scenario: A fixed request larger than the context
 

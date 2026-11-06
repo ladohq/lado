@@ -16,6 +16,11 @@ an error SHALL check them as usual.
 - **WHEN** a turn started by the human's message ends on an error
 - **THEN** the message has no reply state, and the chat shows the turn's error alone
 
+#### Scenario: The CLI reports the end twice
+
+- **WHEN** an OpenCode or Kilo turn ends on an error, and a second `session.idle` with no error follows
+- **THEN** only the first ends the turn, and the message has no reply state
+
 #### Scenario: The next turn replies
 
 - **WHEN** the next turn ends without an error and the agent wrote to the human in it

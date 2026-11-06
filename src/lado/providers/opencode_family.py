@@ -1,8 +1,10 @@
 """The OpenCode family: OpenCode and its forks (Kilo CLI) as LADO providers.
 
 They have no command hooks, so LADO ships a small plugin (opencode_plugin.js) that runs
-`lado hook <event>` for the CLI's own events. Each agent gets one config dict: it is written
-to the agent's config folder and goes to the CLI through the environment (`env`).
+`lado hook <event>` for the CLI's own events, and a TUI plugin (opencode_tui_plugin.js) that
+reports when the TUI's prompt has focus, which is the agent's session start. Each agent gets
+one config dict: it is written to the agent's config folder and goes to the CLI through the
+environment (`env`).
 
 Forks drift apart. This base holds only what is checked on every CLI of the family, with the
 CLI and version it was checked on; what is checked on one CLI only lives in its subclass. A

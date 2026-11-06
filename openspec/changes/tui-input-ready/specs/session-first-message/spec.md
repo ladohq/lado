@@ -6,8 +6,7 @@ An OpenCode or Kilo agent SHALL stay `starting` until its TUI's prompt has focus
 plugin LADO gives that agent alone through the CLI's own variable (`OPENCODE_TUI_CONFIG`,
 `KILO_TUI_CONFIG`), never through the user's config. That report SHALL be the agent's session start;
 the server plugin's init SHALL report nothing. Nothing SHALL be typed into the agent's window
-before it, unless the TUI stays silent for 30 s while the server plugin lives: the agent SHALL then be
-ready, its lead SHALL be told, and messages SHALL be typed in as for any idle agent.
+before it, but for a silent TUI (see "An agent whose TUI stays silent is ready").
 
 #### Scenario: A message right after the start
 
@@ -27,6 +26,23 @@ ready, its lead SHALL be told, and messages SHALL be typed in as for any idle ag
   `Waiting for an answer in its terminal: no sign from it 30 s after its start. Open its terminal.`;
   when the prompt has focus the agent is idle and the message goes in
 
+#### Scenario: Lines given on the command line
+
+- **WHEN** a worker starts with its task's line on `--prompt` and the CLI reports the prompt
+  submitted before the prompt's focus
+- **THEN** the agent is `busy` with its task, and the later report changes nothing
+
+#### Scenario: The user's config stays
+
+- **WHEN** an agent starts
+- **THEN** its TUI config is a file in its own config folder, and no file of the user's is written
+
+### Requirement: An agent whose TUI stays silent is ready
+
+When an OpenCode or Kilo agent's TUI has not reported 30 s after its server plugin's start, and that
+plugin lives, the agent SHALL be ready: its lead SHALL be told, and messages SHALL be typed in as for
+any idle agent. A later report of the TUI SHALL end a wait that failed messages left.
+
 #### Scenario: A TUI silent while the server plugin lives
 
 - **WHEN** the server plugin lives and the TUI has not reported 30 s after the plugin's start
@@ -43,14 +59,3 @@ ready, its lead SHALL be told, and messages SHALL be typed in as for any idle ag
 
 - **WHEN** the agent waits for a dialog's answer and the TUI reports
 - **THEN** the agent stays `waiting`
-
-#### Scenario: Lines given on the command line
-
-- **WHEN** a worker starts with its task's line on `--prompt` and the CLI reports the prompt
-  submitted before the prompt's focus
-- **THEN** the agent is `busy` with its task, and the later report changes nothing
-
-#### Scenario: The user's config stays
-
-- **WHEN** an agent starts
-- **THEN** its TUI config is a file in its own config folder, and no file of the user's is written

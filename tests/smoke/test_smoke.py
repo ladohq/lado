@@ -298,7 +298,7 @@ def test_a_message_right_after_the_start_goes_in_at_the_first_attempt(smoke_repo
 def test_a_tui_plugin_that_does_not_load_leaves_no_agent_starting(
     smoke_repo, smoke_provider, monkeypatch, tmp_path
 ):
-    """A CLI that no longer loads the TUI plugin: the server plugin says so, and the message goes."""
+    """A CLI that no longer loads the TUI plugin: the server plugin says so, the message goes."""
     provider = smoke_provider
     monkeypatch.setattr(opencode_family, "TUI_PLUGIN", tmp_path / "no-such-plugin.js")
     try:

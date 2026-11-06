@@ -561,7 +561,7 @@ test("a file that could not be uploaded: nothing sent, its name and no connectio
 
 // Stop.
 
-const actions = (status: SessionInfo["status"] = "running") => <SessionActions session={session(status)} />;
+const actions = (status: SessionInfo["status"] = "running") => <SessionActions session={session(status)} onActivity={false} />;
 const openStop = async () => {
   await press("Stop session…");
   await screen.findByRole("button", { name: "Stop s" });

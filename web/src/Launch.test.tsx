@@ -554,7 +554,7 @@ test("a workspace of / is listed as /, never //", async () => {
 test("Resume shows no Workspace row", async () => {
   workspace = { path: REPOS, made: true };
   sessions = [session("lado", { status: "stopped", repo: "/src/lado" })];
-  open("/sessions/lado");
+  open("/sessions/lado/flows");
   fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
   const dialog = await screen.findByRole("dialog", { name: "Resume session" });
   await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
@@ -772,7 +772,7 @@ test("the Project way asks for the chosen project's providers, where its own log
 test("Resume of a CLI without its login is off, says Log in first, and another CLI resumes", async () => {
   sessions = [session("lado", { status: "stopped", repo: "/src/lado", provider: "claude" })];
   providers = async () => [provider("claude", { login_missing: true }), provider("kilo")];
-  open("/sessions/lado");
+  open("/sessions/lado/flows");
   fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
   const dialog = await screen.findByRole("dialog", { name: "Resume session" });
   const note = (await within(dialog).findByText(NO_LOGIN, { exact: false })).closest(".field-note") as HTMLElement;
@@ -1000,7 +1000,7 @@ test("a first message over the limit keeps Start off, also folded", async () => 
 test("the Resume window sends its first message", async () => {
   sessions = [session("lado", { status: "stopped", repo: "/src/lado" })];
   answers["POST /api/sessions/lado/resume"] = () => json({ session: session("lado"), ...STARTED, resumed: true });
-  open("/sessions/lado");
+  open("/sessions/lado/flows");
   fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
   const dialog = await screen.findByRole("dialog", { name: "Resume session" });
   expect(firstRow().open).toBe(false);
@@ -1025,7 +1025,7 @@ test("Resume fills the window from the session, sends only what changed and show
       lead: "",
       warnings: [],
     });
-  open("/sessions/lado");
+  open("/sessions/lado/flows");
   fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
   const dialog = await screen.findByRole("dialog", { name: "Resume session" });
   expect(where().value).toBe("/src/lado");
@@ -1047,7 +1047,7 @@ test("Resume session is off while the session's provider is not installed, on on
   sessions = [session("lado", { status: "stopped", repo: "/src/lado", provider: "kilo" })];
   providers = async () => [provider("claude"), provider("kilo", { installed: false, version: "", detail: "kilo not found" })];
   answers["POST /api/sessions/lado/resume"] = () => json({ session: session("lado"), ...STARTED, resumed: true });
-  open("/sessions/lado");
+  open("/sessions/lado/flows");
   fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
   const dialog = await screen.findByRole("dialog", { name: "Resume session" });
   const refusal = await within(dialog).findByText("kilo not found; install kilo");
@@ -1064,7 +1064,7 @@ test("Resume session is off while the session's provider is not installed, on on
 
 test("Resume session is off while the session's provider is not among the providers", async () => {
   sessions = [session("lado", { status: "stopped", repo: "/src/lado", provider: "gone" })];
-  open("/sessions/lado");
+  open("/sessions/lado/flows");
   fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
   const dialog = await screen.findByRole("dialog", { name: "Resume session" });
   expect((await within(dialog).findByText("unknown provider gone")).classList).toContain("bad");
@@ -1086,13 +1086,18 @@ const openDetails = () => fireEvent.click(head().querySelector("h1 button") as H
 const facts = () => [...details().querySelectorAll("dt, dd")].map((one) => one.textContent);
 
 test.each([
-  ["running", ["Stop session…"]],
-  ["loop_down", ["Stop session…"]],
-  ["stopped", ["Resume…", "Forget…"]],
-  ["tmux_gone", ["Resume…", "Stop session…"]],
-] as const)("a %s session's head has the actions %j, each with its icon and tooltip, and no menu", async (status, labels) => {
+  ["running", "activity", ["Stop session…"]],
+  ["running", "flows", ["Stop session…"]],
+  ["loop_down", "activity", ["Stop session…"]],
+  ["stopped", "activity", ["Forget…"]],
+  ["stopped", "agents", ["Resume…", "Forget…"]],
+  ["stopped", "flows", ["Resume…", "Forget…"]],
+  ["stopped", "artifacts", ["Resume…", "Forget…"]],
+  ["tmux_gone", "activity", ["Resume…", "Stop session…"]],
+  ["tmux_gone", "flows", ["Resume…", "Stop session…"]],
+] as const)("a %s session's head on %s has the actions %j, each with its icon and tooltip, and no menu", async (status, tab, labels) => {
   sessions = [session("lado", { status })];
-  open("/sessions/lado");
+  open(`/sessions/lado/${tab}`);
   await screen.findByRole("region", { name: "Session lado" });
   const buttons = within(head().querySelector(".session-head-actions") as HTMLElement).getAllByRole("button");
   expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual(labels);
@@ -1109,10 +1114,20 @@ test.each([
 
 test("Forget is drawn in the colour of a dangerous action", async () => {
   sessions = [session("lado", { status: "stopped" })];
-  open("/sessions/lado");
+  open("/sessions/lado/flows");
   await screen.findByRole("region", { name: "Session lado" });
   expect(within(head()).getByRole("button", { name: "Forget…" }).classList).toContain("danger-icon");
   expect(within(head()).getByRole("button", { name: "Resume…" }).classList).not.toContain("danger-icon");
+});
+
+test.each([
+  ["stopped", "Resume"],
+  ["tmux_gone", ""],
+] as const)("Resume in the head of a %s session reads %j", async (status, word) => {
+  sessions = [session("lado", { status })];
+  open("/sessions/lado/artifacts");
+  await screen.findByRole("region", { name: "Session lado" });
+  expect(within(head()).getByRole("button", { name: "Resume…" }).textContent).toBe(word);
 });
 
 const MINUTE = 60_000;

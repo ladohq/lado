@@ -1576,6 +1576,22 @@ h3 {
   }
 }
 
+/* A stopped session's Resume keeps its word at any width. */
+.session-head-actions .icon-button:has(.session-resume-word) {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  padding-inline: 10px;
+}
+
+.session-resume-word {
+  font-size: 14px;
+  font-weight: 500;
+}
+
 /* Details (SessionDetails.tsx): the popover on a computer, its content shared with the phone's
    sheet, whose frame is in the section "Phone layout". */
 .session-popover {
@@ -10495,6 +10511,11 @@ button.quiet.danger-text {
 
 :root[data-phone] .session-action-word {
   display: none;
+}
+
+:root[data-phone] .session-head-actions .icon-button:has(.session-resume-word) {
+  width: auto;
+  padding-inline: 10px;
 }
 
 /* The session's details (SessionDetails.tsx): a sheet over the page's bottom. */

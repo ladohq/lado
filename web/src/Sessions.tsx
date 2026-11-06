@@ -1098,10 +1098,14 @@ function SessionHead({ session, tab }: { session: SessionInfo; tab: Tab }) {
   const slot = useTopBar();
   const phone = usePhone();
   if (slot === null) return null;
+  const onActivity = tab === "activity";
   return (
     <>
       <SkipToChat name={session.name} tab={tab} />
-      {createPortal(phone ? <PhoneHead session={session} /> : <HeadLine session={session} />, slot)}
+      {createPortal(
+        phone ? <PhoneHead session={session} onActivity={onActivity} /> : <HeadLine session={session} onActivity={onActivity} />,
+        slot,
+      )}
     </>
   );
 }
@@ -1138,7 +1142,7 @@ const TAKES_FOCUS = "a, button, input, textarea, select, [contenteditable]";
 // Details, a broken session's status in words, the run time, the branch on a wide window
 // (styles.css), the team (Team.tsx: HeadTeam), the actions. The rest of the facts are in
 // Details (DetailsPopover).
-function HeadLine({ session }: { session: SessionInfo }) {
+function HeadLine({ session, onActivity }: { session: SessionInfo; onActivity: boolean }) {
   const { status } = session;
   const about = useAbout(session);
   const repository = about?.repos[0];
@@ -1244,7 +1248,7 @@ function HeadLine({ session }: { session: SessionInfo }) {
         editing={editing}
       />
       <div className="session-head-actions">
-        <SessionActions session={session} />
+        <SessionActions session={session} onActivity={onActivity} />
       </div>
       <span className="topbar-sep" aria-hidden="true" />
     </div>
@@ -1279,7 +1283,7 @@ function ProjectCrumb({ project }: { project: NonNullable<SessionAbout["project"
 // The head on a phone (docs/design/ui.md, Phone layout): the status dot, the title (or name)
 // as a button that opens the session's details, and the session's actions; the change
 // feed's mark is the Shell's, between them by styles.css. The facts are in the details.
-function PhoneHead({ session }: { session: SessionInfo }) {
+function PhoneHead({ session, onActivity }: { session: SessionInfo; onActivity: boolean }) {
   const about = useAbout(session);
   const live = useLiveStore();
   const [details, setDetails] = useState(false);
@@ -1301,7 +1305,7 @@ function PhoneHead({ session }: { session: SessionInfo }) {
         </button>
       </h1>
       <div className="session-head-actions">
-        <SessionActions session={session} />
+        <SessionActions session={session} onActivity={onActivity} />
       </div>
       {details && (
         <SessionDetails

@@ -61,11 +61,10 @@ const question = (id: number): MessageInfo =>
 const session = (status: SessionInfo["status"]) =>
   ({ name: "s", repo: "/src/s", status, kits: ["default"], provider: "claude", permission_mode: null, without: [] }) as unknown as SessionInfo;
 
-// The server as the test sets it: `down` answers nothing, `lostAnswer` takes a write and loses
-// its answer; each list answers what stands here.
+// The server as the test sets it: `down` answers nothing, `refuse` refuses a write; each list
+// answers what stands here.
 let server: {
   down: boolean;
-  lostAnswer: boolean;
   refuse: string | null;
   gates: GateInfo[];
   waiting: { session: string; question: MessageInfo }[];
@@ -76,7 +75,7 @@ let posted: { path: string; body: unknown }[];
 let live: Live;
 
 beforeEach(() => {
-  server = { down: false, lostAnswer: false, refuse: null, gates: [], waiting: [], messages: [], sessions: [session("running")] };
+  server = { down: false, refuse: null, gates: [], waiting: [], messages: [], sessions: [session("running")] };
   posted = [];
   stubDialogs();
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -90,7 +89,6 @@ beforeEach(() => {
       if (init?.method === "POST") {
         if (server.refuse !== null) return new Response(JSON.stringify({ detail: server.refuse }), { status: 400 });
         posted.push({ path, body: init.body ? JSON.parse(String(init.body)) : undefined });
-        if (server.lostAnswer) throw new TypeError("Failed to fetch");
         if (path.endsWith("/resume")) return new Response(JSON.stringify({ session: session("running") }));
         return new Response(JSON.stringify({ result: "sent", dropped: 0 }));
       }

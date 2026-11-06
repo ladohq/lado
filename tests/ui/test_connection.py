@@ -38,7 +38,13 @@ def again(server, tmp_path):
         with open(tmp_path / "server-again.out", "w") as out:
             started.append(
                 subprocess.Popen(
-                    [sys.executable, str(fake_provider.LADO), "server", "--port", str(server["port"])],
+                    [
+                        sys.executable,
+                        str(fake_provider.LADO),
+                        "server",
+                        "--port",
+                        str(server["port"]),
+                    ],
                     stdout=out,
                     stderr=subprocess.STDOUT,
                     env=os.environ,
@@ -164,6 +170,14 @@ def test_approve_as_the_server_goes_then_not_delivered_and_retry(
     no_raw_text(page)
     expect(lost_mark(page)).to_be_visible()
     shot(page, "not-confirmed")
+    page.emulate_media(color_scheme="dark")
+    shot(page, "not-confirmed-dark")
+    page.set_viewport_size({"width": 390, "height": 844})
+    expect(alert).to_contain_text("Approval not confirmed")
+    shot(page, "not-confirmed-phone-dark")
+    page.emulate_media(color_scheme="light")
+    shot(page, "not-confirmed-phone")
+    page.set_viewport_size({"width": 1440, "height": 900})
 
     again()
     expect(alert).to_contain_text("Approval not delivered", timeout=15000)
@@ -171,6 +185,8 @@ def test_approve_as_the_server_goes_then_not_delivered_and_retry(
     expect(button(card, "Approve")).to_be_enabled()
     expect(button(card, "Reject")).to_be_enabled()
     shot(page, "not-delivered")
+    page.emulate_media(color_scheme="dark")
+    shot(page, "not-delivered-dark")
     button(alert, "Retry").click()
     expect(card).to_have_count(0)
     assert state.get_gate(gate.id).answer == "approve"
@@ -194,7 +210,9 @@ def test_approve_that_someone_else_gave_while_away_ends_with_no_error(
 
 def lose(page: Page, path: str) -> None:
     """The server gets no request of `path`: the browser's fetch fails, the feed stays."""
-    page.route(path, lambda route: route.abort() if route.request.method == "POST" else route.continue_())
+    page.route(
+        path, lambda route: route.abort() if route.request.method == "POST" else route.continue_()
+    )
 
 
 def test_the_same_error_on_the_gates_run_page_and_another_decision(page: Page, server, repo, shot):
@@ -205,7 +223,9 @@ def test_the_same_error_on_the_gates_run_page_and_another_decision(page: Page, s
     button(card, "Approve").click()
     alert = card.get_by_role("alert")
     expect(alert).to_contain_text("Approval not delivered")
-    page.get_by_role("navigation", name="Session sections").get_by_role("link", name="Flows").click()
+    page.get_by_role("navigation", name="Session sections").get_by_role(
+        "link", name="Flows"
+    ).click()
     page.get_by_role("link", name="ship/x").first.click()
     run = page.get_by_role("region", name="Run ship/x")
     expect(run.get_by_role("alert")).to_contain_text("Approval not delivered")
@@ -341,7 +361,9 @@ def test_a_page_opened_while_away_says_no_connection_and_loads_when_back(
     expect(page.get_by_role("textbox", name="Write to the supervisor…")).to_be_visible()
     server_run.stop()
     expect(lost_mark(page)).to_be_visible()
-    page.get_by_role("navigation", name="Session sections").get_by_role("link", name="Flows").click()
+    page.get_by_role("navigation", name="Session sections").get_by_role(
+        "link", name="Flows"
+    ).click()
     expect(page.get_by_text("No connection").first).to_be_visible()
     no_raw_text(page)
     shot(page, "no-connection")

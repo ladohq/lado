@@ -35,6 +35,7 @@ import {
   type SessionInfo,
   type WaitingItem,
 } from "./api";
+import { Attempts, type Attempt } from "./attempts";
 
 export type Change = { kind: string; session: string; key: string; op: string; item: unknown };
 
@@ -117,6 +118,7 @@ export type LiveState = {
   link: Link;
   lost: boolean; // the feed is down for LOST_AFTER_MS or more: the mark says so, the buttons wait
   problem: string | null; // why the server refuses the feed, when it answered
+  attempts: Record<string, Attempt>; // the actions without an answer, by their key (attempts.ts)
 };
 
 // The Kits page's lists: the installed kits (then the built-in ones), the marketplaces and
@@ -202,7 +204,12 @@ export class Live {
     link: "connecting",
     lost: false,
     problem: null,
+    attempts: {},
   };
+  readonly attempts = new Attempts(
+    (attempts) => this.set({ attempts }),
+    () => this.state.link === "open",
+  );
   // The Kits page's lists: how many pages watch them, and per list whether a load runs and
   // whether another one follows it for the changes that came meanwhile.
   private kitsWatchers = 0;
@@ -265,6 +272,7 @@ export class Live {
   stop() {
     clearTimeout(this.retry);
     this.stopLosing();
+    this.attempts.stop();
     this.source?.close();
     this.source = null;
   }
@@ -279,6 +287,7 @@ export class Live {
     this.stopLosing();
     this.set({ link: "open", lost: false, problem: null });
     if (back) this.recover();
+    this.attempts.look();
   }
 
   // The feed went: one timer for the whole loss, however many errors it brings.
@@ -786,6 +795,15 @@ export const LiveContext = createContext<Live | null>(null);
 export function useLive(): LiveState {
   const live = useLiveStore();
   return useSyncExternalStore(live.subscribe, live.get);
+}
+
+// An action's attempt, when it got no answer (attempts.ts).
+export const useAttempt = (key: string): Attempt | undefined => useLive().attempts[key];
+
+// Whether an action's buttons wait: the connection is lost, or its outcome is not known yet.
+export function useLocked(key: string): boolean {
+  const { lost, attempts } = useLive();
+  return lost || attempts[key]?.state === "unknown";
 }
 
 // The store itself, for a page that asks it to watch something (watch).

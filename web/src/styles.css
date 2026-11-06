@@ -5914,6 +5914,54 @@ button.rec-bar-line {
   opacity: 0.55;
 }
 
+/* What waits for the connection (docs/design/ui.md, A lost connection): `.waits` is the span
+   with the button's tooltip, which takes the pointer, as a disabled button does not. */
+.waits {
+  display: inline-flex;
+  cursor: not-allowed;
+}
+
+.waits > button {
+  pointer-events: none;
+}
+
+.waits button:disabled,
+button.locked:disabled,
+.action-problem button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* An action without an answer: under its buttons, Retry at the row's end or, with no room
+   left, under the words. */
+.action-problem {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--danger-ground);
+  color: var(--danger);
+}
+
+.action-problem .icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.action-problem b {
+  flex: 1;
+  min-width: 0;
+}
+
+.action-problem button {
+  flex: none;
+}
+
 .field-problem {
   grid-column: 1 / -1;
   margin: 0;

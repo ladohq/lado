@@ -1,0 +1,18 @@
+{
+  "about": "What a Retry takes as closed: one table for the core's refusals (tests/test_closed_refusals.py makes each row closed: true for real) and the patterns of attempts.ts (attempts.test.ts). N stands for an id, S for a session's name.",
+  "refusals": [
+    { "kind": "gate", "text": "gate #N is closed already: approve by human", "closed": true },
+    { "kind": "questions", "text": "question #N is answered", "closed": true },
+    { "kind": "questions", "text": "question #N is dismissed", "closed": true },
+    { "kind": "questions", "text": "question #N is closed", "closed": true },
+    { "kind": "questions", "text": "question #N is stopped", "closed": true },
+    { "kind": "questions", "text": "question #N is gone", "closed": true },
+    { "kind": "stop", "text": "session \"S\" is stopped already; resume it with `lado start`, or drop it with `lado forget S`", "closed": true },
+    { "kind": "resume", "text": "session \"S\" is already running; use `lado attach S`", "closed": true },
+    { "kind": "gate", "text": "no open gate #N", "closed": false },
+    { "kind": "gate", "text": "question #N is stopped", "closed": false },
+    { "kind": "questions", "text": "answers go to one agent at a time", "closed": false },
+    { "kind": "stop", "text": "session \"S\" is stopped, but its tmux session could not be killed", "closed": false },
+    { "kind": "resume", "text": "unknown session \"S\"", "closed": false }
+  ]
+}

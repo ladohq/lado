@@ -8673,6 +8673,17 @@
               }
             ],
             "title": "Project"
+          },
+          "project_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Title"
           }
         },
         "type": "object",

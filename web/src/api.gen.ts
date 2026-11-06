@@ -3167,6 +3167,8 @@ export interface components {
             title: string | null;
             /** Project */
             project: string | null;
+            /** Project Title */
+            project_title?: string | null;
         };
         /**
          * SessionKitInfo

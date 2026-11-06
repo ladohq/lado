@@ -595,6 +595,20 @@ def test_setting_a_title_is_journaled_as_a_session_update(lado_home):
     assert [tuple(row) for row in rows] == [("sessions", "s", "update")]
 
 
+def test_a_new_project_title_is_journaled_as_an_update_of_its_sessions_alone(lado_home):
+    with state.creating_project("shop", "Shop"):
+        pass
+    state.add_session(state.Session("a", "/a", None, "claude", project="shop"))
+    state.add_session(state.Session("b", "/b", None, "claude"))
+    with state.connect() as db:
+        after = db.execute("SELECT max(id) FROM changes").fetchone()[0]
+    assert state.set_project_title("nope", "x") is False
+    assert state.set_project_title("shop", "Shop EU") is True
+    with state.connect() as db:
+        rows = db.execute("SELECT kind, session, op FROM changes WHERE id > ?", (after,)).fetchall()
+    assert [tuple(row) for row in rows] == [("sessions", "a", "update")]
+
+
 def test_schema_28_gives_sessions_a_title(lado_home):
     state.add_session(state.Session("s", "/r", None, "claude"))
     with state.connect() as db:

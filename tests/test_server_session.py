@@ -189,14 +189,19 @@ def test_a_session_in_a_project_names_it(client, tmp_path, monkeypatch, fake_tmu
     init_repo(projects.folder("shop") / "frontend")
     runtime.start_session(None, "s", None, provider="claude", project="shop", repo_name="frontend")
     [info] = client.get("/api/sessions").json()
-    assert info["project"] == "shop"
+    assert (info["project"], info["project_title"]) == ("shop", "Shop")
     assert about(client)["project"] == {"id": "shop", "title": "Shop"}
     projects.rename("shop", "Shop EU")  # read when asked: a rename shows on the next look
     assert about(client)["project"] == {"id": "shop", "title": "Shop EU"}
+    assert client.get("/api/sessions").json()[0]["project_title"] == "Shop EU"
+    projects.rename("shop", None)  # the id stands in the UI, the field says there is no title
+    [untitled] = client.get("/api/sessions").json()
+    assert (untitled["project"], untitled["project_title"]) == ("shop", None)
 
 
 def test_a_session_without_a_project_names_none(client, session, statuses):
-    assert client.get("/api/sessions").json()[0]["project"] is None
+    [info] = client.get("/api/sessions").json()
+    assert (info["project"], info["project_title"]) == (None, None)
     assert about(client)["project"] is None
 
 

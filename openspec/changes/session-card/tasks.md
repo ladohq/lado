@@ -1,7 +1,7 @@
 ## 1. The server
 
-- [ ] 1.1 `project_title` in `SessionInfo` (D1), `make web-types`. Check: `tests/test_server_*.py`.
-- [ ] 1.2 `set_project_title` touches the sessions (D2). Check: `tests/test_feed.py`.
+- [x] 1.1 `project_title` in `SessionInfo` (D1), `make web-types`. Check: `tests/test_server_*.py`.
+- [x] 1.2 `set_project_title` touches the sessions (D2). Check: `tests/test_feed.py`.
 
 ## 2. The words and the row
 

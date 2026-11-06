@@ -19,7 +19,7 @@ import {
   type SessionInfo,
   type StopPreview,
 } from "./api";
-import { closedBy, looks, stopAttempt, type Action as Attempted } from "./attempts";
+import { closedBy, looks, stopAttempt } from "./attempts";
 import { ForgetIcon, ResumeIcon, StopIcon } from "./icons";
 import { useLaunch } from "./Launch";
 import { useLive, useLiveStore, useLocked } from "./live";
@@ -173,17 +173,17 @@ function StopPopover({
   // The stop of both buttons: without an answer LADO settles the stop alone, whichever was
   // pressed, so a forget only ever follows an answered stop or the human's asking again.
   const stopped = async (): Promise<boolean> => {
-    const action: Attempted = {
-      what: "Stop",
-      repeat: () => stopSession(session),
-      look: looks.stop(session),
-      closed: closedBy.stop,
-      reached: onClose,
-    };
     setRefused(null);
     live.attempts.clear(attempt);
     try {
-      if (await live.attempts.send(attempt, action)) return true;
+      const answered = await live.attempts.send(attempt, {
+        what: "Stop",
+        repeat: () => stopSession(session),
+        look: looks.stop(session),
+        closed: closedBy.stop,
+        reached: onClose,
+      });
+      if (answered) return true;
     } catch (error) {
       setRefused(messageOf(error));
     }

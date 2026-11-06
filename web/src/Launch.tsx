@@ -88,6 +88,8 @@ export type StartedState = { started: Started };
 
 export function LaunchProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<LaunchMode | null>(null);
+  const shown = useRef(mode);
+  shown.current = mode;
   return (
     <LaunchContext.Provider value={(next = { kind: "new" }) => setMode(next)}>
       {children}
@@ -97,6 +99,7 @@ export function LaunchProvider({ children }: { children: ReactNode }) {
           mode={mode}
           onMode={setMode}
           onClose={() => setMode(null)}
+          resumes={(name) => shown.current?.kind === "resume" && shown.current.session.name === name}
         />
       )}
     </LaunchContext.Provider>
@@ -189,10 +192,12 @@ function LaunchDialog({
   mode,
   onMode,
   onClose,
+  resumes,
 }: {
   mode: LaunchMode;
   onMode: (mode: LaunchMode) => void;
   onClose: () => void;
+  resumes: (session: string) => boolean; // the window stands now in Resume mode for it
 }) {
   const resuming = mode.kind === "resume" ? mode.session : null;
   const dialog = useRef<HTMLDialogElement>(null);
@@ -202,13 +207,6 @@ function LaunchDialog({
   const store = useLiveStore();
   const attempt = resumeAttempt(resuming?.name ?? "");
   const waiting = useLocked(attempt) && resuming !== null; // New session's Start does not wait
-  const here = useRef(false); // the window still stands
-  useEffect(() => {
-    here.current = true;
-    return () => {
-      here.current = false;
-    };
-  }, []);
   const ids = useId();
 
   const [path, setPath] = useState(resuming?.repo ?? "");
@@ -581,8 +579,8 @@ function LaunchDialog({
   };
 
   // The resume of a session, kept when it gets no answer. Reached by what LADO reads there is
-  // no answer to show on the session's page; with the window closed meanwhile the human went
-  // elsewhere, and stays there.
+  // no answer to show on the session's page; with no window open for it the human went
+  // elsewhere, and stays there. The window may be a later one than this.
   const resume = async (session: SessionInfo, given: Resume) => {
     const got: { started?: Started } = {};
     store.attempts.clear(attempt);
@@ -594,7 +592,7 @@ function LaunchDialog({
       look: looks.resume(session.name),
       closed: closedBy.resume,
       reached: () => {
-        if (!here.current) return;
+        if (!resumes(session.name)) return;
         if (got.started) opened(got.started);
         else {
           onClose();

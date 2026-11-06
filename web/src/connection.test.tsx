@@ -91,6 +91,7 @@ beforeEach(() => {
         if (server.refuse !== null) return new Response(JSON.stringify({ detail: server.refuse }), { status: 400 });
         posted.push({ path, body: init.body ? JSON.parse(String(init.body)) : undefined });
         if (server.lostAnswer) throw new TypeError("Failed to fetch");
+        if (path.endsWith("/resume")) return new Response(JSON.stringify({ session: session("running") }));
         return new Response(JSON.stringify({ result: "sent", dropped: 0 }));
       }
       if (path === "/api/limits") return new Response("null", { status: 500 });
@@ -132,7 +133,7 @@ function Place() {
 const show = (children: ReactNode) =>
   render(
     <LiveContext.Provider value={live}>
-      <MemoryRouter initialEntries={["/sessions/s/activity"]}>
+      <MemoryRouter initialEntries={["/somewhere"]}>
         <LaunchProvider>
           {children}
           <Place />
@@ -616,6 +617,48 @@ test("Resume without an answer: not confirmed; once it runs the window closes on
   await back();
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(screen.getByTestId("at").textContent).toBe("/sessions/s/activity");
+});
+
+test("Resume's error survives closing the window; Retry from the new one closes it", async () => {
+  server.sessions = [session("stopped")];
+  show(<ResumeButton />);
+  const first = await resumeWindow();
+  server.down = true;
+  await act(async () => {
+    fireEvent.click(within(first).getByRole("button", { name: "Resume session" }));
+    await new Promise((done) => setTimeout(done));
+  });
+  await back();
+  await within(first).findByText("Resume not delivered");
+  fireEvent.click(within(first).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await press("open resume");
+  const second = await screen.findByRole("dialog", { name: "Resume session" });
+  const retry = await within(second).findByRole("button", { name: "Retry" });
+  await act(async () => {
+    fireEvent.click(retry);
+    await new Promise((done) => setTimeout(done));
+  });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(screen.getByTestId("at").textContent).toBe("/sessions/s/activity");
+});
+
+test("Resume reached with its window closed leaves the human where they are", async () => {
+  server.sessions = [session("stopped")];
+  show(<ResumeButton />);
+  const dialog = await resumeWindow();
+  server.down = true;
+  await act(async () => {
+    fireEvent.click(within(dialog).getByRole("button", { name: "Resume session" }));
+    await new Promise((done) => setTimeout(done));
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  server.sessions = [session("running")];
+  const before = screen.getByTestId("at").textContent;
+  await back();
+  await waitFor(() => expect(live.get().attempts).toEqual({}));
+  expect(screen.getByTestId("at").textContent).toBe(before);
 });
 
 test("Resume not delivered: Retry resumes, and a refusal as running counts as reached", async () => {

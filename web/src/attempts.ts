@@ -31,7 +31,7 @@ export type Action = {
 // unknown: the outcome is not known yet; missed: not delivered, Retry waits; refused: a Retry
 // the server refused, shown as any refusal.
 export type AttemptState = "unknown" | "missed" | { refused: string };
-export type Attempt = Action & { state: AttemptState };
+export type Attempt = Action & { key: string; state: AttemptState };
 
 export const gateAttempt = (session: string, id: number) => `gate:${session}:${id}`;
 export const questionsAttempt = (session: string, agent: string) => `questions:${session}:${agent}`;
@@ -55,27 +55,21 @@ export class Attempts {
     this.publish(all);
   }
 
-  private change(attempt: Attempt, state: AttemptState) {
-    const key = this.keyOf(attempt);
-    if (key === undefined) return attempt;
-    const changed = { ...attempt, state };
-    this.put({ ...this.all, [key]: changed });
-    return changed;
+  // Whether it still stands: another press replaces it, and each change makes a new one.
+  private stands(attempt: Attempt) {
+    return this.all[attempt.key] === attempt;
   }
 
-  private keyOf(attempt: Attempt) {
-    return Object.keys(this.all).find((key) => this.all[key] === attempt);
+  private change(attempt: Attempt, state: AttemptState) {
+    const changed = { ...attempt, state };
+    this.put({ ...this.all, [attempt.key]: changed });
+    return changed;
   }
 
   clear(key: string) {
     if (!(key in this.all)) return;
     const { [key]: _, ...others } = this.all;
     this.put(others);
-  }
-
-  private end(attempt: Attempt) {
-    const key = this.keyOf(attempt);
-    if (key !== undefined) this.clear(key);
   }
 
   // The action's first press: true when it was answered, false when it got no answer and
@@ -87,7 +81,7 @@ export class Attempts {
     } catch (error) {
       if (!(error instanceof Unreached)) throw error;
     }
-    const attempt: Attempt = { ...action, state: "unknown" };
+    const attempt: Attempt = { ...action, key, state: "unknown" };
     this.put({ ...this.all, [key]: attempt });
     void this.lookAt(attempt);
     return false;
@@ -108,12 +102,12 @@ export class Attempts {
     });
     this.looking.delete(attempt);
     // Replaced meanwhile, or Retry took over: this look says nothing about it.
-    if (this.keyOf(attempt) !== undefined && !this.repeating.has(attempt)) {
+    if (this.stands(attempt) && !this.repeating.has(attempt)) {
       if (outcome === "reached") {
-        this.end(attempt);
+        this.clear(attempt.key);
         attempt.reached();
       } else if (outcome === "gone") {
-        this.end(attempt);
+        this.clear(attempt.key);
       } else if (outcome === "missed") {
         this.change(attempt, "missed");
       }
@@ -136,24 +130,21 @@ export class Attempts {
     if (!found) return;
     const attempt = this.change(found, "unknown");
     this.repeating.add(attempt);
-    try {
-      await attempt.repeat();
-      this.repeating.delete(attempt);
-      this.end(attempt);
+    const refusal = await attempt.repeat().then(
+      () => null,
+      (error: unknown) => error,
+    );
+    this.repeating.delete(attempt);
+    if (refusal instanceof Unreached) {
+      void this.lookAt(attempt);
+      return;
+    }
+    const text = refusal === null ? null : refusal instanceof ApiError ? refusal.message : String(refusal);
+    if (text === null || attempt.closed(text)) {
+      this.clear(key);
       attempt.reached();
-    } catch (error) {
-      this.repeating.delete(attempt);
-      if (error instanceof Unreached) {
-        void this.lookAt(attempt);
-      } else {
-        const text = error instanceof ApiError ? error.message : String(error);
-        if (attempt.closed(text)) {
-          this.end(attempt);
-          attempt.reached();
-        } else {
-          this.change(attempt, { refused: text });
-        }
-      }
+    } else {
+      this.change(attempt, { refused: text });
     }
   }
 

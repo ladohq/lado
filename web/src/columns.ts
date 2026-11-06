@@ -23,9 +23,11 @@ export type ColumnsInput = {
 export type Columns = { listFolded: boolean; panelFolded: boolean; panelWidth: number };
 
 // Whether the human opened the terminals (a terminal in control counts), and whether they stay
-// when something must fold: not after the human opened a list that is still wanted.
+// when something must fold: not after the human opened a list that is still wanted, unless a
+// terminal is in control, which a choice stored long ago must not end.
 const opened = ({ panel, control }: ColumnsInput) => !panel.collapsed && (panel.chosen || control);
-const panelStays = (input: ColumnsInput) => opened(input) && (input.last !== "list" || input.list.collapsed);
+const panelStays = (input: ColumnsInput) =>
+  opened(input) && (input.control || input.last !== "list" || input.list.collapsed);
 
 // The widest the list may be dragged: the chat keeps its room beside terminals that stay, and
 // past that the rule would fold the list under the pointer. Other terminals fold for it.

@@ -23,7 +23,8 @@ so the measure cannot loop. Steps: the wanted columns; then fold the panel when 
 open it or opened the list last, else the list; then narrow a panel the human opened to the room
 less 420, down to `PANEL_WIDTH.min`; then fold the other one, and a list that fits beside the
 folded panel stays open. Terminals nobody opened never stay beside a list that folded; terminals
-the human opened do, also when the list came last. "Opened last" is the human's choice, so it is
+the human opened do, also when the list came last. A terminal in control holds its panel whichever
+column came last, so Sessions shows no list until control ends. "Opened last" is the human's choice, so it is
 stored (`lado.lastColumn`, design QA F1): pressing Sessions or a chip sets it even when the stored
 choice is already open, and a reload shows what the human left; with none stored a tie goes by
 rule 4б, the list folds. `listMax` of the same file bounds the list's

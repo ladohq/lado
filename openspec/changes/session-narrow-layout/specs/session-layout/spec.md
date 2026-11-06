@@ -1,3 +1,10 @@
+## Purpose
+
+How a session's page fits the window outside the phone layout: above 900 px the chat keeps its
+width while the list and the terminals fold and come back, and at 601 to 900 px the page stands
+still with the list and the terminals over it. It also covers the session strip, the terminal
+strip and the tabs when short of room, and a touch screen's visible height.
+
 ## ADDED Requirements
 
 ### Requirement: Above 900 px the chat keeps 420 px

@@ -578,12 +578,19 @@ test("the rows look alike in every group: no dim, no mark of waiting; the status
 
 // The card's first line starts with the session's name in bold, no dot or other mark before it.
 const nameFirst = (shown: HTMLElement) => {
-  const line = shown.querySelector(".tooltip-line")!;
-  const first = line.firstChild!;
+  const first = shown.querySelector(".session-tip")!.firstElementChild!.firstChild!;
   return first.nodeName === "B" ? first.textContent : `starts with ${first.nodeName}`;
 };
 
-test("a row's card on focus and hover: name · status · agents, what needs the human, the folder, kits · provider · mode", async () => {
+// A card's lines as text, a labelled fact as `<label> <value>`.
+const tipLines = (shown: HTMLElement) =>
+  [...shown.querySelector(".session-tip")!.children].flatMap((line) =>
+    line.tagName === "DL"
+      ? [...line.querySelectorAll("dt")].map((label) => `${label.textContent} ${label.nextElementSibling!.textContent}`)
+      : [line.textContent],
+  );
+
+test("a row's card on focus and hover: the name, what the session is in, its labelled facts", async () => {
   sessions = [
     session("gated", {
       agents: 3,
@@ -601,23 +608,23 @@ test("a row's card on focus and hover: name · status · agents, what needs the 
     fireEvent.focus(row);
     const shown = screen.getByRole("tooltip");
     expect(row.getAttribute("aria-describedby")).toBe(shown.id);
-    const lines = [...shown.querySelectorAll(".tooltip-line")].map((line) => line.textContent);
+    const lines = tipLines(shown);
     const lead = nameFirst(shown);
     fireEvent.blur(row);
     expect(screen.queryByRole("tooltip")).toBeNull();
     return { lines, lead };
   };
   expect(await card(/^gated/)).toEqual({
-    lines: ["gated · running · 3 agents", "ran <1 min", "Needs you: 1 gate · 2 questions", "/src/gated", "default, review · claude · mode auto"],
+    lines: ["gated", "Needs you: 1 gate · 2 questions", "Ran <1 min", "Folder /src/gated", "Kits default, review", "CLI claude", "Mode auto"],
     lead: "gated",
   });
   expect(await card(/^calm/)).toEqual({
-    lines: ["calm · running · idle · 1 agent", "ran <1 min", "/src/calm", "default · kilo"],
+    lines: ["calm", "idle", "Ran <1 min", "Folder /src/calm", "Kits default", "CLI kilo"],
     lead: "calm",
   });
   const stopped = await card(/^old/);
   expect(stopped).toEqual({
-    lines: ["old · stopped · 0 agents", "ran <1 min", "/src/old", "default · claude", "Stopped: open it and press Resume"],
+    lines: ["old", "stopped", "Ran <1 min", "Folder /src/old", "Kits default", "CLI claude", "Open it and press Resume"],
     lead: "old",
   });
   // The pointer resting on a row shows it too.
@@ -627,7 +634,7 @@ test("a row's card on focus and hover: name · status · agents, what needs the 
     fireEvent.mouseEnter(row);
     expect(screen.queryByRole("tooltip")).toBeNull();
     act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS));
-    expect(screen.getByRole("tooltip").textContent).toContain("calm · running · idle · 1 agent");
+    expect(tipLines(screen.getByRole("tooltip")).slice(0, 2)).toEqual(["calm", "idle"]);
     fireEvent.mouseLeave(row);
     expect(screen.queryByRole("tooltip")).toBeNull();
   } finally {
@@ -645,7 +652,7 @@ test("a session moves to Needs you when the feed says something waits in it", as
 });
 
 // A Running session's row: a dot before its name for whether its agents work
-// (SessionInfo.busy), and a line with its agents and how long it ran, the head's run time.
+// (SessionInfo.busy), and a line with how long it ran, the head's run time.
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
@@ -653,7 +660,7 @@ const row = (name: string) => within(list()).getByRole("link", { name: new RegEx
 const dot = (link: HTMLElement) => within(link).queryByRole("img");
 const about = (link: HTMLElement) => link.querySelector(".session-about")!.textContent;
 
-test("a Running row says whether its agents work, a full dot or a ring, and its agents and run time", async () => {
+test("a Running row says whether its agents work, a full dot or a ring, and its run time, not how many agents it has", async () => {
   sessions = [
     session("one", { busy: 1, running_since: ago(3 * MINUTE) }),
     session("two", { agents: 3, busy: 2, running_since: ago(40_000) }),
@@ -666,13 +673,13 @@ test("a Running row says whether its agents work, a full dot or a ring, and its 
   const working = dot(row("one"))!;
   expect(working.getAttribute("aria-label")).toBe("working");
   expect(working.className).toContain("activity-working");
-  expect(about(row("one"))).toBe("1 agent · 3 min");
-  expect(about(row("two"))).toBe("3 agents · <1 min");
+  expect(about(row("one"))).toBe("ran 3 min");
+  expect(about(row("two"))).toBe("ran <1 min");
   const idle = dot(row("calm"))!;
   expect(idle.getAttribute("aria-label")).toBe("idle");
   expect(idle.className).toContain("activity-idle");
-  expect(about(row("calm"))).toBe("1 agent · 2 h 14 min");
-  expect(about(row("long"))).toBe("2 agents · 1 d 8 h");
+  expect(about(row("calm"))).toBe("ran 2 h 14 min");
+  expect(about(row("long"))).toBe("ran 1 d 8 h");
 });
 
 test.each([
@@ -691,10 +698,10 @@ test("a Running row's run time is the head's and goes on by itself, on the same 
     open("/sessions/calm");
     await screen.findByRole("region", { name: "Session calm" });
     const head = () => document.querySelector(".session-ran")!.textContent;
-    expect(about(row("calm"))).toBe("1 agent · 2 h 14 min");
+    expect(about(row("calm"))).toBe("ran 2 h 14 min");
     expect(head()).toBe("2 h 14 min");
     act(() => vi.advanceTimersByTime(MINUTE));
-    expect(about(row("calm"))).toBe("1 agent · 2 h 15 min");
+    expect(about(row("calm"))).toBe("ran 2 h 15 min");
     expect(head()).toBe("2 h 15 min");
   } finally {
     vi.useRealTimers();
@@ -711,44 +718,52 @@ test("a Stopped row says when it stopped and how long it ran, as its head does",
   expect(dot(row("old"))).toBeNull();
 });
 
-test("only a Running row has the dot: Needs you, tmux gone and loop down rows are as before", async () => {
+test("only a Running row has the dot; a row in trouble says its run time unless something waits", async () => {
   sessions = [
     session("gated", { busy: 1, running_since: ago(MINUTE), waiting: { gates: 1, questions: 0, agents: 0 } }),
     session("gone", { status: "tmux_gone", ran_seconds: 600 }),
     session("down", { status: "loop_down", agents: 2, running_since: ago(HOUR) }),
+    session("held", { status: "tmux_gone", ran_seconds: 600, waiting: { gates: 1, questions: 0, agents: 0 } }),
   ];
   open("/sessions");
   await within(list()).findByRole("link", { name: /^gated/ });
-  for (const name of ["gated", "gone", "down"]) expect(dot(row(name))).toBeNull();
+  for (const name of ["gated", "gone", "down", "held"]) expect(dot(row(name))).toBeNull();
   expect(about(row("gated"))).toBe("1 gate");
-  expect(about(row("gone"))).toBe("1 agent");
-  expect(about(row("down"))).toBe("2 agents");
+  expect(about(row("gone"))).toBe("ran 10 min");
+  expect(about(row("down"))).toBe("ran 1 h");
+  expect(about(row("held"))).toBe("1 gate");
 });
 
-// A card's lines as text, of a row's link or an icon.
+// A card's lines, of a row's link or an icon.
 const cardLines = (link: HTMLElement) => {
   fireEvent.focus(link);
-  const lines = [...screen.getByRole("tooltip").querySelectorAll(".tooltip-line")].map((line) => line.textContent);
+  const lines = tipLines(screen.getByRole("tooltip"));
   fireEvent.blur(link);
   return lines;
 };
 
-test("a Running row's card and its icon in the strip say whether it works, then how long it ran", async () => {
+test("a card's state line and Ran, in the row's card and the icon's", async () => {
   sessions = [
     session("busy", { agents: 3, busy: 2, ran_seconds: 32 * 60 * 60, running_since: ago(MINUTE) }),
     session("calm", { running_since: ago(12 * MINUTE) }),
     session("gated", { running_since: ago(MINUTE), waiting: { gates: 1, questions: 0, agents: 0 } }),
     session("old", { status: "stopped", agents: 0, ran_seconds: (3 * 60 + 2) * 60, stopped_at: ago(5 * HOUR) }),
+    session("undated", { status: "stopped", agents: 0, ran_seconds: (3 * 60 + 2) * 60 }),
     session("gone", { status: "tmux_gone", ran_seconds: 600 }),
+    session("held", { status: "tmux_gone", ran_seconds: 600, waiting: { gates: 1, questions: 0, agents: 0 } }),
+    session("down", { status: "loop_down", running_since: ago(HOUR) }),
   ];
   localStorage.setItem("lado.sessionGroups", JSON.stringify({ stopped: "open" }));
   open("/sessions");
   await within(list()).findByRole("link", { name: /^busy/ });
-  expect(cardLines(row("busy")).slice(0, 2)).toEqual(["busy · running · 2 of 3 agents working", "ran 1 d 8 h"]);
-  expect(cardLines(row("calm")).slice(0, 2)).toEqual(["calm · running · idle · 1 agent", "ran 12 min"]);
-  expect(cardLines(row("gated")).slice(0, 3)).toEqual(["gated · running · 1 agent", "ran 1 min", "Needs you: 1 gate"]);
-  expect(cardLines(row("old")).slice(0, 2)).toEqual(["old · stopped · 0 agents", "stopped 5 h ago · ran 3 h 2 min"]);
-  expect(cardLines(row("gone")).slice(0, 2)).toEqual(["gone · tmux session is gone · 1 agent", "ran 10 min"]);
+  expect(cardLines(row("busy")).slice(0, 3)).toEqual(["busy", "2 of 3 agents working", "Ran 1 d 8 h"]);
+  expect(cardLines(row("calm")).slice(0, 3)).toEqual(["calm", "idle", "Ran 12 min"]);
+  expect(cardLines(row("gated")).slice(0, 3)).toEqual(["gated", "Needs you: 1 gate", "Ran 1 min"]);
+  expect(cardLines(row("old")).slice(0, 3)).toEqual(["old", "stopped 5 h ago", "Ran 3 h 2 min"]);
+  expect(cardLines(row("undated")).slice(0, 3)).toEqual(["undated", "stopped", "Ran 3 h 2 min"]);
+  expect(cardLines(row("gone")).slice(0, 3)).toEqual(["gone", "tmux session is gone", "Ran 10 min"]);
+  expect(cardLines(row("held")).slice(0, 4)).toEqual(["held", "tmux session is gone", "Needs you: 1 gate", "Ran 10 min"]);
+  expect(cardLines(row("down")).slice(0, 3)).toEqual(["down", "session loop not running", "Ran 1 h"]);
   cleanup();
   collapsed();
   open("/sessions");
@@ -763,23 +778,26 @@ test("a Running row's card and its icon in the strip say whether it works, then 
   fireEvent.focus(icon("busy"));
   expect(nameFirst(screen.getByRole("tooltip"))).toBe("busy");
   fireEvent.blur(icon("busy"));
-  expect(cardLines(icon("busy")).slice(0, 2)).toEqual(["busy · running · 2 of 3 agents working", "ran 1 d 8 h"]);
+  expect(cardLines(icon("busy")).slice(0, 3)).toEqual(["busy", "2 of 3 agents working", "Ran 1 d 8 h"]);
 });
 
-// The card's status word takes its group's colour (the card's tone), a session in trouble
-// the danger colour; the name keeps its own.
+// The card's state line: the mark before its words, hidden from a screen reader, which reads
+// the words, and the words' class, which gives their colour.
 const statusOf = (link: HTMLElement) => {
   fireEvent.focus(link);
   const shown = screen.getByRole("tooltip");
   const card = shown.firstElementChild!;
-  const word = card.querySelector(".tooltip-line")!.children[1];
-  const seen = { card: card.className, word: `${word?.className}: ${word?.textContent}`, name: card.querySelector("b")!.className };
+  const line = card.children[1];
+  const mark = line.querySelector(".dot");
+  const word = line.lastElementChild!;
+  const seen = { card: card.className, mark: mark?.className ?? null, hidden: mark?.getAttribute("aria-hidden") ?? null, word: `${word.className}: ${word.textContent}` };
   fireEvent.blur(link);
   return seen;
 };
 
-test("a card's status word is in its group's colour, a session in trouble in the danger colour, in the row's card and the icon's", async () => {
+test("a card's state line has the row's mark in its colour, in the row's card and the icon's", async () => {
   sessions = [
+    session("busy", { busy: 1 }),
     session("calm"),
     session("gated", { waiting: { gates: 1, questions: 0, agents: 0 } }),
     session("stuck", { status: "tmux_gone" }),
@@ -788,13 +806,15 @@ test("a card's status word is in its group's colour, a session in trouble in the
   localStorage.setItem("lado.sessionGroups", JSON.stringify({ stopped: "open" }));
   open("/sessions");
   await within(list()).findByRole("link", { name: /^old/ });
-  const running = { card: "session-tip tone-done", word: "tip-status: running", name: "" };
-  const needsYou = { card: "session-tip tone-human", word: "tip-status: running", name: "" };
-  const trouble = { card: "session-tip tone-done", word: "danger-text: tmux session is gone", name: "" };
+  const working = { card: "session-tip tone-done", mark: "dot activity-working", hidden: "true", word: "tip-status: 1 of 1 agent working" };
+  const running = { card: "session-tip tone-done", mark: "dot activity-idle", hidden: "true", word: "tip-muted: idle" };
+  const needsYou = { card: "session-tip tone-human", mark: "dot dot-waiting", hidden: "true", word: "tip-waits: Needs you: 1 gate" };
+  const trouble = { card: "session-tip tone-done", mark: "dot session-dot-tmux_gone", hidden: "true", word: "danger-text: tmux session is gone" };
+  expect(statusOf(row("busy"))).toEqual(working);
   expect(statusOf(row("calm"))).toEqual(running);
   expect(statusOf(row("gated"))).toEqual(needsYou);
   expect(statusOf(row("stuck"))).toEqual(trouble);
-  expect(statusOf(row("old"))).toEqual({ card: "session-tip tone-neutral", word: "tip-status: stopped", name: "" });
+  expect(statusOf(row("old"))).toEqual({ card: "session-tip tone-neutral", mark: null, hidden: null, word: "tip-muted: stopped" });
   cleanup();
   collapsed();
   open("/sessions");
@@ -991,7 +1011,7 @@ test("an icon opens its session at the row's address and is current there", asyn
   expect(strip()).toBeTruthy(); // the strip stays
 });
 
-test("an icon's tooltip: name · status · agents, what needs the human, the folder, kits · provider; Esc hides it", async () => {
+test("an icon's card: the name, what the session is in, its labelled facts, how to go on; Esc hides it", async () => {
   collapsed();
   sessions = [
     session("gated", { agents: 3, waiting: { gates: 1, questions: 2, agents: 0 }, kits: ["default", "review"] }),
@@ -1003,18 +1023,18 @@ test("an icon's tooltip: name · status · agents, what needs the human, the fol
     fireEvent.focus(icon);
     const shown = screen.getByRole("tooltip");
     expect(icon.getAttribute("aria-describedby")).toBe(shown.id);
-    const lines = [...shown.querySelectorAll(".tooltip-line")].map((line) => line.textContent);
-    const waits = [...shown.querySelectorAll(".tooltip-line.waits")].map((line) => line.textContent);
+    const lines = tipLines(shown);
+    const waits = [...shown.querySelectorAll(".tip-waits")].map((line) => line.textContent);
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("tooltip")).toBeNull();
     return { lines, waits };
   };
   expect(await tip(/^gated/)).toEqual({
-    lines: ["gated · running · 3 agents", "ran <1 min", "Needs you: 1 gate · 2 questions", "/src/gated", "default, review · claude"],
+    lines: ["gated", "Needs you: 1 gate · 2 questions", "Ran <1 min", "Folder /src/gated", "Kits default, review", "CLI claude"],
     waits: ["Needs you: 1 gate · 2 questions"],
   });
   expect(await tip(/^stuck/)).toEqual({
-    lines: ["stuck · session loop not running · 1 agent", "ran <1 min", "/src/stuck", "default · kilo"],
+    lines: ["stuck", "session loop not running", "Ran <1 min", "Folder /src/stuck", "Kits default", "CLI kilo", "Open it and press Stop session, then Resume"],
     waits: [],
   });
 });
@@ -1094,11 +1114,11 @@ test("a session's head is the top bar: its dot with no stop, its title, Stop and
   open();
   const region = await screen.findByRole("region", { name: "Session lado" });
   expect(barHeadings()).toEqual(["lado"]);
-  const dot = within(bar()).getByRole("img", { name: "running · idle · 1 agent" });
+  const dot = within(bar()).getByRole("img", { name: "running · idle" });
   expect(dot.classList).toContain("activity-idle");
   expect(bar().textContent).not.toMatch(/running/);
   fireEvent.focus(dot);
-  expect(screen.getByRole("tooltip").textContent).toBe("running · idle · 1 agent");
+  expect(screen.getByRole("tooltip").textContent).toBe("running · idle");
   fireEvent.blur(dot);
   expect(dot.getAttribute("tabindex")).toBeNull();
   expect(bar().textContent).not.toContain("/src/lado");
@@ -1135,7 +1155,7 @@ test.each([
   ["needs-you", { waiting: { gates: 0, questions: 1, agents: 0 } }, "needs you · 1 question"],
   ["needs-you", { agents: 3, busy: 2, waiting: { gates: 2, questions: 0, agents: 1 } }, "needs you · 2 gates · 1 agent waiting"],
   ["working", { agents: 3, busy: 2 }, "running · 2 of 3 agents working"],
-  ["idle", { agents: 3 }, "running · idle · 3 agents"],
+  ["idle", { agents: 3 }, "running · idle"],
   ["stopped", { status: "stopped", waiting: { gates: 1, questions: 0, agents: 0 } }, "stopped"],
   ["tmux_gone", { status: "tmux_gone", waiting: { gates: 1, questions: 0, agents: 0 } }, "tmux session is gone"],
   ["loop_down", { status: "loop_down", busy: 1 }, "session loop not running"],
@@ -1146,7 +1166,7 @@ test.each([
 test.each([
   ["needs-you", { waiting: { gates: 0, questions: 1, agents: 0 } }, "needs you · 1 question", "dot-waiting", "Needs you", null],
   ["working", { agents: 3, busy: 2 }, "running · 2 of 3 agents working", "activity-working", "Running", "activity-working"],
-  ["idle", { agents: 3 }, "running · idle · 3 agents", "activity-idle", "Running", "activity-idle"],
+  ["idle", { agents: 3 }, "running · idle", "activity-idle", "Running", "activity-idle"],
   ["stopped", { status: "stopped" }, "stopped", "session-dot-stopped", "Stopped", null],
   ["tmux_gone", { status: "tmux_gone" }, "tmux session is gone", "session-dot-tmux_gone", "Running", null],
   ["loop_down", { status: "loop_down" }, "session loop not running", "session-dot-loop_down", "Running", null],
@@ -1199,7 +1219,7 @@ test("the head's dot follows the session's work, as its row does, with no reload
   expect(within(bar()).getByRole("img", { name: "running · 1 of 2 agents working" }).classList).toContain("activity-working");
   const calm = session("lado", { agents: 2, busy: 0 });
   stream().send("change", { kind: "sessions", session: "lado", key: "", op: "update", item: calm }, "11");
-  expect(within(bar()).getByRole("img", { name: "running · idle · 2 agents" }).classList).toContain("activity-idle");
+  expect(within(bar()).getByRole("img", { name: "running · idle" }).classList).toContain("activity-idle");
   expect(within(row("lado")).getByRole("img", { name: "idle" }).className).toContain("activity-idle");
   const asked = session("lado", { agents: 2, waiting: { gates: 0, questions: 1, agents: 0 } });
   stream().send("change", { kind: "sessions", session: "lado", key: "", op: "update", item: asked }, "12");
@@ -1317,11 +1337,11 @@ test("a titled row shows its title, its grey line starting with its name; an unt
   open("/sessions");
   const titled = await within(list()).findByRole("link", { name: new RegExp(`^${TITLE.replace(/[()]/g, "\\$&")}`) });
   expect(titled.querySelector(".session-name")!.textContent).toBe(TITLE);
-  expect(about(titled)).toMatch(/^lado-2 · 3 agents · /);
+  expect(about(titled)).toMatch(/^lado-2 · ran /);
   expect(titled.getAttribute("href")).toBe("/sessions/lado-2");
   const plain = row("lado-3");
   expect(plain.querySelector(".session-name")!.textContent).toBe("lado-3");
-  expect(about(plain)).toMatch(/^1 agent · /);
+  expect(about(plain)).toMatch(/^ran /);
 });
 
 test("the grey line of a titled row that needs the human starts with its name too", async () => {
@@ -1350,8 +1370,58 @@ test("a titled row's card leads with its title, then its name", async () => {
   const link = await within(list()).findByRole("link", { name: /^Rename/ });
   fireEvent.focus(link);
   const shown = screen.getByRole("tooltip");
-  expect(shown.querySelector(".tooltip-line")!.textContent).toBe(`${TITLE} · lado-2 · running · idle · 1 agent`);
+  expect(tipLines(shown).slice(0, 2)).toEqual([`${TITLE} lado-2`, "idle"]);
   expect(nameFirst(shown)).toBe(TITLE);
+});
+
+test("a card names the project by its title, by its id without one, and has no empty label", async () => {
+  sessions = [
+    session("titled", { project: "crm-3", project_title: "CRM 3", permission_mode: "auto" }),
+    session("plain", { project: "shop-api", project_title: null }),
+    session("alone"),
+  ];
+  open("/sessions");
+  await within(list()).findByRole("link", { name: /^alone/ });
+  expect(cardLines(row("titled"))).toEqual(["titled", "idle", "Project CRM 3", "Ran <1 min", "Folder /src/titled", "Kits default", "CLI claude", "Mode auto"]);
+  expect(cardLines(row("plain"))[2]).toBe("Project shop-api");
+  expect(cardLines(row("alone"))).toEqual(["alone", "idle", "Ran <1 min", "Folder /src/alone", "Kits default", "CLI claude"]);
+});
+
+test("a project's new title in the feed shows in the open card", async () => {
+  sessions = [session("crm", { project: "crm-3", project_title: "CRM 3" })];
+  open("/sessions");
+  const link = await within(list()).findByRole("link", { name: /^crm/ });
+  fireEvent.focus(link);
+  expect(tipLines(screen.getByRole("tooltip"))[2]).toBe("Project CRM 3");
+  const renamed = session("crm", { project: "crm-3", project_title: "CRM" });
+  stream().send("change", { kind: "sessions", session: "crm", key: "", op: "update", item: renamed }, "11");
+  expect(tipLines(screen.getByRole("tooltip"))[2]).toBe("Project CRM");
+});
+
+test("a card shows six kits and how many more, and CLI stays", async () => {
+  const kits = ["a", "b", "c", "d", "e", "f", "g", "h", "i"];
+  sessions = [session("many", { kits }), session("six", { kits: kits.slice(0, 6) })];
+  open("/sessions");
+  await within(list()).findByRole("link", { name: /^many/ });
+  expect(cardLines(row("many")).slice(4)).toEqual(["Kits a, b, c, d, e, f +3 more", "CLI claude"]);
+  expect(cardLines(row("six")).slice(4)).toEqual(["Kits a, b, c, d, e, f", "CLI claude"]);
+});
+
+test("a card says how to go on from a stopped or broken session, a running one's says nothing", async () => {
+  sessions = [
+    session("calm"),
+    session("gone", { status: "tmux_gone" }),
+    session("down", { status: "loop_down" }),
+    session("old", { status: "stopped", agents: 0 }),
+  ];
+  localStorage.setItem("lado.sessionGroups", JSON.stringify({ stopped: "open" }));
+  open("/sessions");
+  await within(list()).findByRole("link", { name: /^old/ });
+  const last = (name: string) => cardLines(row(name)).at(-1);
+  expect(last("calm")).toBe("CLI claude");
+  expect(last("gone")).toBe("Open it and press Resume");
+  expect(last("old")).toBe("Open it and press Resume");
+  expect(last("down")).toBe("Open it and press Stop session, then Resume");
 });
 
 test("a titled session's icon in the strip takes its letters and its name from the title, its card too", async () => {
@@ -1362,7 +1432,7 @@ test("a titled session's icon in the strip takes its letters and its name from t
   expect(icons().map((icon) => icon.getAttribute("aria-label"))).toEqual([`${TITLE}, idle`, "lado, idle"]);
   expect(icons().map((icon) => icon.textContent)).toEqual(["RS", "LA"]);
   fireEvent.focus(icons()[0]);
-  expect(screen.getByRole("tooltip").querySelector(".tooltip-line")!.textContent).toMatch(new RegExp(`^${TITLE.replace(/[()]/g, "\\$&")} · lado-2 · `));
+  expect(tipLines(screen.getByRole("tooltip"))[0]).toBe(`${TITLE} lado-2`);
 });
 
 test("a titled session's head: the title alone, its name in Details; the tab's title is the title", async () => {

@@ -5,11 +5,11 @@
 
 ## 2. The words and the row
 
-- [ ] 2.1 `work` and `about` without the count, `SessionRow` by D3, `ran` in the row (D4). Check: vitest in `web/src/Layout.test.tsx`.
+- [x] 2.1 `work` and `about` without the count, `SessionRow` by D3, `ran` in the row (D4). Check: vitest in `web/src/Layout.test.tsx`.
 
 ## 3. The card
 
-- [ ] 3.1 `SessionTip` as labelled rows, state line, how to go on, kits cut (D4, D7, D8). Check: vitest, by the mockup.
+- [x] 3.1 `SessionTip` as labelled rows, state line, how to go on, kits cut (D4, D7, D8). Check: vitest, by the mockup.
 - [ ] 3.2 `Tooltip`'s `side="right"` and the side with more room (D5), the card's CSS (D6). Check: vitest and `uv run pytest -m ui tests/ui/test_layout.py`.
 
 ## 4. Documents and checks

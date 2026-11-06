@@ -3060,19 +3060,95 @@ h3 {
   border-left: 0;
 }
 
+/* Beside the trigger: the arrow on the left edge, at --arrow-y. */
+.tooltip[data-side="right"]::before {
+  top: var(--arrow-y);
+  left: -5px;
+  margin-top: -4px;
+  margin-left: 0;
+  border-top: 0;
+  border-right: 0;
+}
+
 .tooltip-line + .tooltip-line {
   color: var(--muted);
 }
 
-/* A session's card: its status word in its group's colour (a session in trouble takes
-   .danger-text instead). */
+/* A session's card (Sessions.tsx, SessionTip): one width whatever it says, within the window.
+   Its height is bounded inside the tooltip, whose own overflow would cut the arrow off: the
+   12 px are the tooltip's padding and border. */
+.tooltip:has(.session-tip) {
+  width: min(360px, 100vw - 16px);
+  max-width: min(360px, 100vw - 16px);
+}
+
+.session-tip {
+  display: grid;
+  gap: 6px;
+  max-height: calc(100vh - 16px - 12px);
+  padding: 3px 0;
+  overflow: hidden;
+}
+
+.tip-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.tip-top b {
+  font-size: 13.5px;
+}
+
+.tip-state {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* The state line's words: in its group's colour when it works, grey when nothing goes on (a
+   session in trouble takes .danger-text instead). */
 .tip-status {
   color: var(--g);
 }
 
-/* What waits for the human, in a session's tooltip. */
-.tooltip-line.waits {
+.tip-muted {
+  color: var(--muted);
+}
+
+/* What waits for the human, in a session's card. */
+.tip-waits {
   color: var(--human);
+  font-weight: 600;
+}
+
+.tip-facts {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 2px 8px;
+  margin: 2px 0 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.tip-facts dt {
+  color: var(--muted);
+}
+
+.tip-facts dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.tip-facts code {
+  font-size: 11.5px;
+}
+
+.tip-hint {
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
 }
 
 .terminals.expanded {

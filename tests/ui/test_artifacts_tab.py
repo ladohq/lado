@@ -176,7 +176,7 @@ def test_a_session_of_115_artifacts_reads_at_every_width(
     page.goto(f"{server['url']}/sessions/{session}/artifacts")
     tab = page.get_by_role("region", name="Artifacts")
     expect(tab.locator(".group-fold")).to_have_count(3)
-    expect(tab.locator(".group-name")).to_have_text(["ship/x", "Session", "ship/y"])
+    expect(tab.locator(".group-name")).to_have_text(["Session", "ship/x", "ship/y"])
     expect(group(tab, "ship/y")).to_have_attribute("aria-expanded", "false")
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     shot(page, f"groups-{width}-{theme}")
@@ -315,7 +315,7 @@ def test_a_narrow_column_lists_rows_of_48_px_that_open_by_keyboard(
     link = tab.locator(".artifact-item .artifact-link").first
     link.focus()
     page.keyboard.press("Enter")
-    panel = page.get_by_role("dialog", name="Artifact ship/x/part-40")
+    panel = page.get_by_role("dialog", name="Artifact note-34")  # Session's group comes first
     expect(panel).to_be_visible()
     page.keyboard.press("Escape")
     expect(panel).to_have_count(0)

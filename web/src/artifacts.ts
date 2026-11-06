@@ -65,8 +65,12 @@ export const GROUPS_FROM = 100;
 
 export type ScopeGroup = { scope: string; artifacts: ArtifactInfo[] };
 
+// For a sort of scopes: Session before the runs, which stay as they stood.
+export const sessionFirst = (a: string, b: string) => Number(b === "") - Number(a === "");
+
 // The artifacts by scope, each group in the order they came, so newest first on such a list.
-// The groups go by `order`; a scope it lacks, or with none, goes first as it came.
+// The groups go by `order`; a scope it lacks, or with none, goes first, Session before the runs
+// as they came, so that the order's arrival does not move Session.
 export function groupByScope(artifacts: ArtifactInfo[], order: string[] = []): ScopeGroup[] {
   const groups = new Map<string, ScopeGroup>();
   for (const one of artifacts) {
@@ -74,5 +78,7 @@ export function groupByScope(artifacts: ArtifactInfo[], order: string[] = []): S
     group.artifacts.push(one);
     groups.set(one.scope, group);
   }
-  return [...groups.values()].sort((a, b) => order.indexOf(a.scope) - order.indexOf(b.scope));
+  return [...groups.values()].sort(
+    (a, b) => order.indexOf(a.scope) - order.indexOf(b.scope) || sessionFirst(a.scope, b.scope),
+  );
 }

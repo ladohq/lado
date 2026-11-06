@@ -363,8 +363,9 @@ Decided in the agent terminal task (2026-10-03).
   view. The reason shows once: the error frame the server sends before such a close is
   not shown again as a notice beside it (a notice with another text still shows).
 - **A stopped session's terminal** (LAD-196, LAD-189 spec §5, frame g5-term): each tab shows
-  `Viewing` and, on `--term-ground` in mono 13, "Agent not running — resume the session to
-  start it" (`StoppedTerminal`, `data-link="stopped"`). No socket opens, as it could only fail,
+  `Viewing` and, on `--term-ground` in mono 13, muted in both themes (`--term-ink` 65 % into the
+  ground; `--muted` follows the page's theme, not the terminal's dark ground), "Agent not
+  running — resume the session to start it" (`StoppedTerminal`, `data-link="stopped"`). No socket opens, as it could only fail,
   so there is no Reconnect and no Take control. A stop ends control and Expand, closes a phone's
   terminal and drops the terminals made; when the session runs, the tab shown in the open panel
   makes its terminal again, by itself. A session whose tmux session is gone keeps the bar above.
@@ -1414,7 +1415,8 @@ Built in the layout task (2026-10-03, schema 14):
   button at the end of the team's row (two speech bubbles, `BetweenIcon`; 26 px, quiet and
   muted unpressed, the pressed team chip's border with the icon in the action colour when
   `aria-pressed`), its name the same in both states (a stopped session has no team there, and
-  the toggle shows the words Messages between agents, 44 px high: LAD-196); the UI's tooltip says the state and
+  the toggle shows the words Messages between agents, 44 px high, pressed on `--action-ground`:
+  LAD-196); the UI's tooltip says the state and
   what a click does: "Messages between agents: hidden" / "Click to also show what agents
   write to each other.", pressed "Messages between agents: shown" / "Click to show only
   your conversation with the agents." (decided 2026-10-15, LAD-77: the checkbox "Show
@@ -2012,7 +2014,8 @@ layout, below).
   agents); the link has its
   word above 1100 px, only its dot and the tooltip `live · LADO server` at 1100 px and less
   (on every page: `LiveButton` does not know the page, so a narrow window's tooltip has no
-  server address; the system panel has it). Resume and Forget stay icons.
+  server address; the system panel has it). Forget, and Resume of a session whose tmux session
+  is gone, stay icons.
 - What lacks room is cut with "…" by `flex-shrink`, largest first: the title down to 8ch of
   its text, the project (at most 16ch), the run time, the team's box, by its levels, then the
   words; the actions and the link never.

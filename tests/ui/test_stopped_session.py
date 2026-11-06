@@ -135,6 +135,7 @@ def test_no_team_shows_and_a_phones_toggle_has_its_words(page: Page, server, rep
     toggle.click()
     expect(toggle).to_have_attribute("aria-pressed", "true")
     expect(toggle).to_have_css("border-top-color", re.compile(r"^(?!rgba\(0, 0, 0, 0\)).*$"))
+    expect(toggle).to_have_css("background-color", "rgb(232, 239, 252)")  # --action-ground
     shot(page)
 
 

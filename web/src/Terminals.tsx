@@ -508,9 +508,6 @@ const controlText = (agent: string) =>
   `What you type goes straight to ${agent}, as if you typed in its tmux window. Messages LADO ` +
   "delivers to it meanwhile land among your keys.";
 
-// `info`: the agent as the session's agents list has it, or null while it is not there.
-// `mode` is the panel's; Take control, Release and the terminal's own ends of control
-// (IDLE_MS without input, its socket lost) go through `onMode`.
 // A terminal of a stopped session: nothing to connect to, so no socket and no way to ask for one.
 function StoppedTerminal() {
   return (
@@ -528,6 +525,9 @@ function StoppedTerminal() {
   );
 }
 
+// `info`: the agent as the session's agents list has it, or null while it is not there.
+// `mode` is the panel's; Take control, Release and the terminal's own ends of control
+// (IDLE_MS without input, its socket lost) go through `onMode`.
 function AgentTerminal({
   session,
   agent,

@@ -3378,13 +3378,15 @@ h3 {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  color: var(--term-ink);
   font: 13px var(--mono);
   text-align: center;
 }
 
+/* Muted on the terminal's ground, dark in both themes: --muted is the page's and follows the
+   theme, whatever `color-scheme` an element has (the build resolves light-dark() on the root). */
 .term-stopped p {
   margin: 0;
+  color: color-mix(in srgb, var(--term-ink) 65%, var(--term-ground));
 }
 
 /* No scrollback in xterm.js (the history is tmux's): its scrollbar would only be an empty
@@ -10518,6 +10520,10 @@ button.quiet.danger-text {
 
 :root[data-phone] .icon-button.between-toggle.with-words:not([aria-pressed="true"]) {
   border-color: var(--line);
+}
+
+:root[data-phone] .icon-button.between-toggle.with-words[aria-pressed="true"] {
+  background: var(--action-ground);
 }
 
 :root[data-phone] .session-head .session-title {

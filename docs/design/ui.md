@@ -662,8 +662,8 @@ Sessions for now. The UI's texts are in English.
   **What shows** is one pure rule, `columns.ts`'s `fitColumns` (LAD-193): above 900 px the
   chat keeps 420 px (`--chat-min`). Short of room terminals the human did not open fold first;
   opened by the human (stored open, or a terminal in control) the list folds instead, unless
-  the list was opened last (`lado.lastColumn`, so a reload shows what the human left) and no
-  terminal is in control; then a
+  the list was opened last (`lado.lastColumn`, so a reload shows what the human left; taking
+  control counts as opening the panel last, unstored); then a
   panel the human opened narrows to its least 280 px, its width
   kept, then folds, and a terminal in control then goes back to view with no message of its own
   (the human's decision, LAD-193). The rail never folds by

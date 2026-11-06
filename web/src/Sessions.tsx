@@ -315,6 +315,12 @@ function useSessionColumns(room: number | null): { list: ListColumn; panel: Pane
     storeLastColumn(column);
   }, []);
   const [control, setControl] = useState(false);
+  // Taking control opens the panel last, for this page's life: the next press of Sessions still
+  // wins, and no control outlives a reload.
+  const holdControl = useCallback((inControl: boolean) => {
+    setControl(inControl);
+    if (inControl) setLast("panel");
+  }, []);
   const [over, setOver] = useState<"list" | "terminals" | null>(null);
   const narrow = useMedia(NARROW);
   useEffect(() => {
@@ -360,9 +366,9 @@ function useSessionColumns(room: number | null): { list: ListColumn; panel: Pane
         else keepPanel({ collapsed: true });
       },
       setWidth: (next: number | null) => keepPanel({ width: next }),
-      setControl,
+      setControl: holdControl,
     }),
-    [narrow, over, fit.panelFolded, fit.panelWidth, room, keepPanel, openedLast],
+    [narrow, over, fit.panelFolded, fit.panelWidth, room, keepPanel, openedLast, holdControl],
   );
   return { list: listColumn, panel: panelColumn };
 }

@@ -612,6 +612,29 @@ test("a panel the page has not measured makes no terminal", async () => {
   expect(socketOf("supervisor", "view")).toHaveLength(1);
 });
 
+test("control holds the panel against an old choice of the list; pressing Sessions now opens the list", async () => {
+  columnWidth(1400);
+  localStorage.setItem("lado.askControl", "never");
+  localStorage.setItem("lado.lastColumn", "list");
+  await open();
+  await team();
+  const view = within(panel()).getByRole("tabpanel", { name: "supervisor" });
+  act(() => socketOf("supervisor", "view")[0].open());
+  fireEvent.click(within(view).getByRole("button", { name: "Take control" }));
+  const [control] = socketOf("supervisor", "control");
+  act(() => control.open());
+  FakeResizeObserver.resize(() => 964); // the list and the panel do not fit together
+  expect(panel().classList.contains("collapsed")).toBe(false);
+  expect(control.closed).toBe(false);
+  expect(localStorage.getItem("lado.lastColumn")).toBe("list"); // control is not stored
+
+  const strip = document.querySelector<HTMLElement>("nav.sessions-strip")!;
+  fireEvent.click(within(strip).getByRole("button", { name: "Sessions" }));
+  expect(document.querySelector(".session-list")).toBeTruthy();
+  expect(panel().classList.contains("collapsed")).toBe(true);
+  expect(control.closed).toBe(true);
+});
+
 test("a panel folded for room opens no socket, ends control, and the stored choice stays", async () => {
   columnWidth(1400);
   localStorage.setItem("lado.askControl", "never");

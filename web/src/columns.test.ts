@@ -49,9 +49,9 @@ test("a terminal in control counts as opened by the human", () => {
   expect(fit(beside(1024), { control: true })).toMatchObject({ listFolded: true, panelFolded: false });
 });
 
-test("a terminal in control holds its panel, also when the list was opened last", () => {
-  expect(fit(beside(1024), { control: true, last: "list" })).toMatchObject({ listFolded: true, panelFolded: false });
-  expect(listMax({ room: 1380, ...NOTHING_STORED, panel: OPENED, control: true, last: "list" })).toBe(1380 - 360 - CHAT_MIN);
+test("taking control opens the panel last; the list opened after it folds the panel", () => {
+  expect(fit(beside(1024), { control: true, last: "panel" })).toMatchObject({ listFolded: true, panelFolded: false });
+  expect(fit(beside(1024), { control: true, last: "list" })).toMatchObject({ listFolded: false, panelFolded: true });
 });
 
 test.each([901, 1024, 1101, 1280, 1440])("at %i px the chat keeps its least width, whatever is open", (window) => {

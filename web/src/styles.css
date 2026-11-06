@@ -2737,10 +2737,13 @@ h3 {
   font-size: 14px;
 }
 
+.login-fail .problem {
+  margin: 0;
+}
+
 .login-fail blockquote {
   margin: 0;
   padding: 8px 12px;
-  border-left: 3px solid var(--line);
   background: var(--ground);
   font: 13px var(--mono);
   overflow-wrap: anywhere;
@@ -8783,18 +8786,6 @@ del.kit-mcp-name {
   gap: 8px;
   color: var(--muted);
   font-size: 13px;
-}
-
-.kit-alert {
-  padding: 8px 10px;
-  border: 1px solid var(--human);
-  border-radius: 6px;
-  background: var(--human-ground);
-  font-size: 13px;
-}
-
-.kit-alert b {
-  color: var(--human);
 }
 
 .kit-danger {

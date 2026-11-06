@@ -863,7 +863,7 @@ function PlanStep(props: { plan: PlanInfo; onBack: () => void; onAgain: () => vo
       }
     >
       {plan.needs_confirmation && (
-        <p className="kit-alert">
+        <p className="kit-warning">
           <b>Not from the official marketplace.</b> LADO has not checked this kit. Its MCP servers below will run in
           your sessions with your permissions.
         </p>
@@ -1022,7 +1022,7 @@ function UpdateDialog({ kit, tag: first, onClose }: { kit: InstalledKitInfo; tag
       }
     >
       {plan.new_mcp.length > 0 && (
-        <p className="kit-alert">
+        <p className="kit-warning">
           <b>{`New MCP server${plan.new_mcp.length === 1 ? "" : "s"}: ${plan.new_mcp.join(", ")}.`}</b> The new version
           starts what the installed one did not.
         </p>

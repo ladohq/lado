@@ -1029,7 +1029,7 @@ test("Resume fills the window from the session, sends only what changed and show
   open("/sessions/lado/flows");
   fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
   const dialog = await screen.findByRole("dialog", { name: "Resume session" });
-  expect(where().value).toBe("/src/lado");
+  expect(within(dialog).getByRole("group", { name: "Where" }).textContent).toBe("/src/lado");
   expect(within(within(dialog).getByRole("group", { name: "Kits" })).getByText("team")).toBeTruthy();
   const providerSelect = within(dialog).getByRole("combobox", { name: "Provider" }) as HTMLSelectElement;
   await waitFor(() => expect(providerSelect.value).toBe("kilo"));

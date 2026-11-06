@@ -186,9 +186,7 @@ def terminals(page: Page):
     return page.get_by_role("complementary", name="Terminals")
 
 
-def test_terminals_stored_open_are_folded_and_come_back_with_resume(
-    page: Page, server, repo, shot
-):
+def test_terminals_stored_open_are_folded_and_come_back_with_resume(page: Page, server, repo, shot):
     page.set_viewport_size({"width": 1440, "height": 800})
     session = stopped_session(repo)
     log_in(page, server, f"/sessions/{session}")

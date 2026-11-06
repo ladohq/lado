@@ -79,8 +79,12 @@ def test_a_session_in_a_project_starts_shows_in_ls_and_resumes_with_it(shop):
 
 def _approve_and_start(session: str, name: str) -> None:
     """The supervisor of `session` writes a brief, asks the human to start `name` with it,
-    the human approves, and the supervisor calls start_session: its result in `seen`."""
+    the human approves, and the supervisor calls start_session: its result in `seen`.
+
+    It waits for the supervisor to be idle first: a message sent during its turn comes in
+    a tool's result, where the fake agent does not act on it (mid-turn-messages)."""
     choice = runtime.START_CHOICE.format(name=name)
+    wait_for(lambda: idle(session), "the supervisor idle", session)
     runtime.send_message(session, "human", "supervisor", "artifact_write brief brief.md")
     wait_for(lambda: "artifact_write" in seen(session), "the brief written", session)
     runtime.send_message(
@@ -91,6 +95,7 @@ def _approve_and_start(session: str, name: str) -> None:
         "the question",
         session,
     )
+    wait_for(lambda: idle(session), "the supervisor idle", session)
     runtime.answer_question(session, question.id, choice, None)
     runtime.send_message(session, "human", "supervisor", f"start_session {name} {question.id}")
     wait_for(lambda: "start_session_text" in seen(session), "start_session's result", session)

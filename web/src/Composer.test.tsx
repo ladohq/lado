@@ -1,13 +1,19 @@
 // The composer's files (docs/design/ui.md, Composer): the paperclip, paste and drop, chips
 // with the eye on a file an agent cannot read, the limits from the server, and Send, which
 // uploads each file, then sends the message with their names.
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render as rendered, screen, waitFor, within } from "@testing-library/react";
+import type { ReactElement, ReactNode } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { Limits } from "./api";
 import { Composer } from "./Composer";
+import { Live, LiveContext } from "./live";
 import { sendQuote } from "./quotes";
 import { TOOLTIP_DELAY_MS } from "./Tooltip";
+
+const store = new Live(); // never started: the composer reads whether the connection is lost
+const InShell = ({ children }: { children: ReactNode }) => <LiveContext.Provider value={store}>{children}</LiveContext.Provider>;
+const render = (element: ReactElement) => rendered(element, { wrapper: InShell });
 
 const LIMITS: Limits = {
   extensions: { png: "image/png", txt: "text/plain", log: "text/plain", pdf: "application/pdf", json: "application/json" },
@@ -38,6 +44,7 @@ function serve(refuse: Record<string, { status: number; detail: string }> = {}, 
       const full = `${name.replace(/\.(\w+)$/, "")}-1a2b3c4d${/\.\w+$/.exec(name)?.[0] ?? ""}`;
       return new Response(JSON.stringify({ id: `a-${name}`, full_name: full, name: full, scope: "" }));
     }
+    if (init?.method !== "POST") return new Response(JSON.stringify({ items: [], earlier: false })); // Send's cursor
     calls.push({ path: url.pathname, body: JSON.parse(String(init?.body)) });
     return new Response(JSON.stringify({ result: "sent" }));
   });

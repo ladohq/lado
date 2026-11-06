@@ -23,11 +23,14 @@ import {
   useLimits,
   useOwnFiles,
 } from "./attachFiles";
+import { looks, sendAttempt } from "./attempts";
 import { MOST_LINES, useGrow } from "./fieldHeight";
 import { ActivityIcon } from "./icons";
+import { useLiveStore, useLocked } from "./live";
 import { withQuote } from "./quote";
 import { registerComposer, takePending } from "./quotes";
 import { SUPERVISOR } from "./Team";
+import { ActionProblem, Waits } from "./waitingParts";
 import type { Fold } from "./WaitingCard";
 
 export function Composer({
@@ -48,7 +51,11 @@ export function Composer({
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const limits = useLimits();
-  const named = to !== undefined && to !== SUPERVISOR; // the field's placeholder says the rest
+  const live = useLiveStore();
+  const target = to ?? SUPERVISOR;
+  const named = target !== SUPERVISOR; // the field's placeholder says the rest
+  const attempt = sendAttempt(session, target);
+  const locked = useLocked(attempt);
   const own = useRef<HTMLTextAreaElement>(null);
   const field = inputRef ?? own;
   useGrow(field, text, 1, MOST_LINES);
@@ -95,21 +102,33 @@ export function Composer({
   }
 
   async function send() {
-    if ((!text.trim() && files.length === 0) || busy) return;
+    if ((!text.trim() && files.length === 0) || busy || locked) return;
     setBusy(true);
     setProblem(null);
+    live.attempts.clear(attempt);
     try {
+      const after = await live.messageCursor(session); // the same words before this click do not count
       const uploaded = await uploadFiles(session, files, setFiles, "Send again");
       if ("problem" in uploaded) {
         setProblem(uploaded.problem);
         return;
       }
-      await writeMessage(session, text, to, uploaded.names);
-      setText("");
-      // Only the files sent go: one dropped meanwhile stays for the next message.
+      // Words written after the click stay. Only the files sent go: one dropped meanwhile
+      // stays for the next message.
       const sent = new Set(files.map((one) => one.key));
-      release(files);
-      setFiles((now) => now.filter((one) => !sent.has(one.key)));
+      const delivered = () => {
+        setText((now) => (now === text ? "" : now));
+        release(files);
+        setFiles((now) => now.filter((one) => !sent.has(one.key)));
+      };
+      const answered = await live.attempts.send(attempt, {
+        what: "Message",
+        repeat: () => writeMessage(session, text, to, uploaded.names),
+        look: looks.send(session, target, after, text, uploaded.names),
+        closed: () => false,
+        reached: delivered,
+      });
+      if (answered) delivered();
     } catch (error) {
       setProblem(error instanceof ApiError ? error.message : String(error));
     } finally {
@@ -160,9 +179,11 @@ export function Composer({
               onChange={(event) => setText(event.target.value)}
               onKeyDown={keyDown}
             />
-            <button type="submit" className="send" disabled={stopped || busy || (!text.trim() && files.length === 0)}>
-              {busy ? "Sending…" : "Send"}
-            </button>
+            <Waits>
+              <button type="submit" className="send" disabled={stopped || busy || locked || (!text.trim() && files.length === 0)}>
+                {busy ? "Sending…" : "Send"}
+              </button>
+            </Waits>
           </div>
         </div>
         <p className="composer-meta">
@@ -187,6 +208,7 @@ export function Composer({
           {problem}
         </p>
       )}
+      <ActionProblem attempt={attempt} off={stopped} />
     </form>
   );
 }

@@ -306,7 +306,12 @@ Decided in the live updates task (2026-10-03).
   answer's head; the rest of the API may work while the feed does not), shows it, and
   opens a new stream after
   3 s from the latest journal id it got (`?after=`); after a 401 it shows how to get in and
-  stops. While no stream is open the top bar says "reconnecting…" with the reason.
+  stops. `LOST_AFTER_MS` (2 s) after the stream goes the store says `lost`, which the top
+  bar's mark and every button that writes read (A lost connection, below): a shorter drop
+  changes nothing on the screen. A load that fails keeps what the page shows, its error only
+  with nothing to show, since a failed reload would take the open gates and their comments;
+  whatever failed loads again when the stream opens after a drop, as a resumed stream sends
+  no reset.
 
 ### Terminal
 
@@ -456,8 +461,8 @@ Sessions for now. The UI's texts are in English.
   is a drawer that Menu opens (Phone layout, below).
 - **Top bar**: the page's title on the left, or on a session's page the session's head
   (Session head, below); on the right the change feed's link (`live`, or `reconnecting…`
-  with the reason), with the server's address in its tooltip ("The LADO server this page
-  talks to: <host>"). `live` is a button (`aria-haspopup`, `aria-expanded`) that opens the
+  on the warning ground: A lost connection, below), with the server's address in its tooltip
+  ("The LADO server this page talks to: <host>"). `live` is a button (`aria-haspopup`, `aria-expanded`) that opens the
   system panel (System panel, below); while a newer LADO is out, `↑ X.Y.Z` is beside it
   (mockup M2) and its tooltip says so. A page draws its head there through `Shell.useTopBar`, a slot of the
   top bar it fills with a portal; the Shell draws its own title only while no page claims
@@ -1001,7 +1006,8 @@ Built in the chat task (2026-10-03):
 - **The waiting card** (decided 2026-10-13, LAD-28, mockup
   `task/lad-28/mockup-question-card-final.html`; it replaces the open question's card of
   feature/question-answer, whose field beside the composer's read as a second place to
-  write, and the hint over the composer). `WaitingCard.tsx`, between the feed and the
+  write, and the hint over the composer). Its buttons wait for the connection and an answer
+  without a reply shows under them (A lost connection, below). `WaitingCard.tsx`, between the feed and the
   composer while anything waits in the session, and nowhere else in the chat does the human
   answer it. Its open questions come from what waits for the human (the list `waiting`,
   `state.waiting_items`, Needs you's), its gates from the session's gates (also in a
@@ -1273,6 +1279,8 @@ Built in the chat task (2026-10-03):
   a stopped session's composer is off and says so, its paperclip too.
 - **Files in the composer** (`Composer.tsx`; run feature/chat-attachments, mockup
   `mockup-composer.html` of the run): the human attaches files to a message to any agent.
+  Send waits for the connection (A lost connection, below); a file not uploaded for lack of
+  it reads `<file> was not uploaded: no connection.`, and nothing was sent.
   The handling below is one module (`attachFiles.tsx`, LAD-86) that the waiting card's
   fields share (The waiting card, Files in the fields); the composer's drop leaves the
   waiting card to them.
@@ -1412,11 +1420,68 @@ Built in the layout task (2026-10-03, schema 14):
   message by its id, a gate by its time), then scrolled to; one that is still not there
   (a message the chat does not show) scrolls nowhere.
 
+### A lost connection (decided 2026-11-06, LAD-195, mockup `mockup-connection.html`)
+
+One question gets a straight answer: did my decision go through? No strip and no green state
+(the human dropped both from LAD-189's spec §4, F44 with them): the head is on every page, so
+the mark does the job, and Live coming back with the buttons awake says the rest.
+
+- **A request with no answer** is its own kind, `Unreached` (`api.ts`): an `ApiError` of status
+  0 with the text `No connection`, wherever the UI prints a reason. The exception goes to the
+  browser's console only (the server's error journal is out of reach at that moment). A request
+  the UI aborted stays silent, and a refusal shows the server's words as ever.
+- **The mark**: 2 s after the feed goes, `reconnecting…` on `--warn-ground` with the no-network
+  icon; on a phone the icon alone, the word hidden for the ear. A reason the server answered (a
+  503) stands in its tooltip; a server out of reach has none. Live is back the moment the feed
+  opens.
+- **For the ear**: one `role="status"` region (`LinkState`, Shell.tsx), hidden, stands in the
+  top bar from the first paint, with the mark's word; empty while the stream is refused, when
+  there is no mark and the page's alert says why. A region that comes with its text is read out unreliably, so the mark has no status role.
+- **What waits**: while lost, a gate's buttons wherever it shows (the chat, Needs you, its
+  run's page), Send answer, Send (Enter too), Stop, Stop and forget and Resume are disabled.
+  `Waiting for connection` stands beside a gate's buttons; the others say it in a tooltip, on
+  a span around the button (`Waits`, waitingParts.tsx), as React sends a disabled button no
+  mouse events. Fields stay active and keep what is in them. Forget, Rename and New session's
+  Start are not locked; a failure of theirs reads `No connection`.
+- **An action without an answer** (`attempts.ts`): one store for the tab, held by the live
+  store, so its error survives a change of page and shows the same wherever the item shows.
+  `ActionProblem` under the buttons says `<What> not confirmed` with Retry off until LADO has
+  read the outcome, then `<What> not delivered` with Retry on; nothing else stands beside the
+  two words, and there is no "Checking…". `<What>`: Approval, Rejection, Answer (a gate's other
+  buttons, Send answer), Message, Stop (Stop and forget too), Resume. Until the outcome is
+  known the item's buttons stay off, also with the feed back; a stopped session's Retry
+  follows its buttons.
+- **The look**: at once, on each open of the feed, and every 3 s while the feed is open and the
+  outcome unknown; by the API, as a resumed stream has no end of its replay. The connection
+  coming back alone never clears an error.
+
+  | Action | Read | Reached when |
+  |---|---|---|
+  | A gate's button | the session's gates | it has an answer or is gone |
+  | Send answer | what waits | none of the questions sent is there |
+  | Send | the messages after the last one known at the click | one from the human to that agent, with the same text and files |
+  | Stop | the sessions | stopped or gone |
+  | Resume | the sessions | running or `loop_down` (gone: the attempt is dropped) |
+
+  Send compares ids, not times: a phone's clock is not the server's. A window with no message
+  says nothing of the history, so the composer then asks the server for the latest id; with no
+  id to be had, no message counts and Retry is the human's. Found, the error goes, the
+  files sent leave, and the field is cleared only if its text did not change. Reached, Stop's
+  popover closes; Resume's window closes on the session's page.
+- **Retry** repeats what was pressed, whatever the fields say now. A refusal that says the item
+  is closed counts as reached: `gate #N is closed already`, `question #N is` answered,
+  dismissed, closed, stopped or gone, `is stopped already`, `is already running`;
+  `closedRefusals.cases.json` pins those words on both sides, for vitest and pytest. Another
+  refusal shows as any refusal. Another decision on the item takes the error's place. Stop and
+  forget settles and repeats its stop alone, so it never forgets by itself.
+
 ### Launch and session control (decided 2026-10-04, task feature/launch)
 
 The human starts, stops, resumes and forgets sessions from the browser. The server calls
 the same core functions as the CLI (`runtime.start_session`, `stop_session`,
 `forget_session`), so the decisions and their texts are the core's; the UI shows them.
+Stop and Resume wait for the connection, and their errors show under their buttons (A lost
+connection, above).
 
 - **New session window** (`Launch.tsx`, a modal `<dialog>`; the rail's Launch and the
   list's "+"): **Where** is a new folder made from scratch, a folder, a clone of a git
@@ -1908,6 +1973,8 @@ layout, below).
   sessions: `SessionHead` draws itself into the top bar's slot (`useTopBar`); while the
   sessions load or a session is not found nothing claims the bar and it keeps the title
   "Sessions".
+- While the connection is lost the line's Stop or Resume waits, and the change feed's mark at
+  its end warns (A lost connection, above).
 - The line, left to right: the status dot (the session list's mark, its words in its
   tooltip; LAD-108; no Tab stop on a computer), the project and `/`, the title with a
   chevron, a broken session's status in words (`tmux session is gone`), the run time, on a
@@ -2333,7 +2400,8 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
   back on Menu. The computer's collapsed rail (`lado.rail`) is neither read nor written.
 - **Top bar**: one line, 52 px upright, 44 px sideways. On a session's page: Menu, the
   status dot, the title (or name) with a chevron as a button cut with "…", the change feed's
-  mark (a dot while live, "reconnecting…" otherwise; it opens the system panel), Stop. Menu
+  mark (a dot that opens the system panel while live, the no-network icon named
+  "reconnecting…" while lost), Stop. Menu
   and the session's actions are 44 by 44 px (LAD-192). No breadcrumb or branch.
 - **The session's details**: the title opens a sheet over the page's bottom
   (`SessionDetails`, a modal `<dialog>` named by the session) around the content of Details

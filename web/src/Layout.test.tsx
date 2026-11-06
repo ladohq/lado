@@ -9,6 +9,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
 import { AGENT_REST, columnWidth, FakeEventSource, FakeResizeObserver, FakeScreen, FakeSocket, stream, stubDialogs } from "./fakes";
+import { LOST_AFTER_MS } from "./live";
 import { ranText, sessionMark } from "./Sessions";
 import { Shell, useTitle, useTopBar } from "./Shell";
 import { TOOLTIP_DELAY_MS } from "./Tooltip";
@@ -988,8 +989,11 @@ test("the top bar has the title and the link; the server's address is in the lin
   fireEvent.focus(link);
   expect(screen.getByRole("tooltip").textContent).toBe(`The LADO server this page talks to: ${window.location.host}`);
   fireEvent.blur(link);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   stream().fail(false);
-  expect(within(bar).getByRole("status").textContent).toMatch(/reconnecting/);
+  act(() => vi.advanceTimersByTime(LOST_AFTER_MS));
+  vi.useRealTimers();
+  expect(within(bar).getByRole("status").textContent).toBe("reconnecting…");
 });
 
 // The session's head in the top bar (docs/design/ui.md, Session head; feature/session-head-topbar)

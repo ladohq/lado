@@ -28,6 +28,7 @@ import {
   LaunchIcon,
   MenuIcon,
   NeedsYouIcon,
+  NoNetworkIcon,
   ProjectsIcon,
   SessionsIcon,
   SettingsIcon,
@@ -43,6 +44,7 @@ import { SelectionBar } from "./SelectionBar";
 import { ShareDialog } from "./Share";
 import { LiveButton, UpdateProvider, UpdateStatus } from "./SystemPanel";
 import { StatisticsBanner } from "./Telemetry";
+import { Tooltip } from "./Tooltip";
 import { BUNDLE_VERSION } from "./version";
 
 const SECTIONS: { to: string; name: string; icon: ReactNode }[] = [
@@ -291,24 +293,40 @@ function VersionBanner() {
   );
 }
 
-// The change feed's link: live, or reconnecting while it is down (what the page shows may
-// be old), with the reason. Live opens the system panel (SystemPanel.tsx). The dialog for
-// another device (Share.tsx) is kept here: its new link ends the stream, and the button
-// goes away while it reconnects.
+// The change feed's link (docs/design/ui.md, A lost connection): live, or, once the feed is
+// lost, reconnecting on the warning ground (what the page shows may be old), a reason the
+// server answered in its tooltip. A shorter drop shows what stood there. Live opens the
+// system panel (SystemPanel.tsx). The dialog for another device (Share.tsx) is kept here: its
+// new link ends the stream, and the button goes away if the feed stays lost. The status region
+// stands from the first paint, also on a refused stream: a region that comes with its text
+// is read out unreliably, so the mark itself has no status role.
 function LinkState() {
-  const { link, problem } = useLive();
+  const { link, lost, problem } = useLive();
   const [sharing, setSharing] = useState(false);
-  if (link === "refused") return null; // the page says how to get in
+  const before = useRef<"open" | "connecting">("connecting"); // what a drop leaves shown
+  if (link === "open" || link === "connecting") before.current = link;
+  // Refused, there is no mark to follow and no connection to name: the page's alert says why.
+  const word = link === "refused" ? "" : lost ? "reconnecting…" : before.current === "open" ? "live" : "connecting…";
+  const mark = (
+    <span className="link reconnecting" tabIndex={problem ? 0 : undefined}>
+      <NoNetworkIcon />
+      <span className="link-word">reconnecting…</span>
+    </span>
+  );
   return (
     <>
-      {link !== "down" ? (
-        <LiveButton link={link} sharing={sharing} onShare={() => setSharing(true)} />
-      ) : (
-        <span className="link reconnecting" role="status" title={problem ?? undefined}>
-          reconnecting…{problem && <span className="reconnecting-why"> {problem}</span>}
-        </span>
-      )}
-      {sharing && <ShareDialog onClose={() => setSharing(false)} />}
+      <span className="visually-hidden" role="status">
+        {word}
+      </span>
+      {link !== "refused" &&
+        (!lost ? (
+          <LiveButton link={before.current} sharing={sharing} onShare={() => setSharing(true)} />
+        ) : problem ? (
+          <Tooltip tip={problem}>{mark}</Tooltip>
+        ) : (
+          mark
+        ))}
+      {link !== "refused" && sharing && <ShareDialog onClose={() => setSharing(false)} />}
     </>
   );
 }

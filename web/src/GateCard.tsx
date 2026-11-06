@@ -9,6 +9,7 @@ import { useState, type ReactNode } from "react";
 
 import { answerGate, ApiError, HUMAN, type GateInfo, type Limits, type RunEventInfo, type RunInfo } from "./api";
 import { AnswerBox, filesLine, uploadFiles, useLimits, useOwnFiles, type Attached, type SetFiles } from "./attachFiles";
+import { closedBy, gateAttempt, looks } from "./attempts";
 import { size } from "./artifacts";
 import { KindIcon } from "./ArtifactView";
 import { Attachments, useView } from "./Attachments";
@@ -16,10 +17,10 @@ import { Body, clock, Preview } from "./ChatText";
 import { MiniAvatar } from "./FeedRow";
 import { OutcomeChip } from "./flowSteps";
 import { ChevronIcon, GateIcon } from "./icons";
-import { useLive } from "./live";
+import { useLive, useLiveStore, useLocked } from "./live";
 import { quoteArea } from "./quote";
 import { disagreed, primaryOf, Recommendation, RecommendationBar } from "./Recommendation";
-import { CardFoot, cardLines, CardTop, STOPPED_NOTE, type CardShape } from "./waitingParts";
+import { ActionProblem, CardFoot, cardLines, CardTop, STOPPED_NOTE, WAITING_NOTE, type CardShape } from "./waitingParts";
 
 const NOTE_LINES = 20; // the lines of the note before the gate shown before Show more
 const CLOSED_NOTE_LINES = 6; // the same in a closed gate's card, its Note line opened
@@ -31,6 +32,10 @@ const LABELS: Record<string, Record<string, string>> = {
 };
 
 const label = (gate: GateInfo) => (option: string) => LABELS[gate.kind]?.[option] ?? option;
+
+// What an error calls a button's action.
+const whatOf = (gate: GateInfo, option: string) =>
+  gate.kind !== "approval" ? "Answer" : option === "approve" ? "Approval" : option === "reject" ? "Rejection" : "Answer";
 
 // How a gate is named wherever one title stands for it (a closed gate's line, a run's page).
 export const gateTitle = (gate: GateInfo) => `Gate #${gate.id} · ${gate.run} · ${gate.state}`;
@@ -106,17 +111,28 @@ export function GatePanel({
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const primary = primaryOf(gate.options, gate.recommendation);
+  const live = useLiveStore();
+  const { lost } = useLive();
+  const attempt = gateAttempt(session, gate.id);
+  const locked = useLocked(attempt);
 
   async function answer(option: string) {
     setBusy(true);
     setProblem(null);
+    live.attempts.clear(attempt);
     try {
       const uploaded = await uploadFiles(session, files, setFiles, "answer again");
       if ("problem" in uploaded) {
         setProblem(uploaded.problem);
         return;
       }
-      await answerGate(session, gate.id, option, comment, uploaded.names);
+      await live.attempts.send(attempt, {
+        what: whatOf(gate, option),
+        repeat: () => answerGate(session, gate.id, option, comment, uploaded.names),
+        look: looks.gate(session, gate.id),
+        closed: closedBy.gate,
+        reached: () => {}, // the card goes by the live lists
+      });
     } catch (error) {
       setProblem(error instanceof ApiError ? error.message : String(error));
     } finally {
@@ -152,8 +168,8 @@ export function GatePanel({
       <button
         key={option}
         type="button"
-        className={option === primary ? "primary" : "quiet"}
-        disabled={busy || stopped}
+        className={`${option === primary ? "primary" : "quiet"}${lost ? " locked" : ""}`}
+        disabled={busy || stopped || locked}
         onClick={() => void answer(option)}
       >
         {label(gate)(option)}
@@ -162,6 +178,11 @@ export function GatePanel({
     files.length > 0 && (
       <span key="files" className="waiting-count">
         {filesLine(files)}
+      </span>
+    ),
+    lost && (
+      <span key="waits" className="lost-note">
+        {WAITING_NOTE}
       </span>
     ),
   ];
@@ -173,6 +194,7 @@ export function GatePanel({
           {problem}
         </p>
       )}
+      <ActionProblem attempt={attempt} off={stopped} />
     </>
   );
   if (card) {

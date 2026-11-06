@@ -115,6 +115,19 @@ test("Copy link copies without the Clipboard API, and shows the link only when n
   await screen.findByRole("heading", { name: "Design" });
 });
 
+test("a record's answer cut in its body reads No connection, the exception in the console", async () => {
+  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  const cut = new ReadableStream({
+    pull: (body) => body.error(new TypeError("network error")),
+  });
+  serve(cut);
+  show(artifact());
+  await screen.findByText(/No connection/);
+  expect(document.body.textContent).not.toMatch(/TypeError|network error/);
+  expect(logged).toHaveBeenCalledWith(expect.objectContaining({ message: "network error" }));
+  logged.mockRestore();
+});
+
 test("Markdown shows as the chat shows it, with no raw HTML", async () => {
   serve("# Plan\n\nstep <b>one</b><script>window.x = 1</script>\n\n- a\n- b");
   show(artifact());

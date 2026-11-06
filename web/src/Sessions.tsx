@@ -871,6 +871,13 @@ export function tabScroll(
   return Math.min(left, tab.left - room);
 }
 
+// By the row's own scroll: Chromium's Tab would start from a tab scrolled to with
+// scrollIntoView (Terminals.tsx).
+function keepInView(tabs: HTMLElement, on: HTMLElement) {
+  const view = { left: tabs.scrollLeft, width: tabs.clientWidth };
+  tabs.scrollLeft = tabScroll(view, { left: on.offsetLeft, width: on.offsetWidth }, TAB_ROOM);
+}
+
 // What puts the focus back after a trial, which hides the form of the bar's tool that has it,
 // for a moment or for good: on that form while it shows, else on the other.
 function holdToolFocus(bar: HTMLElement): () => void {
@@ -935,23 +942,18 @@ function SessionTabs({
     for (const one of tabs.children) observer.observe(one);
     return () => observer.disconnect();
   }, [lookAtEnds]);
-  // The tab shown and the tab the keyboard reaches stay in view. By the row's own scroll:
-  // Chromium's Tab would start from a tab scrolled to with scrollIntoView (Terminals.tsx).
-  const keepInView = useCallback((on: HTMLElement) => {
-    const tabs = row.current;
-    if (!tabs) return;
-    const view = { left: tabs.scrollLeft, width: tabs.clientWidth };
-    tabs.scrollLeft = tabScroll(view, { left: on.offsetLeft, width: on.offsetWidth }, TAB_ROOM);
-  }, []);
+  // The tab shown stays in view.
   useLayoutEffect(() => {
-    const on = row.current?.querySelector<HTMLElement>('[aria-current="page"]');
-    if (!on) return;
-    keepInView(on);
+    const tabs = row.current;
+    const on = tabs?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!tabs || !on) return;
+    keepInView(tabs, on);
     lookAtEnds();
-  }, [tab, fit, keepInView, lookAtEnds]);
-  // Not a press's focus: the row moving under the pointer would lose the click.
+  }, [tab, fit, lookAtEnds]);
+  // So does the tab the keyboard reaches; not a press's: the row moving under the pointer would
+  // lose the click.
   const focused = (event: FocusEvent<HTMLDivElement>) => {
-    if (event.target.matches(":focus-visible")) keepInView(event.target);
+    if (event.target.matches(":focus-visible")) keepInView(event.currentTarget, event.target);
   };
   const scroll = (side: 1 | -1) => row.current?.scrollBy({ left: side * row.current.clientWidth });
   return (

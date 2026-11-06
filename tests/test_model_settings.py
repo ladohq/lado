@@ -1733,7 +1733,18 @@ def test_an_unknown_context_off_a_server_does_not_warn():
     assert model_settings.context_warning(start, OPENCODE, None) is None
 
 
-@pytest.mark.parametrize("address", ["http://localhost:1", "http://192.168.1.10:1234"])
+@pytest.mark.parametrize(
+    "address",
+    [
+        "http://localhost:1",
+        "http://192.168.1.10:1234",
+        "http://mac-studio.local:1234",
+        "http://gpu-box:8000",
+        "http://ollama.lan:11434",
+        "https://llm.corp.internal",
+        "http://nas.home.arpa:8080",
+    ],
+)
 def test_an_unknown_context_on_a_local_server_does_not_warn(address):
     server = state.ModelServer("id", "Дома", address, model_servers.OPENAI, (CHAT,), "")
     start = model_settings.StartModel(name="m", model="m", server=server)

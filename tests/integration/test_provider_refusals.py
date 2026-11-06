@@ -97,6 +97,22 @@ def test_a_refused_key_of_the_family_reads_in_lado_s_words_with_no_key(
     check_no_key(lado_home, server, key, capsys)
 
 
+def test_lado_stats_counts_a_refusal_by_lado_s_words_alone(
+    repo,
+    serve,  # noqa: F811
+    capsys,
+):
+    key = f"canary-{uuid.uuid4().hex}"
+    error = {"name": "APIError", "message": "Slow: down, server-text", "status": 429}
+    url = serve("all", key=key)
+    refused(repo, url, key, "kilo", "session.idle", {"sessionID": "x", "error": error})
+    capsys.readouterr()
+    assert main(["stats"]) == 0
+    said = capsys.readouterr().out
+    assert "(the model provider limits requests, or the quota is spent (429) 1)" in said
+    assert "server-text" not in said
+
+
 def test_a_402_of_claude_code_goes_to_the_human_at_once_with_no_resume(
     repo,
     serve,  # noqa: F811

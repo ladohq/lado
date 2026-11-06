@@ -237,12 +237,25 @@ PROFILES: dict[str, dict[tuple[str, ...] | str, Answer | Held]] = {
         ("POST", CHAT): OPENAI_400,
         ("POST", MESSAGES): Held(1, ANTHROPIC_400),
     },
+    # Silent for two probes, of two tries each: the server comes back.
+    "late-two-probes": {
+        ("GET", MODELS): openai_list("m1"),
+        ("POST", CHAT): OPENAI_400,
+        ("POST", MESSAGES): Held(4, ANTHROPIC_400),
+    },
     "late-always": {
         ("GET", MODELS): openai_list("m1"),
         ("POST", CHAT): OPENAI_400,
         ("POST", MESSAGES): Held(None, ANTHROPIC_400),
     },
     "late-no-list": {("POST", MESSAGES): Held(None, ANTHROPIC_400)},
+    # A gateway that refuses any POST alike, with one API silent.
+    "late-control-always": {
+        ("GET", MODELS): openai_list("m1"),
+        ("POST", CHAT): OPENAI_400,
+        ("POST", CONTROL): OPENAI_400,
+        ("POST", MESSAGES): Held(None, ANTHROPIC_400),
+    },
     # A gateway that refuses any POST alike, its control late the first time.
     "late-control": {
         ("GET", MODELS): openai_list("m1"),

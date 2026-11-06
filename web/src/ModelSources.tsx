@@ -951,8 +951,9 @@ function CheckNote({ note }: { note: ModelCheck | EntryRefused }) {
 const warnings = (lines: string[]) =>
   lines.map((line) => <span key={line} className="field-note warn">{`⚠ ${line}`}</span>);
 
-// What answered the form's check: its type and address, its models and the CLIs that can use it.
-function Found({ probe }: { probe: ProbeInfo }) {
+// What answered the form's check: its type and address, its models and the CLIs that can use it,
+// and why its APIs could not be told.
+export function Found({ probe }: { probe: ProbeInfo }) {
   const embeddings = new Set(probe.embeddings);
   const count = probe.models === null ? null : probe.models.filter((m) => !embeddings.has(m)).length;
   return (
@@ -972,6 +973,7 @@ function Found({ probe }: { probe: ProbeInfo }) {
         <dt>Agent CLIs</dt>
         <dd>{probe.clis.length ? probe.clis.map((c) => c.title).join(", ") : "none can use it"}</dd>
       </dl>
+      {probe.apis_why && <span className="field-note warn">{`⚠ APIs: cannot be told: ${probe.apis_why}`}</span>}
     </div>
   );
 }
@@ -1322,6 +1324,9 @@ function ChangeServer({
             <>
               {checked?.probe && (
                 <span className="field-note ok">{`✓ ${checked.probe.kind} answers · ${models(checked.probe)}`}</span>
+              )}
+              {checked?.probe?.apis_why && (
+                <span className="field-note warn">{`⚠ APIs: cannot be told: ${checked.probe.apis_why}`}</span>
               )}
               {[...silent, ...(saveBad ? [saveBad] : [])].map((r) => (
                 <CheckNote key={r.message} note={r} />

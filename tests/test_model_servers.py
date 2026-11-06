@@ -813,6 +813,33 @@ def test_what_is_on_the_human_s_machine_or_network(root, local):
     assert ms.is_local(root) is local
 
 
+@pytest.mark.parametrize(
+    ("root", "inside"),
+    [
+        ("http://localhost:1234", True),
+        ("http://192.168.1.10:1234", True),
+        ("http://mac-studio.local:1234", True),
+        ("http://MAC-STUDIO.LOCAL:1234", True),
+        ("http://gpu-box:8000", True),
+        ("http://ollama.lan:11434", True),
+        ("https://llm.corp.internal", True),
+        ("http://nas.home.arpa", True),
+        ("https://llm.example.com", False),
+        ("https://local.example.com", False),
+        ("http://8.8.8.8", False),
+        ("http://[2001:4860:4860::8888]", False),
+    ],
+)
+def test_a_name_of_the_human_s_network_is_inside_it(root, inside):
+    assert ms.in_network(root) is inside
+
+
+def test_a_key_over_http_to_a_network_name_is_still_warned_of():
+    """The name is not resolved, so the rule of a key stays by address."""
+    assert ms.plain_http_warning("http://gpu-box:8000", "key") is not None
+    assert ms.plain_http_warning("http://mac-studio.local:1234", "key") is not None
+
+
 def test_limits_of_a_closed_port_are_none():
     assert ms.context_limits(f"http://127.0.0.1:{closed_port()}", None) == {}
 

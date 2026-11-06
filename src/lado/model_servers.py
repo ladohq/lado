@@ -1,10 +1,11 @@
 """What a model server is, from its address: its type, its models and the agent CLIs that
 can use it (`lado model-server probe`).
 
-A probe sends at most one request per check and none that generates: the model list
-first, alone; when it got an HTTP answer, at once Ollama's and LM Studio's own endpoints,
-the model list in Anthropic's way, one POST with the body `{}` per API and a control POST
-to a path no server has, eight at most. Only the POSTs and the list in Anthropic's way carry
+A probe sends one request per check and none that generates: the model list first, alone;
+when it got an HTTP answer, at once Ollama's and LM Studio's own endpoints, the model list
+in Anthropic's way, one POST with the body `{}` per API and a control POST to a path no
+server has: eight, and a POST with no answer once more, twelve at most. Only the POSTs and
+the list in Anthropic's way carry
 `anthropic-version`: the type and the models come from the list asked without it, and the
 other only fills a gap, as a gateway of both APIs lists in Anthropic's shape with it. A POST
 proves its API when the server refuses the empty body with 400 or 422 and a JSON object,
@@ -77,6 +78,9 @@ CONTAINER_HINT = (
 # container too) and, by address, loopback, private and link-local networks. A name is never
 # resolved for the rule: it would depend on the network and send the name out.
 LOCAL_HOSTS = ("localhost", "host.docker.internal")
+# Names only a local network resolves. For what is said of a bill, not for the key's rule: a name
+# with these may still be anything, so a key over plain http:// to one is warned about.
+NETWORK_SUFFIXES = (".local", ".lan", ".internal", ".home.arpa")
 PLAIN_HTTP = (
     "the key goes to {host} over plain http://, unencrypted; use https:// if the server has it"
 )
@@ -247,6 +251,14 @@ def is_local(root: str) -> bool:
     except ValueError:
         return False
     return ip.is_loopback or ip.is_private or ip.is_link_local
+
+
+def in_network(root: str) -> bool:
+    """Whether the server at `root` is `is_local`, or by its name one of a local network: a name
+    with no dot, or of NETWORK_SUFFIXES. No name is resolved."""
+    host = urllib.parse.urlsplit(root).hostname or ""
+    bare = "." not in host and ":" not in host  # an IPv6 address is no name
+    return is_local(root) or bare or host.endswith(NETWORK_SUFFIXES)
 
 
 def plain_http_warning(root: str, key: str | None) -> str | None:

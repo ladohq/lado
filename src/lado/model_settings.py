@@ -1142,7 +1142,7 @@ def context_warning(
     machine and network, where a late compaction costs money; None otherwise: an Ollama model
     not yet running has no known context either."""
     if limit is None:
-        if start.server is None or model_servers.is_local(start.server.address):
+        if start.server is None or model_servers.in_network(start.server.address):
             return None
         return (
             f"{start.name} on {start.server.name}: the server reports no context for it, so the "

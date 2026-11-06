@@ -56,8 +56,12 @@ def forget_probes() -> None:
 
 
 def _keep(server: state.ModelServer, found: model_servers.Probe) -> None:
+    """Keep `found`, unless an API was late: its words say to try again, which must ask anew."""
     with _probes_lock:
-        _probes[(server.id, server.address)] = (time.monotonic(), found)
+        if found.late:
+            _probes.pop((server.id, server.address), None)
+        else:
+            _probes[(server.id, server.address)] = (time.monotonic(), found)
 
 
 def _kept_or_probed(server: state.ModelServer) -> model_servers.Probe:
@@ -93,7 +97,7 @@ def probe_info(found: model_servers.Probe) -> models.ProbeInfo:
         models=None if found.models is None else list(found.models),
         models_why=found.models_why,
         embeddings=sorted(found.embeddings),
-        apis_why=found.apis_why,
+        apis_why=found.apis_why or found.late_warning() or "",
         clis=[models.CliApi(name=p.name, title=p.title, api=api) for p, api in suits],
     )
 
@@ -298,7 +302,7 @@ def add_server(given: models.ModelServerAdd) -> models.ModelServerAdded:
         server=server_info(server),
         probe=probe_info(found),
         notes=notes,
-        warnings=warnings,
+        warnings=[w for w in warnings if w != found.late_warning()],  # the probe says it
     )
 
 
@@ -358,8 +362,6 @@ def check_server(given: models.ModelServerCheck, has_db: bool = True) -> models.
     except (model_servers.ProbeError, ValueError) as exc:
         refuse(exc)
         return models.ServerCheck(probe=None, refusals=refusals, warnings=warnings, notes=[])
-    if late := found.late_warning():
-        warnings.append(late)
     for other in state.model_servers() if has_db else []:
         if given.replace and other.name.lower() == given.name.lower():
             continue

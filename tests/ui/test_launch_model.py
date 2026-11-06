@@ -164,6 +164,35 @@ def test_a_context_too_small_warns_in_the_field_and_start_stays_on(
     small.close()
 
 
+def test_a_public_server_s_unknown_context_warns_and_links_its_section(
+    page: Page, fake_models, server, repo, shot
+):
+    """`localhost.` reaches the fake and is no name LADO takes for the human's own machine."""
+    public = fake.Server("all")
+    address = f"http://localhost.:{public.port}"
+    model_settings.add_server(HOME, address, None, warn=print, note=print)
+    state.add_model(QWEN, CLI, "m1", state.model_server(HOME).id)
+    set_default()
+    page.set_viewport_size({"width": 1400, "height": 1000})
+    dialog = new_window(page, server, repo)
+    open_advanced(dialog)
+    expect(dialog).to_contain_text(
+        f"{QWEN} on {HOME}: the server reports no context for it, so the agent compacts late and "
+        "its answers have no limit"
+    )
+    expect(dialog.get_by_role("link", name="docs/install.md ↗")).to_have_attribute(
+        "href", "https://github.com/ladohq/lado/blob/main/docs/install.md#a-cloud-provider"
+    )
+    start = dialog.get_by_role("button", name="Start session")
+    expect(start).to_be_enabled()
+    shot(page, "warning")
+    summary = advanced(dialog).locator("summary")
+    summary.click()
+    expect(summary).to_have_text(f"Advanced: model {QWEN} on {HOME} ⚠ context unknown")
+    shot(page, "folded")
+    public.close()
+
+
 def test_a_silent_server_turns_start_off_and_names_the_ways_out(
     page: Page, fake_models, home_server, server, repo, shot
 ):

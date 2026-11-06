@@ -178,9 +178,8 @@ def _refusal(failure: Mapping) -> tuple[int, str] | None:
         return None
     said = failure.get("last_assistant_message")
     found = REFUSED.search(base.without_keys(said)) if isinstance(said, str) else None
-    if found is None or int(found[1]) not in base.REFUSALS:
-        return None
-    return int(found[1]), found[2].strip()
+    status = int(found[1]) if found else None
+    return (status, found[2].strip()) if status in base.REFUSALS else None
 
 
 def _server_settings(server: base.ServerEntry) -> dict:

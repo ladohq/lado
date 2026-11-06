@@ -30,7 +30,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 
 import lado
@@ -156,9 +156,9 @@ class Probe:
         return f"{late_words(self.late)} of {self.address} {LATE}: try again"
 
 
-def late_words(apis: Iterable[str]) -> str:
+def late_words(apis: Collection[str]) -> str:
     """The APIs that did not answer, in a sentence."""
-    return "the " + ", ".join(api for api in API_PATHS if api in frozenset(apis))
+    return "the " + ", ".join(api for api in API_PATHS if api in apis)
 
 
 Suiting = list[tuple[providers.Provider, str]]

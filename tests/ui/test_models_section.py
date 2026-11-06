@@ -262,6 +262,27 @@ def test_an_external_default_removed_with_a_question_and_undo(page: Page, clis, 
     assert state.cli_defaults() == [state.ModelRef("opencode", back.id, None)]
 
 
+def test_a_request_lado_s_server_did_not_answer_promises_nothing(
+    page: Page, clis, server, lms, shot
+):
+    saved_server(lms)
+    state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
+    page.set_viewport_size({"width": 1280, "height": 900})
+    open_settings(page, server)
+    opencode = card(page, "OpenCode")
+    x = opencode.get_by_role("button", name="Remove Локальная Qwen")
+    expect(x).to_be_visible()
+    page.route("**/api/**", lambda route: route.abort())
+    x.click()
+    expect(
+        opencode.get_by_text(
+            "LADO's server does not answer: your request may or may not have reached it."
+        )
+    ).to_be_visible()
+    shot(page)
+    page.unroute("**/api/**")
+
+
 def test_a_silent_server_shows_when_the_picker_opens(page: Page, clis, server, lms, shot):
     saved_server(lms)
     saved = state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")

@@ -3429,6 +3429,26 @@ def sweep(
     return Swept(typed, [replace(m, state=FAILED) for m in failed])
 
 
+def restart_typed(session: str, name: str) -> bool:
+    """The agent's CLI takes input only now (Event.ready): what was typed before that and not
+    confirmed starts over from this hook, as a first attempt (lado.runtime._plan). So it waits
+    for a prompt that may still hold it, then goes back to the queue. Whether the agent is busy
+    for that typing alone: no turn ran, so no hook would end that (lado.hooks)."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        typed = db.execute(
+            "UPDATE messages SET attempts = 1, sent_at = (SELECT seen_at FROM agents"
+            " WHERE session = ? AND name = ?) WHERE session = ? AND recipient = ? AND state = ?"
+            " AND channel = ?",
+            (session, name, session, name, SENT, TYPED),
+        ).rowcount
+        row = db.execute(
+            "SELECT status FROM agents WHERE session = ? AND name = ?", (session, name)
+        ).fetchone()
+        db.execute("COMMIT")
+    return bool(typed and row and row["status"] == BUSY)
+
+
 def confirm_sent(
     session: str, recipient: str, prompt: str, typed: Callable[[Message], str]
 ) -> None:

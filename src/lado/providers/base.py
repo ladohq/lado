@@ -42,9 +42,9 @@ class Capabilities:
     # The session-start hook can hold the first turn until the CLI has listed LADO's MCP
     # tools (lado.hooks waits for it); False where that hook would hold the MCP server too.
     hold_first_turn: bool = False
-    # The CLI loses what is typed into it right after its start, and says by no event when
-    # it takes input: its first messages' lines (never a body) go on its command line as
-    # the `notice` of launch_command, handed over as typed (lado.runtime).
+    # The CLI takes its first messages' lines (never a body) on its command line, as the
+    # `notice` of launch_command, before anything can be typed into it; they are handed over
+    # as typed (lado.runtime).
     notice_on_argv: bool = False
     # The CLI starts its session (its session-start hook) only when its first input is
     # submitted: an agent with an empty queue would never be ready, so LADO gives it a line
@@ -99,6 +99,12 @@ class Event:
     # effort, with no name.
     model: str = ""
     effort: str | None = None
+    # For SESSION_START: what the lead should know of a start that made the agent ready
+    # (lado.hooks); "" for a start with nothing to say.
+    note: str = ""
+    # For SESSION_START: the CLI says it takes input now, so a wait for messages that went
+    # nowhere is over (lado.hooks). A wait with a key is a dialog's, and stays.
+    ready: bool = False
 
 
 ERROR_LIMIT = 160  # characters of an Event.error
@@ -517,10 +523,12 @@ CLI_VARIABLES = frozenset(
         "OPENCODE_CONFIG",
         "OPENCODE_CONFIG_CONTENT",
         "OPENCODE_DISABLE_AUTOUPDATE",
+        "OPENCODE_TUI_CONFIG",
         "KILO_CONFIG",
         "KILO_CONFIG_CONTENT",
         "KILO_DISABLE_AUTOUPDATE",
         "KILO_NO_DAEMON",
+        "KILO_TUI_CONFIG",
         "XDG_STATE_HOME",
     }
 )

@@ -2,10 +2,11 @@
 // LADO (see lado/providers/opencode_family.py). Checked with Kilo 7.8.3 and OpenCode 1.18.34.
 //
 // Options, from the `plugin` entry of the agent's config (kilo.json, opencode.json):
-// { hooks: { <native event>: [argv...] } }. For each native event that has an argv, the
-// command runs with a JSON payload on stdin. When "session.idle" prints text, that text
+// { hooks: { <native event>: [argv...] }, tuiWait: <ms> }. For each native event that has an
+// argv, the command runs with a JSON payload on stdin. When "session.idle" prints text, that text
 // becomes the session's next user message; when the CLI refuses it, "plugin.error" says so
-// with the error. A missing argv means "do not report this event".
+// with the error. A missing argv means "do not report this event". "tui.silent" runs tuiWait
+// after the plugin's start.
 // The plugin must never break the CLI, so every other failure is swallowed.
 import { spawn } from "node:child_process"
 
@@ -49,15 +50,7 @@ function errorOf(error) {
 const OVERFLOW = "ContextOverflowError"
 const MAX_OVERFLOWS = 3
 
-// LADO's words go first: the core cuts an error to one short line (base.error_line).
-function stoppedBy(error) {
-  const words =
-    `LADO stopped the turn after ${MAX_OVERFLOWS} attempts: the model's context is too small ` +
-    "for the agent's request"
-  return { name: error.name, message: error.message ? `${words}; ${error.message}` : words }
-}
-
-export const LadoPlugin = async ({ client, directory }, options = {}) => {
+export const LadoPlugin = async ({ client }, options = {}) => {
   const hooks = options?.hooks ?? {}
   // Sessions of subagents (task tool): their turns are not the agent's turns.
   const subagents = new Set()
@@ -73,7 +66,12 @@ export const LadoPlugin = async ({ client, directory }, options = {}) => {
   const stopped = new Set()
   const ended = new Set()
   const summaries = new Set()
-  await run(hooks["plugin.init"], { directory })
+  // This plugin lives and the TUI's own may not report (opencode_family.TUI_SILENT): LADO lets a
+  // report that came first win, so this one needs not know of it.
+  const silence = hooks["tui.silent"]
+    ? setTimeout(() => run(hooks["tui.silent"], {}), options.tuiWait)
+    : null
+  silence?.unref?.()
   return {
     "chat.message": async (input, output) => {
       try {
@@ -121,7 +119,7 @@ export const LadoPlugin = async ({ client, directory }, options = {}) => {
             const count = (overflows.get(props.sessionID) ?? 0) + 1
             overflows.set(props.sessionID, count)
             if (count >= MAX_OVERFLOWS) {
-              errors.set(props.sessionID, stoppedBy(error))
+              errors.set(props.sessionID, { ...error, stopped: MAX_OVERFLOWS })
               stopped.add(props.sessionID)
               await client.session.abort({ path: { id: props.sessionID } })
             }
@@ -158,6 +156,7 @@ export const LadoPlugin = async ({ client, directory }, options = {}) => {
       } catch {}
     },
     dispose: async () => {
+      clearTimeout(silence)
       await run(hooks["dispose"], {})
     },
   }

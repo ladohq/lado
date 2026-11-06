@@ -1,8 +1,10 @@
 """The OpenCode family: OpenCode and its forks (Kilo CLI) as LADO providers.
 
 They have no command hooks, so LADO ships a small plugin (opencode_plugin.js) that runs
-`lado hook <event>` for the CLI's own events. Each agent gets one config dict: it is written
-to the agent's config folder and goes to the CLI through the environment (`env`).
+`lado hook <event>` for the CLI's own events, and a TUI plugin (opencode_tui_plugin.js) that
+reports when the TUI's prompt has focus, which is the agent's session start. Each agent gets
+one config dict: it is written to the agent's config folder and goes to the CLI through the
+environment (`env`).
 
 Forks drift apart. This base holds only what is checked on every CLI of the family, with the
 CLI and version it was checked on; what is checked on one CLI only lives in its subclass. A
@@ -20,6 +22,18 @@ from lado import state
 from lado.providers import base
 
 PLUGIN = Path(__file__).with_name("opencode_plugin.js")
+TUI_PLUGIN = Path(__file__).with_name("opencode_tui_plugin.js")
+TUI_READY = "tui.ready"  # the TUI plugin's one report: the prompt has focus
+TUI_CONFIG = "tui.json"  # the agent's TUI config, beside its config
+# The server plugin is alive and the TUI said nothing for so long (runtime.START_SILENCE): its
+# plugin did not load (a CLI's change), or the TUI is slow, which no sign tells apart. The agent
+# is ready then, so a CLI that stopped loading the TUI plugin never leaves it `starting`.
+TUI_SILENT = "tui.silent"
+TUI_WAIT = 30
+TUI_SILENT_NOTE = (
+    f"no report from its TUI {TUI_WAIT} s after its start; messages are typed in as they come, "
+    "and one may be lost"
+)
 
 # Events the plugin reports and the neutral events they stand for, by the same names in Kilo
 # 7.8.3 and OpenCode 1.18.34. A request for the human and its answer carry the request's id
@@ -27,7 +41,10 @@ PLUGIN = Path(__file__).with_name("opencode_plugin.js")
 # (neither has a "permission.rejected"). Both can have several requests open at once (listed
 # per session); LADO keeps one key, the latest request's (BACKLOG.md: a set of keys).
 EVENTS = {
-    "plugin.init": base.SESSION_START,
+    # The session start is the TUI's, not the server plugin's: that one's init comes 1.5 to 3 s
+    # before the TUI takes input (Kilo 7.8.8, OpenCode 1.18.35).
+    TUI_READY: base.SESSION_START,
+    TUI_SILENT: base.SESSION_START,
     "chat.message": base.PROMPT_SUBMIT,
     "session.idle": base.TURN_END,
     "permission.asked": base.WAITING,
@@ -51,6 +68,16 @@ EVENTS = {
 # and "session.idle" says nothing of work still running; Kilo is taken to be as its base,
 # not checked. So their agents are idle at a turn's end, never `background` (BACKLOG.md).
 ABORTED = "MessageAbortedError"
+# LADO's words of a context too small live here alone. A stopped turn is the plugin's (its
+# "stopped" counts the attempts); a server's refusal is not an overflow to the CLI: LM Studio
+# answers HTTP 400, and both report it as UnknownError with the raw JSON (the human's check of
+# LAD-211), so it ends the turn at once and needs no count.
+OVERFLOW = "ContextOverflowError"
+TOO_SMALL = "the model's context is too small for the agent's request"
+REFUSED_FOR_CONTEXT = "exceed_context_size_error"
+SERVER_SIZES = re.compile(
+    r"request \(\d+ tokens\) exceeds the available context size \(\d+ tokens\)"
+)
 # A model server is a provider of the agent's config, under an id of its own that a rename never
 # changes and no provider of the user's has (checked with OpenCode 1.18.35 and Kilo 7.8.8 on two
 # servers: `name` of the provider is the group and label in the real /model, `name` of a model
@@ -94,6 +121,21 @@ def model_entry(name: str, limit: base.Limit | None) -> dict:
     return {"name": name, "limit": {"context": limit.context, "output": output}}
 
 
+def turn_error(error: Mapping) -> tuple[str, str]:
+    """The line of the error a turn ended on and the message's body (Event.error and .details):
+    LADO's words go first, as the core cuts a line short (base.error_line)."""
+    name, message = error.get("name") or "UnknownError", error.get("message", "")
+    if error.get("stopped"):
+        words = f"LADO stopped the turn after {error['stopped']} attempts: {TOO_SMALL}"
+        return base.error_line(name, f"{words}; {message}" if message else words), message
+    if REFUSED_FOR_CONTEXT in message:
+        sizes = SERVER_SIZES.search(message)
+        words = f"{TOO_SMALL}; {sizes[0]}" if sizes else TOO_SMALL
+        return base.error_line(OVERFLOW, words), f"{name}: {message}"
+    whole = f"{name}: {message}"
+    return base.error_line(name, message), whole if len(whole) > base.ERROR_LIMIT else ""
+
+
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")  # the colours of `auth list`
 
 
@@ -103,9 +145,11 @@ class OpenCodeFamily(base.Provider):
     external_whole_process = False
     runs_on_server = True
     config_file_name: str  # the agent's config in its config folder, e.g. "opencode.json"
-    # Text typed into OpenCode's TUI 0.2-0.7 s after the plugin's init is lost whole, and
-    # no event or API says when the TUI takes input (checked by hand with OpenCode 1.18.35):
-    # the first messages' lines go in as --prompt (notice_on_argv).
+    tui_config_variable: str  # the CLI's variable for a TUI config, e.g. "OPENCODE_TUI_CONFIG"
+    # Text typed into the TUI before its prompt has focus is lost whole (Kilo 7.8.8, OpenCode
+    # 1.18.35), so the session start waits for that (opencode_tui_plugin.js). The first
+    # messages' lines still go in as --prompt (notice_on_argv), taken at launch: their
+    # chat.message may come before or after tui.ready.
     capabilities = base.Capabilities(
         status_events=True,
         permission_event=True,
@@ -194,12 +238,23 @@ class OpenCodeFamily(base.Provider):
         text = json.dumps(config, indent=2)
         config_file = config_dir / self.config_file_name
         config_file.write_text(text)
+        # The CLI merges this file with the user's and the repository's tui.json, and passes the
+        # entry's options as the plugin's second argument (Kilo 7.8.8, OpenCode 1.18.35).
+        tui_config = config_dir / TUI_CONFIG
+        options = {"hook": base.hook_argv(agent, TUI_READY)}
+        tui_config.write_text(json.dumps({"plugin": [[TUI_PLUGIN.as_uri(), options]]}, indent=2))
         argv = self.argv(session.permission_mode, spec.model)
         if notice:
             argv[1:1] = ["--prompt", notice]
         keys = {s.key_variable: s.key for s in spec.servers if s.key is not None}
         state_env, warnings = self.own_state(agent, spec)
-        env = {**self.env(config_file, text), **keys, **state_env, **self.server_env(spec)}
+        env = {
+            **self.env(config_file, text),
+            self.tui_config_variable: str(tui_config),
+            **keys,
+            **state_env,
+            **self.server_env(spec),
+        }
         return base.Launch(argv, env, warnings, model=self.session_choice(spec))
 
     def own_state(
@@ -276,7 +331,7 @@ class OpenCodeFamily(base.Provider):
     def config(
         self, agent: state.Agent, mode: str | None, spec: base.AgentSpec, role: Path
     ) -> dict:
-        events = list(EVENTS)
+        events = [event for event in EVENTS if event != TUI_READY]
         if mode == "bypassPermissions":
             # --auto approves each permission at once, with no dialog: not a wait (Kilo
             # 7.8.3, which still announces them; OpenCode 1.18.34, checked by hand in a
@@ -305,7 +360,13 @@ class OpenCodeFamily(base.Provider):
             # The plugin gets the entry's options as its second argument (Kilo 7.8.3,
             # OpenCode 1.18.34).
             "plugin": [
-                [self.plugin.as_uri(), {"hooks": {e: base.hook_argv(agent, e) for e in events}}]
+                [
+                    self.plugin.as_uri(),
+                    {
+                        "hooks": {e: base.hook_argv(agent, e) for e in events},
+                        "tuiWait": TUI_WAIT * 1000,
+                    },
+                ]
             ],
             "permission": self.permission(mode, spec),
             # An update during a session can break the global install (Kilo 7.8.3 emptied it
@@ -386,13 +447,15 @@ class OpenCodeFamily(base.Provider):
     def parse_event(self, native: str, payload: str) -> base.Event | None:
         if native not in EVENTS:
             return None
+        if native == TUI_READY:
+            return base.Event(EVENTS[native], ready=True)
+        if native == TUI_SILENT:
+            return base.Event(EVENTS[native], note=TUI_SILENT_NOTE)
         data = json.loads(payload) if payload.strip() else {}
         error = data.get("error") or {}
         if error and error.get("name") != ABORTED:
-            name, message = error.get("name") or "UnknownError", error.get("message", "")
-            whole = f"{name}: {message}"
-            details = whole if len(whole) > base.ERROR_LIMIT else ""
-            return base.Event(EVENTS[native], error=base.error_line(name, message), details=details)
+            line, details = turn_error(error)
+            return base.Event(EVENTS[native], error=line, details=details)
         # The plugin's chat.message names the model of the prompt and its variant, the
         # reasoning effort (opencode_plugin.js). A model with no variant runs its default
         # one: OpenCode drops the variant when the human picks the default (1.18.35, read

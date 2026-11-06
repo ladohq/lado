@@ -16,7 +16,7 @@ import pytest
 from real_clis import CLASSES, SANDBOX_ERROR, agent_processes, answer_dialogs, check_gone, status
 
 from lado import logins, loop, model_settings, projects, providers, runtime, state, tmux
-from lado.providers import codex
+from lado.providers import codex, opencode_family
 
 pytestmark = pytest.mark.smoke
 
@@ -277,6 +277,40 @@ def test_a_cli_takes_a_config_with_a_model_s_limit(smoke_repo, smoke_provider, m
     finally:
         runtime.stop_session(SESSION)
         server.close()
+
+
+@pytest.mark.parametrize("smoke_provider", ["kilo", "opencode"], indirect=True)
+def test_a_message_right_after_the_start_goes_in_at_the_first_attempt(smoke_repo, smoke_provider):
+    """Nothing is typed before the TUI's prompt has focus: the real CLI takes the first paste."""
+    provider = smoke_provider
+    try:
+        runtime.start_session(str(smoke_repo), SESSION, "bypassPermissions", provider)
+        runtime.write_as_human(SESSION, HUMAN_SAYS)
+        summary = HUMAN_SAYS.splitlines()[0]
+        check = answering(provider, "supervisor", delivered(state.HUMAN, "supervisor", summary))
+        wait_for(check, "the human's message", 120)
+        assert message(state.HUMAN, "supervisor", summary).attempts == 1
+    finally:
+        runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["kilo", "opencode"], indirect=True)
+def test_a_tui_plugin_that_does_not_load_leaves_no_agent_starting(
+    smoke_repo, smoke_provider, monkeypatch, tmp_path
+):
+    """A CLI that no longer loads the TUI plugin: the server plugin says so, the message goes."""
+    provider = smoke_provider
+    monkeypatch.setattr(opencode_family, "TUI_PLUGIN", tmp_path / "no-such-plugin.js")
+    try:
+        runtime.start_session(str(smoke_repo), SESSION, "bypassPermissions", provider)
+        runtime.write_as_human(SESSION, HUMAN_SAYS)
+        summary = HUMAN_SAYS.splitlines()[0]
+        check = answering(provider, "supervisor", delivered(state.HUMAN, "supervisor", summary))
+        wait_for(check, "the human's message", 120)
+        line = f"supervisor: {opencode_family.TUI_SILENT_NOTE}"
+        assert line in [m.summary for m in state.list_messages(SESSION)]
+    finally:
+        runtime.stop_session(SESSION)
 
 
 PROBE = Path(__file__).with_name("probe_mcp.py")

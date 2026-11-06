@@ -3,7 +3,9 @@
 import os
 import subprocess
 import sys
+import time
 import uuid
+from pathlib import Path
 
 import agent_helpers
 import pytest
@@ -132,3 +134,117 @@ def test_the_loop_shows_an_agent_its_cli_holds_with_a_question_lado_does_not_kno
     tmux.send_text(session, "w1", "yes")  # the human answers in its terminal
     wait_for(lambda: state.get_agent(session, "w1").status == state.IDLE, "w1 idle", session)
     assert runtime.status_reason(session, "w1") is None
+
+
+def test_a_queue_waits_for_a_late_session_start_and_goes_in_once(
+    repo, session, monkeypatch, tmp_path
+):
+    """A CLI slow to take input (OpenCode's or Kilo's TUI): no attempt runs out, however long
+    it takes, and the agent is never busy before it has its message."""
+    start(repo, session)
+    ready = tmp_path / "ready"
+    monkeypatch.setenv("FAKE_AGENT_START_HOLD", str(ready))
+    runtime.spawn_worker(session, "sleep 0", name="w1")
+    waited = sum(runtime.RETRY_DELAYS) + 2 * loop.INTERVAL
+    deadline = time.monotonic() + waited
+    while time.monotonic() < deadline:
+        [task] = [m for m in state.list_messages(session) if m.recipient == "w1"]
+        assert (task.state, task.attempts) == (state.PENDING, 0)
+        assert state.get_agent(session, "w1").status == state.STARTING
+        time.sleep(0.05)
+
+    _launched_ago(session, "w1", runtime.START_SILENCE + 1)
+    held = lambda: runtime.status_reason(session, "w1") == runtime.START_SILENCE_REASON  # noqa: E731
+    wait_for(held, "the loop's reason", session)
+    assert state.get_message(session, task.id).state == state.PENDING
+
+    ready.touch()
+    delivered = lambda: state.get_message(session, task.id).state in (state.DELIVERED, state.READ)  # noqa: E731
+    wait_for(delivered, "the task delivered", session)
+    assert state.get_message(session, task.id).attempts == 1
+    assert runtime.status_reason(session, "w1") is None
+
+
+SILENT = "no report from its TUI"
+
+
+def test_a_silent_tui_s_agent_is_ready_its_lead_is_told_and_its_task_is_typed_in(
+    repo, session, monkeypatch, tmp_path
+):
+    """The server plugin is alive and the TUI said nothing: LADO types in as it did."""
+    start(repo, session)
+    ready = tmp_path / "ready"
+    monkeypatch.setenv("FAKE_AGENT_START_HOLD", str(ready))
+    monkeypatch.setenv("FAKE_AGENT_START_NOTE", SILENT)
+    runtime.spawn_worker(session, "sleep 0", name="w1")
+    [task] = [m for m in state.list_messages(session) if m.recipient == "w1"]
+    typed = lambda: state.get_message(session, task.id).attempts >= 1  # noqa: E731
+    wait_for(typed, "the task typed in", session)
+    told = [m.summary for m in state.list_messages(session) if m.recipient == "supervisor"]
+    assert f"w1: {SILENT}" in told
+
+
+def _silent_worker(monkeypatch, tmp_path, session: str) -> tuple[state.Message, Path]:
+    ready = tmp_path / "ready"
+    monkeypatch.setenv("FAKE_AGENT_START_HOLD", str(ready))
+    monkeypatch.setenv("FAKE_AGENT_START_NOTE", SILENT)
+    runtime.spawn_worker(session, "sleep 0", name="w1")
+    [task] = [m for m in state.list_messages(session) if m.recipient == "w1"]
+    return task, ready
+
+
+def _inputs(session: str) -> list[str]:
+    log = agent_helpers.fake_logs(session, "w1") / "inputs.jsonl"
+    return log.read_text().splitlines() if log.exists() else []
+
+
+@pytest.mark.parametrize("attempts", [1, 4], ids=["first paste", "last paste"])
+def test_a_tui_that_opens_while_a_paste_is_unconfirmed_gets_it(
+    repo, session, monkeypatch, tmp_path, attempts
+):
+    """Busy, with the paste lost: the report ran no turn, so nothing but LADO ends that."""
+    monkeypatch.setenv("LADO_RETRY_DELAYS", "1,1,4")
+    monkeypatch.setattr(runtime, "RETRY_DELAYS", (1.0, 1.0, 4.0))
+    start(repo, session)
+    task, ready = _silent_worker(monkeypatch, tmp_path, session)
+    typed = lambda: state.get_message(session, task.id).attempts >= attempts  # noqa: E731
+    wait_for(typed, f"attempt {attempts}", session)
+
+    ready.touch()
+    delivered = lambda: state.get_message(session, task.id).state in (state.DELIVERED, state.READ)  # noqa: E731
+    wait_for(delivered, "the task delivered", session)
+
+
+def test_a_paste_the_cli_held_is_not_typed_again_when_it_opens(
+    repo, session, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("FAKE_AGENT_START_KEEPS", "1")
+    start(repo, session)
+    task, ready = _silent_worker(monkeypatch, tmp_path, session)
+    typed = lambda: state.get_message(session, task.id).attempts >= 1  # noqa: E731
+    wait_for(typed, "the task typed in", session)
+
+    ready.touch()
+    delivered = lambda: state.get_message(session, task.id).state in (state.DELIVERED, state.READ)  # noqa: E731
+    wait_for(delivered, "the task delivered", session)
+    time.sleep(runtime.RETRY_DELAYS[0] + 2 * loop.INTERVAL)
+    assert len([line for line in _inputs(session) if "your task" in line]) == 1
+
+
+def test_what_a_silent_tui_lost_goes_in_when_it_opens_after_all(
+    repo, session, monkeypatch, tmp_path
+):
+    """Every attempt went into a window with no input field, and the message failed: the TUI's
+    late report brings it back (state.seen), and it arrives."""
+    start(repo, session)
+    ready = tmp_path / "ready"
+    monkeypatch.setenv("FAKE_AGENT_START_HOLD", str(ready))
+    monkeypatch.setenv("FAKE_AGENT_START_NOTE", SILENT)
+    runtime.spawn_worker(session, "sleep 0", name="w1")
+    [task] = [m for m in state.list_messages(session) if m.recipient == "w1"]
+    failed = lambda: state.get_message(session, task.id).state == state.FAILED  # noqa: E731
+    wait_for(failed, "the task failed", session)
+
+    ready.touch()
+    delivered = lambda: state.get_message(session, task.id).state in (state.DELIVERED, state.READ)  # noqa: E731
+    wait_for(delivered, "the task delivered", session)

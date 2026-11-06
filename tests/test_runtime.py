@@ -2817,10 +2817,141 @@ def test_session_start_goes_on_without_the_lado_mcp_server_after_a_while(
     assert "w1: LADO's MCP server listed no tools" in (lado_home / "hooks.log").read_text()
 
 
+def test_a_session_start_with_a_note_tells_the_lead_and_hands_the_queue_over(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.send_message("s", "supervisor", "w1", "go on")
+    start = providers.Event(providers.SESSION_START, note="no report from its TUI")
+    hooks.handle(providers.get("kilo"), start, "s", "w1")
+    told = [m.summary for m in state.list_messages("s") if m.sender == state.LADO]
+    assert "w1: no report from its TUI" in told
+    assert [c for c in fake_tmux if c[0] == "send_text"]
+
+
+def test_a_note_of_an_agent_already_ready_tells_no_one(repo, fake_tmux):
+    _session_with_worker(repo)
+    kilo_cli = providers.get("kilo")
+    hooks.handle(kilo_cli, providers.Event(providers.SESSION_START), "s", "w1")
+    start = providers.Event(providers.SESSION_START, note="no report from its TUI")
+    hooks.handle(kilo_cli, start, "s", "w1")
+    assert "no report" not in " ".join(m.summary for m in state.list_messages("s"))
+
+
+@pytest.mark.parametrize("provider", ["claude", "codex"])
+def test_no_session_start_of_claude_code_or_codex_has_a_note_or_says_ready(provider):
+    event = providers.get(provider).parse_event("SessionStart", '{"source": "startup"}')
+    assert event.kind == providers.SESSION_START
+    assert (event.note, event.ready) == ("", False)
+
+
+def test_a_cli_that_says_it_takes_input_ends_a_wait_of_failed_messages(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.set_status("s", "w1", state.WAITING)  # as a failed message leaves it, with no key
+    hooks.handle(
+        providers.get("kilo"), providers.Event(providers.SESSION_START, ready=True), "s", "w1"
+    )
+    assert state.get_agent("s", "w1").status == state.IDLE
+
+
+def test_a_cli_that_says_it_takes_input_leaves_a_dialog_with_a_key(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.wait("s", "w1", "per_1")
+    hooks.handle(
+        providers.get("kilo"), providers.Event(providers.SESSION_START, ready=True), "s", "w1"
+    )
+    assert state.get_agent("s", "w1").status == state.WAITING
+
+
+READY = providers.Event(providers.SESSION_START, ready=True)
+SILENT = providers.Event(providers.SESSION_START, note="no report from its TUI")
+
+
+@pytest.mark.parametrize("provider", ["kilo", "opencode"])
+def test_lines_on_the_command_line_taken_before_the_report_change_nothing(
+    repo, fake_tmux, provider
+):
+    """chat.message before tui.ready: the agent is in its turn, and the report leaves it there."""
+    cli = providers.get(provider)
+    runtime.start_session(str(repo), "s", None, provider=provider)
+    runtime.spawn_worker("s", "fix the bug;", name="w1")
+    [task] = state.list_messages("s")
+    line = f"[from lado] your task (#{task.id}, 3 lines: call read_messages)"
+    hooks.handle(cli, providers.Event(providers.PROMPT_SUBMIT, line), "s", "w1")
+    hooks.handle(cli, READY, "s", "w1")
+    assert state.get_agent("s", "w1").status == state.BUSY
+    assert state.get_message("s", task.id).state == state.DELIVERED
+    assert not [c for c in fake_tmux if c[0] == "send_text"]
+
+
+def _typed_into_a_silent_tui(repo) -> state.Message:
+    """A worker made ready by a silent TUI, its message typed in and not confirmed."""
+    _session_with_worker(repo)
+    hooks.handle(providers.get("kilo"), SILENT, "s", "w1")
+    runtime.send_message("s", "supervisor", "w1", "go on")
+    [typed] = [m for m in state.list_messages("s") if m.recipient == "w1"]
+    assert (typed.state, state.get_agent("s", "w1").status) == (state.SENT, state.BUSY)
+    return typed
+
+
+def test_a_report_after_a_paste_starts_its_wait_again_and_the_paste_goes_in_again(repo, fake_tmux):
+    typed = _typed_into_a_silent_tui(repo)
+    hooks.handle(providers.get("kilo"), READY, "s", "w1")
+    assert state.get_agent("s", "w1").status == state.IDLE
+    again = state.get_message("s", typed.id)
+    assert (again.state, again.attempts) == (state.SENT, 1)  # the paste may yet be confirmed
+    pastes = len([c for c in fake_tmux if c[0] == "send_text"])
+    runtime.sweep("s", now=again.sent_at + runtime.RETRY_DELAYS[0] - 1)
+    assert len([c for c in fake_tmux if c[0] == "send_text"]) == pastes
+    runtime.sweep("s", now=again.sent_at + runtime.RETRY_DELAYS[0])
+    assert len([c for c in fake_tmux if c[0] == "send_text"]) == pastes + 1
+    assert state.get_agent("s", "w1").status == state.BUSY
+
+
+def test_a_report_after_the_last_paste_saves_it_from_failing(repo, fake_tmux):
+    typed = _typed_into_a_silent_tui(repo)
+    with state.connect() as db:
+        db.execute(
+            "UPDATE messages SET attempts = ? WHERE id = ?",
+            (len(runtime.RETRY_DELAYS) + 1, typed.id),
+        )
+    hooks.handle(providers.get("kilo"), READY, "s", "w1")
+    runtime.sweep("s", now=state.get_message("s", typed.id).sent_at + runtime.RETRY_DELAYS[-1])
+    assert state.get_message("s", typed.id).state != state.FAILED
+
+
+def test_a_paste_confirmed_after_the_report_is_not_typed_again(repo, fake_tmux):
+    """A CLI that held the paste after all: its prompt comes within the wait."""
+    typed = _typed_into_a_silent_tui(repo)
+    cli = providers.get("kilo")
+    hooks.handle(cli, READY, "s", "w1")
+    line = runtime.format_message(state.get_message("s", typed.id))
+    hooks.handle(cli, providers.Event(providers.PROMPT_SUBMIT, line), "s", "w1")
+    pastes = len([c for c in fake_tmux if c[0] == "send_text"])
+    runtime.sweep("s", now=time.time() + runtime.RETRY_DELAYS[-1] * 2)
+    assert state.get_message("s", typed.id).state == state.DELIVERED
+    assert len([c for c in fake_tmux if c[0] == "send_text"]) == pastes
+
+
+def test_a_late_silent_report_is_no_sign_of_the_agent(repo, fake_tmux):
+    """It comes after tui.ready too: it must not pass for a hook after a paste (runtime._plan)."""
+    _session_with_worker(repo)
+    cli = providers.get("kilo")
+    hooks.handle(cli, READY, "s", "w1")
+    seen = state.get_agent("s", "w1").seen_at
+    hooks.handle(cli, SILENT, "s", "w1")
+    assert state.get_agent("s", "w1").seen_at == seen
+
+
+def test_another_session_start_leaves_a_wait_of_failed_messages(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.set_status("s", "w1", state.WAITING)
+    hooks.handle(providers.get("kilo"), providers.Event(providers.SESSION_START), "s", "w1")
+    assert state.get_agent("s", "w1").status == state.WAITING
+
+
 def test_session_start_waits_only_where_the_provider_needs_it(repo, fake_tmux):
     _session_with_worker(repo)
     kilo_cli = providers.get("kilo")
-    assert not kilo_cli.capabilities.hold_first_turn  # its session start is the plugin's init
+    assert not kilo_cli.capabilities.hold_first_turn  # its session start is the TUI plugin's
     started = time.monotonic()
     hooks.handle(kilo_cli, providers.Event(providers.SESSION_START), "s", "w1")
     # Far below the wait, but not tight: the tests run in parallel on a busy machine.

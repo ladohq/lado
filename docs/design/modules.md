@@ -509,7 +509,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     its config folder (`--append-system-prompt-file`); `opencode_family.py`: the
     base of OpenCode and its fork Kilo, holding only what is checked on both (each claim
     names the CLI and version), with `opencode_plugin.js`, the plugin that runs LADO's
-    hooks, and one config dict per agent, written to its config folder and passed in the
+    hooks, `opencode_tui_plugin.js`, the TUI's own, whose report that the prompt has focus is
+    the session start (`tui.json` in the agent's config folder), LADO's words of a turn's
+    error (`turn_error`), and one config dict per agent, written to its config folder and passed in the
     environment (`env`, the subclass's: `KILO_CONFIG_CONTENT`, `OPENCODE_CONFIG_CONTENT`,
     which win over the repo's own config); `kilo.py`: Kilo CLI and `opencode.py`: OpenCode,
     its subclasses, each with its own `TESTED_VERSION`, config file name, switches and

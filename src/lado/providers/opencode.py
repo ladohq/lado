@@ -29,6 +29,7 @@ class OpenCodeProvider(opencode_family.OpenCodeFamily):
     install_hint = "install it: `npm install -g opencode-ai`"
     tested_version = TESTED_VERSION
     config_file_name = "opencode.json"
+    tui_config_variable = "OPENCODE_TUI_CONFIG"
     # The fixed part of an agent's request is about 21K tokens on a real model (role, skills,
     # tools; 1.18.35, measured in the human's check), plus room to work.
     min_context = 32768

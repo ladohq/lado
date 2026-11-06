@@ -64,7 +64,7 @@ One line per module; each module's behaviour in detail: [docs/design/modules.md]
   - `scratch.py`: a new or empty folder made a repository (`lado start --new`, From scratch).
   - `projects.py`: the workspace (`LADO_REPOS`, else `~/workspace`) and projects in it.
   - `providers/`: the agent CLIs behind one interface: `base.py`, `claude.py`, `codex.py`,
-    `opencode_family.py` (with `opencode_plugin.js`), `kilo.py`, `opencode.py`, `gitpaths.py`.
+    `opencode_family.py` (with `opencode_plugin.js`, `opencode_tui_plugin.js`), `kilo.py`, `opencode.py`, `gitpaths.py`.
   - `tmux.py`: tmux calls on LADO's private server (`tmux -L lado`).
   - `gui_session.py`: where a process runs on macOS (the keychain's graphical session).
   - `agent_env.py`: an agent's environment, from the user's login shell.

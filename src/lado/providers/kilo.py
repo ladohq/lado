@@ -21,6 +21,7 @@ class KiloProvider(opencode_family.OpenCodeFamily):
     install_hint = "install it: `npm install -g @kilocode/cli`"
     tested_version = TESTED_VERSION
     config_file_name = "kilo.json"
+    tui_config_variable = "KILO_TUI_CONFIG"
     # The fixed part of an agent's request is about 31K tokens on a real model (role, skills,
     # tools; 7.8.8, measured in the human's check), plus room to work.
     min_context = 49152

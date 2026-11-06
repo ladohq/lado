@@ -50,9 +50,27 @@ async function load(hooks, client = fakeClient()) {
   return { plugin, client }
 }
 
-test("init runs the plugin.init hook", async () => {
+test("init reports nothing: the TUI plugin says when the agent is ready", async () => {
   await load({ "plugin.init": hook("plugin.init") })
-  assert.deepEqual(calls(), [{ event: "plugin.init", payload: { directory: "/repo" } }])
+  assert.deepEqual(calls(), [])
+})
+
+test("a live server plugin says the TUI was silent when its wait is over", async () => {
+  const client = fakeClient()
+  const hooks = { "tui.silent": hook("tui.silent") }
+  await LadoPlugin({ client, directory: "/repo" }, { hooks, tuiWait: 10 })
+  for (let n = 0; n < 200 && calls().length === 0; n++) {
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  assert.deepEqual(calls(), [{ event: "tui.silent", payload: {} }])
+})
+
+test("a plugin disposed of in its wait says nothing of the TUI", async () => {
+  const hooks = { "tui.silent": hook("tui.silent") }
+  const plugin = await LadoPlugin({ client: fakeClient(), directory: "/repo" }, { hooks, tuiWait: 50 })
+  await plugin.dispose()
+  await new Promise((resolve) => setTimeout(resolve, 300))
+  assert.deepEqual(calls(), [])
 })
 
 test("chat.message passes the prompt without synthetic parts", async () => {
@@ -191,12 +209,7 @@ test("an error the CLI compacts its way out of ends no turn", async () => {
 // A model too small for the agent's request (OpenCode 1.18.35): each round is an overflow, a
 // compaction whose own model step succeeds, and "session.compacted", with no idle ever.
 const OVERFLOW = { name: "ContextOverflowError", data: { message: "too long." } }
-const STOPPED = {
-  name: "ContextOverflowError",
-  message:
-    "LADO stopped the turn after 3 attempts: the model's context is too small for the agent's " +
-    "request; too long.",
-}
+const STOPPED = { name: "ContextOverflowError", message: "too long.", stopped: 3 }
 
 function step(sessionID, messageID) {
   const part = { type: "step-finish", sessionID, messageID }
@@ -361,7 +374,7 @@ test("events without a hook are skipped", async () => {
 
 test("a failing hook never throws", async () => {
   const failing = { "session.idle": ["/nonexistent/lado"] }
-  for (const event of ["plugin.init", "chat.message", "permission.asked", "dispose"]) {
+  for (const event of ["chat.message", "permission.asked", "dispose"]) {
     failing[event] = [process.execPath, "-e", "process.exit(3)"]
   }
   const { plugin, client } = await load(failing)

@@ -806,7 +806,7 @@ def test_kilo_launch_writes_config_and_env(repo, lado_home):
     }
     [[plugin, options]] = config["plugin"]
     assert plugin == opencode_family.PLUGIN.as_uri()
-    assert set(options["hooks"]) == set(opencode_family.EVENTS)
+    assert set(options["hooks"]) == set(opencode_family.EVENTS) - {opencode_family.TUI_READY}
     idle = options["hooks"]["session.idle"]
     assert idle[-7:-6] == ["session.idle"]
     assert idle[-6:-2] == ["--session", "s", "--agent", "w1"]
@@ -915,6 +915,7 @@ def test_opencode_launch_writes_config_and_env(repo, lado_home):
     assert launch.env == {
         "OPENCODE_CONFIG_CONTENT": launch.env["OPENCODE_CONFIG_CONTENT"],
         "OPENCODE_DISABLE_AUTOUPDATE": "1",
+        "OPENCODE_TUI_CONFIG": str(lado_home / "agents" / "s" / "w1" / "tui.json"),
         "XDG_STATE_HOME": str(lado_home / "agent-state" / "s" / "w1"),
     }
     file = lado_home / "agents" / "s" / "w1" / "opencode.json"
@@ -926,7 +927,7 @@ def test_opencode_launch_writes_config_and_env(repo, lado_home):
     assert mcp["environment"]["LADO_INSTANCE"] == "i1"
     [[plugin, options]] = config["plugin"]
     assert plugin == opencode_family.PLUGIN.as_uri()
-    assert set(options["hooks"]) == set(opencode_family.EVENTS)
+    assert set(options["hooks"]) == set(opencode_family.EVENTS) - {opencode_family.TUI_READY}
     idle = options["hooks"]["session.idle"]
     assert idle[-7:-6] == ["session.idle"]
     assert idle[-6:-2] == ["--session", "s", "--agent", "w1"]
@@ -975,7 +976,9 @@ def test_opencode_declares_its_permission_modes_and_version():
 @pytest.mark.parametrize(
     ("native", "payload", "expected"),
     [
-        ("plugin.init", {"directory": "/r"}, Event(providers.SESSION_START)),
+        ("tui.ready", {}, Event(providers.SESSION_START, ready=True)),
+        ("tui.silent", {}, Event(providers.SESSION_START, note=opencode_family.TUI_SILENT_NOTE)),
+        ("plugin.init", {"directory": "/r"}, None),  # the server's start says nothing of the TUI
         ("chat.message", {"sessionID": "x", "prompt": "hi"}, Event(providers.PROMPT_SUBMIT, "hi")),
         ("session.idle", {"sessionID": "x"}, Event(providers.TURN_END)),
         ("permission.asked", {"id": "per_1"}, Event(providers.WAITING, key="per_1")),
@@ -1061,13 +1064,134 @@ def test_a_stopped_turn_says_why_past_the_cut_of_a_long_server_message(provider,
     assert "the model's context is too small for the agent's request" in event.error
     assert event.error.endswith("…") and len(event.error) == base.ERROR_LIMIT
     assert event.details.count("maximum context length") == 8
-    assert event.details.startswith("ContextOverflowError: LADO stopped the turn")
+    assert event.details.startswith("This model's maximum context length")
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_a_stopped_turn_keeps_only_the_servers_text_in_its_body(provider):
+    error = {"name": "ContextOverflowError", "message": "too long.", "stopped": 3}
+    event = providers.get(provider).parse_event("session.idle", json.dumps({"error": error}))
+    assert event.error == (
+        "ContextOverflowError: LADO stopped the turn after 3 attempts: the model's context is "
+        "too small for the agent's request; too long."
+    )
+    assert event.details == "too long."
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_a_stopped_turn_with_no_message_of_the_server_says_why(provider):
+    error = {"name": "ContextOverflowError", "stopped": 3}
+    event = providers.get(provider).parse_event("session.idle", json.dumps({"error": error}))
+    assert event.error == (
+        "ContextOverflowError: LADO stopped the turn after 3 attempts: the model's context is "
+        "too small for the agent's request"
+    )
+    assert event.details == ""
+
+
+# As the human saw it in LAD-211: the server's JSON inside the CLI's.
+LM_STUDIO_REFUSAL = json.dumps(
+    {
+        "message": "Engine protocol predict request returned 400: "
+        + json.dumps(
+            {
+                "error": {
+                    "code": 400,
+                    "message": "request (21556 tokens) exceeds the available context size "
+                    "(16384 tokens), try increasing it",
+                    "type": "exceed_context_size_error",
+                }
+            }
+        )
+    }
+)
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_a_servers_refusal_for_context_reads_in_lados_words(provider):
+    error = {"name": "UnknownError", "message": LM_STUDIO_REFUSAL}
+    event = providers.get(provider).parse_event("session.idle", json.dumps({"error": error}))
+    assert event.error == (
+        "ContextOverflowError: the model's context is too small for the agent's request; "
+        "request (21556 tokens) exceeds the available context size (16384 tokens)"
+    )
+    assert event.details == f"UnknownError: {LM_STUDIO_REFUSAL}"
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_a_refusal_for_context_with_no_sizes_still_says_why(provider):
+    error = {"name": "UnknownError", "message": '{"type": "exceed_context_size_error"}'}
+    event = providers.get(provider).parse_event("session.idle", json.dumps({"error": error}))
+    assert event.error == (
+        "ContextOverflowError: the model's context is too small for the agent's request"
+    )
+    assert event.details == 'UnknownError: {"type": "exceed_context_size_error"}'
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_another_unknown_error_stays_as_the_cli_gave_it(provider):
+    error = {"name": "UnknownError", "message": '{"error": "bad gateway"}'}
+    event = providers.get(provider).parse_event("session.idle", json.dumps({"error": error}))
+    assert event.error == 'UnknownError: {"error": "bad gateway"}'
+    assert event.details == ""
 
 
 @pytest.mark.parametrize("provider", list(FAMILY))
 def test_an_error_that_fits_has_no_details(provider):
     payload = json.dumps({"error": {"name": "APIError", "message": "Overloaded"}})
     assert providers.get(provider).parse_event("session.idle", payload).details == ""
+
+
+TUI_VARIABLES = {"kilo": "KILO_TUI_CONFIG", "opencode": "OPENCODE_TUI_CONFIG"}
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_tui_plugin_is_in_a_file_of_the_agents_own(repo, lado_home, provider):
+    sess = state.Session("s", str(repo), None, provider)
+    agent = state.Agent(
+        "s", "w1", "worker", str(repo), None, None, state.STARTING, provider, instance="i1"
+    )
+    launch = providers.get(provider).launch_command(agent, sess, providers.AgentSpec("the role"))
+    file = lado_home / "agents" / "s" / "w1" / "tui.json"
+    assert launch.env[TUI_VARIABLES[provider]] == str(file)
+    [[uri, options]] = json.loads(file.read_text())["plugin"]
+    assert uri == opencode_family.TUI_PLUGIN.as_uri()
+    assert options == {"hook": base.hook_argv(agent, "tui.ready")}
+
+
+@pytest.mark.parametrize("variable", TUI_VARIABLES.values())
+def test_the_tui_config_variables_are_reserved(variable):
+    assert variable in base.CLI_VARIABLES
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_server_plugin_is_not_given_the_tuis_report(repo, lado_home, provider):
+    sess = state.Session("s", str(repo), None, provider)
+    agent = state.Agent(
+        "s", "w1", "worker", str(repo), None, None, state.STARTING, provider, instance="i1"
+    )
+    launch = providers.get(provider).launch_command(agent, sess, providers.AgentSpec("the role"))
+    [[_, options]] = json.loads(launch.env[FAMILY[provider]])["plugin"]
+    assert "tui.ready" not in options["hooks"] and "plugin.init" not in options["hooks"]
+
+
+@pytest.mark.parametrize("provider", list(FAMILY))
+def test_the_server_plugin_waits_for_the_tui_as_long_as_a_silent_start(repo, lado_home, provider):
+    sess = state.Session("s", str(repo), None, provider)
+    agent = state.Agent(
+        "s", "w1", "worker", str(repo), None, None, state.STARTING, provider, instance="i1"
+    )
+    launch = providers.get(provider).launch_command(agent, sess, providers.AgentSpec("the role"))
+    [[_, options]] = json.loads(launch.env[FAMILY[provider]])["plugin"]
+    assert options["tuiWait"] == runtime.START_SILENCE * 1000
+    assert options["hooks"]["tui.silent"] == base.hook_argv(agent, "tui.silent")
+
+
+def test_the_tui_plugin_ships_inside_the_package():
+    import lado
+
+    assert opencode_family.TUI_PLUGIN.is_file()
+    assert opencode_family.TUI_PLUGIN.parent == Path(lado.__file__).parent / "providers"
 
 
 def test_opencode_family_shares_one_plugin_inside_the_package():

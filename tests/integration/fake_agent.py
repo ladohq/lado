@@ -69,7 +69,12 @@ any other input exits at once with no hook; with FAKE_AGENT_ASKS_UNKNOWN=1 it as
 but its provider does not know it (no Provider.first_hook_blocker), as a screen of a new
 CLI version LADO has not seen. With FAKE_AGENT_TRUST=1 it asks so only when
 $CLAUDE_CONFIG_DIR/.claude.json does not trust its repository's main root, read here as
-Claude Code reads it, not through LADO (trusted). With FAKE_AGENT_HANGUP_HOOK=1 in its
+Claude Code reads it, not through LADO (trusted). With FAKE_AGENT_START_HOLD in its
+environment it runs its session-start hook only once that file exists, as a TUI slow to take
+input, and loses what is typed into its window before; with FAKE_AGENT_START_NOTE too it runs
+that hook once first, with this note, as the server plugin of a silent TUI; with
+FAKE_AGENT_START_KEEPS it keeps what was typed meanwhile instead. With
+FAKE_AGENT_HANGUP_HOOK=1 in its
 environment, when its tmux window is killed (SIGHUP) it runs its session-end hook before it
 exits, as Claude Code does, and writes {"hung_up": <what the hook printed>} to "seen" once
 the hook is done; FAKE_AGENT_HANGUP_DELAY=<seconds> waits that long before the hook, as a
@@ -95,6 +100,7 @@ import re
 import signal
 import subprocess
 import sys
+import termios
 import threading
 import time
 import traceback
@@ -526,7 +532,15 @@ def main() -> None:
             os._exit(1)
     # Like Claude Code: the MCP server connects while the session-start hook runs.
     lado_mcp.connect()
-    hook("session_start")
+    hold = os.environ.get("FAKE_AGENT_START_HOLD")
+    note = os.environ.get("FAKE_AGENT_START_NOTE")
+    if hold and note:
+        hook("session_start", note=note)
+    while hold and not os.path.exists(hold):
+        time.sleep(0.05)
+    if hold and not os.environ.get("FAKE_AGENT_START_KEEPS"):
+        termios.tcflush(sys.stdin, termios.TCIFLUSH)  # what was typed meanwhile is lost whole
+    hook("session_start", ready=bool(hold))
     text = None
     first = True  # the next input is its first
     continued = False  # this turn goes on from what the turn-end hook printed

@@ -297,7 +297,7 @@ function VersionBanner() {
 // lost, reconnecting on the warning ground (what the page shows may be old), a reason the
 // server answered in its tooltip. A shorter drop shows what stood there. Live opens the
 // system panel (SystemPanel.tsx). The dialog for another device (Share.tsx) is kept here: its
-// new link ends the stream, and the button goes away while it reconnects. The status region
+// new link ends the stream, and the button goes away if the feed stays lost. The status region
 // stands from the first paint, also on a refused stream: a region that comes with its text
 // is read out unreliably, so the mark itself has no status role.
 function LinkState() {

@@ -136,7 +136,7 @@ const NARROW = "(max-width: 1100px)";
 
 // `live` (or connecting…) as the button that opens the panel, `↑ X.Y.Z` beside it while a
 // newer LADO is out. The dialog for another device is the caller's (`sharing`, `onShare`):
-// it stays while the feed reconnects, as this button does not.
+// it stays while the feed is lost, as this button does not.
 export function LiveButton({ link, sharing, onShare }: { link: Link; sharing: boolean; onShare: () => void }) {
   const { info } = useUpdate();
   const [open, setOpen] = useState(false);

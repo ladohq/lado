@@ -167,10 +167,8 @@ export function LiveButton({ link, sharing, onShare }: { link: Link; sharing: bo
           aria-expanded={open}
           onClick={() => setOpen(!open)}
         >
-          {/* The feed's state is still announced as it changes. */}
-          <span className="link-word" role="status">
-            {link === "open" ? "live" : "connecting…"}
-          </span>
+          {/* Read out by the top bar's status region (Shell.tsx). */}
+          <span className="link-word">{link === "open" ? "live" : "connecting…"}</span>
           {available && <span className="update-mark">↑ {available}</span>}
         </button>
       </Tooltip>

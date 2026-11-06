@@ -346,8 +346,8 @@ button.rail-link {
   background: var(--line);
 }
 
-/* The change feed's link at the top bar's right end: live, or reconnecting with the reason
-   cut to one line; the server's address in its tooltip. */
+/* The change feed's link at the top bar's right end: live, or reconnecting on the warning
+   ground; the server's address, or why it refuses, in its tooltip. */
 .link {
   min-width: 0;
   overflow: hidden;
@@ -368,9 +368,31 @@ button.rail-link {
   vertical-align: 1px;
 }
 
-/* Live and connecting are short and stay whole; only reconnecting's reason is cut. */
+/* All three are short and stay whole. */
 .link-open,
-.link-connecting {
+.link-connecting,
+.link.reconnecting {
+  flex: none;
+}
+
+.link.reconnecting {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--warn-ground);
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.link.reconnecting::before {
+  content: none;
+}
+
+.link.reconnecting .icon {
+  width: 16px;
+  height: 16px;
   flex: none;
 }
 
@@ -9960,7 +9982,7 @@ button.quiet.danger-text {
   height: 44px;
 }
 
-/* The change feed's mark: a dot while live; "reconnecting…" keeps its word. */
+/* The change feed's mark: a dot while live, the icon while lost, the word for the ear. */
 :root[data-phone] .topbar .link-word {
   position: absolute;
   width: 1px;
@@ -9985,8 +10007,12 @@ button.quiet.danger-text {
   background: none;
 }
 
-:root[data-phone] .topbar .reconnecting-why {
-  display: none;
+/* The lost mark: the same room as the dot's, icon alone. */
+:root[data-phone] .topbar .link.reconnecting {
+  justify-content: center;
+  min-width: 33px;
+  min-height: 33px;
+  padding: 0;
 }
 
 /* A session's head (Sessions.tsx, PhoneHead): Menu, the status dot, the title as a button

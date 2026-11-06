@@ -4,6 +4,26 @@
 
 ### Improved
 
+- **A session with many artifacts reads on one screen.** In a narrow column each artifact takes
+  two lines instead of a card, and from 100 artifacts they go in groups by run that fold: open
+  work stays open, finished runs fold, and your choice is remembered.
+
+- **The artifact panel says things once.** A title equal to the document's first heading is not
+  repeated, the pill says `session` or `step <name>`, and over the Artifacts tab the link reads
+  Full page. On a phone the bar keeps Download, Copy link and a `⋯` menu with the rest.
+
+- **Empty tabs say where their content comes from.** An empty Flows tab names the flows that can
+  run, or says the session's kits have none; an empty Artifacts tab says what lands there.
+
+- **A run says what it is about.** Its card and row show the first line of its task, and an
+  opened step shows how long it took and its note, without repeating its line.
+
+- **Stop no longer shows a button that is off.** With open runs, Stop and forget is gone and the
+  popover says how to forget the session after stopping.
+
+- **Errors and warnings look like what they are.** Each has a ground and an icon instead of a
+  stripe on the left, errors in red and warnings in amber, in both themes.
+
 - **A stopped session says so and offers Resume.** A bar with Resume session stands in the
   composer's place, the empty feed tells what it shows, and terminals stay folded, saying the agent
   is not running. Your terminals' layout comes back after Resume.

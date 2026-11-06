@@ -227,6 +227,7 @@ def test_about_gives_each_kit_in_the_sessions_order_with_its_version_and_source(
         "source": f"user: {(kits_dir / 'team').resolve()}",
         "valid": True,
         "problem": None,
+        "flows": [],
     }
     assert (default["name"], default["valid"]) == ("default", True)
     assert default["source"].startswith("built-in: ")
@@ -241,6 +242,22 @@ def test_about_gives_each_kit_in_the_sessions_order_with_its_version_and_source(
     assert gone["problem"].startswith(f'kit "gone": its folder {kits_dir / "gone"} is missing')
     assert (removed["valid"], removed["version"], removed["source"]) == (False, "", "")
     assert removed["problem"].startswith('kit "removed" not found')
+    assert (broken["flows"], gone["flows"], removed["flows"]) == ([], [], [])
+
+
+def test_about_names_each_kits_flows(client, repo, fake_tmux, statuses):
+    kit = repo.parent / "kits" / "team"
+    (kit / "flows").mkdir(parents=True)
+    (kit / "kit.yaml").write_text("name: team\nversion: 1.2.0\n")
+    for name in ("task", "epic"):
+        (kit / "flows" / f"{name}.yaml").write_text(
+            f"name: {name}\ndescription: one step\nstart: go\nstates:\n"
+            "  go: {agent: supervisor, do: sleep 0, outcomes: {done: end}}\n"
+            "  end: {end: true}\n"
+        )
+    install_kit(kit)
+    runtime.start_session(str(repo), "s", None, kit_names=["team"], provider="claude")
+    assert sorted(about(client)["kits"][0]["flows"]) == ["epic", "task"]
 
 
 def test_about_gives_the_sessions_provider_with_its_version_and_warning(client, session, statuses):

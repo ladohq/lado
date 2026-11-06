@@ -159,7 +159,7 @@ def test_in_a_container_a_folder_outside_the_repositories_folder_is_warned_about
     hint = look(dialog.locator(HINT).first)
     warned = look(warning)
     assert warned["ground"] != hint["ground"], (warned, hint)
-    assert warned["stripe"] != hint["stripe"] and warned["stripeWidth"] == "3px", (warned, hint)
+    assert warned["stripeWidth"] == "0px", warned
     assert warned["size"] == "13px", warned
     dialog.get_by_label("Provider").select_option("fake")
     expect(dialog.get_by_role("button", name="Start session")).to_be_enabled()
@@ -301,7 +301,7 @@ def test_a_folder_that_will_not_do_shows_the_cores_reason(page: Page, server, tm
         " el.remove(); return c; }"
     )
     assert refused["ground"] not in (hint["ground"], warn_ground), (refused, hint, warn_ground)
-    assert refused["stripeWidth"] == "3px" and refused["size"] == "13px", refused
+    assert refused["stripeWidth"] == "0px" and refused["size"] == "13px", refused
     icon = refusal.evaluate("el => getComputedStyle(el, '::before').content")
     assert icon == '"!"', icon
     both_themes(page, shot, "refusal")

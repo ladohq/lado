@@ -290,6 +290,17 @@ test("the update's plan shows a status it has no words for as it is", async () =
   expect(await within(dialog).findByText(/supervisor resting/)).toBeTruthy();
 });
 
+test("a downgrade's plan warns that an older LADO may refuse lado.db: a warning, no error", async () => {
+  update = info({ latest: "99.0.0", available: "99.0.0" });
+  plan = { ...PLAN, downgrade: true };
+  serve();
+  open();
+  fireEvent.click(within(await panel()).getByRole("button", { name: "Update…" }));
+  const dialog = await screen.findByRole("dialog", { name: `Update LADO ${BUNDLE_VERSION} → 99.0.0?` });
+  const line = await within(dialog).findByText(/An older LADO may refuse lado\.db/);
+  expect(line.className).toBe("update-warning");
+});
+
 test("the update's plan shows the core's line on where the agents resume", async () => {
   update = info({ latest: "99.0.0", available: "99.0.0" });
   plan = { ...PLAN, agents_note: "tmux server will be started in the graphical session (launchd)" };

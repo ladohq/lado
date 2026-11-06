@@ -41,7 +41,7 @@ def test_the_link_opens_the_page_it_names_and_the_session_shows_there(
     assert cookie["httpOnly"] and cookie["sameSite"] == "Strict"
 
     view = page.get_by_role("region", name=f"Session {session}")
-    expect(view.get_by_text("No active runs")).to_be_visible()
+    expect(view.get_by_text("No flow runs yet")).to_be_visible()
     bar = page.get_by_role("banner")  # the session's head
     expect(bar.get_by_role("img", name="running")).to_be_visible()
     expect(page.get_by_role("navigation", name="Sessions").get_by_role("link")).to_contain_text(

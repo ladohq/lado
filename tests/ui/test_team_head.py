@@ -50,6 +50,14 @@ def team(own: list[str], runs: dict[str, list[str]]) -> list[dict]:
     ]
 
 
+@pytest.fixture(autouse=True)
+def routes_end_before_the_server(page: Page, server):
+    """An empty Flows tab reads the session's about as a test ends: serve_team's fetch must
+    not outlive the server."""
+    yield
+    page.unroute_all(behavior="ignoreErrors")
+
+
 def serve_team(page: Page, session: str, agents: list[dict]) -> None:
     """The session's agents as `agents`, its project LADO as in the mockup."""
     page.route(

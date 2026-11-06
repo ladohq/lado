@@ -10,7 +10,7 @@ import uuid
 import agent_helpers
 import pytest
 from playwright.sync_api import Page, expect
-from test_main_screen import log_in
+from test_main_screen import log_in, running_session
 
 from lado import artifacts, loop, runs, runtime, state
 
@@ -92,14 +92,15 @@ def test_the_tab_filters_finds_and_opens_an_artifacts_page(
     session = designed_session(repo, tmp_path)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}/artifacts")
+    page.get_by_role("button", name="Collapse terminals").click()
     table = page.get_by_role("table", name="Artifacts")
     names = table.locator("tbody .full-name")
     expect(names).to_have_text(["ship/x/design", "ship/y/mockup.html", "ship/x/shot.png", "plan"])
     shot(page, "all")
     page.get_by_role("combobox", name="Scope").select_option("ship/x")
-    expect(names).to_have_text(["ship/x/design", "ship/x/shot.png"])
+    expect(names).to_have_text(["design", "shot.png"])
     page.get_by_role("button", name="Images").click()
-    expect(names).to_have_text(["ship/x/shot.png"])
+    expect(names).to_have_text(["shot.png"])
     page.get_by_role("combobox", name="Scope").select_option("*")
     page.get_by_role("button", name="All types").click()
     page.get_by_role("searchbox", name="Find an artifact").fill("week")
@@ -108,7 +109,7 @@ def test_the_tab_filters_finds_and_opens_an_artifacts_page(
     page.get_by_role("searchbox", name="Find an artifact").fill("")
     table.get_by_role("row").filter(has_text="ship/x/shot.png").click()
     page.get_by_role("dialog", name="Artifact ship/x/shot.png").get_by_role(
-        "link", name="Open in Artifacts tab"
+        "link", name="Full page"
     ).click()
     expect(page.get_by_role("img", name="The login form")).to_be_visible()
     shot(page, "image")
@@ -144,6 +145,182 @@ def test_the_tab_counts_the_artifacts_and_a_row_opens_one_in_the_panel(
     expect(table.get_by_role("link", name="ship/x/design")).to_be_focused()
     artifacts.write(session, "supervisor", "notes", content="more", title="More notes")
     expect(tabs.get_by_role("link", name="Artifacts · 5")).to_be_visible()
+
+
+def many_artifacts(session: str) -> None:
+    """115 artifacts: the session's, those of ship/x (open) and of ship/y (ended)."""
+    write = lambda name: artifacts.write(session, "supervisor", name, content="x", title="T")  # noqa: E731
+    for at in range(35):
+        write(f"ship/y/old-{at}")
+    for at in range(35):
+        write(f"note-{at}")
+    for at in range(41):
+        write(f"ship/x/part-{at}")
+    runs.cancel(session, "ship/y", "no longer needed")
+
+
+def group(page: Page, name: str):
+    return page.get_by_role("button", name=name, exact=False).and_(page.locator(".group-fold"))
+
+
+@pytest.mark.parametrize("width", [390, 768, 1024, 1440])
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_a_session_of_115_artifacts_reads_at_every_width(
+    page: Page, server, repo, tmp_path, shot, width, theme
+):
+    session = designed_session(repo, tmp_path)
+    many_artifacts(session)
+    page.set_viewport_size({"width": width, "height": 844})
+    log_in(page, server)
+    page.evaluate("theme => localStorage.setItem('lado.theme', theme)", theme)
+    page.goto(f"{server['url']}/sessions/{session}/artifacts")
+    tab = page.get_by_role("region", name="Artifacts")
+    expect(tab.locator(".group-fold")).to_have_count(3)
+    expect(tab.locator(".group-name")).to_have_text(["ship/x", "Session", "ship/y"])
+    expect(group(tab, "ship/y")).to_have_attribute("aria-expanded", "false")
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    shot(page, f"groups-{width}-{theme}")
+
+
+@pytest.mark.parametrize("width", [390, 768, 1024, 1440])
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_the_session_screens_changed_hold_at_every_width(
+    page: Page, server, repo, tmp_path, shot, width, theme
+):
+    """The panel, the run's rows and event, the Stop popover and the empty tabs: nothing
+    scrolls the page sideways, at four widths in both themes (LAD-198)."""
+    session = designed_session(repo, tmp_path)
+    empty = running_session(repo)
+    page.set_viewport_size({"width": width, "height": 844})
+    log_in(page, server)
+    page.evaluate("theme => localStorage.setItem('lado.theme', theme)", theme)
+
+    def fits(name: str) -> None:
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), name
+        shot(page, f"{name}-{width}-{theme}", full_page=False)
+
+    page.goto(f"{server['url']}/sessions/{session}/flows")
+    expect(page.get_by_role("link", name="ship/x")).to_be_visible()
+    expect(page.locator(".run-task-line").first).to_have_text("Add a login page")
+    fits("runs")
+    page.get_by_role("link", name="ship/x").click()
+    page.get_by_role("button", name="Open all").click()
+    took = page.locator(".feed-took").first
+    expect(took).to_contain_text("Step took")
+    line = took.locator("xpath=preceding-sibling::*[contains(@class, 'feed-line')]").bounding_box()
+    box = took.bounding_box()
+    assert line is not None and box is not None
+    assert box["y"] >= line["y"] + line["height"], (box, line)  # under its line, not beside it
+    fits("event")
+
+    page.goto(f"{server['url']}/sessions/{session}/artifacts")
+    page.locator(".artifact-link").filter(has_text="design").click()
+    panel = page.get_by_role("dialog", name="Artifact ship/x/design")
+    expect(panel.get_by_role("heading", name="Design v1")).to_be_visible()
+    expect(panel.locator(".pill")).to_have_text("step design")
+    fits("panel")
+    page.keyboard.press("Escape")
+
+    page.get_by_role("button", name="Stop session…").click()
+    asked = page.get_by_role("dialog", name=f'Stop session "{session}"?')
+    why = asked.locator(".stop-forget-why")
+    expect(why).to_be_visible()
+    assert why.evaluate("line => line.scrollWidth <= line.clientWidth")  # wrapped, not cut
+    expect(asked.get_by_role("button", name="Stop and forget")).to_have_count(0)
+    fits("stop")
+    page.keyboard.press("Escape")
+
+    page.goto(f"{server['url']}/sessions/{empty}/flows")
+    expect(page.get_by_text("No flow runs yet")).to_be_visible()
+    fits("no-runs")
+    page.goto(f"{server['url']}/sessions/{empty}/artifacts")
+    expect(page.get_by_text("No artifacts yet")).to_be_visible()
+    fits("no-artifacts")
+
+
+@pytest.mark.parametrize("width", [390, 1000])
+def test_a_long_runs_name_leaves_the_tools_in_the_column_and_the_artifacts_name_in_sight(
+    page: Page, server, repo, tmp_path, shot, width
+):
+    session = designed_session(repo, tmp_path)
+    long_run = "design-system-migration-long-flow-lad-204-tokens-and-notices-across-all-screens"
+    runs.start(session, "ship", "Migrate the tokens", name=long_run)
+    artifacts.write(session, "supervisor", f"ship/{long_run}/report-12", "x", title="The report")
+    page.set_viewport_size({"width": width, "height": 844})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}/artifacts")
+    tab = page.get_by_role("region", name="Artifacts")
+    scope = page.get_by_role("combobox", name="Scope")
+    expect(scope).to_be_visible()
+    column = tab.bounding_box()
+    box = scope.bounding_box()
+    assert column is not None and box is not None
+    assert box["x"] + box["width"] <= column["x"] + column["width"], (box, column)
+    find = page.get_by_role("searchbox", name="Find an artifact").bounding_box()
+    assert find is not None and find["y"] == box["y"], (find, box)  # one line, as the mockup
+
+    # The run's part gives way, not the artifact's name: the name stays inside the row.
+    row = tab.locator(".artifact-item").filter(has_text="report-12")
+    expect(row).to_be_visible()
+    fits = row.evaluate(
+        """item => {
+          const line = item.querySelector(".artifact-item-line");
+          const text = document.createRange();
+          text.selectNode(item.querySelector(".full-name").lastChild);
+          return text.getBoundingClientRect().right <= line.getBoundingClientRect().right;
+        }"""
+    )
+    assert fits
+    shot(page, "flat", full_page=False)
+
+    # One scope picked: the filter says the run, the row its bare name.
+    scope.select_option(f"ship/{long_run}")
+    expect(tab.locator(".artifact-item .full-name")).to_have_text(["report-12"])
+
+
+def test_a_narrow_column_lists_rows_of_48_px_that_open_by_keyboard(
+    page: Page, server, repo, tmp_path, shot
+):
+    session = designed_session(repo, tmp_path)
+    many_artifacts(session)
+    page.set_viewport_size({"width": 1000, "height": 844})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}/artifacts")
+    tab = page.get_by_role("region", name="Artifacts")
+    width = tab.evaluate("element => element.clientWidth")
+    assert width < 720, width
+    row = tab.locator(".artifact-item").first
+    expect(row).to_be_visible()
+    box = row.bounding_box()
+    assert box is not None and 44 <= box["height"] <= 52, box
+
+    # Folds stay through a reload, and the keyboard folds.
+    fold = group(tab, "ship/y")
+    fold.focus()
+    page.keyboard.press("Enter")
+    expect(fold).to_have_attribute("aria-expanded", "true")
+    page.reload()
+    expect(fold).to_have_attribute("aria-expanded", "true")
+
+    # A search opens what holds the match; the fold is off meanwhile.
+    fold.focus()
+    page.keyboard.press("Space")
+    expect(fold).to_have_attribute("aria-expanded", "false")
+    page.get_by_role("searchbox", name="Find an artifact").fill("old-7")
+    expect(fold).to_have_attribute("aria-expanded", "true")
+    expect(fold).to_be_disabled()
+    page.get_by_role("searchbox", name="Find an artifact").fill("")
+
+    # A row opens by Enter and gives the focus back when the panel closes.
+    link = tab.locator(".artifact-item .artifact-link").first
+    link.focus()
+    page.keyboard.press("Enter")
+    panel = page.get_by_role("dialog", name="Artifact ship/x/part-40")
+    expect(panel).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(panel).to_have_count(0)
+    expect(link).to_be_focused()
+    shot(page, "narrow-list")
 
 
 def test_a_gates_chip_opens_the_attached_record_and_says_when_it_changed(
@@ -280,10 +457,25 @@ def test_a_700_px_window_shows_the_panels_edge(page: Page, server, repo, tmp_pat
 
 
 @pytest.mark.parametrize(
-    "width, controls", [(1280, ["Expand", "Close"]), (390, ["Close"])], ids=["wide", "phone"]
+    "width, wanted",
+    [
+        (
+            1280,
+            [
+                "Open in Artifacts tab",
+                "Open in new tab",
+                "Download",
+                "Copy link",
+                "Expand",
+                "Close",
+            ],
+        ),
+        (390, ["Download", "Copy link", "More actions", "Close"]),
+    ],
+    ids=["wide", "phone"],
 )
 def test_the_panels_buttons_share_one_row_in_its_top_bar(
-    page: Page, server, repo, tmp_path, shot, width, controls
+    page: Page, server, repo, tmp_path, shot, width, wanted
 ):
     session = designed_session(repo, tmp_path)
     page.set_viewport_size({"width": width, "height": 844})
@@ -292,12 +484,11 @@ def test_the_panels_buttons_share_one_row_in_its_top_bar(
     page.get_by_role("button", name="Open artifact ship/x/design").click()
     panel = page.get_by_role("dialog", name="Artifact ship/x/design")
     expect(panel.get_by_role("heading", name="Design v1")).to_be_visible()
-    actions = ["Open in Artifacts tab", "Open in new tab", "Download", "Copy link"]
     bar = panel.locator(".panel-top")
     buttons = bar.locator("a, button")
-    expect(buttons).to_have_count(len(actions) + len(controls))
+    expect(buttons).to_have_count(len(wanted))
     names = [one.get_attribute("aria-label") or one.inner_text().strip() for one in buttons.all()]
-    assert names == actions + controls
+    assert names == wanted
     centres = []
     for one in buttons.all():
         box = one.bounding_box()
@@ -323,7 +514,21 @@ def test_on_a_phone_the_panel_takes_the_screen(page: Page, server, repo, tmp_pat
     expect(panel.get_by_role("separator")).to_have_count(0)
     expect(panel.get_by_role("button", name="Expand")).to_have_count(0)
     shot(page, "phone")
-    panel.get_by_role("link", name="Open in Artifacts tab").click()
+    more = panel.get_by_role("button", name="More actions")
+    more.focus()
+    page.keyboard.press("Enter")
+    menu = page.get_by_role("menu", name="More actions")
+    items = menu.get_by_role("menuitem")
+    expect(items).to_have_text(["Open in new tab", "Open in Artifacts tab"])
+    box = menu.bounding_box()
+    assert box is not None and box["x"] >= 0 and box["x"] + box["width"] <= 390, box
+    shot(page, "phone-menu")
+    page.keyboard.press("Escape")
+    expect(menu).to_have_count(0)
+    expect(more).to_be_focused()
+    expect(panel).to_be_visible()
+    more.click()
+    menu.get_by_role("menuitem", name="Open in Artifacts tab").click()
     expect(page).to_have_url(
         f"{server['url']}/sessions/{session}/artifacts/"
         f"{artifacts.find(session, 'ship/x/design')[0].id}"

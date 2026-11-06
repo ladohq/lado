@@ -8,6 +8,13 @@ import { GroupHead, type Tone } from "./GroupHead";
 
 afterEach(cleanup);
 
+test("a unit says what the count counts to a screen reader, and shows nothing", () => {
+  render(<GroupHead nameId="g-name" name="Session" count={3} unit="artifacts" />);
+  const count = screen.getByRole("heading", { level: 3 }).querySelector(".group-count")!;
+  expect(count.textContent).toBe("3 artifacts");
+  expect(count.querySelector(".visually-hidden")?.textContent).toBe(" artifacts");
+});
+
 test("without folding: a heading of the group's name and count in its tone, no button, no chevron", () => {
   render(<GroupHead nameId="g-name" name="Active" count={3} tone="done" />);
   const heading = screen.getByRole("heading", { level: 3 });

@@ -344,3 +344,13 @@ scroll, so that the next Tab goes on from the focused tab.
 #### Scenario: Back with Shift+Tab
 - **WHEN** the row is scrolled to its end and the human moves the focus to the first tab by Shift+Tab
 - **THEN** the first tab stands whole and ‹ goes
+
+### Requirement: Take control dims the whole page
+
+Take control's question SHALL be a modal dialog whose backdrop is `--scrim` and covers the whole
+page, the terminal it asks about too.
+
+#### Scenario: The terminals open
+- **WHEN** the human presses Take control in an open terminal
+- **THEN** the dialog's backdrop computes to `--scrim`, and a click on the terminal behind it reaches
+  no terminal

@@ -509,8 +509,8 @@ function StripIcon({ session, mark }: { session: SessionInfo; mark: string }) {
 
 // Who a session is, the card of its row and of its icon: its title and name (or its name),
 // status and agents, how long it ran (the icons have no row line), what waits for the
-// human, its folder, its kits, provider and permission mode; a stopped one, how to bring it back (Resume is in the
-// session's head). Its status word explains the colours of the row and the icon: in its
+// human, its folder, its kits, provider and permission mode; a stopped one, how to bring it back (Resume is on the
+// session's page). Its status word explains the colours of the row and the icon: in its
 // group's tone, a session in trouble (tmux gone, loop down) in the danger colour.
 function SessionTip({ session }: { session: SessionInfo }) {
   const trouble = session.status === "tmux_gone" || session.status === "loop_down";

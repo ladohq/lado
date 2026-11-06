@@ -1549,8 +1549,9 @@ h3 {
   height: 18px;
 }
 
-/* Stop with its word, on a window wide enough and not on a phone. */
-.session-head-actions .icon-button:has(.session-action-word) {
+/* Stop with its word, on a window wide enough and not on a phone; a stopped session's Resume
+   with its word at any width. */
+.session-head-actions .icon-button:has(.session-action-word, .session-resume-word) {
   display: inline-flex;
   flex-direction: row;
   align-items: center;
@@ -1561,7 +1562,8 @@ h3 {
   font-size: 14px;
 }
 
-.session-action-word {
+.session-action-word,
+.session-resume-word {
   font-weight: 500;
 }
 
@@ -1574,22 +1576,6 @@ h3 {
     width: 32px;
     padding-inline: 0;
   }
-}
-
-/* A stopped session's Resume keeps its word at any width. */
-.session-head-actions .icon-button:has(.session-resume-word) {
-  display: inline-flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: auto;
-  padding-inline: 10px;
-}
-
-.session-resume-word {
-  font-size: 14px;
-  font-weight: 500;
 }
 
 /* Details (SessionDetails.tsx): the popover on a computer, its content shared with the phone's

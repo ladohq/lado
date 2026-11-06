@@ -4,9 +4,9 @@
 // chose, the files, and how to send while the field is empty and has the focus. Send uploads each file not uploaded yet (an artifact of the session's scope, so a
 // file uploaded before a failure is not uploaded again, whoever it goes to), then sends the
 // message with their names. Its file handling is the module the waiting card's fields share
-// (attachFiles.tsx). While a field of the waiting card answers, the chat folds it (`folded`):
-// it stays mounted and hidden, so its text, files and quotes live on, and ComposerFold
-// stands in its place.
+// (attachFiles.tsx). While a field of the waiting card answers, or the session is stopped, the
+// chat folds it (`folded`): it stays mounted and hidden, so its text, files and quotes live on,
+// and ComposerFold, or the stopped session's bar, stands in its place.
 import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type RefObject } from "react";
 
 import { ApiError, writeMessage } from "./api";

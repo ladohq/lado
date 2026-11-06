@@ -4,6 +4,10 @@
 
 ### Improved
 
+- **A stopped session says so and offers Resume.** A bar with Resume session stands in the
+  composer's place, the empty feed tells what it shows, and terminals stay folded, saying the agent
+  is not running. Your terminals' layout comes back after Resume.
+
 - **Your agents stay in sight in the session's head, and the chat gets taller.** On every tab
   the head shows the team with its statuses, as names or avatars by the room, and a list of all
   agents; `Yours | All` moved to the tabs, and the keys hint shows only in an empty field.

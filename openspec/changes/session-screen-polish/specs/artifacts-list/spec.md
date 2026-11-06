@@ -42,12 +42,35 @@ back to the link when the panel closes. A modified click SHALL open the artifact
 
 A session with 100 artifacts or more, counted over all its artifacts, SHALL show them in groups by
 scope, in the list and in the table, while the scope filter is All scopes. A group's heading SHALL
-name "Session" or the run and count its rows shown. The group with the newest record SHALL come first,
-and each group SHALL keep the newest first. In a group a row SHALL show the name without its run part.
+name "Session" or the run and count its rows shown, each group keeping the newest first. In a group
+a row SHALL show the name without its run part.
 
 #### Scenario: 115 artifacts
 - **WHEN** the human opens Artifacts of a session with 115 artifacts in the session and three runs
-- **THEN** four groups show, the one with the newest record first
+- **THEN** four groups show
+
+### Requirement: The groups stay where they stood while the tab is open
+
+On entering the tab or reloading, the Session group and open runs' groups SHALL come above ended
+runs' groups, each part with its newest record first. While the tab stays open the groups SHALL keep
+their places: a new record goes in its group and changes its count, and a group that first appears
+SHALL go to the end of its part.
+
+#### Scenario: An ended run with the newest record
+- **WHEN** the human opens Artifacts and an ended run holds the newest record
+- **THEN** its group stands below the Session group and the open runs' groups
+
+#### Scenario: Another run writes
+- **WHEN** the human reads a group and an agent writes to a group lower down
+- **THEN** no group moves, and that group's count grows by one
+
+#### Scenario: A new run's first artifact
+- **WHEN** a run with no group yet writes its first artifact while the tab is open
+- **THEN** its group appears at the end of its part, and the groups above it stay
+
+#### Scenario: Back on the tab
+- **WHEN** the human leaves the tab and comes back
+- **THEN** the groups stand by the rule of entering the tab
 
 #### Scenario: 99 artifacts
 - **WHEN** the session has 99 artifacts

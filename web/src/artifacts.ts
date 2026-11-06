@@ -65,14 +65,14 @@ export const GROUPS_FROM = 100;
 
 export type ScopeGroup = { scope: string; artifacts: ArtifactInfo[] };
 
-// The artifacts by scope, in the order they came: on a list that is newest first, the group
-// with the newest record comes first and each group keeps the newest first.
-export function groupByScope(artifacts: ArtifactInfo[]): ScopeGroup[] {
+// The artifacts by scope, each group in the order they came, so newest first on such a list.
+// The groups go by `order`; a scope it lacks, or with none, goes first as it came.
+export function groupByScope(artifacts: ArtifactInfo[], order: string[] = []): ScopeGroup[] {
   const groups = new Map<string, ScopeGroup>();
   for (const one of artifacts) {
     const group = groups.get(one.scope) ?? { scope: one.scope, artifacts: [] };
     group.artifacts.push(one);
     groups.set(one.scope, group);
   }
-  return [...groups.values()];
+  return [...groups.values()].sort((a, b) => order.indexOf(a.scope) - order.indexOf(b.scope));
 }

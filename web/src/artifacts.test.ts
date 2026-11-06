@@ -59,3 +59,9 @@ test("artifacts go in groups by scope, in the order they came, so the newest gro
   expect(groupByScope([])).toEqual([]);
   expect(GROUPS_FROM).toBe(100);
 });
+
+test("with an order the groups keep it, whatever the artifacts' order", () => {
+  const one = (id: string, scope: string) => artifact({ id, scope });
+  const groups = groupByScope([one("a", "run/b"), one("b", ""), one("c", "run/a")], ["", "run/a", "run/b"]);
+  expect(groups.map((group) => group.scope)).toEqual(["", "run/a", "run/b"]);
+});

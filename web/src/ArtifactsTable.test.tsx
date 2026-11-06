@@ -330,7 +330,7 @@ test.each([[436], [1000]])("100 artifacts in a column of %i px go in groups by s
   serve({ artifacts: HUNDRED, runs: [ACTIVE, ENDED] });
   open("/sessions/lado/artifacts");
   await waitFor(() => expect(head(/done\/run/).getAttribute("aria-expanded")).toBe("false"));
-  expect(headTexts()).toEqual(["open/run 40", "Session 30", "done/run 30"]);
+  expect(headTexts()).toEqual(["open/run 40 artifacts", "Session 30 artifacts", "done/run 30 artifacts"]);
   expect(head(/open\/run/).getAttribute("aria-expanded")).toBe("true");
   expect(head(/Session/).getAttribute("aria-expanded")).toBe("true");
   const body = document.getElementById(head(/done\/run/).getAttribute("aria-controls")!)!;
@@ -366,7 +366,7 @@ test("a filter neither adds nor removes the groups, and one scope is a flat list
   open("/sessions/lado/artifacts");
   await waitFor(() => expect(heads()).toHaveLength(3));
   fireEvent.click(screen.getByRole("button", { name: "Images" }));
-  expect(headTexts()).toEqual(["done/run 1"]);
+  expect(headTexts()).toEqual(["done/run 1 artifact"]);
   fireEvent.click(screen.getByRole("button", { name: "All types" }));
   fireEvent.change(screen.getByRole("combobox", { name: "Scope" }), { target: { value: "open/run" } });
   expect(tab().queryAllByRole("button", { name: /open\/run/ })).toHaveLength(0);
@@ -401,6 +401,49 @@ test("a run that ends leaves its open group open, and the focus in it, until the
   fireEvent.click(within(bar).getByRole("link", { name: /^Activity/ }));
   fireEvent.click(within(bar).getByRole("link", { name: /^Artifacts/ }));
   await waitFor(() => expect(head(/open\/run/).getAttribute("aria-expanded")).toBe("false"));
+});
+
+const scopes = () => heads().map((one) => one.querySelector(".group-name")?.textContent);
+
+test("on entering the tab Session and open runs stand above ended runs, each part by freshness", async () => {
+  const fresh = some("done/run", 30, 0).map((one) => ({ ...one, latest: { ...one.latest, created_at: "2026-10-07T14:00:00.000Z" } }));
+  serve({ artifacts: [...fresh, ...some("open/run", 40, 0), ...some("", 30, 40)], runs: [ACTIVE, ENDED] });
+  open("/sessions/lado/artifacts");
+  await waitFor(() => expect(head(/done\/run/).getAttribute("aria-expanded")).toBe("false"));
+  expect(scopes()).toEqual(["open/run", "Session", "done/run"]);
+});
+
+test("while the tab is open a new record leaves the groups in place; entering it again orders them anew", async () => {
+  serve({ artifacts: HUNDRED, runs: [ACTIVE, ENDED] });
+  open("/sessions/lado/artifacts");
+  await waitFor(() => expect(head(/done\/run/).getAttribute("aria-expanded")).toBe("false"));
+  const [written] = some("", 1, 0);
+  const newest = { ...written, id: "fresh", latest: { ...written.latest, id: "fresh-r", created_at: "2026-10-07T15:00:00.000Z" } };
+  change("artifacts", newest.id, "insert", newest);
+  expect(headTexts()).toEqual(["open/run 40 artifacts", "Session 31 artifacts", "done/run 30 artifacts"]);
+  serve({ artifacts: [newest, ...HUNDRED], runs: [ACTIVE, ENDED] });
+  const bar = await tabs();
+  fireEvent.click(within(bar).getByRole("link", { name: /^Activity/ }));
+  fireEvent.click(within(bar).getByRole("link", { name: /^Artifacts/ }));
+  await waitFor(() => expect(scopes()).toEqual(["Session", "open/run", "done/run"]));
+});
+
+test("a run that ends keeps its group's place while the tab is open", async () => {
+  serve({ artifacts: HUNDRED, runs: [ACTIVE, ENDED] });
+  open("/sessions/lado/artifacts");
+  await waitFor(() => expect(head(/done\/run/).getAttribute("aria-expanded")).toBe("false"));
+  change("runs", "open/run", "update", ended(ACTIVE));
+  expect(scopes()).toEqual(["open/run", "Session", "done/run"]);
+});
+
+test("a new group goes to the end of its part, moving nothing above it", async () => {
+  const late = { ...ENDED, name: "late/run" } as RunInfo;
+  const next = { ...ACTIVE, name: "next/run" } as RunInfo;
+  serve({ artifacts: HUNDRED, runs: [ACTIVE, ENDED, late, next] });
+  open("/sessions/lado/artifacts");
+  await waitFor(() => expect(head(/done\/run/).getAttribute("aria-expanded")).toBe("false"));
+  for (const [written] of [some("late/run", 1, 0), some("next/run", 1, 0)]) change("artifacts", written.id, "insert", written);
+  expect(scopes()).toEqual(["open/run", "Session", "next/run", "done/run", "late/run"]);
 });
 
 test("a group that appears takes its default then: an ended run's folds", async () => {
@@ -454,7 +497,7 @@ test("while the search has text each group with a match shows open and does not 
   open("/sessions/lado/artifacts");
   await waitFor(() => expect(head(/done\/run/).getAttribute("aria-expanded")).toBe("false"));
   fireEvent.change(screen.getByRole("searchbox", { name: "Find an artifact" }), { target: { value: "change of done" } });
-  expect(headTexts()).toEqual(["done/run 1"]);
+  expect(headTexts()).toEqual(["done/run 1 artifact"]);
   const found = head(/done\/run/) as HTMLButtonElement;
   expect(found.getAttribute("aria-expanded")).toBe("true");
   expect(found.disabled).toBe(true);

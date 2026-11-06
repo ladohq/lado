@@ -75,9 +75,11 @@ adds one field to an API answer. No schema, MCP or CLI change.
   tooltip. A click or Enter opens the panel, and closing it returns the focus to the link.
 - AC-3. A session with 100 artifacts or more shows groups by scope at any width; with 99 it does not.
   A filter neither adds nor removes the grouping, and picking one scope shows a flat list.
-- AC-4. Session's and open runs' groups start open, ended runs' folded; the newest group comes first.
-  That default holds on entering the tab or when a group first appears: a run that ends folds
-  nothing meanwhile, and a group with the focus never folds by itself.
+- AC-4. Session's and open runs' groups start open, ended runs' folded. On entering the tab or
+  reloading, Session and open runs stand above ended runs, each part freshest first. While the tab
+  is open nothing moves: a new record goes in its group, whose count grows, and a new group goes to
+  the end of its part. The fold's default holds on entering the tab or when a group first appears:
+  a run that ends folds nothing meanwhile, and a group with the focus never folds by itself.
   The human's fold is kept per session across a reload. While the search has text, every group
   with a match is open and its fold is off.
 - AC-5. A group's heading is a button with `aria-expanded` and `aria-controls`, in the Tab order,
@@ -86,7 +88,8 @@ adds one field to an API answer. No schema, MCP or CLI change.
   the artifact's page; a different H1 or none keeps it.
 - AC-7. The pill says "session" or "step <name>".
 - AC-8. On the Artifacts tab the panel's link says Full page, elsewhere Open in Artifacts tab; both
-  go to the artifact's page. Expand does not change.
+  go to the artifact's page. Expand keeps its name. Their tooltips tell them apart: "Open as a page
+  in this tab" and "Widen the panel".
 - AC-9. In a window of 600 px or less the panel's bar shows Download, Copy link, "⋯" and ×. "⋯" opens
   Open in new tab (not for `other`) and the link to the page, with labels, by keyboard too.
 - AC-10. An empty Artifacts tab shows its heading and line. A session with no run shows "No flow runs

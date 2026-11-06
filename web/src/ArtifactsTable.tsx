@@ -3,7 +3,7 @@
 // a run's) and by type, and found by name, title, change and author. A column of TABLE_FROM
 // px and wider shows a table, a narrower one a list of two lines a row, whose latest change
 // is a tooltip. From GROUPS_FROM artifacts both go in groups by scope that fold (prefs.ts,
-// lado.artifactGroups). A row opens its latest record in the panel over the list
+// lado.artifactGroups), which stand where they stood on entering the tab. A row opens its latest record in the panel over the list
 // (ArtifactPanel.tsx). The artifact's page, its row's link for a new tab and the panel's
 // "Open in Artifacts tab", leads back with "← Artifacts": its latest record, or with
 // ?record= the one an attachment keeps. Live from the feed: a new record moves its artifact
@@ -65,6 +65,10 @@ export function Artifacts({ session, artifact }: { session: string; artifact?: s
 // A group as it shows now: its heading's name and fold, and the id `fold.controls` names.
 type ShownGroup = ScopeGroup & { name: string; id: string; fold: Fold };
 
+// Where the groups stand: each scope's default fold, then the scopes of Session and open runs
+// and those of ended runs, each by freshness on entering the tab.
+type Laid = { defaults: ArtifactGroups; open: string[]; ended: string[] };
+
 // Whether the focus is in a scope's group, by the group's `data-scope`.
 const focusIn = (scope: string) => document.activeElement?.closest("[data-scope]")?.getAttribute("data-scope") === scope;
 
@@ -74,13 +78,19 @@ function ArtifactsTable({ session, artifacts, ended }: { session: string; artifa
   const [scope, setScope] = useState(ALL);
   const [kind, setKind] = useState<string>(ALL);
   const [folds, setFolds] = useState(() => storedArtifactGroups(session));
-  // Each scope's default, taken once: on entering the tab, or when its group first appears. A
-  // run that ends meanwhile folds nothing under the human, and a group with the focus stays.
-  const [defaults, setDefaults] = useState<ArtifactGroups>({});
-  const fresh = ended === null ? [] : [...new Set(artifacts.map((one) => one.scope))].filter((one) => !defaults[one]);
+  // Each scope's place and default fold, taken once: on entering the tab, or when its group
+  // first appears, at the end of its part. While the tab is open nothing moves or folds under
+  // the human, whoever writes and whichever run ends; a group with the focus stays open.
+  const [laid, setLaid] = useState<Laid>({ defaults: {}, open: [], ended: [] });
+  const fresh = ended === null ? [] : [...new Set(artifacts.map((one) => one.scope))].filter((one) => !laid.defaults[one]);
   if (fresh.length > 0) {
-    const taken = fresh.map((one) => [one, ended?.includes(one) && !focusIn(one) ? "folded" : "open"]);
-    setDefaults({ ...defaults, ...Object.fromEntries(taken) });
+    const over = fresh.filter((one) => ended?.includes(one));
+    const folds = fresh.map((one) => [one, over.includes(one) && !focusIn(one) ? "folded" : "open"]);
+    setLaid({
+      defaults: { ...laid.defaults, ...Object.fromEntries(folds) },
+      open: [...laid.open, ...fresh.filter((one) => !over.includes(one))],
+      ended: [...laid.ended, ...over],
+    });
   }
   const ids = useId();
   if (artifacts.length === 0) {
@@ -110,9 +120,9 @@ function ArtifactsTable({ session, artifacts, ended }: { session: string; artifa
   // Counted over the session's artifacts: a filter never changes the look, one scope is flat.
   const groups: ShownGroup[] | null =
     scope === ALL && artifacts.length >= GROUPS_FROM
-      ? groupByScope(shown).map((group, at) => {
+      ? groupByScope(shown, [...laid.open, ...laid.ended]).map((group, at) => {
           const id = `${ids}-${at}`;
-          const open = (folds[group.scope] ?? defaults[group.scope] ?? "open") === "open";
+          const open = (folds[group.scope] ?? laid.defaults[group.scope] ?? "open") === "open";
           return {
             ...group,
             id,
@@ -170,7 +180,13 @@ type ViewProps = { session: string; artifacts: ArtifactInfo[]; groups: ShownGrou
 const groupClass = (group: ScopeGroup) => `artifact-group${group.scope ? " of-run" : ""}`;
 
 const groupHead = (group: ShownGroup) => (
-  <GroupHead nameId={`${group.id}-name`} name={group.name} count={group.artifacts.length} fold={group.fold} />
+  <GroupHead
+    nameId={`${group.id}-name`}
+    name={group.name}
+    count={group.artifacts.length}
+    unit={group.artifacts.length === 1 ? "artifact" : "artifacts"}
+    fold={group.fold}
+  />
 );
 
 function Table({ session, artifacts, groups, bare }: ViewProps) {

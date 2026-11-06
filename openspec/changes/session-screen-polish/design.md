@@ -21,8 +21,9 @@ since the tooltip and the row's words depend on the width, and a `display: block
 a screen reader. 720 stays the limit, not the spec's 600: the human's answer 1, as between 600 and 720
 the table does not fit and a third look would remain. A first paint before the measure shows the list.
 
-**D2. Grouping is one pure function.** `groupByScope(artifacts)` in `artifacts.ts` keeps the input's
-order, so a group's rows and the groups come newest first. `GROUPS_FROM = 100` counts the session's
+**D2. Grouping is one pure function.** `groupByScope(artifacts, order)` in `artifacts.ts` keeps the
+input's order in a group, so its rows come newest first, and the groups go by `order` (D3).
+`GROUPS_FROM = 100` counts the session's
 artifacts before any filter, so a filter never flips the look. `ArtifactsTable` applies it to the
 filtered list while the scope filter is All scopes.
 
@@ -31,7 +32,10 @@ by `storedGroups`' rule that any other value is the default. A scope with no sto
 default: folded for a run `isOpen` calls ended, otherwise open. `Artifacts` watches the `runs` list;
 until it is loaded, or if it fails, nothing is folded by default, so a failed list hides nothing. The
 default is taken once per scope, on entering the tab or when its group first appears, never for a
-group with the focus: a run that ends must not fold rows under the human (Design QA, F2). A
+group with the focus: a run that ends must not fold rows under the human (Design QA, F2). The
+groups' order is taken the same way (the human's answer to Design QA, F1 and F8): Session and open
+runs above ended runs, each by freshness, kept while the tab is open, a new group at the end of its
+part. A run that ends keeps its place until the tab is entered again. A
 forgotten session's entry stays in the browser: a few bytes, not worth a hook into Forget. Rejected:
 "the newest group open", which folds and opens groups under the human's eyes as runs write.
 

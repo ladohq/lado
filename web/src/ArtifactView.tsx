@@ -68,10 +68,24 @@ export function FullName({ scope, name }: { scope: string; name: string }) {
 type ActionLink = (look: { className: string; "aria-label"?: string; children: ReactNode }) => ComponentProps<typeof Tooltip>["children"];
 
 // One action of the head, a link that takes how it is shown: its icon and label, or,
-// compact, its icon alone with the label as its name and the UI's tooltip.
-export function Action({ label, icon, compact, children: link }: { label: string; icon: ReactNode; compact: boolean; children: ActionLink }) {
-  if (!compact) return link({ className: "quiet", children: <>{icon}{label}</> });
-  return <Tooltip tip={label}>{link({ className: "icon-button", "aria-label": label, children: icon })}</Tooltip>;
+// compact, its icon alone with the label as its name and the UI's tooltip. `tip`: what the
+// label alone does not say, its tooltip either way.
+export function Action({
+  label,
+  icon,
+  compact,
+  tip,
+  children: link,
+}: {
+  label: string;
+  icon: ReactNode;
+  compact: boolean;
+  tip?: string;
+  children: ActionLink;
+}) {
+  if (compact) return <Tooltip tip={tip ?? label}>{link({ className: "icon-button", "aria-label": label, children: icon })}</Tooltip>;
+  const shown = link({ className: "quiet", children: <>{icon}{label}</> });
+  return tip ? <Tooltip tip={tip}>{shown}</Tooltip> : shown;
 }
 
 // The record shown alone: HTML at its content address, under the server's sandbox; the other

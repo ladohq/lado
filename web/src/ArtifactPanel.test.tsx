@@ -109,12 +109,16 @@ test("Expand fills the room and turns into Restore width, which brings the chose
   render(<Open />);
   fireEvent.keyDown(edge(), { key: "ArrowLeft" });
   const expand = screen.getByRole("button", { name: "Expand" });
-  expect(expand.title).toBe("Expand");
+  fireEvent.focus(expand);
+  expect(screen.getByRole("tooltip").textContent).toBe("Widen the panel");
+  fireEvent.blur(expand);
   fireEvent.click(expand);
   expect(shown()).toBe("1200px");
   expect(stored()).toEqual({ width: 660, expanded: true });
   const restore = screen.getByRole("button", { name: "Restore width" });
-  expect(restore.title).toBe("Restore width"); // Esc closes the panel here: no "(Esc)"
+  fireEvent.focus(restore);
+  expect(screen.getByRole("tooltip").textContent).toBe("Restore width"); // Esc closes the panel here: no "(Esc)"
+  fireEvent.blur(restore);
   fireEvent.click(restore);
   expect(shown()).toBe("660px");
   expect(stored()).toEqual({ width: 660, expanded: false });
@@ -202,6 +206,8 @@ test("over the Artifacts tab, or an artifact's page, the link to the page says F
   const link = await within(bar()).findByRole("link", { name: "Full page" });
   expect(link.getAttribute("href")).toBe("/sessions/lado/artifacts/a1?record=r1");
   expect(names()).toEqual(["Full page", ...ACTIONS.slice(1), "Expand", "Close"]);
+  fireEvent.focus(link);
+  expect(screen.getByRole("tooltip").textContent).toBe("Open as a page in this tab");
   cleanup();
   render(<Open at="/sessions/lado/artifacts/a1?view=r1" />);
   expect(await within(bar()).findByRole("link", { name: "Full page" })).toBeTruthy();

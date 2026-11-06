@@ -95,7 +95,8 @@ export function ArtifactPanel({ session, record }: { session: string; record: st
   const room = useRoom();
   const phone = usePhone() !== null;
   const navigate = useNavigate();
-  const pageLabel = useMatch("/sessions/:session/artifacts/*") ? "Full page" : "Open in Artifacts tab";
+  const overTab = useMatch("/sessions/:session/artifacts/*") !== null;
+  const pageLabel = overTab ? "Full page" : "Open in Artifacts tab";
   const [prefs, setPrefs] = useState(storedArtifactPanel);
   const choose = (next: ArtifactPanelPrefs) => {
     setPrefs(next);
@@ -170,7 +171,12 @@ export function ArtifactPanel({ session, record }: { session: string; record: st
           {shown && artifact && page && (
             <span className="panel-actions">
               {!phone && (
-                <Action label={pageLabel} icon={<ArtifactsIcon />} compact={compact}>
+                <Action
+                  label={pageLabel}
+                  icon={<ArtifactsIcon />}
+                  compact={compact}
+                  tip={overTab ? "Open as a page in this tab" : undefined}
+                >
                   {(look) => <Link {...look} to={page} />}
                 </Action>
               )}
@@ -192,15 +198,16 @@ export function ArtifactPanel({ session, record }: { session: string; record: st
             </span>
           )}
           {!narrow && !phone && (
-            <button
-              type="button"
-              className="icon-button panel-expand"
-              aria-label={prefs.expanded ? "Restore width" : "Expand"}
-              title={prefs.expanded ? "Restore width" : "Expand"}
-              onClick={() => choose({ ...prefs, expanded: !prefs.expanded })}
-            >
-              <ExpandIcon expanded={prefs.expanded} />
-            </button>
+            <Tooltip tip={prefs.expanded ? "Restore width" : "Widen the panel"}>
+              <button
+                type="button"
+                className="icon-button panel-expand"
+                aria-label={prefs.expanded ? "Restore width" : "Expand"}
+                onClick={() => choose({ ...prefs, expanded: !prefs.expanded })}
+              >
+                <ExpandIcon expanded={prefs.expanded} />
+              </button>
+            </Tooltip>
           )}
           <button type="button" className="icon-button panel-close" aria-label="Close" onClick={close}>
             <CloseIcon />

@@ -2911,8 +2911,11 @@ Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
   summary (none without one; on a phone the panel says it).
   From 100 artifacts of the session (`GROUPS_FROM`, counted before any filter) both go in
   groups by scope while the filter is All scopes: `GroupHead`'s band, "Session" or the run's
-  exact name in mono, with the rows shown; the group of the newest record first, a row's
-  name without its run, as with one scope picked. In the flat list of all scopes a long run
+  exact name in mono, with the rows shown (and "artifacts" for a screen reader). On entering
+  the tab or reloading, Session and open runs stand above ended runs, each part freshest first;
+  while the tab is open the groups keep their places, a new record goes in its group and a new
+  group to the end of its part. A row's
+  name goes without its run, as with one scope picked. In the flat list of all scopes a long run
   part is cut at its start, at about a third of the row, so the name stays. Session's and
   open runs' groups start open, ended runs' folded, and
   until the runs are read nothing is folded. A scope takes this default once, on entering the
@@ -2997,7 +3000,8 @@ Decided with the human 2026-10-07 (run feature/artifacts-ui; mockups
   row, never wrapped (decided 2026-10-13, LAD-43, mockup artifact
   `task/lad-43/mockup-panel-buttons.html`, option 1): on the left "Open in Artifacts tab"
   (the Artifacts tab's icon; the artifact's page with that record; "Full page", to the same
-  address, when the panel lies over that tab, LAD-198) and the viewer's
+  address, when the panel lies over that tab, LAD-198, with the tooltip "Open as a page in this
+  tab", as Expand's says "Widen the panel") and the viewer's
   actions, Open in new tab, Download and Copy link; on the right Expand and ×; the
   viewer's name line under it holds no button. A panel narrower than 560 px (its width, or
   the window's when it takes the whole screen) shows the actions as 28 px icon buttons, the

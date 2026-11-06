@@ -26,8 +26,8 @@ hold no button. The artifact's page SHALL keep its buttons in its name line.
 
 #### Scenario: Over the Artifacts tab
 - **WHEN** the human opens a row of the Artifacts tab in a panel 620 px wide
-- **THEN** the bar's first button says "Full page" and goes to the artifact's page, and Expand
-  stays as it is
+- **THEN** the bar's first button says "Full page", with the tooltip "Open as a page in this tab",
+  and goes to the artifact's page; Expand keeps its name, with the tooltip "Widen the panel"
 
 ### Requirement: A narrow artifact panel shows its actions as icons
 

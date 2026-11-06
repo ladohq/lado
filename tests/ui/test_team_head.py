@@ -513,6 +513,28 @@ def test_find_on_flows_stays_when_the_tabs_scroll(page: Page, server, repo):
     expect(bar.get_by_role("button", name="Messages between agents")).to_have_count(0)
 
 
+def test_the_agents_tab_says_the_popups_words(page: Page, server, repo, shot):
+    agents = [
+        agent("supervisor", None, "busy"),
+        agent("analyst", None, "waiting"),
+        agent("developer", None, "background"),
+        agent("reviewer", None, "idle"),
+    ]
+    session = open_team(page, server, repo, agents, TWENTY, (1440, 900))
+    page.get_by_role("link", name=re.compile("^Agents")).click()
+    rows = page.get_by_role("navigation", name="Agents")
+    for name, words in (
+        ("supervisor", "working · "),
+        ("analyst", "waits for you · "),
+        ("developer", "in the background · "),
+        ("reviewer", "idle · "),
+    ):
+        expect(rows.get_by_role("link", name=re.compile(f"^{name}"))).to_contain_text(words)
+    shot(page, full_page=False)
+    page.goto(f"{server['url']}/sessions/{session}/agents/analyst")
+    expect(page.locator(".agent-now")).to_contain_text(re.compile(r"waits for you · .+ · spawned"))
+
+
 def test_the_list_buttons_tooltip_is_its_name_and_goes_with_the_list(
     page: Page, server, repo, shot
 ):

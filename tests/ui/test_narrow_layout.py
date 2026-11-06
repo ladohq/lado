@@ -37,7 +37,8 @@ CLEAR = """tab => {
   const box = row.getBoundingClientRect();
   const at = tab.getBoundingClientRect();
   const start = row.scrollLeft <= 0 || at.left >= box.left + 56 - 1;
-  const end = row.scrollLeft + row.clientWidth >= row.scrollWidth - 1 || at.right <= box.right - 56 + 1;
+  const last = row.scrollLeft + row.clientWidth >= row.scrollWidth - 1;
+  const end = last || at.right <= box.right - 56 + 1;
   return start && end && at.left >= box.left - 1 && at.right <= box.right + 1;
 }"""
 

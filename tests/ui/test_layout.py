@@ -80,9 +80,7 @@ def test_a_chip_opens_its_agents_terminal_on_the_right_of_the_chat(page: Page, s
     expect(view.locator(".term")).to_have_attribute("data-link", "open")
 
 
-def test_yours_all_stands_on_the_tabs_line_beside_the_open_terminal(
-    page: Page, server, repo, shot
-):
+def test_yours_all_stands_on_the_tabs_line_beside_the_open_terminal(page: Page, server, repo, shot):
     """The chat column narrow, as the terminal panel opens beside it: Yours | All stays on the
     tabs' line, and no row stands above the feed (LAD-77, LAD-197)."""
     page.set_viewport_size({"width": 1160, "height": 900})

@@ -429,7 +429,9 @@ def test_tab_out_of_details_closes_it_and_the_focus_goes_on(page: Page, server, 
     details(page).get_by_role("link", name="All sessions").focus()
     page.keyboard.press("Tab")
     expect(details(page)).to_have_count(0)
-    expect(head(page).get_by_role("toolbar", name="Team").get_by_role("button").first).to_be_focused()
+    expect(
+        head(page).get_by_role("toolbar", name="Team").get_by_role("button").first
+    ).to_be_focused()
 
     title.click()  # back to the title it stays open, then out the other way it closes
     details(page).get_by_role("button", name="Copy path").focus()

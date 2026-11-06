@@ -45,9 +45,12 @@ def test_busy_and_background_are_green_and_pulse_and_background_is_half_filled(
             green = GREEN[theme]
             # The agents' marks stand still in the head; the session's dot keeps the pulse.
             assert dot_style(supervisor, "backgroundColor", "animationName") == [green, "none"]
-            assert page.locator(".session-head .session-dot").evaluate(
-                "e => getComputedStyle(e).animationName"
-            ) == "activity-pulse"
+            assert (
+                page.locator(".session-head .session-dot").evaluate(
+                    "e => getComputedStyle(e).animationName"
+                )
+                == "activity-pulse"
+            )
             image, border, animation = dot_style(
                 w1, "backgroundImage", "borderTopColor", "animationName"
             )

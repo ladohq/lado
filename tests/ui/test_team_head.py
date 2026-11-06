@@ -246,7 +246,9 @@ def test_the_toolbar_is_one_stop_and_the_head_has_five(page: Page, server, repo)
 
 def test_a_focused_avatars_ring_stands_clear_of_its_pressed_frame(page: Page, server, repo, shot):
     open_team(page, server, repo, team(OWN, RUNS), LONG_TITLE, (1024, 768))
-    page.locator(".head-team .strip-agent").nth(3).click()  # a narrow window starts with no terminal
+    page.locator(".head-team .strip-agent").nth(
+        3
+    ).click()  # a narrow window starts with no terminal
     pressed = page.locator('.head-team .strip-agent[aria-pressed="true"]')
     expect(pressed).to_have_count(1)
     pressed.focus()
@@ -268,7 +270,9 @@ def test_a_team_that_fails_to_load_says_so(page: Page, server, repo):
     log_in(page, server)
     page.route(
         f"**/api/sessions/{session}/agents",
-        lambda route: route.fulfill(status=500, body=json.dumps({"detail": "the database is locked"})),
+        lambda route: route.fulfill(
+            status=500, body=json.dumps({"detail": "the database is locked"})
+        ),
     )
     page.goto(f"{server['url']}/sessions/{session}")
     alert = page.get_by_role("alert").filter(has_text="team not loaded")
@@ -308,7 +312,9 @@ def test_a_narrow_column_shows_no_hint(page: Page, server, repo):
 
 
 def test_an_agents_page_names_the_agent(page: Page, server, repo, shot):
-    session = open_team(page, server, repo, team(["supervisor", "developer-2"], {}), TWENTY, (1440, 900))
+    session = open_team(
+        page, server, repo, team(["supervisor", "developer-2"], {}), TWENTY, (1440, 900)
+    )
     page.goto(f"{server['url']}/sessions/{session}/agents/developer-2")
     expect(page.locator(".composer-to")).to_have_text("to developer-2")
     shot(page, full_page=False)

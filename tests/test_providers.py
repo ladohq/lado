@@ -1035,7 +1035,8 @@ def test_opencode_family_turn_end_carries_the_error_the_plugin_saw(provider, err
 STOP_THE_PLUGIN = """
 import { LadoPlugin } from %(plugin)s
 const client = { session: { abort: async () => {} } }
-const plugin = await LadoPlugin({ client, directory: "/repo" }, { hooks: { "session.idle": %(hook)s } })
+const hooks = { "session.idle": %(hook)s }
+const plugin = await LadoPlugin({ client, directory: "/repo" }, { hooks })
 const error = { name: "ContextOverflowError", data: { message: %(said)s } }
 for (let n = 0; n < 3; n++) {
   await plugin.event({ event: { type: "session.error", properties: { sessionID: "s", error } } })

@@ -12,7 +12,7 @@ import { FakeEventSource, stream, stubDialogs } from "./fakes";
 import { GateCard } from "./GateCard";
 import { LaunchProvider, useLaunch } from "./Launch";
 import { Live, LiveContext, LOST_AFTER_MS } from "./live";
-import { SessionActions } from "./SessionControl";
+import { SessionActions, StoppedBar } from "./SessionControl";
 import { TOOLTIP_DELAY_MS } from "./Tooltip";
 import { WaitingCard } from "./WaitingCard";
 
@@ -405,7 +405,7 @@ test("a Retry refused as a stopped question shows no error", async () => {
 
 // Send.
 
-const composer = () => <Composer session="s" stopped={false} />;
+const composer = () => <Composer session="s" />;
 const field = () => screen.getByRole("textbox") as HTMLTextAreaElement;
 const type = (text: string) => fireEvent.change(field(), { target: { value: text } });
 const human = (id: number, text: string, more: Partial<MessageInfo> = {}) => ({
@@ -658,6 +658,15 @@ test("while lost Resume waits in the head", () => {
   lose();
   expect(button("Resume…").disabled).toBe(true);
   expect(button("Forget…").disabled).toBe(false);
+});
+
+test("while lost Resume session waits in the bar, and says why", () => {
+  show(<StoppedBar session={session("stopped")} />);
+  expect(button("Resume session").disabled).toBe(false);
+  lose();
+  expect(button("Resume session").disabled).toBe(true);
+  fireEvent.focus(button("Resume session").closest(".lost-wait")!);
+  expect(screen.getByRole("tooltip").textContent).toBe("Waiting for connection");
 });
 
 const resumeWindow = async () => {

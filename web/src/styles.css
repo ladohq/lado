@@ -4000,7 +4000,8 @@ h3 {
    (Agents) stays at its page's left edge. Above the `margin: 0` of the feed's items
    (.chat-start, .run-group). */
 .chat > .chat-feed > *,
-.chat > .composer {
+.chat > .composer,
+.chat > .stopped-bar {
   --chat-side: max(0px, (100% - 860px) / 2);
   margin-inline: var(--chat-side);
 }
@@ -5835,6 +5836,55 @@ button.rec-bar-line {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* A stopped session's bar in the composer's place (StoppedBar): as wide as its frame. */
+.stopped-bar {
+  display: flex;
+  flex: none;
+  gap: 12px;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 860px;
+  min-height: 52px;
+  padding: 8px 8px 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.stopped-bar-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.stopped-bar-text strong,
+.stopped-bar-text span {
+  display: block;
+}
+
+.stopped-bar-text strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.stopped-bar-text span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.stopped-bar .primary {
+  display: inline-flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+/* The empty feed of a stopped session stands in the feed's middle. */
+.chat-feed > .stopped-empty {
+  margin-block: auto;
 }
 
 /* The composer folded (ComposerFold): a line of 40 px in a dashed frame. */
@@ -10755,6 +10805,31 @@ button.quiet.danger-text {
 /* Spec §9's target. */
 :root[data-phone] .composer .send {
   min-height: 44px;
+}
+
+:root[data-phone] .stopped-bar .primary {
+  height: 44px;
+}
+
+/* Upright the button stands under the text at full width; sideways the row stays. The span
+   of a button that waits for the connection (Waits) stretches with it. */
+:root[data-phone="tall"] .stopped-bar {
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+:root[data-phone="tall"] .stopped-bar-text {
+  flex-basis: 100%;
+}
+
+:root[data-phone="tall"] .stopped-bar .lost-wait {
+  flex: 1;
+}
+
+:root[data-phone="tall"] .stopped-bar .primary {
+  flex: 1;
+  justify-content: center;
 }
 
 /* Sideways: the chat's room is for the feed; the card is minimized (WaitingCard.tsx). */

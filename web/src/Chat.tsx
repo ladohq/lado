@@ -178,7 +178,28 @@ export function focusChat() {
   (card ?? document.querySelector<HTMLElement>(".chat-feed"))?.focus();
 }
 
-export function Chat({ session, stopped, agentMessages }: { session: string; stopped: boolean; agentMessages: boolean }) {
+// The feed's words with nothing to show. A stopped session's say what the filter leaves out:
+// under Yours the agents may have talked, which only All can tell.
+const emptyText = (stopped: boolean, agentMessages: boolean) =>
+  !stopped
+    ? "No messages yet. Write to the supervisor below."
+    : agentMessages
+      ? "Nothing was said in this session."
+      : "No messages with you. Messages between agents are hidden.";
+
+// `stoppedBar`: what stands in the composer's place in a stopped session. The composer stays
+// mounted behind it, hidden: a draft, its files and a quote wait there for Resume.
+export function Chat({
+  session,
+  stopped,
+  stoppedBar,
+  agentMessages,
+}: {
+  session: string;
+  stopped: boolean;
+  stoppedBar: ReactNode;
+  agentMessages: boolean;
+}) {
   const live = useLiveStore();
   const state = useLive();
   const spec: MessageSpec = agentMessages ? { limit: PAGE } : { with: HUMAN, limit: PAGE };
@@ -322,9 +343,9 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
       ref={chatRef}
       className="chat"
       aria-label="Chat"
-      // A folded composer takes no files; dropped on the chat, nowhere: the browser opens none.
-      onDragOver={fold ? stopFiles : undefined}
-      onDrop={fold ? stopFiles : undefined}
+      // A hidden composer takes no files; dropped on the chat, nowhere: the browser opens none.
+      onDragOver={fold || stopped ? stopFiles : undefined}
+      onDrop={fold || stopped ? stopFiles : undefined}
     >
       <div className="chat-feed" role="log" aria-label="Chat with the session" tabIndex={-1} ref={feedRef} onScroll={scrolled}>
         {loaded === null && <p className="muted">Loading…</p>}
@@ -334,7 +355,9 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
           </p>
         )}
         {ready && <Top session={session} window={loaded.window} first={shown[0]} retry={loadEarlier} marker={top} />}
-        {ready && shown.length === 0 && <p className="empty">No messages yet. Write to the supervisor below.</p>}
+        {ready && shown.length === 0 && (
+          <p className={stopped ? "empty stopped-empty" : "empty"}>{emptyText(stopped, agentMessages)}</p>
+        )}
         {ready && (
           <Rows
             session={session}
@@ -366,7 +389,8 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
           }}
         />
       )}
-      <Composer session={session} stopped={stopped} folded={fold !== null} inputRef={composerField} />
+      {stoppedBar}
+      <Composer session={session} folded={fold !== null || stopped} inputRef={composerField} />
     </section>
   );
 }

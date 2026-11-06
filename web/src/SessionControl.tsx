@@ -116,6 +116,26 @@ export function SessionActions({ session, onActivity }: { session: SessionInfo; 
   );
 }
 
+// In a stopped session's Activity, in the composer's place: what the session is and the way on.
+// The button stays out of the live region: a change of its state is no news.
+export function StoppedBar({ session }: { session: SessionInfo }) {
+  const { resume, lost } = useResume(session);
+  return (
+    <div className="stopped-bar">
+      <div role="status" className="stopped-bar-text">
+        <strong>This session is stopped</strong>
+        <span>Its branches, runs and history are kept</span>
+      </div>
+      <Waits>
+        <button type="button" className="primary" disabled={lost} onClick={resume}>
+          <ResumeIcon />
+          Resume session
+        </button>
+      </Waits>
+    </div>
+  );
+}
+
 type Loaded<T> = { value: T } | { error: string } | null;
 
 function usePreview<T>(load: () => Promise<T>): Loaded<T> {

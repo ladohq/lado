@@ -35,13 +35,11 @@ import type { Fold } from "./WaitingCard";
 
 export function Composer({
   session,
-  stopped,
   to,
   inputRef,
   folded = false,
 }: {
   session: string;
-  stopped: boolean;
   to?: string;
   inputRef?: RefObject<HTMLTextAreaElement | null>;
   folded?: boolean;
@@ -94,7 +92,7 @@ export function Composer({
   // zone in its frame; dropped anywhere there, they are attached to this composer, but on
   // the waiting card, whose fields take their own (WaitingCard.tsx).
   const form = useRef<HTMLFormElement>(null);
-  const dropping = useDropZone(form, attach, { closest: ".chat, .agent-page", ignoreInside: ".waiting-card", off: stopped || folded });
+  const dropping = useDropZone(form, attach, { closest: ".chat, .agent-page", ignoreInside: ".waiting-card", off: folded });
 
   function remove(key: number) {
     release(files.filter((one) => one.key === key));
@@ -139,7 +137,7 @@ export function Composer({
   // While the focus is in the composer: files in the clipboard are attached, and a text
   // longer than a message may be becomes a file (attachFiles.pastedFiles).
   function paste(event: ClipboardEvent<HTMLFormElement>) {
-    if (stopped || busy) return;
+    if (busy) return;
     const given = pastedFiles(event, limits);
     if (given) attach(given);
   }
@@ -167,20 +165,19 @@ export function Composer({
           {dropping && <DropLine limits={limits} />}
           <FileChips files={files} limits={limits} locked={busy} remove={remove} />
           <div className="composer-row">
-            <ClipButton limits={limits} disabled={stopped || busy} attach={attach} />
+            <ClipButton limits={limits} disabled={busy} attach={attach} />
             <textarea
               ref={field}
               aria-label={`Write to ${to ?? "the supervisor"}…`}
-              placeholder={stopped ? "The session is stopped: resume it to write" : `Write to ${to ?? "the supervisor"}…`}
+              placeholder={`Write to ${to ?? "the supervisor"}…`}
               rows={1}
               value={text}
-              disabled={stopped}
               readOnly={busy}
               onChange={(event) => setText(event.target.value)}
               onKeyDown={keyDown}
             />
             <Waits>
-              <button type="submit" className="send" disabled={stopped || busy || locked || (!text.trim() && files.length === 0)}>
+              <button type="submit" className="send" disabled={busy || locked || (!text.trim() && files.length === 0)}>
                 {busy ? "Sending…" : "Send"}
               </button>
             </Waits>
@@ -208,7 +205,7 @@ export function Composer({
           {problem}
         </p>
       )}
-      <ActionProblem attempt={attempt} off={stopped} />
+      <ActionProblem attempt={attempt} />
     </form>
   );
 }

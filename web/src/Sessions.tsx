@@ -53,7 +53,7 @@ import {
 import { useLaunch, type StartedState } from "./Launch";
 import { isLive, useLive, useLiveStore, type Loaded } from "./live";
 import { escapeIsTaken, useBelow, useDismiss } from "./Menu";
-import { SessionActions } from "./SessionControl";
+import { SessionActions, StoppedBar } from "./SessionControl";
 import { label } from "./sessionLabel";
 import { SessionRowMenu } from "./SessionRowMenu";
 import { TerminalPanel, usePutBackTerminals, type PanelColumn } from "./Terminals";
@@ -855,7 +855,7 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
       {tab === "agents" ? (
         <Agents session={name} agent={item} stopped={stopped} />
       ) : tab === "activity" ? (
-        <Activity session={name} stopped={stopped} />
+        <Activity info={session} />
       ) : tab === "flows" ? (
         <Flows session={name} run={item} stopped={stopped} />
       ) : (
@@ -1431,7 +1431,9 @@ function StartedNotice({ name }: { name: string }) {
 // other; it changes only what the feed shows, and is remembered; decided 2026-10-15, LAD-77,
 // mockup-placement.html variant Б). Above a phone the team is in the head and the choice in the
 // tab bar (MessagesChoice).
-function Activity({ session, stopped }: { session: string; stopped: boolean }) {
+function Activity({ info }: { info: SessionInfo }) {
+  const session = info.name;
+  const stopped = info.status === "stopped";
   const phone = usePhone();
   const agentMessages = useAgentMessages();
   const tip = (
@@ -1460,7 +1462,12 @@ function Activity({ session, stopped }: { session: string; stopped: boolean }) {
           </Tooltip>
         </div>
       )}
-      <Chat session={session} stopped={stopped} agentMessages={agentMessages} />
+      <Chat
+        session={session}
+        stopped={stopped}
+        stoppedBar={stopped ? <StoppedBar session={info} /> : null}
+        agentMessages={agentMessages}
+      />
     </div>
   );
 }

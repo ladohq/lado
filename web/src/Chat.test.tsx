@@ -8,7 +8,7 @@ import type { AttachmentInfo, GateInfo, MessageInfo, MessagePage, RunEventInfo, 
 import { App } from "./App";
 import { messageText } from "./Chat";
 import { clock, day, dayName } from "./ChatText";
-import { FakeEventSource, FakeIntersectionObserver, FakeScreen, FakeSocket, stream } from "./fakes";
+import { FakeEventSource, FakeIntersectionObserver, FakeScreen, FakeSocket, stream, stubDialogs } from "./fakes";
 import { storeAgentMessages } from "./prefs";
 import { sendQuote } from "./quotes";
 
@@ -503,14 +503,66 @@ test("the composer is one frame with Send inside, says to whom and how to send",
   );
 });
 
-test("in a stopped session the composer is off and says why", async () => {
+// A stopped session's bar
+
+const bar = () => document.querySelector<HTMLElement>(".stopped-bar");
+const sessionNow = (name: string, status: SessionInfo["status"], id: string) => {
+  const item = { ...SESSIONS.find((one) => one.name === name)!, status };
+  act(() => stream().send("change", { kind: "sessions", session: name, key: "", op: "update", item }, id));
+};
+
+test("in a stopped session a bar with Resume session stands in the composer's place", async () => {
   serve([]);
   open("/sessions/old/activity");
   await chat();
+  expect(within(bar()!).getByRole("status").textContent).toBe("This session is stoppedIts branches, runs and history are kept");
+  const resume = within(bar()!).getByRole("button", { name: "Resume session" });
+  expect(resume.classList).toContain("primary");
+  expect(resume.closest("[role='status']")).toBeNull(); // no news when its state changes
+  expect(composerForm().hidden).toBe(true);
+});
+
+test("Resume session opens the Resume window and sends nothing itself", async () => {
+  stubDialogs();
+  const { posted } = serve([]);
+  open("/sessions/old/activity");
+  await chat();
+  fireEvent.click(within(bar()!).getByRole("button", { name: "Resume session" }));
+  expect(await screen.findByRole("dialog", { name: "Resume session" })).toBeTruthy();
+  expect(posted).toEqual([]);
+});
+
+test("a running session has no bar", async () => {
+  serve([]);
+  open();
+  await chat();
+  expect(bar()).toBeNull();
+  expect(composerForm().hidden).toBe(false);
+});
+
+test("a draft stays through a stop and a Resume, and the bar comes and goes without a reload", async () => {
+  serve([]);
+  open();
+  await chat();
   const field = screen.getByRole("textbox", { name: "Write to the supervisor…" }) as HTMLTextAreaElement;
-  expect(field.disabled).toBe(true);
-  expect(field.placeholder).toBe("The session is stopped: resume it to write");
-  expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(field, { target: { value: "half a thought" } });
+  sessionNow("lado", "stopped", "11");
+  expect(bar()).toBeTruthy();
+  expect(composerForm().hidden).toBe(true);
+  sessionNow("lado", "running", "12");
+  expect(bar()).toBeNull();
+  expect(composerForm().hidden).toBe(false);
+  expect((screen.getByRole("textbox", { name: "Write to the supervisor…" }) as HTMLTextAreaElement).value).toBe("half a thought");
+});
+
+test("a file dropped on a stopped session's chat is taken by nothing: the browser does not open it", async () => {
+  serve([]);
+  open("/sessions/old/activity");
+  const dragged = { dataTransfer: { types: ["Files"], files: [new File(["x"], "x.txt")] } };
+  const section = (await chat()).closest(".chat")!;
+  expect(fireEvent.dragOver(section, dragged)).toBe(false);
+  expect(fireEvent.drop(section, dragged)).toBe(false); // its default prevented
+  expect(document.querySelector(".composer-box .file-chip")).toBeNull();
 });
 
 test("the composer's field grows with its text up to 8 lines, then scrolls", async () => {
@@ -563,6 +615,26 @@ test("an empty chat says how to start", async () => {
   serve([]);
   open();
   expect(within(await chat()).getByText("No messages yet. Write to the supervisor below.")).toBeTruthy();
+});
+
+test("a stopped session's empty feed says what it shows, by the filter", async () => {
+  serve([]);
+  open("/sessions/old/activity");
+  const feed = await chat();
+  const hidden = await within(feed).findByText("No messages with you. Messages between agents are hidden.");
+  expect(hidden.classList).toContain("stopped-empty");
+  expect(within(feed).queryByText(/No messages yet/)).toBeNull();
+  fireEvent.click(within(screen.getByRole("radiogroup", { name: "Messages between agents" })).getByRole("radio", { name: "All" }));
+  expect(await within(feed).findByText("Nothing was said in this session.")).toBeTruthy();
+  storeAgentMessages(false);
+});
+
+test("a stopped session's feed with entries has no empty text", async () => {
+  serve([message(1, "human", "supervisor", "hello")]);
+  open("/sessions/old/activity");
+  const feed = await chat();
+  await within(feed).findByText("hello");
+  expect(feed.querySelector(".empty")).toBeNull();
 });
 
 // The feed around the chat (the Layout task): run events, the agents' messages to each

@@ -393,7 +393,7 @@ def test_resume_without_an_answer(page: Page, server, repo, shot):
     runtime.stop_session(session)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}/activity")
-    button(page, "Resume…").click()
+    button(page.locator(".stopped-bar"), "Resume session").click()
     window = page.get_by_role("dialog", name="Resume session")
     resume = button(window, "Resume session")
     expect(resume).to_be_enabled()

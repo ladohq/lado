@@ -26,8 +26,8 @@
 
 ## 4. The checks
 
-- [ ] 4.1 `make lint` and `make web` green; report the tests as numbers.
-- [ ] 4.2 `web/src/Launch.test.tsx` passes 5 times in a row beside a load of the machine (e.g. a
+- [x] 4.1 `make lint` and `make web` green; report the tests as numbers.
+- [x] 4.2 `web/src/Launch.test.tsx` passes 5 times in a row beside a load of the machine (e.g. a
   second full `npx vitest run`); say so in `build-report`.
-- [ ] 4.3 `openspec validate launch-test-waits-for-providers --strict`, and the trial archive with
+- [x] 4.3 `openspec validate launch-test-waits-for-providers --strict`, and the trial archive with
   `--skip-specs`.

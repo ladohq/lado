@@ -50,6 +50,14 @@ def team(own: list[str], runs: dict[str, list[str]]) -> list[dict]:
     ]
 
 
+@pytest.fixture(autouse=True)
+def routes_end_before_the_server(page: Page, server):
+    """An empty Flows tab reads the session's about as a test ends: serve_team's fetch must
+    not outlive the server."""
+    yield
+    page.unroute_all(behavior="ignoreErrors")
+
+
 def serve_team(page: Page, session: str, agents: list[dict]) -> None:
     """The session's agents as `agents`, its project LADO as in the mockup."""
     page.route(
@@ -467,8 +475,6 @@ def test_yours_all_reads_in_both_themes_and_only_on_activity(page: Page, server,
     page.goto(f"{server['url']}/sessions/{session}/flows")
     expect(page.get_by_role("radiogroup")).to_have_count(0)
     expect(page.get_by_role("button", name=re.compile("^Find"))).to_be_visible()
-    # The empty tab asks for the session's about too: serve_team's fetch must not outlive the server.
-    page.unroute_all(behavior="ignoreErrors")
 
 
 def test_the_icon_chooses_as_the_radios_do(page: Page, server, repo, shot):

@@ -869,6 +869,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     CLIs whose provider's `server_api` (`providers/base.py`, one of `SERVER_APIS`) the
     server proved; `is_local` whether a host is the human's (`localhost`,
     `host.docker.internal`, a loopback, private or link-local IP; no name resolved);
+    `in_network` that, or a name of a local network, for a start's warning of an unknown context;
     `plain_http_warning` the warning for a key over plain `http://` to a host
     that is not; `context_limits` what a server reports of its models'
     context (three GETs at once within `LIMIT_TIMEOUT`, read by shape: LM Studio's loaded context,

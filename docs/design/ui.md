@@ -2852,7 +2852,9 @@ default: none does yet.
   configured model whose model the read list lacks shows first, ticked, `no longer listed`,
   and stays saved; unticking it removes it from the list too; its other ticks are off (the
   add would be refused). A server with no list says `⚠ no list of models: <why>`, one whose
-  APIs cannot be told `⚠ APIs: cannot be told: <why>`. A server that does not answer, asks
+  APIs cannot be told `⚠ APIs: cannot be told: <why>`, here and in the forms Add server and
+  Change; an API that did not answer in time is such a why, and a probe with one is not kept, so
+  the next check asks the server. A server that does not answer, asks
   for its key or refuses it shows the probe's line as a warning with its hint under it (the
   container's `host.docker.internal` one included), then `Its model(s) stay(s) saved:
   <names>. Agents on it stop at their first turn until the server answers.`

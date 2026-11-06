@@ -24,6 +24,14 @@ An API whose POST got no answer even the second time SHALL be neither proven nor
 - **WHEN** the control POST gets no answer the first time
 - **THEN** it is sent once more with the late POSTs, and a control refused the same way proves nothing as before
 
+#### Scenario: Settings → Models
+- **WHEN** a probe of Settings → Models, in its form or of a saved server, meets a late API
+- **THEN** the probe's `apis_why` names it, once, and the page reads `⚠ APIs: cannot be told:` with those words
+
+#### Scenario: Trying again
+- **WHEN** the check of a model in Settings → Models met a late API and the server answers now
+- **THEN** the next check asks the server anew: a probe with a late API is not kept
+
 ## MODIFIED Requirements
 
 ### Requirement: An API is proven without generating

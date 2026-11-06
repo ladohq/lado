@@ -68,9 +68,10 @@ Under the agents' variables, `#### A cloud provider`, linked from "What to expec
 - **What it costs.** LADO does not show what a session spent. Look in the provider's console (cloud.ru)
   or Activity (OpenRouter); Kilo's TUI shows OpenRouter's cost; Claude Code has `/cost`, its own count,
   not compared with a bill.
-- **Refusals.** 401, 402, 403 and 429 end the agent's turn, after about 70 s of the CLI's own repeats
-  on a 429, and the chat says why. Nothing repeats by itself after that: a run waits for you or the
-  lead, also at night.
+- **Refusals.** 401, 402, 403 and 429 end the agent's turn once the CLI's own repeats are spent, about
+  70 s on a 429 with no `Retry-After`, and the chat says why; a `Retry-After` lengthens the repeats of
+  OpenCode and Kilo, the agent busy meanwhile. Nothing repeats by itself after that: a run waits for
+  you or the lead, also at night.
 - **Claude Code with your plugins.** Your own plugins, rules and `CLAUDE.md` count: at 65536 they can
   fill the context in the first turn. Take a model of 131072 or more, or fewer plugins. (Also a line in
   "What to expect of a small model".)

@@ -18,7 +18,7 @@ ran on cloud.ru before. What is missing is what a provider that bills needs:
   plugin drops `statusCode`, and the Claude provider reads only `error` and `error_details`, the
   second of which 2.1.295 does not send.
 - **Claude Code repeats longest.** 11 requests in 3 minutes on a 401 and a 429, where OpenCode and
-  Kilo stop after about 70 s and at once on a 401.
+  Kilo stop after about 70 s with no `Retry-After` and at once on a 401.
 - **A late answer reads as a missing API.** `Answer.refuses_as_an_api` is false for no answer, so a
   POST over 5 s (a slow first TLS connection, LM Studio just after a load) gives `no Anthropic
   Messages API` and `lado model add` refuses.
@@ -59,11 +59,14 @@ does not show of cost is said. One source of truth: `Limit` stays the one rule o
 - With a context of 131072 or more and no output reported, the output is 32000 instead of 8192: a
   cloud model's long answer or reasoning is not cut. Below that nothing changes.
 - A start on a model of a public server with no known context warns: compaction comes late and the
-  output has no limit. Local and private servers stay silent, as today.
+  output has no limit. Local and private servers, by address or by a name of a local network, stay
+  silent, as today.
 - A turn refused with 401, 402, 403 or 429 reads in LADO's words with the status and the server's
   text; the whole text is the message's body. Such a turn is never a temporary error, so LADO resumes
   nothing; the lead or the human decides.
-- A Claude agent on a server repeats a request at most 7 times, about 70 s.
+- A Claude agent on a server has `CLAUDE_CODE_MAX_RETRIES` 7: on a 429 it repeats 7 times, about 70 s
+  with no `Retry-After`; on a 401 9 times, about 150 s. A provider's `Retry-After` lengthens the
+  repeats of OpenCode and Kilo, and `docs/install.md` says so.
 - The value of a server's key is taken out of an error's line and body.
 - A probe asks a late POST once more with a longer ceiling, and says `did not answer in time` instead
   of a missing API; `lado model add` and a start refuse in those words.
@@ -75,8 +78,8 @@ does not show of cost is said. One source of truth: `Limit` stays the one rule o
 
 - `model_servers.py`, `model_settings.py`, `providers/base.py`, `providers/claude.py`,
   `providers/opencode_family.py`, `providers/opencode_plugin.js`, `server/model_entries.py`,
-  `web/src/api.ts`, `web/src/LaunchModel.tsx` (a warning's link goes to the section it names):
-  9 code files. Tests; `tests/fake_endpoint.py`, `tests/fake_model_server.py`; docs.
+  `web/src/api.ts`, `web/src/LaunchModel.tsx` (a warning's link goes to the section it names),
+  `web/src/ModelSources.tsx` (the form says a late API): 10 code files. Tests; `tests/fake_endpoint.py`, `tests/fake_model_server.py`; docs.
   No schema change, no new dependency, no MCP tool or CLI option, no API field, no new screen. The
   line goes under 0.45.0: a feature, so a minor by the rule, which the epic's heading already is.
 

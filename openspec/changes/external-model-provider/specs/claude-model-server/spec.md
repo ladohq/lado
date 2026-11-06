@@ -2,7 +2,7 @@
 
 ### Requirement: A Claude agent on a server repeats a request within a limit
 
-The settings of a Claude agent on a server SHALL hold `CLAUDE_CODE_MAX_RETRIES` `7`, so that a refused or failed request stops after about 70 seconds, as on OpenCode and Kilo. A Claude agent on a built-in model SHALL have no such variable.
+The settings of a Claude agent on a server SHALL hold `CLAUDE_CODE_MAX_RETRIES` `7`, so that its repeats are limited: a 429 with no `Retry-After` ends the turn after about 70 seconds, as on OpenCode and Kilo, a 401 after about 150. A Claude agent on a built-in model SHALL have no such variable.
 
 #### Scenario: The settings
 - **WHEN** a Claude agent starts on a server's model

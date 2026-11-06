@@ -15,7 +15,8 @@
   model in `/model` beside their own; `--model ''` is the CLI's own settings.
 - **Run agents on a cloud provider.** A provider's address and key are enough on OpenCode, Kilo CLI
   and Claude Code: agents know its limits and compact in time, a refusal (401, 402, 403, 429) reads
-  in plain words with no key and ends the turn, and repeats stop after about 70 s.
+  in plain words with no key and ends the turn once the CLI's limited repeats are spent, which
+  takes longer when the provider names a wait.
 - **Run Claude Code on your own server.** An agent on a saved model of a server with Anthropic's
   API runs there, with no Claude login: your login and keys stay off the server, and `/model`
   shows that model alone. Workers can run on other servers or built-in models.

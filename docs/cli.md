@@ -635,8 +635,8 @@ was proven, after `APIs: cannot be told: <address> answers <status> to any POST`
 control was refused like an API; no `not:` line when every CLI suits. A POST with no answer in
 5 s goes once more, for 15 s; an API still silent reads `Claude Code (Anthropic Messages API did
 not answer in time)` on that line, is neither proven nor missing, `model-server add` saves the
-server with a warning, and `lado model add` and a start on that API refuse with `the <API> of
-<server> did not answer in time: try again`. What the server
+server with a warning, Settings → Models says it under `APIs: cannot be told`, and `lado model add`
+and a start on that API refuse with `the <API> of <server> did not answer in time: try again`. What the server
 says (its model ids, a redirect's location) is shown as one line of visible text
 (`text.one_line`). Each failure is one
 line on stderr and exit 1: `<address> does not answer (connection refused | unknown host |

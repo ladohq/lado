@@ -40,7 +40,10 @@ own default. A context below 131072 keeps the rule the local work tuned.
 ### D3. Who is warned of an unknown context
 
 `model_servers.is_local(root)` is taken out of `plain_http_warning`, which keeps its behaviour.
-`context_warning` warns when `limit is None`, the start is on a server and that server is not local.
+`context_warning` warns when `limit is None`, the start is on a server and that server is not
+`model_servers.in_network`: `is_local`, or a name with no dot or of `NETWORK_SUFFIXES`, which no
+provider that bills has. The key's rule stays by address alone: such a name may be anything, and a
+key over plain http to it is warned about as before.
 `CONTEXT_PEEK`'s sibling `CONTEXT_UNKNOWN_PEEK` goes to `model_entries`, which already builds the
 words of the folded Advanced. A local server stays silent: an Ollama model not yet running is normal
 there. A server that did not answer in `LIMIT_TIMEOUT` counts as unknown too: the warning is true.
@@ -72,10 +75,14 @@ choice. `isRetryable` of the plugin's error is not used: both CLIs have spent th
 
 `SERVER_SWITCHES` gets `CLAUDE_CODE_MAX_RETRIES: "7"`. Measured delays double from 0.5 s to about 36 s,
 so 7 repeats take about 72 s, what OpenCode and Kilo take on a 429. With the value 2, 3 requests went
-out on 401, 429 and 500. A built-in agent gets nothing. In the TUI, measured by the smoke on 2.1.295
-with `Retry-After: 1`: 8 requests of the turn on a 429, 10 on a 401, cause not looked into; beside
-them the session's title, a request with no tools that `claude -p` does not send, repeats as much, so
-a provider counts 16 and 20. The turn ends and the count stops on both.
+out on 401, 429 and 500. A built-in agent gets nothing. In the TUI, measured by the smoke on 2.1.295:
+8 requests of the turn on a 429, in 72 s with no `Retry-After`, 160 s at 20 s; 10 on a 401, in 149 s,
+cause not looked into; beside them the session's title, a request with no tools that `claude -p` does
+not send, repeats as much, so a provider counts 16 and 20. The turn ends and the count stops on both.
+At `Retry-After: 600` it stops at once. OpenCode and Kilo wait what the server names instead: 100 and
+101 s at 20 s, and at 600 s the agent is `busy` with a silent chat past 150 s. The repeats stay
+limited, so the requirement holds and the documents say it; telling the chat of that wait would read
+the CLIs' retry events, a new behaviour out of this change's scope.
 
 ### D8. The key's removal
 
@@ -89,7 +96,9 @@ later replacement. The hook runs with the agent's environment; the canary test p
 `Answer.status is None` for a POST means late or lost. `probe` asks those POSTs again in one `_all`
 with `LATE_TIMEOUT = 15`, a late control included, at most once. `Probe.late` holds the APIs still
 unanswered. `lines` prints them on the `not:` line in their own words. `Probe.late_warning()` gives
-one sentence that `add_server` and `ServerCheck.warnings` show, so no API field changes.
+one sentence that `lado model-server add` prints and `probe_info` puts in the existing `apis_why`
+when that is empty, so no API field changes and Settings says it once, in the form and on a saved
+server. A probe with a late API is not kept (`model_entries._keep`), as its words say to try again.
 `_on_server`'s check, `api not in found.apis`, raises `Refused(..., retry=True)` with those words when
 `api in found.late`. `server.apis` of a saved server holds what was proven; a later `lado model add`
 probes anew, so a late answer heals by itself.

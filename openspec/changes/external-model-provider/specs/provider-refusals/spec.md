@@ -53,11 +53,15 @@ A turn that ended on a status of those four SHALL NOT be temporary, whatever kin
 
 ### Requirement: No repeat without end on a refusal
 
-On a server that refuses every request with 401, 402, 403 or 429, each CLI SHALL end the turn by itself, and LADO SHALL add no request of its own to it.
+On a server that refuses every request with 401, 402, 403 or 429, each CLI SHALL end the turn by itself, and LADO SHALL add no request of its own to it. The repeats are the CLI's and limited in number; how long they take depends on the server's `Retry-After`, and until the turn ends the agent stays busy.
 
 #### Scenario: A real CLI on a server that answers 429
 - **WHEN** OpenCode, Kilo or Claude Code runs on a fake server that answers 429 to every request
 - **THEN** the turn ends within its CLI's repeats, the agent is idle, and the server's count of requests stops growing
+
+#### Scenario: A server that names a long wait
+- **WHEN** a server answers 429 with a long `Retry-After` to an agent of OpenCode or Kilo
+- **THEN** the CLI waits what the server names before each repeat, the agent is busy meanwhile, and `docs/install.md` says so
 
 ### Requirement: A server's key is in no error
 

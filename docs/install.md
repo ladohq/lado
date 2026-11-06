@@ -364,10 +364,14 @@ OpenCode and Kilo; Claude Code on cloud.ru's Anthropic API.
 - **What it costs.** LADO does not show what a session spent. Look in the provider's console
   (cloud.ru) or Activity (OpenRouter); Kilo's TUI shows OpenRouter's cost; Claude Code has `/cost`,
   its own count, not compared with a bill.
-- **Refusals.** 401, 402, 403 and 429 end the agent's turn, after about 70 s of the CLI's own repeats
-  on a 429, and the chat says why. Nothing repeats by itself after that: a run waits for you or the
-  lead, also at night. Claude Code's TUI repeats its request for the session's title too, so a
-  refusing provider may count about twice its requests.
+- **Refusals.** 401, 402, 403 and 429 end the agent's turn and the chat says why, once the CLI's own
+  repeats are spent. Nothing repeats by itself after that: a run waits for you or the lead, also at
+  night. On a 429 with no `Retry-After` the repeats take about 70 s on all three CLIs; on a 401
+  OpenCode and Kilo stop at once, Claude Code after about 150 s. A provider's `Retry-After` makes
+  them longer: OpenCode and Kilo wait what it names before each of about five repeats (100 s at
+  20 s, so nearly an hour at 600 s), and until then the agent is busy and the chat says nothing.
+  Claude Code took 160 s at 20 s, and stops at once at 600 s. Claude Code's TUI repeats its request
+  for the session's title too, so a refusing provider may count about twice its requests.
 - **Claude Code with your plugins.** Your own plugins, rules and `CLAUDE.md` count: at 65536 they can
   fill the context in the first turn. Take a model of 131072 or more, or fewer plugins.
 - A key the provider repeats in an error is removed from LADO's texts, not from the CLI's terminal

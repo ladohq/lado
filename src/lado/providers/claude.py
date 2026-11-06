@@ -158,7 +158,8 @@ SERVER_SWITCHES = {
     "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
     "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
     # By itself 10 repeats, 11 requests in 3 minutes on a 401 or 429. Its delays double from 0.5 s
-    # to about 36 s, so this is about 72 s, what OpenCode and Kilo take on a 429 (2.1.295).
+    # to about 36 s, so this is 72 s on a 429 with no Retry-After, what OpenCode and Kilo take,
+    # and 149 s and 10 requests on a 401 (2.1.295, measured in its TUI).
     "CLAUDE_CODE_MAX_RETRIES": "7",
 }
 # LADO's tools, which auto mode's classifier would judge. It asks the agent's own model, also in a

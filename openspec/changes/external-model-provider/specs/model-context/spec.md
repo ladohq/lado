@@ -2,7 +2,7 @@
 
 ### Requirement: A start on a public server with no known context is warned about
 
-When the model an agent starts on is on a server outside the human's machine and network, by the hosts of the rule on a key over plain http, and its context is not known, `lado start`, the start's warnings and the launch window SHALL warn, naming the model and the server and saying that compaction comes late and the output has no limit; the agent SHALL start. The folded Advanced SHALL name it `context unknown`.
+When the model an agent starts on is on a server outside the human's machine and network, by the hosts of the rule on a key over plain http and by a name with no dot or ending in `.local`, `.lan`, `.internal` or `.home.arpa`, and its context is not known, `lado start`, the start's warnings and the launch window SHALL warn, naming the model and the server and saying that compaction comes late and the output has no limit; the agent SHALL start. The folded Advanced SHALL name it `context unknown`.
 
 #### Scenario: A provider that lists no context
 
@@ -13,6 +13,11 @@ When the model an agent starts on is on a server outside the human's machine and
 
 - **WHEN** a session starts on a model of `http://192.168.1.10:1234` or `localhost` with no known context
 - **THEN** no such warning is given
+
+#### Scenario: A name of the human's network
+
+- **WHEN** a session starts on a model of `http://mac-studio.local:1234`, `http://gpu-box:8000` or `http://ollama.lan:11434` with no known context
+- **THEN** no such warning is given, and a key over plain http to that name is warned about as before
 
 #### Scenario: The folded Advanced
 

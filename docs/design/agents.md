@@ -175,9 +175,13 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   takes each `LADO_MODEL_KEY_*` of the hook's environment out of an error before any cut, as half a
   key would pass a later replacement. Measured on a fake server, requests of a turn (Claude Code
   with its own default of 10 repeats by `claude -p`; OpenCode 1.18.35, Kilo 7.8.8, about 70 s on a
-  429): on a 401 OpenCode 2, Kilo 1, Claude Code 11 in 179 s; on a 429 OpenCode 9, Kilo 6, Claude
-  Code 11. A Claude agent on a server has `CLAUDE_CODE_MAX_RETRIES` 7: its TUI then sends 8
-  requests of the turn on a 429 and 10 on a 401, and as many again for the session's title, a
+  429 with no `Retry-After`): on a 401 OpenCode 2, Kilo 1, Claude Code 11 in 179 s; on a 429
+  OpenCode 9, Kilo 6, Claude Code 11. `Retry-After` stretches these: OpenCode and Kilo wait what it
+  names, 100 and 101 s at 20 s; at 600 s both were still `busy` after 150 s with nothing in the chat
+  (by that proportion about 50 minutes, not measured), and LADO does not see the wait. A Claude
+  agent on a server has `CLAUDE_CODE_MAX_RETRIES` 7: its TUI then sends 8 requests of the turn on a
+  429, in 72 s with no `Retry-After`, 160 s at 20 s, and one at 600 s, where it gives up at once; 10
+  on a 401, in 149 s; and as many again for the session's title, a
   request with no tools, that goes on a few seconds past the turn's end. Claude Code runs no hook when
   the human interrupts a turn with Esc, while text streams, while a tool runs or on a
   permission dialog (checked by hand with 2.1.292): the agent stays `busy`, or `waiting`
@@ -232,8 +236,9 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   is at most a quarter of the context, when none is reported 8192, or 32000 on a context of 131072
   or more: the CLIs' own default, so reading a cloud provider's context cuts no long answer. Below
   `Provider.min_context` the start warns, and goes on; so does an unknown context on a server
-  outside the human's machine and network (`model_servers.is_local`, the rule of a key over plain
-  http), where a late compaction costs money. An OpenCode agent on a server's model also gets npm's
+  outside the human's machine and network (`model_servers.in_network`: the hosts of the rule of a
+  key over plain http, and a name with no dot or ending in `.local`, `.lan`, `.internal` or
+  `.home.arpa`), where a late compaction costs money. An OpenCode agent on a server's model also gets npm's
   `fetch_retries=0` and `fetch_timeout=5000` (`OpenCodeProvider.server_env`) while
   `@opencode-ai/plugin` is not in OpenCode's config folder: any `plugin` entry makes it wait for
   that install, 72 s with outside traffic refused, 2 s with these or with the package there. LADO's

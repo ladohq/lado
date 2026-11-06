@@ -1901,6 +1901,32 @@ Wanted: the installer run with `UV_TOOL_DIR` (the prefix's parent) and `UV_TOOL_
 `self_update._install_by_hand` names them.
 Found: 2026-10-25, hotfix/lad-144-by-hand-way-back.
 
+## `test_kits_lists_the_same_kits_in_every_folder` depends on the checkout's path
+
+Size: S. Why here: it fails only in a checkout whose path has the word, but then `make test` is
+red with nothing wrong.
+
+`tests/test_cli.py` asserts that `team` and `crew` are not in the output of `lado kits`, and that
+output holds the built-in kits' full paths. A worktree such as `.../task-lad-197-team-head` fails
+it. Wanted: the test looks at the kits' names, not at the whole text.
+Found: 2026-11-06, branch lado/lad-197/task-lad-197-team-head (LAD-197).
+
+## Flaky: an OpenCode test of `LoginSheet.test.tsx` in a full vitest run
+
+Size: S. Why here: seen once, and a rerun passes, but a flake in `make web` costs a round.
+
+It failed once in a full run of `make web` and passed 3 times alone and in the next full run; the
+change under review did not touch the file. Wanted: its cause found and the test made stable.
+Found: 2026-11-06, review of branch lado/lad-197/task-lad-197-team-head (LAD-197).
+
+## Flaky UI test: `test_the_strips_badges_tell_task_sessions_apart`
+
+Size: S. Why here: seen once in a parallel run under load; alone it passes.
+
+Its check that the badge's text fits read a wider text than the box, likely before the font had
+loaded. Wanted: the test waits for the fonts.
+Found: 2026-11-06, branch lado/lad-197/task-lad-197-team-head (LAD-197).
+
 # P3: maybe never
 
 ## A relative LADO_HOME breaks the reads of lado.db

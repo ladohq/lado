@@ -137,7 +137,9 @@ def test_a_project_that_comes_late_chooses_the_level_again(page: Page, server, r
     page.set_viewport_size({"width": 1920, "height": 1080})
     log_in(page, server)
     held = []
-    page.route(f"**/api/sessions/{session}/agents", lambda route: route.fulfill(json=team(OWN, RUNS)))
+    page.route(
+        f"**/api/sessions/{session}/agents", lambda route: route.fulfill(json=team(OWN, RUNS))
+    )
     page.route(f"**/api/sessions/{session}/about", lambda route: held.append(route))
     page.goto(f"{server['url']}/sessions/{session}")
     expect(page.get_by_role("toolbar", name="Team")).to_be_visible()

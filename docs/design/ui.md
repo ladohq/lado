@@ -1772,7 +1772,10 @@ connection, above).
   that project (and repository: the project's page's New session… and Start session).
 - **Resume** is the same window in its Resume mode: Where and Name fixed, kits, provider,
   mode and Advanced filled from the session (`SessionInfo` carries its settings) and
-  changeable; it sends only what changed (`POST /api/sessions/{name}/resume`). A provider
+  changeable; it sends only what changed (`POST /api/sessions/{name}/resume`). Where is the
+  folder as text that wraps, whole at any width, not a disabled input, which clips a long path
+  and takes no finger's scroll (LAD-226: the human's choice over an ellipsis, as the end of a
+  path says the most). A provider
   without its login is off here as in New session (LAD-163): its option "`<name>` · not
   logged in" disabled, the red note with **Log in first**, and Resume off, as the resume
   would be refused (lado.logins); another CLI with its login can be chosen. LADO's own
@@ -2434,7 +2437,9 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
   height, and `body` does not clip it, the app being fixed. With the on-screen keyboard open the app shrinks to
   the part above it, the top bar kept at the screen's top: Safari ignores the viewport's
   `interactive-widget=resizes-content` (Android follows it) and pans the page instead.
-  None of it on a computer: no variable, the app in the page's flow.
+  None of it on a computer: no variable, the app in the page's flow. Wider than 900 px the
+  rail is as high as the app, so on a tablet held sideways Report a bug and Settings end with
+  the visible part (LAD-226); a computer's rail stays as high as the window.
 - **Menu**: the rail is hidden; Menu (☰, "Menu" or "Menu, N waiting", the Needs you count
   as a badge) starts the top bar and opens the rail from the left as a drawer, 260 px,
   with its names, over a dimmed page. An item, the dimmed page or Esc closes it, the focus

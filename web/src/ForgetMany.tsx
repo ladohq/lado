@@ -9,6 +9,7 @@ import { useNavigate, useParams } from "react-router";
 
 import { forgetSession, getForgetPreview, type ForgetPreview, type SessionInfo } from "./api";
 import { since } from "./ChatText";
+import { useModal } from "./modal";
 import { messageOf, plural } from "./SessionControl";
 import { label } from "./sessionLabel";
 
@@ -34,8 +35,8 @@ export function ForgetManyDialog({ sessions, onClose }: { sessions: SessionInfo[
   const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
   const [finished, setFinished] = useState(false);
 
+  useModal(dialog);
   useEffect(() => {
-    dialog.current?.showModal();
     // Cancel first, not the first tick: showModal would focus that.
     cancel.current?.focus();
     let shown = true;

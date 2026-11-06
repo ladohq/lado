@@ -45,6 +45,7 @@ import { statisticsLine } from "./Telemetry";
 import { ClipboardIcon, FolderIcon, GitHubIcon, QrIcon } from "./icons";
 import { useLive } from "./live";
 import { useBelow, useDismiss } from "./Menu";
+import { useModal } from "./modal";
 import { useMedia } from "./phone";
 import { storeUpdateSeen, updateSeen } from "./prefs";
 import { STATUS_WORDS } from "./Team";
@@ -526,8 +527,8 @@ function UpdateDialog({ onClose }: { onClose: (started: boolean) => void }) {
   const [plan, setPlan] = useState<UpdatePlan | { error: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
+  useModal(dialog);
   useEffect(() => {
-    dialog.current?.showModal();
     let current = true;
     getUpdatePlan().then(
       (found) => current && setPlan(found),

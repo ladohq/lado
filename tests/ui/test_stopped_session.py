@@ -9,6 +9,7 @@ import pytest
 from playwright.sync_api import Browser, Page, expect
 from test_gates import gated_session, waiting_card
 from test_launch import idle, log_in, stopped_session
+from test_layout import gives_the_focus_back
 from test_main_screen import running_session
 
 from lado import runtime
@@ -219,3 +220,14 @@ def test_terminals_opened_by_hand_store_nothing_and_fold_on_a_reload(
     assert (stored(page, "lado.terminals"), stored(page, "lado.lastColumn")) == before
     page.reload()
     expect(terminals(page).get_by_role("button", name="Show the terminals")).to_be_visible()
+
+
+@pytest.mark.parametrize("by", ["Escape", "Cancel"])
+def test_the_resume_window_gives_the_focus_back_to_either_button(page: Page, server, repo, by):
+    session = stopped_session(repo)
+    log_in(page, server, f"/sessions/{session}")
+    window = page.get_by_role("dialog", name="Resume session")
+    gives_the_focus_back(page, bar(page).get_by_role("button", name="Resume session"), window, by)
+    page.get_by_role("link", name="Agents").click()  # on Activity the bar has it, not the head
+    head = page.get_by_role("banner").locator(".session-head")
+    gives_the_focus_back(page, head.get_by_role("button", name="Resume…"), window, by)

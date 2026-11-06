@@ -31,6 +31,7 @@ import { KitCard, type Source, type SourceKind } from "./KitCard";
 import type { RowMenuItem } from "./RowMenu";
 import { PlanContents } from "./KitPlan";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
+import { useModal } from "./modal";
 import { NotFound } from "./pages";
 import { storedKitsSource, storeKitsSource } from "./prefs";
 import { useTitle } from "./Shell";
@@ -572,9 +573,7 @@ function Modal(props: {
   children: ReactNode;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
+  useModal(dialog);
   const frame = (
     <>
       <header className="kits-dialog-head">{props.head ?? <h3>{props.title}</h3>}</header>

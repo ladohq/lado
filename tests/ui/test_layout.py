@@ -427,3 +427,75 @@ def test_many_tabs_stay_on_one_line_and_scroll_with_the_supervisors_tab_kept(
     expect(buttons).to_have_count(6)
     expect(buttons.first).to_have_accessible_name("Open supervisor's terminal")
     shot(page, "collapsed")
+
+
+def gives_the_focus_back(page: Page, opener, window, by: str = "Escape") -> None:
+    """Opens `window` from `opener` by the keyboard and closes it by Esc or its Cancel: the
+    focus is on the opener with no tooltip, and Tab goes on from there."""
+    opener.focus()
+    page.keyboard.press("Enter")
+    expect(window).to_be_visible()
+    if by == "Escape":
+        page.keyboard.press("Escape")
+    else:
+        window.get_by_role("button", name=by).focus()
+        page.keyboard.press("Enter")
+    expect(window).to_have_count(0)
+    expect(opener).to_be_focused()
+    expect(page.get_by_role("tooltip")).to_have_count(0)
+    page.keyboard.press("Tab")
+    assert opener.evaluate(
+        "button => button.compareDocumentPosition(document.activeElement)"
+        " & Node.DOCUMENT_POSITION_FOLLOWING"
+    ), page.evaluate("document.activeElement.outerHTML.slice(0, 200)")
+
+
+def test_the_session_list_and_session_windows_give_the_focus_back(page: Page, server, repo):
+    session = with_worker(repo)
+    page.goto(f"{server['url']}/sessions/{session}/agents/w1?token={server['token']}")
+    worker = page.get_by_role("region", name="Agent w1")
+    gives_the_focus_back(
+        page,
+        worker.get_by_role("button", name="Finish…"),
+        page.get_by_role("dialog", name="Finish w1?"),
+    )
+    gives_the_focus_back(
+        page,
+        page.get_by_role("button", name="New session"),
+        page.get_by_role("dialog", name="New session"),
+        "Cancel",
+    )
+    page.get_by_role("button", name="System").click()
+    gives_the_focus_back(
+        page,
+        page.get_by_role("button", name="Open on another device"),
+        page.get_by_role("dialog", name="Open LADO on another device"),
+    )
+
+
+def test_forget_gives_the_focus_back_with_no_tooltip(page: Page, server, repo):
+    session = with_worker(repo)
+    runtime.stop_session(session)
+    page.goto(f"{server['url']}/sessions/{session}?token={server['token']}")
+    forget = page.get_by_role("banner").locator(".session-head").get_by_role("button", name="Forget…")
+    window = page.get_by_role("dialog", name=f'Forget session "{session}"?')
+    gives_the_focus_back(page, forget, window)
+    gives_the_focus_back(page, forget, window, "Cancel")
+    # Cancel by the mouse, and the pointer gone from it: nothing shows over the button.
+    forget.click()
+    window.get_by_role("button", name="Cancel").click()
+    expect(window).to_have_count(0)
+    expect(forget).to_be_focused()
+    page.mouse.move(700, 600)
+    page.wait_for_timeout(500)  # past the tooltip's delay
+    expect(page.get_by_role("tooltip")).to_have_count(0)
+
+
+def test_add_kit_gives_the_focus_back(page: Page, server):
+    page.goto(f"{server['url']}/kits/available?token={server['token']}")
+    gives_the_focus_back(
+        page,
+        page.get_by_role("button", name="Add kit…"),
+        page.get_by_role("dialog", name="Add kit"),
+        "Cancel",
+    )

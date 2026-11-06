@@ -557,6 +557,19 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
+## test_a_labelled_session_kept_after_its_command_gives_its_text_and_status fails under load
+
+Size: S. Why here: a red unit run for no cause in the work, about one run of `tests/test_tmux.py`
+in eight under `-n auto`; the cause is not known yet, and it may be in `tmux.pane_text` rather
+than in the test, which a login window's text depends on (LAD-168).
+
+Measured on 2026-11-06, tmux 3.3a, 16 workers: 5 red runs of 40 on the file with the fix of
+LAD-191 and 5 of 40 without it, taken in turn, and 15 of 15 green with the test alone under
+`-n0`. Two shapes: `assert ['1', ''] == ['1', '3']` after the whole 10 s (the pane is dead and
+tmux gives no exit status), and `assert '' == 'one\n\nlast words'` with the status there (the
+pane's text is empty). Wanted: the cause found, and the test or `tmux` fixed for it.
+Found: 2026-11-06, branch lado/lado/task-lad-191 (LAD-191).
+
 ## Esc in the Launch window leaves the focus on the page's body
 
 Size: S. Why here: a keyboard user loses their place after every Esc in that window; an old

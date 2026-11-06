@@ -279,6 +279,21 @@ def test_a_cli_takes_a_config_with_a_model_s_limit(smoke_repo, smoke_provider, m
         server.close()
 
 
+@pytest.mark.parametrize("smoke_provider", ["kilo", "opencode"], indirect=True)
+def test_a_message_right_after_the_start_goes_in_at_the_first_attempt(smoke_repo, smoke_provider):
+    """Nothing is typed before the TUI's prompt has focus: the real CLI takes the first paste."""
+    provider = smoke_provider
+    try:
+        runtime.start_session(str(smoke_repo), SESSION, "bypassPermissions", provider)
+        runtime.write_as_human(SESSION, HUMAN_SAYS)
+        summary = HUMAN_SAYS.splitlines()[0]
+        check = answering(provider, "supervisor", delivered(state.HUMAN, "supervisor", summary))
+        wait_for(check, "the human's message", 120)
+        assert message(state.HUMAN, "supervisor", summary).attempts == 1
+    finally:
+        runtime.stop_session(SESSION)
+
+
 PROBE = Path(__file__).with_name("probe_mcp.py")
 PROBE_VALUE = "smoke-project-value=1 ü"
 PROBE_SECRET = "smoke-project-secret=2 ü"

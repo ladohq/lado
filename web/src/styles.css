@@ -2045,8 +2045,8 @@ h3 {
 
 /* The session's tabs: the band runs from edge to edge of the session's column; an open
    search (.tab-find.open) lies over it. The tabs scroll inside it, the search stays at its
-   end. Short of room they give way by `data-fit` (Sessions.tsx): no icons, no counts, then a
-   fade with a button at each end that has more. */
+   end. Short of room they give way by `data-fit` (Sessions.tsx): no icons, no counts, the tool's
+   short form, then a fade with a button at each end that has more. */
 .session-tabs {
   position: relative;
   margin: 0 calc(-1 * var(--main-pad)) 12px;
@@ -2069,7 +2069,7 @@ h3 {
 }
 
 .session-tabs:not([data-fit="0"]) .tab-item > svg,
-.session-tabs:is([data-fit="2"], [data-fit="3"]) .tab-count {
+.session-tabs:is([data-fit="2"], [data-fit="3"], [data-fit="4"]) .tab-count {
   display: none;
 }
 
@@ -3480,6 +3480,21 @@ h3 {
 }
 
 .session-tabs[data-short] .between-label {
+  display: none;
+}
+
+/* The icon for Yours | All, from the level of the tool's short form. */
+.session-tabs .between-toggle {
+  display: none;
+  align-self: center;
+  margin: -5px 0 0 12px;
+}
+
+.session-tabs:is([data-fit="3"], [data-fit="4"]) .between-toggle {
+  display: grid;
+}
+
+.session-tabs:is([data-fit="3"], [data-fit="4"]) .between-wrap {
   display: none;
 }
 

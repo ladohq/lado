@@ -27,6 +27,14 @@
 
 ### Fixed
 
+- **A session's four tabs stay whole in a narrow chat.** Beside the terminals `Yours | All`
+  folds into an icon that does the same, and a tab you reach with Tab no longer hides under
+  the fade or the arrow.
+
+- **An agent's status reads the same everywhere.** The Agents tab, an agent's page and the
+  update's list say `working`, `waits for you` and `in the background`, as the agent's popup
+  does. The team's list button now has a tooltip with its name.
+
 - **A tooltip no longer pops up when you come back to LADO's tab.** A session's card and
   other tooltips stay hidden on your return; Tab or the pointer shows them as usual.
 

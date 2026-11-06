@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type FocusEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type RefObject,
@@ -81,7 +82,7 @@ import { useSkipSlot, useTitle, useTopBar } from "./Shell";
 import { Splitter, useStripFocus, useWidth } from "./Splitter";
 import { HeadTeam, Team } from "./Team";
 import { TitleEdit } from "./TitleEdit";
-import { Tooltip } from "./Tooltip";
+import { focusQuietly, Tooltip } from "./Tooltip";
 
 // What each status means to the human, in the words of `lado ls`.
 const STATUS: Record<SessionStatus, string> = {
@@ -853,9 +854,41 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
 }
 
 // How the tabs give way when they do not fit their bar (styles.css, `data-fit`): 0 as they are,
-// 1 no icons, 2 no counts either, 3 they scroll sideways behind a fade, with ‹ and ›. Before
-// any of them a tool's word at the bar's end goes (`data-short`).
-const LAST_FIT = 3;
+// 1 no icons, 2 no counts either, 3 the bar's tool takes its short form, 4 they scroll sideways
+// behind a fade, with ‹ and ›. Before any of them a tool's word at the bar's end goes
+// (`data-short`). With no short form level 3 changes nothing, so the trial passes on to 4.
+const LAST_FIT = 4;
+const TAB_ROOM = 56; // what `.session-tabs-more` covers at an end: a tab in view stands clear of it
+
+// The row's scrollLeft that keeps a tab clear of `room` at each end; the row clamps it, so the
+// row's own ends need no room. A tab too wide for what is left keeps its start.
+export function tabScroll(
+  view: { left: number; width: number },
+  tab: { left: number; width: number },
+  room: number,
+): number {
+  const left = Math.max(view.left, tab.left + tab.width + room - view.width);
+  return Math.min(left, tab.left - room);
+}
+
+// By the row's own scroll: Chromium's Tab would start from a tab scrolled to with
+// scrollIntoView (Terminals.tsx).
+function keepInView(tabs: HTMLElement, on: HTMLElement) {
+  const view = { left: tabs.scrollLeft, width: tabs.clientWidth };
+  tabs.scrollLeft = tabScroll(view, { left: on.offsetLeft, width: on.offsetWidth }, TAB_ROOM);
+}
+
+// What puts the focus back after a trial, which hides the form of the bar's tool that has it,
+// for a moment or for good: on that form while it shows, else on the other.
+function holdToolFocus(bar: HTMLElement): () => void {
+  const held = document.activeElement as HTMLElement | null;
+  if (!held || !bar.contains(held) || !held.closest(".between-wrap, .between-toggle")) return () => {};
+  return () => {
+    const forms = [held, ...bar.querySelectorAll<HTMLElement>('.between-toggle, .between [aria-checked="true"]')];
+    const back = forms.find((one) => one.offsetParent !== null);
+    if (back && back !== document.activeElement) focusQuietly(back);
+  };
+}
 
 // The tab bar: the tabs, which give way by the levels above, and at its right end what stays
 // outside them (`children`, a tab's search). The level is chosen by trying each before the
@@ -888,6 +921,7 @@ function SessionTabs({
     const tabs = row.current;
     if (!box || !tabs) return;
     const choose = () => {
+      const putBack = holdToolFocus(box);
       let level = 0;
       delete box.dataset.short;
       box.dataset.fit = "0";
@@ -897,6 +931,7 @@ function SessionTabs({
         if (tabs.scrollWidth <= tabs.clientWidth) break;
       }
       box.dataset.fit = String(level);
+      putBack();
       setFit(level);
       lookAtEnds();
     };
@@ -907,22 +942,24 @@ function SessionTabs({
     for (const one of tabs.children) observer.observe(one);
     return () => observer.disconnect();
   }, [lookAtEnds]);
-  // The tab shown stays in view. By the row's own scroll: Chromium's Tab would start from a
-  // tab scrolled to with scrollIntoView (Terminals.tsx).
+  // The tab shown stays in view.
   useLayoutEffect(() => {
     const tabs = row.current;
     const on = tabs?.querySelector<HTMLElement>('[aria-current="page"]');
     if (!tabs || !on) return;
-    if (on.offsetLeft < tabs.scrollLeft) tabs.scrollLeft = on.offsetLeft;
-    else if (on.offsetLeft + on.offsetWidth > tabs.scrollLeft + tabs.clientWidth)
-      tabs.scrollLeft = on.offsetLeft + on.offsetWidth - tabs.clientWidth;
+    keepInView(tabs, on);
     lookAtEnds();
   }, [tab, fit, lookAtEnds]);
+  // So does the tab the keyboard reaches; not a press's: the row moving under the pointer would
+  // lose the click.
+  const focused = (event: FocusEvent<HTMLDivElement>) => {
+    if (event.target.matches(":focus-visible")) keepInView(event.currentTarget, event.target);
+  };
   const scroll = (side: 1 | -1) => row.current?.scrollBy({ left: side * row.current.clientWidth });
   return (
     <nav ref={bar} className="tab-bar session-tabs" aria-label="Session sections" data-fit={fit}>
       <div className="session-tabs-box">
-        <div ref={row} className="session-tabs-scroll" onScroll={lookAtEnds}>
+        <div ref={row} className="session-tabs-scroll" onScroll={lookAtEnds} onFocus={focused}>
           {TABS.map((one) => {
             const SectionIcon = TAB_ICONS[one];
             return (
@@ -967,8 +1004,39 @@ function SessionTabs({
   );
 }
 
+// The icon toggle Messages between agents (pressed, the feed also shows what agents write to
+// each other; it changes only what the feed shows, and is remembered; decided 2026-10-15,
+// LAD-77, mockup-placement.html variant Б): the end of a phone's team row, the short form of
+// MessagesChoice.
+function MessagesToggle() {
+  const agentMessages = useAgentMessages();
+  const tip = (
+    <>
+      <div className="tooltip-line">Messages between agents: {agentMessages ? "shown" : "hidden"}</div>
+      <div className="tooltip-line">
+        {agentMessages ? "Click to show only your conversation with the agents." : "Click to also show what agents write to each other."}
+      </div>
+    </>
+  );
+  return (
+    <Tooltip tip={tip}>
+      <button
+        type="button"
+        className="icon-button between-toggle"
+        aria-label="Messages between agents"
+        aria-pressed={agentMessages}
+        onClick={() => storeAgentMessages(!agentMessages)}
+      >
+        <BetweenIcon />
+      </button>
+    </Tooltip>
+  );
+}
+
 // Which messages the Activity feed shows, at the right end of the tab bar above a phone. Tab
-// reaches the chosen one, the arrows choose the other (a radio group's keys). LAD-197.
+// reaches the chosen one, the arrows choose the other (a radio group's keys). LAD-197. On a
+// narrow bar the icon stands for it (`data-fit`: both are there, CSS shows one, so the trial
+// needs no render).
 function MessagesChoice() {
   const all = useAgentMessages();
   const keyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -992,15 +1060,18 @@ function MessagesChoice() {
     </Tooltip>
   );
   return (
-    <div className="between-wrap">
-      <span className="between-label" aria-hidden="true">
-        Messages
-      </span>
-      <div className="between" role="radiogroup" aria-label="Messages between agents" onKeyDown={keyDown}>
-        {radio("Yours", "Only your conversation with the agents", false)}
-        {radio("All", "Also what agents write to each other", true)}
+    <>
+      <div className="between-wrap">
+        <span className="between-label" aria-hidden="true">
+          Messages
+        </span>
+        <div className="between" role="radiogroup" aria-label="Messages between agents" onKeyDown={keyDown}>
+          {radio("Yours", "Only your conversation with the agents", false)}
+          {radio("All", "Also what agents write to each other", true)}
+        </div>
       </div>
-    </div>
+      <MessagesToggle />
+    </>
   );
 }
 
@@ -1409,37 +1480,17 @@ function StartedNotice({ name }: { name: string }) {
 }
 
 // The Activity tab: the feed with the composer; on a phone, above them, the team, ended by the
-// icon toggle Messages between agents (pressed, the feed also shows what agents write to each
-// other; it changes only what the feed shows, and is remembered; decided 2026-10-15, LAD-77,
-// mockup-placement.html variant Б). Above a phone the team is in the head and the choice in the
-// tab bar (MessagesChoice).
+// icon toggle Messages between agents. Above a phone the team is in the head and the choice in
+// the tab bar (MessagesChoice).
 function Activity({ session, stopped }: { session: string; stopped: boolean }) {
   const phone = usePhone();
   const agentMessages = useAgentMessages();
-  const tip = (
-    <>
-      <div className="tooltip-line">Messages between agents: {agentMessages ? "shown" : "hidden"}</div>
-      <div className="tooltip-line">
-        {agentMessages ? "Click to show only your conversation with the agents." : "Click to also show what agents write to each other."}
-      </div>
-    </>
-  );
   return (
     <div className="activity">
       {phone && (
         <div className="team-row">
           <Team session={session} />
-          <Tooltip tip={tip}>
-            <button
-              type="button"
-              className="icon-button between-toggle"
-              aria-label="Messages between agents"
-              aria-pressed={agentMessages}
-              onClick={() => storeAgentMessages(!agentMessages)}
-            >
-              <BetweenIcon />
-            </button>
-          </Tooltip>
+          <MessagesToggle />
         </div>
       )}
       <Chat session={session} stopped={stopped} agentMessages={agentMessages} />

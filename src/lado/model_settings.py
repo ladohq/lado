@@ -199,6 +199,8 @@ def add_server(
     if warning:
         warn(warning)
     found = model_servers.probe(address, sent, add_command(name, replace))
+    if late := found.late_warning():
+        warn(late)
     for other in state.model_servers():
         if (saved is None or other.id != saved.id) and same_address(other.address, found.address):
             note(f'same address as model server "{other.name}"')
@@ -447,6 +449,12 @@ def _on_server(
                 retry=True,
             ) from None
         raise Refused(text, exc.hint, SERVER_FIELD, retry=True) from None
+    if api in found.late:
+        raise Refused(
+            f"{model_servers.late_words([api])} of {server.name} {model_servers.LATE}: try again",
+            field=SERVER_FIELD,
+            retry=True,
+        )
     if api not in found.apis:
         suits = [title for title, _ in found.clis()[0]]
         raise Refused(

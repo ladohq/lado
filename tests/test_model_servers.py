@@ -484,6 +484,66 @@ def test_the_limit_is_five_seconds():
     assert ms.TIMEOUT == 5
 
 
+# A POST with no answer in time.
+
+
+@pytest.fixture
+def short_ceilings(monkeypatch):
+    monkeypatch.setattr(ms, "TIMEOUT", 0.3)
+    monkeypatch.setattr(ms, "LATE_TIMEOUT", 0.6)
+
+
+def test_a_late_post_is_asked_once_more_with_a_longer_ceiling():
+    assert ms.LATE_TIMEOUT == 15
+
+
+def test_a_post_that_answers_the_second_time_proves_its_api(serve, short_ceilings):
+    server = serve("late-once")
+    found = ms.probe(server.url)
+    assert base.ANTHROPIC_MESSAGES in found.apis
+    assert found.late == frozenset()
+    assert found.late_warning() is None
+    assert server.paths().count(("POST", fake.MESSAGES)) == 2
+    assert server.paths().count(("POST", fake.CHAT)) == 1
+
+
+def test_a_post_that_never_answers_is_neither_proven_nor_missing(serve, short_ceilings):
+    server = serve("late-always")
+    found = ms.probe(server.url)
+    assert base.ANTHROPIC_MESSAGES not in found.apis
+    assert found.late == {base.ANTHROPIC_MESSAGES}
+    assert server.paths().count(("POST", fake.MESSAGES)) == 2
+    assert "not: Claude Code (Anthropic Messages API did not answer in time), Codex CLI (no " + (
+        "Responses API)"
+    ) in ms.lines(found)
+    assert found.late_warning() == (
+        f"the Anthropic Messages API of {server.url} did not answer in time: try again"
+    )
+
+
+def test_an_api_that_answers_no_is_asked_once(serve, short_ceilings):
+    server = serve("openai")
+    found = ms.probe(server.url)
+    assert found.late == frozenset()
+    assert server.paths().count(("POST", fake.MESSAGES)) == 1
+    assert "Claude Code (no Anthropic Messages API)" in ms.lines(found)[-1]
+
+
+def test_a_late_control_is_asked_again_and_still_proves_nothing(serve, short_ceilings):
+    server = serve("late-control")
+    found = ms.probe(server.url)
+    assert server.paths().count(("POST", fake.CONTROL)) == 2
+    assert found.apis == frozenset()
+    assert found.apis_why == f"{server.url} answers 400 to any POST"
+
+
+def test_a_server_known_by_no_answer_says_what_did_not_answer(serve, short_ceilings):
+    server = serve("late-no-list")
+    with pytest.raises(ms.ProbeError) as raised:
+        ms.probe(server.url)
+    assert "Anthropic Messages API did not answer in time" in str(raised.value)
+
+
 def test_unknown_host_does_not_answer():
     with pytest.raises(ms.ProbeError, match=r"does not answer \(unknown host\)"):
         ms.probe("http://lado-probe-test.invalid:4000")

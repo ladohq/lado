@@ -9,7 +9,9 @@ to a path no server has, eight at most. Only the POSTs and the list in Anthropic
 other only fills a gap, as a gateway of both APIs lists in Anthropic's shape with it. A POST
 proves its API when the server refuses the empty body with 400 or 422 and a JSON object,
 unless the control is refused the same way: then the server answers every POST alike and
-proves nothing. Each request is cut at TIMEOUT, its name lookup included; no redirect is
+proves nothing. Each request is cut at TIMEOUT, its name lookup included; a POST with no
+answer then goes once more, cut at LATE_TIMEOUT, and an API still silent is neither proven
+nor missing (`Probe.late`). No redirect is
 followed, so neither a request nor the key reaches another host. The CLIs that suit a
 server follow from the APIs it proved, by each provider's `server_api`; its type is only
 shown. The key goes in the requests' headers and nowhere else: no message is built from
@@ -37,9 +39,11 @@ from lado import text as visible
 from lado.providers import base
 
 TIMEOUT = 5  # seconds per request, its name lookup included
+LATE_TIMEOUT = 15  # seconds for a POST asked again: a first TLS connection, a model being loaded
 LIMIT_TIMEOUT = 2  # seconds for a model's context at a start, which waits for it
 MAX_ANSWER = 4 * 1024 * 1024  # bytes of an answer read; a longer list is no list
 TOO_LARGE = "the answer is larger than 4 MiB"
+LATE = "did not answer in time"  # an API whose POST got no answer even the second time
 
 OLLAMA = "Ollama"
 LMSTUDIO = "LM Studio"
@@ -129,7 +133,8 @@ class Answer:
 class Probe:
     """A server a probe recognised. `models` is None for no list, with why in `models_why`;
     `apis_why` says why no API could be told, "" when they could; `embeddings` the models the
-    server types as embeddings (LM Studio's own list), none for a server that types none."""
+    server types as embeddings (LM Studio's own list), none for a server that types none; `late`
+    the APIs whose POST got no answer either time."""
 
     address: str
     added_scheme: bool
@@ -139,9 +144,21 @@ class Probe:
     models_why: str = ""
     apis_why: str = ""
     embeddings: frozenset[str] = frozenset()
+    late: frozenset[str] = frozenset()
 
     def clis(self) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
         return clis(self.apis)
+
+    def late_warning(self) -> str | None:
+        """What to tell of the `late` APIs when the server is saved; None for none."""
+        if not self.late:
+            return None
+        return f"{late_words(self.late)} of {self.address} {LATE}: try again"
+
+
+def late_words(apis: Iterable[str]) -> str:
+    """The APIs that did not answer, in a sentence."""
+    return "the " + ", ".join(api for api in API_PATHS if api in frozenset(apis))
 
 
 Suiting = list[tuple[providers.Provider, str]]
@@ -275,7 +292,8 @@ def probe(
         (root + MODELS, "GET", ANTHROPIC_VERSION),
     ]
     asked += [(root + path, "POST", ANTHROPIC_VERSION) for path in [*API_PATHS.values(), CONTROL]]
-    version, lmstudio, versioned, *posts, control = _all(opener, asked, headers)
+    version, lmstudio, versioned, *posts = _all(opener, asked, headers)
+    *posts, control = _with_late_posts(opener, asked[-len(posts) :], posts, headers)
     for answer in (listed, version, lmstudio, versioned, *posts, control):
         if answer.status in (401, 403):
             if key is None:
@@ -286,6 +304,7 @@ def probe(
                 )
             raise ProbeError(f"{root} refused the key ({answer.status})", field=KEY)
     apis = frozenset(api for api, a in zip(API_PATHS, posts, strict=True) if a.refuses_as_an_api())
+    late = frozenset(api for api, a in zip(API_PATHS, posts, strict=True) if a.status is None)
     apis_why = ""
     if control.refuses_as_an_api():
         apis, apis_why = frozenset(), f"{root} answers {control.status} to any POST"
@@ -297,11 +316,25 @@ def probe(
         why = f"GET {MODELS}: {listed.said()}"
         if apis_why:
             why += f"; it answers {control.status} to any POST, so its APIs cannot be told"
+        if late:
+            why += f"; {late_words(late)} {LATE}"
         raise ProbeError(
             f"unknown server: {root} answered, but not as an OpenAI-compatible, "
             f"Anthropic-compatible, Ollama or LM Studio server ({why})"
         )
-    return Probe(root, added, kind, apis, models, models_why, apis_why, _embeddings(lmstudio))
+    return Probe(root, added, kind, apis, models, models_why, apis_why, _embeddings(lmstudio), late)
+
+
+def _with_late_posts(
+    opener, asked: list[tuple[str, str, dict[str, str]]], posts: list[Answer], headers
+) -> list[Answer]:
+    """`posts`, the answers to `asked`, with each that got none asked once more."""
+    late = [i for i, answer in enumerate(posts) if answer.status is None]
+    if not late:
+        return posts
+    answers = _all(opener, [asked[i] for i in late], headers, LATE_TIMEOUT)
+    again = dict(zip(late, answers, strict=True))
+    return [again.get(i, answer) for i, answer in enumerate(posts)]
 
 
 def context_limits(root: str, key: str | None) -> dict[str, base.Limit]:
@@ -382,7 +415,11 @@ def lines(found: Probe) -> list[str]:
         groups.append(f"{', '.join(titles)} ({api})")
     out.append(f"CLIs: {'; '.join(groups) or 'none'}")
     if not_suits:
-        out.append("not: " + ", ".join(f"{title} (no {api})" for title, api in not_suits))
+        said = [
+            f"{title} ({api} {LATE})" if api in found.late else f"{title} (no {api})"
+            for title, api in not_suits
+        ]
+        out.append("not: " + ", ".join(said))
     return out
 
 

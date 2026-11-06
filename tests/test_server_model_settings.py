@@ -303,6 +303,16 @@ def check_server(client, name="", address="", key=None, key_typed=False, replace
     return ok(client.post("/api/model-servers/check", json=given))
 
 
+def test_check_server_warns_of_an_api_that_did_not_answer_in_time(client, serve, monkeypatch):
+    monkeypatch.setattr(model_servers, "TIMEOUT", 0.3)
+    monkeypatch.setattr(model_servers, "LATE_TIMEOUT", 0.6)
+    late = serve("late-always")
+    found = check_server(client, "Шлюз", late.url)
+    assert found["warnings"] == [
+        f"the Anthropic Messages API of {late.url} did not answer in time: try again"
+    ]
+
+
 def test_check_server_of_a_change_takes_the_servers_own_name(client, serve):
     lms = serve("lmstudio")
     ok(add_server(client, "LM Studio дома", lms.url))

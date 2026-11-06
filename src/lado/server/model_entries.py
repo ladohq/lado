@@ -358,6 +358,8 @@ def check_server(given: models.ModelServerCheck, has_db: bool = True) -> models.
     except (model_servers.ProbeError, ValueError) as exc:
         refuse(exc)
         return models.ServerCheck(probe=None, refusals=refusals, warnings=warnings, notes=[])
+    if late := found.late_warning():
+        warnings.append(late)
     for other in state.model_servers() if has_db else []:
         if given.replace and other.name.lower() == given.name.lower():
             continue

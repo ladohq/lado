@@ -21,14 +21,14 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-06-external-mod
 
 ## 3. The probe
 
-- [ ] 3.1 A late POST asked again, `Probe.late`, `lines`, the warning (D9). Check:
+- [x] 3.1 A late POST asked again, `Probe.late`, `lines`, the warning (D9). Check:
   `tests/test_model_servers.py`.
-- [ ] 3.2 The refusal of `lado model add` and a start. Check: `tests/test_model_settings.py`,
+- [x] 3.2 The refusal of `lado model add` and a start. Check: `tests/test_model_settings.py`,
   `tests/integration/test_model_server_probe.py` with `-m integration`.
 
 ## 4. The UI's line
 
-- [ ] 4.1 `LADO_DOWN` (D10). Check: `make web`.
+- [x] 4.1 `LADO_DOWN` (D10). Check: `make web`.
 
 ## 5. Smoke
 

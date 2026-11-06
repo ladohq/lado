@@ -36,6 +36,16 @@ class Answer(NamedTuple):
     headers: tuple[tuple[str, str], ...] = ()
 
 
+class Held(NamedTuple):
+    """No answer to the first `times` requests (None: to any), `then` the answer."""
+
+    times: int | None
+    then: Answer
+
+
+HOLD = Answer(0)  # no answer: the request waits for the server's end
+
+
 def openai_list(*ids: str) -> Answer:
     return Answer(200, {"object": "list", "data": [{"id": i, "object": "model"} for i in ids]})
 
@@ -63,7 +73,7 @@ EMBEDDINGS = "text-embedding-nomic-embed-text-v1.5"
 LITELLM_MODELS = ("gpt-4o", "claude-sonnet")
 VERSIONED = "anthropic-version"
 
-PROFILES: dict[str, dict[tuple[str, ...] | str, Answer]] = {
+PROFILES: dict[str, dict[tuple[str, ...] | str, Answer | Held]] = {
     # An OpenAI-compatible server with chat completions only (vLLM, an older gateway).
     "openai": {("GET", MODELS): openai_list("gpt-oss-20b"), ("POST", CHAT): OPENAI_400},
     # Ollama: its own version, the OpenAI-compatible list, chat completions and Responses.
@@ -220,6 +230,25 @@ PROFILES: dict[str, dict[tuple[str, ...] | str, Answer]] = {
     "gateway-400-list": {"*": OPENAI_400, ("GET", MODELS): openai_list("m1")},
     # A server that forbids everything.
     "forbidden": {"*": Answer(403, {"error": "forbidden"})},
+    # A POST that answers only the second time, or never: a slow first connection, a model
+    # being loaded.
+    "late-once": {
+        ("GET", MODELS): openai_list("m1"),
+        ("POST", CHAT): OPENAI_400,
+        ("POST", MESSAGES): Held(1, ANTHROPIC_400),
+    },
+    "late-always": {
+        ("GET", MODELS): openai_list("m1"),
+        ("POST", CHAT): OPENAI_400,
+        ("POST", MESSAGES): Held(None, ANTHROPIC_400),
+    },
+    "late-no-list": {("POST", MESSAGES): Held(None, ANTHROPIC_400)},
+    # A gateway that refuses any POST alike, its control late the first time.
+    "late-control": {
+        ("GET", MODELS): openai_list("m1"),
+        ("POST", CHAT): OPENAI_400,
+        ("POST", CONTROL): Held(1, OPENAI_400),
+    },
 }
 # Answers without a table: "redirect" (301 to the location given), "hang" (never answers).
 SPECIAL = ("redirect", "hang")
@@ -248,6 +277,7 @@ class Server:
         if profile not in PROFILES and profile not in SPECIAL:
             raise ValueError(f"unknown profile {profile}")
         self.requests: list[Request] = []
+        self._held: dict[tuple[str, str], int] = {}  # how many of a request were held
         self.closing = threading.Event()
         fake = self
 
@@ -259,7 +289,11 @@ class Server:
                 if profile == "hang":
                     fake.closing.wait()
                     return
-                self.send(fake.answer_for(self.command, self.path, self.headers))
+                answer = fake.answer_for(self.command, self.path, self.headers)
+                if answer is HOLD:
+                    fake.closing.wait()
+                    return
+                self.send(answer)
 
             def send(self, answer: Answer):
                 if isinstance(answer.body, str):
@@ -296,7 +330,11 @@ class Server:
         table = PROFILES[self._profile]
         asked = (method, path[len(self._prefix) :])
         found = table.get((*asked, VERSIONED)) if headers.get(VERSIONED) else None
-        return found or table.get(asked) or table.get("*") or NOT_FOUND
+        found = found or table.get(asked) or table.get("*") or NOT_FOUND
+        if isinstance(found, Held):
+            self._held[asked] = self._held.get(asked, 0) + 1
+            return HOLD if found.times is None or self._held[asked] <= found.times else found.then
+        return found
 
     def paths(self) -> list[tuple[str, str]]:
         return [(r.method, r.path) for r in self.requests]

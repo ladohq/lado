@@ -663,6 +663,27 @@ def test_the_server_is_asked_with_its_kept_key(serve):
     assert {r.headers["Authorization"] for r in server.requests} == {"Bearer k-1"}
 
 
+@pytest.fixture
+def short_ceilings(monkeypatch):
+    monkeypatch.setattr(model_servers, "TIMEOUT", 0.3)
+    monkeypatch.setattr(model_servers, "LATE_TIMEOUT", 0.6)
+
+
+def test_a_late_api_saves_the_server_with_a_warning_and_refuses_its_model(serve, short_ceilings):
+    server = serve("late-always")
+    _, warned = add("Шлюз", server.url)
+    assert warned == [
+        f"the Anthropic Messages API of {server.url} did not answer in time: try again"
+    ]
+    assert state.model_server("Шлюз").apis == (CHAT,)
+    with pytest.raises(model_settings.Refused) as refused:
+        add_model("W", "claude", "m1", "Шлюз")
+    assert str(refused.value) == (
+        "the Anthropic Messages API of Шлюз did not answer in time: try again"
+    )
+    assert refused.value.retry
+
+
 def test_a_server_that_does_not_suit_the_cli_is_refused(serve):
     server = serve("openai")  # chat completions only
     add("LM Studio дома", server.url)

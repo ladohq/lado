@@ -2,7 +2,7 @@
 // rail's Launch, the session list's "+", and in its Resume mode from a stopped session's
 // Resume. What a folder is, which kits and providers there are and whether a name is taken
 // all come from the server; the window decides nothing the core decides.
-import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 
 import {
@@ -35,6 +35,7 @@ import {
   type ScratchTarget,
   type SessionInfo,
   type Refused,
+  type Resume,
   type Started,
   type Taken,
   type Workspace,
@@ -42,7 +43,10 @@ import {
 import { useCloneJob } from "./cloneJob";
 import { useCopy } from "./Copy";
 import { ProjectField } from "./LaunchProject";
-import { useLive } from "./live";
+import { closedBy, looks, resumeAttempt } from "./attempts";
+import { useLive, useLiveStore, useLocked } from "./live";
+import { useModal } from "./modal";
+import { ActionProblem, Waits } from "./waitingParts";
 import { projectPath, PROVIDERS_PATH, sessionPath } from "./paths";
 
 // How long the window waits after a keystroke before it asks the server about the folder.
@@ -85,6 +89,8 @@ export type StartedState = { started: Started };
 
 export function LaunchProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<LaunchMode | null>(null);
+  const shown = useRef(mode);
+  shown.current = mode;
   return (
     <LaunchContext.Provider value={(next = { kind: "new" }) => setMode(next)}>
       {children}
@@ -94,6 +100,7 @@ export function LaunchProvider({ children }: { children: ReactNode }) {
           mode={mode}
           onMode={setMode}
           onClose={() => setMode(null)}
+          resumes={(name) => shown.current?.kind === "resume" && shown.current.session.name === name}
         />
       )}
     </LaunchContext.Provider>
@@ -186,16 +193,21 @@ function LaunchDialog({
   mode,
   onMode,
   onClose,
+  resumes,
 }: {
   mode: LaunchMode;
   onMode: (mode: LaunchMode) => void;
   onClose: () => void;
+  resumes: (session: string) => boolean; // the window stands now in Resume mode for it
 }) {
   const resuming = mode.kind === "resume" ? mode.session : null;
   const dialog = useRef<HTMLDialogElement>(null);
   const advanced = useRef<HTMLDetailsElement>(null);
   const navigate = useNavigate();
   const live = useLive();
+  const store = useLiveStore();
+  const attempt = resumeAttempt(resuming?.name ?? "");
+  const waiting = useLocked(attempt) && resuming !== null; // New session's Start does not wait
   const ids = useId();
 
   const [path, setPath] = useState(resuming?.repo ?? "");
@@ -239,9 +251,7 @@ function LaunchDialog({
   const [cloneEnd, setCloneEnd] = useState<{ note: string } | { refused: CloneRefused } | null>(null);
   const branchesAsked = useRef(new Map<string, Promise<RemoteInfo>>());
 
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
+  useModal(dialog);
 
   const cloning = source === "url";
   const scratching = source === "scratch";
@@ -567,27 +577,53 @@ function LaunchDialog({
     }
   };
 
+  // The resume of a session, kept when it gets no answer. Reached by what LADO reads there is
+  // no answer to show on the session's page; with no window open for it the human went
+  // elsewhere, and stays there. The window may be a later one than this.
+  const resume = async (session: SessionInfo, given: Resume) => {
+    const got: { started?: Started } = {};
+    store.attempts.clear(attempt);
+    const answered = await store.attempts.send(attempt, {
+      what: "Resume",
+      repeat: async () => {
+        got.started = await resumeSession(session.name, given);
+      },
+      look: looks.resume(session.name),
+      closed: closedBy.resume,
+      reached: () => {
+        if (!resumes(session.name)) return;
+        if (got.started) opened(got.started);
+        else {
+          onClose();
+          navigate(sessionPath(session.name, "activity"));
+        }
+      },
+    });
+    if (answered) opened(got.started!);
+    else setBusy(false);
+  };
+
   const submit = async () => {
     setBusy(true);
     setRefused(null);
     const off = splitWithout(without);
     try {
-      let started: Started;
       if (resuming) {
         const changed: Record<string, unknown> = {};
         if (!sameList(kits, resuming.kits)) changed.kits = kits;
         if (chosenProvider !== null && chosenProvider !== resuming.provider) changed.provider = chosenProvider;
         if (permissionMode !== (resuming.permission_mode ?? DEFAULT_MODE)) changed.permission_mode = permissionMode;
         if (!sameList(off, resuming.without)) changed.without = off;
-        started = await resumeSession(resuming.name, { ...changed, ...withPrompt });
-      } else {
-        started = await startIn(
+        await resume(resuming, { ...changed, ...withPrompt });
+        return;
+      }
+      opened(
+        await startIn(
           projecting && inProject?.project && projectRepo
             ? { kind: "project", project: inProject.project, repo: projectRepo.name }
             : { kind: "folder", path: path.trim() },
-        );
-      }
-      opened(started);
+        ),
+      );
     } catch (error) {
       setRefused(error instanceof ApiError ? error : new ApiError(0, String(error)));
       setBusy(false);
@@ -629,7 +665,7 @@ function LaunchDialog({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          if (busy) return;
+          if (busy || waiting) return;
           if (source === "folder" && ready) void submit();
           if (projecting && projectReady) void submit();
           if (cloning && cloneReady) void cloneAndStart();
@@ -704,6 +740,7 @@ function LaunchDialog({
             recent={recent}
             workspace={workspace}
             disabled={busy || resuming !== null}
+            fixed={resuming !== null}
             head={resuming ? null : <SourceSwitch source={source} onSource={setSource} disabled={busy} />}
           />
         )}
@@ -972,17 +1009,19 @@ function LaunchDialog({
               {busy ? "Starting…" : "Create and start"}
             </button>
           ) : !cloning ? (
-            <button type="submit" className="primary" disabled={busy || !(projecting ? projectReady : ready)}>
-              {busy
-                ? resuming
-                  ? "Resuming…"
-                  : "Starting…"
-                : projectTitle !== null
-                  ? `Start in ${projectTitle}`
-                  : title === "New session"
-                    ? "Start session"
-                    : title}
-            </button>
+            <MaybeWaits resuming={resuming !== null}>
+              <button type="submit" className="primary" disabled={busy || waiting || !(projecting ? projectReady : ready)}>
+                {busy
+                  ? resuming
+                    ? "Resuming…"
+                    : "Starting…"
+                  : projectTitle !== null
+                    ? `Start in ${projectTitle}`
+                    : title === "New session"
+                      ? "Start session"
+                      : title}
+              </button>
+            </MaybeWaits>
           ) : target?.state === "same_repo" && !busy ? (
             <button
               type="button"
@@ -1000,10 +1039,15 @@ function LaunchDialog({
             </button>
           )}
         </div>
+        {resuming && <ActionProblem attempt={attempt} />}
       </form>
     </dialog>
   );
 }
+
+// Resume's button waits for the connection; New session's, the same button, does not.
+const MaybeWaits = ({ resuming, children }: { resuming: boolean; children: ReactElement<object> }) =>
+  resuming ? <Waits>{children}</Waits> : children;
 
 // The human's first message to the supervisor: a row folded each time the window opens,
 // which shows the text's first line while folded with text in it.
@@ -1065,6 +1109,7 @@ function WhereField({
   recent,
   workspace,
   disabled,
+  fixed,
   head,
 }: {
   path: string;
@@ -1077,6 +1122,7 @@ function WhereField({
   recent: RecentFolder[];
   workspace: Workspace | null; // LADO_REPOS, else ~/workspace; null until it is known
   disabled: boolean;
+  fixed: boolean; // Resume: the session's folder as text that wraps, not a field
   head: ReactNode; // the switch to Clone from URL, beside the label
 }) {
   const ids = useId();
@@ -1105,68 +1151,80 @@ function WhereField({
   return (
     <div className="field launch-where">
       <div className="where-head">
-        <label htmlFor={`${ids}-where`}>Where</label>
+        {fixed ? (
+          <span id={`${ids}-where`} className="field-label">
+            Where
+          </span>
+        ) : (
+          <label htmlFor={`${ids}-where`}>Where</label>
+        )}
         {head}
       </div>
-      <div className="where-box">
-        <input
-          ref={input}
-          id={`${ids}-where`}
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={options.length > 0}
-          aria-controls={`${ids}-folders`}
-          aria-activedescendant={active >= 0 && options[active] ? `${ids}-folder-${active}` : undefined}
-          value={path}
-          placeholder={workspace ? `${withSlash(workspace.path)}…` : ""}
-          autoComplete="off"
-          spellCheck={false}
-          disabled={disabled}
-          onChange={(event) => {
-            onPath(event.target.value);
-            setOpen(true);
-            setActive(-1);
-          }}
-          onFocus={() => {
-            // Also before the workspace is known: a focus that comes first lists its
-            // subfolders once it is, and until then nothing is asked (no parent).
-            if (empty) setOpen(true);
-          }}
-          onBlur={() => setOpen(false)}
-          onKeyDown={(event) => {
-            if (options.length === 0) return;
-            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-              event.preventDefault();
-              const step = event.key === "ArrowDown" ? 1 : -1;
-              setActive((at) => (at + step + options.length) % options.length);
-            } else if (event.key === "Enter" && active >= 0) {
-              event.preventDefault();
-              pick(options[active]);
-            } else if (event.key === "Escape") {
-              event.preventDefault();
-              setOpen(false);
-            }
-          }}
-        />
-        {options.length > 0 && (
-          <ul id={`${ids}-folders`} role="listbox" aria-label="Folders" className="where-list">
-            {options.map((one, i) => (
-              <li
-                key={one}
-                id={`${ids}-folder-${i}`}
-                role="option"
-                aria-selected={i === active}
-                onMouseDown={(event) => {
-                  event.preventDefault(); // keep the input's focus
-                  pick(one);
-                }}
-              >
-                {one}/
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {fixed ? (
+        <div role="group" aria-labelledby={`${ids}-where`} className="where-fixed">
+          {path}
+        </div>
+      ) : (
+        <div className="where-box">
+          <input
+            ref={input}
+            id={`${ids}-where`}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={options.length > 0}
+            aria-controls={`${ids}-folders`}
+            aria-activedescendant={active >= 0 && options[active] ? `${ids}-folder-${active}` : undefined}
+            value={path}
+            placeholder={workspace ? `${withSlash(workspace.path)}…` : ""}
+            autoComplete="off"
+            spellCheck={false}
+            disabled={disabled}
+            onChange={(event) => {
+              onPath(event.target.value);
+              setOpen(true);
+              setActive(-1);
+            }}
+            onFocus={() => {
+              // Also before the workspace is known: a focus that comes first lists its
+              // subfolders once it is, and until then nothing is asked (no parent).
+              if (empty) setOpen(true);
+            }}
+            onBlur={() => setOpen(false)}
+            onKeyDown={(event) => {
+              if (options.length === 0) return;
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                const step = event.key === "ArrowDown" ? 1 : -1;
+                setActive((at) => (at + step + options.length) % options.length);
+              } else if (event.key === "Enter" && active >= 0) {
+                event.preventDefault();
+                pick(options[active]);
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                setOpen(false);
+              }
+            }}
+          />
+          {options.length > 0 && (
+            <ul id={`${ids}-folders`} role="listbox" aria-label="Folders" className="where-list">
+              {options.map((one, i) => (
+                <li
+                  key={one}
+                  id={`${ids}-folder-${i}`}
+                  role="option"
+                  aria-selected={i === active}
+                  onMouseDown={(event) => {
+                    event.preventDefault(); // keep the input's focus
+                    pick(one);
+                  }}
+                >
+                  {one}/
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {made && !disabled && (
         <div className="recent">
           Workspace:

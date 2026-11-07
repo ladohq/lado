@@ -235,8 +235,7 @@ def test_rename_in_place(page: Page, shop, server, shot):
     expect(listed).to_be_visible()
     assert projects.get("shop").title == "Shop EU"
     page.goto(f"{server['url']}/sessions/shop-frontend/activity")
-    facts = page.get_by_role("banner").locator(".session-meta > *")
-    expect(facts.first).to_have_text("projectShop EU")
+    expect(page.get_by_role("banner").locator(".session-crumb")).to_have_text("Shop EU")
 
     # An untitled project: Tab takes the id.
     page.goto(f"{server['url']}/projects/acme")
@@ -268,8 +267,9 @@ def test_new_project_says_when_the_title_gives_no_id(page: Page, shop, server, s
 
 
 def test_a_narrow_desktop_window_stacks_the_section(page: Page, shop, server, shot):
-    page.set_viewport_size({"width": 390, "height": 800})  # no touch: not a phone
+    page.set_viewport_size({"width": 700, "height": 800})  # past 600 px: not a phone
     log_in(page, server, "/projects")
+    assert page.evaluate("document.documentElement.dataset.phone") is None
     projects_list = page.get_by_role("navigation", name="Projects")
     expect(projects_list.get_by_role("link", name="Shop")).to_be_visible()
     expect(page.get_by_text("Select a project")).to_have_count(0)

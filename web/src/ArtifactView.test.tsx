@@ -40,12 +40,47 @@ test("the head names the artifact, its title, author, change and the ways to tak
   show(artifact({}, { summary: "the panel is wider" }));
   const head = screen.getByRole("banner");
   expect(head.textContent).toContain("feature/x/design");
-  expect(within(head).getByRole("heading", { name: "The design" })).toBeTruthy();
+  expect(await within(head).findByRole("heading", { name: "The design" })).toBeTruthy();
   expect(head.textContent).toContain("architect");
   expect(head.textContent).toContain("the panel is wider");
   expect(within(head).getByRole("link", { name: "Download" }).getAttribute("href")).toBe(`${CONTENT}?download=1`);
   expect(within(head).getByRole("button", { name: "Copy link" })).toBeTruthy();
   await screen.findByRole("heading", { name: "Design" });
+});
+
+test("a Markdown record that starts with its title as an H1 says it once, in one read", async () => {
+  const fetch = serve("# The design\n\nOne form.");
+  show(artifact());
+  const head = screen.getByRole("banner");
+  expect(head.querySelector(".artifact-title")).toBeNull(); // not while it loads, so it never flashes
+  await screen.findByText("One form.");
+  expect(head.querySelector(".artifact-title")).toBeNull();
+  expect(screen.getAllByRole("heading", { name: "The design" })).toHaveLength(1);
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+test("a Markdown record whose read fails shows its title", async () => {
+  serve("gone", 404);
+  show(artifact());
+  expect(await within(screen.getByRole("banner")).findByRole("heading", { name: "The design" })).toBeTruthy();
+});
+
+test("a record of another kind shows its title at once, without reading its content for it", () => {
+  const fetch = serve("");
+  show(artifact({}, { media_type: "image/png" }));
+  expect(within(screen.getByRole("banner")).getByRole("heading", { name: "The design" })).toBeTruthy();
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+test("the pill says the session's or the step of a run's record", async () => {
+  serve("text");
+  show(artifact());
+  expect(screen.getByRole("banner").querySelector(".pill")?.textContent).toBe("step design");
+  await screen.findByText("text");
+  cleanup();
+  show(artifact({ scope: "" }, { run: null, state: null }));
+  expect(screen.getByRole("banner").querySelector(".pill")?.textContent).toBe("session");
+  await screen.findByText("text");
 });
 
 test.each([
@@ -113,6 +148,19 @@ test("Copy link copies without the Clipboard API, and shows the link only when n
   const field = await screen.findByRole("dialog", { name: "Link to feature/x/design" });
   expect((within(field).getByRole("textbox", { name: "Link" }) as HTMLInputElement).value).toBe(link);
   await screen.findByRole("heading", { name: "Design" });
+});
+
+test("a record's answer cut in its body reads No connection, the exception in the console", async () => {
+  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  const cut = new ReadableStream({
+    pull: (body) => body.error(new TypeError("network error")),
+  });
+  serve(cut);
+  show(artifact());
+  await screen.findByText(/No connection/);
+  expect(document.body.textContent).not.toMatch(/TypeError|network error/);
+  expect(logged).toHaveBeenCalledWith(expect.objectContaining({ message: "network error" }));
+  logged.mockRestore();
 });
 
 test("Markdown shows as the chat shows it, with no raw HTML", async () => {

@@ -13,8 +13,9 @@ import { columnWidth, FakeEventSource, FakeResizeObserver, FakeScreen } from "./
 import { Live, LiveContext } from "./live";
 import { WAITING_MIN } from "./prefs";
 import { sendQuote, takePending } from "./quotes";
+import { TOOLTIP_DELAY_MS } from "./Tooltip";
 import { runColours } from "./Team";
-import { WaitingCard, waitingTabs, type Focus } from "./WaitingCard";
+import { WaitingCard, waitingTabs, type Fold, type Focus } from "./WaitingCard";
 
 function question(id: number, from: string, more: Partial<MessageInfo> = {}): MessageInfo {
   return {
@@ -75,8 +76,11 @@ type Props = {
   stopped?: boolean;
   focus?: Focus;
   at?: string; // the address, the session's Activity tab by default
-  chat?: { feed: number | null; loaded: boolean }; // in a session's chat (none on Needs you)
+  chat?: { feed: number | null; height?: number | null; loaded: boolean }; // in a session's chat (none on Needs you)
+  onFold?: (fold: Fold | null) => void;
 };
+
+const IN_CHAT = { feed: null, loaded: true };
 
 let posted: { path: string; body: unknown }[] = [];
 let answer: { status: number; body: unknown } = { status: 200, body: { result: "sent" } };
@@ -157,6 +161,7 @@ function Card(props: Props) {
           stopped={props.stopped ?? false}
           focus={props.focus ?? null}
           chat={props.chat}
+          onFold={props.onFold}
         />
       </MemoryRouter>
     </LiveContext.Provider>
@@ -240,7 +245,7 @@ test("two questions, one answered: Send is off and says how many are answered; a
   fireEvent.click(within(one).getByRole("button", { name: "short" }));
   expect(within(one).getByRole("button", { name: "short" }).getAttribute("aria-pressed")).toBe("false");
   expect(within(card()).getByText("0 of 2 answered")).toBeTruthy();
-  fireEvent.click(within(two).getByRole("button", { name: "Skip" }));
+  fireEvent.click(within(two).getByRole("button", { name: "Skip question" }));
   expect(within(card()).getByText("1 of 2 answered")).toBeTruthy();
 });
 
@@ -253,7 +258,7 @@ test("all answered: a choice, Other… with own words, a Skip with a comment; on
   expect(document.activeElement).toBe(own);
   expect(send().disabled).toBe(true); // blank own words do not count
   fireEvent.change(own, { target: { value: "main, then rebase" } });
-  fireEvent.click(within(three).getByRole("button", { name: "Skip" }));
+  fireEvent.click(within(three).getByRole("button", { name: "Skip question" }));
   fireEvent.change(within(three).getByRole("textbox", { name: "Why you skip it (optional)" }), { target: { value: "later" } });
   expect(within(card()).queryByText(/of 3 answered/)).toBeNull();
   expect(send().disabled).toBe(false);
@@ -276,12 +281,12 @@ test("all answered: a choice, Other… with own words, a Skip with a comment; on
 
 test("a choice, Other… and Skip exclude each other; a skip without a comment sends no text", async () => {
   show({ questions: [question(5, "w1")] });
-  const item = within(card()).getByRole("listitem");
+  const item = within(card()).getByRole("tabpanel");
   expect(item.querySelector(".waiting-question-n")).toBeNull(); // one question: no number
   fireEvent.click(within(item).getByRole("button", { name: "short" }));
   fireEvent.click(within(item).getByRole("button", { name: "Other…" }));
   expect(within(item).getByRole("button", { name: "short" }).getAttribute("aria-pressed")).toBe("false");
-  fireEvent.click(within(item).getByRole("button", { name: "Skip" }));
+  fireEvent.click(within(item).getByRole("button", { name: "Skip question" }));
   expect(within(item).getByRole("button", { name: "Other…" }).getAttribute("aria-pressed")).toBe("false");
   expect(within(item).queryByRole("textbox", { name: "Your own answer" })).toBeNull();
   fireEvent.click(send());
@@ -307,24 +312,28 @@ function grows(field: HTMLTextAreaElement, content: number, value: string) {
   return [field.style.height, field.style.overflowY];
 }
 
-test("an own answer, a skip's comment and a gate's comment grow with their text from 3 lines to 8, then scroll", () => {
+test("an own answer, a skip's comment and a gate's comment grow with their text from 1 line to 4, then scroll", () => {
   show({
+    chat: IN_CHAT,
     questions: [question(5, "w1"), question(6, "w1")],
     gates: [gate(1, "task/lad-27", "2026-10-03T12:00:06.000Z")],
   });
   const [one, two] = within(card()).getAllByRole("listitem");
   fireEvent.click(within(one).getByRole("button", { name: "Other…" }));
   const own = within(one).getByRole("textbox", { name: "Your own answer" }) as HTMLTextAreaElement;
-  expect(grows(own, 20, "short")).toEqual(["60px", "hidden"]);
-  expect(grows(own, 100, "five\nlines")).toEqual(["100px", "hidden"]);
-  expect(grows(own, 400, "many\nlines\n".repeat(10))).toEqual(["160px", "auto"]);
-  fireEvent.click(within(two).getByRole("button", { name: "Skip" }));
+  expect(grows(own, 20, "short")).toEqual(["20px", "hidden"]);
+  expect(grows(own, 60, "three\nlines")).toEqual(["60px", "hidden"]);
+  expect(grows(own, 400, "many\nlines\n".repeat(10))).toEqual(["80px", "auto"]);
+  fireEvent.click(within(two).getByRole("button", { name: "Skip question" }));
   const skip = within(two).getByRole("textbox", { name: "Why you skip it (optional)" }) as HTMLTextAreaElement;
-  expect(grows(skip, 400, "many\nlines\n".repeat(10))).toEqual(["160px", "auto"]);
+  expect(grows(skip, 400, "many\nlines\n".repeat(10))).toEqual(["80px", "auto"]);
   fireEvent.click(tab("task/lad-27 1"));
   const comment = within(card()).getByRole("textbox", { name: "Comment for the next step (optional)" }) as HTMLTextAreaElement;
-  expect(grows(comment, 20, "fine")).toEqual(["60px", "hidden"]);
-  expect(grows(comment, 400, "many\nlines\n".repeat(10))).toEqual(["160px", "auto"]);
+  expect(grows(comment, 20, "fine")).toEqual(["20px", "hidden"]);
+  expect(grows(comment, 400, "many\nlines\n".repeat(10))).toEqual(["80px", "auto"]);
+  fireEvent.click(iconButton("Expand the card")); // expanded, they grow to 8
+  const wide = within(card()).getByRole("textbox", { name: "Comment for the next step (optional)" }) as HTMLTextAreaElement;
+  expect(grows(wide, 400, "more\nlines\n".repeat(10))).toEqual(["160px", "auto"]);
 });
 
 function given(choice: string | null, text = "Long: the short one loses data"): RecommendationInfo {
@@ -350,8 +359,8 @@ test("the supervisor's recommendation shows on its question, its choice picked a
   expect(within(one).getByRole("button", { name: "long" }).getAttribute("aria-pressed")).toBe("false");
   expect(within(card()).getByText("0 of 3 answered")).toBeTruthy();
   fireEvent.click(within(one).getByRole("button", { name: "short" }));
-  fireEvent.click(within(two).getByRole("button", { name: "Skip" }));
-  fireEvent.click(within(three).getByRole("button", { name: "Skip" }));
+  fireEvent.click(within(two).getByRole("button", { name: "Skip question" }));
+  fireEvent.click(within(three).getByRole("button", { name: "Skip question" }));
   fireEvent.click(send());
   await waitFor(() =>
     expect(posted[0]?.body).toEqual({
@@ -381,8 +390,9 @@ test("a recommended choice the question does not have picks nothing", () => {
 
 test("a question that takes no own answer has its choices and Skip, no Other…", () => {
   show({ questions: [question(5, "w1", { free_answer: false })] });
-  const buttons = within(within(card()).getByRole("group")).getAllByRole("button");
-  expect(buttons.map((one) => one.textContent)).toEqual(["short", "long", "Skip"]);
+  const buttons = within(within(card()).getByRole("group", { name: "Choices" })).getAllByRole("button");
+  expect(buttons.map((one) => one.textContent)).toEqual(["short", "long"]);
+  expect(within(card()).getByRole("button", { name: "Skip question" })).toBeTruthy();
 });
 
 test("a question's details are Markdown and its attachments chips", () => {
@@ -414,7 +424,7 @@ test("a refusal shows on the tab with the core's reason; the picks stay; a quest
   expect((await within(card()).findByRole("alert")).textContent).toBe("question #6 is answered");
   expect(within(one).getByRole("button", { name: "short" }).getAttribute("aria-pressed")).toBe("true");
   view.rerender(<Card questions={[questions[0]]} />);
-  expect(within(within(card()).getByRole("listitem")).getByRole("button", { name: "short" }).getAttribute("aria-pressed")).toBe("true");
+  expect(within(card()).getByRole("button", { name: "short" }).getAttribute("aria-pressed")).toBe("true");
   expect(send().disabled).toBe(false);
 });
 
@@ -432,7 +442,7 @@ test("a gate's tab is its panel: question, note, comment, its buttons in the Sen
 });
 
 test("an expanded card folds on a quote of its session, not of another", async () => {
-  show({ questions: [question(5, "w1")] });
+  show({ questions: [question(5, "w1")], chat: IN_CHAT });
   fireEvent.click(within(card()).getByRole("button", { name: "Expand the card" }));
   await waitFor(() => expect(isExpanded()).toBe(true));
   act(() => sendQuote("other", "> A", () => {}));
@@ -444,7 +454,7 @@ test("an expanded card folds on a quote of its session, not of another", async (
 });
 
 test("a gate's comment and an own answer stay through a switch of tabs and through expanding and folding the card", async () => {
-  show({ questions: [question(5, "w1")], gates: [gate(1, "task/lad-27", "2026-10-03T12:00:06.000Z")] });
+  show({ questions: [question(5, "w1")], gates: [gate(1, "task/lad-27", "2026-10-03T12:00:06.000Z")], chat: IN_CHAT });
   const comment = () => within(card()).getByRole("textbox", { name: "Comment for the next step (optional)" }) as HTMLTextAreaElement;
   const own = () => within(card()).getByRole("textbox", { name: "Your own answer" }) as HTMLTextAreaElement;
   fireEvent.click(within(card()).getByRole("button", { name: "Other…" }));
@@ -493,7 +503,7 @@ test("focus shows the item's tab and marks the item for a moment", async () => {
 });
 
 test("expanded in its place and back: the expand icon, then Esc or the fold icon; the focus returns", async () => {
-  const { container } = show({ questions: [question(5, "w1")] });
+  const { container } = show({ questions: [question(5, "w1")], chat: IN_CHAT });
   const expand = within(card()).getByRole("button", { name: "Expand the card" });
   expect(expand.getAttribute("aria-expanded")).toBe("false");
   // Esc while it is not expanded does nothing to it.
@@ -520,7 +530,7 @@ test("expanded in its place and back: the expand icon, then Esc or the fold icon
 });
 
 test("while an artifact panel is open (?view= in the address), Esc leaves the expanded card to the panel", async () => {
-  show({ questions: [question(5, "w1")], at: "/sessions/s/activity?view=r1" });
+  show({ questions: [question(5, "w1")], at: "/sessions/s/activity?view=r1", chat: IN_CHAT });
   fireEvent.click(within(card()).getByRole("button", { name: "Expand the card" }));
   await waitFor(() => expect(isExpanded()).toBe(true));
   fireEvent.keyDown(document, { key: "Escape" });
@@ -528,17 +538,16 @@ test("while an artifact panel is open (?view= in the address), Esc leaves the ex
 });
 
 test("the expanded card folds itself when nothing waits any more", async () => {
-  const view = show({ questions: [question(5, "w1")] });
+  const view = show({ questions: [question(5, "w1")], chat: IN_CHAT });
   fireEvent.click(within(card()).getByRole("button", { name: "Expand the card" }));
   await waitFor(() => expect(isExpanded()).toBe(true));
-  view.rerender(<Card questions={[]} />);
+  view.rerender(<Card questions={[]} chat={IN_CHAT} />);
   expect(screen.queryByRole("region", { name: "What waits for you in s" })).toBeNull();
-  view.rerender(<Card questions={[question(6, "w1")]} />);
+  view.rerender(<Card questions={[question(6, "w1")]} chat={IN_CHAT} />);
   expect(isExpanded()).toBe(false);
 });
 
 // Minimized and resized: only in a session's chat (`chat`).
-const IN_CHAT = { feed: null, loaded: true };
 const GATE_812 = gate(812, "task/lad-52", "2026-10-03T12:00:01.000Z", {
   question: "Archive the change and merge the pull request?",
 });
@@ -673,12 +682,12 @@ test("a minimized card expands whole; folding it brings it back minimized", asyn
   expect(document.activeElement).toBe(iconButton("Expand the card"));
 });
 
-test("on Needs you (no chat) the card has no minimize icon and no edge, whatever its chat keeps", () => {
+test("on Needs you (no chat) the card has no minimize or expand icon and no edge, whatever its chat keeps", () => {
   localStorage.setItem("lado.waitingMinimized.s", JSON.stringify(["gate:812"]));
   localStorage.setItem("lado.waitingHeight", "230");
   show({ questions: [], gates: [GATE_812] });
   expect(isMinimized()).toBe(false);
-  expect(within(card()).queryByRole("button", { name: /^(Minimize|Restore) the card$/ })).toBeNull();
+  expect(within(card()).queryByRole("button", { name: /^(Minimize|Restore|Expand) the card$/ })).toBeNull();
   expect(edge()).toBeNull();
   expect(card().style.getPropertyValue("--waiting-height")).toBe("");
 });
@@ -762,7 +771,7 @@ test("a stored height too tall for the chat shows lower and is kept; dragged bel
 // The human's files in the card's fields (docs/design/ui.md, The waiting card: Fields).
 
 const file = (name: string, bytes = 10, type = "") => new File(["x".repeat(bytes)], name, { type });
-const questionItem = (id: number) => card().querySelector(`[data-item="${id}"]`) as HTMLElement;
+const questionItem = (id: number) => (card().querySelector(`li[data-item="${id}"]`) ?? within(card()).getByRole("tabpanel")) as HTMLElement;
 const chipsIn = (where: HTMLElement) => Array.from(where.querySelectorAll(".file-chip .file-name")).map((one) => one.textContent);
 
 async function attach(where: HTMLElement, ...files: File[]) {
@@ -814,7 +823,7 @@ test("the files stay with their question from Other… to Skip and through a swi
   const view = show({ questions: [question(5, "w1")], gates });
   fireEvent.click(within(questionItem(5)).getByRole("button", { name: "Other…" }));
   await attach(questionItem(5), file("shot.png", 10, "image/png"));
-  fireEvent.click(within(questionItem(5)).getByRole("button", { name: "Skip" }));
+  fireEvent.click(within(questionItem(5)).getByRole("button", { name: "Skip question" }));
   expect(chipsIn(questionItem(5))).toEqual(["shot.png"]);
   fireEvent.click(tab("task/lad-27 1"));
   fireEvent.click(tab("w1 1"));
@@ -955,7 +964,48 @@ test("upright on a phone the human's own minimize is remembered, as on a compute
 // LAD-126: with the keyboard open the chat has no room for the card above the composer.
 const commentField = () => within(card()).getByRole("textbox", { name: "Comment for the next step (optional)" });
 
-test("on a phone in the chat a gate's comment taking the focus expands the card; the field keeps it and scrolls into view", async () => {
+test("on a phone in the chat a field in focus keeps the card unexpanded and marks it typing, until the focus leaves", () => {
+  FakeScreen.phone();
+  const fold = vi.fn();
+  show({ questions: [], gates: [GATE_812], chat: IN_CHAT, onFold: fold });
+  act(() => commentField().focus());
+  expect(isExpanded()).toBe(false);
+  expect(card().classList.contains("typing")).toBe(true);
+  expect(fold).toHaveBeenLastCalledWith({ line: "Commenting on gate #812 above" });
+  act(() => commentField().blur());
+  expect(card().classList.contains("typing")).toBe(false);
+  expect(fold).toHaveBeenLastCalledWith(null);
+});
+
+test("on a phone a button pressed keeps the focus in the field, so nothing moves under the finger", () => {
+  FakeScreen.phone();
+  show({ questions: [], gates: [GATE_812], chat: IN_CHAT });
+  act(() => commentField().focus());
+  const approve = within(card()).getByRole("button", { name: "Approve" });
+  expect(fireEvent.mouseDown(approve)).toBe(false); // its default, the focus, prevented
+  expect(fireEvent.mouseDown(commentField())).toBe(true);
+});
+
+test("on a phone Other… keeps the card unexpanded, the own answer focused", () => {
+  FakeScreen.phone();
+  const fold = vi.fn();
+  show({ questions: [question(5, "supervisor")], chat: IN_CHAT, onFold: fold });
+  fireEvent.click(within(card()).getByRole("button", { name: "Other…" }));
+  expect(isExpanded()).toBe(false);
+  expect(document.activeElement).toBe(within(card()).getByRole("textbox", { name: "Your own answer" }));
+  expect(card().classList.contains("typing")).toBe(true);
+  expect(fold.mock.lastCall?.[0].line).toBe("Answering question #5 above · ");
+});
+
+test("on a phone the expanded card keeps its context with a field in focus", () => {
+  FakeScreen.phone();
+  show({ questions: [], gates: [GATE_812], chat: IN_CHAT });
+  fireEvent.click(iconButton("Expand the card"));
+  act(() => commentField().focus());
+  expect([isExpanded(), card().classList.contains("typing")]).toEqual([true, false]);
+});
+
+test("on a phone a field in the context comes back into view when the card is laid out anew", () => {
   FakeScreen.phone();
   columnWidth(null);
   const scrolled: Element[] = [];
@@ -963,46 +1013,31 @@ test("on a phone in the chat a gate's comment taking the focus expands the card;
     scrolled.push(this);
   };
   try {
-    show({ questions: [], gates: [GATE_812], chat: IN_CHAT });
-    act(() => commentField().focus());
-    await waitFor(() => expect(isExpanded()).toBe(true));
-    expect(document.activeElement).toBe(commentField());
-    expect(scrolled).toContain(commentField());
-    // The keyboard opens after the expansion: the card laid out lower, the field scrolls again.
+    show({ questions: [question(5, "w1"), question(6, "w1")], chat: IN_CHAT });
+    fireEvent.click(within(card()).getAllByRole("button", { name: "Other…" })[0]);
     scrolled.length = 0;
     FakeResizeObserver.resize(
       () => 400,
       () => 300,
     );
-    expect(scrolled).toContain(commentField());
-    // The field losing the focus (the keyboard closing) leaves the card expanded.
-    act(() => commentField().blur());
-    expect(isExpanded()).toBe(true);
-    fireEvent.click(iconButton("Collapse the card"));
-    await waitFor(() => expect(isExpanded()).toBe(false));
+    expect(scrolled).toEqual([card().querySelector(".answer-box")]);
   } finally {
     delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
   }
 });
 
-test("on a phone in the chat Other… expands the card with the own answer focused", async () => {
-  FakeScreen.phone();
-  show({ questions: [question(5, "supervisor")], chat: IN_CHAT });
-  fireEvent.click(within(card()).getByRole("button", { name: "Other…" }));
-  await waitFor(() => expect(isExpanded()).toBe(true));
-  expect(document.activeElement).toBe(within(card()).getByRole("textbox", { name: "Your own answer" }));
-});
-
-test("a field's focus does not expand the card on a computer, nor on Needs you on a phone", () => {
-  new FakeScreen("fine", 390, 844);
-  show({ questions: [], gates: [GATE_812], chat: IN_CHAT });
+test("a field's focus changes nothing on a computer, nor on Needs you on a phone", () => {
+  new FakeScreen("fine", 700, 844);
+  const fold = vi.fn();
+  show({ questions: [], gates: [GATE_812], chat: IN_CHAT, onFold: fold });
   act(() => commentField().focus());
-  expect(isExpanded()).toBe(false);
+  expect([isExpanded(), card().classList.contains("typing")]).toEqual([false, false]);
+  expect(fold).not.toHaveBeenCalledWith(expect.objectContaining({ line: expect.anything() }));
   cleanup();
   FakeScreen.phone();
   show({ questions: [], gates: [GATE_812] });
   act(() => commentField().focus());
-  expect(isExpanded()).toBe(false);
+  expect([isExpanded(), card().classList.contains("typing")]).toEqual([false, false]);
 });
 
 test("on a phone the expand button still puts the focus on the shown tab", async () => {
@@ -1026,4 +1061,268 @@ test("Esc in a dialog over the page leaves an expanded card as it is", async () 
   dialog.remove();
   fireEvent.keyDown(document, { key: "Escape" });
   await waitFor(() => expect(isExpanded()).toBe(false));
+});
+
+// The parts of a tab (docs/design/ui.md, The waiting card): the title and the context on top,
+// the footer whole under them.
+const top = () => card().querySelector(".waiting-top") as HTMLElement;
+const foot = () => card().querySelector(".waiting-foot") as HTMLElement;
+const context = () => within(card()).getByRole("region", { name: "Context of the card" });
+const GATE_RECOMMENDED = gate(1, "ship/x", "2026-10-03T12:00:06.000Z", { note_body: "the long note", recommendation: given("reject") });
+
+// jsdom lays out nothing: an element of `name`'s class as tall as `content`, showing `box`.
+function laidOut(name: string, content: number, box: number) {
+  const of = (element: HTMLElement, tall: number) => (element.classList.contains(name) ? tall : 0);
+  const heights = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(function (this: HTMLElement) {
+    return of(this, content);
+  });
+  const shown = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) {
+    return of(this, box);
+  });
+  return () => {
+    heights.mockRestore();
+    shown.mockRestore();
+  };
+}
+
+test.each([
+  ["a session's chat", IN_CHAT],
+  ["Needs you", undefined],
+])("in %s a gate's tab is its title and context on top and its footer whole under them", (_, chat) => {
+  show({ questions: [], gates: [GATE_RECOMMENDED], chat });
+  const panel = within(card()).getByRole("tabpanel");
+  expect([...panel.children].map((one) => one.className.split(" ")[0])).toEqual(["waiting-top", "waiting-foot"]);
+  expect(within(top()).getByRole("heading", { name: "Approve the design?" })).toBeTruthy();
+  expect(top().querySelector(".waiting-meta")?.textContent).toBe("ship/x · design_ok · gate #1");
+  expect(context().getAttribute("tabindex")).toBe("0");
+  expect(within(context()).getByText("the long note")).toBeTruthy();
+  const parts = [...foot().children].map((one) => one.className.split(" ")[0]);
+  expect(parts).toEqual(["rec-bar", "answer", "waiting-send"]);
+  expect(foot().contains(context())).toBe(false);
+});
+
+test("a gate with no note has no context to tab to", () => {
+  show({ questions: [], gates: [gate(1, "ship/x", "2026-10-03T12:00:06.000Z", { note: "" })] });
+  expect(within(card()).queryByRole("region", { name: "Context of the card" })).toBeNull();
+});
+
+test("a title cut at two lines stands whole first in the context", () => {
+  const restore = laidOut("waiting-title-text", 66, 44);
+  try {
+    show({ questions: [question(5, "w1", { body: "the details" })] });
+    expect(top().querySelector(".waiting-meta")?.textContent).toBe("#5");
+    expect(context().firstElementChild?.textContent).toContain("Question 5?the details");
+  } finally {
+    restore();
+  }
+});
+
+test("a title that fits does not repeat in the context", () => {
+  show({ questions: [question(5, "w1", { body: "the details" })] });
+  expect(within(context()).queryByText("Question 5?")).toBeNull();
+});
+
+test("a context cut says ↓ more, which expands the card; both go at its end and in the expanded card", () => {
+  const restore = laidOut("waiting-context", 500, 100);
+  try {
+    show({ questions: [], gates: [GATE_RECOMMENDED] });
+    const frame = context().parentElement as HTMLElement;
+    expect(frame.classList.contains("cut")).toBe(true);
+    expect(within(card()).getByRole("button", { name: "↓ more" })).toBeTruthy();
+    context().scrollTop = 400;
+    fireEvent.scroll(context());
+    expect(frame.classList.contains("cut")).toBe(false);
+    expect(within(card()).queryByRole("button", { name: "↓ more" })).toBeNull();
+    context().scrollTop = 100;
+    fireEvent.scroll(context());
+    fireEvent.click(within(card()).getByRole("button", { name: "↓ more" }));
+    expect(isExpanded()).toBe(true);
+    expect(within(card()).queryByRole("button", { name: "↓ more" })).toBeNull();
+    expect((context().parentElement as HTMLElement).classList.contains("cut")).toBe(false);
+  } finally {
+    restore();
+  }
+});
+
+test("a single question's choices, Other… and its field stand in the footer, Send and Skip question under them", () => {
+  show({ questions: [question(5, "w1", { body: "the details" })] });
+  expect(within(card()).queryByRole("listitem")).toBeNull();
+  const choices = within(foot()).getByRole("group", { name: "Choices" });
+  expect(within(choices).getAllByRole("button").map((one) => one.textContent)).toEqual(["short", "long", "Other…"]);
+  fireEvent.click(within(choices).getByRole("button", { name: "Other…" }));
+  expect(within(foot()).getByRole("textbox", { name: "Your own answer" })).toBeTruthy();
+  const row = foot().querySelector(".waiting-send") as HTMLElement;
+  expect(within(row).getAllByRole("button").map((one) => one.textContent)).toEqual(["Send answer to w1", "Skip question"]);
+});
+
+test("choices that do not fit scroll as a focusable group with a fade", () => {
+  const restore = laidOut("waiting-choices", 300, 160);
+  try {
+    show({ questions: [question(5, "w1")] });
+    const choices = within(foot()).getByRole("group", { name: "Choices" });
+    expect(choices.getAttribute("tabindex")).toBe("0");
+    expect((choices.parentElement as HTMLElement).classList.contains("cut")).toBe(true);
+  } finally {
+    restore();
+  }
+});
+
+test("choices that fit are no stop of the Tab key", () => {
+  show({ questions: [question(5, "w1")] });
+  expect(within(foot()).getByRole("group", { name: "Choices" }).getAttribute("tabindex")).toBeNull();
+});
+
+test("a tab of several questions has no title: they stand in the context, Send and the count in the footer", () => {
+  show({ questions: [question(5, "w1", { recommendation: given("short") }), question(6, "w1"), question(7, "w1")] });
+  expect(top().querySelector(".waiting-title")).toBeNull();
+  const list = within(context()).getByRole("list", { name: "Questions from w1" });
+  const [one] = within(list).getAllByRole("listitem");
+  expect(within(one).getByRole("region", { name: "Supervisor's recommendation" })).toBeTruthy();
+  expect(within(one).getByRole("group", { name: "Answer to question #5" })).toBeTruthy();
+  expect(within(one).getByRole("button", { name: "Skip question" })).toBeTruthy();
+  expect(within(foot()).getByRole("button", { name: "Send 3 answers to w1" })).toBeTruthy();
+  expect(within(foot()).getByText("1 of 3 answered")).toBeTruthy();
+});
+
+test("Skip question opens its comment, a second click takes it back, and the comment goes with Send", async () => {
+  show({ questions: [question(5, "w1")] });
+  const skip = () => within(card()).getByRole("button", { name: "Skip question" });
+  expect(skip().className).toBe("waiting-skip");
+  fireEvent.click(skip());
+  expect(skip().getAttribute("aria-pressed")).toBe("true");
+  expect(document.activeElement).toBe(within(foot()).getByRole("textbox", { name: "Why you skip it (optional)" }));
+  fireEvent.click(skip());
+  expect(skip().getAttribute("aria-pressed")).toBe("false");
+  expect(within(foot()).queryByRole("textbox", { name: "Why you skip it (optional)" })).toBeNull();
+  fireEvent.click(skip());
+  fireEvent.change(within(foot()).getByRole("textbox", { name: "Why you skip it (optional)" }), { target: { value: "not now" } });
+  fireEvent.click(send());
+  await waitFor(() =>
+    expect(posted).toEqual([{ path: "/api/sessions/s/answers", body: { answers: [{ question: 5, skip: true, text: "not now" }] } }]),
+  );
+});
+
+test("the recommended choice is marked ✓ while it stays picked, and its name stays the choice", () => {
+  show({ questions: [question(5, "w1", { recommendation: given("long") })] });
+  const long = within(card()).getByRole("button", { name: "long" });
+  expect(long.textContent).toBe("✓ long");
+  fireEvent.click(within(card()).getByRole("button", { name: "short" }));
+  expect(within(card()).getByRole("button", { name: "short" }).textContent).toBe("short");
+  expect(within(card()).getByRole("button", { name: "long" }).textContent).toBe("long");
+});
+
+test("a Send off for want of an answer says why, by a hint around it", async () => {
+  vi.useFakeTimers();
+  try {
+    show({ questions: [question(5, "w1")] });
+    const hint = send().parentElement as HTMLElement;
+    expect(hint.getAttribute("tabindex")).toBe("0");
+    fireEvent.mouseEnter(hint);
+    act(() => void vi.advanceTimersByTime(TOOLTIP_DELAY_MS));
+    expect(screen.getByRole("tooltip").textContent).toContain("Choose an answer first");
+    fireEvent.mouseLeave(hint);
+    fireEvent.click(within(card()).getByRole("button", { name: "short" }));
+    expect(send().disabled).toBe(false);
+    expect((send().parentElement as HTMLElement).getAttribute("tabindex")).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("in a stopped session a tab of questions says why Send is off, with no hint", () => {
+  show({ questions: [question(5, "w1")], stopped: true });
+  expect(within(foot()).getByText("The session is stopped: resume it to answer.")).toBeTruthy();
+  expect((send().parentElement as HTMLElement).getAttribute("tabindex")).toBeNull();
+});
+
+test("the height the human gives leaves room for the tabs and the footer, which never give way", () => {
+  columnWidth(null);
+  localStorage.setItem("lado.waitingHeight", "300");
+  show({ questions: [], gates: [GATE_812], chat: { feed: 400, loaded: true } });
+  const laid = (height: number) =>
+    FakeResizeObserver.resize(
+      () => 800,
+      (target) => (target.classList.contains("waiting-head") ? 40 : target.classList.contains("waiting-foot") ? height : 300),
+    );
+  laid(150);
+  expect(card().classList.contains("sized")).toBe(true);
+  expect(card().style.getPropertyValue("--waiting-height")).toBe("300px");
+  expect(card().style.getPropertyValue("--waiting-rest")).toBe("192px"); // the tabs, the footer, the panel's borders
+});
+
+test("the chat's height sets the limit of title and context at 40 %; with no height of its own, none", () => {
+  show({ questions: [question(5, "w1")], chat: { feed: 400, height: 700, loaded: true } });
+  expect(card().style.getPropertyValue("--waiting-top-max")).toBe("280px");
+  cleanup();
+  show({ questions: [question(5, "w1")], chat: { feed: 400, height: null, loaded: true } });
+  expect(card().style.getPropertyValue("--waiting-top-max")).toBe("");
+});
+
+test("an open field folds the composer with the question's line; its link closes the field and keeps its words", () => {
+  const fold = vi.fn();
+  show({ questions: [question(5, "w1")], chat: IN_CHAT, onFold: fold });
+  fireEvent.click(within(card()).getByRole("button", { name: "Other…" }));
+  const own = () => within(card()).queryByRole("textbox", { name: "Your own answer" }) as HTMLTextAreaElement | null;
+  fireEvent.change(own()!, { target: { value: "keep the worker" } });
+  const reported = fold.mock.lastCall?.[0] as Fold;
+  expect(reported.line).toBe("Answering question #5 above · ");
+  act(() => reported.write!());
+  expect(own()).toBeNull();
+  expect(fold).toHaveBeenLastCalledWith(null);
+  fireEvent.click(within(card()).getByRole("button", { name: "Other…" }));
+  expect(own()!.value).toBe("keep the worker");
+});
+
+test("a skip's field folds the composer too, and a choice does not", () => {
+  const fold = vi.fn();
+  show({ questions: [question(5, "w1")], chat: IN_CHAT, onFold: fold });
+  fireEvent.click(within(card()).getByRole("button", { name: "short" }));
+  expect(fold).not.toHaveBeenCalledWith(expect.objectContaining({ line: expect.anything() }));
+  fireEvent.click(within(card()).getByRole("button", { name: "Skip question" }));
+  expect(fold.mock.lastCall?.[0].line).toBe("Answering question #5 above · ");
+});
+
+test("the fold names the first open field and its link closes all of the tab's, so the composer comes back", () => {
+  const fold = vi.fn();
+  show({ questions: [question(5, "w1"), question(6, "w1")], chat: IN_CHAT, onFold: fold });
+  const [one, two] = within(card()).getAllByRole("listitem");
+  fireEvent.click(within(two).getByRole("button", { name: "Other…" }));
+  fireEvent.click(within(one).getByRole("button", { name: "Skip question" }));
+  expect(fold.mock.lastCall?.[0].line).toBe("Answering question #5 above · ");
+  act(() => fold.mock.lastCall?.[0].write());
+  expect(fold).toHaveBeenLastCalledWith(null);
+});
+
+test("the composer does not fold on another tab, in the expanded or minimized card, nor in a stopped session", () => {
+  const fold = vi.fn();
+  const gated = { questions: [question(5, "w1")], gates: [gate(1, "ship/x", "2026-10-03T12:00:06.000Z")], chat: IN_CHAT, onFold: fold };
+  const { rerender } = show(gated);
+  fireEvent.click(within(card()).getByRole("button", { name: "Other…" }));
+  expect(fold.mock.lastCall?.[0]?.line).toBe("Answering question #5 above · ");
+  fireEvent.click(tab("ship/x 1"));
+  expect(fold).toHaveBeenLastCalledWith(null);
+  fireEvent.click(tab("w1 1"));
+  expect(fold.mock.lastCall?.[0]?.line).toBe("Answering question #5 above · ");
+  fireEvent.click(iconButton("Expand the card"));
+  expect(fold).toHaveBeenLastCalledWith(null);
+  fireEvent.click(iconButton("Collapse the card"));
+  fireEvent.click(iconButton("Minimize the card"));
+  expect(fold).toHaveBeenLastCalledWith(null);
+  fireEvent.click(iconButton("Restore the card"));
+  expect(fold.mock.lastCall?.[0]?.line).toBe("Answering question #5 above · ");
+  rerender(<Card {...gated} stopped />); // stopped with the field open
+  expect(fold).toHaveBeenLastCalledWith(null);
+});
+
+test("a quote closes the open field as the link does, its words kept", () => {
+  const fold = vi.fn();
+  show({ questions: [question(5, "w1")], chat: IN_CHAT, onFold: fold });
+  fireEvent.click(within(card()).getByRole("button", { name: "Other…" }));
+  fireEvent.change(within(card()).getByRole("textbox", { name: "Your own answer" }), { target: { value: "mine" } });
+  act(() => sendQuote("s", "> A", () => {}));
+  expect(within(card()).queryByRole("textbox", { name: "Your own answer" })).toBeNull();
+  expect(fold).toHaveBeenLastCalledWith(null);
+  fireEvent.click(within(card()).getByRole("button", { name: "Skip question" }));
+  expect((within(card()).getByRole("textbox", { name: "Why you skip it (optional)" }) as HTMLTextAreaElement).value).toBe("mine");
+  takePending("s");
 });

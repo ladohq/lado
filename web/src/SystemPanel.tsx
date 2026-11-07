@@ -31,6 +31,7 @@ import {
   getUpdate,
   getUpdatePlan,
   startUpdate,
+  type AgentInfo,
   type Health,
   type ProviderInfo,
   type SystemInfo,
@@ -44,9 +45,16 @@ import { statisticsLine } from "./Telemetry";
 import { ClipboardIcon, FolderIcon, GitHubIcon, QrIcon } from "./icons";
 import { useLive } from "./live";
 import { useBelow, useDismiss } from "./Menu";
+import { useModal } from "./modal";
+import { useMedia } from "./phone";
 import { storeUpdateSeen, updateSeen } from "./prefs";
+import { STATUS_WORDS } from "./Team";
 import { Tooltip } from "./Tooltip";
 import { BUNDLE_VERSION } from "./version";
+
+// An agent's status in the update's plan, which the API types as text: one it does not know
+// shows as it is.
+const planStatus = (status: string): string => STATUS_WORDS[status as AgentInfo["status"]] ?? status;
 
 export const GITHUB = "https://github.com/ladohq/lado";
 export const POLL_MS = 2000; // between two looks at the server while it restarts
@@ -129,9 +137,13 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
 
 export const useUpdate = () => useContext(UpdateContext);
 
+// A window no wider than this shows the link's dot without its word in a session's head
+// (styles.css), so the tooltip says the word.
+const NARROW = "(max-width: 1100px)";
+
 // `live` (or connecting…) as the button that opens the panel, `↑ X.Y.Z` beside it while a
 // newer LADO is out. The dialog for another device is the caller's (`sharing`, `onShare`):
-// it stays while the feed reconnects, as this button does not.
+// it stays while the feed is lost, as this button does not.
 export function LiveButton({ link, sharing, onShare }: { link: Link; sharing: boolean; onShare: () => void }) {
   const { info } = useUpdate();
   const [open, setOpen] = useState(false);
@@ -144,15 +156,15 @@ export function LiveButton({ link, sharing, onShare }: { link: Link; sharing: bo
   const below = useBelow(box, panel, open, true);
   const available = info?.available ?? null;
   const label = available ? `System: LADO ${available} is available` : "System";
+  const narrow = useMedia(NARROW);
+  const tip = available
+    ? `LADO ${available} is available`
+    : narrow && link === "open"
+      ? "live · LADO server"
+      : `The LADO server this page talks to: ${window.location.host}`;
   return (
     <span ref={box} className="system">
-      <Tooltip
-        tip={
-          available
-            ? `LADO ${available} is available`
-            : `The LADO server this page talks to: ${window.location.host}`
-        }
-      >
+      <Tooltip tip={tip}>
         <button
           ref={button}
           type="button"
@@ -162,10 +174,8 @@ export function LiveButton({ link, sharing, onShare }: { link: Link; sharing: bo
           aria-expanded={open}
           onClick={() => setOpen(!open)}
         >
-          {/* The feed's state is still announced as it changes. */}
-          <span className="link-word" role="status">
-            {link === "open" ? "live" : "connecting…"}
-          </span>
+          {/* Read out by the top bar's status region (Shell.tsx). */}
+          <span className="link-word">{link === "open" ? "live" : "connecting…"}</span>
           {available && <span className="update-mark">↑ {available}</span>}
         </button>
       </Tooltip>
@@ -517,8 +527,8 @@ function UpdateDialog({ onClose }: { onClose: (started: boolean) => void }) {
   const [plan, setPlan] = useState<UpdatePlan | { error: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
+  useModal(dialog);
   useEffect(() => {
-    dialog.current?.showModal();
     let current = true;
     getUpdatePlan().then(
       (found) => current && setPlan(found),
@@ -564,7 +574,7 @@ function UpdateDialog({ onClose }: { onClose: (started: boolean) => void }) {
       {found && (
         <>
           {found.downgrade && (
-            <p className="problem">An older LADO may refuse lado.db (it says so when it starts).</p>
+            <p className="update-warning">An older LADO may refuse lado.db (it says so when it starts).</p>
           )}
           {(found.sessions.length > 0 || found.server) && (
             <>
@@ -574,7 +584,7 @@ function UpdateDialog({ onClose }: { onClose: (started: boolean) => void }) {
                   <li key={sess.name}>
                     session <strong>{sess.name}</strong>:{" "}
                     {sess.agents.length > 0
-                      ? sess.agents.map((agent) => `${agent.name} ${agent.status}`).join(", ")
+                      ? sess.agents.map((agent) => `${agent.name} ${planStatus(agent.status)}`).join(", ")
                       : "no agents"}
                     {sess.open_runs > 0 ? ` · ${plural(sess.open_runs, "open run")}` : ""}
                   </li>

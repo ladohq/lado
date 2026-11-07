@@ -1,0 +1,39 @@
+## 1. The test
+
+- [x] 1.1 `web/src/Launch.test.tsx`, "Start in starts in the project's repository chosen" (unit,
+  the layer of the test itself): before `fireEvent.change(providerSelect(), …)`, add
+  `await waitFor(() => expect(providerSelect().disabled).toBe(false));`, with a comment on why:
+  a change reaches a field that is off, and the empty value would count as the human's choice.
+- [x] 1.2 With `/api/providers` answered 150 ms late (kept out of the commit), the test passes
+  20 times in a row; without the new line it fails. Say so in `build-report`.
+
+## 2. The waits
+
+- [x] 2.1 `web/vite.config.ts`: `testTimeout: 30_000` under `test`, with a comment on why.
+- [x] 2.2 `web/src/testSetup.ts`: `configure({ asyncUtilTimeout: 10_000 })` from
+  `@testing-library/react`, with a comment on why.
+- [x] 2.3 The `{ timeout: 3000 }` of `web/src/Launch.test.tsx` (7) and
+  `web/src/ProjectRepos.test.tsx` (5) are gone. `grep -rn 'timeout: 3000' web/src` finds nothing.
+- [x] 2.4 `docs/testing.md`, the Unit layer: one sentence on the two settings and on why a test
+  sets no timeout of its own.
+
+- [x] 2.5 The nine `vi.waitFor` that wait for something are Testing Library's `waitFor`;
+  `grep -rn 'await vi\.waitFor' web/src` finds only the two empty ones. `docs/testing.md` and
+  `web/src/testSetup.ts` name the rule.
+
+## 3. The backlog
+
+- [x] 3.1 `BACKLOG.md`: the entries "Vitest tests time out at vitest's default 5 s under load, one
+  entry per test" and "Flaky vitest: Launch's taken name of a running session" are gone, and the
+  entries around them are untouched. `grep -c "Vitest tests time out\|Launch's taken name"
+  BACKLOG.md` says 0.
+- [x] 3.2 `BACKLOG.md`: a P2 entry records the nine `{ timeout: 3000 }` only
+  `epic/lad-154-models` has.
+
+## 4. The checks
+
+- [x] 4.1 `make lint` and `make web` green; report the tests as numbers.
+- [x] 4.2 `web/src/Launch.test.tsx` passes 5 times in a row beside a load of the machine (e.g. a
+  second full `npx vitest run`); say so in `build-report`.
+- [x] 4.3 `openspec validate launch-test-waits-for-providers --strict`, and the trial archive with
+  `--skip-specs`.

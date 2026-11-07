@@ -272,7 +272,11 @@ library `not found` (the missing ones in the failure), and launches Chromium, wh
 a page with Latin and Cyrillic text and gives it back, its screenshot in `<temp
 dir>/lado-container-shots/` (in CI's artifact `container-<arch>`); a new home volume has no
 `~/.cache/ms-playwright` and no `chromium`, `chromium-browser` or `google-chrome` on
-`PATH`. So the UI tests run in LADO's image after `make browser`. A
+`PATH`. So the UI tests run in LADO's image after `make browser`. The
+toolchains' Go test (`test_toolchains.py`) has mise install Go from a mirror inside the
+container (`python3 -m http.server` on its loopback), fed by one download of the archive on
+the host per run, checked against its sha256; each install is bounded by `timeout` and its
+failure shows both exit codes and mise's debug logs (LAD-178). A
 test that fails in its setup or its
 call keeps, for each container it started (a compose project's too), `docker logs` and
 LADO's logs in `real_clis.EVIDENCE`: the container is registered on the test before
@@ -327,6 +331,21 @@ a failing cell's evidence goes to `<out>/evidence` (the artifact
 written for CI: its providers are exactly `lado.providers`' and each pin's version parts are
 its provider's `TESTED_VERSION` (`tests/test_smoke_ci.py`); the matrix is the same list
 (`tests/test_ci_workflow.py`). No secret anywhere.
+A job GitHub finds no hosted runner for is cancelled before any step, with no runner and
+GitHub's annotation "The job was not acquired by Runner of type hosted even after multiple
+attempts" (`timeout-minutes` does not count that wait): mostly a `smoke macos-latest` cell,
+beside the notice that GitHub lacks macOS arm64 capacity, and `ci-ok` fails the run. The
+workflow `CI rerun` (`.github/workflows/ci-rerun.yml`, on `workflow_run` of CI, so it runs
+main's files and never a pull request's code; `actions: write`, `checks: read`, `contents:
+read` only) takes each CI run whose first attempt ended `failure` and runs
+`scripts/ci_rerun.py <run-id> --rerun`: it reruns the failed jobs (`gh run rerun --failed`)
+once, and only when every job of attempt 1 that did not succeed, `ci-ok` aside, was
+cancelled with no step, no runner and that annotation, and, for a pull request's run, no
+newer CI run of its branch exists (the rerun would cancel it through the concurrency
+group). A superseded run ends `cancelled` and is never looked at; the rerun is attempt 2,
+never rerun again. Its log says why it reruns or not; without `--rerun` the script only
+prints the verdict on attempt 1, e.g. on a past run (`tests/test_ci_rerun.py`,
+`tests/test_ci_rerun_workflow.py`).
 Every `uses:` of every workflow, GitHub's own actions too, is a full commit SHA followed by
 `# vX.Y.Z`, the release it is (`tests/test_workflow_security.py`); Dependabot
 (`.github/dependabot.yml`) updates those pins, the uv and the web UI's npm dependencies and
@@ -383,7 +402,13 @@ Seven layers; each change gets tests at the lowest layer that can catch its bugs
 
 1. **Unit** (`make test`): pure logic, tmux replaced by a recorder. Default for everything.
    The server's API is tested in process with FastAPI's test client; the web UI's
-   components with vitest (`make web`), `fetch` mocked.
+   components with vitest (`make web`), `fetch` mocked. vitest runs in en-US whatever the
+   machine's locale (`test.env` in `web/vite.config.ts`, held by `web/src/testLocale.test.ts`):
+   the UI formats dates and sorts names in the human's locale, and the tests' expected
+   values are en-US's. A test has 30 s (`testTimeout` in `web/vite.config.ts`) and `waitFor`
+   and `findBy` wait 10 s (`asyncUtilTimeout` in `web/src/testSetup.ts`), so a loaded machine
+   does not fail what only comes late; a test sets no timeout of its own, and waits with
+   Testing Library's `waitFor`, not `vi.waitFor`, whose own 1 s no setting changes.
 2. **Integration** (`make test-integration`): real tmux, git, hooks, `lado mcp` and SQLite
    with the fake agent instead of an LLM. Required for behaviour that crosses processes,
    also the UI server's (one per home, background start, stop), without a browser.

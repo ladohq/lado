@@ -159,7 +159,7 @@ def test_in_a_container_a_folder_outside_the_repositories_folder_is_warned_about
     hint = look(dialog.locator(HINT).first)
     warned = look(warning)
     assert warned["ground"] != hint["ground"], (warned, hint)
-    assert warned["stripe"] != hint["stripe"] and warned["stripeWidth"] == "3px", (warned, hint)
+    assert warned["stripeWidth"] == "0px", warned
     assert warned["size"] == "13px", warned
     dialog.get_by_label("Provider").select_option("fake")
     expect(dialog.get_by_role("button", name="Start session")).to_be_enabled()
@@ -201,8 +201,7 @@ def test_a_session_starts_from_the_new_session_window(page: Page, server, repo, 
     expect(page).to_have_url(f"{server['url']}/sessions/my-repo/activity")
     expect(dialog).to_have_count(0)
     idle("my-repo")
-    view = page.get_by_role("region", name="Session my-repo")
-    expect(view.get_by_role("group", name="Team")).to_contain_text("supervisor")
+    expect(page.get_by_role("toolbar", name="Team")).to_contain_text("supervisor")
     assert state.get_session("my-repo").provider == "fake"
     shot(page)
 
@@ -302,7 +301,7 @@ def test_a_folder_that_will_not_do_shows_the_cores_reason(page: Page, server, tm
         " el.remove(); return c; }"
     )
     assert refused["ground"] not in (hint["ground"], warn_ground), (refused, hint, warn_ground)
-    assert refused["stripeWidth"] == "3px" and refused["size"] == "13px", refused
+    assert refused["stripeWidth"] == "0px" and refused["size"] == "13px", refused
     icon = refusal.evaluate("el => getComputedStyle(el, '::before').content")
     assert icon == '"!"', icon
     both_themes(page, shot, "refusal")
@@ -444,6 +443,18 @@ def test_the_session_list_row_has_only_the_entrys_menu(page: Page, server, repo,
     expect(by_hand).to_have_count(0)
 
 
+def test_stop_names_the_open_questions_it_closes(page: Page, server, repo, shot):
+    session = running_session(repo)
+    runtime.ask_human(session, "supervisor", "Which port?")
+    runtime.ask_human(session, "supervisor", "Ship it?")
+    log_in(page, server, f"/sessions/{session}")
+    head = page.get_by_role("banner").locator(".session-head")
+    head.get_by_role("button", name="Stop session…").click()
+    asked = page.get_by_role("dialog", name=f'Stop session "{session}"?')
+    expect(asked.get_by_role("listitem").nth(1)).to_have_text("2 open questions to you are closed")
+    shot(page)
+
+
 def test_stop_from_the_session_head(page: Page, server, repo, shot):
     session = running_session(repo)
     log_in(page, server, f"/sessions/{session}")
@@ -466,7 +477,7 @@ def test_stop_from_the_session_head(page: Page, server, repo, shot):
     shot(page, "asked")
 
     asked.get_by_role("button", name=f"Stop {session}").click()
-    expect(head.get_by_role("button", name="Resume…")).to_be_visible()
+    expect(page.get_by_role("button", name="Resume session")).to_be_visible()
     expect(head.get_by_role("button", name="Forget…")).to_be_visible()
     expect(head.get_by_role("button", name="Stop session…")).to_have_count(0)
     assert state.get_session(session).stopped_at
@@ -476,10 +487,10 @@ def test_stop_from_the_session_head(page: Page, server, repo, shot):
 def test_resume_a_stopped_session(page: Page, server, repo, shot):
     session = stopped_session(repo)
     log_in(page, server, f"/sessions/{session}")
-    page.get_by_role("button", name="Resume…").click()
+    page.locator(".stopped-bar").get_by_role("button", name="Resume session").click()
     dialog = page.get_by_role("dialog", name="Resume session")
-    expect(dialog.get_by_role("combobox", name=re.compile("Where"))).to_have_value(str(repo))
-    expect(dialog.get_by_role("combobox", name=re.compile("Where"))).to_be_disabled()
+    expect(dialog.get_by_role("group", name="Where")).to_have_text(str(repo))
+    expect(dialog.get_by_role("combobox", name=re.compile("Where"))).to_have_count(0)
     expect(dialog.get_by_label("Provider")).to_have_value("fake", timeout=30_000)  # CLIs checked
     shot(page, "window")
 
@@ -488,6 +499,8 @@ def test_resume_a_stopped_session(page: Page, server, repo, shot):
     idle(session)
     head = page.get_by_role("banner").locator(".session-head")
     expect(head.get_by_role("button", name="Resume…")).to_have_count(0)
+    expect(page.locator(".stopped-bar")).to_have_count(0)
+    expect(page.get_by_role("textbox", name="Write to the supervisor…")).to_be_visible()
     assert state.get_session(session).stopped_at is None
     shot(page)
 
@@ -497,7 +510,7 @@ def test_resume_is_off_while_the_sessions_provider_cannot_run(page: Page, server
     with state.connect() as db:
         db.execute("UPDATE sessions SET provider = ? WHERE name = ?", ("gone", session))
     log_in(page, server, f"/sessions/{session}")
-    page.get_by_role("button", name="Resume…").click()
+    page.locator(".stopped-bar").get_by_role("button", name="Resume session").click()
     dialog = page.get_by_role("dialog", name="Resume session")
     refusal = dialog.locator(".field-note.bad")
     expect(refusal).to_have_text("unknown provider gone", timeout=30_000)  # CLIs checked
@@ -573,7 +586,7 @@ def test_resume_without_the_login_is_disabled_and_leads_to_settings(
 ):
     session = stopped_login_session(repo, logins)
     log_in(page, server, f"/sessions/{session}")
-    page.get_by_role("button", name="Resume…").click()
+    page.locator(".stopped-bar").get_by_role("button", name="Resume session").click()
     dialog = page.get_by_role("dialog", name="Resume session")
     note = dialog.locator(".field-note.bad", has_text="is not logged in")
     expect(note).to_have_text(
@@ -603,8 +616,7 @@ def test_a_start_that_records_the_trust_shows_no_warnings(page: Page, trusting, 
     dialog.get_by_role("button", name="Start session").click()
     expect(page).to_have_url(f"{server['url']}/sessions/my-repo/activity")
     idle("my-repo")
-    view = page.get_by_role("region", name="Session my-repo")
-    expect(view.get_by_role("group", name="Team")).to_contain_text("supervisor")
+    expect(page.get_by_role("toolbar", name="Team")).to_contain_text("supervisor")
     expect(page.get_by_text("Warnings:")).to_have_count(0)
     log = (state.home() / "loop.log").read_text()
     note = f"LADO recorded Fake agent's trust in {repo.resolve()} in {trusting.path}"
@@ -625,7 +637,7 @@ def trusting(claude_config, monkeypatch):
 def test_the_resume_notice_stands_above_the_tabs(page: Page, server, repo, shot):
     session = stopped_session(repo)
     log_in(page, server, f"/sessions/{session}")
-    page.get_by_role("button", name="Resume…").click()
+    page.locator(".stopped-bar").get_by_role("button", name="Resume session").click()
     dialog = page.get_by_role("dialog", name="Resume session")
     expect(dialog.get_by_label("Provider")).to_have_value("fake", timeout=30_000)  # CLIs checked
     dialog.get_by_label("Provider").select_option("fake-paste")
@@ -667,7 +679,7 @@ def test_forget_a_stopped_session(page: Page, server, repo, shot):
     # The name stays on one line beside the status and the icons, its whole text in a tooltip.
     head = page.get_by_role("banner").locator(".session-head")
     name = head.locator("h1")
-    expect(name).to_have_attribute("title", session)
+    expect(name.get_by_role("button")).to_have_attribute("title", session)
     assert name.bounding_box()["height"] < 36
     expect(head.get_by_role("button", name="Session actions")).to_have_count(0)
     head.get_by_role("button", name="Forget…").focus()

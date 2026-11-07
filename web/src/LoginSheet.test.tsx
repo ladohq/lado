@@ -154,12 +154,44 @@ test("a choice that runs the CLI's sign-in has a button for it and no field", as
   expect(calls).toEqual([]); // nothing runs until asked
   fireEvent.click(get);
   const window_ = await screen.findByRole("dialog", { name: "Log in: Codex CLI" });
+  await waitFor(() => expect(FakeSocket.all).toHaveLength(1)); // its socket opens in an effect, after the render
   expect(calls).toEqual([{ method: "POST", path: "/api/providers/codex/login", body: { action: "login" } }]);
   expect(within(window_).getByText(CODEX_HELP)).toBeTruthy(); // the action's help line
   expect(lastSocket().url).toBe("ws://localhost:3000/api/providers/codex/login/terminal");
   act(() => lastSocket().open());
   act(() => lastSocket().end(4404, "the login window of codex ended"));
   await waitFor(() => expect(closed).toHaveBeenCalled());
+});
+
+test("the sign-in code's window shows its code; a failure offers a new code and Back", async () => {
+  answer = () => new Response(JSON.stringify(codex()), { status: 200 });
+  const { closed } = sheet(codex({ login: { ...LOGIN, state: "no" }, logout_file: false }));
+  fireEvent.click(screen.getByRole("button", { name: "Get a sign-in code" }));
+  const window_ = await screen.findByRole("dialog", { name: "Log in: Codex CLI" });
+  expect(within(window_).getByText("Asking Codex CLI for a sign-in code…")).toBeTruthy();
+  expect(within(window_).queryByLabelText("Text to send")).toBeNull();
+  await waitFor(() => expect(FakeSocket.all).toHaveLength(1)); // its socket opens in an effect, after the render
+  const first = lastSocket();
+  act(() => first.open());
+  act(() => first.frame({ type: "prompt", link: "https://auth.openai.com/codex/device", code: "UBSY-FIU1O", expires: "", lines: [] }));
+  expect(within(window_).getByText("UBSY-FIU1O")).toBeTruthy();
+  act(() => first.frame({ type: "ended", status: 1, said: "device auth timed out after 15 minutes" }));
+  act(() => first.end(4404, "the login window of codex ended"));
+  expect(within(window_).getByText("device auth timed out after 15 minutes")).toBeTruthy();
+  expect(closed).not.toHaveBeenCalled();
+  // Get a new code runs the sign-in again, in a new window.
+  fireEvent.click(within(window_).getByRole("button", { name: "Get a new code" }));
+  await waitFor(() => expect(FakeSocket.all.length).toBe(2));
+  expect(calls.filter((c) => c.method === "POST").length).toBe(2);
+  expect(await screen.findByText("Asking Codex CLI for a sign-in code…")).toBeTruthy();
+  const second = lastSocket();
+  act(() => second.open());
+  act(() => second.frame({ type: "ended", status: 1, said: "no network" }));
+  act(() => second.end(4404, "the login window of codex ended"));
+  // Back: the sheet's choices again.
+  fireEvent.click(await screen.findByRole("button", { name: "Back" }));
+  expect(screen.getByRole("dialog", { name: "How do you pay for Codex?" })).toBeTruthy();
+  expect(closed).not.toHaveBeenCalled();
 });
 
 test("the other choices of the same sheet take a pasted value", () => {
@@ -181,6 +213,7 @@ test("Log out of the CLI's own file asks first, naming who shares it, then runs 
   expect(calls).toEqual([]);
   fireEvent.click(within(ask).getByRole("button", { name: "Log out" }));
   await screen.findByRole("dialog", { name: "Log in: Codex CLI" });
+  await waitFor(() => expect(FakeSocket.all).toHaveLength(1)); // its socket opens in an effect, after the render
   expect(calls).toEqual([{ method: "POST", path: "/api/providers/codex/login", body: { action: "logout" } }]);
   act(() => lastSocket().open());
   act(() => lastSocket().end(4404, "the login window of codex ended"));

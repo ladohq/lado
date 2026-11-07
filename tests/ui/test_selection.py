@@ -128,7 +128,6 @@ def test_quote_appends_to_the_chat_composer(page: Page, server, repo, shot):
     )
     expect(field).to_be_focused()
     assert field.evaluate("f => f.selectionStart === f.value.length")
-    expect(page.locator(".composer-name")).to_have_text("supervisor")
     expect(bar(page)).to_have_count(0)
     shot(page)
 
@@ -241,7 +240,7 @@ def test_no_bar_for_an_own_answer_typed_in_the_waiting_card(page: Page, server, 
     own.evaluate("f => { f.focus(); f.setSelectionRange(0, 4); }")
     page.wait_for_timeout(200)
     expect(bar(page)).to_have_count(0)
-    select(card.get_by_role("listitem").first, "Pick one")
+    select(card.get_by_role("region", name="Context of the card"), "Pick one")
     expect(bar(page)).to_be_visible()
     shot(page)
 

@@ -28,20 +28,23 @@ import {
   LaunchIcon,
   MenuIcon,
   NeedsYouIcon,
+  NoNetworkIcon,
   ProjectsIcon,
   SessionsIcon,
   SettingsIcon,
 } from "./icons";
 import { LaunchProvider, useLaunch } from "./Launch";
 import { isLive, Live, LiveContext, useLive } from "./live";
+import { escapeIsTaken } from "./Menu";
 import { Notifier } from "./Notifications";
 import { NEEDS_YOU_PATH } from "./paths";
-import { usePhone, usePhoneViewport } from "./phone";
+import { useMedia, usePhone, usePhoneViewport } from "./phone";
 import { reloadedFor, storeRailCollapsed, storeReloadedFor, storedRailCollapsed } from "./prefs";
 import { SelectionBar } from "./SelectionBar";
 import { ShareDialog } from "./Share";
 import { LiveButton, UpdateProvider, UpdateStatus } from "./SystemPanel";
 import { StatisticsBanner } from "./Telemetry";
+import { Tooltip } from "./Tooltip";
 import { BUNDLE_VERSION } from "./version";
 
 const SECTIONS: { to: string; name: string; icon: ReactNode }[] = [
@@ -60,9 +63,9 @@ export function useTitle(title: string): void {
   useLayoutEffect(() => setTitle(title), [setTitle, title]);
 }
 
-type TopBar = { slot: HTMLElement | null; claim: () => () => void };
+type TopBar = { slot: HTMLElement | null; skip: HTMLElement | null; claim: () => () => void };
 
-const TopBarContext = createContext<TopBar>({ slot: null, claim: () => () => {} });
+const TopBarContext = createContext<TopBar>({ slot: null, skip: null, claim: () => () => {} });
 
 // A page with a head of its own draws it in the top bar, in place of the Shell's title
 // (docs/design/ui.md, Session head): it renders into the element this returns with
@@ -78,16 +81,26 @@ export function useTopBar(): HTMLElement | null {
   return slot;
 }
 
+// The slot before everything else of the frame, for a page's skip link (docs/design/ui.md,
+// Session head): the first stop of Tab. The Shell knows nothing of what a page skips to.
+export function useSkipSlot(): HTMLElement | null {
+  return useContext(TopBarContext).skip;
+}
+
 export function Shell() {
   const [title, setTitle] = useState("");
   const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const [skip, setSkip] = useState<HTMLElement | null>(null);
   const [claims, setClaims] = useState(0);
   const claim = useCallback(() => {
     setClaims((now) => now + 1);
     return () => setClaims((now) => now - 1);
   }, []);
-  const topBar = useMemo(() => ({ slot, claim }), [slot, claim]);
-  const [collapsed, setCollapsed] = useState(storedRailCollapsed);
+  const topBar = useMemo(() => ({ slot, skip, claim }), [slot, skip, claim]);
+  // The rail: the human's choice, else by the window.
+  const [railChoice, setRailChoice] = useState(storedRailCollapsed);
+  const smallWindow = useMedia("(max-width: 1599px)");
+  const collapsed = railChoice ?? smallWindow;
   const [denied, setDenied] = useState<string | null>(null);
   const [live] = useState(() => new Live());
   const phone = usePhone();
@@ -114,7 +127,7 @@ export function Shell() {
   }, [live]);
 
   const toggle = () => {
-    setCollapsed(!collapsed);
+    setRailChoice(!collapsed);
     storeRailCollapsed(!collapsed);
   };
 
@@ -139,7 +152,7 @@ export function Shell() {
     if (!drawer) return;
     rail.current?.querySelector<HTMLElement>(".rail-link")?.focus();
     const escape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || (event.target as Element | null)?.closest?.("dialog")) return;
+      if (event.key !== "Escape" || escapeIsTaken(event.target)) return;
       closeDrawer();
     };
     document.addEventListener("keydown", escape);
@@ -148,6 +161,7 @@ export function Shell() {
 
   const frame = (
     <div className={`app${folded ? " collapsed" : ""}`}>
+      <div ref={setSkip} className="skip-slot" />
       <TabTitle title={title} />
       <Notifier />
       <SelectionBar />
@@ -279,24 +293,40 @@ function VersionBanner() {
   );
 }
 
-// The change feed's link: live, or reconnecting while it is down (what the page shows may
-// be old), with the reason. Live opens the system panel (SystemPanel.tsx). The dialog for
-// another device (Share.tsx) is kept here: its new link ends the stream, and the button
-// goes away while it reconnects.
+// The change feed's link (docs/design/ui.md, A lost connection): live, or, once the feed is
+// lost, reconnecting on the warning ground (what the page shows may be old), a reason the
+// server answered in its tooltip. A shorter drop shows what stood there. Live opens the
+// system panel (SystemPanel.tsx). The dialog for another device (Share.tsx) is kept here: its
+// new link ends the stream, and the button goes away if the feed stays lost. The status region
+// stands from the first paint, also on a refused stream: a region that comes with its text
+// is read out unreliably, so the mark itself has no status role.
 function LinkState() {
-  const { link, problem } = useLive();
+  const { link, lost, problem } = useLive();
   const [sharing, setSharing] = useState(false);
-  if (link === "refused") return null; // the page says how to get in
+  const before = useRef<"open" | "connecting">("connecting"); // what a drop leaves shown
+  if (link === "open" || link === "connecting") before.current = link;
+  // Refused, there is no mark to follow and no connection to name: the page's alert says why.
+  const word = link === "refused" ? "" : lost ? "reconnecting…" : before.current === "open" ? "live" : "connecting…";
+  const mark = (
+    <span className="link reconnecting" tabIndex={problem ? 0 : undefined}>
+      <NoNetworkIcon />
+      <span className="link-word">reconnecting…</span>
+    </span>
+  );
   return (
     <>
-      {link !== "down" ? (
-        <LiveButton link={link} sharing={sharing} onShare={() => setSharing(true)} />
-      ) : (
-        <span className="link reconnecting" role="status" title={problem ?? undefined}>
-          reconnecting…{problem && <span className="reconnecting-why"> {problem}</span>}
-        </span>
-      )}
-      {sharing && <ShareDialog onClose={() => setSharing(false)} />}
+      <span className="visually-hidden" role="status">
+        {word}
+      </span>
+      {link !== "refused" &&
+        (!lost ? (
+          <LiveButton link={before.current} sharing={sharing} onShare={() => setSharing(true)} />
+        ) : problem ? (
+          <Tooltip tip={problem}>{mark}</Tooltip>
+        ) : (
+          mark
+        ))}
+      {link !== "refused" && sharing && <ShareDialog onClose={() => setSharing(false)} />}
     </>
   );
 }

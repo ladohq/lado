@@ -213,12 +213,27 @@ class LoginChoice:
 @dataclass(frozen=True)
 class LoginAction:
     """A command of the login window (lado.logins): its id in the API, its label, its argv,
-    and the window's help line while it runs ("" for the window's own)."""
+    and the window's help line while it runs ("" for the window's own). With `shows_code`
+    the window shows the link and the code its provider reads from the command's output
+    (Provider.login_prompt) instead of a terminal."""
 
     id: str
     label: str
     argv: tuple[str, ...]
     help: str = ""
+    shows_code: bool = False
+
+
+@dataclass(frozen=True)
+class LoginPrompt:
+    """What a login command asks the human to do, read from its output: open `link` (https)
+    and enter `code` there before it `expires` ("" when it does not say), with the
+    command's own `lines` (a warning) as it wrote them."""
+
+    link: str
+    code: str
+    expires: str = ""
+    lines: tuple[str, ...] = ()
 
 
 def run_status(argv: list[str], env: dict[str, str]) -> subprocess.CompletedProcess | str:
@@ -337,6 +352,12 @@ class Provider(ABC):
         """The commands the login window runs for the human (the CLI's own login and, where
         it asks which one, logout); by default none."""
         return ()
+
+    def login_prompt(self, text: str) -> LoginPrompt | None:
+        """The link and the code in `text`, the output of a login action that `shows_code`
+        so far (wrapped lines joined, colours or none); None until both are there, and for
+        output it does not know. By default None."""
+        return None
 
     def keychain_login(self, env: dict[str, str]) -> str | None:
         """None when the CLI, started with `env`, does not read its login from the macOS

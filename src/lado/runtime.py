@@ -121,7 +121,11 @@ goal, how to check it), then ask_human with the brief attached and the choices \
 "{start_choice}" (exactly so, with the new session's name) and one to decline; when the \
 human picks "{start_choice}", call start_session with that name and the question's id. The \
 new session's supervisor gets the brief; it reports nothing back to you.
-Workers report back with messages that arrive in your input as "[from <name>] ...".
+Workers report back with messages that arrive in your input as "[from <name>] ...". \
+Do not wait for a worker inside your turn (no sleep, no polling list_agents): end the turn; \
+its report starts your next one, or comes with the result of your next `lado` tool call. \
+Before you remind an agent of a report, or tell the human you wait for one, call \
+read_messages first.
 A bare artifact name is in the session's scope. A flow run's artifacts are named by their \
 full name, "<run>/<name>": in a step of your own in a run, write and attach the run's \
 artifacts by its full name, e.g. "feature/x/design", since you may lead several runs.
@@ -230,11 +234,17 @@ Do not set a tool's default version for the whole container (`mise use -g`): ask
 supervisor.
 """
 
+# The line above the messages that came during an agent's turn, in the result of its next
+# call of a LADO tool (take_mid_turn).
+MID_TURN = "Messages that came during your turn:"
+
 # How every agent sends and reads messages, appended to the instructions above.
-MESSAGING = """\
+MESSAGING = f"""\
 Messages: send_message takes a one-line summary (at most 200 characters), the only thing \
 the recipient sees at first; put the details in body. A message with a body arrives as one \
-line ending in "call read_messages": call read_messages to get its full text. Make the \
+line ending in "call read_messages": call read_messages to get its full text. A message \
+that comes while you are in a turn arrives with the result of your next `lado` tool call, \
+after the tool's own result, under "{MID_TURN}". Make the \
 reporting call (send_message, or flow_advance in a flow run) the last action of your turn. \
 Send no status-only messages: being idle tells \
 the others you are done.
@@ -250,7 +260,8 @@ WORKTREES_EXCLUDE = "/.lado/worktrees/"
 # The first input of an agent whose CLI starts its session only then and that has nothing
 # else to start with (Capabilities.session_start_on_first_input): one short turn. It must
 # ask the agent to end it, never to wait: a model with a tool to wait takes it literally,
-# and LADO delivers its queue only at the end of its turn (LAD-167).
+# and LADO delivers its queue only at the end of its turn or with a `lado` tool's result
+# (LAD-167, LAD-172).
 FIRST_INPUT = "session started; nothing to do yet: end this turn, the next message starts a new one"
 # The summary of the human's first message to a session's supervisor (start_session's
 # `prompt`): fixed, so the text, only in the body, never goes on a CLI's command line.
@@ -1488,7 +1499,41 @@ def send_message(
             "write the details to an artifact (write_artifact) and attach it"
         )
     attachments = artifacts.resolve_attachments(session, sender, attached)
+    # The human is no agent: messages to them stay delivered, never read (post).
+    if state.HUMAN not in (sender, recipient):
+        _refuse_while_waiting(session, sender, recipient)
     return post(session, sender, recipient, summary, body, or_human=True, attachments=attachments)
+
+
+def _refuse_while_waiting(session: str, sender: str, recipient: str) -> None:
+    """Refuse a message to `recipient` while one of its own waits for `sender` unreceived
+    (state.waiting_from): the "send your report" to an agent whose report is on its way.
+    The refusal's tool result carries the sender's queue (take_mid_turn), so a line comes
+    with it and a body needs read_messages; then the same send goes through."""
+    waiting = state.waiting_from(session, sender, recipient)
+    if waiting is None:
+        return
+    then = (
+        "read it with read_messages, then send again"
+        if waiting.to_read
+        else "its line comes with this result; send again"
+    )
+    raise LadoError(
+        f"{recipient}'s message #{waiting.id} waits for you, so nothing was sent: {then} if it "
+        "still needs saying"
+    )
+
+
+def take_mid_turn(session: str, agent: str) -> list[state.Message]:
+    """Take the agent's queue for the result of its call of a LADO tool (lado.mcp_server):
+    delivered at once by TOOL_RESULT, so no turn's end hands it over again and the sweep
+    never retypes it."""
+    return state.take_pending(session, agent, state.DELIVERED, channel=state.TOOL_RESULT)
+
+
+def mid_turn_text(messages: list[state.Message]) -> str:
+    """The lines of the messages take_mid_turn took, under MID_TURN; '' for none."""
+    return f"{MID_TURN}\n{format_messages(messages)}" if messages else ""
 
 
 def write_as_human(
@@ -1671,8 +1716,11 @@ def _reply_of(session: str, question: state.Message, reply: HumanReply) -> state
 
 
 def _open_question(session: str, question_id: int) -> state.Message:
-    running_session(session)
     question = state.get_message(session, question_id)
+    # Before the session's check: a resume does not bring this question back.
+    if question is not None and question.question_state == state.QUESTION_STOPPED:
+        raise LadoError(f"question #{question_id} is {question.question_state}")
+    running_session(session)
     if question is None or question.kind != state.QUESTION:
         raise LadoError(f"no question #{question_id} in session {session}")
     if question.question_state != state.OPEN_QUESTION:
@@ -1744,22 +1792,28 @@ def cut_summary(summary: str) -> str:
     return summary if len(summary) <= limit else summary[: limit - 1] + "…"
 
 
+def question_lines(question: state.Message) -> list[str]:
+    """A question's details, if any, and how the human may answer, for a message to the
+    lead."""
+    choices = (
+        f"Choices: {', '.join(question.choices)}"
+        + (" (or an answer in the human's own words)" if question.free_answer else "")
+        if question.choices
+        else "No choices: the human answers in their own words."
+    )
+    return [question.body, choices] if question.body else [choices]
+
+
 def ask_recommendation(session: str, question: state.Message) -> None:
     """Ask the lead for its recommendation on another agent's open question to the human,
     with the question's attachments. A lead that does not run is not asked: the question
     is asked all the same."""
     summary = cut_summary(f"recommend on question #{question.id} of {question.sender}")
-    lines = [question.summary]
-    if question.body:
-        lines.append(question.body)
-    if question.choices:
-        lines.append(
-            f"Choices: {', '.join(question.choices)}"
-            + (" (or an answer in the human's own words)" if question.free_answer else "")
-        )
-    else:
-        lines.append("No choices: the human answers in their own words.")
-    lines.append(RECOMMEND_REQUEST.format(item=f"question={question.id}"))
+    lines = [
+        question.summary,
+        *question_lines(question),
+        RECOMMEND_REQUEST.format(item=f"question={question.id}"),
+    ]
     attachments = state.message_attachments(question.id)
     try:
         request = state.ask_recommendation(
@@ -1922,6 +1976,10 @@ def start_approved_session(session: str, agent: str, name: str, question_id: int
 
 
 TO_HUMAN = "delivered: the human reads it in LADO's UI"
+CUT_OFF = (
+    "The session stopped before this message reached {recipient}, so it was not delivered. "
+    "Send it again after Resume."
+)
 
 
 def post(
@@ -1956,10 +2014,14 @@ def post(
 def _to_running(session: str, or_human: bool = False) -> Iterator[None]:
     """Turn the queue's refusal of a recipient that does not run (checked where the message
     is stored, so it holds against a worker finished meanwhile) into LADO's error, which
-    names the running agents; with `or_human`, the human too."""
+    names the running agents; with `or_human`, the human too. In a stopped session, which
+    has forgotten its agents, none runs: the error says so (CUT_OFF)."""
     try:
         yield
     except state.NotRunning as refused:
+        sess = state.get_session(session)
+        if sess is not None and sess.stopped_at:
+            raise LadoError(CUT_OFF.format(recipient=refused.name)) from None
         names = ", ".join(a.name for a in state.list_agents(session) if a.status != state.STOPPED)
         human = f'; or "{state.HUMAN}"' if or_human else ""
         raise LadoError(f"{refused}; running agents: {names}{human}") from None
@@ -1967,14 +2029,26 @@ def _to_running(session: str, or_human: bool = False) -> Iterator[None]:
 
 def _deliver(session: str, recipient: str, message: int | None = None) -> str:
     """Deliver the recipient's queued messages now if it is idle; says what became of
-    `message`, the one just queued."""
-    # What was typed before and never confirmed goes first, with this one if typed again.
-    _sweep_sent(session, recipient, time.time(), RETRY_DELAYS)
-    # Queue first, then take the queue of an idle agent: a hook that makes the agent idle
-    # does the reverse, so a message is never left behind by an agent that went idle in
-    # between.
-    if hand_over(session, recipient):
-        return "sent"
+    `message`, the one just queued. Typing that fails because the session ended, by a stop
+    or by its tmux session going, is refused (CUT_OFF), whatever tmux said; a session
+    forgotten meanwhile has no Resume, so it is refused as unknown. Any other failure of
+    tmux stays an error."""
+    try:
+        # What was typed before and never confirmed goes first, with this one if typed again.
+        _sweep_sent(session, recipient, time.time(), RETRY_DELAYS)
+        # Queue first, then take the queue of an idle agent: a hook that makes the agent idle
+        # does the reverse, so a message is never left behind by an agent that went idle in
+        # between.
+        if hand_over(session, recipient):
+            return "sent"
+    except tmux.TmuxError as error:
+        # The database first: a stop marks the session before it kills tmux.
+        sess = state.get_session(session)
+        if sess is None:
+            raise LadoError(f'unknown session "{session}"') from error
+        if sess.stopped_at or loop.tmux_gone(session, error):
+            raise LadoError(CUT_OFF.format(recipient=recipient)) from error
+        raise
     # Someone else may have handed it over since it was queued: such a hook, or the
     # session loop's sweep. The agent is busy now, with this message.
     queued = state.get_message(session, message) if message is not None else None
@@ -2425,6 +2499,7 @@ def format_messages(messages: list[state.Message]) -> str:
 class Stopped:
     workers: list[state.Agent]  # their worktrees stay on disk
     dropped: int  # messages no agent got
+    questions: int  # open questions to the human it closed
 
 
 @dataclass
@@ -2476,6 +2551,7 @@ def kit_users(kit: str) -> KitUsers:
 class StopPreview:
     agents: list[str]  # the agents a stop closes
     dropped: int  # messages no agent got, dropped by a stop now
+    questions: int  # open questions to the human, closed by a stop now
     open_runs: list[str]  # they stay, and go on after a resume
     worktrees: dict[str, str]  # worktree -> branch, they stay on disk
 
@@ -2494,6 +2570,7 @@ def stop_preview(session: str) -> StopPreview:
     return StopPreview(
         [a.name for a in state.list_agents(session)],
         state.unreceived(session),
+        state.open_questions(session),
         [r.name for r in state.list_runs(session, open_only=True)],
         session_worktrees(sess.repo, session),
     )
@@ -2676,7 +2753,7 @@ def _kill_for_migration(sessions: list[str]) -> dict[str, bool]:
 def _mark_stopped(session: str, gone: bool, kill: bool = False) -> Stopped:
     """Mark the session stopped; with `kill`, then kill its tmux session. A kill that fails
     leaves it marked stopped, and the error says how to kill it by hand."""
-    agents, dropped = state.stop_session(session, gone=gone)
+    agents, dropped, questions = state.stop_session(session, gone=gone)
     failed = None
     if kill:
         try:
@@ -2694,7 +2771,7 @@ def _mark_stopped(session: str, gone: bool, kill: bool = False) -> Stopped:
             "session after that"
         ) from failed
     providers.base.remove_session_config_dirs(session)
-    return Stopped([a for a in agents if a.name != SUPERVISOR], dropped)
+    return Stopped([a for a in agents if a.name != SUPERVISOR], dropped, questions)
 
 
 @dataclass

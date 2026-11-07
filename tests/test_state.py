@@ -595,6 +595,20 @@ def test_setting_a_title_is_journaled_as_a_session_update(lado_home):
     assert [tuple(row) for row in rows] == [("sessions", "s", "update")]
 
 
+def test_a_new_project_title_is_journaled_as_an_update_of_its_sessions_alone(lado_home):
+    with state.creating_project("shop", "Shop"):
+        pass
+    state.add_session(state.Session("a", "/a", None, "claude", project="shop"))
+    state.add_session(state.Session("b", "/b", None, "claude"))
+    with state.connect() as db:
+        after = db.execute("SELECT max(id) FROM changes").fetchone()[0]
+    assert state.set_project_title("nope", "x") is False
+    assert state.set_project_title("shop", "Shop EU") is True
+    with state.connect() as db:
+        rows = db.execute("SELECT kind, session, op FROM changes WHERE id > ?", (after,)).fetchall()
+    assert [tuple(row) for row in rows] == [("sessions", "a", "update")]
+
+
 def test_schema_28_gives_sessions_a_title(lado_home):
     state.add_session(state.Session("s", "/r", None, "claude"))
     with state.connect() as db:
@@ -1509,6 +1523,48 @@ def test_read_messages_reads_a_handed_over_message_before_it_is_confirmed(lado_h
     assert states == {"report": state.READ, "ping": state.DELIVERED, "later": state.PENDING}
 
 
+def test_a_queue_taken_by_a_tool_result_is_delivered_once_and_out_of_the_sweep(lado_home):
+    _session_with(_agent(status=state.BUSY))
+    first = state.queue_message("s", "supervisor", "w1", "first", "the details")
+    second = state.queue_message("s", "w2", "w1", "second")
+    before = time.time()
+    taken = state.take_pending("s", "w1", state.DELIVERED, channel=state.TOOL_RESULT)
+    assert [(m.id, m.state, m.channel) for m in taken] == [
+        (first, state.DELIVERED, state.TOOL_RESULT),
+        (second, state.DELIVERED, state.TOOL_RESULT),
+    ]
+    stored = {m.id: m for m in state.list_messages("s")}
+    assert all(stored[i].sent_at >= before for i in (first, second))
+    assert {stored[i].channel for i in (first, second)} == {state.TOOL_RESULT}
+    assert state.take_pending("s", "w1", state.SENT, channel=state.TYPED) == []
+    seen = []
+
+    def plan(agent, sent):
+        seen.extend(sent)
+        return state.Plan(retype=True)
+
+    assert state.sweep("s", "w1", time.time(), plan).typed == []
+    assert seen == []
+    assert [m.id for m in state.read_messages("s", "w1")] == [first]
+
+
+def test_a_message_from_a_sender_waits_until_its_recipient_received_it(lado_home):
+    _session_with(_agent("supervisor", status=state.BUSY), _agent())
+    assert state.waiting_from("s", "supervisor", "w1") is None
+    report = state.queue_message("s", "w1", "supervisor", "report", "the details")
+    state.queue_message("s", "w2", "supervisor", "other's", "body")
+    assert state.waiting_from("s", "supervisor", "w1").id == report  # pending
+    assert state.waiting_from("s", "w1", "supervisor") is None  # the other way round
+    state.take_pending("s", "supervisor", state.DELIVERED, channel=state.TOOL_RESULT)
+    assert state.waiting_from("s", "supervisor", "w1").id == report  # delivered, not read
+    state.read_messages("s", "supervisor")
+    assert state.waiting_from("s", "supervisor", "w1") is None
+    line = state.queue_message("s", "w1", "supervisor", "a line only")
+    assert state.waiting_from("s", "supervisor", "w1").id == line
+    state.take_pending("s", "supervisor", state.DELIVERED, channel=state.TOOL_RESULT)
+    assert state.waiting_from("s", "supervisor", "w1") is None  # its line was received
+
+
 def test_version_5_database_gets_runs(lado_home):
     db = _schema_v4(lado_home)
     for statement in state.MIGRATIONS[4]:
@@ -1892,7 +1948,7 @@ def test_stopping_a_session_keeps_its_history_and_drops_what_was_not_delivered(l
         state.queue_message("s", "lado", recipient, "hi", body)
         if mark:
             state.take_pending("s", recipient, mark)
-    agents, dropped = state.stop_session("s")
+    agents, dropped, _ = state.stop_session("s")
     assert [a.name for a in agents] == ["supervisor", "w1"]
     assert dropped == 3
     assert state.get_session("s").stopped_at
@@ -2075,6 +2131,100 @@ def test_an_answer_goes_only_to_a_running_agent(lado_home):
 
 def _yes(question):
     return state.Reply(question, f"Answer to #{question}: yes", "", "yes", state.ANSWERED)
+
+
+@pytest.mark.parametrize(
+    "stop",
+    [
+        lambda: state.stop_session("s"),
+        lambda: state.stop_session("s", gone=True),
+        state.stop_for_container,
+        lambda: state.give_up_resume("s"),
+        lambda: state.fail_resume(state.get_session("s"), ""),
+    ],
+    ids=["stop_session", "gone", "stop_for_container", "give_up_resume", "fail_resume"],
+)
+def test_every_stop_marks_the_open_questions_stopped(lado_home, stop):
+    _session_with(_agent(status=state.IDLE))
+    question = state.add_question("s", "w1", "Merge?", "", ["yes"], True)
+    stop()
+    assert state.get_message("s", question).question_state == state.QUESTION_STOPPED
+
+
+@pytest.mark.parametrize(
+    "end",
+    [
+        lambda: state.delete_agent("s", "w1"),
+        lambda: state.agent_ended("s", "w1", "its CLI exited"),
+    ],
+    ids=["delete_agent", "agent_ended"],
+)
+def test_an_agents_end_in_a_running_session_keeps_closed(lado_home, end):
+    _session_with(_agent(status=state.IDLE))
+    question = state.add_question("s", "w1", "Merge?", "", ["yes"], True)
+    end()
+    assert state.get_message("s", question).question_state == state.CLOSED
+
+
+def test_a_stop_counts_the_open_questions_it_closes(lado_home):
+    _session_with(_agent(status=state.IDLE))
+    state.add_question("s", "w1", "Merge?", "", None, True)
+    state.add_question("s", "w1", "Port?", "", None, True)
+    state.reply_to_questions("s", [_yes(state.add_question("s", "w1", "Done?", "", None, True))])
+    assert state.open_questions("s") == 2
+    assert state.stop_session("s")[2] == 2
+    assert state.open_questions("s") == 0
+
+
+def _stopped_question():
+    _session_with(_agent(status=state.IDLE))
+    question = state.add_question("s", "w1", "Merge?", "", None, True)
+    state.stop_session("s")
+    return question
+
+
+def test_a_stopped_question_is_untold_until_a_notice_names_it(lado_home):
+    question = _stopped_question()
+    [untold] = state.untold_questions("s")
+    assert untold.id == question
+    notice = state.tell_questions("s", [question], "closed", "#1", [("a", "r")])
+    assert state.untold_questions("s") == []
+    assert state.get_message("s", question).answered_by == notice
+    sent = state.get_message("s", notice)
+    assert (sent.sender, sent.recipient, sent.state) == ("lado", "supervisor", state.PENDING)
+    assert (sent.summary, sent.body) == ("closed", "#1")
+    assert state.message_attachments(notice) == [("a", "r")]
+
+
+def test_a_question_whose_notice_a_stop_dropped_is_untold_again(lado_home):
+    question = _stopped_question()
+    state.tell_questions("s", [question], "closed", "#1")
+    state.stop_session("s")
+    assert [m.id for m in state.untold_questions("s")] == [question]
+
+
+def test_a_question_whose_notice_was_read_stays_told(lado_home):
+    question = _stopped_question()
+    notice = state.tell_questions("s", [question], "closed", "#1")
+    with state.connect() as db:
+        db.execute("UPDATE messages SET state = ? WHERE id = ?", (state.READ, notice))
+    state.stop_session("s")
+    assert state.untold_questions("s") == []
+
+
+def test_only_the_sessions_stopped_questions_are_untold(lado_home):
+    _session_with(_agent(status=state.IDLE))
+    closed = state.add_question("s", "w1", "Agent left?", "", None, True)
+    state.delete_agent("s", "w1")
+    state.add_agent(_agent(status=state.IDLE))
+    answered = state.add_question("s", "w1", "Answered?", "", None, True)
+    state.reply_to_questions("s", [_yes(answered)])
+    state.add_session(state.Session("other", "/r", None, provider="claude"))
+    state.add_question("other", "w1", "Elsewhere?", "", None, True)
+    state.stop_session("other")
+    state.stop_session("s")
+    assert state.get_message("s", closed).question_state == state.CLOSED
+    assert state.untold_questions("s") == []
 
 
 def test_the_replies_to_questions_are_written_together(lado_home):

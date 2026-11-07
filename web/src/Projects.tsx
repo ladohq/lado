@@ -20,8 +20,9 @@ import {
 import { PencilIcon } from "./icons";
 import { useDebounced, useLaunch } from "./Launch";
 import { useLive } from "./live";
+import { useModal } from "./modal";
 import { projectPath, sessionPath } from "./paths";
-import { usePhone } from "./phone";
+import { useMedia, usePhone } from "./phone";
 import { ProjectDelete } from "./ProjectDelete";
 import { ProjectRepos, ProjectSessions } from "./ProjectRepos";
 import { ProjectVariables } from "./ProjectVariables";
@@ -181,14 +182,7 @@ const STACKED = "(max-width: 900px)";
 export function NoProject() {
   // On a phone, or in a window that stacks, the list is the page: nothing to select beside it.
   const phone = usePhone();
-  const [stacked, setStacked] = useState(() => window.matchMedia?.(STACKED).matches ?? false);
-  useEffect(() => {
-    const list = window.matchMedia?.(STACKED);
-    const changed = () => setStacked(list?.matches ?? false);
-    list?.addEventListener?.("change", changed);
-    changed();
-    return () => list?.removeEventListener?.("change", changed);
-  }, []);
+  const stacked = useMedia(STACKED);
   return phone || stacked ? null : <p className="empty">Select a project</p>;
 }
 
@@ -380,9 +374,7 @@ function NewProjectDialog({ onClose, onMade }: { onClose: () => void; onMade: (i
   const [refused, setRefused] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
+  useModal(dialog);
 
   const wanted = edited ? `id\0${id}` : `title\0${title}`;
   const asked = useDebounced(wanted);

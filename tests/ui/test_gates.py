@@ -52,9 +52,9 @@ def waiting_card(page: Page, session: str):
     return page.get_by_role("region", name=f"What waits for you in {session}")
 
 
-def gated_session(repo) -> str:
+def gated_session(repo, note: str = REVIEW) -> str:
     """A running session of the fake agent whose run ship/x waits at gate "check": review's
-    note before it carries the artifact review, and the gate reads plan."""
+    note before it (`note`) carries the artifact review, and the gate reads plan."""
     kit = repo.parent / "kits" / "uiflow"
     (kit / "flows").mkdir(parents=True, exist_ok=True)
     (kit / "kit.yaml").write_text("name: uiflow\nversion: 1.0.0\n")
@@ -79,23 +79,24 @@ def gated_session(repo) -> str:
         "ship/x",
         "done",
         "the plan is reviewed",
-        REVIEW,
+        note,
         attached=["ship/x/review"],
     )
     return session
 
 
+ORANGE = "rgb(180, 83, 15)"  # --human in the light theme
 TWELVE_LINES = "\n".join(f"line {n} of the answer" for n in range(1, 13))
 
 # A text field in the waiting card: its height in lines (by its line height, without its
 # padding and border), whether it scrolls inside and shows its last line (the caret's, after a
-# fill), and its lower edge against the card's list, the Send row and the window.
+# fill), and its lower edge against the card's footer, the Send row and the window.
 MEASURE_FIELD = """field => {
   const style = getComputedStyle(field);
   const line = parseFloat(style.lineHeight);
   const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
   const box = field.getBoundingClientRect();
-  const list = field.closest('.waiting-list').getBoundingClientRect();
+  const foot = field.closest('.waiting-foot').getBoundingClientRect();
   const panel = field.closest('[role=tabpanel]');
   const send = panel.querySelector('.waiting-send').getBoundingClientRect();
   return {
@@ -103,7 +104,7 @@ MEASURE_FIELD = """field => {
     scrolls: field.scrollHeight > field.clientHeight + 1,
     atEnd: field.scrollTop + field.clientHeight >= field.scrollHeight - 1,
     resize: style.resize,
-    inList: box.top >= list.top - 1 && box.bottom <= list.bottom + 1,
+    inFoot: box.top >= foot.top - 1 && box.bottom <= foot.bottom + 1,
     aboveSend: box.bottom <= send.top + 1,
     inWindow: box.top >= 0 && box.bottom <= window.innerHeight,
   };
@@ -114,31 +115,37 @@ def measured(field) -> dict:
     return field.evaluate(MEASURE_FIELD)
 
 
-def assert_long_field_fits(field) -> None:
-    """A field with 12 lines: 8 lines high, scrolled to its last line, its lower edge within
-    the card's list, above the Send row and within the window."""
+def assert_long_field_fits(field, lines: int = 4) -> None:
+    """A field with 12 lines: `lines` high, scrolled to its last line, its lower edge within
+    the card's footer, above the Send row and within the window."""
     got = measured(field)
-    want = {"lines": 8, "scrolls": True, "atEnd": True, "resize": "none"}
+    want = {"lines": lines, "scrolls": True, "atEnd": True, "resize": "none"}
     assert {key: got[key] for key in want} == want, got
-    assert got["inList"] and got["aboveSend"] and got["inWindow"], got
+    assert got["inFoot"] and got["aboveSend"] and got["inWindow"], got
 
 
-def test_a_gates_long_comment_grows_to_8_lines_and_stays_above_the_send_row(
+def test_a_gates_long_comment_grows_to_4_lines_and_stays_above_the_send_row(
     page: Page, server, repo, shot
 ):
-    """LAD-70: the comment for the next step grows with its text from 3 lines to 8, then
-    scrolls; its lower edge stays above the Send row and within the window."""
+    """The comment for the next step opens 1 line and 36 px high, grows with its text to 4
+    lines, in the expanded card to 8, then scrolls; its lower edge stays above the Send row
+    and within the window."""
     session = gated_session(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
     panel = waiting_card(page, session).get_by_role("tabpanel")
     field = panel.get_by_role("textbox", name="Comment for the next step (optional)")
     expect(field).to_be_visible()
-    assert measured(field)["lines"] == 3
+    assert measured(field)["lines"] == 1
+    assert round(frame_of(field).bounding_box()["height"]) == 36
     field.fill(TWELVE_LINES)
     expect(field).to_be_focused()
     assert_long_field_fits(field)
     shot(page, full_page=False)
+    waiting_card(page, session).get_by_role("button", name="Expand the card").click()
+    field.fill("")
+    field.fill(TWELVE_LINES)
+    assert_long_field_fits(field, 8)
 
 
 # The ring an item draws around itself (a field's focus outline or box-shadow ring, a
@@ -169,8 +176,8 @@ MEASURE_RING = """(item, clips) => {
   };
 }"""
 
-# What clips an item of the waiting card: its scrolling list and the panel around it.
-IN_WAITING_CARD = (".waiting-list", ".waiting-panel")
+# What clips a field of the waiting card: the panel around its footer.
+IN_WAITING_CARD = (".waiting-foot", ".waiting-panel")
 
 
 def assert_ring_whole(item, ring: float, clips=IN_WAITING_CARD) -> None:
@@ -222,8 +229,8 @@ def test_a_gates_long_comment_shows_its_ring_whole(page: Page, server, repo, sho
 
 
 def test_a_gates_comment_in_a_narrow_window_shows_its_ring_whole(page: Page, server, repo, shot):
-    """LAD-78: in a window 600 px wide the comment's focus ring is whole too."""
-    page.set_viewport_size({"width": 600, "height": 900})
+    """LAD-78: in a computer's narrowest window the comment's focus ring is whole too."""
+    page.set_viewport_size({"width": 601, "height": 900})
     session = gated_session(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
@@ -237,13 +244,14 @@ def test_a_gates_comment_in_a_narrow_window_shows_its_ring_whole(page: Page, ser
 def test_a_gates_long_comment_on_the_flows_tab_shows_its_ring_whole(page: Page, server, repo, shot):
     """LAD-78: on the Flows tab's gate card, a comment of 12 lines grows to the page's lower
     edge and is scrolled into view with its focus ring whole: the run's page (`.list-main`)
-    scrolls there, not the waiting card's list."""
-    page.set_viewport_size({"width": 1280, "height": 640})
+    scrolls there; it opens 3 lines high, as it did."""
+    page.set_viewport_size({"width": 1280, "height": 480})
     session = gated_session(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}/flows/ship%2Fx")
     card = page.get_by_role("region", name="Now").get_by_role("article", name="Gate #1", exact=True)
     field = card.get_by_role("textbox", name="Comment for the next step (optional)")
+    assert field.evaluate("f => f.rows") == 3
     field.fill(TWELVE_LINES)
     expect(field).to_be_focused()
     # Grown past the window's lower edge, so the page scrolled to bring it into view.
@@ -252,35 +260,323 @@ def test_a_gates_long_comment_on_the_flows_tab_shows_its_ring_whole(page: Page, 
     shot(page, full_page=False)
 
 
-# Where a gate's tab puts its question, its comment field and its Send row: their left
-# edges from the panel's, and the Send row's top from the panel's.
+# Where a gate's tab puts its question and its comment field: their left edges from the panel's.
 MEASURE_PLACES = """panel => {
   const frame = panel.getBoundingClientRect();
   const at = el => el.getBoundingClientRect();
   return {
-    question: at(panel.querySelector('.waiting-gate').firstElementChild).left - frame.left,
-    field: at(panel.querySelector('.answer textarea')).left - frame.left,
-    send: at(panel.querySelector('.waiting-send')).top - frame.top,
+    question: at(panel.querySelector('.waiting-title-text')).left - frame.left,
+    field: at(panel.querySelector('.answer-box')).left - frame.left,
   };
 }"""
 
-# The list's room as it was before LAD-78, for the comparison.
-BEFORE_RING_ROOM = ".waiting-list { padding: 0 6px 4px 0 !important; margin: 0 !important; }"
-
 
 def test_the_room_for_the_ring_moves_nothing_on_a_gates_tab(page: Page, server, repo, shot):
-    """LAD-78: the question and the comment field start as far from the panel's left edge
-    as before the list kept room for the ring, and the Send row stands where it stood."""
+    """LAD-78: the question and the comment field's frame start as far from the panel's left
+    edge: the room the boxes that scroll keep for a ring moves nothing."""
     session = gated_session(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
     panel = waiting_card(page, session).locator(".waiting-panel")
     expect(comment_field(page, session)).to_be_visible()
-    now = panel.evaluate(MEASURE_PLACES)
+    places = panel.evaluate(MEASURE_PLACES)
+    assert places["question"] == places["field"], places
     shot(page, full_page=False)
-    page.add_style_tag(content=BEFORE_RING_ROOM)
-    before = panel.evaluate(MEASURE_PLACES)
-    assert now == before
+
+
+LONG_NOTE = "\n\n".join(f"Point {n}: what the review found and why it matters." for n in range(60))
+
+# Whether anything but the context scrolls in the panel, and how far the context can.
+MEASURE_SCROLLERS = """panel => {
+  const scrolls = el => el.scrollHeight > el.clientHeight + 1;
+  const context = panel.querySelector('.waiting-context');
+  return {
+    context: scrolls(context),
+    panel: panel.scrollTop,
+    foot: scrolls(panel.querySelector('.waiting-foot')),
+  };
+}"""
+
+
+def recommended(session: str, view: str, **given) -> None:
+    """The supervisor's recommendation on gate #1, once the turn of the gate's own request
+    ended: a later end of a turn would mark the one asked here missing."""
+    agent_helpers.wait_for(
+        lambda: state.get_gate(1).recommendation_state == state.REC_MISSING,
+        "gate #1's request handled",
+        session,
+    )
+    state.ask_recommendation(session, state.GATE, 1, None, "")
+    runtime.recommend(session, "supervisor", view, gate=1, **given)
+
+
+def in_sight(page: Page, *parts) -> None:
+    """Each part lies within the window, with no scrolling of the page needed."""
+    height = page.viewport_size["height"]
+    for part in parts:
+        box = part.bounding_box()
+        assert box is not None and box["y"] >= 0 and box["y"] + box["height"] <= height + 1, (
+            part,
+            box,
+        )
+
+
+@pytest.mark.parametrize("height", [700, 1024])
+@pytest.mark.parametrize("expanded", [False, True], ids=["card", "expanded"])
+@pytest.mark.parametrize("tab", ["gate", "question"])
+def test_a_window_768_wide_keeps_the_footer_in_sight(
+    page: Page, server, repo, shot, height, expanded, tab
+):
+    """At 601 to 900 px a session's page stands still: the footer stays in the window, the card
+    under the top bar, whatever the wheel does."""
+    session = gated_session(repo, LONG_NOTE)
+    recommended(session, VIEW, choice="approve")
+    if tab == "question":
+        runtime.ask_human(session, "supervisor", "Which one?", LONG_NOTE, ["one", "two"])
+    page.set_viewport_size({"width": 768, "height": height})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    if tab == "question":
+        card.get_by_role("tab", name="supervisor 1").click()
+    panel = card.get_by_role("tabpanel")
+    parts = (
+        [
+            panel.get_by_role("region", name="Supervisor's recommendation"),
+            panel.get_by_role("textbox", name="Comment for the next step (optional)"),
+            panel.get_by_role("button", name="Approve", exact=True),
+            panel.get_by_role("button", name="Reject", exact=True),
+        ]
+        if tab == "gate"
+        else [
+            panel.get_by_role("button", name="Send answer to supervisor"),
+            panel.get_by_role("button", name="Skip question"),
+        ]
+    )
+    expect(parts[0]).to_be_visible()
+    if expanded:
+        card.get_by_role("button", name="Expand the card").click()
+        expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    in_sight(page, *parts)
+    top = page.get_by_role("banner")
+    top.hover()
+    for wheel in (-5000, 5000):
+        page.mouse.wheel(0, wheel)
+        page.wait_for_timeout(200)
+        in_sight(page, *parts)
+        bar = top.bounding_box()
+        assert card.bounding_box()["y"] >= bar["y"] + bar["height"] - 1, wheel
+    shot(page, full_page=False)
+
+
+def whole_in_sight(page: Page, card, *parts) -> None:
+    """Each part in the window at the page's top, and not cut by the panel."""
+    page.evaluate("window.scrollTo(0, 0)")
+    in_sight(page, *parts)
+    panel = card.get_by_role("tabpanel").bounding_box()
+    for part in parts:
+        box = part.bounding_box()
+        assert box["y"] + box["height"] <= panel["y"] + panel["height"] + 1, (part, box, panel)
+
+
+@pytest.mark.parametrize("height", [700, 500, 420])
+def test_a_low_window_keeps_a_grown_footer_at_the_pages_top(page: Page, server, repo, shot, height):
+    """A card taller than the room from the chat's top to the window's edge: the context gives
+    way, and a field of 4 lines under an opened recommendation leaves the buttons in sight."""
+    session = gated_session(repo, LONG_NOTE)
+    recommended(session, "A reason to approve. " * 40, choice="approve")
+    page.set_viewport_size({"width": 768, "height": height})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    panel = card.get_by_role("tabpanel")
+    panel.get_by_role("region", name="Supervisor's recommendation").get_by_role("button").click()
+    field = panel.get_by_role("textbox", name="Comment for the next step (optional)")
+    field.fill("one\ntwo\nthree\nfour")
+    whole_in_sight(
+        page,
+        card,
+        field,
+        panel.get_by_role("button", name="Approve", exact=True),
+        panel.get_by_role("button", name="Reject", exact=True),
+    )
+    shot(page, full_page=False)
+
+
+@pytest.mark.parametrize(
+    ("height", "own"),
+    [(700, False), (500, False), (420, False), (700, True), (500, True)],
+    ids=["700", "500", "420", "700-own-answer", "500-own-answer"],
+)
+def test_a_low_window_keeps_six_choices_buttons_at_the_pages_top(
+    page: Page, server, repo, shot, height, own
+):
+    session = gated_session(repo)
+    choices = [f"Choice {n}: a rather long choice that takes most of a row of it" for n in range(6)]
+    runtime.ask_human(session, "supervisor", "Which one?", LONG_NOTE, choices)
+    page.set_viewport_size({"width": 768, "height": height})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    card.get_by_role("tab", name="supervisor 1").click()
+    panel = card.get_by_role("tabpanel")
+    parts = [
+        panel.get_by_role("button", name="Send answer to supervisor"),
+        panel.get_by_role("button", name="Skip question"),
+    ]
+    if own:
+        panel.get_by_role("button", name="Other…").click()
+        parts.append(panel.get_by_role("textbox", name="Your own answer"))
+        parts[-1].fill("a first line\na second line")
+    expect(parts[0]).to_be_attached()
+    whole_in_sight(page, card, *parts)
+    shot(page, full_page=False)
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [((1440, 900), (768, 700)), ((1440, 900), (768, 1024)), ((1024, 768), (768, 1024))],
+    ids=lambda size: f"{size[0]}x{size[1]}",
+)
+def test_a_window_narrowed_keeps_the_expanded_cards_footer(
+    page: Page, server, repo, shot, before, after
+):
+    """Expanded in a wide window, which scrolls nothing, then narrowed or turned: the page,
+    which the expanded card holds, goes to the card."""
+    session = gated_session(repo, LONG_NOTE)
+    recommended(session, VIEW, choice="approve")
+    page.set_viewport_size({"width": before[0], "height": before[1]})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    card.get_by_role("button", name="Expand the card").click()
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    page.set_viewport_size({"width": after[0], "height": after[1]})
+    approve = card.get_by_role("button", name="Approve", exact=True)
+    page.wait_for_function(
+        "b => b.getBoundingClientRect().bottom <= window.innerHeight",
+        arg=approve.element_handle(),
+        timeout=3000,
+    )
+    in_sight(page, approve, card.get_by_role("button", name="Reject", exact=True))
+    bar = page.get_by_role("banner").bounding_box()
+    assert card.bounding_box()["y"] >= bar["y"] + bar["height"] - 1
+    shot(page, full_page=False)
+
+
+def narrow_session(page: Page, server, repo):
+    """A long note's gate in a window 768×700: its card, Approve, and the card's height."""
+    session = gated_session(repo, LONG_NOTE)
+    page.set_viewport_size({"width": 768, "height": 700})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    approve = card.get_by_role("button", name="Approve", exact=True)
+    expect(approve).to_be_visible()
+    in_sight(page, approve)
+    return card, approve, card.bounding_box()["height"]
+
+
+def settles_in_sight(page: Page, button) -> None:
+    page.wait_for_function(
+        "b => b.getBoundingClientRect().bottom <= window.innerHeight",
+        arg=button.element_handle(),
+        timeout=3000,
+    )
+    page.evaluate("window.scrollTo(0, 0)")
+    in_sight(page, button)
+
+
+def gets_its_height_back(page: Page, card, height: float) -> None:
+    page.wait_for_function(
+        "([c, height]) => Math.abs(c.getBoundingClientRect().height - height) <= 1",
+        arg=[card.element_handle(), height],
+        timeout=3000,
+    )
+
+
+def test_the_sessions_list_leaves_the_card_where_it_is(page: Page, server, repo, shot):
+    """The list lies over the chat: opening and closing it moves nothing under it."""
+    card, approve, height = narrow_session(page, server, repo)
+    before = card.bounding_box()
+    page.get_by_role("button", name="Sessions", exact=True).click()
+    expect(page.locator(".session-list")).to_be_visible()
+    assert card.bounding_box() == before
+    shot(page, full_page=False)
+    page.keyboard.press("Escape")
+    expect(page.locator(".session-list")).to_have_count(0)
+    assert card.bounding_box() == before
+    in_sight(page, approve)
+
+
+def test_a_block_over_the_chat_moves_the_cards_limit_with_it(page: Page, server, repo, shot):
+    """Any block that comes over the chat or goes, not only the list."""
+    card, approve, height = narrow_session(page, server, repo)
+    page.evaluate(
+        """() => {
+          const block = document.createElement('div');
+          block.id = 'over-the-chat';
+          block.style.height = '120px';
+          document.querySelector('.session').prepend(block);
+        }"""
+    )
+    settles_in_sight(page, approve)
+    page.evaluate("document.getElementById('over-the-chat').remove()")
+    gets_its_height_back(page, card, height)
+    in_sight(page, approve)
+
+
+@pytest.mark.parametrize("width", [1440, 768])
+def test_a_long_note_scrolls_in_the_context_and_the_footer_stays(
+    page: Page, server, repo, shot, width
+):
+    """F14: whatever the note's length, the recommendation, the comment field and the buttons
+    are in sight, and only the context scrolls."""
+    session = gated_session(repo, LONG_NOTE)
+    recommended(session, VIEW, choice="approve")  # a phone's: test_phone.py
+    page.set_viewport_size({"width": width, "height": 900})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    panel = waiting_card(page, session).get_by_role("tabpanel")
+    field = panel.get_by_role("textbox", name="Comment for the next step (optional)")
+    approve = panel.get_by_role("button", name="Approve", exact=True)
+    rec = panel.get_by_role("region", name="Supervisor's recommendation")
+    expect(rec).to_contain_text("Supervisor recommends Approve:")
+    in_sight(page, rec, field, approve, panel.get_by_role("button", name="Reject", exact=True))
+    got = panel.evaluate(MEASURE_SCROLLERS)
+    assert got == {"context": True, "panel": 0, "foot": False}, got
+    shot(page, full_page=False)
+
+
+def test_a_cut_context_fades_says_more_and_goes_at_its_end(page: Page, server, repo, shot):
+    """The fade and "↓ more" show while the context is cut, go at its end, by the keys too,
+    and "↓ more" expands the card, where neither shows."""
+    session = gated_session(repo, LONG_NOTE)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    context = card.get_by_role("region", name="Context of the card")
+    more = card.get_by_role("button", name="↓ more")
+    expect(more).to_be_visible()
+    assert round(more.bounding_box()["height"]) == 24
+    frame = card.locator(".waiting-context-frame")
+    expect(frame).to_have_class(re.compile(r"\bcut\b"))
+    fade = frame.evaluate("f => getComputedStyle(f, '::after').height")
+    assert fade == "28px"
+    context.focus()
+    # Its ring stands inside it: the top around it would cut one outside.
+    assert context.evaluate("c => parseFloat(getComputedStyle(c).outlineOffset)") < 0
+    page.keyboard.press("End")
+    expect(more).to_have_count(0)
+    expect(frame).not_to_have_class(re.compile(r"\bcut\b"))
+    shot(page, "end", full_page=False)
+    page.keyboard.press("Home")
+    expect(more).to_be_visible()
+    shot(page, "cut", full_page=False)
+    more.click()
+    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
+    expect(more).to_have_count(0)
+    expect(frame).not_to_have_class(re.compile(r"\bcut\b"))
 
 
 def test_the_human_answers_a_gate_on_its_tab(page: Page, server, repo, shot):
@@ -481,27 +777,44 @@ def test_a_gate_with_a_recommendation_that_disagrees(page: Page, server, repo, s
     ]
     assert queued == []
     state.ask_recommendation(session, state.GATE, 1, None, "")  # asked again
-    card.locator("form.answer").scroll_into_view_if_needed()
     block = card.get_by_role("region", name="Supervisor's recommendation")
     expect(block).to_have_text("SSupervisor is preparing a recommendation…")
     expect(card.get_by_role("button", name="Approve", exact=True)).to_have_class("primary")
     expect(card.get_by_role("button", name="Reject", exact=True)).to_be_enabled()
     shot(page, "preparing")
     runtime.recommend(session, "supervisor", VIEW, gate=1, choice="reject", disagrees=True)
-    expect(block.locator(".rec-differs")).to_have_text("disagrees with supervisor")
-    expect(block.locator("strong")).to_have_text("no test")
+    expect(block.locator(".rec-bar-name")).to_have_text(
+        "Supervisor recommends Reject · disagrees with supervisor:"
+    )
+    expect(block.locator(".rec-differs")).to_have_css("color", ORANGE)
+    line = block.get_by_role("button")
+    assert round(line.bounding_box()["height"]) <= 22  # one line, its text cut
+    expect(block.locator(".rec-bar-text")).to_contain_text("no test")
     expect(card.get_by_role("button", name="Reject", exact=True)).to_have_class("primary")
     expect(card.get_by_role("button", name="Approve", exact=True)).to_have_class("quiet")
     # Between the note and the answer.
-    order = card.locator(".gate-note, .gate-reads, .rec, form.answer").evaluate_all(
+    order = card.locator(".gate-note, .gate-reads, .rec-bar, form.answer").evaluate_all(
         "all => all.map(one => one.className)"
     )
-    assert order == ["gate-note", "gate-reads", "rec differs", "answer"]
-    card.locator("form.answer").scroll_into_view_if_needed()
+    assert order == ["gate-note", "gate-reads", "rec-bar differs", "answer"]
     for theme in ("light", "dark"):
         page.emulate_media(color_scheme=theme)
         shot(page, f"given-{theme}")
     page.emulate_media(color_scheme="light")
+    # A click opens it to 3 lines of Markdown that scroll inside.
+    line.click()
+    body = block.locator(".rec-bar-body")
+    expect(body.locator("strong")).to_have_text("no test")
+    assert body.evaluate(
+        "b => b.clientHeight <= 3 * parseFloat(getComputedStyle(b).lineHeight) + 1"
+    )
+    shot(page, "opened")
+    # The expanded card shows it whole.
+    waiting_card(page, session).get_by_role("button", name="Expand the card").click()
+    expect(block).to_have_class(re.compile(r"\bwhole\b"))
+    assert block.locator(".rec-bar-body").evaluate("b => b.scrollHeight <= b.clientHeight + 1")
+    shot(page, "whole")
+    waiting_card(page, session).get_by_role("button", name="Collapse the card").click()
     card.get_by_role("button", name="Reject", exact=True).click()
     line = page.get_by_role("article", name="Gate #1", exact=True)
     line.get_by_role("button", name="Gate #1 · ship/x · check: reject by human").click()

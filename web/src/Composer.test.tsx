@@ -1,13 +1,19 @@
 // The composer's files (docs/design/ui.md, Composer): the paperclip, paste and drop, chips
 // with the eye on a file an agent cannot read, the limits from the server, and Send, which
 // uploads each file, then sends the message with their names.
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render as rendered, screen, waitFor, within } from "@testing-library/react";
+import type { ReactElement, ReactNode } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { Limits } from "./api";
 import { Composer } from "./Composer";
+import { Live, LiveContext } from "./live";
 import { sendQuote } from "./quotes";
 import { TOOLTIP_DELAY_MS } from "./Tooltip";
+
+const store = new Live(); // never started: the composer reads whether the connection is lost
+const InShell = ({ children }: { children: ReactNode }) => <LiveContext.Provider value={store}>{children}</LiveContext.Provider>;
+const render = (element: ReactElement) => rendered(element, { wrapper: InShell });
 
 const LIMITS: Limits = {
   extensions: { png: "image/png", txt: "text/plain", log: "text/plain", pdf: "application/pdf", json: "application/json" },
@@ -24,7 +30,7 @@ const LIMITS: Limits = {
 type Call = { path: string; body: unknown };
 
 // The API: the limits, an upload answers the artifact of its file name (or `refuse` for a
-// name) once `hold` is done, a message answers sent.
+// name) once `hold` is done, a message answers sent (or `refuse.message`).
 function serve(refuse: Record<string, { status: number; detail: string }> = {}, hold: Promise<void> = Promise.resolve()) {
   const calls: Call[] = [];
   const fetch = vi.fn(async (path: string, init?: RequestInit) => {
@@ -38,7 +44,9 @@ function serve(refuse: Record<string, { status: number; detail: string }> = {}, 
       const full = `${name.replace(/\.(\w+)$/, "")}-1a2b3c4d${/\.\w+$/.exec(name)?.[0] ?? ""}`;
       return new Response(JSON.stringify({ id: `a-${name}`, full_name: full, name: full, scope: "" }));
     }
+    if (init?.method !== "POST") return new Response(JSON.stringify({ items: [], earlier: false })); // Send's cursor
     calls.push({ path: url.pathname, body: JSON.parse(String(init?.body)) });
+    if (refuse.message) return new Response(JSON.stringify({ detail: refuse.message.detail }), { status: refuse.message.status });
     return new Response(JSON.stringify({ result: "sent" }));
   });
   vi.stubGlobal("fetch", fetch);
@@ -75,7 +83,7 @@ function open(props: Partial<Parameters<typeof Composer>[0]> = {}) {
   return render(
     <section className="chat" aria-label="Chat">
       <p>the feed</p>
-      <Composer session="lado" stopped={false} {...props} />
+      <Composer session="lado" {...props} />
     </section>,
   );
 }
@@ -124,12 +132,6 @@ test("Send with files and no text uploads each, then sends the message with thei
     { path: "/api/sessions/lado/messages", body: { to: "w1", text: "", artifacts: ["a-1a2b3c4d.txt", "shot-1a2b3c4d.png"] } },
   ]);
   expect(revoked).toEqual(["blob:thumb-1", "blob:thumb-2"]);
-});
-
-test("a stopped session's composer has its paperclip off", async () => {
-  serve();
-  open({ stopped: true });
-  expect(((await screen.findByRole("button", { name: "Attach files" })) as HTMLButtonElement).disabled).toBe(true);
 });
 
 test("the thumbnails' object URLs go when the composer goes", async () => {
@@ -261,7 +263,7 @@ test("a failed upload keeps the text and a red chip with its reason; Send again 
   rerender(
     <section className="chat" aria-label="Chat">
       <p>the feed</p>
-      <Composer session="lado" stopped={false} to="w1" />
+      <Composer session="lado" to="w1" />
     </section>,
   );
   fireEvent.click(send());
@@ -326,4 +328,54 @@ test("a quote kept for the session is in the composer when it mounts", () => {
   expect(navigate).toHaveBeenCalled();
   open();
   expect(field().value).toBe("> A\n");
+});
+
+test("folded it is hidden, its text kept, and it takes no files dropped on the chat", () => {
+  const { rerender } = open();
+  fireEvent.change(field(), { target: { value: "half a thought" } });
+  const hide = (folded: boolean) =>
+    rerender(
+      <section className="chat" aria-label="Chat">
+        <p>the feed</p>
+        <Composer session="lado" folded={folded} />
+      </section>,
+    );
+  hide(true);
+  const form = document.querySelector("form.composer") as HTMLFormElement;
+  expect(form.hidden).toBe(true);
+  const dragged = { dataTransfer: { types: ["Files"], files: [file("a.png")] } };
+  fireEvent.dragEnter(screen.getByRole("region", { name: "Chat" }), dragged);
+  expect(document.querySelector(".composer-box.dropping")).toBeNull();
+  hide(false);
+  expect(form.hidden).toBe(false);
+  expect(field().value).toBe("half a thought");
+});
+
+test("a message a stop refused keeps its text and files and shows the refusal, folded and unfolded again", async () => {
+  const refusal = "The session stopped before this message reached supervisor, so it was not delivered. Send it again after Resume.";
+  const refuse = { message: { status: 400, detail: refusal } } as Record<string, { status: number; detail: string }>;
+  const calls = serve(refuse);
+  const { rerender } = render(<Composer session="lado" />);
+  await ready();
+  await pick(file("a.txt"));
+  fireEvent.change(field(), { target: { value: "merge it" } });
+  fireEvent.click(send());
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(refusal));
+  rerender(<Composer session="lado" folded />);
+  rerender(<Composer session="lado" />);
+  expect(field().value).toBe("merge it");
+  expect(chips()).toEqual(["a.txt"]);
+  expect(screen.getByRole("alert").textContent).toBe(refusal);
+  delete refuse.message;
+  fireEvent.click(send());
+  await waitFor(() => expect(field().value).toBe(""));
+  expect(calls.at(-1)?.body).toMatchObject({ text: "merge it" });
+});
+
+test("a quote that comes while it is folded takes the focus once it shows", async () => {
+  const { rerender } = render(<Composer session="lado" folded />);
+  act(() => sendQuote("lado", "> A", () => {}));
+  expect((screen.getByRole("textbox", { hidden: true }) as HTMLTextAreaElement).value).toBe("> A\n");
+  rerender(<Composer session="lado" folded={false} />);
+  await waitFor(() => expect(document.activeElement).toBe(field()));
 });

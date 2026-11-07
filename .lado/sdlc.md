@@ -75,6 +75,7 @@ Into an epic branch:
 | `make web` | root | when `web/` or the server's API models changed (stale-types check) |
 | `openspec validate --specs --strict` | root | blind to contradictions between capabilities: grep `openspec/specs/` |
 | `openspec validate <change> --strict` | root | the change itself, while it is open (not after its archive) |
+| `d=$(mktemp -d) && cp -R openspec "$d" && cd "$d" && openspec archive <change> --yes && openspec validate --specs --strict` | root | a trial archive in a copy, while the change is open: `openspec validate <change> --strict` does not see what only the archive shows (a new capability without a Purpose, a requirement over 500 characters); `--skip-specs` for a change without a delta |
 
 - Excluded from a normal round:
   - `make check` and `make test-integration` as a whole: CI runs them on every push, and a
@@ -136,7 +137,15 @@ Into an epic branch:
   otherwise propose a task to the human at once with `ask_human` (as LAD-57), go on
   without waiting, and create it only on their "yes, create"; the reviewer, who has no
   tracker, leaves the search and the proposal to the supervisor with `send_message`.
-  Red after the second rerun follows kit sdlc's "A red check".
+  Red after the second rerun follows kit sdlc's "A red check". A cell cancelled with "was
+  not acquired by Runner" (no step, no runner) is rerun once by `ci-rerun.yml`: wait for
+  the run's second attempt, rerun by this trap only when its `CI rerun` run says it reruns
+  nothing or that attempt fails so too, and count it as no test's flake.
+- A local merge check on `BACKLOG.md` — `git merge-tree` and `git merge` report no conflict
+  (`.gitattributes` gives the file `merge=union`), yet the pull request is `dirty` and
+  `mergeable: false` when both sides appended an entry — before saying a pull request can be
+  merged, read `gh pr view <n> --json mergeable,mergeStateStatus`; bring the target in on
+  conflict, keeping both sides' entries.
 - `web/openapi.json` or `web/src/api.gen.ts` stale after an API model change — `make web`
   fails its stale-types check — run `make web-types` and commit both files.
 - A live test added or changed — it only collects without real CLIs — say "written, not

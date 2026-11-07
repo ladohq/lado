@@ -3,16 +3,17 @@ text and answers through its API, the fake agent's hooks and MCP server."""
 
 import json
 import os
+import re
 import subprocess
 import sys
 
 import httpx
 import pytest
-from agent_helpers import fake_logs, wait_for
+from agent_helpers import cut_off, fake_logs, wait_for
 from event_stream import EventStream
 from test_images import png
 
-from lado import runtime, state
+from lado import runtime, state, tmux
 from lado.server import auth
 from lado.server import run as server_run
 
@@ -58,8 +59,8 @@ def session(repo):
     runtime.stop_session(SESSION)
 
 
-def inputs(agent: str = "supervisor") -> list:
-    log = fake_logs(SESSION, agent) / "inputs.jsonl"
+def inputs(agent: str = "supervisor", session: str = SESSION) -> list:
+    log = fake_logs(session, agent) / "inputs.jsonl"
     return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
 
 
@@ -118,6 +119,81 @@ def test_the_agents_question_is_answered_through_the_api(api, session):
     line = f"[from human] Answer to #{question['id']}: yes"
     wait_for(lambda: line in inputs(), "the answer", SESSION)
     assert chat(api)[1]["question_state"] == "answered"
+
+
+def test_a_question_a_stop_closed_reaches_the_new_supervisor_and_takes_no_answer(
+    api, session, repo
+):
+    api.post(f"/api/sessions/{SESSION}/messages", json={"text": "askhuman Ship it? | yes, no"})
+    [_, question] = wait_for(lambda: len(chat(api)) == 2 and chat(api), "the question", SESSION)
+    wait_for(lambda: state.get_agent(SESSION, "supervisor").status == state.IDLE, "idle", SESSION)
+    preview = api.get(f"/api/sessions/{SESSION}/stop-preview").json()
+    assert preview["questions"] == 1
+    runtime.stop_session(SESSION)
+    runtime.start_session(str(repo), SESSION, None)
+    wait_for(lambda: "first_read" in seen(), "the new supervisor reads its first input", SESSION)
+    [notice] = [m for m in seen()["first_read"] if "closed unanswered" in m["summary"]]
+    assert notice["summary"] == "1 question to the human closed unanswered by the stop"
+    assert f"#{question['id']} from supervisor: Ship it?" in notice["body"]
+    assert "Choices: yes, no" in notice["body"]
+    [stopped] = [m for m in chat(api) if m["kind"] == "question"]
+    assert stopped["question_state"] == "stopped"
+    assert stopped["answered_by"] == notice["id"]
+    assert notice["id"] not in [m["id"] for m in chat(api)]  # it is the supervisor's alone
+    refused = api.post(
+        f"/api/sessions/{SESSION}/answers",
+        json={"answers": [{"question": question["id"], "choice": "yes"}]},
+    )
+    assert refused.status_code == 400
+    assert refused.json()["detail"] == f"question #{question['id']} is stopped"
+
+
+def stop_as_it_types(monkeypatch) -> None:
+    """The session stops between the hand-over and the typing, which then meets real tmux."""
+    typing = tmux.send_text
+
+    def stopped_first(session: str, window: str, text: str) -> None:
+        if session == SESSION:
+            runtime.stop_session(session)
+        typing(session, window, text)
+
+    monkeypatch.setattr(tmux, "send_text", stopped_first)
+
+
+def refused_by_the_stop(repo) -> str:
+    """Write as the stop comes, check the refusal, resume; returns what tmux said."""
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.write_as_human(SESSION, "merge it")
+    assert str(refused.value) == cut_off("supervisor")
+    assert state.get_session(SESSION).stopped_at is not None
+    [message] = [m for m in state.list_messages(SESSION) if m.summary == "merge it"]
+    assert message.state == state.DROPPED
+    runtime.start_session(str(repo), SESSION, None)
+    wait_for(lambda: state.get_agent(SESSION, "supervisor").status == state.IDLE, "idle", SESSION)
+    return str(refused.value.__cause__)
+
+
+def test_a_stop_as_the_message_is_typed_refuses_it_on_a_tmux_server_left_empty(
+    session, repo, monkeypatch
+):
+    stop_as_it_types(monkeypatch)
+    assert re.search("no server running|error connecting", refused_by_the_stop(repo))
+
+
+def test_a_stop_as_the_message_is_typed_refuses_it_and_spares_a_session_of_a_longer_name(
+    session, repo, monkeypatch
+):
+    other = f"{SESSION}-two"
+    runtime.start_session(str(repo), other, None, "fake")
+    wait_for(lambda: state.get_agent(other, "supervisor").status == state.IDLE, "idle", other)
+    try:
+        stop_as_it_types(monkeypatch)
+        assert "can't find session" in refused_by_the_stop(repo)
+        runtime.write_as_human(other, "for you")
+        wait_for(lambda: "[from human] for you" in inputs(session=other), "the line", other)
+        assert "[from human] merge it" not in inputs(session=other)
+    finally:
+        runtime.stop_session(other)
 
 
 def test_an_answer_of_files_only_reaches_the_agent_which_reads_the_file(api, session):

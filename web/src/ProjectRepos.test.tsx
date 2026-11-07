@@ -183,7 +183,7 @@ async function cloneReady() {
   const page = await addRepository("Clone from URL");
   expect(dialogButton("Clone").disabled).toBe(true);
   fireEvent.change(inDialog("Git URL"), { target: { value: URL_ } });
-  await waitFor(() => expect(inDialog("Name").value).toBe("admin"), { timeout: 3000 });
+  await waitFor(() => expect(inDialog("Name").value).toBe("admin"));
   expect(addDialog().textContent).toContain("✓ repository found · 2 branches");
   await waitFor(() => expect(dialogButton("Clone").disabled).toBe(false));
   return page;
@@ -205,9 +205,7 @@ test("Clone lists the branches, takes the URL's name until edited, and clones in
   expect(await within(addDialog()).findByRole("progressbar", { name: "Clone" })).toBeTruthy();
   expect(inDialog("Name").disabled).toBe(true);
   expect(server.calls("POST", "/api/clones")[0].body).toEqual({ url: URL_, project: "shop", name: "admin-ui", branch: "develop" });
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add a repository to Shop" })).toBeNull(), {
-    timeout: 3000,
-  });
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add a repository to Shop" })).toBeNull());
   await waitFor(() => expect(repoRows(page)).toContain("admin-uibranch develop · no remote"));
 });
 
@@ -220,7 +218,7 @@ test("a running clone cannot be closed; Cancel clone stops it and the dialog say
   fireEvent(addDialog(), new Event("cancel", { cancelable: true })); // Esc
   expect(addDialog()).toBeTruthy();
   fireEvent.click(dialogButton("Cancel clone"));
-  expect(await within(addDialog()).findByText("the clone was cancelled", undefined, { timeout: 3000 })).toBeTruthy();
+  expect(await within(addDialog()).findByText("the clone was cancelled")).toBeTruthy();
   expect(server.asked.some((one) => one.method === "DELETE" && one.path === "/api/clones/j1")).toBe(true);
   expect(inDialog("Name").disabled).toBe(false);
 });
@@ -242,7 +240,7 @@ test("a failed clone shows its text and hint, the dialog kept", async () => {
   const error = { message: "git could not read the repository", kind: "ssh_denied", hint: { text: "Add your key:", command: "ssh-add" } };
   server.polls = [cloneJob({ state: "failed", error })];
   fireEvent.click(dialogButton("Clone"));
-  expect(await within(addDialog()).findByText("git could not read the repository", undefined, { timeout: 3000 })).toBeTruthy();
+  expect(await within(addDialog()).findByText("git could not read the repository")).toBeTruthy();
   expect(addDialog().textContent).toContain("Add your key:");
   expect(addDialog().textContent).toContain("ssh-add");
 });
@@ -262,7 +260,7 @@ test("a refused clone start shows the core's text under Name", async () => {
 test("a remote that cannot be listed says so under Git URL, Clone stays off", async () => {
   await addRepository("Clone from URL");
   fireEvent.change(inDialog("Git URL"), { target: { value: "git@github.com:shop/none.git" } });
-  expect(await within(addDialog()).findByText("git@github.com:shop/none.git not found", undefined, { timeout: 3000 })).toBeTruthy();
+  expect(await within(addDialog()).findByText("git@github.com:shop/none.git not found")).toBeTruthy();
   expect(dialogButton("Clone").disabled).toBe(true);
 });
 

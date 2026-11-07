@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
 import { AGENT_REST, FakeEventSource, FakeSocket, stream, stubDialogs, wideColumn } from "./fakes";
+import { LOST_AFTER_MS } from "./live";
 import { BUNDLE_VERSION } from "./version";
 
 // A session's page has the terminal panel (Terminals.test.tsx): no canvas, no server here.
@@ -60,6 +61,7 @@ function serve(status = 200, body: unknown = SESSIONS, events?: { status: number
     if (["/events", "/runs", "/notes", "/gates", "/artifacts"].some((end) => path.endsWith(end))) {
       return new Response("[]");
     }
+    if (path.endsWith("/about")) return new Response(JSON.stringify({ repos: [], kits: [] }));
     // The Report a bug page (ReportBug.test.tsx).
     if (path.startsWith("/api/bug-report?")) {
       return new Response(JSON.stringify({ title: "", text: "### What happened\n", url: "https://github.com/", left_out: 0 }));
@@ -394,7 +396,7 @@ test("/sessions/<name>/flows opens the Flows tab, and a tab changes the address"
   wideColumn();
   open("/sessions/lado/flows");
   const view = await screen.findByRole("region", { name: "Session lado" });
-  expect(await within(view).findByText("No active runs")).toBeTruthy();
+  expect(await within(view).findByText("No flow runs yet")).toBeTruthy();
   fireEvent.click(within(view).getByRole("link", { name: "Activity" }));
   expect(within(view).getByRole("region", { name: "Chat" })).toBeTruthy();
   expect(within(view).getByRole("link", { name: "Agents · 1" }).getAttribute("href")).toBe(
@@ -507,7 +509,7 @@ test("the Agents tab follows the agents' changes; a reset loads them again", asy
   stream().send("change", { kind: "agents", session: "lado", key: "w1", op: "insert", item: agent("w1", "starting") }, "11");
   expect(row().textContent).toContain("starting");
   stream().send("change", { kind: "agents", session: "lado", key: "w1", op: "update", item: agent("w1", "busy") }, "12");
-  expect(row().textContent).toContain("busy");
+  expect(row().textContent).toContain("working");
   stream().send("change", { kind: "agents", session: "other", key: "w1", op: "insert", item: agent("w1", "idle") }, "13");
   stream().send("change", { kind: "agents", session: "lado", key: "w1", op: "delete", item: null }, "14");
   expect(within(list).queryByRole("link", { name: /^w1/ })).toBeNull();
@@ -517,15 +519,86 @@ test("the Agents tab follows the agents' changes; a reset loads them again", asy
   await waitFor(() => expect(loads()).toBe(before + 1));
 });
 
-test("reconnecting shows in the top bar while the stream is down", async () => {
+// A drop becomes a loss by the store's own timer; here the time passes at once.
+async function lose(bar: HTMLElement) {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  stream().fail(false);
+  expect(within(bar).getByRole("status").textContent).toBe("live"); // not yet
+  expect(bar.querySelector(".link.reconnecting")).toBeNull();
+  act(() => vi.advanceTimersByTime(LOST_AFTER_MS));
+  vi.useRealTimers();
+}
+
+test("the mark turns to reconnecting 2 s after the stream goes, and back to live", async () => {
   open("/");
   await waitFor(() => expect(stream().readyState).toBe(FakeEventSource.OPEN));
   const bar = screen.getByRole("banner");
-  expect(within(bar).queryByText(/reconnecting/)).toBeNull();
-  stream().fail(false);
-  expect(within(bar).getByRole("status").textContent).toMatch(/reconnecting/);
+  await within(bar).findByRole("button", { name: "System" });
+  await lose(bar);
+  const mark = bar.querySelector(".link.reconnecting")!;
+  expect(mark.textContent).toBe("reconnecting…");
+  expect(mark.querySelector("svg")).not.toBeNull();
+  expect(mark.getAttribute("role")).toBeNull(); // the status region reads it out
   stream().open();
-  expect(within(bar).queryByText(/reconnecting/)).toBeNull();
+  expect(bar.querySelector(".link.reconnecting")).toBeNull();
+  expect(within(bar).getByRole("button", { name: "System" }).textContent).toBe("live");
+});
+
+test("one status region stands in the top bar and follows the mark", async () => {
+  open("/");
+  await waitFor(() => expect(stream().readyState).toBe(FakeEventSource.OPEN));
+  const bar = screen.getByRole("banner");
+  await within(bar).findByRole("button", { name: "System" });
+  const region = within(bar).getByRole("status");
+  expect(region.textContent).toBe("live");
+  expect(region.className).toBe("visually-hidden");
+  await lose(bar);
+  expect(within(bar).getByRole("status")).toBe(region); // the same element, not a new one
+  expect(region.textContent).toBe("reconnecting…");
+  stream().open();
+  expect(within(bar).getByRole("status")).toBe(region);
+  expect(region.textContent).toBe("live");
+});
+
+test("a reason the server answered stands in the mark's tooltip, not in its line", async () => {
+  open("/");
+  await waitFor(() => expect(stream().readyState).toBe(FakeEventSource.OPEN));
+  const bar = screen.getByRole("banner");
+  await within(bar).findByRole("button", { name: "System" });
+  await lose(bar);
+  serve(200, SESSIONS, { status: 503, body: { detail: "LADO is starting" } });
+  stream().fail(true);
+  await waitFor(() => expect(bar.querySelector(".link.reconnecting[tabindex]")).not.toBeNull());
+  const mark = bar.querySelector(".link.reconnecting") as HTMLElement;
+  expect(mark.textContent).toBe("reconnecting…");
+  fireEvent.focus(mark);
+  expect(screen.getByRole("tooltip").textContent).toBe("LADO is starting");
+});
+
+test("the status region stands while the stream is refused", async () => {
+  open("/");
+  await waitFor(() => expect(stream().readyState).toBe(FakeEventSource.OPEN));
+  const bar = screen.getByRole("banner");
+  const region = within(bar).getByRole("status");
+  serve(200, SESSIONS, { status: 401, body: { detail: "wrong token" } });
+  stream().fail(true);
+  await screen.findByText("wrong token");
+  expect(within(bar).getByRole("status")).toBe(region);
+  expect(within(bar).queryByRole("button", { name: "System" })).toBeNull();
+});
+
+test("a stream refused after a loss is not read out as live: the page's alert says why", async () => {
+  open("/");
+  await waitFor(() => expect(stream().readyState).toBe(FakeEventSource.OPEN));
+  const bar = screen.getByRole("banner");
+  await within(bar).findByRole("button", { name: "System" });
+  await lose(bar);
+  const region = within(bar).getByRole("status");
+  expect(region.textContent).toBe("reconnecting…");
+  serve(200, SESSIONS, { status: 401, body: { detail: "wrong token" } });
+  stream().fail(true);
+  expect((await screen.findByRole("alert")).textContent).toBe("wrong token");
+  expect(region.textContent).toBe("");
 });
 
 test("a stream the server refused: the reason shows, then it reconnects from the last id", async () => {
@@ -539,9 +612,10 @@ test("a stream the server refused: the reason shows, then it reconnects from the
   serve(200, SESSIONS, { status: 503, body: { detail: reason } });
   stream().fail(true);
   await act(async () => {
-    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(LOST_AFTER_MS);
   });
-  expect(within(screen.getByRole("banner")).getByRole("status").textContent).toContain(reason);
+  fireEvent.focus(document.querySelector(".link.reconnecting")!);
+  expect(screen.getByRole("tooltip").textContent).toBe(reason);
   expect(FakeEventSource.all).toHaveLength(1);
   await act(async () => {
     await vi.advanceTimersByTimeAsync(5000);

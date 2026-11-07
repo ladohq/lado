@@ -1090,6 +1090,76 @@ def test_a_message_to_an_agent_in_background_is_queued_like_one_to_an_idle_agent
     )
 
 
+def _to_w1():
+    return [m.summary for m in state.list_messages("s") if m.recipient == "w1"]
+
+
+def test_a_reminder_to_an_agent_whose_report_waits_is_refused_until_it_is_read(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.BUSY)
+    report = runtime.send_message("s", "w1", "supervisor", "DONE", "the report")
+    assert report.startswith("queued")
+    [waiting] = state.list_messages("s")
+    with pytest.raises(runtime.LadoError) as error:
+        runtime.send_message("s", "supervisor", "w1", "send your report")
+    assert str(error.value) == (
+        f"w1's message #{waiting.id} waits for you, so nothing was sent: read it with "
+        "read_messages, then send again if it still needs saying"
+    )
+    assert _to_w1() == []
+    # Delivered by that error's result, but not read yet: still refused.
+    state.take_pending("s", "supervisor", state.DELIVERED, channel=state.TOOL_RESULT)
+    with pytest.raises(runtime.LadoError):
+        runtime.send_message("s", "supervisor", "w1", "send your report")
+    state.read_messages("s", "supervisor")
+    runtime.send_message("s", "supervisor", "w1", "send your report")
+    assert _to_w1() == ["send your report"]
+
+
+def test_a_reminder_after_a_message_without_a_body_goes_once_its_line_arrived(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.BUSY)
+    runtime.send_message("s", "w1", "supervisor", "DONE")
+    [waiting] = state.list_messages("s")
+    with pytest.raises(runtime.LadoError) as error:
+        runtime.send_message("s", "supervisor", "w1", "thanks")
+    assert str(error.value) == (
+        f"w1's message #{waiting.id} waits for you, so nothing was sent: its line comes with "
+        "this result; send again if it still needs saying"
+    )
+    state.take_pending("s", "supervisor", state.DELIVERED, channel=state.TOOL_RESULT)
+    runtime.send_message("s", "supervisor", "w1", "thanks")
+    assert _to_w1() == ["thanks"]
+
+
+def test_a_message_to_the_human_is_never_refused_for_a_waiting_one(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.BUSY)
+    runtime.send_message("s", "w1", "supervisor", "DONE", "the report")
+    assert runtime.send_message("s", "supervisor", state.HUMAN, "x done").startswith("delivered")
+
+
+def test_a_message_from_the_human_is_never_refused_for_one_waiting_for_them(repo, fake_tmux):
+    """The human's messages stay delivered, never read: one to read never stops them."""
+    _session_with_worker(repo)
+    runtime.send_message("s", "supervisor", state.HUMAN, "which one?", "a or b")
+    runtime.send_message("s", state.HUMAN, "supervisor", "a")
+    assert [m.summary for m in state.list_messages("s") if m.sender == state.HUMAN] == ["a"]
+
+
+def test_every_agent_is_told_where_mid_turn_messages_come_from(repo, fake_tmux):
+    assert "arrives with the result of your next `lado` tool call" in runtime.MESSAGING
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    supervisor = agent_helpers.claude_prompt(fake_tmux[0][-1])
+    assert runtime.MESSAGING in supervisor
+    assert "Do not wait for a worker inside your turn" in supervisor
+    assert "call read_messages first" in supervisor
+    runtime.spawn_worker("s", "task", name="w1")
+    worker = agent_helpers.claude_prompt(fake_tmux[-1][-1])
+    assert runtime.MESSAGING in worker
+    assert "Do not wait for a worker" not in worker
+
+
 def test_hand_over_by_hook_output_returns_the_lines_and_types_nothing(repo, fake_tmux):
     _session_with_worker(repo)
     state.queue_message("s", "supervisor", "w1", "one")
@@ -5024,8 +5094,112 @@ def test_stopping_the_session_closes_its_open_questions(repo, fake_tmux):
     _session_with_worker(repo)
     runtime.ask_human("s", "w1", "first?")
     runtime.ask_human("s", "supervisor", "second?")
+    assert runtime.stop_preview("s").questions == 2
+    assert runtime.stop_session("s").questions == 2
+    assert _question_states() == [state.QUESTION_STOPPED, state.QUESTION_STOPPED]
+
+
+def test_the_containers_stop_marks_the_open_questions_stopped(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.ask_human("s", "supervisor", "which port?")
+    assert runtime.stop_for_container() == ["s"]
+    assert _question_states() == [state.QUESTION_STOPPED]
+
+
+def test_a_reply_to_a_stopped_question_says_so_and_queues_nothing(repo, fake_tmux):
+    question = _asked(repo)
     runtime.stop_session("s")
-    assert _question_states() == [state.CLOSED, state.CLOSED]
+    before = state.list_messages("s")
+    refused = f"question #{question.id} is stopped"
+    with pytest.raises(runtime.LadoError, match=refused):  # the session stopped
+        runtime.answer_question("s", question.id, text="yes")
+    assert state.list_messages("s") == before
+    runtime.start_session(str(repo), "s", None)
+    before = state.list_messages("s")
+    with pytest.raises(runtime.LadoError, match=refused):  # and resumed
+        runtime.answer_question("s", question.id, text="yes")
+    assert state.list_messages("s") == before
+
+
+def _notices():
+    return [m for m in state.list_messages("s") if "closed unanswered" in m.summary]
+
+
+def test_the_resumed_supervisor_gets_the_questions_the_stop_closed(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.ask_human("s", "supervisor", "Which port?", "The preview needs one.", ["8123", "8200"])
+    runtime.ask_human("s", "w1", "Merge now?", None, ["yes"], False)
+    runtime.ask_human("s", "w1", "Why red?")
+    first, second, third = [m.id for m in state.list_messages("s") if m.kind == state.QUESTION]
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    to_lead = [m for m in state.list_messages("s") if m.state == state.PENDING]
+    assert [(m.sender, m.summary) for m in to_lead] == [
+        ("lado", "session resumed: 0 open runs"),
+        ("lado", "3 questions to the human closed unanswered by the stop"),
+    ]
+    assert to_lead[1].recipient == "supervisor"
+    assert to_lead[1].body == (
+        f"#{first} from supervisor: Which port?\n"
+        "The preview needs one.\n"
+        "Choices: 8123, 8200 (or an answer in the human's own words)\n"
+        f"#{second} from w1: Merge now?\n"
+        "Choices: yes\n"
+        f"#{third} from w1: Why red?\n"
+        "No choices: the human answers in their own words.\n"
+        "No one answered these. Ask again with ask_human what is still needed; a run's new "
+        "worker may ask its own again in its step."
+    )
+
+
+def test_one_stopped_question_is_named_in_the_singular(repo, fake_tmux):
+    _asked(repo)
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    [notice] = _notices()
+    assert notice.summary == "1 question to the human closed unanswered by the stop"
+
+
+def test_with_nothing_open_a_resume_says_nothing_of_questions(repo, fake_tmux):
+    question = _asked(repo)
+    runtime.answer_question("s", question.id, text="yes")
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    assert _notices() == []
+
+
+def test_a_question_is_told_once_after_its_notice_was_read(repo, fake_tmux):
+    _asked(repo)
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    [notice] = _notices()
+    with state.connect() as db:
+        db.execute("UPDATE messages SET state = ? WHERE id = ?", (state.READ, notice.id))
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    assert [m.id for m in _notices()] == [notice.id]
+
+
+def test_a_stop_before_the_notice_was_read_tells_the_question_again(repo, fake_tmux):
+    question = _asked(repo)
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    dropped, told = _notices()
+    assert (dropped.state, told.state) == (state.DROPPED, state.PENDING)
+    assert state.get_message("s", question.id).answered_by == told.id
+
+
+def test_a_failed_resume_leaves_the_question_to_the_next_one(repo, fake_tmux, monkeypatch):
+    _asked(repo)
+    runtime.stop_session("s")
+    with monkeypatch.context() as m:
+        m.setattr(tmux, "new_session", _fail)
+        with pytest.raises(tmux.TmuxError):
+            runtime.start_session(str(repo), "s", None)
+    runtime.start_session(str(repo), "s", None)
+    assert [m.state for m in _notices()] == [state.DROPPED, state.PENDING]
 
 
 def _human_writes(text="merge w1?", agent="supervisor"):
@@ -5881,3 +6055,139 @@ def test_check_title_is_the_rule_of_set_title():
     assert runtime.check_title("s", "s") is None
     with pytest.raises(runtime.LadoError, match="^a title is at most 80 characters$"):
         runtime.check_title("x" * 81, "s")
+
+
+def _dropped_message(summary):
+    [message] = [m for m in state.list_messages("s") if m.summary == summary]
+    return message.state == state.DROPPED
+
+
+@pytest.mark.parametrize("to", ["supervisor", "w1"])
+def test_a_stop_during_the_typing_refuses_the_humans_message(repo, fake_tmux, monkeypatch, to):
+    _session_with_worker(repo)
+    state.set_status("s", to, state.IDLE)
+    agent_helpers.stop_while_typing(monkeypatch, "s")
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.write_as_human("s", "merge it", to)
+    assert str(refused.value) == agent_helpers.cut_off(to)
+    assert _dropped_message("merge it")
+
+
+def test_a_stop_during_the_typing_refuses_the_humans_answer(repo, fake_tmux, monkeypatch):
+    question = _asked(repo)
+    agent_helpers.stop_while_typing(monkeypatch, "s")
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.answer_question("s", question.id, "yes", "")
+    assert str(refused.value) == agent_helpers.cut_off("w1")
+
+
+def test_a_stop_while_a_message_is_typed_again_refuses_the_next_one(repo, fake_tmux, monkeypatch):
+    _session_with_worker(repo)
+    state.set_status("s", "w1", state.IDLE)
+    runtime.send_message("s", "supervisor", "w1", "first")  # typed, not confirmed: busy
+    monkeypatch.setattr(runtime, "RETRY_DELAYS", (0, 0, 0))
+    agent_helpers.stop_while_typing(monkeypatch, "s")
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.write_as_human("s", "second", "w1")
+    assert str(refused.value) == agent_helpers.cut_off("w1")
+
+
+def test_a_stop_before_the_hand_over_refuses_without_a_list_of_agents(repo, fake_tmux, monkeypatch):
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.IDLE)
+    sweep_sent = runtime._sweep_sent
+
+    def stopped_first(*args):
+        runtime.stop_session("s")
+        sweep_sent(*args)
+
+    monkeypatch.setattr(runtime, "_sweep_sent", stopped_first)
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.write_as_human("s", "merge it")
+    assert str(refused.value) == agent_helpers.cut_off("supervisor")
+    assert _dropped_message("merge it")
+
+
+def test_a_stop_before_the_message_is_stored_refuses_in_the_same_words(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.stop_session("s")
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.post("s", state.LADO, "w1", "your step")
+    assert str(refused.value) == agent_helpers.cut_off("w1")
+
+
+def test_a_tmux_session_gone_without_a_stop_refuses_in_the_same_words(repo, fake_tmux, monkeypatch):
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.IDLE)
+    fake_tmux.append(("kill_session", "s"))  # killed by hand: has_session says no
+
+    def typed(*_):
+        raise tmux.TmuxError("no server running on /tmp/tmux-1/lado")
+
+    monkeypatch.setattr(tmux, "send_text", typed)
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.write_as_human("s", "merge it")
+    assert str(refused.value) == agent_helpers.cut_off("supervisor")
+    assert state.get_session("s").stopped_at is None  # the loop's to find, as ever
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [tmux.TmuxError("server exited unexpectedly"), tmux.TmuxMissing("tmux not found")],
+    ids=["tmux failed", "no tmux"],
+)
+def test_a_tmux_failure_of_a_running_session_stays_an_error(repo, fake_tmux, monkeypatch, failure):
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.IDLE)
+
+    def typed(*_):
+        raise failure
+
+    monkeypatch.setattr(tmux, "send_text", typed)
+    with pytest.raises(type(failure)) as raised:
+        runtime.write_as_human("s", "merge it")
+    assert raised.value is failure
+
+
+def test_a_message_in_an_unknown_session_promises_no_resume(lado_home):
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.send_message("nowhere", "supervisor", "nobody", "hello")
+    assert str(refused.value) == 'no running agent "nobody"; running agents: ; or "human"'
+
+
+def test_a_session_forgotten_during_the_typing_promises_no_resume(repo, fake_tmux, monkeypatch):
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.IDLE)
+
+    def typed(*_):
+        runtime.stop_session("s")
+        runtime.forget_session("s", force=True)
+        raise tmux.TmuxError("can't find session: s")
+
+    monkeypatch.setattr(tmux, "send_text", typed)
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.write_as_human("s", "merge it")
+    assert str(refused.value) == 'unknown session "s"'
+
+
+def test_a_stopped_agent_of_a_running_session_keeps_the_list_of_running_agents(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.finish_worker("s", "w1", discard=True)
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.write_as_human("s", "merge it", "w1")
+    assert str(refused.value) == 'no running agent "w1"; running agents: supervisor'
+
+
+def test_the_tmux_server_gone_ends_a_line_to_the_lead_quietly(repo, fake_tmux, monkeypatch):
+    """A hook at an agent's end: the line stays for the session's end to drop, no traceback."""
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.IDLE)
+    fake_tmux.append(("kill_session", "s"))
+
+    def typed(*_):
+        raise tmux.TmuxError("error connecting to /tmp/tmux-1/lado (No such file or directory)")
+
+    monkeypatch.setattr(tmux, "send_text", typed)
+    runtime._tell_lead("s", "w1", "w1 ended")
+    [line] = [m for m in state.list_messages("s") if m.summary == "w1 ended"]
+    assert line.state == state.SENT

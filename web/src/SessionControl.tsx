@@ -1,8 +1,12 @@
 // A session's actions (docs/design/ui.md, Launch and session control), icons in its head
-// by its status: Stop a session that runs (or whose tmux session is gone, to mark it
-// stopped), Resume one that does not run, Forget one that is stopped. Stop asks in a
+// (Stop with its word, by the window's width in styles.css) by its status: Stop a session
+// that runs (or whose tmux session is gone, to mark it
+// stopped), Resume one that does not run, Forget one that is stopped. A stopped session's
+// Resume has its word at any width, and on Activity stands in the bar in the composer's place
+// (StoppedBar), not in the head. Stop asks in a
 // popover, Forget in a modal window; both say first what they do, from the server's
-// preview. Stop's popover can also stop and forget the session in one go. The session list's
+// preview. Stop's popover can also stop and forget a session with no open run in one go, once
+// the preview says so. The session list's
 // rows have none of them (Sessions.tsx, SessionRowMenu); its Stopped band forgets many
 // (ForgetMany.tsx).
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
@@ -18,10 +22,14 @@ import {
   type SessionInfo,
   type StopPreview,
 } from "./api";
+import { closedBy, looks, stopAttempt } from "./attempts";
 import { ForgetIcon, ResumeIcon, StopIcon } from "./icons";
 import { useLaunch } from "./Launch";
+import { useLive, useLiveStore, useLocked } from "./live";
 import { useBelow, useDismiss } from "./Menu";
+import { useModal } from "./modal";
 import { Tooltip } from "./Tooltip";
+import { ActionProblem, Waits } from "./waitingParts";
 
 type Action = "stop" | "resume" | "forget";
 
@@ -30,13 +38,13 @@ const LABELS: Record<Action, string> = { stop: "Stop session…", resume: "Resum
 const ICONS: Record<Action, ReactNode> = { stop: <StopIcon />, resume: <ResumeIcon />, forget: <ForgetIcon /> };
 
 // What can be done to a session of each status, in the order of its head's icons.
-function actionsOf(session: SessionInfo): Action[] {
+function actionsOf(session: SessionInfo, onActivity: boolean): Action[] {
   switch (session.status) {
     case "running":
     case "loop_down":
       return ["stop"];
     case "stopped":
-      return ["resume", "forget"];
+      return onActivity ? ["forget"] : ["resume", "forget"];
     case "tmux_gone":
       return ["resume", "stop"];
   }
@@ -46,19 +54,29 @@ export const messageOf = (error: unknown) => (error instanceof ApiError ? error.
 
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-export function SessionActions({ session }: { session: SessionInfo }) {
+// Resume, the one action of every Resume button: it opens the Resume window, whose request and
+// check of the outcome are the window's (Launch.tsx). `lost`: the button waits for the connection.
+function useResume(session: SessionInfo) {
   const launch = useLaunch();
+  const { lost } = useLive();
+  return { resume: () => launch({ kind: "resume", session }), lost };
+}
+
+export function SessionActions({ session, onActivity }: { session: SessionInfo; onActivity: boolean }) {
+  const { resume, lost } = useResume(session);
   const [shown, setShown] = useState<"stop" | "forget" | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const popover = useRef<HTMLDivElement>(null);
   const close = () => setShown(null);
+  // A Stop settled later closes its popover, never the Forget window opened meanwhile.
+  const closeStop = () => setShown((now) => (now === "stop" ? null : now));
   useDismiss(shown === "stop", box, close);
   const below = useBelow(box, popover, shown === "stop", true);
 
   const act = (action: Action) => {
     if (action === "resume") {
       setShown(null);
-      launch({ kind: "resume", session });
+      resume();
     } else {
       setShown(action);
     }
@@ -66,22 +84,56 @@ export function SessionActions({ session }: { session: SessionInfo }) {
 
   return (
     <div ref={box} className="session-actions">
-      {actionsOf(session).map((action) => (
-        <Tooltip key={action} tip={LABELS[action]}>
+      {actionsOf(session, onActivity).map((action) => {
+        const button = (
           <button
             type="button"
             className={`icon-button${action === "forget" ? " danger-icon" : ""}`}
             aria-label={LABELS[action]}
             aria-haspopup={action === "resume" ? undefined : "dialog"}
             aria-expanded={action === "resume" ? undefined : shown === action}
+            disabled={lost && action !== "forget"}
             onClick={() => act(action)}
           >
             {ICONS[action]}
+            {action === "stop" && <span className="session-action-word">Stop</span>}
+            {action === "resume" && session.status === "stopped" && <span className="session-resume-word">Resume</span>}
           </button>
-        </Tooltip>
-      ))}
-      {shown === "stop" && <StopPopover session={session.name} ref={popover} style={below} onClose={close} />}
+        );
+        return action === "forget" ? (
+          <Tooltip key={action} tip={LABELS[action]}>
+            {button}
+          </Tooltip>
+        ) : (
+          <Waits key={action} tip={LABELS[action]}>
+            {button}
+          </Waits>
+        );
+      })}
+      {shown === "stop" && (
+        <StopPopover session={session.name} ref={popover} style={below} onClose={close} onStopped={closeStop} />
+      )}
       {shown === "forget" && <ForgetDialog session={session.name} onClose={close} />}
+    </div>
+  );
+}
+
+// In a stopped session's Activity, in the composer's place: what the session is and the way on.
+// The button stays out of the live region: a change of its state is no news.
+export function StoppedBar({ session }: { session: SessionInfo }) {
+  const { resume, lost } = useResume(session);
+  return (
+    <div className="stopped-bar">
+      <div role="status" className="stopped-bar-text">
+        <strong>This session is stopped</strong>
+        <span>Its branches, runs and history are kept</span>
+      </div>
+      <Waits>
+        <button type="button" className="primary" disabled={lost} onClick={resume}>
+          <ResumeIcon />
+          Resume session
+        </button>
+      </Waits>
     </div>
   );
 }
@@ -117,6 +169,13 @@ function stopItems(preview: StopPreview): string[] {
             : `${preview.dropped} messages they have not got are dropped`,
         ]
       : []),
+    ...(preview.questions > 0
+      ? [
+          preview.questions === 1
+            ? "1 open question to you is closed"
+            : `${preview.questions} open questions to you are closed`,
+        ]
+      : []),
     runs > 0
       ? `branches, worktrees, ${plural(runs, "open run")} and the history stay`
       : "branches, worktrees and the history stay",
@@ -129,11 +188,13 @@ function StopPopover({
   ref: panel,
   style,
   onClose,
+  onStopped,
 }: {
   session: string;
   ref: RefObject<HTMLDivElement | null>;
   style?: CSSProperties;
   onClose: () => void;
+  onStopped: () => void; // a stop without an answer found reached, maybe long after
 }) {
   const preview = usePreview(() => getStopPreview(session));
   const navigate = useNavigate();
@@ -144,29 +205,38 @@ function StopPopover({
   useEffect(() => {
     panel.current?.focus();
   }, []);
-  const stop = async () => {
-    setBusy("stop");
+  const live = useLiveStore();
+  const attempt = stopAttempt(session);
+  const locked = useLocked(attempt);
+  // The stop of both buttons: without an answer LADO settles the stop alone, whichever was
+  // pressed, so a forget only ever follows an answered stop or the human's asking again.
+  const stopped = async (): Promise<boolean> => {
     setRefused(null);
+    live.attempts.clear(attempt);
     try {
-      await stopSession(session);
-      onClose();
+      const answered = await live.attempts.send(attempt, {
+        what: "Stop",
+        repeat: () => stopSession(session),
+        look: looks.stop(session),
+        closed: closedBy.stop,
+        reached: onStopped,
+      });
+      if (answered) return true;
     } catch (error) {
       setRefused(messageOf(error));
-      setBusy(null);
     }
+    setBusy(null);
+    return false;
+  };
+  const stop = async () => {
+    setBusy("stop");
+    if (await stopped()) onClose();
   };
   // The core's stop, then the core's forget without force: a session with open runs is not
   // offered it (D6), and a refused forget leaves the session stopped, its reason shown.
   const stopAndForget = async () => {
     setBusy("stop-to-forget");
-    setRefused(null);
-    try {
-      await stopSession(session);
-    } catch (error) {
-      setRefused(messageOf(error));
-      setBusy(null);
-      return;
-    }
+    if (!(await stopped())) return;
     setBusy("forget");
     try {
       await forgetSession(session, false);
@@ -208,7 +278,6 @@ function StopPopover({
           ))}
         </ul>
       )}
-      {hasRuns && <p className="muted stop-forget-why">It has open runs: stop it, then forget it from the Stopped list.</p>}
       {refused && (
         <p className="problem" role="alert">
           {refused}
@@ -218,20 +287,23 @@ function StopPopover({
         <button type="button" className="quiet" onClick={onClose} disabled={busy !== null && busy !== "stopped"}>
           Cancel
         </button>
-        <Tooltip tip="Stops it, then deletes its history for good">
-          <button
-            type="button"
-            className="danger"
-            disabled={busy !== null || loaded === null || hasRuns}
-            onClick={() => void stopAndForget()}
-          >
-            {busy === "stop-to-forget" ? "Stopping…" : busy === "forget" ? "Forgetting…" : "Stop and forget"}
+        {loaded !== null && !hasRuns && (
+          <Waits tip="Stops it, then deletes its history for good">
+            <button type="button" className="danger" disabled={busy !== null || locked} onClick={() => void stopAndForget()}>
+              {busy === "stop-to-forget" ? "Stopping…" : busy === "forget" ? "Forgetting…" : "Stop and forget"}
+            </button>
+          </Waits>
+        )}
+        <Waits>
+          <button type="button" className="danger" disabled={busy !== null || loaded === null || locked} onClick={() => void stop()}>
+            {busy === "stop" ? "Stopping…" : `Stop ${session}`}
           </button>
-        </Tooltip>
-        <button type="button" className="danger" disabled={busy !== null || loaded === null} onClick={() => void stop()}>
-          {busy === "stop" ? "Stopping…" : `Stop ${session}`}
-        </button>
+        </Waits>
       </div>
+      {hasRuns && (
+        <p className="muted stop-forget-why">It has open runs, so it can be forgotten only from the Stopped list after stopping.</p>
+      )}
+      <ActionProblem attempt={attempt} />
     </div>
   );
 }
@@ -243,9 +315,7 @@ function ForgetDialog({ session, onClose }: { session: string; onClose: () => vo
   const [force, setForce] = useState(false);
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
+  useModal(dialog);
   const found = preview !== null && "value" in preview ? preview.value : null;
   const runs = found?.open_runs ?? [];
   const forget = async () => {

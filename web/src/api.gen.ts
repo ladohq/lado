@@ -2215,6 +2215,8 @@ export interface components {
             label: string;
             /** Help */
             help: string;
+            /** Shows Code */
+            shows_code: boolean;
         };
         /**
          * LoginChoiceInfo
@@ -2341,7 +2343,7 @@ export interface components {
             /** Free Answer */
             free_answer: boolean;
             /** Question State */
-            question_state: ("open" | "answered" | "dismissed" | "closed") | null;
+            question_state: ("open" | "answered" | "dismissed" | "closed" | "stopped") | null;
             /** Answered By */
             answered_by: number | null;
             /** Reply To */
@@ -3165,6 +3167,8 @@ export interface components {
             title: string | null;
             /** Project */
             project: string | null;
+            /** Project Title */
+            project_title?: string | null;
         };
         /**
          * SessionKitInfo
@@ -3181,6 +3185,8 @@ export interface components {
             valid: boolean;
             /** Problem */
             problem: string | null;
+            /** Flows */
+            flows: string[];
         };
         /**
          * SessionStatus
@@ -3217,6 +3223,8 @@ export interface components {
             agents: string[];
             /** Dropped */
             dropped: number;
+            /** Questions */
+            questions: number;
             /** Open Runs */
             open_runs: string[];
             /** Worktrees */

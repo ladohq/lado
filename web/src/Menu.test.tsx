@@ -1,6 +1,28 @@
-import { describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render } from "@testing-library/react";
+import { useRef } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { placeBelow } from "./Menu";
+import { placeBelow, useDismiss } from "./Menu";
+
+afterEach(cleanup);
+
+function Dismissed({ close }: { close: (event: MouseEvent) => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  useDismiss(true, box, close);
+  return <div ref={box} data-testid="box" />;
+}
+
+describe("useDismiss", () => {
+  it("hands the press outside to `close`, and ignores one inside", () => {
+    const close = vi.fn();
+    const view = render(<Dismissed close={close} />);
+    fireEvent.mouseDown(view.getByTestId("box"));
+    expect(close).not.toHaveBeenCalled();
+    fireEvent.mouseDown(document.body);
+    expect(close).toHaveBeenCalledOnce();
+    expect(close.mock.calls[0][0].target).toBe(document.body);
+  });
+});
 
 // An anchor 30px wide and 30px high whose top is at 100, in a window 1000px wide.
 const anchor = (left: number) => ({ left, right: left + 30, bottom: 130 });

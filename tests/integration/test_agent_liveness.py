@@ -38,6 +38,12 @@ def release(agent: str, n: int) -> None:
     agent_helpers.release(SESSION, agent, n)
 
 
+def in_pause(agent: str, n: int) -> None:
+    """Wait until the agent is in its n-th pause: past its read_messages for its task,
+    whose result would carry a message queued before (runtime.take_mid_turn)."""
+    wait_for(lambda: agent_helpers.paused(SESSION, agent, n), f"{agent} paused {n}")
+
+
 def inputs(agent: str) -> list:
     log = agent_helpers.fake_logs(SESSION, agent) / "inputs.jsonl"
     return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
@@ -134,7 +140,7 @@ def test_a_worker_whose_spawn_stalls_before_its_window_is_not_taken_for_ended(se
 
 def test_an_agent_that_dies_in_a_turn_is_found_stopped(session):
     runtime.spawn_worker(SESSION, "pause\ndie", name="w1")
-    wait_status("w1", state.BUSY)
+    in_pause("w1", 1)
     runtime.send_message(SESSION, "supervisor", "w1", "next")
     release("w1", 1)
     wait_status("w1", state.STOPPED, found_gone())
@@ -144,7 +150,7 @@ def test_an_agent_that_dies_in_a_turn_is_found_stopped(session):
 
 def test_a_turn_that_ends_on_an_error_hands_over_the_queue(session):
     runtime.spawn_worker(SESSION, "pause\nfail rate_limit", name="w1")
-    wait_status("w1", state.BUSY)
+    in_pause("w1", 1)
     runtime.send_message(SESSION, "supervisor", "w1", "go on")
     release("w1", 1)
     wait_for(lambda: message_to("w1").state == state.DELIVERED, "w1 to get its queue")
@@ -186,7 +192,7 @@ def test_a_turn_that_ends_on_a_transient_error_is_resumed_until_the_resumes_are_
 
 def test_an_agent_that_exits_with_messages_queued_drops_them_and_tells_the_sender(session):
     runtime.spawn_worker(SESSION, "pause\nexit", name="w1")
-    wait_status("w1", state.BUSY)
+    in_pause("w1", 1)
     runtime.send_message(SESSION, "supervisor", "w1", "one more")
     release("w1", 1)
     wait_status("w1", state.STOPPED)

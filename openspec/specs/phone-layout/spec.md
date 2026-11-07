@@ -1,21 +1,20 @@
 # phone-layout Specification
 
 ## Purpose
-How the web UI reads on a phone: a touch screen no wider than 600 px or no higher than
-500 px gets a layout of its own (the rail as a menu, a one-line top bar, the session's
+How the web UI reads on a phone: a window no wider than 600 px, or a touch screen no higher
+than 500 px, gets a layout of its own (the rail as a menu, a one-line top bar, the session's
 details in a sheet, a chat whose composer stays at hand, terminals over the screen,
-tooltips on a tap), while a computer with a mouse keeps its layout at any window size.
+tooltips on a tap), while a wider window with a mouse keeps its layout, however low.
 
 ## Requirements
 
 ### Requirement: The UI picks the phone layout by the screen and the pointer
 
-The web UI SHALL use its phone layout exactly while the primary pointer is coarse (a touch
-screen) and the window is no wider than 600 px or no higher than 500 px; the layout SHALL
-follow the window when it turns or resizes, without a reload. With a fine pointer (a
-mouse or a trackpad) the UI SHALL never use the phone layout, whatever the window's size,
-and SHALL look and behave as before this change. There SHALL be no setting or switch for
-it.
+The web UI SHALL use its phone layout exactly while the window is no wider than 600 px, with any
+pointer, or the primary pointer is coarse (a touch screen) and the window is no higher than
+500 px; the layout SHALL follow the window when it turns or resizes, without a reload. A wider
+window with a fine pointer (a mouse or a trackpad) SHALL never use the phone layout, however low.
+There SHALL be no setting or switch for it.
 
 #### Scenario: A phone held upright
 - **WHEN** the UI is opened on a touch screen 390 px wide and 844 px high
@@ -27,8 +26,15 @@ it.
 
 #### Scenario: A computer's narrow window
 - **WHEN** the UI is opened with a mouse in a window 390 px wide and 844 px high
-- **THEN** it shows the rail, the session's head with its facts, the session strip and
-  the terminal strip as before this change, and no Menu button
+- **THEN** it shows the phone layout, with Menu and the session's title in place
+
+#### Scenario: A computer's low window
+- **WHEN** the UI is opened with a mouse in a window 1280 px wide and 400 px high
+- **THEN** it does not show the phone layout
+
+#### Scenario: A touch laptop
+- **WHEN** the UI is opened on a touch screen 1440 px wide and 900 px high
+- **THEN** it does not show the phone layout
 
 #### Scenario: A tablet
 - **WHEN** the UI is opened on a touch screen 820 px wide and 1180 px high
@@ -64,9 +70,9 @@ the human) that shows the Needs you count as a badge while it is not zero.
 
 In the phone layout the top bar SHALL be one line no higher than 52 px upright and 44 px
 sideways, and SHALL not wrap. On a session's page it SHALL hold, left to right: Menu, the
-session's status dot, the session's title (or name) as a button that opens the session's
-details, cut with "…" when long, the change feed's mark and Stop session. On another page
-it SHALL hold Menu and the page's title.
+session's status dot, the session's title (or name) with a chevron as a button that opens the
+session's details, cut with "…" when long, the change feed's mark and Stop session. On another page
+it SHALL hold Menu and the page's title. Menu and the session's actions SHALL be 44 by 44 px.
 
 #### Scenario: A session's page upright
 - **WHEN** the human opens session lad-95 on a phone 390 px wide
@@ -80,21 +86,20 @@ it SHALL hold Menu and the page's title.
 ### Requirement: On a phone the change feed's mark is a dot or a word
 
 In the phone layout the change feed's mark SHALL be a dot while the
-feed is live and the word "reconnecting…" while it is not, and SHALL open the system panel
-as before; a newer LADO's `↑ X.Y.Z` SHALL stay beside it.
+feed is live and the no-network icon on the warning ground, named "reconnecting…", while it is
+lost (capability connection-loss), and SHALL open the system panel
+as before while live; a newer LADO's `↑ X.Y.Z` SHALL stay beside it.
 
 #### Scenario: The feed is lost
 - **WHEN** the change feed reconnects
-- **THEN** the mark reads "reconnecting…" in place of the dot
+- **THEN** the mark is the no-network icon in place of the dot, named "reconnecting…"
 
 ### Requirement: On a phone the session's details open from its name
 
 In the phone layout a tap on the session's name in the top bar SHALL open a sheet over the
-page's bottom, named by the session, with: the mark's words and the run time; the whole
-folder (wrapped, never cut) with Copy path; git (the remote, the branch) as the head shows
-it on a computer; the kits, each with its version; the CLI with its version and
-permission mode; and the buttons Rename, Copy link and All sessions. A tap outside the
-sheet, Esc or its close button SHALL close it.
+page's bottom, named by the session, with the content of Details on a computer, from the
+same component (capability session-head, "Details names every fact of the session"). A tap
+outside the sheet, Esc or its close button SHALL close it.
 
 #### Scenario: The whole folder
 - **WHEN** the session's folder is `/Users/kao/Projects/lado/.lado/worktrees/lad-95/task-lad-95`
@@ -107,8 +112,8 @@ sheet, Esc or its close button SHALL close it.
 
 ### Requirement: On a phone Rename in the session's details edits the title
 
-In the phone layout Rename in the session's details SHALL edit the title as the
-pencil does on a computer.
+In the phone layout Rename in the session's details SHALL edit the title in the sheet, with
+the same field as in the head on a computer.
 
 #### Scenario: Rename from the sheet
 - **WHEN** the human taps Rename in the sheet, types "Phone layout" and confirms
@@ -142,13 +147,13 @@ In the phone layout the window SHALL not scroll as a page; each page's content S
 scroll by itself under the top bar. The app SHALL be as high as the part of the window
 the human sees, its bottom never cut by the browser's bars. In a session's chat the feed
 SHALL scroll by itself, and the waiting card and the composer SHALL stay whole at the
-chat's bottom; the card SHALL be at most half the chat's height, its list scrolling
-inside.
+chat's bottom; the card's title and context SHALL be at most 40 % of the chat's height, and its
+footer whole under them.
 
 #### Scenario: Writing with a gate waiting
 - **WHEN** a gate waits and the human opens the session's chat on a phone 390×844
-- **THEN** the composer is at the screen's bottom without scrolling, the card above it is
-  at most half the chat's height, and the feed above scrolls by itself
+- **THEN** the composer is at the screen's bottom without scrolling, the card above it has
+  its footer whole, and the feed above scrolls by itself
 
 #### Scenario: The browser's bottom bar
 - **WHEN** a question waits and the human opens the session's chat in a phone's browser
@@ -164,11 +169,12 @@ inside.
 ### Requirement: On a phone the composer's text is large and shows no keys hint
 
 In the phone layout the composer's text SHALL be at least 16 px, and its keys hint ("Enter to send ·
-Shift+Enter …") SHALL not be shown on a touch screen.
+Shift+Enter …") SHALL not be shown on a touch screen. The line under the composer SHALL not show
+`to supervisor`, and with nothing to show it SHALL take no height.
 
 #### Scenario: No keys hint
 - **WHEN** the chat is shown on a touch screen
-- **THEN** the composer shows "to supervisor" and no keys hint
+- **THEN** the composer shows no "to supervisor", no keys hint and no empty line
 
 ### Requirement: On a phone a flow event's line wraps
 
@@ -197,7 +203,7 @@ minimized state the card remembers for the session.
 #### Scenario: Turning back upright
 - **WHEN** the human turns the phone upright with the card minimized only because it was
   sideways
-- **THEN** the card shows whole, at most half the chat's height
+- **THEN** the card shows whole, its footer in sight
 
 ### Requirement: On a phone a terminal fills the screen
 
@@ -246,7 +252,7 @@ SHALL be as high as the visible part of the window again.
 - **WHEN** a question waits and the human taps the composer on a phone, and the keyboard
   covers the lower 300 px of the screen
 - **THEN** the top bar stays at the screen's top, the composer and the card's Send button
-  are above the keyboard, and the card is at most half the chat's height
+  are above the keyboard
 
 #### Scenario: The keyboard closes
 - **WHEN** the human closes the keyboard
@@ -257,8 +263,8 @@ SHALL be as high as the visible part of the window again.
 
 In the phone layout an expanded waiting card in a session's chat SHALL fill the session's
 page under the top bar: the feed, the composer, the session's tabs and the Team row SHALL
-not be shown while it is expanded, whether its button, a field or the phone held sideways
-expanded it, and SHALL show again when it folds.
+not be shown while it is expanded, whether its button or the phone held sideways expanded
+it, and SHALL show again when it folds.
 
 #### Scenario: Expanded by its button
 - **WHEN** the human taps Expand the card in the session's chat on a phone
@@ -269,31 +275,112 @@ expanded it, and SHALL show again when it folds.
 - **THEN** the card stands above the composer again, and the session's tabs and the Team
   row show again
 
-### Requirement: On a phone a field of the waiting card expands it
+### Requirement: On a phone a field in focus keeps the card and folds what is around it
 
-In the phone layout, in a session's chat, a field of the waiting card (a gate's comment, a
-question's own answer, a skip's comment) taking the focus SHALL expand the card; the
-field SHALL keep the focus and SHALL be shown within the card's list. The card SHALL stay
-expanded when the field loses the focus or the on-screen keyboard closes, until the human
-folds it or nothing waits. On Needs you, and outside the phone layout, a field's focus
-SHALL not expand the card.
+In the phone layout, in a session's chat, while a field of the waiting card's footer has the
+focus, the card SHALL not expand: the session's tabs, the Team row, the card's context and the
+choices' area SHALL not be shown, and the composer SHALL be a line: on a gate's tab "Commenting
+on gate #<id> above", on a question's the line of capability chat-question-card. When the field
+loses the focus all of it SHALL show again.
 
 #### Scenario: A gate's comment above the keyboard
 - **WHEN** a gate waits in the session's chat on a phone 402×874, the human taps the
-  gate's comment field and the keyboard leaves 400 px of the window visible
-- **THEN** the card is expanded, the comment field has the focus, and the field and
-  Approve and Reject lie within the visible 400 px
+  gate's comment field and the keyboard leaves 440 px of the window visible
+- **THEN** the card is not expanded, the session's tabs, the Team row and the context do not
+  show, and the field, Approve, Reject and "Commenting on gate #1 above" lie within the
+  visible 440 px
 
 #### Scenario: An own answer
 - **WHEN** a question with a free answer waits on the same phone and the human taps
   Other…
-- **THEN** the card is expanded with the own answer's field focused, and the field and
-  "Send answer to supervisor" lie within the visible 400 px
+- **THEN** the field has the focus, the choices' area does not show, and the field, "Send
+  answer to supervisor" and "Answering question #5 above" lie within the visible 440 px
 
 #### Scenario: The keyboard closes
-- **WHEN** the card was expanded by its comment field and the keyboard closes
-- **THEN** the card stays expanded, and the comment typed stays in the field
+- **WHEN** the human closes the keyboard and the field loses the focus
+- **THEN** the session's tabs, the context, the choices' area, the Team row and the composer
+  show again, and the comment typed stays in the field
+
+### Requirement: Only a phone's chat folds around a field
+
+On Needs you, and outside the phone layout, a field's focus SHALL change nothing.
 
 #### Scenario: A computer
-- **WHEN** the human clicks a gate's comment field with a mouse in a window 390 px wide
-- **THEN** the card is not expanded
+- **WHEN** the human clicks a gate's comment field with a mouse in a window 700 px wide
+- **THEN** the card and the composer stay as they were
+
+#### Scenario: Needs you on a phone
+- **WHEN** the human taps a card's field on Needs you on a phone and the keyboard opens
+- **THEN** nothing folds, the browser keeps the field in sight, and the page scrolls on to the
+  buttons under it, which the keyboard may cover
+
+### Requirement: On a phone a field keeps the context it needs
+
+A field in the context of several questions SHALL keep that context, and SHALL stay in its view
+when the keyboard opens; the session's tabs and the Team row SHALL not be shown while it has the
+focus. An expanded card SHALL keep its context with a field in focus.
+
+#### Scenario: Several questions
+- **WHEN** a tab of three questions waits and the human taps Other… on the last, and the keyboard
+  leaves 440 px visible
+- **THEN** the context still shows, and the field lies within its visible part
+
+#### Scenario: The expanded card
+- **WHEN** the human expands the card to read its note and taps the comment field
+- **THEN** the context stays
+
+### Requirement: On a phone the card's field and buttons stay above the keyboard
+
+With a field of the card in focus, the field, the buttons and the composer's line SHALL stay above
+the on-screen keyboard, by the order of capability chat-question-card, requirement "A footer
+taller than its room gives way in order"; the title's meta SHALL go before the title.
+
+#### Scenario: Less room than the frame
+- **WHEN** the keyboard leaves 350 px of the window visible and a gate's comment has the focus,
+  under a recommendation of two lines
+- **THEN** the title's meta is gone or the title too, and the field, Approve, Reject and the
+  line lie within the visible 350 px
+
+#### Scenario: Six choices
+- **WHEN** the keyboard leaves 350 px of the window visible and Other… of a question of six
+  choices has the focus
+- **THEN** the field, Send answer and Skip question lie within the visible 350 px
+
+#### Scenario: Six choices under a recommendation
+- **WHEN** the keyboard leaves 340 px of the window visible and the field of Other… or Skip
+  question has the focus, on a question of six choices under a recommendation of two lines
+- **THEN** the choices' area does not show, and the recommendation, the field, Send answer and
+  Skip question lie whole within the visible 340 px
+
+### Requirement: On a phone a gate's and a question's tabs stand whole
+
+In the phone layout two tabs of the waiting card SHALL stand whole in their row, a name cut with
+an ellipsis before the row scrolls, and each SHALL keep its count.
+
+#### Scenario: Two tabs
+- **WHEN** a gate of ship/x and a question of the supervisor wait on a phone 390×844 or 360×780
+- **THEN** both tabs lie within their row and show their counts, whichever is shown
+
+### Requirement: On a phone the waiting card's targets are 44 px
+
+In the phone layout the card's tabs, Minimize and Expand (44×44), its fields, its chips and
+Approve, Reject, Send answer and Skip question SHALL be 44 px high. "↓ more" SHALL stay 24 px:
+Expand does the same.
+
+#### Scenario: Measured
+- **WHEN** a question waits on a phone 390×844
+- **THEN** its tab, a choice, Send answer and Skip question are each 44 px high
+
+### Requirement: On a phone the top bar's title and link are easy to tap
+
+In the phone layout the session's title SHALL have a target 44 px high, the height of the top bar.
+The change feed's link SHALL have a target 44 px high and 33 px wide, taken from the gaps at its
+sides, so that the title loses no width. What is drawn SHALL not change.
+
+#### Scenario: The title
+- **WHEN** the human taps the top bar's height above the title's text
+- **THEN** the session's details open
+
+#### Scenario: The link
+- **WHEN** the human taps 8 px beside the link's dot
+- **THEN** the System panel opens

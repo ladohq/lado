@@ -6,10 +6,11 @@
 // listed) and its name, cut to fit; the tabs stay on one line and scroll sideways, the
 // wheel too; its tooltip says who the agent is (Tooltip.tsx). A tab's terminal opens its socket
 // the first time it is shown in the open panel: a panel collapsed when the page opens opens
-// none. Then a hidden tab keeps its socket, a closed one closes it. The panel collapses to a
-// strip with a dot per open terminal (remembered; at first on a narrow window), its width is dragged on its edge
-// (remembered; narrowed while the window leaves the session too little room), and Expand
-// shows it over the whole page with the same terminals. Every terminal opens to view: the
+// none, nor one before the page is measured, which may fold it. Then a hidden tab keeps its
+// socket, a closed one closes it. The panel collapses to a strip with a button per agent of the
+// session; whether it is open and how wide is the page's (`PanelColumn`: the human's choice,
+// what the room allows), and at 601 to 900 px, open, it lies over the session. Expand shows it
+// over the whole page with the same terminals. Every terminal opens to view: the
 // wheel up, once the panel has nothing more to scroll, points at Take control (scrolling the
 // agent's CLI needs control); Take control, only while the socket is open, asks first in a
 // dialog (until the human says not to ask again), then types into the agent, marked in its
@@ -17,7 +18,8 @@
 // itself, silently: the page hidden, IDLE_MS without input, its socket lost after it was
 // open, the panel folded. The panel owns which agents are in control. The bar names the
 // connection only while it is not open. A terminal closed for good has Reconnect (to view),
-// and opens again by itself when its agent comes back.
+// and opens again by itself when its agent comes back. A stopped session's terminal opens no
+// socket and says that its agent is not running; its real one is made when the session runs.
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
@@ -34,20 +36,33 @@ import {
 import { useSearchParams } from "react-router";
 
 import type { AgentInfo } from "./api";
+import { avatar } from "./FeedRow";
 import { CloseIcon, CollapsePanelIcon, ExpandIcon, KeyboardIcon, ViewIcon } from "./icons";
 import { useLive, useLiveStore } from "./live";
+import { useModal } from "./modal";
 import { TERMINAL_PARAM } from "./paths";
 import { usePhone } from "./phone";
-import { PANEL_WIDTH, storeAskControl, storedAskControl, storedPanel, storePanel, type ColumnPrefs } from "./prefs";
-import { fitWidth, Splitter, useStripFocus, useWidth } from "./Splitter";
-import { AgentTip, StatusDot, SUPERVISOR } from "./Team";
+import { PANEL_WIDTH, storeAskControl, storedAskControl } from "./prefs";
+import { escapeIsTaken } from "./Menu";
+import { Splitter, useStripFocus } from "./Splitter";
+import { AgentPopup, AgentTip, STATUS_WORDS, StatusDot, SUPERVISOR, teamMarks } from "./Team";
 import { Tooltip } from "./Tooltip";
 import { TermLink, terminalUrl, type LinkState, type Mode } from "./terminalLink";
 
-// The least width of the session beside the panel: the panel is narrowed to leave it.
-export const MAIN_MIN = 360;
+// The panel's part of the page's columns (Sessions.tsx): what shows now, and what the human does
+// to it. `over`: open, it lies over the session (601 to 900 px). `ready`: the page is measured.
+export type PanelColumn = {
+  folded: boolean;
+  width: number;
+  over: boolean;
+  ready: boolean;
+  open: () => void;
+  fold: () => void;
+  setWidth: (width: number | null) => void;
+  setControl: (inControl: boolean) => void;
+};
 
-type Terminals = { open: (agent: string) => void; active: string | null };
+type Terminals = { open: (agent: string) => void; active: string | null; putBack: () => void };
 
 const TerminalsContext = createContext<Terminals | null>(null);
 
@@ -67,37 +82,52 @@ export function useShownTerminal(): string | null {
   return useTerminals().active;
 }
 
-// Esc on an expanded panel puts it back, except where Esc is someone else's: a dialog and
-// the terminal of an agent the human controls (Esc goes to the agent).
+// Puts back a panel that lies over the page, whose chat the human goes to.
+export function usePutBackTerminals(): () => void {
+  return useTerminals().putBack;
+}
+
+// Esc on an expanded panel puts it back, except where Esc is someone else's: a layer over
+// the page and the terminal of an agent the human controls (Esc goes to the agent).
 function escapeIsOurs(target: EventTarget | null): boolean {
+  if (escapeIsTaken(target)) return false;
   if (!(target instanceof Element)) return true;
-  if (target.closest("dialog")) return false;
   return !(target.closest(".term-xterm") && target.closest('[data-mode="control"]'));
 }
 
-export function TerminalPanel({ session, children }: { session: string; children: ReactNode }) {
+export function TerminalPanel({
+  session,
+  column,
+  stopped,
+  children,
+}: {
+  session: string;
+  column: PanelColumn;
+  stopped: boolean;
+  children: ReactNode;
+}) {
   const live = useLiveStore();
   const loaded = useLive().agents[session] ?? null;
   // The panel follows the agents itself, on every tab: a terminal opens again when its agent
   // comes back.
   useEffect(() => live.watch("agents", session), [live, session]);
   const agents = loaded && "items" in loaded ? loaded.items : [];
+  const marks = teamMarks(agents);
   const infoOf = (agent: string) => agents.find((one) => one.name === agent) ?? null;
   // An agent not in the session's list (gone, or not loaded yet) shows as stopped.
   const statusOf = (agent: string) => infoOf(agent)?.status ?? "stopped";
 
   const [tabs, setTabs] = useState<string[]>([SUPERVISOR]);
   const [active, setActive] = useState(SUPERVISOR);
-  const [panel, setPanel] = useState(storedPanel);
   const [expanded, setExpanded] = useState(false);
   // On a phone (phone.ts) there is no panel or strip: opening a terminal shows it over the
   // screen, expanded, until Close terminal; the computer's panel is neither read nor written.
   const phone = usePhone();
   const [phoneOpen, setPhoneOpen] = useState(false);
-  const collapsed = phone ? !phoneOpen : panel.collapsed;
+  const collapsed = phone ? !phoneOpen : column.folded;
   const over = phone ? phoneOpen : expanded; // over the page
+  const lying = phone === null && column.over && !collapsed; // over the session
   const [shown, setShown] = useState<string[]>([]); // the tabs whose terminal is made
-  const [page, room] = useWidth<HTMLDivElement>();
   const tabList = useRef<HTMLDivElement>(null);
 
   // The agents whose terminal the human controls. Control left where the human cannot see
@@ -120,30 +150,50 @@ export function TerminalPanel({ session, children }: { session: string; children
     document.addEventListener("visibilitychange", hidden);
     return () => document.removeEventListener("visibilitychange", hidden);
   }, [releaseAll]);
-
-  // The selected tab, chosen here or by a chip, scrolls into the tabs' view.
+  // A terminal in control holds the panel open against a fold for room (columns.ts).
+  const { setControl } = column;
+  const inControl = controlled.size > 0;
   useEffect(() => {
-    tabList.current
-      ?.querySelector('[aria-selected="true"]')
-      ?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+    setControl(inControl);
+    return () => setControl(false);
+  }, [inControl, setControl]);
+  // Folded by any hand, the room's too, control ends and Expand goes with it.
+  useEffect(() => {
+    if (!collapsed) return;
+    releaseAll();
+    setExpanded(false);
+  }, [collapsed, releaseAll]);
+  // A stop ends control and Expand as a fold does, whatever is open, and every terminal with
+  // them: after Resume one is made again as the panel shows it.
+  useEffect(() => {
+    if (!stopped) return;
+    releaseAll();
+    setExpanded(false);
+    setPhoneOpen(false);
+    setShown([]);
+  }, [stopped, releaseAll]);
+
+  // The selected tab, chosen here or by a chip, scrolls into the tabs' view. Not as the page
+  // opens: Chromium's Tab would start from the tab, past Skip to chat.
+  const opened = useRef(false);
+  useEffect(() => {
+    if (opened.current) {
+      tabList.current
+        ?.querySelector('[aria-selected="true"]')
+        ?.scrollIntoView?.({ inline: "nearest", block: "nearest" });
+    }
+    opened.current = true;
   }, [active, collapsed]);
 
-  const keep = useCallback((change: Partial<ColumnPrefs>) => {
-    setPanel((now) => {
-      const next = { ...now, ...change };
-      storePanel(next);
-      return next;
-    });
-  }, []);
-
+  const { open: openColumn } = column;
   const open = useCallback(
     (agent: string) => {
       setTabs((now) => (now.includes(agent) ? now : [...now, agent]));
       setActive(agent);
       if (phone) setPhoneOpen(true);
-      else keep({ collapsed: false });
+      else openColumn();
     },
-    [keep, phone],
+    [openColumn, phone],
   );
 
   // ?terminal=<agent> (Needs you, a notification) opens that agent's terminal once the
@@ -178,12 +228,10 @@ export function TerminalPanel({ session, children }: { session: string; children
     if (active === agent) setActive(left[left.length - 1]);
   };
 
-  const focus = useStripFocus(panel.collapsed);
+  const focus = useStripFocus(column.folded);
   const collapse = () => {
-    releaseAll();
-    setExpanded(false);
     focus.toggled();
-    keep({ collapsed: true });
+    column.fold();
   };
   // A phone's terminal put away: control ends, as when the panel folds.
   const closePhone = useCallback(() => {
@@ -196,30 +244,42 @@ export function TerminalPanel({ session, children }: { session: string; children
   }, [phone, phoneOpen, closePhone]);
 
   // A tab's terminal is made the first time it shows in the open panel.
-  const made = collapsed || shown.includes(active) ? shown : [...shown, active];
+  const made = stopped || collapsed || !column.ready || shown.includes(active) ? shown : [...shown, active];
   useEffect(() => {
     if (made !== shown) setShown(made);
   });
 
+  // The panel off the chat the human goes to: not expanded, and not over the session.
+  const { fold } = column;
+  const putBack = useCallback(() => {
+    if (phone) return closePhone();
+    setExpanded(false);
+    if (lying) fold();
+  }, [phone, closePhone, lying, fold]);
+  // Esc goes back one layer: from expanded to the panel, from the panel over the session to the
+  // strip, with the focus there.
+  const escape = useRef<() => void>(() => {});
+  escape.current = () => {
+    if (phone) closePhone();
+    else if (expanded) setExpanded(false);
+    else collapse();
+  };
   useEffect(() => {
-    if (!over) return;
+    if (!over && !lying) return;
     const restore = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !escapeIsOurs(event.target)) return;
-      if (phone) closePhone();
-      else setExpanded(false);
+      if (event.key === "Escape" && escapeIsOurs(event.target)) escape.current();
     };
     // Captured: xterm.js takes the keys it handles, so they never bubble up to the window.
     window.addEventListener("keydown", restore, true);
     return () => window.removeEventListener("keydown", restore, true);
-  }, [over, phone, closePhone]);
+  }, [over, lying]);
 
-  const width = fitWidth(panel.width, PANEL_WIDTH, room === null ? null : room - MAIN_MIN);
-  const classes = ["terminals", collapsed && "collapsed", over && "expanded"].filter(Boolean).join(" ");
+  const classes = ["terminals", collapsed && "collapsed", over ? "expanded" : lying && "over"].filter(Boolean).join(" ");
 
   return (
-    <TerminalsContext.Provider value={{ open, active: collapsed ? null : active }}>
-      <div ref={page} className="session-page">
-        <div className="session-main" style={{ minWidth: `${MAIN_MIN}px` }}>
+    <TerminalsContext.Provider value={{ open, active: collapsed ? null : active, putBack }}>
+      <div className="session-page">
+        <div className="session-main">
           {missing !== null && (
             <p className="problem" role="alert">
               {missing} is not in this session
@@ -231,39 +291,50 @@ export function TerminalPanel({ session, children }: { session: string; children
           className={classes}
           aria-label="Terminals"
           hidden={(phone !== null && collapsed) || undefined}
-          style={collapsed || phone ? undefined : { width: `${width}px` }}
+          style={collapsed || phone || lying ? undefined : { width: `${column.width}px` }}
         >
           {collapsed && phone === null ? (
             <>
               <button
                 ref={focus.open}
                 type="button"
-                className="strip-open"
+                className="ghost strip-show"
+                aria-label="Show the terminals"
                 title="Show the terminals"
                 onClick={() => {
                   focus.toggled();
-                  keep({ collapsed: false });
+                  column.open();
                 }}
               >
-                Terminals
+                <CollapsePanelIcon side="left" />
               </button>
-              <ul className="terminals-dots" aria-label="Open terminals">
-                {tabs.map((agent) => (
-                  <li key={agent} title={`${agent}: ${statusOf(agent)}`} aria-label={`${agent}, ${statusOf(agent)}`}>
-                    <StatusDot status={statusOf(agent)} small />
+              <ul className="strip-agents" aria-label="Agents">
+                {agents.map(({ name }) => (
+                  <li key={name}>
+                    <StripAgent
+                      name={name}
+                      mark={marks.get(name)!}
+                      info={infoOf(name)}
+                      onOpen={() => {
+                        focus.toggled();
+                        open(name);
+                      }}
+                    />
                   </li>
                 ))}
               </ul>
+              <span className="strip-caption">Terminals</span>
             </>
           ) : collapsed ? null : (
             <>
-              {!over && (
+              {!over && !lying && (
                 <Splitter
                   label="Resize the terminals"
                   edge="left"
-                  width={width}
+                  width={column.width}
                   bounds={PANEL_WIDTH}
-                  onChange={(next) => keep({ width: next })}
+                  onChange={column.setWidth}
+                  onReset={() => column.setWidth(null)}
                 />
               )}
               <div className="terminals-bar">
@@ -289,7 +360,7 @@ export function TerminalPanel({ session, children }: { session: string; children
                           type="button"
                           role="tab"
                           id={`term-tab-${agent}`}
-                          aria-label={`${agent}, ${statusOf(agent)}${controlled.has(agent) ? ", in control" : ""}`}
+                          aria-label={`${agent}, ${STATUS_WORDS[statusOf(agent)]}${controlled.has(agent) ? ", in control" : ""}`}
                           aria-selected={agent === active}
                           aria-controls={`term-${agent}`}
                           onClick={() => setActive(agent)}
@@ -364,7 +435,9 @@ export function TerminalPanel({ session, children }: { session: string; children
               className="term-body"
               hidden={collapsed || agent !== active}
             >
-              {made.includes(agent) && (
+              {stopped ? (
+                <StoppedTerminal />
+              ) : made.includes(agent) && (
                 <AgentTerminal
                   session={session}
                   agent={agent}
@@ -379,6 +452,23 @@ export function TerminalPanel({ session, children }: { session: string; children
         </aside>
       </div>
     </TerminalsContext.Provider>
+  );
+}
+
+// An agent on the strip: its avatar, as in the feed, with its status in the corner.
+function StripAgent({ name, mark, info, onOpen }: { name: string; mark: string; info: AgentInfo | null; onOpen: () => void }) {
+  return (
+    <Tooltip tip={<AgentPopup name={name} info={info} />}>
+      <button
+        type="button"
+        className={`strip-agent avatar-${avatar(name).colour}`}
+        aria-label={`Open ${name}'s terminal`}
+        onClick={onOpen}
+      >
+        {mark}
+        <StatusDot status={info?.status ?? "stopped"} small />
+      </button>
+    </Tooltip>
   );
 }
 
@@ -418,6 +508,23 @@ const CONNECTING: LinkState = { phase: "connecting", reason: null };
 const controlText = (agent: string) =>
   `What you type goes straight to ${agent}, as if you typed in its tmux window. Messages LADO ` +
   "delivers to it meanwhile land among your keys.";
+
+// A terminal of a stopped session: nothing to connect to, so no socket and no way to ask for one.
+function StoppedTerminal() {
+  return (
+    <div className="term" data-link="stopped">
+      <div className="term-tools">
+        <span className="term-mode term-view">
+          <ViewIcon />
+          Viewing
+        </span>
+      </div>
+      <div className="term-screen term-stopped">
+        <p>Agent not running — resume the session to start it</p>
+      </div>
+    </div>
+  );
+}
 
 // `info`: the agent as the session's agents list has it, or null while it is not there.
 // `mode` is the panel's; Take control, Release and the terminal's own ends of control
@@ -662,9 +769,7 @@ function AgentTerminal({
 function ControlDialog({ agent, onTake, onCancel }: { agent: string; onTake: () => void; onCancel: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [never, setNever] = useState(false);
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
+  useModal(dialog);
   return (
     <dialog
       ref={dialog}

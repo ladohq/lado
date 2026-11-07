@@ -147,12 +147,14 @@ def _file_login(env: dict[str, str]) -> base.LoginStatus:
     return base.LoginStatus(base.NO)
 
 
-CODE_HELP = "Open the link, sign in and enter the code there."
+CODE_HELP = "This window closes by itself once you are signed in."
+CODE, CODE_LINK = "FAKE-C0DE7", "https://login.example.invalid/device"  # fake_login.py's
 
 
 # "fake-login" logs in like Claude Code by a pasted token or key, and like Codex by a
-# sign-in code: its choice "code" runs fake_login.py in the login window, which writes its
-# login file; "logout" removes that file.
+# sign-in code: its choice "code" runs `fake_login.py --code` in the login window, which
+# prints a link and a code in Codex's words, read as Codex's are, and writes its login file
+# once the code is entered; "logout" removes that file.
 class FakeLoginProvider(FakeProvider):
     login_variables = (TOKEN, KEY)
     login_question = "How do you pay for the fake agent?"
@@ -165,9 +167,14 @@ class FakeLoginProvider(FakeProvider):
     def login_actions(self) -> tuple[base.LoginAction, ...]:
         script = (sys.executable, str(LOGIN_SCRIPT))
         return (
-            base.LoginAction("login", "Get a sign-in code", script, CODE_HELP),
+            base.LoginAction(
+                "login", "Get a sign-in code", (*script, "--code"), CODE_HELP, shows_code=True
+            ),
             base.LoginAction("logout", "Log out…", (*script, "--logout")),
         )
+
+    def login_prompt(self, text: str) -> base.LoginPrompt | None:
+        return providers.get("codex").login_prompt(text)
 
     def __init__(self, name: str):
         super().__init__(name, True)

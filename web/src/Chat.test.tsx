@@ -1,6 +1,6 @@
 // The chat in a session's Activity tab: the messages with the human and the agents'
 // questions, live from the feed; the composer and the answers go to the API.
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
@@ -8,8 +8,9 @@ import type { AttachmentInfo, GateInfo, MessageInfo, MessagePage, RunEventInfo, 
 import { App } from "./App";
 import { messageText } from "./Chat";
 import { clock, day, dayName } from "./ChatText";
-import { FakeEventSource, FakeIntersectionObserver, FakeSocket, stream } from "./fakes";
+import { FakeEventSource, FakeIntersectionObserver, FakeScreen, FakeSocket, stream, stubDialogs } from "./fakes";
 import { storeAgentMessages } from "./prefs";
+import { sendQuote } from "./quotes";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
@@ -451,6 +452,7 @@ test("a dismissal's comment shows in the card, in its late line and in its line 
 test.each([
   [{ question_state: "dismissed" as const, answered_by: 9 }, "You · skipped"],
   [{ question_state: "closed" as const }, "Closed: the agent left"],
+  [{ question_state: "stopped" as const, answered_by: 9 }, "Closed: the session stopped"],
   [{ question_state: "answered" as const, answered_by: 9 }, "You · answered"],
 ])("a question no longer open says what became of it, also without the reply in the window", async (state, outcome) => {
   serve([question(5, state)]);
@@ -459,6 +461,16 @@ test.each([
   expect(card.querySelector(".chat-outcome, .answer-head")?.textContent).toBe(outcome);
   expect(within(card).getByText("Question #5")).toBeTruthy();
   expect(within(card).queryByRole("button")).toBeNull();
+});
+
+test("a stopped question takes LADO's message to the supervisor for no reply, with agents' messages shown", async () => {
+  storeAgentMessages(true);
+  const notice = message(9, "lado", "supervisor", "1 question to the human closed unanswered by the stop");
+  serve([question(5, { question_state: "stopped", answered_by: 9 }), notice]);
+  open();
+  const card = await within(await chat()).findByRole("article", { name: "Question from w1" });
+  expect(card.querySelector(".chat-outcome")?.textContent).toBe("Closed: the session stopped");
+  expect(card.querySelector(".answer-head, .chosen")).toBeNull();
 });
 
 test("the composer sends with Enter, keeps Shift+Enter for a new line and shows nothing ahead of the feed", async () => {
@@ -485,20 +497,72 @@ test("the composer is one frame with Send inside, says to whom and how to send",
   expect(within(frame as HTMLElement).getByRole("button", { name: "Send" })).toBeTruthy();
   expect(field.rows).toBe(1);
   const form = field.closest("form")!;
-  expect(form.querySelector(".composer-to")?.textContent).toBe("to supervisor");
+  expect(form.querySelector(".composer-to")).toBeNull(); // the field's placeholder says it
   expect(form.querySelector(".composer-keys")?.textContent).toBe(
-    "Enter to send · Shift+Enter for a new line · paste or drop files to attach",
+    "Enter to send · Shift+Enter for a new line · paste or drop files",
   );
 });
 
-test("in a stopped session the composer is off and says why", async () => {
+// A stopped session's bar
+
+const bar = () => document.querySelector<HTMLElement>(".stopped-bar");
+const sessionNow = (name: string, status: SessionInfo["status"], id: string) => {
+  const item = { ...SESSIONS.find((one) => one.name === name)!, status };
+  act(() => stream().send("change", { kind: "sessions", session: name, key: "", op: "update", item }, id));
+};
+
+test("in a stopped session a bar with Resume session stands in the composer's place", async () => {
   serve([]);
   open("/sessions/old/activity");
   await chat();
+  expect(within(bar()!).getByRole("status").textContent).toBe("This session is stoppedIts branches, runs and history are kept");
+  const resume = within(bar()!).getByRole("button", { name: "Resume session" });
+  expect(resume.classList).toContain("primary");
+  expect(resume.closest("[role='status']")).toBeNull(); // no news when its state changes
+  expect(composerForm().hidden).toBe(true);
+});
+
+test("Resume session opens the Resume window and sends nothing itself", async () => {
+  stubDialogs();
+  const { posted } = serve([]);
+  open("/sessions/old/activity");
+  await chat();
+  fireEvent.click(within(bar()!).getByRole("button", { name: "Resume session" }));
+  expect(await screen.findByRole("dialog", { name: "Resume session" })).toBeTruthy();
+  expect(posted).toEqual([]);
+});
+
+test("a running session has no bar", async () => {
+  serve([]);
+  open();
+  await chat();
+  expect(bar()).toBeNull();
+  expect(composerForm().hidden).toBe(false);
+});
+
+test("a draft stays through a stop and a Resume, and the bar comes and goes without a reload", async () => {
+  serve([]);
+  open();
+  await chat();
   const field = screen.getByRole("textbox", { name: "Write to the supervisor…" }) as HTMLTextAreaElement;
-  expect(field.disabled).toBe(true);
-  expect(field.placeholder).toBe("The session is stopped: resume it to write");
-  expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(field, { target: { value: "half a thought" } });
+  sessionNow("lado", "stopped", "11");
+  expect(bar()).toBeTruthy();
+  expect(composerForm().hidden).toBe(true);
+  sessionNow("lado", "running", "12");
+  expect(bar()).toBeNull();
+  expect(composerForm().hidden).toBe(false);
+  expect((screen.getByRole("textbox", { name: "Write to the supervisor…" }) as HTMLTextAreaElement).value).toBe("half a thought");
+});
+
+test("a file dropped on a stopped session's chat is taken by nothing: the browser does not open it", async () => {
+  serve([]);
+  open("/sessions/old/activity");
+  const dragged = { dataTransfer: { types: ["Files"], files: [new File(["x"], "x.txt")] } };
+  const section = (await chat()).closest(".chat")!;
+  expect(fireEvent.dragOver(section, dragged)).toBe(false);
+  expect(fireEvent.drop(section, dragged)).toBe(false); // its default prevented
+  expect(document.querySelector(".composer-box .file-chip")).toBeNull();
 });
 
 test("the composer's field grows with its text up to 8 lines, then scrolls", async () => {
@@ -551,6 +615,26 @@ test("an empty chat says how to start", async () => {
   serve([]);
   open();
   expect(within(await chat()).getByText("No messages yet. Write to the supervisor below.")).toBeTruthy();
+});
+
+test("a stopped session's empty feed says what it shows, by the filter", async () => {
+  serve([]);
+  open("/sessions/old/activity");
+  const feed = await chat();
+  const hidden = await within(feed).findByText("No messages with you. Messages between agents are hidden.");
+  expect(hidden.classList).toContain("stopped-empty");
+  expect(within(feed).queryByText(/No messages yet/)).toBeNull();
+  fireEvent.click(within(screen.getByRole("radiogroup", { name: "Messages between agents" })).getByRole("radio", { name: "All" }));
+  expect(await within(feed).findByText("Nothing was said in this session.")).toBeTruthy();
+  storeAgentMessages(false);
+});
+
+test("a stopped session's feed with entries has no empty text", async () => {
+  serve([message(1, "human", "supervisor", "hello")]);
+  open("/sessions/old/activity");
+  const feed = await chat();
+  await within(feed).findByText("hello");
+  expect(feed.querySelector(".empty")).toBeNull();
 });
 
 // The feed around the chat (the Layout task): run events, the agents' messages to each
@@ -701,10 +785,12 @@ test("the agents' messages to each other show behind a toggle that loads the win
   await within(log).findByText("merged");
   expect(headings(log)).toEqual(["merge w1", "merged"]);
   expect(queries).toEqual([{ with: "human", limit: "50" }]);
-  const toggle = screen.getByRole("button", { name: "Messages between agents" });
-  expect(toggle.getAttribute("aria-pressed")).toBe("false");
-  fireEvent.click(toggle);
-  expect(toggle.getAttribute("aria-pressed")).toBe("true");
+  const radios = within(screen.getByRole("radiogroup", { name: "Messages between agents" }));
+  const yours = radios.getByRole("radio", { name: "Yours" });
+  const all = radios.getByRole("radio", { name: "All" });
+  expect(yours.getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(all);
+  expect(all.getAttribute("aria-checked")).toBe("true");
   await within(log).findByText("please merge");
   expect(headings(log)).toEqual(["merge w1", "please merge", "merged"]);
   expect(queries.at(-1)).toEqual({ limit: "50" });
@@ -713,45 +799,79 @@ test("the agents' messages to each other show behind a toggle that loads the win
   expect(between.className).toContain("between");
   stream().send("change", changed(message(4, "w1", "supervisor", "done")), "11");
   expect(headings(log)).toContain("done");
-  fireEvent.click(toggle);
+  fireEvent.click(yours);
   await waitFor(() => expect(headings(log)).toEqual(["merge w1", "merged"]));
-  fireEvent.click(toggle);
+  fireEvent.click(all);
   await within(log).findByText("please merge");
   cleanup();
   open();
   const again = await chat();
   await within(again).findByText("please merge");
-  expect(screen.getByRole("button", { name: "Messages between agents" }).getAttribute("aria-pressed")).toBe("true");
+  expect(screen.getByRole("radio", { name: "All" }).getAttribute("aria-checked")).toBe("true");
 });
 
-test("the toggle for messages between agents is an icon at the team row's end whose tooltip says its state", async () => {
+test("Yours | All ends the tab bar: one Tab stop, the arrows choose, each says what it shows", async () => {
   serve([message(1, "human", "supervisor", "merge w1")]);
   open();
   await chat();
+  const group = screen.getByRole("radiogroup", { name: "Messages between agents" });
+  expect(group.closest(".session-tabs")).toBeTruthy();
+  expect(document.querySelector(".team-row")).toBeNull();
+  const yours = within(group).getByRole("radio", { name: "Yours" });
+  const all = within(group).getByRole("radio", { name: "All" });
+  expect([yours.tabIndex, all.tabIndex]).toEqual([0, -1]);
+  yours.focus();
+  expect(fireEvent.keyDown(yours, { key: "ArrowLeft", altKey: true })).toBe(true); // the browser's Back
+  expect(yours.getAttribute("aria-checked")).toBe("true");
+  fireEvent.keyDown(yours, { key: "ArrowRight" });
+  expect(all.getAttribute("aria-checked")).toBe("true");
+  expect(document.activeElement).toBe(all);
+  expect([yours.tabIndex, all.tabIndex]).toEqual([-1, 0]);
+  fireEvent.focus(all); // the keyboard's focus: at once
+  expect(screen.getByRole("tooltip").textContent).toBe("Also what agents write to each other");
+  fireEvent.blur(all);
+  fireEvent.mouseEnter(yours);
+  expect((await screen.findByRole("tooltip")).textContent).toBe("Only your conversation with the agents");
+  fireEvent.mouseLeave(yours);
+  expect(screen.queryByRole("tooltip")).toBeNull();
+});
+
+test("on a phone the toggle stays an icon at the team row's end, whose tooltip says its state", async () => {
+  FakeScreen.phone();
+  serve([message(1, "human", "supervisor", "merge w1")]);
+  open();
+  await chat();
+  expect(screen.queryByRole("radiogroup")).toBeNull();
   const row = document.querySelector(".team-row")!;
   const toggle = within(row as HTMLElement).getByRole("button", { name: "Messages between agents" });
   expect(row.lastElementChild).toBe(toggle);
   expect(toggle.querySelector("svg")).toBeTruthy();
   expect(toggle.textContent).toBe("");
-  expect(screen.queryByText(/Show agent messages/)).toBeNull();
   const lines = async () =>
     [...(await screen.findByRole("tooltip")).querySelectorAll(".tooltip-line")].map((line) => line.textContent);
   fireEvent.mouseEnter(toggle);
   expect(await lines()).toEqual(["Messages between agents: hidden", "Click to also show what agents write to each other."]);
-  expect(toggle.getAttribute("aria-describedby")).toBe(screen.getByRole("tooltip").id);
   fireEvent.mouseLeave(toggle);
-  expect(screen.queryByRole("tooltip")).toBeNull();
   fireEvent.click(toggle);
-  fireEvent.focus(toggle); // the keyboard's focus: at once
-  expect([...screen.getByRole("tooltip").querySelectorAll(".tooltip-line")].map((line) => line.textContent)).toEqual([
-    "Messages between agents: shown",
-    "Click to show only your conversation with the agents.",
-  ]);
-  fireEvent.keyDown(document, { key: "Escape" });
-  expect(screen.queryByRole("tooltip")).toBeNull();
-  fireEvent.focus(toggle);
-  fireEvent.blur(toggle);
-  expect(screen.queryByRole("tooltip")).toBeNull();
+  expect(toggle.getAttribute("aria-pressed")).toBe("true");
+  storeAgentMessages(false);
+});
+
+test("on a phone a stopped session has no team, and the toggle shows its words and its state", async () => {
+  FakeScreen.phone();
+  serve([]);
+  open("/sessions/old/activity");
+  await chat();
+  const row = document.querySelector<HTMLElement>(".team-row")!;
+  expect(row.querySelector(".team")).toBeNull();
+  expect(row.textContent).not.toContain("Team");
+  const toggle = within(row).getByRole("button", { name: "Messages between agents" });
+  expect(toggle.textContent).toBe("Messages between agents");
+  expect(toggle.querySelector("svg")).toBeTruthy();
+  expect(toggle.getAttribute("aria-pressed")).toBe("false");
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute("aria-pressed")).toBe("true");
+  storeAgentMessages(false);
 });
 
 // Flow events (docs/design/ui.md, Flow events): a run's events in a group under its name.
@@ -1622,7 +1742,7 @@ const buttons = (card: HTMLElement) =>
 const picked = (item: HTMLElement) =>
   within(item)
     .getAllByRole("button")
-    .filter((one) => !one.classList.contains("other"))
+    .filter((one) => one.classList.contains("waiting-option") && !one.classList.contains("other"))
     .map((one) => `${one.textContent}:${one.getAttribute("aria-pressed")}`);
 
 test("a gate's recommendation is a block in its tab; the primary button moves to the recommended option", async () => {
@@ -1634,12 +1754,13 @@ test("a gate's recommendation is a block in its tab; the primary button moves to
   expect((within(card).getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(false);
   stream().send("change", gateChanged(gate(1, { recommendation: given("reject", true) })), "11");
   const block = await within(card).findByRole("region", { name: "Supervisor's recommendation" });
-  expect(block.querySelector(".rec-differs")?.textContent).toBe("disagrees with w1");
+  expect(block.querySelector(".rec-differs")?.textContent).toBe(" · disagrees with w1");
+  fireEvent.click(within(block).getByRole("button"));
   expect(within(block).getByText("not").tagName).toBe("STRONG");
   expect(buttons(card)).toEqual(["Approve:quiet", "Reject:primary"]);
   // Between the note and the answer.
-  const order = Array.from(card.querySelectorAll(".gate-note, .rec, form.answer")).map((one) => one.className);
-  expect(order).toEqual(["gate-note", "rec differs", "answer"]);
+  const order = Array.from(card.querySelectorAll(".gate-note, .rec-bar, form.answer")).map((one) => one.className);
+  expect(order).toEqual(["gate-note", "rec-bar differs opened", "answer"]);
 });
 
 test("a stopped session's gate keeps its buttons off and shows the recommendation", async () => {
@@ -1654,9 +1775,9 @@ test("a stopped session's gate keeps its buttons off and shows the recommendatio
 test("a question's recommended choice is picked ahead in its tab; closed, its quiet line names it and the choice stays marked once", async () => {
   serve([question(5, { recommendation: given("later") })]);
   open();
-  const item = within(await waitingCard()).getByRole("listitem", { name: "Question #5" });
+  const item = within(await waitingCard()).getByRole("tabpanel");
   expect(within(item).getByRole("region", { name: "Supervisor's recommendation" })).toBeTruthy();
-  expect(picked(item)).toEqual(["yes:false", "later:true"]);
+  expect(picked(item)).toEqual(["yes:false", "✓ later:true"]);
   const done = { question_state: "answered" as const, answered_by: 6, recommendation: given("later") };
   stream().send("change", changed(question(5, done)), "11");
   stream().send("change", changed(message(6, "human", "w1", "Answer to #5: later", { reply_to: 5, choice: "later" })), "12");
@@ -1671,8 +1792,8 @@ test("a question's recommended choice is picked ahead in its tab; closed, its qu
 test("a question with no recommendation asked shows no block and picks nothing", async () => {
   serve([question(5)]);
   open();
-  const item = within(await waitingCard()).getByRole("listitem", { name: "Question #5" });
-  expect(item.querySelector(".rec")).toBeNull();
+  const item = within(await waitingCard()).getByRole("tabpanel");
+  expect(item.querySelector(".rec-bar")).toBeNull();
   expect(picked(item)).toEqual(["yes:false", "later:false"]);
 });
 
@@ -1938,4 +2059,68 @@ test("each message, run event, closed gate and open gate's text is a text area o
   expect(area(within(await gateTab()).getByText("Ship it?"))).toEqual(["text", "lado"]);
   expect(area(within(await gateTab()).getByRole("textbox"))).toBeNull(); // the comment is no area
   expect(area(screen.getByRole("textbox", { name: "Write to the supervisor…" }))).toBeFalsy();
+});
+
+// Skip to chat (docs/design/ui.md, Session head)
+
+test("Skip to chat on the Activity tab puts the focus on the feed", async () => {
+  serve([]);
+  open("/sessions/lado/activity");
+  const log = await chat();
+  fireEvent.click(await screen.findByRole("link", { name: "Skip to chat" }));
+  expect(document.activeElement).toBe(log);
+});
+
+test("Skip to chat from another tab opens Activity with the focus on the feed", async () => {
+  serve([]);
+  open("/sessions/lado/flows");
+  fireEvent.click(await screen.findByRole("link", { name: "Skip to chat" }));
+  const log = await chat();
+  await waitFor(() => expect(document.activeElement).toBe(log));
+});
+
+// The composer's fold (docs/design/ui.md, The waiting card)
+
+const composerField = () => screen.getByRole("textbox", { name: "Write to the supervisor…", hidden: true }) as HTMLTextAreaElement;
+const composerForm = () => document.querySelector("form.composer") as HTMLFormElement;
+
+test("while Other… is open the composer folds into a line, its text kept; the link brings it back with the focus", async () => {
+  serve([question(5)]);
+  open();
+  const card = await waitingCard();
+  fireEvent.change(composerField(), { target: { value: "my own words" } });
+  fireEvent.click(within(card).getByRole("button", { name: "Other…" }));
+  const line = await screen.findByText(/Answering question #5 above/);
+  expect(line.closest(".composer-fold")?.textContent).toContain("Answering question #5 above · Write to supervisor instead");
+  expect(composerForm().hidden).toBe(true);
+  fireEvent.change(within(card).getByRole("textbox", { name: "Your own answer" }), { target: { value: "keep the worker" } });
+  fireEvent.click(screen.getByRole("button", { name: "Write to supervisor instead" }));
+  await waitFor(() => expect(composerForm().hidden).toBe(false));
+  await waitFor(() => expect(document.activeElement).toBe(composerField()));
+  expect(composerField().value).toBe("my own words");
+  expect(document.querySelector(".composer-fold")).toBeNull();
+  fireEvent.click(within(card).getByRole("button", { name: "Other…" }));
+  expect((within(card).getByRole("textbox", { name: "Your own answer" }) as HTMLTextAreaElement).value).toBe("keep the worker");
+});
+
+test("a file dropped on the chat while the composer is folded goes nowhere, and the browser opens none", async () => {
+  serve([question(5)]);
+  open();
+  fireEvent.click(within(await waitingCard()).getByRole("button", { name: "Other…" }));
+  await waitFor(() => expect(composerForm().hidden).toBe(true));
+  const dragged = { dataTransfer: { types: ["Files"], files: [new File(["x"], "x.txt")] } };
+  expect(fireEvent.drop(await chat(), dragged)).toBe(false); // its default prevented
+  expect(document.querySelector(".composer .file-chip")).toBeNull();
+});
+
+test("a quote brings the composer back with the quote and the focus", async () => {
+  serve([question(5)]);
+  open();
+  const card = await waitingCard();
+  fireEvent.click(within(card).getByRole("button", { name: "Other…" }));
+  await waitFor(() => expect(composerForm().hidden).toBe(true));
+  act(() => sendQuote("lado", "> A", () => {}));
+  await waitFor(() => expect(composerForm().hidden).toBe(false));
+  await waitFor(() => expect(document.activeElement).toBe(composerField()));
+  expect(composerField().value).toBe("> A\n");
 });

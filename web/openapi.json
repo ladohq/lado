@@ -5880,13 +5880,18 @@
           "help": {
             "type": "string",
             "title": "Help"
+          },
+          "shows_code": {
+            "type": "boolean",
+            "title": "Shows Code"
           }
         },
         "type": "object",
         "required": [
           "id",
           "label",
-          "help"
+          "help",
+          "shows_code"
         ],
         "title": "LoginActionInfo",
         "description": "A command the login window can run (Provider.login_actions)."
@@ -6201,7 +6206,8 @@
                   "open",
                   "answered",
                   "dismissed",
-                  "closed"
+                  "closed",
+                  "stopped"
                 ]
               },
               {
@@ -8667,6 +8673,17 @@
               }
             ],
             "title": "Project"
+          },
+          "project_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Title"
           }
         },
         "type": "object",
@@ -8717,6 +8734,13 @@
               }
             ],
             "title": "Problem"
+          },
+          "flows": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Flows"
           }
         },
         "type": "object",
@@ -8725,7 +8749,8 @@
           "version",
           "source",
           "valid",
-          "problem"
+          "problem",
+          "flows"
         ],
         "title": "SessionKitInfo",
         "description": "A kit of a session as the next agent would take it now (kits.find in its repo)."
@@ -8830,6 +8855,10 @@
             "type": "integer",
             "title": "Dropped"
           },
+          "questions": {
+            "type": "integer",
+            "title": "Questions"
+          },
           "open_runs": {
             "items": {
               "type": "string"
@@ -8849,6 +8878,7 @@
         "required": [
           "agents",
           "dropped",
+          "questions",
           "open_runs",
           "worktrees"
         ],

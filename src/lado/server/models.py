@@ -61,8 +61,11 @@ class SessionInfo(BaseModel):
     # in place of the name, the name beside it.
     title: str | None
     # The id of the project it is in (lado.projects), None for none; it never changes, so
-    # the feed carries it, and the project's title comes with SessionAbout.
+    # the links use it.
     project: str | None
+    # That project's title, None for none: read now, and a rename touches the project's
+    # sessions (state.set_project_title), so the feed carries the new one.
+    project_title: str | None = None
 
 
 class TitleChange(BaseModel):
@@ -476,6 +479,9 @@ class LoginActionInfo(BaseModel):
     id: str
     label: str
     help: str  # the window's help line while it runs; "" for the window's own
+    # The window shows the link and the code its command prints instead of a terminal
+    # (the login socket's `prompt` frame, lado.server.terminals).
+    shows_code: bool
 
 
 class LoginChoiceInfo(BaseModel):
@@ -818,6 +824,7 @@ class SessionKitInfo(BaseModel):
     source: str  # where it is, as `lado kits` says it; "" when it is not found
     valid: bool
     problem: str | None  # why it is not found or does not load
+    flows: list[str]  # its flows' names; none unless valid
 
 
 class SessionAbout(BaseModel):
@@ -1044,6 +1051,7 @@ class Worktree(BaseModel):
 class StopPreview(BaseModel):
     agents: list[str]  # the agents a stop closes
     dropped: int  # messages no agent got, dropped by a stop now
+    questions: int  # open questions to the human, closed by a stop now
     open_runs: list[str]  # they stay
     worktrees: list[Worktree]  # they stay on disk
 
@@ -1343,8 +1351,10 @@ class MessageInfo(BaseModel):
     state: Literal["pending", "sent", "delivered", "read", "dropped", "failed"]
     choices: list[str] | None
     free_answer: bool
-    question_state: Literal["open", "answered", "dismissed", "closed"] | None
-    answered_by: int | None  # the answer's or dismissal's id
+    question_state: Literal["open", "answered", "dismissed", "closed", "stopped"] | None
+    # The answer's or dismissal's id; of a stopped question, LADO's message to the supervisor
+    # about it, no reply.
+    answered_by: int | None
     reply_to: int | None  # an answer's or dismissal's: the question's id
     choice: str | None
     reply_state: Literal["replied", "missing"] | None  # missing: replied only in its terminal
@@ -1727,6 +1737,7 @@ def gate_info(gate: state.Gate) -> GateInfo:
 
 
 def session_info(sess: state.Session) -> SessionInfo:
+    project = state.get_project(sess.project) if sess.project else None
     gates, questions, agents = state.waiting_for_human(sess.name)
     status = runtime.session_status(sess)
     ran = runtime.session_time(sess, status)
@@ -1747,6 +1758,7 @@ def session_info(sess: state.Session) -> SessionInfo:
         stopped_at=_utc(sess.stopped_at) if sess.stopped_at else None,
         title=sess.title,
         project=sess.project,
+        project_title=project.title if project else None,
     )
 
 

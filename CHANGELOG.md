@@ -1,49 +1,153 @@
 # Changelog
 
-## 0.44.0 (unreleased)
+## 0.45.0 (unreleased)
 
-### Added
+### Improved
 
-- **Claude Code trusts the session's repository.** LADO records Claude Code's folder trust
-  itself, so a session started from the UI or a phone no longer waits for "Yes, I trust
-  this folder"; the repository's own Claude Code settings run.
-- **Agent CLI logins in Settings.** Providers and environment says per CLI how it is logged
-  in and from where, with one button; Claude Code logs in by a pasted subscription token or
-  API key (a phone too), the place that sets one giving the whole login. A Claude agent
-  resumed without a login waits and starts once there is one.
-- **Codex agents share your Codex login.** Log in once, in a terminal or in Settings by a
-  sign-in code, a ChatGPT Business or Enterprise access token or an API key (a phone too),
-  and every Codex agent works with it; `OPENAI_API_KEY` in the container's `secrets/` too.
-- **LADO in Docker with one command, Windows too.** `curl -fsSL …/install.sh | sh` (on
-  Windows `irm …/install.ps1 | iex`) asks for your workspace, starts LADO and opens it; run
-  again, it updates. [docs/install.md](docs/install.md#install-with-one-command).
+- **A session's card reads at a glance.** Its facts have labels, it names the project, says what
+  to do with a stopped or broken session and opens beside the list, so the list stays in sight.
+  The rows no longer count agents and show how long the session ran.
 
-### Changed
+- **A session with many artifacts reads on one screen.** In a narrow column each artifact takes
+  two lines instead of a card, and from 100 artifacts they go in groups by run that fold, Session
+  first: open work stays open, finished runs fold, and your choice is remembered.
 
-- **No session or worker starts without the login its CLI needs.** The New session and
-  Resume windows grey out Claude Code, and Codex on OpenAI's models, with "Log in first";
-  `lado start`, a resume and a new worker are refused. LADO's own resume waits for it.
-- **Providers and environment opens at once.** It shows the last check of the CLIs while a
-  fresh one runs (↻ turns), and only what you can fix: a CLI not installed, an untested
-  version, a sign-in it cannot check, an unreadable login shell.
+- **The artifact panel says things once.** A title equal to the document's first heading is not
+  repeated, the pill says `session` or `step <name>`, and over the Artifacts tab the link reads
+  Full page. On a phone the bar keeps Download, Copy link and a `⋯` menu with the rest.
+
+- **Empty tabs say where their content comes from.** An empty Flows tab names the flows that can
+  run, or says the session's kits have none; an empty Artifacts tab says what lands there.
+
+- **A run says what it is about.** Its card and row show the first line of its task, a tooltip
+  the rest of it, and an opened step shows how long it took and its note, without repeating its
+  line.
+
+- **Stop no longer shows a button that is off.** With open runs, Stop and forget is gone and the
+  popover says how to forget the session after stopping.
+
+- **Errors and warnings look like what they are.** Each has a ground and an icon instead of a
+  stripe on the left, errors in red and warnings in amber, in both themes; a failed sign-in and
+  the kit windows' warnings too.
+
+- **A stopped session says so and offers Resume.** A bar with Resume session stands in the
+  composer's place, the empty feed tells what it shows, and terminals stay folded, saying the agent
+  is not running. Your terminals' layout comes back after Resume.
+
+- **Your agents stay in sight in the session's head, and the chat gets taller.** On every tab
+  the head shows the team with its statuses, as names or avatars by the room, and a list of all
+  agents; `Yours | All` moved to the tabs, and the keys hint shows only in an empty field.
+
+- **LADO tells you whether your decision got through.** When the connection drops, the Live
+  mark warns and Approve, Send, Stop and the like wait. If it drops mid-click, LADO checks by
+  itself once it can: the card goes, or the error says it was not delivered, with Retry.
+
+- **A session's head is one line at any width.** The folder, git, kits, CLI, Rename and Copy
+  link moved to Details, which a click on the title opens; the chat gets the height back,
+  and `Skip to chat` takes the keyboard straight to it.
+
+- **The card that waits for you always shows what you act on.** The recommendation, the
+  comment or choices and the buttons stay in sight, only the context scrolls, and the card
+  is as high as its content. While you write your own answer, the composer folds into a line.
+  On Needs you the card is whole and the page scrolls, with nothing to expand.
+
+- **A session's page fits any window.** The chat never gets narrower than 420 px: the terminals
+  and the list fold by themselves and come back when there is room. A tablet's page stands
+  still with the composer in sight, and a window of 600 px or less gets the phone layout.
+
+### Fixed
+
+- **A message sent as the session stops says what happened.** Instead of Internal Server Error
+  you read that it was not delivered, and your text stays to send after Resume. It can no longer
+  land in another session whose name starts with the stopped one's.
+
+- **Closing a window puts you back where you were.** After Esc or Cancel in Take control, Resume
+  and every other window, the keyboard is on the button that opened it, and Tab goes on from there.
+
+- **Phone held sideways: Messages between agents is in reach.** Its icon ends the row of tabs on
+  Activity, so a stopped session's empty feed can show what it hides.
+
+- **A session's four tabs stay whole in a narrow chat.** Beside the terminals `Yours | All`
+  folds into an icon that does the same, and a tab you reach with Tab no longer hides under
+  the fade or the arrow.
+
+- **An agent's status reads the same everywhere.** The Agents tab, an agent's page and the
+  update's list say `working`, `waits for you` and `in the background`, as the agent's popup
+  does. The team's list button now has a tooltip with its name.
+
+- **A tooltip no longer pops up when you come back to LADO's tab.** A session's card and
+  other tooltips stay hidden on your return; Tab or the pointer shows them as usual.
+
+- **Placeholders read well in the dark theme.** Every field's hint now has the muted text
+  colour instead of the browser's pale grey.
+
+- **A stop no longer loses questions to you without a word.** Stop and `lado stop` say how
+  many open questions close, a closed card reads "Closed: the session stopped", and after a
+  resume the supervisor gets the unanswered ones to ask again.
+
+- **The supervisor no longer asks again for a report it already got.** A message that
+  comes while an agent works reaches it with its next LADO tool call, and a reminder to an
+  agent whose message waits is refused.
+
+- **Codex agents run shell commands in LADO's container.** Codex's sandbox cannot start in
+  Docker, so in the mode `default` every command asked "retry without sandbox?". They now
+  run without it there, and the session's start says so.
+
+- **`lado project set` no longer prints a secret in its error.** A value typed with a
+  leading `-` before `--`, or as `--secret=…`, was repeated by the refusal; the refusal
+  now names none of the command line's words and says how to give the value.
+
+- **Settings stays on screen on a tablet held sideways.** The left rail ends with the visible
+  part of the screen, so Report a bug and Settings can be reached.
+
+- **The Resume window shows the whole folder.** Where wraps a long path onto several lines, so
+  on a phone you can read it to its end.
+
+## 0.44.0 (2026-11-02)
+
+### New
+
+- **Agent CLI logins in Settings.** Providers and environment shows how each CLI is logged
+  in and from where, with one button to log in; Claude Code takes a pasted subscription
+  token or API key, from a phone too.
+- **Codex agents share your Codex login.** Log in once, in a terminal or in Settings: by a
+  sign-in code, a ChatGPT Business or Enterprise access token or an API key, from a phone
+  too; in Docker, `OPENAI_API_KEY` in `secrets/` works as well.
+
+### Improved
+
+- **Sessions start without "Yes, I trust this folder".** Claude Code trusts the session's
+  repository at once, so a session started from the UI or a phone does not wait; the
+  repository's own Claude Code settings apply.
+- **Nothing starts without the login its CLI needs.** New session and Resume grey out a CLI
+  that is not logged in, with "Log in first", and `lado start` refuses; a resumed agent
+  waits for the login and then starts.
+- **Providers and environment opens at once.** It shows the last check while a new one
+  runs (↻ turns), and only what you can fix: a CLI missing, an untested version, a sign-in
+  it cannot check, an unreadable login shell.
 
 ### Fixed
 
 - **Claude agents no longer stop at a screen nobody sees.** Bypass mode's warning and "New
-  MCP server found" for a repository's `.mcp.json` are answered at start; an agent still
-  silent 30 s after its start shows in Needs you as waiting for an answer in its terminal.
-- **No "Warnings:" box over a new session** for LADO's own trust and first-run writes into
-  Claude Code's config: they go to the session's log.
+  MCP server found" are answered at start; an agent still silent 30 s after its start
+  shows in Needs you as waiting for an answer in its terminal.
+- **No "Warnings:" box over a new session** for LADO's own setup of Claude Code; those notes
+  are in the session's log.
 - **A saved login no longer shows "waits for this login"** next to "Logged in".
-- **Codex agents no longer ask to trust the repository.** Nor to review its own Codex
-  hooks, in every permission mode; a repository your Codex marks untrusted stays so.
-- **Codex agents no longer download the plugins catalogue at every start.**
-- **A Codex agent no longer hangs on "Waiting for agents".** Newer OpenAI models brought
-  Codex's own subagents back; the supervisor waited for them and the human's messages were
-  not delivered.
+- **Codex agents no longer ask to trust the repository** nor to review its Codex hooks, in
+  every permission mode; a repository your Codex marks untrusted stays so.
+- **Codex agents start faster.** They no longer download the plugins catalogue at every
+  start.
+- **A Codex supervisor no longer hangs on "Waiting for agents".** With newer OpenAI models
+  it no longer waits for Codex's own subagents, and your messages reach it.
+- **A project's page scrolls on a phone.** Its variables, secrets and Delete project are no
+  longer cut off below the screen; the project list scrolls too.
 
-- **A project's page scrolls on a phone.** Its variables, secrets and Delete project were
-  cut off below the screen; the project list scrolls too.
+### Docker image
+
+- **LADO in Docker with one command, Windows too.** `curl -fsSL …/install.sh | sh` (on
+  Windows `irm …/install.ps1 | iex`) asks for your workspace, starts LADO and opens it; run
+  it again to update. [docs/install.md](docs/install.md#install-with-one-command).
 
 ## 0.43.0 (2026-10-26)
 

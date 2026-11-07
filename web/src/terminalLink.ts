@@ -14,6 +14,7 @@ export type LinkHandlers = {
   size: (cols: number, rows: number) => void;
   error: (reason: string) => void;
   state: (state: LinkState) => void;
+  frame?: (frame: { type: string; [key: string]: unknown }) => void; // another JSON frame (a login window's)
 };
 
 export const RETRY_MS = 2000;
@@ -91,6 +92,7 @@ export class TermLink {
       const frame = JSON.parse(event.data);
       if (frame.type === "size") this.on.size(frame.cols, frame.rows);
       else if (frame.type === "error") this.on.error(frame.reason);
+      else this.on.frame?.(frame);
     };
     socket.onclose = (event) => {
       if (this.socket !== socket || this.stopped) return;

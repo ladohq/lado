@@ -4,6 +4,7 @@ session under Needs you, from lado.db's journal to the page."""
 
 import json
 import re
+import time
 import uuid
 
 import agent_helpers
@@ -51,10 +52,10 @@ def test_a_chip_opens_its_agents_terminal_on_the_right_of_the_chat(page: Page, s
     session = with_worker(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
-    team = page.get_by_role("group", name="Team")
+    team = page.get_by_role("toolbar", name="Team")
     chips = team.get_by_role("button")
     expect(chips).to_have_count(2)
-    expect(chips.first).to_have_accessible_name("supervisor, supervisor, idle")
+    expect(chips.first).to_have_accessible_name("supervisor, idle")
     expect(chips.nth(1)).not_to_have_attribute("title", re.compile(".*"))
     panel = page.get_by_role("complementary", name="Terminals")
     expect(chips.first).to_have_attribute("aria-pressed", "true")  # the supervisor's, at first
@@ -69,10 +70,6 @@ def test_a_chip_opens_its_agents_terminal_on_the_right_of_the_chat(page: Page, s
     right = panel.bounding_box()
     assert right["x"] >= chat["x"] + chat["width"]  # beside the chat, not under it
     assert right["height"] > 600  # the page's height
-    # The toggle stays on the team's row: the feed keeps its height.
-    toggle = page.get_by_role("button", name="Messages between agents").bounding_box()
-    first = chips.first.bounding_box()
-    assert toggle["y"] < first["y"] + first["height"]
     shot(page, "terminal")
 
     chips.first.click()  # back to the supervisor's tab; w1's keeps its socket
@@ -84,11 +81,10 @@ def test_a_chip_opens_its_agents_terminal_on_the_right_of_the_chat(page: Page, s
     expect(view.locator(".term")).to_have_attribute("data-link", "open")
 
 
-def test_three_chips_and_the_toggle_stand_on_one_line_beside_the_open_terminal(
-    page: Page, server, repo, shot
-):
-    """The chat column narrow, as the terminal panel opens beside it: the agents' three chips
-    and the toggle Messages between agents stay on the team's first line (LAD-77, AC-4)."""
+def test_yours_all_stands_on_the_tabs_line_beside_the_open_terminal(page: Page, server, repo, shot):
+    """The chat column narrow, as the terminal panel opens beside it: Yours | All stays on the
+    tabs' line, and no row stands above the feed (LAD-77, LAD-197)."""
+    page.set_viewport_size({"width": 1160, "height": 900})
     session = running_session(repo)
     for name in ("analyst", "developer"):
         runtime.spawn_worker(session, f"Work as {name}", name=name)
@@ -104,20 +100,17 @@ def test_three_chips_and_the_toggle_stand_on_one_line_beside_the_open_terminal(
     expect(panel.get_by_role("tabpanel", name="supervisor").locator(".term")).to_have_attribute(
         "data-link", "open"
     )
-    chips = page.get_by_role("group", name="Team").get_by_role("button")
-    expect(chips).to_have_count(3)
-    toggle = page.get_by_role("button", name="Messages between agents")
-    expect(toggle).to_have_attribute("aria-pressed", "false")
+    expect(page.get_by_role("toolbar", name="Team").get_by_role("button")).to_have_count(3)
+    choice = page.get_by_role("radiogroup", name="Messages between agents")
+    expect(choice.get_by_role("radio", name="Yours")).to_have_attribute("aria-checked", "true")
     column = page.get_by_role("region", name="Chat").bounding_box()
     assert column["width"] <= 484  # narrow: the terminal panel takes the rest
-    first = chips.first.bounding_box()
-    line = first["y"] + first["height"]
-    last = chips.last.bounding_box()
-    box = toggle.bounding_box()
-    assert last["y"] < line  # the last chip did not wrap
-    assert box["y"] < line  # nor did the toggle
-    assert box["x"] >= last["x"] + last["width"]  # at the row's end
-    assert box["x"] + box["width"] <= column["x"] + column["width"]
+    tabs = page.get_by_role("navigation", name="Session sections").bounding_box()
+    box = choice.bounding_box()
+    assert tabs["y"] <= box["y"] and box["y"] + box["height"] <= tabs["y"] + tabs["height"]
+    feed = page.get_by_role("log", name="Chat with the session").bounding_box()
+    assert feed["y"] == tabs["y"] + tabs["height"]  # no row above it
+    assert box["x"] + box["width"] <= tabs["x"] + tabs["width"]
     shot(page)
 
 
@@ -167,9 +160,9 @@ def test_a_runs_worker_is_a_chip_like_the_others_in_the_runs_frame_which_links_t
         )
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
-    team = page.get_by_role("group", name="Team")
+    team = page.get_by_role("toolbar", name="Team")
     expect(team.get_by_role("button")).to_have_count(3)
-    expect(team.get_by_role("button").first).to_have_accessible_name("supervisor, supervisor, idle")
+    expect(team.get_by_role("button").first).to_have_accessible_name("supervisor, idle")
     expect(team.get_by_role("button").nth(1)).to_have_accessible_name("w1, worker, idle")
     frame = team.get_by_role("group", name="run build/x")
     chip = frame.get_by_role("button")
@@ -260,27 +253,29 @@ def test_the_list_and_the_panel_are_resized_on_their_edges_and_keep_their_widths
     list_edge = page.get_by_role("separator", name="Resize the session list")
     panel_edge = page.get_by_role("separator", name="Resize the terminals")
     expect(list_edge).to_have_attribute("aria-valuenow", "260")
-    expect(panel_edge).to_have_attribute("aria-valuenow", "480")
+    expect(panel_edge).to_have_attribute("aria-valuenow", "448")
     list_edge.hover()
     assert list_edge.evaluate("e => getComputedStyle(e).cursor") == "col-resize"
     drag(page, list_edge, 60)
+    expect(panel_edge).to_have_attribute("aria-valuenow", "424")  # 40 % of what is left
     drag(page, panel_edge, -50)
     expect(list_edge).to_have_attribute("aria-valuenow", "320")
-    expect(panel_edge).to_have_attribute("aria-valuenow", "530")
+    expect(panel_edge).to_have_attribute("aria-valuenow", "474")
     page.reload()
     panel = page.get_by_role("complementary", name="Terminals")
     expect(panel.locator(".term")).to_have_attribute("data-link", "open")
     assert round(page.locator(".session-list").bounding_box()["width"]) == 320
-    assert round(panel.bounding_box()["width"]) == 530
+    assert round(panel.bounding_box()["width"]) == 474
     shot(page)
 
-    # A narrower window narrows the columns, keeps the session readable, and forgets nothing.
-    page.set_viewport_size({"width": 1100, "height": 900})
-    expect(panel_edge).not_to_have_attribute("aria-valuenow", "530")
-    assert page.locator(".session-main").bounding_box()["width"] >= 360
+    # A narrower window folds the list, narrows the panel, keeps the chat, and forgets nothing.
+    page.set_viewport_size({"width": 950, "height": 900})
+    expect(panel_edge).to_have_attribute("aria-valuenow", "422")
+    expect(list_edge).to_have_count(0)
+    assert page.locator(".session-main").bounding_box()["width"] >= 420
     shot(page, "narrower")
     page.set_viewport_size({"width": 1440, "height": 900})
-    expect(panel_edge).to_have_attribute("aria-valuenow", "530")
+    expect(panel_edge).to_have_attribute("aria-valuenow", "474")
     expect(list_edge).to_have_attribute("aria-valuenow", "320")
 
 
@@ -351,10 +346,12 @@ def test_a_chips_tooltip_says_its_name_role_and_provider(page: Page, server, rep
     session = with_worker(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
-    chip = page.get_by_role("group", name="Team").get_by_role("button", name="w1,")
+    chip = page.get_by_role("toolbar", name="Team").get_by_role("button", name="w1,")
     chip.hover()
     tip = page.get_by_role("tooltip")
-    expect(tip).to_have_text(re.compile(r"^w1 · \w+ · fake$"))
+    expect(tip.locator(".tooltip-line")).to_have_text(
+        ["w1", re.compile(r"^idle · "), re.compile(r"^\w+ · fake$"), "Click to open the terminal"]
+    )
     expect(chip).to_have_attribute("aria-describedby", tip.get_attribute("id"))
     shot(page)
     page.mouse.move(5, 5)
@@ -427,7 +424,268 @@ def test_many_tabs_stay_on_one_line_and_scroll_with_the_supervisors_tab_kept(
     )
 
     panel.get_by_role("button", name="Collapse terminals").click()
-    dots = panel.get_by_role("list", name="Open terminals").get_by_role("listitem")
-    expect(dots).to_have_count(6)
-    expect(dots.first).to_have_attribute("title", "supervisor: idle")
+    buttons = panel.get_by_role("list", name="Agents").get_by_role("button")
+    expect(buttons).to_have_count(6)
+    expect(buttons.first).to_have_accessible_name("Open supervisor's terminal")
     shot(page, "collapsed")
+
+
+def rows_of(page: Page, server, repo, count: int, **more):
+    """The list with `count` rows: sessions with no tmux, cheap to have many of."""
+    for n in range(count):
+        state.add_session(state.Session(f"row-{n}", str(repo), None, "fake", **more))
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions")
+    return page.get_by_role("navigation", name="Sessions").locator(".session-link")
+
+
+def assert_in_window(page: Page, box: dict) -> None:
+    size = page.viewport_size
+    assert box["x"] >= 8 and box["y"] >= 8
+    assert box["x"] + box["width"] <= size["width"] - 8
+    assert box["y"] + box["height"] <= size["height"] - 8
+
+
+def test_a_sessions_card_opens_right_of_the_list_at_its_row(page: Page, server, repo, shot):
+    rows = rows_of(page, server, repo, 12)
+    expect(rows).to_have_count(12)
+    row = rows.nth(4)
+    row.hover()
+    card = page.get_by_role("tooltip")
+    expect(card).to_be_visible()
+    box, at = card.bounding_box(), row.bounding_box()
+    assert box["x"] >= at["x"] + at["width"]  # no row under it
+    assert box["width"] == 360
+    assert_in_window(page, box)
+    middle = at["y"] + at["height"] / 2
+    assert abs(box["y"] + box["height"] / 2 - middle) <= 1
+    arrow = card.evaluate("c => parseFloat(getComputedStyle(c, '::before').top)")
+    assert abs(box["y"] + 1 + arrow - middle) <= 1  # from inside the card's border
+    assert card.evaluate("c => getComputedStyle(c, '::before').left") == "-5px"
+    shot(page)
+
+    # Towards the card the pointer leaves the row, and the card goes.
+    page.mouse.move(box["x"] + 20, box["y"] + 20)
+    expect(card).to_have_count(0)
+
+
+def test_the_lowest_rows_card_moves_up_into_the_window(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 1440, "height": 500})
+    rows = rows_of(page, server, repo, 16)
+    expect(rows).to_have_count(16)
+    rows.last.hover()
+    card = page.get_by_role("tooltip")
+    expect(card).to_be_visible()
+    box, at = card.bounding_box(), rows.last.bounding_box()
+    assert_in_window(page, box)
+    assert box["y"] + box["height"] / 2 < at["y"] + at["height"] / 2  # moved up past its level
+    assert box["y"] <= at["y"] + at["height"] / 2 <= box["y"] + box["height"]  # the arrow reaches
+    shot(page, full_page=False)
+
+
+def test_a_full_width_row_opens_its_card_under_or_over_it(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 590, "height": 900})  # the list is the page, no room beside
+    rows = rows_of(page, server, repo, 4)
+    expect(rows).to_have_count(4)
+    rows.first.focus()
+    card = page.get_by_role("tooltip")
+    expect(card).to_be_visible()
+    assert card.get_attribute("data-side") in ("below", "above")
+    assert_in_window(page, card.bounding_box())
+    shot(page, full_page=False)
+    page.keyboard.press("Escape")
+    expect(card).to_have_count(0)
+
+
+def test_in_a_window_of_640_px_the_strips_card_stays_in_the_window(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 640, "height": 900})
+    rows_of(page, server, repo, 4)
+    icon = page.locator("nav.sessions-strip .strip-session").first
+    icon.focus()
+    card = page.get_by_role("tooltip")
+    expect(card).to_be_visible()
+    box, at = card.bounding_box(), icon.bounding_box()
+    assert card.get_attribute("data-side") == "right"
+    assert box["x"] >= at["x"] + at["width"]
+    assert_in_window(page, box)
+    shot(page)
+
+
+def test_a_card_keeps_its_width_and_cuts_a_long_list_of_kits(page: Page, server, repo, shot):
+    kits = [f"kit-with-a-rather-long-name-{n}" for n in range(9)]
+    state.add_session(
+        state.Session("many", f"{repo}/{'long-folder/' * 12}", None, "fake", kits=kits)
+    )
+    rows = rows_of(page, server, repo, 1)
+    expect(rows).to_have_count(2)
+    card = page.get_by_role("tooltip")
+    rows.filter(has_text="row-0").hover()
+    expect(card).to_be_visible()
+    assert card.bounding_box()["width"] == 360
+    rows.filter(has_text="many").hover()
+    expect(card.locator("dd").filter(has_text="+3 more")).to_be_visible()
+    box = card.bounding_box()
+    assert box["width"] == 360
+    assert_in_window(page, box)
+    cli = card.get_by_text("CLI").bounding_box()
+    assert cli["y"] + cli["height"] <= box["y"] + box["height"]
+    shot(page)
+
+
+def test_in_a_window_lower_than_the_card_it_is_cut_at_the_windows_height(
+    page: Page, server, repo, shot
+):
+    page.set_viewport_size({"width": 1440, "height": 200})
+    rows = rows_of(page, server, repo, 1)
+    expect(rows).to_have_count(1)
+    rows.first.hover()
+    card = page.get_by_role("tooltip")
+    expect(card).to_be_visible()
+    box = card.bounding_box()
+    assert box["height"] <= 200 - 16
+    assert_in_window(page, box)
+    assert card.evaluate("c => getComputedStyle(c, '::before').left") == "-5px"  # its arrow stays
+    shot(page, full_page=False)
+
+
+def session_item(name: str, **more) -> dict:
+    """A session as /api/sessions gives it, for a state the fake agent cannot get into."""
+    return {
+        "name": name,
+        "repo": "/Users/kao/Projects/projects/lado/lado",
+        "status": "running",
+        "agents": 5,
+        "waiting": {"gates": 0, "questions": 0, "agents": 0},
+        "busy": 0,
+        "kits": ["tracker-yougile", "sdlc", "design-studio"],
+        "provider": "claude",
+        "permission_mode": None,
+        "without": [],
+        "ran_seconds": 3 * 3600 + 2 * 60,
+        "running_since": None,
+        "stopped_at": None,
+        "title": None,
+        "project": None,
+        "project_title": None,
+        **more,
+    }
+
+
+def test_each_state_of_a_session_reads_on_its_card(page: Page, server, shot):
+    gate = {"gates": 1, "questions": 0, "agents": 0}
+    five_hours_ago = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 5 * 3600))
+    since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    live = {"running_since": since}
+    project = {"project": "lado", "project_title": "LADO", "permission_mode": "bypassPermissions"}
+    states = {
+        "working": (session_item("working", busy=2, **live, **project), ["2 of 5 agents working"]),
+        "idle": (
+            session_item("titled", title="Session UI review", project="shop-api", **live),
+            ["idle"],
+        ),
+        "needs-you": (session_item("gated", waiting=gate, **live), ["Needs you: 1 gate"]),
+        "gone": (session_item("gone", status="tmux_gone"), ["tmux session is gone"]),
+        "down": (
+            session_item("down", status="loop_down", **live),
+            ["session loop not running"],
+        ),
+        "gone-gated": (
+            session_item("held", status="tmux_gone", waiting=gate),
+            ["tmux session is gone"],
+        ),
+        "stopped": (
+            session_item("old", status="stopped", stopped_at=five_hours_ago),
+            ["stopped 5 h ago"],
+        ),
+        "undated": (session_item("undated", status="stopped"), ["stopped"]),
+    }
+    page.route(
+        f"{server['url']}/api/sessions",
+        lambda route: route.fulfill(json=[item for item, _ in states.values()]),
+    )
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions")
+    sessions = page.get_by_role("navigation", name="Sessions")
+    sessions.get_by_role("button", name="Stopped 2").click()
+    shot(page, "list")
+    card = page.get_by_role("tooltip")
+    for shown, (item, words) in states.items():
+        sessions.locator(f".session-link[href='/sessions/{item['name']}']").hover()
+        expect(card.locator(".tip-state")).to_have_text(words)
+        shot(page, shown)
+        page.mouse.move(900, 800)
+        expect(card).to_have_count(0)
+
+
+def gives_the_focus_back(page: Page, opener, window, by: str = "Escape") -> None:
+    """Opens `window` from `opener` by the keyboard and closes it by Esc or its Cancel: the
+    focus is on the opener with no tooltip, and Tab goes on from there."""
+    opener.focus()
+    page.keyboard.press("Enter")
+    expect(window).to_be_visible()
+    if by == "Escape":
+        page.keyboard.press("Escape")
+    else:
+        window.get_by_role("button", name=by).focus()
+        page.keyboard.press("Enter")
+    expect(window).to_have_count(0)
+    expect(opener).to_be_focused()
+    expect(page.get_by_role("tooltip")).to_have_count(0)
+    page.keyboard.press("Tab")
+    assert opener.evaluate(
+        "button => button.compareDocumentPosition(document.activeElement)"
+        " & Node.DOCUMENT_POSITION_FOLLOWING"
+    ), page.evaluate("document.activeElement.outerHTML.slice(0, 200)")
+
+
+def test_the_session_list_and_session_windows_give_the_focus_back(page: Page, server, repo):
+    session = with_worker(repo)
+    page.goto(f"{server['url']}/sessions/{session}/agents/w1?token={server['token']}")
+    worker = page.get_by_role("region", name="Agent w1")
+    gives_the_focus_back(
+        page,
+        worker.get_by_role("button", name="Finish…"),
+        page.get_by_role("dialog", name="Finish w1?"),
+    )
+    gives_the_focus_back(
+        page,
+        page.get_by_role("button", name="New session"),
+        page.get_by_role("dialog", name="New session"),
+        "Cancel",
+    )
+    page.get_by_role("button", name="System").click()
+    gives_the_focus_back(
+        page,
+        page.get_by_role("button", name="Open on another device"),
+        page.get_by_role("dialog", name="Open LADO on another device"),
+    )
+
+
+def test_forget_gives_the_focus_back_with_no_tooltip(page: Page, server, repo):
+    session = with_worker(repo)
+    runtime.stop_session(session)
+    page.goto(f"{server['url']}/sessions/{session}?token={server['token']}")
+    forget = (
+        page.get_by_role("banner").locator(".session-head").get_by_role("button", name="Forget…")
+    )
+    window = page.get_by_role("dialog", name=f'Forget session "{session}"?')
+    gives_the_focus_back(page, forget, window)
+    gives_the_focus_back(page, forget, window, "Cancel")
+    # Cancel by the mouse, and the pointer gone from it: nothing shows over the button.
+    forget.click()
+    window.get_by_role("button", name="Cancel").click()
+    expect(window).to_have_count(0)
+    expect(forget).to_be_focused()
+    page.mouse.move(700, 600)
+    page.wait_for_timeout(500)  # past the tooltip's delay
+    expect(page.get_by_role("tooltip")).to_have_count(0)
+
+
+def test_add_kit_gives_the_focus_back(page: Page, server):
+    page.goto(f"{server['url']}/kits/available?token={server['token']}")
+    gives_the_focus_back(
+        page,
+        page.get_by_role("button", name="Add kit…"),
+        page.get_by_role("dialog", name="Add kit"),
+        "Cancel",
+    )

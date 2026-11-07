@@ -97,8 +97,18 @@ lado project unset <id> <NAME>`), a value over 64 KiB or with a NUL, an unknown 
 folder there, its `secrets` or the secret's file (`<path> is a symbolic link: LADO writes
 and removes a project's secrets only in its own folders`); a write the disk refuses keeps
 the old value (`could not write the secret <NAME> of <id>: <reason>`). No refusal holds the
-value. `lado project unset <id> NAME` removes a plain variable or a secret with `Removed
-<NAME> from project <id>.` and `Agents started from now on do not get it.`, or, while
+value. A command line of `lado project set` that argparse refuses (a word it does not take,
+so a value starting with `-` before `--`, plain or secret, an argument given to `--secret`,
+`-h` or `--help` as `--secret=…`, a missing id or name) prints the command's usage and
+`lado project set takes <id> <NAME>, a value and --secret, nothing more; a value starting
+with - goes after -- (lado project set <id> <NAME> -- -v); a secret's value is never given
+on the command line (ps and the shell's history keep it): run lado project set <id> <NAME>
+--secret and type it, or pipe it in` on stderr, naming none of its words, exit 1, reading
+and storing nothing; `-h` or `--help` alone prints its help. For it `lado`'s own `--help`
+and `--version` take no abbreviation (`lado --vers` is an unrecognized argument): Python
+3.10 matches them against every word, and `--=<value>` was refused as ambiguous, quoted.
+`lado project unset <id> NAME` removes a plain variable or a secret with `Removed <NAME>
+from project <id>.` and `Agents started from now on do not get it.`, or, while
 sessions of the project run, `Agents started from now on do not get it; running sessions of
 <id> keep the old environment until restarted: <names>`; a name the project lacks is exit 1
 with `project <id> has no variable or secret <NAME>; its variables: <names>; its secrets:
@@ -335,7 +345,9 @@ with their delivery state and summary, the body indented below) and agent events
 status changes). `--agent NAME` keeps one agent's
 lines, `-n N` the last N entries, `--follow` keeps printing new ones until Ctrl-C.
 With `--follow` a message is printed once, with the state it had then; a later delivery
-is not printed again.
+is not printed again. Without it a message's `[state]` is the state it has now, beside
+the time it was created: `[read]` means its body was returned by `read_messages` at some
+time after that, not at the time shown.
 
 `lado finish <session> <agent>` ends a worker whose branch is merged into the session repo's
 current branch: it removes the worktree and branch, drops the agent from `lado ls` (its
@@ -362,7 +374,8 @@ stopped: the error says its agents may still run and gives `tmux -L <socket> kil
 <session>`, after which `lado start` resumes it (`lado stop` refuses a stopped session). Its history,
 runs and gates stay, and so do worktrees and branches. Its agents are forgotten (their names
 are free again; `lado log` keeps what they did), and messages they never got or whose body
-they never read are dropped, with the count in the output: new agents start fresh.
+they never read are dropped, with the count in the output: new agents start fresh. Its
+open questions to the human are closed, also with their count (`; 1 open question closed`).
 `lado stop --all` stops every session not stopped yet (also one whose tmux or loop is gone),
 prints each as soon as it is stopped and says which tmux socket it sees; one it cannot stop
 does not keep the others running, and the error names it and the ones stopped (exit 1). On an older `lado.db` (a LADO upgraded by hand) this
@@ -378,7 +391,9 @@ its tmux server died without `lado stop`): the repo must be the same, and `--kit
 `session resumed: <n> open runs`, whose body says per open run what waits: the human at a
 gate (answer with `lado answer`), the supervisor's own step (its step message follows), or a
 worker to start with `spawn_worker(run=...)`. Such a worker opens in the run's worktree on
-its branch, made again from the branch if the folder is gone. An open run that needs a role
+its branch, made again from the branch if the folder is gone. When a stop closed questions
+to the human no supervisor was told of, a second message from `lado` lists them, to ask
+again what is still needed. An open run that needs a role
 the resumed session lacks is reported on stderr and in that body; `flow_cancel` or
 `lado flow-set` move it on. While a session is stopped, nothing starts or moves in it:
 `lado answer`, `lado flow-set`, spawning workers and starting, advancing or cancelling runs

@@ -1376,6 +1376,7 @@ def create_app(
         return StopPreview(
             agents=preview.agents,
             dropped=preview.dropped,
+            questions=preview.questions,
             open_runs=preview.open_runs,
             worktrees=models.worktrees(preview.worktrees),
         )

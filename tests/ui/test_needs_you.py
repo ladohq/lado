@@ -10,7 +10,7 @@ import agent_helpers
 import pytest
 from playwright.sync_api import Page, expect
 from test_chat import asked_with_a_plan, on_top
-from test_gates import gated_session
+from test_gates import LONG_NOTE, gated_session
 from test_main_screen import log_in, running_session
 
 from lado import runtime, state
@@ -77,6 +77,49 @@ def test_cards_taller_than_the_window_leave_the_page_at_its_top(page: Page, serv
     shot(page, "top")
 
 
+@pytest.mark.parametrize("width", [1280, 800])
+def test_a_long_note_on_needs_you_is_whole_and_the_page_scrolls_to_its_footer(
+    page: Page, server, repo, shot, width
+):
+    """No limit on the context, no fade, no ↓ more and no Expand: the page scrolls, and the
+    footer stands right under the context."""
+    session = gated_session(repo, LONG_NOTE)
+    page.set_viewport_size({"width": width, "height": 900})
+    log_in(page, server)
+    page.goto(f"{server['url']}/needs-you")
+    card = page.get_by_role("region", name=f"What waits for you in {session}")
+    context = card.get_by_role("region", name="Context of the card")
+    expect(context).to_contain_text("Point 19")
+    assert context.evaluate("c => c.scrollHeight <= c.clientHeight + 1")
+    top = card.locator(".waiting-top")
+    assert top.bounding_box()["height"] > 360  # past 40 % of the window
+    expect(card.get_by_role("button", name="↓ more")).to_have_count(0)
+    expect(card.get_by_role("button", name="Expand the card")).to_have_count(0)
+    foot = card.locator(".waiting-foot").bounding_box()
+    assert abs(foot["y"] - top.bounding_box()["y"] - top.bounding_box()["height"]) <= 1
+    approve = card.get_by_role("button", name="Approve", exact=True)
+    approve.scroll_into_view_if_needed()
+    expect(approve).to_be_in_viewport()
+    shot(page, full_page=False)
+
+
+def test_a_narrow_windows_chat_keeps_the_limit_of_the_window(page: Page, server, repo, shot):
+    """In a chat with no height of its own the limit is 40 % of the window; the footer comes
+    right under the top."""
+    session = gated_session(repo, LONG_NOTE)
+    page.set_viewport_size({"width": 800, "height": 900})
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = page.get_by_role("region", name=f"What waits for you in {session}")
+    top = card.locator(".waiting-top")
+    expect(top).to_be_visible()
+    assert top.bounding_box()["height"] <= 360 + 1
+    foot = card.locator(".waiting-foot").bounding_box()
+    assert abs(foot["y"] - top.bounding_box()["y"] - top.bounding_box()["height"]) <= 1
+    expect(card.get_by_role("button", name="Approve", exact=True)).to_be_visible()
+    shot(page, full_page=False)
+
+
 def test_a_gate_answered_with_lado_answer_goes_without_a_reload(page: Page, server, repo, shot):
     session = gated_session(repo)
     # The supervisor got the gate's line; once that turn is over, it waits for the human.
@@ -93,6 +136,7 @@ def test_a_gate_answered_with_lado_answer_goes_without_a_reload(page: Page, serv
         session,
     )
     state.set_status(session, "supervisor", state.WAITING)
+    page.set_viewport_size({"width": 1600, "height": 900})  # the rail expanded
     log_in(page, server)
     page.goto(f"{server['url']}/needs-you")
     group = page.get_by_role("region", name=f"Session {session}")
@@ -119,32 +163,15 @@ def test_a_gate_answered_with_lado_answer_goes_without_a_reload(page: Page, serv
     shot(page, "terminal")
 
 
-def test_an_expanded_card_fills_the_page_and_a_chip_opens_the_panel_over_needs_you(
-    page: Page, server, repo, shot
-):
-    """LAD-48: expanded, a session's card fills the page's content area, the other sessions
-    hidden; its chip opens the artifact panel over Needs you, and Back closes it with the
-    card as it was (docs/design/ui.md, Needs you)."""
-    session, other = running_session(repo), running_session(repo)
+def test_a_chip_opens_the_panel_over_needs_you(page: Page, server, repo, shot):
+    """LAD-48: a card's chip opens the artifact panel over Needs you, and Back closes it with
+    the card as it was (docs/design/ui.md, Needs you)."""
+    session = running_session(repo)
     asked_with_a_plan(session)
-    runtime.ask_human(other, "supervisor", "Tag it?", None, ["yes", "no"])
     log_in(page, server)
     page.goto(f"{server['url']}/needs-you")
     card = page.get_by_role("region", name=f"What waits for you in {session}")
-    others = page.get_by_role("region", name=f"Session {other}")
-    expect(others).to_be_visible()
     card.get_by_role("button", name="myself").click()
-    card.get_by_role("button", name="Expand the card").click()
-    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
-    expect(others).to_be_hidden()
-    name_line = page.get_by_role("heading", name=f"{session} {session}'s chat")
-    expect(name_line).to_be_visible()
-    assert name_line.bounding_box()["y"] < card.bounding_box()["y"]
-    content = page.locator(".content").bounding_box()
-    box = card.bounding_box()
-    assert box["y"] + box["height"] >= content["y"] + content["height"] - 40, (box, content)
-    shot(page, "expanded")
-
     card.get_by_role("button", name="Open artifact plan").click()
     expect(page).to_have_url(re.compile(rf"/needs-you\?view=[^&]+&session={session}$"))
     panel = page.get_by_role("dialog", name="Artifact plan")
@@ -154,20 +181,7 @@ def test_an_expanded_card_fills_the_page_and_a_chip_opens_the_panel_over_needs_y
     page.go_back()
     expect(panel).to_have_count(0)
     expect(page).to_have_url(re.compile(r"/needs-you$"))
-    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
     expect(card.get_by_role("button", name="myself")).to_have_attribute("aria-pressed", "true")
-
-    # A narrow window (loaded so, its rail folded): the expanded card is the window's height
-    # under the top bar, scrolled there.
-    page.set_viewport_size({"width": 390, "height": 760})
-    page.reload()
-    card.get_by_role("button", name="Expand the card").click()
-    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
-    expect(card).to_be_in_viewport()
-    assert card.bounding_box()["height"] >= 760 - 52 - 1, card.bounding_box()
-    top = page.locator(".topbar").bounding_box()
-    assert abs(card.bounding_box()["y"] - (top["y"] + top["height"])) <= 2, card.bounding_box()
-    shot(page, "narrow")
 
 
 # The page's Notification, recorded; and the tab hidden while window.hidden is true.

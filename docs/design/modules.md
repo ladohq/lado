@@ -476,10 +476,17 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     (`agents`, by `wait_reason`, the one text of that wait) and the projects with a login
     variable of their own; `check_secret` the only names and values LADO's secrets take.
     The login windows: `open_window` (a tmux
-    session `lado-login-<provider>` with the labels `@lado-login`, `@lado-home`, running the
-    action's argv through `agent_env.command`; one per provider), `close_window`,
-    `open_windows`, and `end_windows`, which `lado stop --all` and the UI server's start and
-    stop use, by the labels only.
+    session `lado-login-<provider>` with the labels `@lado-login`, `@lado-home`,
+    `@lado-login-action`, running the action's argv under `main` through
+    `agent_env.command`; one per
+    provider; with `remain-on-exit`, so its pane stays, dead, with its text and exit status
+    once the command ends), `close_window`, `windows` (dead ones too), `open_windows` (the
+    running ones: a dead window counts as ended, and `open_window` replaces it), `look`
+    (for the login socket: the provider's `login_prompt` of the window's text while an
+    action that `shows_code` runs; once dead its exit status and last line, `Ended`, read
+    before the window is killed: the status from `status_file`, which the window's wrapper
+    `main` writes, as tmux may give none under load), and `end_windows`, which `lado stop --all` and the UI server's
+    start and stop use, by the labels only.
   - `login_wait.py`: the window of an agent whose CLI needs a login and has none (`lado
     login-wait`, hidden): `command` writes the launch file with LADO's and the provider's
     own names, which no layer replaces, the session's project and the login shell's own
@@ -568,16 +575,25 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     trusts the repository's hooks by their hashes (a hook the user disabled stays so);
     `first_hook_blocker` still reads both from the agent's config.toml, for a home LADO did
     not write. Its argv is `codex --no-daemon` (else a background app server outlives the
-    agent) with the first lines last. The login (`first_hook_blocker`, `_settle_login`):
-    `auth.json` a link to the user's (`user-codex-home` in the agent's folder names the
-    user's Codex home), or a file of the agent's own with `OPENAI_API_KEY`, whose variable
-    Codex's TUI ignores. `login_status` runs `codex login status -c
-    cli_auth_credentials_store="file"` (the store agents use), takes `OPENAI_API_KEY` as a
+    agent) with the first lines last. On Linux, in any mode but `bypassPermissions`, the
+    launch first asks Codex whether its sandbox starts (`_sandbox_error`: `codex sandbox
+    -- true` in the agent's home, folder and environment, after config.toml is written;
+    10 s): it needs bubblewrap and a user namespace, which Docker refuses (LAD-151). When
+    it cannot start, in LADO's container (`update.in_container`) the agent gets
+    `--sandbox danger-full-access` and a config.toml without LADO's permission profile,
+    its mode's approvals kept, and a launch warning; on a host it keeps the sandbox, and
+    the launch warning says each shell command will ask (docs/install.md). The login
+    (`first_hook_blocker`, `_settle_login`): `auth.json` a link to the user's
+    (`user-codex-home` in the agent's folder names the user's Codex home), or a file of the
+    agent's own with `OPENAI_API_KEY`, whose variable Codex's TUI ignores. `login_status`
+    runs `codex login status -c cli_auth_credentials_store="file"` (the store agents use),
+    takes `OPENAI_API_KEY` as a
     login without it, and reads a login kept only in the keyring as none, with
     `LoginStatus.keyring` (Settings shows `keyring_note`); `needs_login(env)` follows the
     model provider of the config. Its sheet (`login_choices`): a ChatGPT sign-in code
-    (`login_actions`' `codex login --device-auth`), `CODEX_ACCESS_TOKEN` or
-    `OPENAI_API_KEY`; `logout` runs `codex logout`. The provider is chosen
+    (`login_actions`' `codex login --device-auth`, which `shows_code`: `login_prompt`
+    reads the link, the code, its expiry and the "Continue only if…" warning from its
+    output), `CODEX_ACCESS_TOKEN` or `OPENAI_API_KEY`; `logout` runs `codex logout`. The provider is chosen
     per session (`lado start --provider`) and per worker (`spawn_worker(provider=...)`).
     Each provider lists the `--permission-mode` values it honours (`permission_modes`; the
     CLI help shows them); `lado start` (also a resume) and `spawn_worker` refuse a mode the
@@ -781,7 +797,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `lado answer` and the UI server's API, never from an MCP tool; the answering surface
     (popup, CLI, UI) stays outside that core. A gate that opens asks the lead for its
     recommendation (`runs._ask_recommendation`, `runs.recommendation_request`; How agents
-    talk), and `runs.resume` asks again for each open gate without a given one.
+    talk), and `runs.resume` asks again for each open gate without a given one, and tells
+    the new supervisor of the questions a stop closed.
   - `mcp_server.py`: MCP tools for agents (`send_message`, `ask_human`, `read_messages`,
     `list_agents`, `flow_advance`, `flow_status`, `write_artifact`, `read_artifact`,
     `list_artifacts`; `send_message`, `ask_human` and `flow_advance` take `artifacts` to
@@ -791,7 +808,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `COMMAND_TOOLS`, unless it is read-only: then they are not listed, and a call of one
     is refused as `role <r> is read-only: <tool> is not available`; and `recommend`, the
     lead's own, read-only or not: `runtime.recommend`). No tool answers a gate or a
-    question.
+    question. Every tool's result, or its error, carries the caller's queue, delivered by
+    the channel `tool_result` (`_Server.call_tool`, `runtime.take_mid_turn`; How agents
+    talk): a text block and `lado_messages` in the structured content.
   - `artifacts.py`: artifacts, named documents of a session (contract:
     [docs/design/artifacts.md](artifacts.md)); the only module the rest of LADO
     calls for them (MCP tools, CLI, runs, runtime, doctor, the UI server): names (`NAME`,
@@ -1012,7 +1031,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `terminals.py`: an agent's terminal WebSocket
     (`/api/sessions/{name}/agents/{agent}/terminal`) around `lado.terminal`: frames,
     backpressure, close codes, and the open sockets (`OPEN`), which a new token closes
-    (`close_all`); the agents, messages, run events
+    (`close_all`); a login window's socket also watches it (`watch_login`, every
+    `LOOK_EVERY`: its `prompt` frame, and its `ended` frame before the close); the agents, messages, run events
     (`/api/sessions/{name}/events`), gates (with the human's answer), the human's answers
     to one agent's open questions (`POST …/answers`, a tab of the UI's waiting card, all or
     none, through `runtime.answer_questions`; each reply and a gate's answer with the full
@@ -1196,6 +1216,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   by `make web-types` and committed. `src/attachFiles.tsx` is the human's files in one
   module (attach by the server's limits, paste, drop zone, chips, upload, `AnswerBox`), used
   by the composer and the waiting card's fields (docs/design/ui.md, Files in the composer).
+  `src/attempts.ts` is the store of actions without an answer, held by the live store;
+  `src/closedRefusals.cases.json` is the one table of the core's refusals its Retry takes as
+  closed, for vitest and `tests/test_closed_refusals.py` (docs/design/ui.md, A lost connection).
 - `tests/`: pytest tests; `tests/integration/`: integration tests with a fake agent;
   `tests/ui/`: UI end-to-end tests in a browser; `tests/live/`: live tests with real agent
   CLIs; `tests/js/`: Node tests of the OpenCode-family plugin; `web/src/*.test.tsx`: the

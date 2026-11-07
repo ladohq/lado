@@ -12,7 +12,7 @@ import { Link, useLocation } from "react-router";
 import { HUMAN, type GateInfo, type MessageInfo, type RunEventInfo, type RunInfo } from "./api";
 import { Attachments, ImagePreviews } from "./Attachments";
 import { Body, clock, day, dayName, MESSAGE_LINES, MESSAGE_OVER, Preview, repeatsSummary } from "./ChatText";
-import { Composer } from "./Composer";
+import { Composer, ComposerFold } from "./Composer";
 import { FeedRow, MiniAvatar } from "./FeedRow";
 import { OutcomeChip } from "./flowSteps";
 import { gateAnchor, GateLine } from "./GateCard";
@@ -31,7 +31,7 @@ import { runPath } from "./paths";
 import { messageAnchor, Question, replyOf, type Reply } from "./Question";
 import { quoteArea } from "./quote";
 import { useHeight } from "./Splitter";
-import { agentTab, gateTab, WaitingCard, type Focus } from "./WaitingCard";
+import { agentTab, gateTab, stopFiles, WaitingCard, type Fold, type Focus } from "./WaitingCard";
 
 // The run events the feed shows as lines, and the word each kind's line says: the one list.
 // A flow event's line shows its move instead (a gate's answer is the human's move, so
@@ -169,7 +169,37 @@ type Scroll = { window: string | null; first: string | null; last: string | null
 
 const atBottom = (element: HTMLElement) => element.scrollHeight - element.scrollTop - element.clientHeight < 40;
 
-export function Chat({ session, stopped, agentMessages }: { session: string; stopped: boolean; agentMessages: boolean }) {
+// The address's state that opens the chat with the focus on its feed (Skip to chat).
+export const FOCUS_CHAT = { focusChat: true };
+
+// The focus on the chat: its feed, or the selected tab of an expanded card, which hides it.
+export function focusChat() {
+  const card = document.querySelector<HTMLElement>('.chat > .waiting-card.expanded [role="tab"][aria-selected="true"]');
+  (card ?? document.querySelector<HTMLElement>(".chat-feed"))?.focus();
+}
+
+// The feed's words with nothing to show. A stopped session's say what the filter leaves out:
+// under Yours the agents may have talked, which only All can tell.
+const emptyText = (stopped: boolean, agentMessages: boolean) =>
+  !stopped
+    ? "No messages yet. Write to the supervisor below."
+    : agentMessages
+      ? "Nothing was said in this session."
+      : "No messages with you. Messages between agents are hidden.";
+
+// `stoppedBar`: what stands in the composer's place in a stopped session. The composer stays
+// mounted behind it, hidden: a draft, its files and a quote wait there for Resume.
+export function Chat({
+  session,
+  stopped,
+  stoppedBar,
+  agentMessages,
+}: {
+  session: string;
+  stopped: boolean;
+  stoppedBar: ReactNode;
+  agentMessages: boolean;
+}) {
   const live = useLiveStore();
   const state = useLive();
   const spec: MessageSpec = agentMessages ? { limit: PAGE } : { with: HUMAN, limit: PAGE };
@@ -185,6 +215,17 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
     },
     [measured],
   );
+  const [chatRef, chatHeight] = useHeight<HTMLElement>(); // the waiting card's limit
+  // What the waiting card's open field has folded the composer into; the link back gives the
+  // composer the focus once it shows.
+  const [fold, setFold] = useState<Fold | null>(null);
+  const composerField = useRef<HTMLTextAreaElement>(null);
+  const toComposer = useRef(false);
+  useEffect(() => {
+    if (fold !== null || !toComposer.current) return;
+    toComposer.current = false;
+    composerField.current?.focus();
+  }, [fold]);
   const top = useRef<HTMLDivElement>(null);
   const scroll = useRef<Scroll>({ window: null, first: null, last: null, height: 0, top: 0, bottom: true });
   useEffect(() => live.watchMessages(session, spec), [live, session, key]); // key: the spec's
@@ -257,7 +298,10 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
   // A link to an open question or gate (#message-<id>, #gate-<id>: Needs you, a
   // notification, a line's arrow) shows its tab in the waiting card and marks it. A link to
   // another card scrolls to it; one before the window first loads up to it, in one load.
-  const { hash } = useLocation();
+  const { hash, state: arrival } = useLocation();
+  useEffect(() => {
+    if ((arrival as typeof FOCUS_CHAT | null)?.focusChat) focusChat();
+  }, [arrival]);
   const [goal, setGoal] = useState<string | null>(null);
   const go = (anchor: string) => {
     if (!ready) return;
@@ -295,8 +339,15 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
   }, [ready, hash, waitsLoaded]);
 
   return (
-    <section className="chat" aria-label="Chat">
-      <div className="chat-feed" role="log" aria-label="Chat with the session" ref={feedRef} onScroll={scrolled}>
+    <section
+      ref={chatRef}
+      className="chat"
+      aria-label="Chat"
+      // A hidden composer takes no files; dropped on the chat, nowhere: the browser opens none.
+      onDragOver={fold || stopped ? stopFiles : undefined}
+      onDrop={fold || stopped ? stopFiles : undefined}
+    >
+      <div className="chat-feed" role="log" aria-label="Chat with the session" tabIndex={-1} ref={feedRef} onScroll={scrolled}>
         {loaded === null && <p className="muted">Loading…</p>}
         {loaded && "error" in loaded && (
           <p className="problem" role="alert">
@@ -304,7 +355,9 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
           </p>
         )}
         {ready && <Top session={session} window={loaded.window} first={shown[0]} retry={loadEarlier} marker={top} />}
-        {ready && shown.length === 0 && <p className="empty">No messages yet. Write to the supervisor below.</p>}
+        {ready && shown.length === 0 && (
+          <p className={stopped ? "empty stopped-empty" : "empty"}>{emptyText(stopped, agentMessages)}</p>
+        )}
         {ready && (
           <Rows
             session={session}
@@ -324,9 +377,20 @@ export function Chat({ session, stopped, agentMessages }: { session: string; sto
         runs={runs && "items" in runs ? runs.items : null}
         stopped={stopped}
         focus={focus}
-        chat={{ feed: feedHeight, loaded: ready && waits !== null }}
+        chat={{ feed: feedHeight, height: chatHeight, loaded: ready && waits !== null }}
+        onFold={setFold}
       />
-      <Composer session={session} stopped={stopped} />
+      {fold && (
+        <ComposerFold
+          fold={fold}
+          write={() => {
+            toComposer.current = true;
+            fold.write?.();
+          }}
+        />
+      )}
+      {stoppedBar}
+      <Composer session={session} folded={fold !== null || stopped} inputRef={composerField} />
     </section>
   );
 }

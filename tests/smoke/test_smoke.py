@@ -12,9 +12,10 @@ from pathlib import Path
 
 import agent_helpers
 import pytest
-from real_clis import agent_processes, answer_dialogs, check_gone, status
+from real_clis import SANDBOX_ERROR, agent_processes, answer_dialogs, check_gone, status
 
 from lado import logins, loop, projects, providers, runtime, state, tmux
+from lado.providers import codex
 
 pytestmark = pytest.mark.smoke
 
@@ -314,14 +315,47 @@ def test_a_codex_agent_shares_the_users_login_file(
     runtime.stop_session(SESSION)
 
 
+def sandbox_probes(monkeypatch) -> list[str | None]:
+    """What each probe of Codex's sandbox answered, the real one asked (real_clis.isolated)."""
+    assert codex._sandbox_error is SANDBOX_ERROR, "the smoke must ask the real Codex"
+    probes = []
+
+    def probe(*args):
+        probes.append(SANDBOX_ERROR(*args))
+        return probes[-1]
+
+    monkeypatch.setattr(codex, "_sandbox_error", probe)
+    return probes
+
+
+def check_sandbox_warning(started, probes: list[str | None], mode: str | None) -> None:
+    """The launch warned of Codex's sandbox exactly as the real probe answered (LAD-151), as
+    on a host: tests/conftest.py clears LADO_CONTAINER."""
+    warned = [w for w in started.warnings if w.startswith("Codex's sandbox cannot start")]
+    if sys.platform != "linux" or mode == "bypassPermissions":
+        assert (probes, warned) == ([], [])
+        return
+    [error] = probes
+    assert warned == (
+        []
+        if error is None
+        else [
+            f"Codex's sandbox cannot start here ({error}): Codex agent supervisor asks before "
+            "each shell command; docs/install.md says how to allow it, or use bypassPermissions"
+        ]
+    )
+
+
 @pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
 @pytest.mark.parametrize("mode", [None, "default", "bypassPermissions"])
 def test_a_codex_session_starts_with_no_screen_in_each_mode(
-    smoke_provider, smoke_repo, fake_endpoint, codex_home, mode
+    smoke_provider, smoke_repo, fake_endpoint, codex_home, mode, monkeypatch
 ):
     """A repository the user's Codex never trusted, with its own hooks never reviewed: the
     agent's first input, submitted once no dialog holds Codex, is delivered with no human,
-    and Codex fetched no plugins into its home."""
+    and Codex fetched no plugins into its home. On Linux, out of bypass mode, the launch
+    asked the real Codex whether its sandbox starts, and warned only when it did not."""
+    probes = sandbox_probes(monkeypatch)
     hooks = {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "true"}]}]}}
     (smoke_repo / ".codex").mkdir()
     (smoke_repo / ".codex" / "hooks.json").write_text(json.dumps(hooks))
@@ -329,7 +363,8 @@ def test_a_codex_session_starts_with_no_screen_in_each_mode(
     subprocess.run([*git, "add", ".codex"], check=True)
     subprocess.run([*git, "commit", "-qm", "The repository's own Codex hooks"], check=True)
     assert "projects" not in (codex_home / "config.toml").read_text()
-    runtime.start_session(str(smoke_repo), SESSION, mode, "codex")
+    started = runtime.start_session(str(smoke_repo), SESSION, mode, "codex")
+    check_sandbox_warning(started, probes, mode)
     first = delivered(state.LADO, "supervisor", runtime.FIRST_INPUT)
     wait_for(answering("codex", "supervisor", first), "codex's first input delivered", 120)
     home = providers.base.config_path(state.get_agent(SESSION, "supervisor"))
@@ -361,14 +396,18 @@ def _subagent_tools(names: list[str]) -> list[str]:
 def test_a_codex_agent_gets_none_of_codex_s_own_subagents(
     smoke_provider, smoke_repo, fake_endpoint, codex_home
 ):
-    """With a model whose metadata gives Codex's subagents, a plain `codex exec` offers it
-    `collaboration.wait_agent`; a LADO agent's first request offers no subagent tool."""
+    """With a model whose metadata gives Codex's subagents, a plain `codex exec` (its plugins
+    off) offers it `collaboration.wait_agent`; a LADO agent's first request offers no
+    subagent tool."""
     config = codex_home / "config.toml"
     config.write_text(
         re.sub(r'(?m)^model = ".*"$', f'model = "{SUBAGENT_MODEL}"', config.read_text())
     )
+    # Plugins off: Codex 0.162 syncs OpenAI's curated plugins catalogue at its start in the
+    # background (`git ls-remote https://github.com/openai/plugins.git`, then a clone);
+    # `codex exec` ends before it, and the orphaned git outlived the test (LAD-175).
     control = subprocess.run(
-        ["codex", "exec", "--skip-git-repo-check", "hi"],
+        ["codex", "exec", "--skip-git-repo-check", "-c", "features.plugins=false", "hi"],
         cwd=smoke_repo,
         env={**os.environ, "CODEX_HOME": str(codex_home)},
         stdin=subprocess.DEVNULL,

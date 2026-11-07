@@ -508,16 +508,18 @@ def test_worker_does_a_task_reports_and_gets_a_message(
 
 
 def check_turn_end_output() -> None:
-    """The line queued while w1 was busy went in its turn-end hook's output and is delivered
+    """The line queued while w1 was busy reached it in that turn: in the result of its next
+    call of a LADO tool, or, when no such call came, in its turn-end hook's output, delivered
     once the CLI confirms it: the prompt the plugin's promptAsync makes (Kilo, OpenCode), or
-    the end of the turn that went on from it (Claude Code's stop_hook_active)."""
+    the end of the turn that went on from it (Claude Code's stop_hook_active). Which of the
+    two depends on the model's speed, as read_messages itself is such a call."""
     [line] = [m for m in state.list_messages(SESSION) if m.summary == WHILE_BUSY]
     wait_for(
         lambda: state.get_message(SESSION, line.id).state in RECEIVED,
         "the line sent while w1 was busy to be delivered",
         120,
     )
-    assert state.get_message(SESSION, line.id).channel == state.HOOK_OUTPUT
+    assert state.get_message(SESSION, line.id).channel in (state.HOOK_OUTPUT, state.TOOL_RESULT)
 
 
 HUMAN_ASKS = 'From the human: reply to me with send_message(to="human", summary="ACK") only'

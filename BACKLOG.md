@@ -2383,3 +2383,12 @@ Size: S. Why here: one small function that harms nothing.
 Only tests call it (`tests/agent_helpers.py`, `tests/live/test_live.py`). Wanted: it moves to the
 tests' helpers, or stays when the product needs it.
 Found: 2026-11-07, review of branch hotfix/lad-227-stopped-session-delivery (LAD-227).
+
+## The Codex login's live test has no step in a release
+
+Size: S. Why here: a docstring that promises a run nobody makes; the login is still checked by daily use.
+
+`tests/live/test_codex_login.py` says "Only at a release, with the human", but docs/release.md
+has no step for it, and with LAD-231 the local `make test-live` left the release altogether.
+Wanted: a line in docs/release.md, or a docstring that says it runs only when someone asks.
+Found: 2026-11-07, review of branch feature/lad-231-cloud-live-tests (LAD-231).

@@ -598,10 +598,28 @@ def warning(copy) -> str:
         f"  lado.db goes back to {copy}, made 2026-10-20 14:03\n"
         f"  by the upgrade from schema {OLD_SCHEMA}. Everything LADO recorded since then is "
         "lost: sessions,\n"
-        "  runs, gates, messages, projects. Repositories, worktrees and project folders stay "
-        "on disk.\n"
+        "  runs, gates, messages, projects, model servers, models, default models.\n"
+        "  Repositories, worktrees and project folders stay on disk.\n"
         "  Sessions not in that copy are not started again: web2\n"
     )
+
+
+KEYS_STAY = "  Model server keys stay on disk; remove them when you no longer need them:\n"
+
+
+def saved_key(id: str) -> Path:
+    """A key on disk for the server `id`; its folder."""
+    folder = state.home() / "model-servers" / id
+    folder.mkdir(parents=True)
+    (folder / "key").write_text("sk-test")
+    return folder
+
+
+def plan_warning(capsys) -> tuple[self_update.Plan, str]:
+    found = plan_to(OLD)
+    capsys.readouterr()
+    self_update.print_plan(found)
+    return found, capsys.readouterr().err
 
 
 def schema_of(path) -> int:
@@ -612,13 +630,64 @@ def schema_of(path) -> int:
 def test_a_plan_to_an_older_schema_says_what_it_loses(older, two_sessions, capsys):
     found = plan_to(OLD)
     assert found.restore == self_update.Restore(
-        two_sessions, OLD_SCHEMA, state.SCHEMA_VERSION, "2026-10-20 14:03", ["web2"]
+        two_sessions, OLD_SCHEMA, state.SCHEMA_VERSION, "2026-10-20 14:03", ["web2"], []
     )
     capsys.readouterr()
     self_update.print_plan(found)
     err = capsys.readouterr().err
     assert warning(two_sessions) in err
     assert "may refuse" not in err
+    assert "Model server keys" not in err
+
+
+def test_a_copy_without_model_servers_names_every_key_that_stays(older, two_sessions, capsys):
+    with contextlib.closing(sqlite3.connect(two_sessions)) as db:
+        db.execute("DROP TABLE model_servers")
+        db.commit()
+    os.utime(two_sessions, (MADE, MADE))
+    second, first = saved_key("bbb"), saved_key("aaa")
+    found, err = plan_warning(capsys)
+    assert found.restore.keys == [first, second]
+    assert f"{warning(two_sessions)}{KEYS_STAY}    {first}\n    {second}\n" in err
+
+
+def test_a_key_of_a_server_the_copy_has_is_not_named(older, two_sessions, capsys):
+    with contextlib.closing(sqlite3.connect(two_sessions)) as db:
+        db.execute(
+            "INSERT INTO model_servers (id, name, folded, address, kind, apis)"
+            " VALUES ('aaa', 'Lab', 'lab', 'http://lab:1234', 'lm-studio', '[]')"
+        )
+        db.commit()
+    kept, left = saved_key("aaa"), saved_key("bbb")
+    found, err = plan_warning(capsys)
+    assert found.restore.keys == [left]
+    assert f"{KEYS_STAY}    {left}\n" in err
+    assert str(kept) not in err
+
+
+def test_a_folder_without_a_key_is_not_named(older, two_sessions, capsys):
+    (state.home() / "model-servers" / "aaa").mkdir(parents=True)
+    found, err = plan_warning(capsys)
+    assert found.restore.keys == []
+    assert "Model server keys" not in err
+
+
+def test_an_unreadable_folder_of_keys_is_named_and_stops_nothing(
+    older, two_sessions, capsys, monkeypatch
+):
+    saved_key("aaa")
+    folder = state.home() / "model-servers"
+    listdir = os.listdir
+
+    def refuse(path="."):
+        if Path(path) == folder:
+            raise PermissionError(13, "Permission denied", str(path))
+        return listdir(path)
+
+    monkeypatch.setattr(self_update.os, "listdir", refuse)
+    found, err = plan_warning(capsys)
+    assert found.restore.keys == [folder]
+    assert f"{KEYS_STAY}    {folder}\n" in err
 
 
 def by_hand_back(install, repo, copy) -> list[str]:

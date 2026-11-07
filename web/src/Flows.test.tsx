@@ -7,7 +7,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { GateInfo, NoteInfo, RunEventInfo, RunInfo, SessionInfo } from "./api";
 import { App } from "./App";
 import { clock, dayName, since } from "./ChatText";
-import { FakeEventSource, FakeSocket, narrowColumn, stream, wideColumn } from "./fakes";
+import { CLI_DEFAULT, FakeEventSource, FakeSocket, narrowColumn, stream, wideColumn } from "./fakes";
 import { flowsLine, taskTip } from "./Flows";
 import styles from "./styles.css?raw";
 import { TOOLTIP_DELAY_MS } from "./Tooltip";
@@ -16,7 +16,7 @@ vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeX
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
 
 const NO_WAITS = { gates: 0, questions: 0, agents: 0 };
-const SETTINGS = { kits: ["team"], provider: "claude", permission_mode: null, without: [], ran_seconds: 0, running_since: null, stopped_at: null, busy: 0, title: null, project: null };
+const SETTINGS = { kits: ["team"], provider: "claude", permission_mode: null, without: [], ran_seconds: 0, running_since: null, stopped_at: null, busy: 0, title: null, project: null, model_missing: false };
 const SESSIONS: SessionInfo[] = [
   { name: "lado", repo: "/src/lado", status: "running", agents: 2, waiting: NO_WAITS, ...SETTINGS },
   { name: "old", repo: "/src/old", status: "stopped", agents: 0, waiting: NO_WAITS, ...SETTINGS },
@@ -146,6 +146,8 @@ const AGENT = {
   worktree: "/w",
   spawned_at: "2026-10-04T10:00:00.000Z",
   since: "2026-10-04T10:00:00.000Z",
+  model: CLI_DEFAULT,
+  effort: CLI_DEFAULT,
 };
 
 function serve({ runs = [], notes = [], events = [], gates = [], agents = [] }: Data) {

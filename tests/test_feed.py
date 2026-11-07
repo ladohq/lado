@@ -127,6 +127,8 @@ def test_a_change_after_the_start_comes_with_its_item_in_the_form_of_the_rest_ap
             "stopped_at": None,
             "title": None,
             "project": None,
+            "model": None,
+            "model_missing": False,
             "project_title": None,
         },
     }
@@ -172,6 +174,15 @@ def test_the_item_is_the_rows_current_state_whatever_the_op(streams, fake_tmux):
 
 
 # The smallest flow a run can have: its item is built from the run's snapshot.
+NO_MODEL = {
+    "name": None,
+    "source": "cli",
+    "detail": None,
+    "words": "CLI default",
+    "configured": None,
+    "server": None,
+    "address": None,
+}
 SNAPSHOT = {
     "name": "feature",
     "description": "d",
@@ -470,6 +481,8 @@ def test_an_agents_change_comes_with_its_item_in_the_form_of_the_rest_api(stream
         "login_wait": None,
         "branch": None,
         "worktree": None,
+        "model": NO_MODEL,
+        "effort": NO_MODEL,
     }
     assert (
         spawned
@@ -596,6 +609,8 @@ def test_a_resumed_stream_gets_the_derived_fields_as_they_are_now(streams, repo,
         "stopped_at": None,
         "title": None,
         "project": None,
+        "model": None,
+        "model_missing": False,
         "project_title": None,
     }
     assert stream.quiet(0.3) == []  # a stopped session has nothing derived

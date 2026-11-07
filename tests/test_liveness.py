@@ -53,6 +53,33 @@ def test_a_turn_that_ends_on_an_error_types_in_the_queue_and_tells_the_superviso
     ]
 
 
+def test_a_long_error_keeps_the_line_s_end_and_goes_whole_in_the_body(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    whole = "ContextOverflowError: LADO stopped the turn; " + "the server's words " * 20
+    event = providers.Event(providers.TURN_END, error=whole[:159] + "…", details=whole)
+    hooks.handle(providers.get("claude"), event, "s", "supervisor")
+    (told,) = [m for m in state.list_messages("s") if m.sender == "lado" and m.recipient == "human"]
+    assert told.summary.endswith("…; it is idle")
+    assert len(told.summary) <= state.SUMMARY_LIMIT
+    assert told.summary.startswith("turn of supervisor ended on an error: ContextOverflowError")
+    assert told.body == whole
+
+
+def test_a_cut_of_the_line_alone_puts_the_error_in_the_body(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.turn_failed("s", "supervisor", "x" * 160, background=True)
+    (told,) = [m for m in state.list_messages("s") if m.sender == "lado" and m.recipient == "human"]
+    assert "it is background" in told.summary and len(told.summary) <= state.SUMMARY_LIMIT
+    assert told.body == "x" * 160
+
+
+def test_a_short_error_has_no_body(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.turn_failed("s", "supervisor", "rate_limit")
+    (told,) = [m for m in state.list_messages("s") if m.sender == "lado" and m.recipient == "human"]
+    assert not told.body
+
+
 def test_a_failed_turn_of_the_supervisor_is_told_to_the_human(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     _hook("SessionStart", "supervisor")
@@ -94,9 +121,37 @@ def _w1_busy(repo):
 
 
 def _fail_again():
-    """w1 works again (its resume, or the human), and its turn ends on an overload."""
-    _hook("UserPromptSubmit", "w1", {"prompt": "go on"})
+    """w1 is told to go on, and its turn ends on an overload."""
+    _told_to_go_on("w1")
     _hook("StopFailure", "w1", {"error": "overloaded"})
+
+
+def _told_to_go_on(agent):
+    """The agent's planned resume comes due, and its line reaches it."""
+    runtime.sweep("s", now=state.get_agent("s", agent).resume_at)
+    told = [m for m in state.list_messages("s") if m.recipient == agent and m.sender == "lado"]
+    _hook("UserPromptSubmit", agent, {"prompt": f"[from lado] {told[-1].summary}"})
+
+
+def test_a_resume_the_queue_took_the_place_of_is_not_counted(repo, fake_tmux, resume_delays):
+    """A message from the queue starts a turn before the planned resume is due: nobody was told
+    to go on, so the next failed turn plans the same resume, and the lead hears after two."""
+    _w1_busy(repo)
+    for _ in range(3):
+        _hook("StopFailure", "w1", {"error": "overloaded"})
+        assert state.get_agent("s", "w1").resumes == 1
+        _hook("UserPromptSubmit", "w1", {"prompt": "a message of the queue"})
+        assert state.get_agent("s", "w1").resumes == 0
+    assert _from_lado("supervisor") == []
+
+
+def test_a_second_error_before_the_resume_is_told_counts_once(repo, fake_tmux, resume_delays):
+    _w1_busy(repo)
+    _hook("StopFailure", "w1", {"error": "overloaded"})
+    planned = state.get_agent("s", "w1").resume_at
+    _hook("StopFailure", "w1", {"error": "overloaded"})
+    w1 = state.get_agent("s", "w1")
+    assert (w1.resumes, w1.resume_at) == (1, planned)
 
 
 def test_a_transient_error_plans_a_resume_and_tells_no_one(repo, fake_tmux, resume_delays):
@@ -136,9 +191,10 @@ def test_a_transient_error_of_the_supervisor_goes_to_the_human_once_resumes_are_
     monkeypatch.setattr(runtime, "RESUME_DELAYS", (30.0,))
     runtime.start_session(str(repo), "s", None, provider="claude")
     _hook("SessionStart", "supervisor")
-    for _ in range(2):
-        _hook("UserPromptSubmit", "supervisor", {"prompt": "go"})
-        _hook("StopFailure", "supervisor", {"error": "server_error"})
+    _hook("UserPromptSubmit", "supervisor", {"prompt": "go"})
+    _hook("StopFailure", "supervisor", {"error": "server_error"})
+    _told_to_go_on("supervisor")
+    _hook("StopFailure", "supervisor", {"error": "server_error"})
     assert _from_lado("human") == [
         "turn of supervisor ended on an error after 1 resume: server_error; it is idle"
     ]
@@ -159,7 +215,8 @@ def test_a_turn_end_that_plans_no_resume_starts_the_resumes_again(
     w1 = state.get_agent("s", "w1")
     assert (w1.resume_at, w1.resumes) == (None, 0)
     before = time.time()
-    _fail_again()
+    _hook("UserPromptSubmit", "w1", {"prompt": "go on"})
+    _hook("StopFailure", "w1", {"error": "overloaded"})
     w1 = state.get_agent("s", "w1")
     assert w1.resumes == 1 and before + 30 <= w1.resume_at < before + 120
 
@@ -487,13 +544,11 @@ def test_an_agent_with_no_hook_30_s_after_its_window_waits_for_its_terminal(repo
     _session_with_worker(repo)
     runtime.check_starts("s", _after_window("w1", 31))
     assert state.get_agent("s", "w1").status == state.WAITING
-    assert runtime.status_reasons("s")["w1"] == runtime.START_SILENCE_REASON
-    assert runtime.START_SILENCE_REASON == (
-        "Waiting for an answer in its terminal: no sign from it 30 s after its start. "
-        "Open its terminal."
-    )
+    reason = "Waiting for an answer in its terminal: no sign from it 30 s after its start. "
+    reason += "Open its terminal."
+    assert runtime.status_reasons("s")["w1"] == reason
     log = (state.home() / "loop.log").read_text()
-    assert log.count(f"s: w1: {runtime.START_SILENCE_REASON}") == 1
+    assert log.count(f"s: w1: {reason}") == 1
 
 
 def test_an_agent_under_30_s_is_left_alone(repo, fake_tmux):
@@ -501,6 +556,33 @@ def test_an_agent_under_30_s_is_left_alone(repo, fake_tmux):
     runtime.check_starts("s", _after_window("w1", 29))
     assert state.get_agent("s", "w1").status == state.STARTING
     assert "w1" not in runtime.status_reasons("s")
+
+
+@pytest.mark.parametrize("provider", ["kilo", "opencode"])
+def test_a_silent_tui_of_the_opencode_family_is_not_shown_as_a_question(repo, fake_tmux, provider):
+    """Its server plugin counts 30 s from its own start, some seconds after the launch."""
+    runtime.start_session(str(repo), "s", None, provider=provider)
+    runtime.check_starts("s", _after_window("supervisor", 44))
+    assert state.get_agent("s", "supervisor").status == state.STARTING
+    runtime.check_starts("s", _after_window("supervisor", 45))
+    assert runtime.status_reasons("s")["supervisor"] == (
+        "Waiting for an answer in its terminal: no sign from it 45 s after its start. "
+        "Open its terminal."
+    )
+
+
+def test_a_first_hook_ends_the_wait_of_a_limit_of_its_provider(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="kilo")
+    runtime.check_starts("s", _after_window("supervisor", 46))
+    runtime.heard_at_start("s", "supervisor")
+    assert state.get_agent("s", "supervisor").status == state.STARTING
+
+
+def test_a_first_hook_leaves_a_wait_of_another_reason(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.block("s", "w1", "Claude Code asks whether to trust the folder")
+    runtime.heard_at_start("s", "w1")
+    assert state.get_agent("s", "w1").status == state.WAITING
 
 
 def test_an_agent_that_hooked_is_left_alone(repo, fake_tmux):

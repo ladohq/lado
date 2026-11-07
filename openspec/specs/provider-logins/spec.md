@@ -2,7 +2,7 @@
 
 ## Purpose
 The agent CLIs' logins: LADO reads whether each CLI is logged in by the CLI's own status
-command, shows it in Settings → Providers and environment and `lado doctor`, logs Claude
+command, shows it in Settings → Agent CLIs and environment and `lado doctor`, logs Claude
 Code, OpenCode and Kilo in from the UI (a phone too), keeps their login variables as LADO's
 secrets, and holds an agent whose CLI needs a login until there is one.
 
@@ -68,14 +68,14 @@ in".
 
 ### Requirement: Settings shows the login of each agent CLI
 
-Settings' section Providers and environment SHALL show, for each agent CLI LADO knows, its
+Settings' section Agent CLIs and environment SHALL show, for each agent CLI LADO knows, its
 name, its version, a dot and one state line, then, while its login is missing, the live
 agents that wait for it, the projects that set a login variable of it and the provider's
 note. Of `lado doctor`'s provider checks it SHALL show only what the user can fix (the
 scenarios below), with no check's level and no other check.
 
 #### Scenario: The section's words
-- **WHEN** the human opens Settings → Providers and environment
+- **WHEN** the human opens Settings → Agent CLIs and environment
 - **THEN** under its title is "Sign-ins your agents use. Changes apply to agents started
   afterwards.", and each state line is "Logged in · <method> · <where from>", "Not logged
   in", "No login" or "Couldn't check the sign-in" with why
@@ -237,7 +237,7 @@ name no provider names as its login.
 
 ### Requirement: An agent whose CLI needs a login waits for it and starts by itself
 
-When an agent's CLI needs a login (Claude Code; Codex with a model that needs one) and is not logged in at launch (a session
+When an agent's CLI needs a login (Claude Code on no model server; Codex with a model that needs one) and is not logged in at launch (a session
 LADO resumes by itself, or a login lost after a start's check), the agent SHALL wait from
 its start with a reason that says where to log in; its window SHALL check every few
 seconds, file layers read anew and the login taken whole from one layer, and start the CLI
@@ -247,9 +247,9 @@ once logged in. An unknown state SHALL NOT hold it.
 - **WHEN** Claude Code is not logged in and a stopped session with the provider `claude` is
   resumed at the container's start or by `lado update`
 - **THEN** the supervisor is `waiting` with the reason `Claude Code is not logged in: log in
-  in Settings → Providers and environment, or set CLAUDE_CODE_OAUTH_TOKEN; the agent starts
+  in Settings → Agent CLIs and environment, or set CLAUDE_CODE_OAUTH_TOKEN; the agent starts
   by itself once you do`, `lado ls` prints it, and Needs you shows it with "Log in…"
-  leading to Settings → Providers and environment
+  leading to Settings → Agent CLIs and environment
 
 #### Scenario: The login arrives
 - **WHEN** the supervisor waits for the login and the human logs Claude Code in outside
@@ -271,7 +271,7 @@ once logged in. An unknown state SHALL NOT hold it.
 - **WHEN** Codex is not logged in, its model is OpenAI's, and a stopped Codex session is
   resumed at the container's start
 - **THEN** the supervisor is `waiting` with the reason `Codex CLI is not logged in: log in
-  in Settings → Providers and environment, or set OPENAI_API_KEY; the agent starts by
+  in Settings → Agent CLIs and environment, or set OPENAI_API_KEY; the agent starts by
   itself once you do`, and it starts once the human logs in with a sign-in code
 
 #### Scenario: The status cannot be read
@@ -288,7 +288,7 @@ it comes from when logged in, `warn` for a CLI whose agents need a login and hav
 #### Scenario: Claude Code not logged in
 - **WHEN** Claude Code is installed and not logged in
 - **THEN** `lado doctor` prints `[warn] Claude Code login: not logged in: …Settings →
-  Providers and environment…` and exits as before
+  Agent CLIs and environment…` and exits as before
 
 #### Scenario: Claude Code with a token of LADO's secrets
 - **WHEN** LADO's secrets hold `CLAUDE_CODE_OAUTH_TOKEN`
@@ -308,7 +308,7 @@ its account login, "Subscription (token)", "Pay per use (API key)", "Pay per use
 
 ### Requirement: Each CLI's row has at most one login button
 
-Each CLI's row in Providers and environment SHALL have at most one button: "Log in…"
+Each CLI's row in Agent CLIs and environment SHALL have at most one button: "Log in…"
 without a login (the primary button when its agents need one), "Change login…" with one,
 none for a CLI with no way to log in from the page; the secret fields and the actions are
 in the sheet it opens.
@@ -331,8 +331,8 @@ setup-token`, `CLAUDE_CODE_OAUTH_TOKEN`) and "Pay per use — API billing" (an A
 
 ### Requirement: A new session or worker whose CLI needs a login and has none is refused
 
-LADO SHALL refuse a new session whose provider needs a login (Claude Code; Codex with a
-model that needs one), a resume by
+LADO SHALL refuse a new session whose provider needs a login (Claude Code on no model server;
+Codex with a model that needs one), a resume by
 hand by the provider of the supervisor it starts, and a new worker by its own provider,
 when that provider's status, read in the environment the agent would start from, is not
 logged in; before anything of it is stored or made, naming the CLI and where to log in. A
@@ -342,7 +342,7 @@ resume LADO makes by itself and a login LADO cannot read SHALL NOT be refused.
 - **WHEN** Claude Code is not logged in and `lado start <repo> --provider claude` starts a
   new session
 - **THEN** it exits non-zero with `Claude Code is not logged in, so the session was not
-  started: log in in LADO's UI (Settings → Providers and environment, `lado ui`), or set
+  started: log in in LADO's UI (Settings → Agent CLIs and environment, `lado ui`), or set
   CLAUDE_CODE_OAUTH_TOKEN as LADO's secret or a project secret`, and lado.db, tmux and the
   agents' config folders hold nothing of that session
 
@@ -365,7 +365,7 @@ resume LADO makes by itself and a login LADO cannot read SHALL NOT be refused.
 - **WHEN** a supervisor calls `spawn_worker` with the provider `claude` (with or without a
   run) and Claude Code is not logged in
 - **THEN** the tool fails with `Claude Code is not logged in, so the worker was not
-  started: ask the human to log in in Settings → Providers and environment, or start the
+  started: ask the human to log in in Settings → Agent CLIs and environment, or start the
   worker with another provider`; no worktree, branch, agent or window is left, and a run's
   step still waits for its worker
 
@@ -388,7 +388,7 @@ resume LADO makes by itself and a login LADO cannot read SHALL NOT be refused.
 - **WHEN** Codex is not logged in, the user's Codex config names no model provider (OpenAI's
   by default), and `lado start <repo> --provider codex` starts a new session
 - **THEN** it exits non-zero with `Codex CLI is not logged in, so the session was not
-  started: log in in LADO's UI (Settings → Providers and environment, `lado ui`), or set
+  started: log in in LADO's UI (Settings → Agent CLIs and environment, `lado ui`), or set
   OPENAI_API_KEY as LADO's secret or a project secret`, and nothing of the session is
   stored or made
 
@@ -401,7 +401,7 @@ resume LADO makes by itself and a login LADO cannot read SHALL NOT be refused.
 - **WHEN** Claude Code is not logged in and the human resumes a stopped Claude session with
   `lado start <repo> --name <session>`
 - **THEN** it exits non-zero with `Claude Code is not logged in, so the session was not
-  resumed: log in in LADO's UI (Settings → Providers and environment, `lado ui`), or set
+  resumed: log in in LADO's UI (Settings → Agent CLIs and environment, `lado ui`), or set
   CLAUDE_CODE_OAUTH_TOKEN as LADO's secret or a project secret`, the session stays stopped
   and no window is made
 
@@ -441,19 +441,19 @@ status cannot be read. An unknown project SHALL be 404.
 The New session window and the Resume window SHALL show a provider with `login_missing` as
 a disabled option "`<name>` · not logged in", never choose it by itself, and, with it
 suggested or chosen, show the note "`<CLI>` is not logged in: its agents cannot start. Log
-in first" leading to Settings → Providers and environment and keep Start (Resume)
+in first" leading to Settings → Agent CLIs and environment and keep Start (Resume)
 disabled; the Project way and the Resume window SHALL read the list for the session's
 project.
 
 #### Scenario: The folder's last session was Claude
 - **WHEN** Claude Code is not logged in and the New session window opens on a folder whose
   last session ran `claude`
-- **THEN** Provider shows "choose…", the option "claude · not logged in" is disabled, the
+- **THEN** Agent CLI shows "choose…", the option "claude · not logged in" is disabled, the
   red note with "Log in first" is shown, and Start is disabled
 
 #### Scenario: Log in first
 - **WHEN** the human follows "Log in first"
-- **THEN** the window closes and Settings → Providers and environment opens
+- **THEN** the window closes and Settings → Agent CLIs and environment opens
 
 #### Scenario: The project's own login
 - **WHEN** the Project way has project `shop`, whose secrets log Claude Code in
@@ -464,8 +464,13 @@ project.
   logged in
 - **THEN** the option "claude · not logged in" is disabled, the red note "Claude Code is
   not logged in: its agents cannot start. Log in first" is shown, its link leading to
-  Settings → Providers and environment, and Resume is disabled until another CLI with a
+  Settings → Agent CLIs and environment, and Resume is disabled until another CLI with a
   login is chosen
+
+#### Scenario: A default on a model server
+- **WHEN** Claude Code is not logged in and its default model is on a model server
+- **THEN** it has no `login_missing`, "claude · Claude Code <version>" can be chosen and Start is
+  enabled
 
 ### Requirement: Settings answers at once from the last check of the CLIs
 

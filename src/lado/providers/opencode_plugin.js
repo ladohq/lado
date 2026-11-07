@@ -2,10 +2,11 @@
 // LADO (see lado/providers/opencode_family.py). Checked with Kilo 7.8.3 and OpenCode 1.18.34.
 //
 // Options, from the `plugin` entry of the agent's config (kilo.json, opencode.json):
-// { hooks: { <native event>: [argv...] } }. For each native event that has an argv, the
-// command runs with a JSON payload on stdin. When "session.idle" prints text, that text
+// { hooks: { <native event>: [argv...] }, tuiWait: <ms> }. For each native event that has an
+// argv, the command runs with a JSON payload on stdin. When "session.idle" prints text, that text
 // becomes the session's next user message; when the CLI refuses it, "plugin.error" says so
-// with the error. A missing argv means "do not report this event".
+// with the error. A missing argv means "do not report this event". "tui.silent" runs tuiWait
+// after the plugin's start.
 // The plugin must never break the CLI, so every other failure is swallowed.
 import { spawn } from "node:child_process"
 
@@ -36,14 +37,25 @@ const REQUESTS = new Set([
   "question.rejected",
 ])
 
-// What a "session.error" says, for the turn's end: the error's name, and the message an API
-// error carries (an APIError's data.message).
+// What a "session.error" says, for the turn's end: the error's name, and the message and the
+// server's status an API error carries (an APIError's data.message and data.statusCode).
 function errorOf(error) {
   const message = error?.data?.message
-  return { name: String(error?.name ?? "UnknownError"), ...(message ? { message: String(message) } : {}) }
+  const status = error?.data?.statusCode
+  return {
+    name: String(error?.name ?? "UnknownError"),
+    ...(message ? { message: String(message) } : {}),
+    ...(Number.isInteger(status) ? { status } : {}),
+  }
 }
 
-export const LadoPlugin = async ({ client, directory }, options = {}) => {
+// A request larger than the model's context: OpenCode 1.18.35 compacts and resends it without
+// end, and no "session.idle" comes (1107 requests in 45 s on a fake server). The compaction's
+// own request is small, so it succeeds: its step says nothing of the turn.
+const OVERFLOW = "ContextOverflowError"
+const MAX_OVERFLOWS = 3
+
+export const LadoPlugin = async ({ client }, options = {}) => {
   const hooks = options?.hooks ?? {}
   // Sessions of subagents (task tool): their turns are not the agent's turns.
   const subagents = new Set()
@@ -51,16 +63,40 @@ export const LadoPlugin = async ({ client, directory }, options = {}) => {
   // "session.idle" of the same session. The error goes with that idle. A context overflow
   // the CLI compacts its way out of ("session.compacted") ends no turn.
   const errors = new Map()
-  await run(hooks["plugin.init"], { directory })
+  // Overflows in a row by session, the sessions stopped for them, those whose turn has ended on
+  // an error, and the compactions' messages, whose steps do not count as the turn's. A turn
+  // that ends on an error gives two "session.idle", 20 ms apart, an abort's too (OpenCode
+  // 1.18.35, Kilo 7.8.8): the second, with no error, would pass as a clean end.
+  const overflows = new Map()
+  const stopped = new Set()
+  const ended = new Set()
+  const summaries = new Set()
+  // This plugin lives and the TUI's own may not report (opencode_family.TUI_SILENT): LADO lets a
+  // report that came first win, so this one needs not know of it.
+  const silence = hooks["tui.silent"]
+    ? setTimeout(() => run(hooks["tui.silent"], {}), options.tuiWait)
+    : null
+  silence?.unref?.()
   return {
     "chat.message": async (input, output) => {
       try {
         if (subagents.has(input.sessionID)) return
+        overflows.delete(input.sessionID)
+        ended.delete(input.sessionID)
         const prompt = (output.parts ?? [])
           .filter((part) => part.type === "text" && !part.synthetic)
           .map((part) => part.text)
           .join("\n")
-        await run(hooks["chat.message"], { sessionID: input.sessionID, prompt })
+        const payload = { sessionID: input.sessionID, prompt }
+        // The user message names the model the prompt goes to, as the agent's or the
+        // session's choice resolved it, and its variant, the reasoning effort (OpenCode
+        // 1.18.35, read in its bundle).
+        const model = output.message?.model
+        if (model?.providerID && model?.modelID) {
+          payload.model = `${model.providerID}/${model.modelID}`
+          if (model.variant) payload.variant = model.variant
+        }
+        await run(hooks["chat.message"], payload)
       } catch {}
     },
     event: async ({ event }) => {
@@ -77,15 +113,35 @@ export const LadoPlugin = async ({ client, directory }, options = {}) => {
           return
         }
         if (subagents.has(props.sessionID)) return
-        if (event.type === "session.error" && props.sessionID) {
-          errors.set(props.sessionID, errorOf(props.error))
+        if (event.type === "message.updated" && props.info?.summary) summaries.add(props.info.id)
+        if (event.type === "message.part.updated" && props.part?.type === "step-finish") {
+          if (!summaries.has(props.part.messageID)) overflows.delete(props.sessionID)
         }
-        if (event.type === "session.compacted") errors.delete(props.sessionID)
+        if (event.type === "session.error" && props.sessionID && !stopped.has(props.sessionID)) {
+          const error = errorOf(props.error)
+          errors.set(props.sessionID, error)
+          if (error.name === OVERFLOW) {
+            const count = (overflows.get(props.sessionID) ?? 0) + 1
+            overflows.set(props.sessionID, count)
+            if (count >= MAX_OVERFLOWS) {
+              errors.set(props.sessionID, { ...error, stopped: MAX_OVERFLOWS })
+              stopped.add(props.sessionID)
+              await client.session.abort({ path: { id: props.sessionID } })
+            }
+          }
+        }
+        if (event.type === "session.compacted" && !stopped.has(props.sessionID)) {
+          errors.delete(props.sessionID)
+        }
         if (event.type === "session.idle") {
+          if (ended.has(props.sessionID)) return
           const payload = { sessionID: props.sessionID }
+          overflows.delete(props.sessionID)
+          stopped.delete(props.sessionID)
           if (errors.has(props.sessionID)) {
             payload.error = errors.get(props.sessionID)
             errors.delete(props.sessionID)
+            ended.add(props.sessionID)
           }
           const text = await run(hooks["session.idle"], payload)
           if (text) {
@@ -105,6 +161,7 @@ export const LadoPlugin = async ({ client, directory }, options = {}) => {
       } catch {}
     },
     dispose: async () => {
+      clearTimeout(silence)
       await run(hooks["dispose"], {})
     },
   }

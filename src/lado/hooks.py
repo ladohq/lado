@@ -138,6 +138,17 @@ def _turn_end(session: str, me: state.Agent, by: float | None) -> fingerprint.Fi
     return now
 
 
+def _not_ready(session: str, agent: state.Agent | None) -> bool:
+    """A session start makes this agent ready: it is starting, or its CLI asks the human first
+    and waits from its start (state.block), so this hook says the human answered. Any other
+    wait stays: a compaction starts a session too."""
+    if agent is None:
+        return False
+    if agent.status == state.STARTING:
+        return True
+    return agent.status == state.WAITING and agent.name in state.block_reasons(session)
+
+
 def handle(
     provider: providers.Provider,
     event: providers.Event,
@@ -153,11 +164,18 @@ def handle(
         # about, so sweep types those messages in (runtime._plan).
         _log(f"{session}/{agent}: {event.error}")
         return None
+    # A note belongs to a start that makes the agent ready. Any later one says nothing of the
+    # agent, and as a hook it would pass for a sign after what was typed in (runtime._plan).
+    if event.note and not _not_ready(session, state.get_agent(session, agent)):
+        return None
     # First of all: the agent is alive, so what a dialog swallowed can go to it again.
     first = state.seen(session, agent)
     if first and event.kind != providers.SESSION_START:
         runtime.heard_at_start(session, agent)  # its CLI did not hold it after all
+    if event.model or event.effort is not None:
+        state.report_model(session, agent, event.model, event.effort, provider.same_model)
     if event.kind == providers.SESSION_START:
+        typed_alone = event.ready and state.restart_typed(session, agent)
         current = state.get_agent(session, agent)
         # Claude Code starts the first turn when its session-start hooks are done, whether
         # its MCP servers are connected or not, and defers the tools of a server that
@@ -165,13 +183,16 @@ def handle(
         # not find flow_advance or send_message. So the hook waits for LADO's server.
         if current and provider.capabilities.hold_first_turn:
             _wait_for_mcp(session, current)
-        # An agent whose CLI asks the human first waits from its start (state.block): this
-        # hook says the human answered. Any other wait stays: a compaction starts a session
-        # too.
-        held = current and current.status == state.WAITING and agent in state.block_reasons(session)
-        if current and (current.status == state.STARTING or held):
+        # Messages that went nowhere made it wait, and state.seen has just brought them back: a
+        # CLI that says it takes input now gets them. A dialog's wait, with its key, stays.
+        lost = (
+            current and event.ready and current.status == state.WAITING and not current.waiting_for
+        )
+        if _not_ready(session, current) or lost or typed_alone:
             # Ready: its first input (a worker's task, a resumed supervisor's messages from
             # LADO) is in its queue.
+            if event.note:
+                runtime.start_note(session, agent, event.note)
             _idle(provider, session, agent)
     elif event.kind == providers.PROMPT_SUBMIT:
         state.set_status(session, agent, state.BUSY)
@@ -193,12 +214,16 @@ def handle(
         else:
             state.output_not_taken(session, agent)
         # The human's messages this turn got: did it write to the human? Before the inbox is
-        # handed over, so what the next turn gets is checked when that one ends.
-        state.check_replies(session, agent)
+        # handed over, so what the next turn gets is checked when that one ends. A turn that
+        # ended on an error decides nothing: the next clean turn does.
+        if not event.error:
+            state.check_replies(session, agent)
         # Before the agent is idle: a resume planned for it holds while it stays idle, and
         # is dropped when the queue makes it busy now (state.schedule_resume).
         if event.error:
-            runtime.turn_failed(session, agent, event.error, event.transient, event.background)
+            runtime.turn_failed(
+                session, agent, event.error, event.transient, event.background, event.details
+            )
         else:
             state.reset_resumes(session, agent)
         me = state.get_agent(session, agent)

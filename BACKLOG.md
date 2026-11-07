@@ -12,6 +12,19 @@ No entry is open.
 
 # P1: next
 
+## A project's secret given on the command line with a leading `-` is printed
+
+Size: S. Why here: a secret's value reaches the terminal, its scrollback and any log of it,
+which `lado project set --secret` promises never to do.
+
+`lado project set shop GH_TOKEN -s3cr3t --secret` prints `lado: error: unrecognized
+arguments: -s3cr3t` and exits 2: argparse takes no value that looks like an option for the
+positional `value`, and its own error repeats it. A value without the dash is refused
+unechoed (`cli._secret_value`). `lado model-server probe --key` met the same: `cli.main`
+refuses whatever `probe` does not take without repeating it. Wanted: the same refusal,
+unechoed, exit 1, for a dashed value or a word left over, with a CLI test.
+Found: 2026-11-02, branch lado/lad-154-epic/task-lad-177 (LAD-177).
+
 ## A Codex agent on gpt-5.6-sol stops at "Meet GPT-6 Sol"
 
 Size: S. Why here: every Codex agent of a user whose model is gpt-5.6-sol needs a hand in
@@ -91,6 +104,10 @@ check` failed in vitest on Launch.test.tsx:197 "the folder is checked by the ser
 `expect(startButton().disabled).toBe(false)` right after `await ready("/src/lado")` got
 true (a synchronous check of what a later render sets); `make web` and `make check` passed
 right after.
+Also (2026-11-03, lado/lad-154-epic/task-lad-187, LAD-187): the UI test
+test_providers_section::test_the_section_shows_the_last_rows_at_once failed 1 of 5
+parallel runs of three UI files, waiting 5 s for the end of the CLIs' check; 5 of 5 green
+alone and in CI. That change did not touch the check.
 
 ### Flaky: integration test "spawned worker reports back to supervisor" times out at `starting` under load
 
@@ -443,10 +460,24 @@ Wanted: LADO makes `LADO_HOME` with mode 700 and tightens an existing one by def
 warns.
 Found: 2026-10-08, design of feature/argv-prompt.
 
+## Integration flake: `test_unmerged_worker_is_finished_only_with_discard` reads w1 busy
+
+Size: S. Why here: a red CI on a release commit with no real error.
+CI on e7c8773 (Python 3.13, `-n auto`) failed at tests/integration/test_agents.py:598,
+`assert state.get_agent(SESSION, "w1").status == state.IDLE` -> `'busy' == 'idle'`; the
+rerun of the failed jobs passed with no change. The test reads w1's status once, right after
+the supervisor's refused finish, while w1 may still be in a turn.
+Wanted: the test waits for w1 to be idle (as the other status checks do) instead of reading
+it once.
+Found: 2026-10-09, CI of the 0.31.0 release (run 37887140737).
+
+## A Codex agent on a built-in model whose turn ends on an API error stays busy
 ## A Codex agent whose turn ends on a model or API error stays busy
 
 Size: M. Why here: a Codex worker whose model fails (a 400, a 500, a server that is down)
-looks busy forever; neither the supervisor nor the human is told.
+looks busy forever; neither the supervisor nor the human is told. An agent on a model server has
+its failed turn read from the journal (`Provider.failed_turn`, LAD-230), and this entry holds for
+a built-in model, and for a server gone in the middle of a turn, which Codex waits for without end.
 Codex CLI 0.162 runs no hook at all for such a turn (400 and 500 tried; a refused connection
 it retries forever). Only the rollout at the hooks' `transcript_path` has it: a
 `task_complete` with an `error`. The human's decision for v1: a working model is the user's
@@ -1123,16 +1154,10 @@ Found: 2026-10-04, design of feature/launch.
 
 ## Choose the model per agent
 
-Size: M/L. Why here: savings and parity, but postponed until a scheme for model names is decided.
+Size: M/L. Why here: savings and parity.
 
-Providers start the agent CLI with its own default model. Kilo without an account picks a free
-"auto" model; there is no way to say which model a session or a worker uses.
-Wanted: a model option per session and per worker, translated by each provider.
-Postponed (2026-10-01): model names differ per provider and change with every release, so
-first decide how a kit names a model without tying it to one provider (aliases such as
-fast / strong mapped per provider? a per-provider map?). Draft design: `model:` in a role,
-`spawn_worker(model=...)` so the supervisor can pick a cheaper model per task, `lado start
---model`; no hand-kept model lists; the model shown in `lado ls` and the `spawned` event.
+In the tracker: the epic LAD-154 (choosing the model and the effort of agents). The agent's
+model is shown already (`lado ls`, `list_agents`, the agent's page).
 Found: 2026-10-01, Kilo provider smoke test.
 
 ## Permission modes are Claude-shaped

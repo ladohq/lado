@@ -473,7 +473,7 @@ def test_the_migration_marks_the_windows_of_the_agents_there_as_opened(lado_home
     db.close()
     assert "window_at" not in columns
     migrated = state.migrate()
-    assert (migrated.before, migrated.after) == (34, 35)
+    assert (migrated.before, migrated.after) == (34, state.SCHEMA_VERSION)
     agent = state.get_agent("s", "w1")
     assert agent.window_at == agent.created_at != ""
 
@@ -485,6 +485,294 @@ def test_an_agent_has_no_window_mark_until_its_window_opened(lado_home):
     state.window_opened("s", "w1")
     assert state.get_agent("s", "w1").window_at
     state.window_opened("s", "gone")  # a spawn that failed forgot it: no error
+
+
+def _model(agent: state.Agent) -> tuple:
+    return (
+        agent.model,
+        agent.model_source,
+        agent.model_detail,
+        agent.effort,
+        agent.effort_source,
+        agent.effort_detail,
+    )
+
+
+CLI_DEFAULT_MODEL = (None, "cli", None, None, "cli", None)
+
+
+def _last_change() -> int:
+    with state.connect() as db:
+        return db.execute("SELECT coalesce(max(id), 0) FROM changes").fetchone()[0]
+
+
+def test_a_new_agent_has_the_clis_default_model(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "claude"))
+    assert _model(state.get_agent("s", "w1")) == CLI_DEFAULT_MODEL
+
+
+def test_the_migration_gives_the_agents_there_the_clis_default(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "idle", "claude"))
+    agent_helpers.schema_before(36)
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    columns = _agent_columns(db)
+    db.close()
+    assert "model" not in columns
+    migrated = state.migrate()
+    assert (migrated.before, migrated.after) == (35, state.SCHEMA_VERSION)
+    assert _model(state.get_agent("s", "w1")) == CLI_DEFAULT_MODEL
+
+
+def test_set_model_writes_the_launchs_choice(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="codex"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "codex"))
+    state.set_model(
+        "s",
+        "w1",
+        state.Choice("gpt-5.6-sol", state.CLI_CONFIG, "profile work"),
+        state.Choice("high", state.CLI_CONFIG),
+    )
+    assert _model(state.get_agent("s", "w1")) == (
+        "gpt-5.6-sol",
+        "cli-config",
+        "profile work",
+        "high",
+        "cli-config",
+        None,
+    )
+    state.set_model("s", "w1", None, None)  # nothing chosen: the CLI's default again
+    assert _model(state.get_agent("s", "w1")) == CLI_DEFAULT_MODEL
+
+
+@pytest.mark.parametrize(
+    ("source", "detail", "words"),
+    [
+        ("cli", None, "CLI default"),
+        ("cli-config", None, "your Codex config"),
+        ("cli-config", "profile work", "your Codex config, profile work"),
+        ("session", None, "chosen for the session"),
+        ("default", None, "default in Settings"),
+        ("supervisor", None, "chosen by the supervisor"),
+        ("cli-changed", None, "changed in the agent CLI"),
+        ("server", None, "server"),  # a newer LADO's token: shown as it is
+        ("server", "x", "server, x"),
+    ],
+)
+def test_source_words(source, detail, words):
+    assert state.source_words(source, detail, "Codex") == words
+    assert state.source_words(source, detail, "Codex CLI") == words  # the CLI's own name
+
+
+def test_power_table_round_trips():
+    table = state.PowerTable.single("codex", "gpt-5.6-sol")
+    assert set(table.rows) == {"light", "normal", "heavy"}
+    assert all(row == state.PowerRow("codex", "gpt-5.6-sol") for row in table.rows.values())
+    assert table.row() == table.rows["normal"]
+    assert json.loads(table.to_json())["normal"] == {"cli": "codex", "model": "gpt-5.6-sol"}
+    assert state.PowerTable.from_json(table.to_json()) == table
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        state.PowerRow("codex", "gpt-5.6-sol"),
+        state.PowerRow("opencode", "qwen3-8b", "m1", "Локальная Qwen"),
+        state.PowerRow("opencode", ""),
+    ],
+    ids=["built-in", "external", "settings"],
+)
+def test_each_form_of_a_row_round_trips(row):
+    table = state.PowerTable.of(row)
+    assert set(table.rows) == set(state.LEVELS)
+    assert state.PowerTable.from_json(table.to_json()) == table
+    assert table.readable
+
+
+def test_a_built_in_row_is_stored_as_before():
+    stored = json.loads(state.PowerTable.of(state.PowerRow("codex", "gpt-5.6-sol")).to_json())
+    assert stored["normal"] == {"cli": "codex", "model": "gpt-5.6-sol"}
+
+
+def test_an_unknown_key_of_a_row_is_ignored():
+    text = json.dumps({"normal": {"cli": "codex", "model": "gpt-5.6-sol", "effort": "high"}})
+    table = state.PowerTable.from_json(text)
+    assert table.readable and table.row() == state.PowerRow("codex", "gpt-5.6-sol")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "not json",
+        "[]",
+        "null",
+        "{}",
+        '{"light": {"cli": "codex", "model": "a"}}',  # no row an agent takes
+        '{"normal": "codex"}',
+        '{"normal": {"cli": "codex"}}',
+        '{"normal": {"model": "a"}}',
+        '{"normal": {"cli": 1, "model": "a"}}',
+        '{"normal": {"cli": "codex", "model": null}}',
+        '{"normal": {"cli": "codex", "model": "a", "model_id": 7}}',
+        '{"normal": {"cli": "codex", "model": "a"}, "heavy": 1}',
+    ],
+)
+def test_a_table_that_cannot_be_read_is_unreadable(text):
+    assert state.PowerTable.from_json(text) == state.PowerTable.unreadable()
+    assert not state.PowerTable.from_json(text).readable
+
+
+def test_a_broken_table_breaks_no_session_list(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="codex"))
+    with state.connect() as db:
+        db.execute("UPDATE sessions SET power = 'not json' WHERE name = 's'")
+    assert not state.get_session("s").power.readable
+    assert [sess.name for sess in state.list_sessions()] == ["s"]
+
+
+def test_a_session_keeps_its_power(lado_home):
+    table = state.PowerTable.single("codex", "gpt-5.6-sol")
+    state.add_session(state.Session("s", "/r", None, provider="codex", power=table))
+    state.add_session(state.Session("t", "/r", None, provider="codex"))
+    assert state.get_session("s").power == table
+    assert state.get_session("t").power is None
+    stopped = state.get_session("s")
+    state.stop_session("s")
+    stopped.power = None
+    assert state.resume_session(stopped, "")
+    assert state.get_session("s").power is None
+
+
+def test_the_migration_gives_sessions_no_power(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="codex"))
+    agent_helpers.schema_before(37)
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    columns = _session_columns(db)
+    db.close()
+    assert "power" not in columns
+    migrated = state.migrate()
+    assert (migrated.before, migrated.after) == (36, state.SCHEMA_VERSION)
+    assert state.get_session("s").power is None
+
+
+def test_a_launch_records_a_source_with_no_name(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="codex"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "claude"))
+    note = "the session's model gpt-5.6-sol is for Codex CLI"
+    state.set_model("s", "w1", state.Choice(None, state.CLI_DEFAULT, note), None)
+    assert _model(state.get_agent("s", "w1"))[:3] == (None, "cli", note)
+
+
+def _codex_agent_with_a_config_model():
+    state.add_session(state.Session("s", "/r", None, provider="codex"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "codex"))
+    state.set_model(
+        "s",
+        "w1",
+        state.Choice("gpt-5.6-sol", state.CLI_CONFIG, "profile work"),
+        state.Choice("high", state.CLI_CONFIG, "profile work"),
+    )
+
+
+def test_a_reported_model_is_recorded(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "claude"))
+    state.report_model("s", "w1", "claude-opus-5-5", None)
+    assert _model(state.get_agent("s", "w1")) == (
+        "claude-opus-5-5",
+        "cli",
+        None,
+        None,
+        "cli",
+        None,
+    )
+    state.report_model("s", "w1", "", "high")
+    assert _model(state.get_agent("s", "w1"))[3:] == ("high", "cli", None)
+
+
+def test_a_repeated_report_writes_nothing(lado_home):
+    _codex_agent_with_a_config_model()
+    before = _last_change()
+    state.report_model("s", "w1", "gpt-5.6-sol", None)
+    state.report_model("s", "w1", "gpt-5.6-sol", "high")
+    assert _last_change() == before
+    assert _model(state.get_agent("s", "w1"))[:3] == ("gpt-5.6-sol", "cli-config", "profile work")
+    state.report_model("s", "gone", "gpt-5.5", None)  # a row that is gone: no error
+    state.report_model("s", "gone", "gpt-5.5", "")
+
+
+def test_a_different_model_is_the_clis(lado_home):
+    _codex_agent_with_a_config_model()
+    before = _last_change()
+    state.report_model("s", "w1", "gpt-5.5", None)
+    assert _model(state.get_agent("s", "w1")) == (
+        "gpt-5.5",
+        "cli-changed",
+        None,
+        "high",
+        "cli-config",
+        "profile work",
+    )
+    assert _last_change() == before + 1
+
+
+def _agent_with_model(model, source, detail=None, provider="claude"):
+    state.add_session(state.Session("s", "/r", None, provider=provider))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", provider))
+    state.set_model("s", "w1", state.Choice(model, source, detail), None)
+
+
+def _alias(chosen: str, reported: str) -> bool:
+    return chosen == "opus" and reported.startswith("claude-opus-")
+
+
+def test_an_alias_s_full_name_keeps_the_source(lado_home):
+    _agent_with_model("opus", state.SESSION)
+    state.report_model("s", "w1", "claude-opus-5-5", None, _alias)
+    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-opus-5-5", "session", None)
+
+
+def test_another_model_than_the_alias_is_the_clis(lado_home):
+    _agent_with_model("opus", state.SESSION)
+    state.report_model("s", "w1", "claude-sonnet-5-5", None, _alias)
+    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-sonnet-5-5", "cli-changed", None)
+    state.report_model("s", "w1", "claude-opus-5-5", None)  # the default rule: equality
+    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-opus-5-5", "cli-changed", None)
+
+
+def test_a_first_name_keeps_the_note(lado_home):
+    note = "the session's model gpt-5.6-sol is for Codex CLI"
+    _agent_with_model(None, state.CLI_DEFAULT, note)
+    state.report_model("s", "w1", "claude-opus-5-5", None)
+    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-opus-5-5", "cli", note)
+    state.report_model("s", "w1", "claude-sonnet-5-5", None)  # a later change: the CLI's
+    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-sonnet-5-5", "cli-changed", None)
+
+
+def test_an_event_without_a_model_changes_nothing(lado_home):
+    _codex_agent_with_a_config_model()
+    before = _last_change()
+    state.report_model("s", "w1", "", None)
+    assert _last_change() == before
+
+
+def test_an_effort_reported_as_the_clis_default_clears_the_name(lado_home):
+    """The OpenCode family names its model with each prompt, and no variant then means the
+    model's default one: the effort goes back to the CLI's default."""
+    state.add_session(state.Session("s", "/r", None, provider="opencode"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "idle", "opencode"))
+    state.report_model("s", "w1", "anthropic/claude-sonnet-5-5", "high")
+    before = _last_change()
+    state.report_model("s", "w1", "anthropic/claude-sonnet-5-5", "")
+    assert _model(state.get_agent("s", "w1"))[3:] == (None, "cli", None)
+    assert _last_change() == before + 1
+    state.report_model("s", "w1", "anthropic/claude-sonnet-5-5", "")  # the default again
+    assert _last_change() == before + 1
+    # A chosen effort the CLI says it does not run is the CLI's default.
+    state.set_model("s", "w1", None, state.Choice("high", state.CLI_CONFIG, "profile work"))
+    state.report_model("s", "w1", "", "")
+    assert _model(state.get_agent("s", "w1"))[3:] == (None, "cli", None)
 
 
 PROJECT_VARIABLES_TABLE = "SELECT sql FROM sqlite_master WHERE name = 'project_variables'"
@@ -501,7 +789,7 @@ def test_the_migration_makes_the_project_variables_table_as_a_new_database_has_i
     assert db.execute(PROJECT_VARIABLES_TABLE).fetchone() is None
     db.close()
     migrated = state.migrate()
-    assert (migrated.before, migrated.after) == (33, 35)
+    assert (migrated.before, migrated.after) == (33, state.SCHEMA_VERSION)
     assert migrated.backup == lado_home / "backups" / "lado.db.schema-33"
     with state.connect() as db:
         assert db.execute(PROJECT_VARIABLES_TABLE).fetchone()[0] == fresh
@@ -986,6 +1274,14 @@ def _agent_columns(db: sqlite3.Connection) -> list[str]:
     return [row[1] for row in db.execute("PRAGMA table_info(agents)")]
 
 
+def _session_columns(db: sqlite3.Connection) -> list[str]:
+    return [row[1] for row in db.execute("PRAGMA table_info(sessions)")]
+
+
+def _tables(db: sqlite3.Connection) -> list[str]:
+    return [row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")]
+
+
 def _schema(path: Path) -> int:
     with contextlib.closing(sqlite3.connect(path)) as db:
         return db.execute("PRAGMA user_version").fetchone()[0]
@@ -1006,8 +1302,8 @@ def test_migrate_backs_up_the_older_schema_first(lado_home):
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(backup)) as db:
         assert db.execute("SELECT name FROM sessions").fetchall() == [("s",)]
-        columns = _agent_columns(db)
-    assert "window_at" not in columns  # the content before the migration
+        tables = _tables(db)
+    assert "cli_defaults" not in tables  # the content before the migration
     assert _schema(lado_home / "lado.db") == state.SCHEMA_VERSION
 
 
@@ -1059,7 +1355,7 @@ def test_a_failing_step_leaves_the_schema_and_keeps_the_backup(lado_home, monkey
     assert _schema(lado_home / "lado.db") == old
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
-        assert "window_at" not in _agent_columns(db)  # rolled back
+        assert "cli_defaults" not in _tables(db)  # rolled back
 
 
 def test_no_pending_migration_without_a_database(lado_home):
@@ -2613,3 +2909,294 @@ def test_a_workers_end_leaves_the_gates_asked(lado_home):
     state.ask_recommendation("s", "gate", gate.id, "r", "b")
     state.agent_ended("s", "w1", "its CLI exited")
     assert state.get_gate(gate.id).recommendation_state == state.REC_ASKED
+
+
+MODEL_TABLES = (
+    "SELECT name, sql FROM sqlite_master WHERE name IN ('model_servers', 'models', 'cli_defaults')"
+)
+CHAT = "chat completions"
+
+
+def _server(id="s1", name="LM Studio дома", address="http://localhost:1234"):
+    return state.add_model_server(id, name, address, "LM Studio", (CHAT,))
+
+
+def test_the_migration_adds_empty_model_tables_as_a_new_database_has_them(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="codex"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "claude"))
+    with state.connect() as db:
+        fresh = sorted(tuple(row) for row in db.execute(MODEL_TABLES))
+    assert len(fresh) == 3
+    agent_helpers.schema_before(38)
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    assert db.execute(MODEL_TABLES).fetchall() == []
+    db.close()
+    migrated = state.migrate()
+    assert (migrated.before, migrated.after) == (37, 39)
+    with state.connect() as db:
+        assert sorted(tuple(row) for row in db.execute(MODEL_TABLES)) == fresh
+    assert (state.model_servers(), state.models(), state.cli_defaults()) == ([], [], [])
+    assert state.get_session("s").provider == "codex"
+    assert state.get_agent("s", "w1").status == "starting"
+
+
+def test_a_model_server_kept_and_found_ignoring_case(lado_home):
+    saved = _server()
+    assert (saved.id, saved.name, saved.address, saved.kind, saved.apis) == (
+        "s1",
+        "LM Studio дома",
+        "http://localhost:1234",
+        "LM Studio",
+        (CHAT,),
+    )
+    assert state.model_server("lm studio ДОМА") == saved
+    assert state.model_server("nope") is None
+    with pytest.raises(state.NameTaken) as taken:
+        _server("s2", "lm studio ДОМА")
+    assert taken.value.name == "LM Studio дома"
+    assert [s.id for s in state.model_servers()] == ["s1"]
+
+
+def test_a_model_kept_and_found_ignoring_case(lado_home):
+    _server()
+    saved = state.add_model("Быстрая", "claude", "haiku", "s1")
+    assert (saved.name, saved.cli, saved.model, saved.server) == (
+        "Быстрая",
+        "claude",
+        "haiku",
+        "s1",
+    )
+    assert saved.id
+    assert state.model("быстрая") == saved
+    with pytest.raises(state.NameTaken) as taken:
+        state.add_model("БЫСТРАЯ", "claude", "sonnet", "s1")
+    assert taken.value.name == "Быстрая"
+    assert state.model("Быстрая").model == "haiku"
+
+
+def test_a_model_refers_to_a_saved_server_only(lado_home):
+    with pytest.raises(sqlite3.IntegrityError):
+        state.add_model("Q", "opencode", "qwen3-8b", "nowhere")
+    assert state.models() == []
+
+
+def test_a_server_a_model_refers_to_is_not_removed(lado_home):
+    _server()
+    state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
+    assert [m.name for m in state.models_on("s1")] == ["Локальная Qwen"]
+    with pytest.raises(sqlite3.IntegrityError):
+        state.remove_model_server("s1")
+    assert state.model_server("LM Studio дома") is not None
+    assert state.remove_model("локальная qwen") == state.ModelsRemoved(["Локальная Qwen"], [])
+    assert state.remove_model("локальная qwen") is None
+    assert state.models_on("s1") == []
+    assert state.remove_model_server("s1") is True
+    assert state.remove_model_server("s1") is False
+    assert state.model_servers() == []
+
+
+def test_replacing_a_server_keeps_its_models(lado_home):
+    _server()
+    state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
+    assert state.replace_model_server("s1", "http://localhost:1235", "Ollama", ())
+    replaced = state.model_server("LM Studio дома")
+    assert (replaced.address, replaced.kind, replaced.apis) == (
+        "http://localhost:1235",
+        "Ollama",
+        (),
+    )
+    assert state.model("Локальная Qwen").server == "s1"
+    assert not state.replace_model_server("nope", "http://x", "Ollama", ())
+
+
+def test_a_server_removed_with_its_models(lado_home):
+    _server()
+    _server("s2", "other")
+    state.add_model("sp", "kilo", "qwen3-8b", "s1")
+    state.add_model("Coder", "opencode", "qwen3-8b", "s1")
+    state.add_model("kept", "opencode", "qwen3-8b", "s2")
+    assert state.remove_model_server_with_models("s1").names == ["Coder", "sp"]
+    assert [s.id for s in state.model_servers()] == ["s2"]
+    assert [m.name for m in state.models()] == ["kept"]
+    assert state.remove_model_server_with_models("s1") is None
+
+
+def test_a_server_removed_with_the_models_confirmed_only(lado_home):
+    _server()
+    state.add_model("sp", "kilo", "qwen3-8b", "s1")
+    state.add_model("late", "opencode", "qwen3-8b", "s1")
+    with pytest.raises(state.ModelsChanged) as changed:
+        state.remove_model_server_with_models("s1", confirmed=["SP"])
+    assert changed.value.names == ["late", "sp"]
+    assert [m.name for m in state.models()] == ["late", "sp"]
+    assert state.model_server("LM Studio дома") is not None
+    removed = state.remove_model_server_with_models("s1", confirmed=["Late", "sp"])
+    assert removed.names == ["late", "sp"]
+
+
+def test_a_model_renamed_keeps_its_cli_model_and_server(lado_home):
+    _server()
+    state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
+    state.add_model("Other", "claude", "haiku", "s1")
+    assert state.rename_model("локальная qwen", "Сильная") is True
+    renamed = state.model("сильная")
+    assert (renamed.name, renamed.cli, renamed.model, renamed.server) == (
+        "Сильная",
+        "opencode",
+        "qwen3-8b",
+        "s1",
+    )
+    assert state.model("Локальная Qwen") is None
+    assert state.rename_model("Сильная", "СИЛЬНАЯ") is True  # its own name in another case
+    assert state.model("сильная").name == "СИЛЬНАЯ"
+    with pytest.raises(state.NameTaken) as taken:
+        state.rename_model("сильная", "other")
+    assert taken.value.name == "Other"
+    assert state.model("сильная").name == "СИЛЬНАЯ"
+    assert state.rename_model("nope", "x") is False
+
+
+def test_the_lists_are_sorted_ignoring_case(lado_home):
+    for i, name in enumerate(["work", "LM Studio дома", "ext"]):
+        _server(f"s{i}", name)
+    assert [s.name for s in state.model_servers()] == ["ext", "LM Studio дома", "work"]
+    for name in ["Локальная Qwen", "быстрая", "Alpha"]:
+        state.add_model(name, "claude", "haiku", "s0")
+    assert [m.name for m in state.models()] == ["Alpha", "быстрая", "Локальная Qwen"]
+
+
+def _schema_38_with_models(lado_home):
+    """lado.db at schema 38 holding a model on a server and one without."""
+    _server()
+    agent_helpers.previous_schema()
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    db.execute(
+        "INSERT INTO models (folded, name, cli, model, server, created_at)"
+        " VALUES ('локальная qwen', 'Локальная Qwen', 'opencode', 'qwen3-8b', 's1',"
+        " '2026-10-01 10:00:00')"
+    )
+    db.execute(
+        "INSERT INTO models (folded, name, cli, model, server)"
+        " VALUES ('быстрая', 'Быстрая', 'claude', 'haiku', NULL)"
+    )
+    db.commit()
+    db.close()
+
+
+def test_the_migration_keeps_a_model_on_a_server_and_drops_one_without(lado_home):
+    _schema_38_with_models(lado_home)
+    migrated = state.migrate()
+    assert (migrated.before, migrated.after) == (38, 39)
+    (kept,) = state.models()
+    assert (kept.name, kept.cli, kept.model, kept.server, kept.created_at) == (
+        "Локальная Qwen",
+        "opencode",
+        "qwen3-8b",
+        "s1",
+        "2026-10-01 10:00:00",
+    )
+    assert re.fullmatch("[0-9a-f]{12}", kept.id)
+    assert state.cli_defaults() == []
+    with state.connect() as db:
+        assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert "models_38" not in _tables(db)
+
+
+def test_a_failed_migration_to_ids_leaves_the_rows_of_schema_38(lado_home, monkeypatch):
+    _schema_38_with_models(lado_home)
+    broken = [*state.MIGRATIONS[38], "SELECT * FROM no_such_table"]
+    monkeypatch.setitem(state.MIGRATIONS, 38, broken)
+    with pytest.raises(state.MigrationFailed):
+        state.migrate()
+    db = sqlite3.connect(lado_home / "lado.db")
+    assert db.execute("SELECT name FROM models ORDER BY folded").fetchall() == [
+        ("Быстрая",),
+        ("Локальная Qwen",),
+    ]
+    assert _schema(lado_home / "lado.db") == 38
+    db.close()
+
+
+def test_a_model_on_no_server_is_refused_by_the_store(lado_home):
+    with pytest.raises(sqlite3.IntegrityError):
+        state.add_model("Быстрая", "claude", "haiku", None)
+    assert state.models() == []
+
+
+def test_a_model_is_found_by_its_id(lado_home):
+    _server()
+    saved = state.add_model("Q", "opencode", "qwen3-8b", "s1")
+    assert state.model_by_id(saved.id) == saved
+    assert state.model_by_id("nope") is None
+
+
+def test_a_default_is_external_or_built_in_never_both_or_neither(lado_home):
+    _server()
+    saved = state.add_model("Q", "opencode", "qwen3-8b", "s1")
+    with pytest.raises(sqlite3.IntegrityError):
+        state.set_cli_default(state.ModelRef("opencode", saved.id, "qwen3-8b"))
+    with pytest.raises(sqlite3.IntegrityError):
+        state.set_cli_default(state.ModelRef("opencode", None, None))
+    assert state.cli_defaults() == []
+
+
+def test_a_default_is_replaced_and_cleared(lado_home):
+    _server()
+    saved = state.add_model("Q", "opencode", "qwen3-8b", "s1")
+    state.set_cli_default(state.ModelRef("opencode", saved.id, None))
+    state.set_cli_default(state.ModelRef("claude", None, "opus"))
+    state.set_cli_default(state.ModelRef("opencode", None, "anthropic/claude-sonnet-4"))
+    assert state.cli_defaults() == [
+        state.ModelRef("claude", None, "opus"),
+        state.ModelRef("opencode", None, "anthropic/claude-sonnet-4"),
+    ]
+    assert state.clear_cli_default("claude") is True
+    assert state.clear_cli_default("claude") is False
+    assert [ref.cli for ref in state.cli_defaults()] == ["opencode"]
+
+
+def test_a_default_survives_a_rename_of_its_model(lado_home):
+    _server()
+    saved = state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
+    ref = state.ModelRef("opencode", saved.id, None)
+    state.set_cli_default(ref)
+    assert state.rename_model("Локальная Qwen", "Alpha") is True
+    assert state.cli_defaults() == [ref]
+    assert state.model_by_id(saved.id).name == "Alpha"
+
+
+def test_a_default_on_no_saved_model_is_refused(lado_home):
+    with pytest.raises(sqlite3.IntegrityError):
+        state.set_cli_default(state.ModelRef("opencode", "nope", None))
+
+
+def test_removing_a_model_clears_the_default_on_it(lado_home):
+    _server()
+    saved = state.add_model("Q", "opencode", "qwen3-8b", "s1")
+    state.add_model("Other", "opencode", "qwen3-8b", "s1")
+    state.set_cli_default(state.ModelRef("opencode", saved.id, None))
+    state.set_cli_default(state.ModelRef("claude", None, "opus"))
+    assert state.remove_model("Other") == state.ModelsRemoved(["Other"], [])
+    assert len(state.cli_defaults()) == 2
+    assert state.remove_model("q") == state.ModelsRemoved(["Q"], ["opencode"])
+    assert state.cli_defaults() == [state.ModelRef("claude", None, "opus")]
+
+
+def test_removing_a_server_clears_the_defaults_on_its_models(lado_home):
+    _server()
+    a = state.add_model("a", "opencode", "qwen3-8b", "s1")
+    b = state.add_model("b", "kilo", "qwen3-8b", "s1")
+    state.set_cli_default(state.ModelRef("opencode", a.id, None))
+    state.set_cli_default(state.ModelRef("kilo", b.id, None))
+    state.set_cli_default(state.ModelRef("claude", None, "opus"))
+    removed = state.remove_model_server_with_models("s1")
+    assert removed == state.ModelsRemoved(["a", "b"], ["kilo", "opencode"])
+    assert state.cli_defaults() == [state.ModelRef("claude", None, "opus")]
+
+
+def test_a_stray_delete_of_a_default_s_model_is_refused_by_the_foreign_key(lado_home):
+    _server()
+    saved = state.add_model("Q", "opencode", "qwen3-8b", "s1")
+    state.set_cli_default(state.ModelRef("opencode", saved.id, None))
+    with state.connect() as db, pytest.raises(sqlite3.IntegrityError):
+        db.execute("DELETE FROM models WHERE id = ?", (saved.id,))

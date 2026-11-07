@@ -164,9 +164,21 @@ def test_ls_shows_how_long_each_agent_has_had_its_status(repo, fake_tmux, capsys
     capsys.readouterr()
     main(["ls"])
     lines = capsys.readouterr().out.splitlines()
-    assert lines[1].split() == ["supervisor", "supervisor", "claude", "starting", "3h05m"]
-    assert lines[2].split() == ["w1", "worker", "claude", "starting", "-", "lado/s/w1"]
+    assert lines[1].split() == ["supervisor", "supervisor", "claude", "starting", "3h05m", "-"]
+    assert lines[2].split() == ["w1", "worker", "claude", "starting", "-", "-", "lado/s/w1"]
     assert lines[1].index("3h05m") == lines[2].index("-")
+
+
+def test_ls_shows_each_agents_model_after_its_time(repo, fake_tmux, capsys):
+    main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
+    runtime.spawn_worker("s", "task", name="w1")
+    state.report_model("s", "supervisor", "claude-opus-5-5", None)
+    capsys.readouterr()
+    main(["ls"])
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[1].split()[5:] == ["claude-opus-5-5"]
+    assert lines[2].split()[5:] == ["-", "lado/s/w1"]
+    assert lines[1].index("claude-opus-5-5") == lines[2].index("-", len("  w1"))
 
 
 def test_ls_shows_an_agent_in_background_with_its_time_in_line(repo, fake_tmux, capsys):
@@ -176,7 +188,7 @@ def test_ls_shows_an_agent_in_background_with_its_time_in_line(repo, fake_tmux, 
     capsys.readouterr()
     main(["ls"])
     lines = capsys.readouterr().out.splitlines()
-    assert lines[2].split() == ["w1", "worker", "claude", "background", "0s", "lado/s/w1"]
+    assert lines[2].split() == ["w1", "worker", "claude", "background", "0s", "-", "lado/s/w1"]
     assert lines[1].index(lines[1].split()[4]) == lines[2].index("0s")
     assert len(lines) == 3  # no reason line, no task count
 
@@ -299,6 +311,57 @@ def test_start_help_lists_each_providers_permission_modes(capsys):
     assert "kilo: default, acceptEdits, bypassPermissions, plan" in out
     assert "opencode: default, acceptEdits, bypassPermissions, plan" in out
     assert "claude: " in out and "dontAsk" in out
+
+
+def test_start_help_names_the_model(capsys):
+    with pytest.raises(SystemExit):
+        main(["start", "--help"])
+    out = " ".join(capsys.readouterr().out.split())
+    assert "--model MODEL" in out
+    assert "'' is the CLI's own settings, past its default model" in out
+
+
+def test_start_passes_the_model_through(repo, fake_tmux, capsys):
+    args = ["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]
+    assert main([*args, "--model", "claude-opus-5-5"]) == 0
+    assert state.get_session("s").power == state.PowerTable.single("claude", "claude-opus-5-5")
+    err = capsys.readouterr().err
+    assert "lado: Claude Code gives no list of models beyond its aliases: LADO cannot check" in err
+    runtime.stop_session("s")
+    assert main(["start", str(repo), "--name", "s", "--no-attach", "--model", ""]) == 0
+    assert "  changed model: claude claude-opus-5-5 -> Claude Code's settings" in (
+        capsys.readouterr().out
+    )
+
+
+def test_start_says_a_default_changed_since_the_last_start_once(repo, fake_tmux, capsys):
+    args = ["start", str(repo), "--name", "s", "--no-attach"]
+    state.set_cli_default(state.ModelRef("claude", None, "opus"))
+    assert main([*args, "--provider", "claude"]) == 0
+    runtime.stop_session("s")
+    state.set_cli_default(state.ModelRef("claude", None, "sonnet"))
+    capsys.readouterr()
+    assert main(args) == 0
+    out, err = capsys.readouterr()
+    assert "  changed model: lado" not in out
+    assert "  changed model: opus -> sonnet" in out
+    assert "changed model" not in err
+
+
+def test_ls_names_a_model_of_a_server_by_its_saved_name(repo, fake_tmux, capsys):
+    server = state.add_model_server("gw", "Шлюз", "http://gw", "OpenAI-compatible", [])
+    state.add_model("Шлюз Qwen", "opencode", "gw-qwen", server.id)
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    state.report_model("s", "supervisor", "lado-gw/gw-qwen", None)
+    capsys.readouterr()
+    assert main(["ls"]) == 0
+    assert "Шлюз Qwen" in capsys.readouterr().out
+
+
+def test_start_takes_the_model_without_its_spaces(repo, fake_tmux):
+    args = ["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]
+    assert main([*args, "--model", " sonnet "]) == 0
+    assert state.get_session("s").power == state.PowerTable.single("claude", "sonnet")
 
 
 def test_start_with_a_mode_the_provider_cannot_honour_fails(repo, fake_tmux, capsys):
@@ -2417,7 +2480,7 @@ def test_a_git_url_without_the_login_is_refused_before_the_clone(
     assert main(argv) == 1
     assert capsys.readouterr().err.splitlines() == [
         "lado: Claude Code is not logged in, so the session was not started: log in in LADO's "
-        "UI (Settings → Providers and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN "
+        "UI (Settings → Agent CLIs and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN "
         "as LADO's secret or a project secret"
     ]
     assert agent_helpers.fake_git_calls(tmp_path / "fake") == []

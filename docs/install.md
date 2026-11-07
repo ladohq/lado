@@ -266,9 +266,146 @@ printf %s "$(gh auth token)" > secrets/GH_TOKEN
 LADO's own git uses it as well, read at each call: a kit, skill pack or marketplace of a
 private repository, and a clone by URL from the UI (New session → Clone).
 
+**Local models.** A model server you run yourself (LM Studio, Ollama, LiteLLM) is added in
+Settings → Models or with `lado model-server add`. OpenCode and Kilo CLI agents then have its
+models beside their own, in `/model` under `LADO · <server>`, and a session can start on one: pick
+it in the launch window, or `lado start --model "<name>"`. Its key stays out of every config: it
+reaches the agents only in their environment. Claude Code runs on a server that speaks Anthropic's
+API and Codex on one with the Responses API, as the next paragraphs say. Before a session starts,
+LADO asks the server of the
+model it starts on: one that does not answer stops the start, and a server of another model does
+not. In LADO's container `localhost` is the container itself: a server on your machine is
+`http://host.docker.internal:<port>`, for LM Studio `http://host.docker.internal:1234`. The server
+must listen beyond its own loopback (LM Studio: Serve on Local Network). A key sent over plain
+`http://` to an address outside your machine and network is warned about before the start.
+
+**Claude Code on a model server.** A Claude Code model saved on a server that proves Anthropic's
+Messages API (`lado model-server probe` names it; Ollama, LM Studio and LiteLLM document this API,
+but LADO was tested only on a fake server of it, so check yours once) starts its agent there: pick
+it in the launch window, or `lado start --provider claude --model "<name>"`. What to expect:
+
+- The model takes the agent's whole process: `/model` shows Default and that model, nothing of
+  Anthropic's. A subagent that asks for `haiku` runs on it too. For another model, of this server
+  or another, or a built-in one, the supervisor starts a worker with `spawn_worker(model=…)`; each
+  agent has its own server and key.
+- Enter on a row of `/model` writes `model` into your own `~/.claude/settings.json`, which every
+  Claude Code on the machine then reads; `s` there changes this session alone. Prefer `s`.
+- It needs no Claude login, and nothing of yours goes to the server: not your login, not
+  `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`, not a key, token, `apiKeyHelper` or address in
+  your `~/.claude/settings.json`. The server gets its own key, or the word `no-key` if it has none.
+  A built-in worker of the same session needs the login as usual. Without a login the launch
+  window offers Claude Code only when its default model in Settings → Models is on a server; any
+  other start or resume goes through `lado start --provider claude --model "<name>"`.
+- The agent's page, `lado ls` and `list_agents` name the saved model, its server and who chose it,
+  while the agent runs. A stopped agent shows the model's id.
+- A model whose id Claude Code reads as its own (`sonnet`, `Opus`, `best`, `default`, in any case,
+  or a name ending in `[1m]`) is refused when saved and at a start: it would never reach the server.
+  Give it another id there.
+- The agent keeps your `~/.claude`: your `CLAUDE.md`, skills and plugins work as usual.
+- The context LADO reads from the server goes to the agent, and its answers are limited to what the
+  server reports or 8K tokens, at most a quarter of the context, so that a request fits. With none
+  known, Claude Code assumes 200K tokens and says so at its start: on a smaller model it compacts
+  too late and asks for 32K tokens of answer, and a turn over the context may retry for hours.
+- In auto mode, also one in your `~/.claude/settings.json`, Claude Code asks the agent's own model
+  whether a tool is safe. LADO's tools are allowed for such an agent and do not go through that; any
+  other tool is blocked when the model gives no usable answer. Use another permission mode then.
+- Telemetry and the experimental betas are off for such an agent. Claude Code still tried to reach
+  `downloads.claude.ai` and `github.com`, so do not take it for an agent that makes no other request.
+
 Others: `CLAUDE_CODE_OAUTH_TOKEN` (below), a kit's key as its MCP server names it (e.g.
 `YOUGILE_API_KEY`), a model provider's key for OpenCode and Kilo. Every agent of this LADO
 can read every file of its `secrets/`.
+
+#### What to expect of a small model
+
+An agent's instructions and tools take about 21K tokens on OpenCode, 31K on Kilo
+and on Claude Code from 16K to 45K, with your `CLAUDE.md`, rules and plugins, before its first word,
+so a model needs a context of 32K on OpenCode, 48K on Kilo and 64K on Claude Code. At each start LADO asks the server what context the model has (LM Studio's loaded
+model, Ollama's running one, a list's `max_input_tokens`, `context_length` or `max_model_len`) and tells the agent, which then
+compacts in time; a model below that need is warned about in `lado start` and the launch window,
+and starts all the same. A model reloaded with another context keeps the old limit until a resume.
+On a model too small, the turn ends on an error in the chat, after three attempts or at once when
+the server refuses the request (LM Studio); a lighter agent
+for such models does not exist yet. Where to set the context: in LM Studio when you load the
+model, `lms load <model> --context-length 65536`; in Ollama with `OLLAMA_CONTEXT_LENGTH=65536 ollama
+serve` or the slider in the app's settings, and `ollama ps` shows what a running model has; in
+LiteLLM, `max_input_tokens` of the model in its config says what the model behind it can take. What
+else to expect:
+
+- A server that reports nothing, or a model not loaded yet, leaves the CLI with no limit: it
+  compacts only when the server refuses a request. Ollama cuts a long prompt silently instead, so
+  it may answer without having read all of it.
+- A gateway's limit comes from its description of the model (LiteLLM: `model_info.max_input_tokens`);
+  a gateway that does not describe it leaves the limit unknown.
+- An Ollama model not running at the start goes with no limit, as Ollama reports only running ones.
+- A server's 500 is retried by both CLIs for about 74 s before the turn ends on the error.
+- A model that writes its tool calls as text calls no tool: its turn ends with no answer.
+- A weak model may answer only in its terminal, not in the chat: open the agent's terminal to read
+  it.
+- With no way out to the internet, OpenCode's first start takes seconds on a model of a server.
+  Kilo takes 12 s where outside traffic is refused, and over 140 s where packets are dropped
+  silently, waiting for its own model list; no setting shortens that.
+- Your own plugins, rules and `CLAUDE.md` count on Claude Code: at 65536 they can fill the context
+  in the first turn. Take a model of 131072 or more, or fewer plugins.
+- On a server that bills, see [A cloud provider](#a-cloud-provider).
+
+**Codex on a model server.** A Codex model saved on a server with the Responses API runs there, with
+no Codex login: an entry in the agent's own Codex home, your own config untouched, and the key only
+in the agent's environment. Codex sends its MCP tools in a form not every server knows, and an agent
+without them cannot talk to LADO. OpenRouter and LiteLLM keep them. LM Studio's Responses API loses
+them, so LADO does not offer Codex there; put LiteLLM in front of it. Ollama, vLLM and other servers
+are not checked: if a Codex agent works but never answers, this is why.
+
+- The model takes the agent's whole process: `/model` shows that model alone.
+- The agent knows the context the server reports and compacts in time. Codex has no setting for
+  its output: a model that repeats without end stops at your provider's own limit, so set one.
+- A refusal ends the turn in LADO's words within a few seconds of Codex's last repeat. On a 429
+  Codex keeps only the status, not the server's text. On a 400 whose body is no JSON, such as a
+  proxy's page, it keeps no status: the chat reads `Codex CLI's turn ended on an error` and that
+  text. A 5xx passes by itself: LADO resumes the agent after a while.
+- A server that goes away in the middle of a turn is no refusal: Codex waits for it without end and
+  goes on when it returns, and the agent stays busy meanwhile.
+- Web search and the effort of your Codex config stay off: a server may refuse or bill them.
+
+#### A cloud provider
+
+Add it as any server, with the address's path: `lado model-server add <name> <address> --key`, as
+`https://foundation-models.api.cloud.ru/v1` or `https://openrouter.ai/api/v1`. Both were checked on
+OpenCode and Kilo; Claude Code on cloud.ru's Anthropic API; Codex on OpenRouter.
+
+- LADO reads a model's context from the provider's list, and limits answers to what it reports, or
+  to 32K tokens on a context of 128K or more; on Claude Code to 16K at most, so that a request at
+  its compaction still fits the context. A provider that lists no context is warned about at the
+  start: the agent then compacts late and its answers have no limit.
+- A Claude agent on a server names no effort: your `effortLevel` stays out of its requests, as a
+  model may refuse it.
+- **A large context costs money.** The agent compacts only near the model's context: on a 1M model
+  late requests carry up to a million tokens. Prefer a model of 128K to 256K. LADO has no limit of
+  your own to set yet.
+- **What it costs.** LADO does not show what a session spent. Look in the provider's console
+  (cloud.ru) or Activity (OpenRouter); Kilo's TUI shows OpenRouter's cost; Claude Code has `/cost`,
+  its own count, not compared with a bill.
+- **Refusals.** Any 4xx but 408 ends the agent's turn and the chat says why with the status and the
+  server's text, once the CLI's own repeats are spent; on a 404 Claude Code gives its own words
+  instead of the server's. cloud.ru answers a wrong key with 400, and
+  does not check the key when you add the server: the first turn says so. Nothing repeats by itself after that: a run waits for you or the lead, also at
+  night. On a 429 with no `Retry-After` the repeats take about 70 s on all three CLIs; on a 401
+  or 403 OpenCode and Kilo stop at once, Claude Code after about 150 s. A provider's `Retry-After` makes
+  them longer: OpenCode and Kilo wait what it names before each of about five repeats (100 s at
+  20 s, so nearly an hour at 600 s), and until then the agent is busy and the chat says nothing.
+  Claude Code took 160 s at 20 s, and stops at once at 600 s. Codex stops after 6 requests in about
+  6 s on a fake server with `Retry-After: 1`, 12 in its terminal; a long `Retry-After` was not
+  checked on it. Claude Code's TUI repeats its request
+  for the session's title too, so a refusing provider may count about twice its requests.
+- **Claude Code with your plugins.** Your own plugins, rules and `CLAUDE.md` count: at 65536 they can
+  fill the context in the first turn. Take a model of 131072 or more, or fewer plugins.
+- A key the provider repeats in an error is removed from LADO's texts, not from the CLI's terminal
+  or its own files.
+- A model can fail through a CLI with no error at all: llama-3.3 on cloud.ru's Anthropic API writes
+  its tool calls as text, and gpt-oss after a compaction took the tools for forbidden. LADO cannot
+  see this, so watch the first session on a new model.
+
+#### A variable of one project
 
 A variable only one project's agents should get, or with another value there (a board's
 address, a local model's), is set per project instead, no file needed: `docker compose exec
@@ -295,7 +432,7 @@ secrets. For clients that must not mix, run a separate LADO.
 
 Logins made inside the container stay on its home volume, through updates.
 
-The easiest way is the UI, also from a phone: **Settings → Providers and environment**
+The easiest way is the UI, also from a phone: **Settings → Agent CLIs and environment**
 shows for each CLI whether it is logged in, how and from where ("Logged in · Subscription
 (token) · LADO's secret"). For Claude Code, **Log in…** asks how you pay for Claude:
 **Subscription** (Claude Pro or Max): run `claude setup-token` on any computer where
@@ -522,6 +659,10 @@ docker compose up -d
 
 When an upgrade's migration failed, the database is as it was: the first and the last
 command do it.
+
+Going back to a version before 0.45.0 forgets your model servers, models and default models,
+and their keys stay in `~/.lado/model-servers/` of the home volume. Remove them when you no
+longer need them: `docker compose run --rm lado sh -c 'rm -rf ~/.lado/model-servers'`.
 
 ### A second LADO
 
@@ -896,9 +1037,11 @@ no session running).
 
 - The plan warns before it asks: `lado.db` goes back to the copy
   `~/.lado/backups/lado.db.schema-31`, made when 0.43.0 upgraded it; everything LADO
-  recorded since then is lost (sessions, runs, gates, messages, projects); repositories,
-  worktrees and project folders stay on disk. It names the running sessions the copy does
-  not have: they are not started again. `Update? [y/N]`, or `--yes`, is your yes to that.
+  recorded since then is lost (sessions, runs, gates, messages, projects, model servers,
+  models, default models); repositories, worktrees and project folders stay on disk. It
+  names the running sessions the copy does not have: they are not started again. It lists
+  the folders of model server keys the copy has no server for: they stay on disk (What
+  stays, below). `Update? [y/N]`, or `--yes`, is your yes to that.
 - After the installer and the version check it puts the copy back into `lado.db`, keeps
   the copy, says `Restored lado.db from … (schema 31)` and starts the sessions the copy
   has on 0.42.x.
@@ -932,6 +1075,13 @@ calls `projects/` "your own folder" and `lado project create` refuses until you 
 away; after that, `lado project create` with an id whose `~/.lado/projects/<id>/` is left
 refuses (`… is left from a project <id>: remove it or choose another id`), so an old secret
 is never taken over silently.
+
+Going back to a version before 0.45.0 forgets your model servers, models and default models,
+and `~/.lado/model-servers/` stays with the key of each server: remove it with
+`rm -rf ~/.lado/model-servers` when you no longer need them. Upgrading again brings no server
+back, and `lado doctor` calls each folder left over until you remove it. Going back to a
+version that knows model servers, remove only the folders the warning listed: the others hold
+the keys of servers still saved.
 
 ### The check for a newer version
 

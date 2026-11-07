@@ -23,6 +23,8 @@ from lado import (
     kits,
     loop,
     mcp_exec,
+    model_servers,
+    model_settings,
     providers,
     runs,
     runtime,
@@ -602,6 +604,22 @@ def test_an_opencode_family_worker_gets_its_first_line_on_its_command_line(
     hooks.handle(cli, providers.Event(providers.PROMPT_SUBMIT, line), "s", "w1")
     assert state.list_messages("s")[0].state == state.DELIVERED
     assert state.get_agent("s", "w1").status == state.BUSY
+
+
+def test_handle_records_the_model_before_the_status(repo, fake_tmux):
+    cli = providers.get("opencode")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    runtime.spawn_worker("s", "fix the bug", name="w1")
+    hooks.handle(cli, providers.Event(providers.SESSION_START, model="claude-opus-5-5"), "s", "w1")
+    agent = state.get_agent("s", "w1")
+    assert (agent.model, agent.model_source, agent.status) == ("claude-opus-5-5", "cli", state.IDLE)
+    hooks.handle(cli, providers.Event(providers.PROMPT_SUBMIT, effort="high"), "s", "w1")
+    agent = state.get_agent("s", "w1")
+    assert (agent.model, agent.effort, agent.status) == ("claude-opus-5-5", "high", state.BUSY)
+    # An event that says its model runs the default effort: no name any more.
+    default = providers.Event(providers.TURN_END, effort="")
+    hooks.handle(cli, default, "s", "w1")
+    assert state.get_agent("s", "w1").effort is None
 
 
 class _FirstInput(providers.Provider):
@@ -1631,7 +1649,7 @@ def _logged(line):
 # An agent whose CLI needs a login (Claude Code) and has none waits for it in its window
 # (lado.login_wait), with lado.logins.wait_reason.
 LOGIN_REASON = (
-    "Claude Code is not logged in: log in in Settings → Providers and environment, or set "
+    "Claude Code is not logged in: log in in Settings → Agent CLIs and environment, or set "
     "CLAUDE_CODE_OAUTH_TOKEN; the agent starts by itself once you do"
 )
 
@@ -1650,12 +1668,12 @@ def _stopped_claude_session(repo, fake_tmux):
 
 SESSION_REFUSED = (
     "Claude Code is not logged in, so the session was not started: log in in LADO's UI "
-    "(Settings → Providers and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN as "
+    "(Settings → Agent CLIs and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN as "
     "LADO's secret or a project secret"
 )
 WORKER_REFUSED = (
     "Claude Code is not logged in, so the worker was not started: ask the human to log in in "
-    "Settings → Providers and environment, or start the worker with another provider"
+    "Settings → Agent CLIs and environment, or start the worker with another provider"
 )
 
 
@@ -1693,7 +1711,7 @@ def test_a_new_session_is_refused_by_the_suggested_provider(
 
 RESUME_REFUSED = (
     "Claude Code is not logged in, so the session was not resumed: log in in LADO's UI "
-    "(Settings → Providers and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN as "
+    "(Settings → Agent CLIs and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN as "
     "LADO's secret or a project secret"
 )
 
@@ -1885,7 +1903,7 @@ def test_codex_on_openais_model_is_refused_without_a_login(repo, fake_tmux, cli_
         runtime.start_session(str(repo), "s", None, provider="codex")
     assert str(refused.value) == (
         "Codex CLI is not logged in, so the session was not started: log in in LADO's UI "
-        "(Settings → Providers and environment, `lado ui`), or set OPENAI_API_KEY as LADO's "
+        "(Settings → Agent CLIs and environment, `lado ui`), or set OPENAI_API_KEY as LADO's "
         "secret or a project secret"
     )
     assert state.get_session("s") is None
@@ -2799,10 +2817,141 @@ def test_session_start_goes_on_without_the_lado_mcp_server_after_a_while(
     assert "w1: LADO's MCP server listed no tools" in (lado_home / "hooks.log").read_text()
 
 
+def test_a_session_start_with_a_note_tells_the_lead_and_hands_the_queue_over(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.send_message("s", "supervisor", "w1", "go on")
+    start = providers.Event(providers.SESSION_START, note="no report from its TUI")
+    hooks.handle(providers.get("kilo"), start, "s", "w1")
+    told = [m.summary for m in state.list_messages("s") if m.sender == state.LADO]
+    assert "w1: no report from its TUI" in told
+    assert [c for c in fake_tmux if c[0] == "send_text"]
+
+
+def test_a_note_of_an_agent_already_ready_tells_no_one(repo, fake_tmux):
+    _session_with_worker(repo)
+    kilo_cli = providers.get("kilo")
+    hooks.handle(kilo_cli, providers.Event(providers.SESSION_START), "s", "w1")
+    start = providers.Event(providers.SESSION_START, note="no report from its TUI")
+    hooks.handle(kilo_cli, start, "s", "w1")
+    assert "no report" not in " ".join(m.summary for m in state.list_messages("s"))
+
+
+@pytest.mark.parametrize("provider", ["claude", "codex"])
+def test_no_session_start_of_claude_code_or_codex_has_a_note_or_says_ready(provider):
+    event = providers.get(provider).parse_event("SessionStart", '{"source": "startup"}')
+    assert event.kind == providers.SESSION_START
+    assert (event.note, event.ready) == ("", False)
+
+
+def test_a_cli_that_says_it_takes_input_ends_a_wait_of_failed_messages(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.set_status("s", "w1", state.WAITING)  # as a failed message leaves it, with no key
+    hooks.handle(
+        providers.get("kilo"), providers.Event(providers.SESSION_START, ready=True), "s", "w1"
+    )
+    assert state.get_agent("s", "w1").status == state.IDLE
+
+
+def test_a_cli_that_says_it_takes_input_leaves_a_dialog_with_a_key(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.wait("s", "w1", "per_1")
+    hooks.handle(
+        providers.get("kilo"), providers.Event(providers.SESSION_START, ready=True), "s", "w1"
+    )
+    assert state.get_agent("s", "w1").status == state.WAITING
+
+
+READY = providers.Event(providers.SESSION_START, ready=True)
+SILENT = providers.Event(providers.SESSION_START, note="no report from its TUI")
+
+
+@pytest.mark.parametrize("provider", ["kilo", "opencode"])
+def test_lines_on_the_command_line_taken_before_the_report_change_nothing(
+    repo, fake_tmux, provider
+):
+    """chat.message before tui.ready: the agent is in its turn, and the report leaves it there."""
+    cli = providers.get(provider)
+    runtime.start_session(str(repo), "s", None, provider=provider)
+    runtime.spawn_worker("s", "fix the bug;", name="w1")
+    [task] = state.list_messages("s")
+    line = f"[from lado] your task (#{task.id}, 3 lines: call read_messages)"
+    hooks.handle(cli, providers.Event(providers.PROMPT_SUBMIT, line), "s", "w1")
+    hooks.handle(cli, READY, "s", "w1")
+    assert state.get_agent("s", "w1").status == state.BUSY
+    assert state.get_message("s", task.id).state == state.DELIVERED
+    assert not [c for c in fake_tmux if c[0] == "send_text"]
+
+
+def _typed_into_a_silent_tui(repo) -> state.Message:
+    """A worker made ready by a silent TUI, its message typed in and not confirmed."""
+    _session_with_worker(repo)
+    hooks.handle(providers.get("kilo"), SILENT, "s", "w1")
+    runtime.send_message("s", "supervisor", "w1", "go on")
+    [typed] = [m for m in state.list_messages("s") if m.recipient == "w1"]
+    assert (typed.state, state.get_agent("s", "w1").status) == (state.SENT, state.BUSY)
+    return typed
+
+
+def test_a_report_after_a_paste_starts_its_wait_again_and_the_paste_goes_in_again(repo, fake_tmux):
+    typed = _typed_into_a_silent_tui(repo)
+    hooks.handle(providers.get("kilo"), READY, "s", "w1")
+    assert state.get_agent("s", "w1").status == state.IDLE
+    again = state.get_message("s", typed.id)
+    assert (again.state, again.attempts) == (state.SENT, 1)  # the paste may yet be confirmed
+    pastes = len([c for c in fake_tmux if c[0] == "send_text"])
+    runtime.sweep("s", now=again.sent_at + runtime.RETRY_DELAYS[0] - 1)
+    assert len([c for c in fake_tmux if c[0] == "send_text"]) == pastes
+    runtime.sweep("s", now=again.sent_at + runtime.RETRY_DELAYS[0])
+    assert len([c for c in fake_tmux if c[0] == "send_text"]) == pastes + 1
+    assert state.get_agent("s", "w1").status == state.BUSY
+
+
+def test_a_report_after_the_last_paste_saves_it_from_failing(repo, fake_tmux):
+    typed = _typed_into_a_silent_tui(repo)
+    with state.connect() as db:
+        db.execute(
+            "UPDATE messages SET attempts = ? WHERE id = ?",
+            (len(runtime.RETRY_DELAYS) + 1, typed.id),
+        )
+    hooks.handle(providers.get("kilo"), READY, "s", "w1")
+    runtime.sweep("s", now=state.get_message("s", typed.id).sent_at + runtime.RETRY_DELAYS[-1])
+    assert state.get_message("s", typed.id).state != state.FAILED
+
+
+def test_a_paste_confirmed_after_the_report_is_not_typed_again(repo, fake_tmux):
+    """A CLI that held the paste after all: its prompt comes within the wait."""
+    typed = _typed_into_a_silent_tui(repo)
+    cli = providers.get("kilo")
+    hooks.handle(cli, READY, "s", "w1")
+    line = runtime.format_message(state.get_message("s", typed.id))
+    hooks.handle(cli, providers.Event(providers.PROMPT_SUBMIT, line), "s", "w1")
+    pastes = len([c for c in fake_tmux if c[0] == "send_text"])
+    runtime.sweep("s", now=time.time() + runtime.RETRY_DELAYS[-1] * 2)
+    assert state.get_message("s", typed.id).state == state.DELIVERED
+    assert len([c for c in fake_tmux if c[0] == "send_text"]) == pastes
+
+
+def test_a_late_silent_report_is_no_sign_of_the_agent(repo, fake_tmux):
+    """It comes after tui.ready too: it must not pass for a hook after a paste (runtime._plan)."""
+    _session_with_worker(repo)
+    cli = providers.get("kilo")
+    hooks.handle(cli, READY, "s", "w1")
+    seen = state.get_agent("s", "w1").seen_at
+    hooks.handle(cli, SILENT, "s", "w1")
+    assert state.get_agent("s", "w1").seen_at == seen
+
+
+def test_another_session_start_leaves_a_wait_of_failed_messages(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.set_status("s", "w1", state.WAITING)
+    hooks.handle(providers.get("kilo"), providers.Event(providers.SESSION_START), "s", "w1")
+    assert state.get_agent("s", "w1").status == state.WAITING
+
+
 def test_session_start_waits_only_where_the_provider_needs_it(repo, fake_tmux):
     _session_with_worker(repo)
     kilo_cli = providers.get("kilo")
-    assert not kilo_cli.capabilities.hold_first_turn  # its session start is the plugin's init
+    assert not kilo_cli.capabilities.hold_first_turn  # its session start is the TUI plugin's
     started = time.monotonic()
     hooks.handle(kilo_cli, providers.Event(providers.SESSION_START), "s", "w1")
     # Far below the wait, but not tight: the tests run in parallel on a busy machine.
@@ -3822,6 +3971,40 @@ class _NoSkills(providers.Provider):
 
     def parse_event(self, native, payload):
         return None
+
+
+class _ChoosesAModel(_NoSkills):
+    """A CLI whose launch chooses a model and an effort (Codex's carried config)."""
+
+    capabilities = providers.Capabilities(
+        status_events=True, permission_event=False, deliver_on_turn_end=True, skills=True
+    )
+
+    def launch_command(self, agent, session, spec):
+        detail = f"for {agent.name}"
+        return providers.Launch(
+            ["noskills"],
+            model=state.Choice("big", state.CLI_CONFIG, detail),
+            effort=state.Choice("high", state.CLI_CONFIG),
+        )
+
+
+def test_spawn_records_the_launchs_model(repo, fake_tmux, monkeypatch):
+    monkeypatch.setitem(providers._PROVIDERS, "noskills", _ChoosesAModel())
+    runtime.start_session(str(repo), "s", None, provider="noskills")
+    runtime.spawn_worker("s", "fix the bug", name="w1")
+    for name in ("supervisor", "w1"):
+        agent = state.get_agent("s", name)
+        assert (agent.model, agent.model_source, agent.model_detail) == (
+            "big",
+            "cli-config",
+            f"for {name}",
+        )
+        assert (agent.effort, agent.effort_source, agent.effort_detail) == (
+            "high",
+            "cli-config",
+            None,
+        )
 
 
 def test_provider_without_skills_fails_loudly(repo, fake_tmux, team_kit, monkeypatch):
@@ -5237,6 +5420,35 @@ def test_a_turn_that_wrote_to_the_human_is_not_flagged(repo, fake_tmux, reply):
     assert _reply_state(mine) == state.REPLIED
 
 
+def _turn_fails():
+    event = providers.Event(providers.TURN_END, error="APIError: the server broke")
+    hooks.handle(providers.get("claude"), event, "s", "supervisor")
+
+
+def test_a_turn_that_ended_on_an_error_decides_no_reply(repo, fake_tmux):
+    _session_with_worker(repo)
+    mine = _human_writes()
+    _turn_fails()
+    assert _reply_state(mine) is None
+
+
+def test_the_next_turn_after_an_error_replies(repo, fake_tmux):
+    _session_with_worker(repo)
+    mine = _human_writes()
+    _turn_fails()
+    runtime.send_message("s", "supervisor", "human", "merged")
+    _hook("Stop", "supervisor")
+    assert _reply_state(mine) == state.REPLIED
+
+
+def test_the_next_turn_after_an_error_does_not_reply(repo, fake_tmux):
+    _session_with_worker(repo)
+    mine = _human_writes()
+    _turn_fails()
+    _hook("Stop", "supervisor")
+    assert _reply_state(mine) == state.MISSING
+
+
 def test_a_body_read_in_a_turn_without_a_reply_is_flagged(repo, fake_tmux):
     _session_with_worker(repo)
     mine = _human_writes("merge w1?\nthen tag it")
@@ -6055,6 +6267,923 @@ def test_check_title_is_the_rule_of_set_title():
     assert runtime.check_title("s", "s") is None
     with pytest.raises(runtime.LadoError, match="^a title is at most 80 characters$"):
         runtime.check_title("x" * 81, "s")
+
+
+def _set_power(session: str, cli: str, model: str) -> None:
+    """Give a running session a power table, as a start with --model stores it."""
+    with state.connect() as db:
+        db.execute(
+            "UPDATE sessions SET power = ? WHERE name = ?",
+            (state.PowerTable.single(cli, model).to_json(), session),
+        )
+
+
+def test_a_worker_of_the_session_s_cli_starts_on_its_model(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    _set_power("s", "claude", "opus")
+    warnings = []
+    runtime.spawn_worker("s", "a task", name="w1", warnings=warnings)
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert argv[argv.index("--model") + 1] == "opus"
+    agent = state.get_agent("s", "w1")
+    assert (agent.model, agent.model_source, agent.model_detail) == ("opus", "session", None)
+    assert not [w for w in warnings if "model" in w]
+
+
+def test_a_worker_of_another_cli_gets_the_note(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="kilo")
+    _set_power("s", "codex", "gpt-5.6-sol")
+    warnings = []
+    runtime.spawn_worker("s", "a task", name="w1", provider="claude", warnings=warnings)
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert "--model" not in argv
+    line = (
+        "w1 runs on Claude Code's default model: the session's model gpt-5.6-sol is for Codex CLI"
+    )
+    assert line in warnings
+    assert f"s: w1: {line}" in (state.home() / "loop.log").read_text()
+    agent = state.get_agent("s", "w1")
+    note = "the session's model gpt-5.6-sol is for Codex CLI"
+    assert (agent.model, agent.model_source, agent.model_detail) == (None, "cli", note)
+
+
+def test_no_table_passes_no_model(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    warnings = []
+    runtime.spawn_worker("s", "a task", name="w1", warnings=warnings)
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert "--model" not in argv
+    agent = state.get_agent("s", "w1")
+    assert (agent.model, agent.model_source, agent.model_detail) == (None, "cli", None)
+
+
+def _models(monkeypatch, name, *models):
+    """`name`'s CLI lists `models` (none: it gives no list)."""
+    listed = (
+        providers.base.ModelList(models=models, command=f"{name} models")
+        if models
+        else providers.base.ModelList(why=f"{name} gives no list")
+    )
+    monkeypatch.setattr(type(providers.get(name)), "model_list", lambda self, env: listed)
+
+
+def test_the_supervisor_starts_on_the_session_model(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a", "kilo/b")
+    started = runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/b")
+    assert not [w for w in started.warnings if "kilo/b" in w]
+    assert state.get_session("s").power == state.PowerTable.single("kilo", "kilo/b")
+    env, _ = agent_helpers.launched(fake_tmux[0])
+    assert json.loads(env["KILO_CONFIG_CONTENT"])["model"] == "kilo/b"
+    agent = state.get_agent("s", "supervisor")
+    assert (agent.model, agent.model_source) == ("kilo/b", "session")
+
+
+def test_a_refused_model_stores_nothing(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a")
+    with pytest.raises(runtime.LadoError) as error:
+        runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/z")
+    assert (
+        str(error.value)
+        == "kilo/z is not in Kilo CLI's list of models; kilo models prints the list"
+    )
+    assert state.get_session("s") is None
+    assert fake_tmux == []
+
+
+def test_a_warned_model_starts_with_the_warning(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo")
+    started = runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/z")
+    line = (
+        "kilo gives no list: LADO cannot check kilo/z; a wrong name stops its agents at their "
+        "first turn"
+    )
+    assert line in started.warnings
+    assert f"s: supervisor: {line}" in (state.home() / "loop.log").read_text()
+    assert state.get_session("s").power.row().model == "kilo/z"
+
+
+def test_a_claude_alias_starts_with_no_warning_and_no_list(repo, fake_tmux):
+    started = runtime.start_session(str(repo), "s", None, provider="claude", model="sonnet")
+    assert not [w for w in started.warnings if "sonnet" in w]
+    _, argv = agent_helpers.launched(fake_tmux[0])
+    assert argv[argv.index("--model") + 1] == "sonnet"
+
+
+def test_a_resume_keeps_the_model(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a")
+    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
+    runtime.stop_session("s")
+    started = runtime.start_session(str(repo), "s", None)
+    assert started.changes == []
+    env, _ = agent_helpers.launched(fake_tmux[-1])
+    assert json.loads(env["KILO_CONFIG_CONTENT"])["model"] == "kilo/a"
+
+
+def test_the_model_is_taken_without_its_spaces(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a")
+    started = runtime.start_session(str(repo), "s", None, provider="kilo", model=" kilo/a ")
+    assert not [w for w in started.warnings if "kilo/a" in w]
+    assert state.get_session("s").power == state.PowerTable.single("kilo", "kilo/a")
+    runtime.stop_session("s")
+    started = runtime.start_session(str(repo), "s", None, model="  ")
+    assert started.changes == ["model: kilo kilo/a -> Kilo CLI's settings"]
+    assert state.get_session("s").power == state.PowerTable.single("kilo", "")
+
+
+_KEPT_REFUSED = (
+    "kilo/a is not in Kilo CLI's list of models; kilo models prints the list; the session "
+    "ran on it before: resume it with --model '' for Kilo CLI's settings or --model <model> "
+    "for another"
+)
+
+
+def _kept_model_gone(repo, fake_tmux, monkeypatch) -> int:
+    """Session s of Kilo, stopped with the model kilo/a, which Kilo's list no longer has;
+    the number of tmux calls until then."""
+    _models(monkeypatch, "kilo", "kilo/a")
+    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
+    runtime.stop_session("s")
+    _models(monkeypatch, "kilo", "kilo/b")
+    return len(fake_tmux)
+
+
+def test_a_resume_refuses_a_kept_model_the_list_lacks(repo, fake_tmux, monkeypatch):
+    calls = _kept_model_gone(repo, fake_tmux, monkeypatch)
+    with pytest.raises(runtime.LadoError) as error:
+        runtime.start_session(str(repo), "s", None)
+    assert str(error.value) == _KEPT_REFUSED
+    sess = state.get_session("s")
+    assert sess.stopped_at and sess.power == state.PowerTable.single("kilo", "kilo/a")
+    assert len(fake_tmux) == calls  # no agent started
+
+
+def test_a_resume_to_the_default_of_a_kept_model_the_list_lacks(repo, fake_tmux, monkeypatch):
+    _kept_model_gone(repo, fake_tmux, monkeypatch)
+    started = runtime.start_session(str(repo), "s", None, model="")
+    assert started.changes == ["model: kilo kilo/a -> Kilo CLI's settings"]
+    runtime.stop_session("s")
+    with pytest.raises(runtime.LadoError) as error:  # a model given: no way out to name
+        runtime.start_session(str(repo), "s", None, model="kilo/a")
+    assert str(error.value) == (
+        "kilo/a is not in Kilo CLI's list of models; kilo models prints the list"
+    )
+
+
+def test_lados_own_resume_of_a_kept_model_the_list_lacks(repo, fake_tmux, monkeypatch):
+    _kept_model_gone(repo, fake_tmux, monkeypatch)
+    state.resume_session(state.get_session("s"), "")
+    state.stop_for_container()
+    lines = []
+    runtime.resume_at_start(lines.append)
+    assert lines == [
+        f'lado: could not resume session "s" at the container\'s start: {_KEPT_REFUSED}; '
+        "it stays stopped"
+    ]
+    sess = state.get_session("s")
+    assert sess.stopped_at and sess.power == state.PowerTable.single("kilo", "kilo/a")
+
+
+def test_an_empty_model_drops_it(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a", "kilo/b")
+    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
+    runtime.stop_session("s")
+    started = runtime.start_session(str(repo), "s", None, model="kilo/b")
+    assert started.changes == ["model: kilo kilo/a -> kilo kilo/b"]
+    runtime.stop_session("s")
+    started = runtime.start_session(str(repo), "s", None, model="")
+    assert started.changes == ["model: kilo kilo/b -> Kilo CLI's settings"]
+    assert state.get_session("s").power == state.PowerTable.single("kilo", "")
+    env, _ = agent_helpers.launched(fake_tmux[-1])
+    assert "model" not in json.loads(env["KILO_CONFIG_CONTENT"])
+    runtime.stop_session("s")
+    started = runtime.start_session(str(repo), "s", None, model="kilo/a")
+    assert started.changes == ["model: Kilo CLI's settings -> kilo kilo/a"]
+
+
+CHAT = providers.base.CHAT_COMPLETIONS
+NOT_GIVEN_WAY_OUT = '; list_models shows the others, model="" is the CLI\'s own settings'
+
+
+def _on_server(name="Локальная Qwen", cli="opencode", model="qwen3-8b", server="LM Studio дома"):
+    """A saved model on a server of that name, saved first when new."""
+    saved = state.model_server(server) or state.add_model_server(
+        server.encode().hex()[:12], server, "http://localhost:1234", "LM Studio", [CHAT]
+    )
+    return state.add_model(name, cli, model, saved.id)
+
+
+def _default(saved):
+    state.set_cli_default(state.ModelRef(saved.cli, saved.id, None))
+
+
+def _answers(monkeypatch, *models):
+    """Every saved server answers with `models`; the servers asked, by name."""
+    asked = []
+
+    def probe(server):
+        asked.append(server.name)
+        return model_servers.Probe(server.address, False, "LM Studio", frozenset([CHAT]), models)
+
+    monkeypatch.setattr(model_settings, "probe_saved", probe)
+    return asked
+
+
+def _silent(monkeypatch):
+    """No saved server answers."""
+
+    def probe(server):
+        raise model_servers.ProbeError(
+            f"{server.address} does not answer (connection refused)", silent="connection refused"
+        )
+
+    monkeypatch.setattr(model_settings, "probe_saved", probe)
+
+
+def _config(call):
+    env, _ = agent_helpers.launched(call)
+    return json.loads(env["OPENCODE_CONFIG_CONTENT"])
+
+
+def test_a_session_with_no_choice_starts_on_the_cli_s_default(repo, fake_tmux, monkeypatch):
+    saved = _on_server()
+    _default(saved)
+    asked = _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    assert state.get_session("s").power is None
+    named = f"lado-{saved.server}/qwen3-8b"
+    assert _config(fake_tmux[0])["model"] == named
+    _, argv = agent_helpers.launched(fake_tmux[0])
+    assert argv[argv.index("--model") + 1] == named
+    agent = state.get_agent("s", "supervisor")
+    assert (agent.model, agent.model_source) == (named, "default")
+    assert asked == ["LM Studio дома"]
+
+
+def test_a_session_on_an_external_model_keeps_its_id(repo, fake_tmux, monkeypatch):
+    saved = _on_server()
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode", model="Локальная Qwen")
+    assert state.get_session("s").power == state.PowerTable.of(
+        state.PowerRow("opencode", "qwen3-8b", saved.id, "Локальная Qwen")
+    )
+    agent = state.get_agent("s", "supervisor")
+    assert (agent.model, agent.model_source) == (f"lado-{saved.server}/qwen3-8b", "session")
+
+
+def test_a_refused_external_model_stores_nothing(repo, fake_tmux, monkeypatch):
+    _on_server()
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    _silent(monkeypatch)
+    with pytest.raises(runtime.ModelRefused) as error:
+        runtime.start_session(str(repo), "s", None, provider="opencode", model="Локальная Qwen")
+    assert str(error.value).startswith(
+        "http://localhost:1234 does not answer (connection refused); LADO cannot check qwen3-8b"
+    )
+    assert error.value.refused.short == "LM Studio дома does not answer"
+    assert state.get_session("s") is None and fake_tmux == []
+
+
+def test_a_refused_default_says_its_way_out(repo, fake_tmux, monkeypatch):
+    _default(_on_server())
+    _silent(monkeypatch)
+    with pytest.raises(runtime.LadoError) as error:
+        runtime.start_session(str(repo), "s", None, provider="opencode")
+    assert str(error.value).endswith(
+        "; it is OpenCode's default model: start with --model '' for its settings, or change it "
+        "with lado model default opencode"
+    )
+
+
+def test_past_a_default_no_model_is_passed_and_no_server_asked(repo, fake_tmux, monkeypatch):
+    _default(_on_server())
+    asked = _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode", model="")
+    assert "model" not in _config(fake_tmux[0]) and asked == []
+    agent = state.get_agent("s", "supervisor")
+    assert (agent.model, agent.model_source) == (None, "cli")
+    runtime.stop_session("s")
+    runtime.start_session(str(repo), "s", None)
+    assert "model" not in _config(fake_tmux[-1]) and asked == []
+
+
+def test_a_default_changed_before_a_resume_is_said(repo, fake_tmux, monkeypatch):
+    first = _on_server()
+    _default(first)
+    _answers(monkeypatch, "qwen3-8b", "qwen3-coder-30b")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    runtime.stop_session("s")
+    second = _on_server("Рабочая Qwen", model="qwen3-coder-30b")
+    _default(second)
+    started = runtime.start_session(str(repo), "s", None)
+    assert started.changes == ["model: Локальная Qwen -> Рабочая Qwen"]
+    assert "changed model: Локальная Qwen -> Рабочая Qwen" in started.warnings
+    log = (state.home() / "loop.log").read_text()
+    assert "s: supervisor: changed model: Локальная Qwen -> Рабочая Qwen" in log
+    assert _config(fake_tmux[-1])["model"] == f"lado-{second.server}/qwen3-coder-30b"
+
+
+def test_a_default_set_or_cleared_before_a_resume_is_said(repo, fake_tmux, monkeypatch):
+    _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    runtime.stop_session("s")
+    _default(_on_server())
+    started = runtime.start_session(str(repo), "s", None)
+    assert started.changes == ["model: CLI default -> Локальная Qwen"]
+    runtime.stop_session("s")
+    state.clear_cli_default("opencode")
+    started = runtime.start_session(str(repo), "s", None)
+    assert started.changes == ["model: Локальная Qwen -> CLI default"]
+
+
+def test_the_same_default_at_a_resume_is_no_change(repo, fake_tmux, monkeypatch):
+    saved = _on_server()
+    _default(saved)
+    _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    runtime.stop_session("s")
+    state.rename_model(saved.name, "Qwen дома")
+    started = runtime.start_session(str(repo), "s", None)
+    assert started.changes == []
+    assert not [w for w in started.warnings if "changed model" in w]
+
+
+def test_an_alias_default_the_cli_named_in_full_is_no_change(repo, fake_tmux):
+    state.set_cli_default(state.ModelRef("claude", None, "opus"))
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    state.report_model(
+        "s", "supervisor", "claude-opus-5-5", None, providers.get("claude").same_model
+    )
+    runtime.stop_session("s")
+    assert runtime.start_session(str(repo), "s", None).changes == []
+
+
+def test_all_ticked_models_are_in_the_config_whatever_the_session_chose(
+    repo, fake_tmux, monkeypatch
+):
+    one = _on_server()
+    other = _on_server("Шлюз Qwen", model="gw-qwen", server="Шлюз")
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    _answers(monkeypatch, "qwen3-8b")
+    both = {f"lado-{one.server}", f"lado-{other.server}"}
+    for number, model in enumerate(("opencode/big-pickle", "Локальная Qwen", None)):
+        runtime.start_session(str(repo), f"s{number}", None, provider="opencode", model=model)
+        assert set(_config(fake_tmux[-1])["provider"]) == both
+
+
+def test_a_silent_server_of_another_model_stops_nothing(repo, fake_tmux, monkeypatch):
+    _default(_on_server())
+    _on_server("Шлюз Qwen", model="gw-qwen", server="Шлюз")
+    asked = _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    assert asked == ["LM Studio дома"]
+
+
+def test_a_key_over_plain_http_warns_at_a_start_and_a_spawn(repo, fake_tmux, monkeypatch):
+    server = state.add_model_server("gw", "Шлюз", "http://llm.example.com", "OpenAI", [CHAT])
+    state.add_model("Qwen", "opencode", "q", server.id)
+    model_settings._write_key(server.id, "KEY-CANARY")
+    started = runtime.start_session(str(repo), "s", None, provider="opencode")
+    line = model_servers.PLAIN_HTTP.format(host="llm.example.com")
+    assert line in started.warnings
+    assert f"s: supervisor: {line}" in (state.home() / "loop.log").read_text()
+    warnings = []
+    runtime.spawn_worker("s", "a task", name="w1", warnings=warnings)
+    assert line in warnings
+    env, _ = agent_helpers.launched(fake_tmux[-1])
+    assert env["LADO_MODEL_KEY_GW"] == "KEY-CANARY"
+    assert "KEY-CANARY" not in env["OPENCODE_CONFIG_CONTENT"]
+
+
+def test_another_provider_names_the_default_the_session_goes_to(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a")
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
+    runtime.stop_session("s")
+    _default(_on_server())
+    _answers(monkeypatch, "qwen3-8b")
+    started = runtime.start_session(str(repo), "s", None, provider="opencode")
+    assert "model: kilo kilo/a -> Локальная Qwen" in started.changes
+
+
+def test_an_agent_s_state_outlives_a_resume_and_goes_with_its_session(repo, fake_tmux, lado_home):
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    folder = lado_home / "agent-state" / "s" / "supervisor"
+    env, _ = agent_helpers.launched(fake_tmux[0])
+    assert env["XDG_STATE_HOME"] == str(folder)
+    memory = folder / "opencode" / "model.json"
+    memory.parent.mkdir(parents=True)
+    memory.write_text('{"recent": []}')
+    runtime.stop_session("s")
+    assert memory.exists()  # the agent's /model pick is the agent's
+    runtime.start_session(str(repo), "s", None)
+    assert memory.exists()
+    runtime.stop_session("s")
+    runtime.forget_session("s")
+    assert not (lado_home / "agent-state" / "s").exists()
+
+
+def test_a_finished_worker_s_state_goes_with_it(repo, fake_tmux, lado_home):
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    runtime.spawn_worker("s", "a task", name="w1")
+    folder = lado_home / "agent-state" / "s" / "w1"
+    folder.mkdir(parents=True, exist_ok=True)
+    runtime.finish_worker("s", "w1", discard=True)
+    assert not folder.exists()
+
+
+def test_a_failed_start_leaves_no_state(repo, fake_tmux, lado_home, monkeypatch):
+    def fails(*_args, **_kwargs):
+        (lado_home / "agent-state" / "s" / "supervisor").mkdir(parents=True, exist_ok=True)
+        raise tmux.TmuxError("no tmux")
+
+    monkeypatch.setattr(tmux, "new_session", fails)
+    with pytest.raises(tmux.TmuxError):
+        runtime.start_session(str(repo), "s", None, provider="opencode")
+    assert not (lado_home / "agent-state" / "s").exists()
+
+
+def test_a_worker_takes_the_default_as_it_is_at_its_spawn(repo, fake_tmux, monkeypatch):
+    _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    saved = _on_server()
+    _default(saved)
+    runtime.spawn_worker("s", "a task", name="w1")
+    agent = state.get_agent("s", "w1")
+    assert (agent.model, agent.model_source) == (f"lado-{saved.server}/qwen3-8b", "default")
+
+
+def test_a_worker_of_another_cli_takes_its_own_default(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    saved = _on_server("Qwen в Kilo", cli="kilo")
+    _default(saved)
+    _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode", model="opencode/big-pickle")
+    warnings = []
+    runtime.spawn_worker("s", "a task", name="w1", provider="kilo", warnings=warnings)
+    agent = state.get_agent("s", "w1")
+    assert (agent.model, agent.model_source) == (f"lado-{saved.server}/qwen3-8b", "default")
+    assert not [w for w in warnings if "default model" in w]
+
+
+def test_a_worker_on_a_server_its_cli_cannot_run_is_refused(repo, fake_tmux, monkeypatch):
+    _answers(monkeypatch)
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    _default(_on_server("Шлюз GPT", cli="codex", model="gw-gpt", server="Шлюз"))
+    with pytest.raises(runtime.LadoError) as error:
+        runtime.spawn_worker("s", "a task", name="w1", provider="codex")
+    assert str(error.value) == (
+        "Шлюз GPT is on the model server Шлюз; Шлюз does not suit Codex CLI: its Responses API "
+        "loses Codex CLI's MCP tools, so the agent could not talk to LADO; Kilo CLI and OpenCode "
+        f"do{NOT_GIVEN_WAY_OUT}"
+    )
+    assert state.get_agent("s", "w1") is None
+
+
+def test_a_kept_model_no_longer_saved_is_refused(repo, fake_tmux, monkeypatch):
+    saved = _on_server("Рабочая Qwen")
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode", model="Рабочая Qwen")
+    runtime.stop_session("s")
+    state.remove_model(saved.name)
+    with pytest.raises(runtime.LadoError) as error:
+        runtime.start_session(str(repo), "s", None)
+    assert str(error.value) == (
+        "the session ran on the model Рабочая Qwen, which is no longer saved; resume it with "
+        "--model '' for OpenCode's settings or --model <model> for another"
+    )
+    assert state.get_session("s").stopped_at
+
+
+def _break_power(session):
+    with state.connect() as db:
+        db.execute("UPDATE sessions SET power = 'not json' WHERE name = ?", (session,))
+
+
+def test_a_table_that_cannot_be_read_refuses_its_resume_only(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a")
+    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
+    runtime.stop_session("s")
+    _break_power("s")
+    with pytest.raises(runtime.LadoError) as error:
+        runtime.start_session(str(repo), "s", None)
+    assert str(error.value) == (
+        "the session's model cannot be read; resume it with --model '' for Kilo CLI's settings or "
+        "--model <model> for another"
+    )
+    started = runtime.start_session(str(repo), "s", None, model="kilo/a")
+    assert started.changes == ["model: an unreadable model -> kilo kilo/a"]
+    assert state.get_session("s").power == state.PowerTable.single("kilo", "kilo/a")
+
+
+def test_another_provider_drops_the_model(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a")
+    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
+    runtime.stop_session("s")
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    assert started.changes == ["provider: kilo -> claude", "model: kilo kilo/a -> CLI default"]
+    assert state.get_session("s").power is None
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert "--model" not in argv
+
+
+# A worker on a model by name.
+
+
+def _nothing_of(repo, fake_tmux, worker):
+    assert state.get_agent("s", worker) is None
+    assert not [m for m in state.list_messages("s") if m.recipient == worker]
+    assert not (repo / ".lado" / "worktrees" / "s" / worker).exists()
+    assert runtime.git(str(repo), "branch", "--list", f"lado/s/{worker}") == ""
+    assert not [c for c in fake_tmux if c[0] == "new_window"]
+
+
+def test_a_worker_starts_on_a_model_named_for_it(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a", "kilo/b")
+    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
+    table = state.get_session("s").power
+    runtime.spawn_worker("s", "a task", name="w1", model="kilo/b")
+    agent = state.get_agent("s", "w1")
+    assert (agent.model, agent.model_source) == ("kilo/b", "supervisor")
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert argv[argv.index("--model") + 1] == "kilo/b"
+    assert state.get_session("s").power == table
+    runtime.spawn_worker("s", "a task", name="w2")  # it holds for that one spawn
+    agent = state.get_agent("s", "w2")
+    assert (agent.model, agent.model_source) == ("kilo/a", "session")
+
+
+def test_a_name_moves_the_worker_to_the_cli_that_has_it(repo, fake_tmux, monkeypatch):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    saved = _on_server()
+    _answers(monkeypatch, "qwen3-8b")
+    runtime.spawn_worker("s", "a task", name="w1", model="Локальная Qwen")
+    agent = state.get_agent("s", "w1")
+    assert (agent.provider, agent.model, agent.model_source) == (
+        "opencode",
+        f"lado-{saved.server}/qwen3-8b",
+        "supervisor",
+    )
+
+
+def test_a_free_name_with_its_provider_warns(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    warnings = []
+    runtime.spawn_worker(
+        "s", "a task", name="w1", provider="claude", model="claude-opus-5-5", warnings=warnings
+    )
+    assert "LADO cannot check claude-opus-5-5" in warnings[0]
+    assert state.get_agent("s", "w1").model == "claude-opus-5-5"
+
+
+def test_an_empty_model_is_the_cli_s_settings_past_the_session_s(repo, fake_tmux, monkeypatch):
+    _default(_on_server())
+    asked = _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    del asked[:]
+    runtime.spawn_worker("s", "a task", name="w1", model="")
+    agent = state.get_agent("s", "w1")
+    assert (agent.model, agent.model_source) == (None, "cli")
+    _, argv = agent_helpers.launched(fake_tmux[-1])
+    assert "--model" not in argv
+    assert asked == []
+
+
+def test_a_refused_name_leaves_nothing(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    _models(monkeypatch, "kilo", "kilo/a")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    with pytest.raises(runtime.ModelRefused) as error:
+        runtime.spawn_worker("s", "a task", name="w1", model="gpt-9")
+    assert str(error.value) == "gpt-9 is in no agent CLI's list of models; list_models shows them"
+    _nothing_of(repo, fake_tmux, "w1")
+
+
+def test_a_silent_server_refuses_a_model_given(repo, fake_tmux, monkeypatch):
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    _on_server()
+    _silent(monkeypatch)
+    with pytest.raises(runtime.ModelRefused) as error:
+        runtime.spawn_worker("s", "a task", name="w1", model="Локальная Qwen")
+    assert str(error.value).startswith(
+        "http://localhost:1234 does not answer (connection refused); LADO cannot check qwen3-8b"
+    )
+    assert NOT_GIVEN_WAY_OUT not in str(error.value)
+    _nothing_of(repo, fake_tmux, "w1")
+
+
+def test_a_silent_server_refuses_the_session_s_model_with_a_way_out(repo, fake_tmux, monkeypatch):
+    _on_server()
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    _answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode", model="Локальная Qwen")
+    _silent(monkeypatch)
+    with pytest.raises(runtime.ModelRefused) as error:
+        runtime.spawn_worker("s", "a task", name="w1")
+    assert NOT_GIVEN_WAY_OUT in str(error.value)
+    assert "--model" not in str(error.value)
+    _nothing_of(repo, fake_tmux, "w1")
+
+
+def test_a_model_gone_from_its_server_is_refused(repo, fake_tmux, monkeypatch):
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    _on_server()
+    _answers(monkeypatch, "another")
+    with pytest.raises(runtime.ModelRefused, match="qwen3-8b is not in LM Studio дома's list"):
+        runtime.spawn_worker("s", "a task", name="w1", model="Локальная Qwen")
+    _nothing_of(repo, fake_tmux, "w1")
+
+
+def test_codex_on_lm_studio_is_refused_asking_no_server(repo, fake_tmux, monkeypatch):
+    runtime.start_session(str(repo), "s", None, provider="codex")
+    _on_server("Шлюз GPT", cli="codex", model="gw-gpt", server="Шлюз")
+    asked = _answers(monkeypatch, "gw-gpt")
+    with pytest.raises(runtime.ModelRefused, match="Шлюз does not suit Codex CLI"):
+        runtime.spawn_worker("s", "a task", name="w1", model="Шлюз GPT")
+    assert asked == []
+    _nothing_of(repo, fake_tmux, "w1")
+
+
+def test_a_worker_with_nothing_chosen_reads_no_list_and_asks_no_server(
+    repo, fake_tmux, monkeypatch
+):
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    _on_server()  # saved, but no agent starts on it
+    asked = _answers(monkeypatch, "qwen3-8b")
+
+    def no_list(self, env):
+        raise AssertionError("a list was read")
+
+    monkeypatch.setattr(type(providers.get("opencode")), "model_list", no_list)
+    runtime.spawn_worker("s", "a task", name="w1")
+    assert asked == []
+
+
+def test_list_models_gives_the_session_s_clis(repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    clis = runtime.list_models("s")["clis"]
+    assert clis[0]["cli"] == "opencode" and clis[0]["builtin"] == ["opencode/big-pickle"]
+
+
+def test_list_models_refuses_a_cli_not_installed(repo, fake_tmux, monkeypatch, tmp_path):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    _path_without_clis(monkeypatch, tmp_path)
+    with pytest.raises(runtime.ModelRefused, match="Codex CLI is not installed"):
+        runtime.list_models("s", "codex")
+
+
+def test_a_table_that_cannot_be_read_refuses_a_worker_with_its_way_out(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    _break_power("s")
+    with pytest.raises(runtime.ModelRefused) as error:
+        runtime.spawn_worker("s", "a task", name="w1")
+    assert NOT_GIVEN_WAY_OUT in str(error.value)
+    _nothing_of(repo, fake_tmux, "w1")
+    runtime.spawn_worker("s", "a task", name="w1", model="")  # the way out works
+    assert state.get_agent("s", "w1").model is None
+
+
+# A Claude agent on a model server needs no Claude login (Provider.needs_login).
+
+
+def _claude_on_server(monkeypatch, name="Шлюз Qwen", model="qwen3-8b", server="Шлюз"):
+    """A model of Claude Code on a saved server that proves its API, made its default."""
+    found = state.model_server(server) or state.add_model_server(
+        server.encode().hex()[:12],
+        server,
+        "http://localhost:4000",
+        "OpenAI-compatible",
+        [providers.base.ANTHROPIC_MESSAGES],
+    )
+    saved = state.add_model(name, "claude", model, found.id)
+    monkeypatch.setattr(
+        model_settings,
+        "probe_saved",
+        lambda server: model_servers.Probe(
+            server.address,
+            False,
+            "OpenAI-compatible",
+            frozenset([providers.base.ANTHROPIC_MESSAGES]),
+            (model,),
+        ),
+    )
+    return saved
+
+
+def _no_status(monkeypatch):
+    """Claude Code's status is an error to read: a start on a server asks nothing of it."""
+
+    def read(self, env):
+        raise AssertionError("the login was read")
+
+    monkeypatch.setattr(type(providers.get("claude")), "login_status", read)
+
+
+def test_a_claude_session_on_a_server_starts_without_a_login(
+    repo, fake_tmux, claude_config, cli_logins, monkeypatch
+):
+    claude_config.trust()
+    _default(_claude_on_server(monkeypatch))
+    cli_logins.logged_out()
+    _no_status(monkeypatch)
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    assert started.warnings == []
+    assert runtime.status_reasons("s") == {}
+    [call] = [c for c in fake_tmux if c[0] == "new_session"]
+    assert not _waits_for_login(call[-1])
+    assert json.loads(claude_config.path.read_text())["hasCompletedOnboarding"] is True
+
+
+def test_a_claude_session_on_a_built_in_model_stays_refused_with_a_server_saved(
+    repo, fake_tmux, cli_logins, monkeypatch
+):
+    _claude_on_server(monkeypatch)
+    cli_logins.logged_out()
+    with pytest.raises(runtime.NotLoggedIn) as refused:
+        runtime.start_session(str(repo), "s", None, provider="claude", model="opus")
+    assert str(refused.value) == SESSION_REFUSED
+
+
+def test_a_claude_session_on_a_server_resumes_by_hand_without_a_login(
+    repo, fake_tmux, cli_logins, monkeypatch
+):
+    _default(_claude_on_server(monkeypatch))
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.stop_session("s")
+    cli_logins.logged_out()
+    started = runtime.start_session(str(repo), "s", None)
+    assert started.resumed and runtime.status_reasons("s") == {}
+
+
+def test_a_claude_session_on_a_server_is_not_held_at_lados_own_resume(
+    repo, fake_tmux, cli_logins, monkeypatch
+):
+    _default(_claude_on_server(monkeypatch))
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.stop_session("s")
+    fake_tmux.clear()
+    cli_logins.logged_out()
+    runtime.start_session(str(repo), "s", None, reason=runtime.AT_START, resume=True)
+    [call] = [c for c in fake_tmux if c[0] == "new_session"]
+    assert not _waits_for_login(call[-1])
+
+
+def test_a_claude_worker_on_a_server_starts_without_a_login(
+    repo, fake_tmux, cli_logins, monkeypatch
+):
+    runtime.start_session(str(repo), "s", None, provider="kilo")
+    _claude_on_server(monkeypatch)
+    cli_logins.logged_out()
+    runtime.spawn_worker("s", "a task", name="w1", provider="claude", model="Шлюз Qwen")
+    assert state.get_agent("s", "w1").model == "qwen3-8b"
+    assert runtime.status_reasons("s") == {}
+
+
+def test_a_built_in_claude_worker_of_a_session_on_a_server_needs_the_login(
+    repo, fake_tmux, cli_logins, monkeypatch
+):
+    _default(_claude_on_server(monkeypatch))
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    cli_logins.logged_out()
+    with pytest.raises(runtime.NotLoggedIn) as refused:
+        runtime.spawn_worker("s", "a task", name="w1", model="sonnet")
+    assert str(refused.value) == WORKER_REFUSED
+
+
+def test_a_launch_names_what_its_cli_hands_on():
+    agent = state.Agent("s", "w1", "worker", "/r", None, None, state.STARTING, "claude")
+    launch = providers.Launch(["c"], {"KEY": "k"}, cli_env=("ANTHROPIC_BASE_URL",))
+    env = runtime._launch_env(agent, {"PATH": "/bin"}, launch)
+    named = env[agent_env.LAUNCH_VARS].split(",")
+    assert {"KEY", "ANTHROPIC_BASE_URL"} <= set(named)
+    assert "ANTHROPIC_BASE_URL" not in env  # the CLI sets it itself
+
+
+def test_no_keychain_warning_for_an_agent_on_a_server(repo, fake_tmux, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(runtime.gui_session, "place", lambda: runtime.gui_session.Place.NO_GUI)
+    _default(_claude_on_server(monkeypatch))
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    assert started.warnings == []
+
+
+def test_a_clone_for_a_session_on_a_server_is_not_refused_for_the_login(
+    cli_logins, fake_clis, monkeypatch
+):
+    _claude_on_server(monkeypatch)
+    cli_logins.logged_out()
+    runtime.check_start_login("claude", None, "Шлюз Qwen")
+    with pytest.raises(runtime.NotLoggedIn):
+        runtime.check_start_login("claude", None, "opus")
+    with pytest.raises(runtime.NotLoggedIn):
+        runtime.check_start_login("claude", None)
+
+
+def test_a_clone_on_the_default_model_of_a_server_is_not_refused_for_the_login(
+    cli_logins, fake_clis, monkeypatch
+):
+    _default(_claude_on_server(monkeypatch))
+    cli_logins.logged_out()
+    runtime.check_start_login("claude", None)
+
+
+# A turn no hook ends (Provider.failed_turn).
+
+
+class FailingProvider:
+    """The provider of an agent, whose turn `event` ended; the keys it was given."""
+
+    def __init__(self, event):
+        self.event = event
+        self.asked = []
+        self.keys = None
+
+    def failed_turn(self, agent, keys):
+        self.asked.append(agent.name)
+        self.keys = keys
+        return self.event
+
+    def __getattr__(self, name):
+        return getattr(providers.get("opencode"), name)
+
+
+def _failing(monkeypatch, event):
+    failing = FailingProvider(event)
+    real = providers.get
+    monkeypatch.setattr(
+        runtime.providers, "get", lambda name: failing if name == "codex" else real(name)
+    )
+    return failing
+
+
+def _busy_codex(repo):
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    runtime.spawn_worker("s", "a task", name="w1")
+    with state.connect() as db:
+        db.execute("UPDATE agents SET provider = 'codex' WHERE name = 'w1'")
+    state.set_status("s", "w1", state.BUSY)
+
+
+REFUSED_TURN = providers.Event(
+    base.TURN_END, error="the model provider refused the key (401)", output_ignored=True
+)
+
+
+def test_check_turns_ends_a_failed_turn_as_a_hook_does(repo, fake_tmux, monkeypatch):
+    _busy_codex(repo)
+    _failing(monkeypatch, REFUSED_TURN)
+    runtime.check_turns("s")
+    assert state.get_agent("s", "w1").status == state.IDLE
+    assert [m.summary for m in state.list_messages("s") if m.recipient == runtime.SUPERVISOR] == [
+        "turn of w1 ended on an error: the model provider refused the key (401); it is idle"
+    ]
+
+
+def test_check_turns_asks_only_about_busy_agents(repo, fake_tmux, monkeypatch):
+    _busy_codex(repo)
+    state.set_status("s", "w1", state.IDLE)
+    failing = _failing(monkeypatch, REFUSED_TURN)
+    runtime.check_turns("s")
+    assert failing.asked == []
+
+
+def test_check_turns_changes_nothing_of_a_turn_that_goes_on(repo, fake_tmux, monkeypatch):
+    _busy_codex(repo)
+    failing = _failing(monkeypatch, None)
+    runtime.check_turns("s")
+    assert failing.asked == ["w1"]
+    assert state.get_agent("s", "w1").status == state.BUSY
+
+
+def test_check_turns_passes_over_an_agent_of_an_unknown_cli(repo, fake_tmux):
+    _busy_codex(repo)
+    with state.connect() as db:
+        db.execute("UPDATE agents SET provider = 'gone' WHERE name = 'w1'")
+    runtime.check_turns("s")
+    assert state.get_agent("s", "w1").status == state.BUSY
+
+
+def test_the_keys_of_a_failed_turn_are_the_kept_key_of_the_agent_s_server(
+    repo, fake_tmux, monkeypatch
+):
+    _busy_codex(repo)
+    failing = _failing(monkeypatch, None)
+    server = state.add_model_server("gw", "Шлюз", "http://gw", "OpenAI-compatible", [CHAT])
+    model_settings._write_key(server.id, "sk-kept")
+    failing.launched_on = lambda agent: server.id
+    runtime.check_turns("s")
+    assert list(failing.keys()) == ["sk-kept"]
+
+
+@pytest.mark.parametrize("launched_on", [None, "removed"], ids=["no server", "a server removed"])
+def test_no_server_has_no_keys(repo, fake_tmux, monkeypatch, launched_on):
+    _busy_codex(repo)
+    failing = _failing(monkeypatch, None)
+    failing.launched_on = lambda agent: launched_on
+    runtime.check_turns("s")
+    assert list(failing.keys()) == []
 
 
 def _dropped_message(summary):

@@ -6,6 +6,8 @@ provider's state is doctor.provider_status."""
 
 import os
 import shutil
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Literal
@@ -15,6 +17,7 @@ from lado import (
     doctor,
     kits,
     logins,
+    model_settings,
     project_secrets,
     projects,
     providers,
@@ -236,11 +239,13 @@ def kit_infos(has_db: bool) -> list[models.KitInfo]:
     return infos
 
 
-def provider_infos(project: str | None = None) -> list[models.ProviderInfo]:
+def provider_infos(project: str | None = None, has_db: bool = True) -> list[models.ProviderInfo]:
     """Each provider of the registry, its CLI checked anew (`<cli> --version`), all at once,
     and whether it lacks the login its agents need in the environment the agents of
     `project` (or of no project) start from, as a new session's start reads it
-    (runtime.check_login); NoSuchProject for an unknown `project`."""
+    (runtime.check_login): a default model on a server that takes the CLI's whole process needs
+    none, and a model picked in the window is not known here. NoSuchProject for an unknown
+    `project`."""
     if project is not None:
         projects.get(project)
     registry = [providers.get(name) for name in providers.names()]
@@ -248,16 +253,55 @@ def provider_infos(project: str | None = None) -> list[models.ProviderInfo]:
         layers: agent_env.Layers | None = runtime.agent_layers(project)
     except runtime.LadoError:
         layers = None  # the start says why itself
+    # Read here, not in `one`: its threads must not all open a lado.db that may be new.
+    on_server = {d.ref.cli for d in model_settings.defaults() if d.server} if has_db else set()
 
     def one(provider: providers.Provider) -> models.ProviderInfo:
         info = provider_info(provider)
         if layers is not None and info.installed:
             env = runtime.agents_env(layers, provider)
-            info.login_missing = logins.refusal(provider, env, logins.SESSION) is not None
+            needs_none = provider.name in on_server and provider.external_whole_process
+            info.login_missing = (
+                not needs_none and logins.refusal(provider, env, logins.SESSION) is not None
+            )
         return info
 
     with ThreadPoolExecutor(len(registry)) as pool:
         return list(pool.map(one, registry))
+
+
+# Seconds the server keeps a provider's list of models (Provider.model_list): typing in the
+# Model field checks each text against it, without running the CLI's command again. Only a
+# list it could read: one that could not be read (a command that failed or ran over its
+# time, a CLI with aliases only) is read again at the next check, as the CLI may be fixed.
+MODEL_LIST_KEPT = 60
+_model_lists: dict[tuple[str, str | None], tuple[float, providers.base.ModelList]] = {}
+_model_lists_lock = threading.Lock()
+
+
+def forget_model_lists() -> None:
+    with _model_lists_lock:
+        _model_lists.clear()
+
+
+def model_list(
+    provider: providers.Provider, project: str | None = None, fresh: bool = False
+) -> providers.base.ModelList:
+    """The CLI's aliases and list of models in the environment of the agents of `project`
+    (or of none), kept MODEL_LIST_KEPT seconds once read (`fresh`: read now, and kept);
+    LadoError for an environment that cannot be read. Settings → Models' picker takes it too
+    (lado.server.model_entries)."""
+    key, now = (provider.name, project), time.monotonic()
+    with _model_lists_lock:
+        kept = _model_lists.get(key)
+    if kept and now - kept[0] < MODEL_LIST_KEPT and not fresh:
+        return kept[1]
+    env = runtime.agents_env(runtime.agent_layers(project), provider)
+    listed = provider.model_list(env)
+    if listed.models is not None:
+        with _model_lists_lock:
+            _model_lists[key] = (now, listed)
+    return listed
 
 
 def provider_info(
@@ -280,7 +324,7 @@ def provider_info(
 
 
 def provider_logins(found: logins.Login, cli: models.ProviderInfo) -> models.ProviderLogins:
-    """Settings → Providers and environment's row of a provider (lado.server
+    """Settings → Agent CLIs and environment's row of a provider (lado.server
     .provider_check keeps them). The agents that wait for its login are named only while
     it has none: one that waits still when the login is there starts within its window's
     next look (lado.login_wait), so a logged-in row never names one."""

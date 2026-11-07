@@ -133,28 +133,185 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   the queue as any other. Any other status drops a planned resume (`state._set_status`):
   busy, the agent goes on anyway (a message, the human's input, its queue at the turn's
   end); waiting or starting (a dialog, failed messages, `/clear`), the human acts on it
-  already, so dropping it is no silent drop. A transient error after the last resume goes
+  already, so dropping it is no silent drop, and it was told to no one, so it leaves the count of
+  `agents.resumes`; an error while a resume is planned leaves the plan (`schedule_resume`): `after
+  <N> resumes` follows N told ones. A transient error after the last resume goes
   to the lead as above, with `after <N> resumes`. Every turn's end that plans no resume (as
   usual, a permanent error, the resumes spent) sets the count back to 0. Claude Code's
   transient types are `overloaded`, `server_error` and `unknown` (also the machine's
-  sleep; `claude.TRANSIENT`); Kilo and OpenCode mark no error transient: the plugin gives
-  only the error's class name (BACKLOG.md). Claude Code runs `StopFailure`
+  sleep; `claude.TRANSIENT`); Kilo and OpenCode mark no error transient: which errors reach
+  `session.error` is not checked (BACKLOG.md). Claude Code runs `StopFailure`
   instead of `Stop` then (API errors: rate_limit, overloaded, authentication_failed,
   billing_error, server_error, also the machine's sleep, max_output_tokens, unknown) and
   ignores its output (`Event.output_ignored`: the queue is typed in, not printed); read in
   the binary of 2.1.291, not triggered by hand. Kilo 7.8.3 and OpenCode 1.18.34 publish
   `session.error`, then `session.idle` of the same session (read in their bundles); the
-  plugin passes the error's name (and an `APIError`'s message) with that idle, drops it at
+  plugin passes the error's name (and an `APIError`'s message and status) with that idle, drops it at
   `session.compacted` (a context overflow the CLI compacts its way out of ends no turn),
-  and `MessageAbortedError` (the human's Esc) is no error. Claude Code runs no hook when
+  and `MessageAbortedError` (the human's Esc) is no error. A request larger than the context
+  never reaches `session.idle` on OpenCode 1.18.35: it compacts and resends without end, the
+  compaction's own small request succeeding each round. So the plugin counts
+  `ContextOverflowError`s in a row per session, a new prompt or a step of the turn (not of a
+  compaction, whose message has `summary: true`) starting the count again, and at the third
+  marks that error `stopped` with the count, the server's text as it came,
+  and calls `client.session.abort`, whose
+  `MessageAbortedError` does not replace it. Any turn that ends on an error gives two
+  `session.idle` 20 ms apart (a server's 500 and an abort alike, on both CLIs): the first ends
+  the turn on that error, and any more before the next prompt end no turn, or the second would
+  pass as a clean end and decide the reply check. LADO's words of such a turn live in
+  `opencode_family.turn_error` alone, before the server's, as an error is cut to one short line:
+  a stopped turn's, with the server's text alone in `Event.details`, and a server's own refusal
+  (`exceed_context_size_error`, LM Studio's HTTP 400, which both CLIs report as `UnknownError`
+  and no overflow count sees: that turn ends at once), with the CLI's whole text there. Any other
+  error past `base.ERROR_LIMIT` keeps its
+  whole text in `Event.details`, which `turn_failed` puts in the message's body; checked in the TUI of OpenCode 1.18.35 and Kilo
+  7.8.8 on a server of a small context, 6 and 7 requests to the idle. A model provider's refusal,
+  any 4xx but a 408 (`base.is_refusal`), reads in LADO's words with the status and the
+  server's first line (`base.refusal_line`: `base.REFUSALS` for 401, 402, 403, 429, a 400 that
+  names an API key as a refused key, as cloud.ru answers a wrong key, else `refused the request`),
+  its whole text in `Event.details`, and is never transient; LADO's words of a context too small
+  come first (`base.context_line`, on all three CLIs): a turn of OpenCode or Kilo by the plugin's `status`, a Claude agent on a server by
+  `last_assistant_message` of `StopFailure` (`claude.REFUSED`, as 2.1.295 calls a 402 `unknown`; the
+  hook sees `LADO_MODEL_SERVER`, checked by smoke). Of the 4xx from 400 to 451 two differ there: a
+  413 has `error_details`, `request_too_large: 413 <body>`, and a 404 the kind `model_not_found` with
+  Claude Code's own words, no field holding the server's text, which stand in the line. A Claude agent
+  on a built-in model keeps its words. `rate_limit` stays permanent: a short limit and a spent
+  quota cannot be told apart, so no resume follows a 429 and the lead or the human decides. The
+  words stand before the first colon, what `lado stats` counts as the error's kind. `base.without_keys`
+  takes each `LADO_MODEL_KEY_*` of the hook's environment out of an error before any cut, as half a
+  key would pass a later replacement. Measured on a fake server, requests of a turn (Claude Code
+  with its own default of 10 repeats by `claude -p`; OpenCode 1.18.35, Kilo 7.8.8, about 70 s on a
+  429 with no `Retry-After`): on a 401 OpenCode 2, Kilo 1, Claude Code 11 in 179 s; on a 429
+  OpenCode 9, Kilo 6, Claude Code 11. `Retry-After` stretches these: OpenCode and Kilo wait what it
+  names, 100 and 101 s at 20 s; at 600 s both were still `busy` after 150 s with nothing in the chat
+  (by that proportion about 50 minutes, not measured), and LADO does not see the wait. A Claude
+  agent on a server has `CLAUDE_CODE_MAX_RETRIES` 7: its TUI then sends 8 requests of the turn on a
+  429, in 72 s with no `Retry-After`, 160 s at 20 s, and one at 600 s, where it gives up at once; 10
+  on a 401, in 149 s; and as many again for the session's title, a
+  request with no tools, that goes on a few seconds past the turn's end. Claude Code runs no hook when
   the human interrupts a turn with Esc, while text streams, while a tool runs or on a
   permission dialog (checked by hand with 2.1.292): the agent stays `busy`, or `waiting`
   after a `PermissionRequest`, until the human's next prompt in its window, whose `Stop`
   ends the turn and hands over the queue (BACKLOG.md). Codex CLI 0.162 runs no hook at all
-  for a turn that ends on a model or API error: the agent stays `busy` (BACKLOG.md); the
+  for a turn that ends on a model or API error. An agent on a built-in model stays `busy`
+  (BACKLOG.md). For one on a server each pass of the session loop asks
+  `Provider.failed_turn` (`runtime.check_turns`, busy agents only): Codex's reads what is new in
+  the agent's newest `sessions/**/rollout-*.jsonl`, whole lines from the offset in
+  `<home>/journal-offset`, kept there so that a restarted loop tells nothing twice. A
+  `task_complete` with an `error` and no later `task_started` is a `TURN_END` through
+  `hooks.handle`, the one path of a hook's, with `output_ignored`, as no hook prints it. A 4xx but
+  408 reads in LADO's words (`base.refusal_line`), any 5xx and `server_overloaded` are temporary,
+  anything else its message. A 400 whose body is no JSON object has no status in the journal
+  (`other`, which is more than a 400): `Codex CLI's turn ended on an error`, then the text. The loop has no variable of the key: it gives
+  the kept one (`base.without_keys(text, keys)`) before everything from `, url: ` or `, cf-ray: `
+  on is cut. This reverses the decision of 2026-10-09 for these agents alone; the smoke holds the
+  journal's format. The
   human's Esc, and a refused approval, run `Interrupt` and no `Stop`: a turn's end whose
   output Codex ignores (`output_ignored`, read in its source), so the queue is typed in, and
   a refused approval ends the wait at once.
+- An agent's model and effort (`agents.model`, `effort`, schema 36) each have a source and
+  a detail: `cli`, the CLI's own choice (its default or its own settings), `cli-config`,
+  the user's config of the CLI that LADO carries into the agent, with the detail
+  `profile <name>` when a profile gave it, `session`, the session's model ("chosen for
+  the session"), `default`, its CLI's default of Settings → Models ("default in Settings"), or
+  `cli-changed`, another model its CLI named after the launch ("changed in the agent CLI").
+  Later ways of choosing a model add tokens, not
+  columns; `state.source_words` holds the words the API and the UI show for each, and an
+  unknown token is shown as itself. A launch says what it set up (`Launch.model`, `effort`),
+  which `runtime` records before the window opens (`state.set_model`): Codex's carried
+  `model` and `model_reasoning_effort`, the chosen profile's before the top level's, as
+  Codex reads them, and the session's model. A session keeps its model as a power table
+  (`sessions.power`, schema 37: rows `light`, `normal` and `heavy`, all the same for now, each a
+  CLI and a model: built-in, external by a saved model's id with copies for the words after its
+  removal, or `""` for the CLI's own settings; a stored text that is no table reads as
+  `PowerTable.unreadable()`, which lists as any session and refuses a resume that keeps it).
+  `model_settings.start_model`, read at each launch, says what an agent starts on: its CLI's row,
+  else its CLI's default of Settings → Models (`cli_defaults`), else nothing; a session that chose
+  nothing keeps nothing, so a default changed later reaches the next resume and worker. Its name
+  goes in `AgentSpec.model`, with `model_source`, which the provider applies its own way (Claude
+  Code `--model`, Codex `model` at the top level and in the carried profile of its
+  config.toml, the OpenCode family `model` in its config content and `--model`, the only one that
+  beats Kilo's remembered `/model` pick, the fake agent
+  `FAKE_AGENT_MODEL`) and returns as `Launch.model` with that source, so a Kilo
+  agent shows it also while its plugin names none. Both family CLIs remember the last `/model`
+  pick in `<state>/<cli>/model.json`, read by every run: each of their agents has its own
+  `XDG_STATE_HOME`, `LADO_HOME/agent-state/<session>/<agent>` (`OpenCodeFamily.own_state`), so an
+  agent's pick of a server, a provider only its config has, stays out of the user's file, which
+  LADO only reads. A new folder starts from a copy of that file without LADO's servers, and of
+  the user's TUI settings, `kv.json`, as they are, each file when the folder lacks it. The
+  variable moves `state` alone, logins stay; the agent's tools see it, and its prompt history and
+  `locks` live there too. It is apart from the config folder: it outlasts a stop and a resume, and
+  goes with the worker or the session. A CLI whose models on a server sit beside its
+  own (`Provider.external_whole_process` false, the OpenCode family) gets every model ticked for it in
+  `AgentSpec.servers` (`model_settings.agent_servers`), whatever it starts on: one OpenAI-compatible
+  provider per server, `lado-<server id>`, so a rename changes nothing, labelled `LADO · <server>`,
+  its key named as `{env:LADO_MODEL_KEY_<ID>}` and given only in `Launch.env`; a name or id that
+  holds `{env:` or `{file:` is left out with a warning, as the CLI would expand it. Each server of
+  the config is asked for its models' context at each start, resume and spawn, all at once within
+  `model_servers.LIMIT_TIMEOUT` (`ServerEntry.limits`): nothing is stored, so a reloaded model is
+  read anew, and a silent server only leaves its models with no limit. A known context goes in
+  as `limit: {context, output}`, both always, as OpenCode refuses one without `output`; `output`
+  is at most a quarter of the context, when none is reported 8192, or 32000 on a context of 131072
+  or more: the CLIs' own default, so reading a cloud provider's context cuts no long answer. Below
+  `Provider.min_context` the start warns, and goes on; so does an unknown context on a server
+  outside the human's machine and network (`model_servers.in_network`: the hosts of the rule of a
+  key over plain http, and a name with no dot or ending in `.local`, `.lan`, `.internal` or
+  `.home.arpa`), where a late compaction costs money. An OpenCode agent on a server's model also gets npm's
+  `fetch_retries=0` and `fetch_timeout=5000` (`OpenCodeProvider.server_env`) while
+  `@opencode-ai/plugin` is not in OpenCode's config folder: any `plugin` entry makes it wait for
+  that install, 72 s with outside traffic refused, 2 s with these or with the package there. LADO's
+  plugin imports nothing from it. They reach what the agent runs in its shell too. Claude Code and
+  Codex hold one model per process and get none of it: the server of their start model alone,
+  with that model. A Codex agent on one gets in its own `config.toml`, over what was carried, a
+  provider `lado-<server id>` with `wire_api = "responses"` and `env_key` (none for a server with
+  no key, and then no `Authorization` goes out, also with `OPENAI_API_KEY` set), `model_provider`
+  and `model` at the top level and in a carried profile, `web_search = "disabled"`, no carried
+  effort, `model_context_window` and `model_auto_compact_token_limit` (the context less
+  `Limit.output_room`) for a known context, and `model_catalog_json`: a `models.json` of its one
+  model, made at launch from the last entry of `codex debug models --bundled` with no `tool_mode`,
+  everything that adds a tool or a parameter off. A list that cannot be made warns, and `/model`
+  then shows OpenAI's models. No `auth.json` is linked or written (`first_hook_blocker`), and
+  `launched_on` reads the provider back. A server of a type the CLI refuses
+  (`Provider.refuses_server`, `model_servers.suiting`: Codex on LM Studio, whose Responses API drops
+  the type `namespace` of its MCP tools) is refused with no request
+  (`model_settings.check_launch`). A start or resume checks the supervisor's model
+  (`check_start`, by the probe of saving a model, within its timeout), and `spawn_worker` its
+  worker's in the same way (`runtime._worker_start`), before anything of the worker exists; a
+  worker with no model asks nothing. A worker takes a model by name (`spawn_worker(model=…)`, from
+  `list_models`, which asks no server): the name picks its CLI (`model_settings.worker_start`),
+  the source is `supervisor`, the session's table does not change, and nothing keeps the choice
+  past that spawn. `""` is the CLI's own settings. An agent of another CLI (a worker
+  spawned with another provider and no `model`) takes its own CLI's default; with none it gets no
+  model: its
+  record has no name, the source `cli`
+  and the detail `the session's model <model> is for <CLI>`, and its launch warns, as
+  `spawn_worker` returns and loop.log keeps its launch warnings. The agents' rows go at a stop, so
+  an event `start_model`, written when the model changed, holds what the supervisor last started
+  on: a resume compares it to say a default moved the model. In inherit mode
+  (`LADO_AGENT_ENV=inherit`) a worker starts from its spawner's `lado mcp`, whose environment holds
+  the spawner's launch: every launch names in `LADO_LAUNCH_VARS` what it set and what its CLI gives
+  the processes it starts (`Launch.cli_env`: Claude Code hands the `env` of its settings to `lado
+  mcp` too, 2.1.295), and `agent_env.without_launch` drops those, so neither a config, a key nor a
+  server's address reaches a worker. A blanked variable goes with them: in this mode a worker of a
+  supervisor on a server has no `ANTHROPIC_API_KEY` of the human's, and a built-in one that needs it
+  is refused for its login. Then the events name it
+  (`Event.model`, `effort`), recorded by `hooks.handle` first (`state.report_model`): every
+  Codex hook's input has `model` and none the effort (0.162.0, its hook input schemas);
+  Claude Code's SessionStart has `model` in the interactive mode LADO runs, at a start,
+  compaction, `/clear` and resume, not in `claude -p`, and no hook gave the effort (2.1.295,
+  checked by hand), so a `/model` typed in its terminal shows at the next SessionStart; the
+  OpenCode family's plugin sends with `chat.message` the user message's model
+  (`providerID/modelID`) and its `variant` as the effort, none when the model runs its
+  default variant, so the effort goes back to the CLI's default (OpenCode 1.18.35, read in its
+  bundle; Kilo runs the same plugin interface, its bundle not read: without a model in its
+  message a Kilo agent shows the CLI's default with no name). A name equal to the one the
+  agent has writes nothing, so a hook in every turn adds nothing to the change journal; a
+  different one replaces it, and a source other than `cli` becomes `cli` with no detail:
+  the CLI runs another model than the one chosen. Two names keep the source and the
+  detail: the first one an agent with none gets (so the other CLI's note stays), and one
+  the provider's `same_model` says is the chosen one's (Claude Code names the full model of
+  an alias: `opus` → `claude-opus-5-5`; `best` and `opusplan` any of Claude's). LADO never reads the terminal for it and
+  asks no model API.
 - An agent whose process ends by itself goes through one transition, `runtime.agent_ended`
   (`state.agent_ended`, one conditional transaction): its session-end hook (`SESSION_END`,
   "its CLI exited") and the session loop's window check ("its window closed without a
@@ -213,15 +370,45 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   are taken, as for a human who trusts the folder) and `skipDangerousModePermissionPrompt:
   true` in `bypassPermissions` only (its warning screen). Auto mode's notice holds nothing.
 - An agent of any provider still `starting` with no hook since its launch (`seen_at` 0)
-  `runtime.START_SILENCE` (30 s) after it (its window mark, `window_at`; a waiting window
-  marks it anew when it starts the CLI) is held by a screen LADO does not know: the session
+  `Provider.start_silence` after it (30 s; 45 s for OpenCode and Kilo, past the 30 s their
+  server plugin counts from its own init, 3 to 5 s after the launch; its window mark,
+  `window_at`; a waiting window marks it anew when it starts the CLI) is held by a screen LADO
+  does not know: the session
   loop's pass (`runtime.check_starts`) makes it `waiting` with a `blocked` event, `Waiting
-  for an answer in its terminal: no sign from it 30 s after its start. Open its terminal.`,
+  for an answer in its terminal: no sign from it <limit> s after its start. Open its terminal.`,
   in the same transaction as the look (`state.block_unheard`: a hook that came meanwhile
   wins), logged once. Its first hook ends the wait: its session start as for any start
   blocker, any other first hook (`state.seen` says it is the first) by
-  `runtime.heard_at_start`, which puts it back to `starting`. A slow CLI past 30 s is
+  `runtime.heard_at_start`, which puts it back to `starting`. A slow CLI past its limit is
   `waiting` for a moment and clears by itself.
+- A Claude agent on a model server (`claude.py`, checked by hand on 2.1.295 against a fake server
+  with every other way out refused) has that server in its own `--settings`, not in its
+  environment: flag settings beat the environment and the user's and the repository's settings, and
+  `ANTHROPIC_BASE_URL` alone sent the human's login, sent `ANTHROPIC_API_KEY` beside the server's
+  token, and lost to a base URL in `~/.claude/settings.json`. So the settings hold the server's root
+  (`ServerEntry.root`: Claude Code adds `/v1/messages`, the `/v1` of `base_url` would double),
+  `availableModels` and `ANTHROPIC_DEFAULT_MODEL` and `ANTHROPIC_SMALL_FAST_MODEL` with the model,
+  so that `/model` shows Default and the model and a subagent's `model: haiku` falls back to it;
+  `SERVER_BLANKS` as empty values (`ANTHROPIC_UNIX_SOCKET`, on which an empty value in the settings
+  does nothing, goes empty in the launch's environment); `SERVER_SWITCHES`; for a known context `CLAUDE_CODE_MAX_CONTEXT_TOKENS` and
+  `CLAUDE_CODE_MAX_OUTPUT_TOKENS` (`Limit.output_room`, at most `claude.SERVER_OUTPUT`, 16384: it asks
+  for 32000 by itself, over a 64K context with a prompt of 45K, and retries for hours what the server
+  ends, and on a context of 131072 its request at a compaction passed the context with 32000) and,
+  where that cuts the output, `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, the context less the output, read by
+  2.1.319 and not by 2.1.295; `CLAUDE_CODE_EFFORT_LEVEL` `auto` of
+  `SERVER_SWITCHES` names no effort, where `effortLevel` in `--settings` loses to the user's; `permissions.allow` with
+  `mcp__lado__*`, as auto mode's classifier, in a `defaultMode` of the user's settings too, asks the
+  same model, and one of no usable answer has LADO's tools blocked at every try; `apiKeyHelper: printenv LADO_MODEL_KEY_<ID>`, whose output goes out in both `x-api-key`
+  and `Authorization`, or `echo no-key`, as with no credential at all the login goes out. The file
+  holds no secret and is rewritten at each launch. The launch's `LADO_MODEL_SERVER` tells the
+  provider it needs no login, as `claude auth status` reads no `--settings`: `needs_login`,
+  `keychain_login` and `first_hook_blocker` go by it; `runtime.check_login`, which runs before the
+  launch, goes by a `start.server` on a CLI of one model per process, and so does the launch
+  window's `login_missing` (`server/launch.py`), on the CLI's default model. The model's id says
+  no server, and may be a built-in model's too, so `Provider.launched_on` reads the agent's server
+  from its settings for its card, `lado ls` and `list_agents`: while it runs, as they go with it.
+  The first run is recorded as for any agent. A `system` message ends `messages`, and `thinking` and `output_config` stay in the
+  body: only a real server tells whether it takes them.
 - A Codex agent's own Codex home (its config folder, `CODEX_HOME`) is settled so that no
   screen holds it: its config.toml trusts the repository's main root (`trust_level =
   "trusted"` for its real path, which covers a worker's worktree) unless the user's Codex
@@ -275,7 +462,7 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   it may give the agent its login, Codex's link), LADO asks the provider (`needs_login`,
   `login_status`) with the agent's launch environment (`runtime._held_for_login`); at `no`
   the agent is `waiting` with `logins.wait_reason` (`<CLI> is not
-  logged in: log in in Settings → Providers and environment, or set <variable>; the agent
+  logged in: log in in Settings → Agent CLIs and environment, or set <variable>; the agent
   starts by itself once you do`), told and logged as a blocker's reason is; what needs no
   login is settled at once (`first_hook_blocker`: Claude Code's trust, its note in
   `loop.log` only; a question it would still ask waits for the window), and its window
@@ -287,7 +474,7 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `shell_login`, the lowest such layer), and asks again. Once logged
   in it runs `first_hook_blocker` there (the first run above: its note in loop.log only, a
   reason or warning also printed in the agent's terminal), marks the CLI's launch
-  (`state.window_opened`, from which the 30 s above count), puts the agent
+  (`state.window_opened`, from which the limit above counts), puts the agent
   back to `starting` (or waits with that blocker's reason) and execs the CLI: the agent
   reaches its first hook with no restart. A login shell's change needs a new agent. A
   login LADO cannot read (`unknown`: a failure, a timeout, odd output) never holds an
@@ -394,7 +581,8 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   window. At each turn's end, before the queue is handed over, the human's messages the
   agent got (not answers or dismissals) are checked once: `replied` if it wrote to `human`
   after it got them (by `sent_at`, when each was handed over, not by id), else `missing`,
-  which the chat shows as "replied only in its terminal".
+  which the chat shows as "replied only in its terminal". A turn that ended on an error
+  checks nothing: the next clean turn decides, as the agent has seen the message by then.
 - The lead recommends on each question to the human, a core mechanism of every kit and
   provider: when a flow gate opens (approval, choice, loop limit) or an agent other than
   the lead asks the human (`ask_human`), LADO asks the lead with one message from `lado`,
@@ -436,12 +624,36 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `human` queued after LADO's own (a resume's `session resumed`, a brief), whose summary is
   the fixed `runtime.FIRST_MESSAGE` and whose body is the whole text, also for one line, so
   the text never goes on a command line below; a failed start drops it with the queue.
-  Kilo and OpenCode
-  (`Capabilities.notice_on_argv`) lose text typed into their TUI right after the plugin's
-  init, and no event or API says when it takes input (OpenCode 1.18.35, checked by hand):
-  their queue's lines at launch, never a body, go on `--prompt` (`runtime._launch_command`),
+  Kilo and OpenCode lose text typed into their TUI before its prompt has focus, which comes
+  1.5 to 3 s after the server plugin's init, later under load (Kilo 7.8.8, OpenCode 1.18.35).
+  So their session start is the TUI's: `opencode_tui_plugin.js`, which LADO gives the agent
+  alone in `tui.json` of its config folder (`OPENCODE_TUI_CONFIG`, `KILO_TUI_CONFIG`), runs
+  `lado hook tui.ready` on the first frame with a focused renderable, and the server plugin's
+  init reports nothing. A message sent before that waits `pending` with no attempt counted,
+  while the TUI takes its time; a report ends that: `tui.ready`, or with a live server plugin
+  `tui.silent`, its timer counting from the plugin's init and not from the launch, so before
+  the start's limit of 45 s (`Provider.start_silence`), past which the agent shows the reason
+  of a silent start. A renderer without that API
+  reports at once: a paste may be lost then and the sweep types it again. A TUI plugin that
+  does not report (a CLI's change, or a TUI merely slow, which nothing tells apart) must not
+  leave the agent `starting`: the server plugin, alive, runs `lado hook tui.silent` 30 s after
+  its init (`tuiWait`, dropped at `dispose`), a `SESSION_START` with `Event.note`. When that
+  start makes the agent ready, the note goes to its lead (`runtime.start_note`) and its queue
+  is typed in as for any idle agent, so a TUI still blank loses it; once the agent is ready that
+  hook is dropped before `state.seen`, as it would pass for a sign after a paste (`_plan`).
+  `tui.ready` carries `Event.ready`, for what was typed in before it. A paste not confirmed
+  starts over from that hook as a first attempt (`state.restart_typed`), and an agent busy
+  for it alone is idle: no turn ran, so no hook would end that. The paste goes back to the
+  queue after `RETRY_DELAYS[0]`, not at once, so a CLI that held it confirms it by
+  `chat.message` and it is not typed twice. A real turn stays `busy` by itself; it can leave the
+  second line of a paste of two unconfirmed, and the agent is then `idle` until that goes in.
+  `hooks.handle` also ends a wait with no key, the one failed messages left, which
+  `state.seen` has just put back in the queue; a dialog's wait, with its key, stays. Claude
+  Code and Codex set neither field. Their queue's lines at launch
+  (`Capabilities.notice_on_argv`), never a body, go on `--prompt` (`runtime._launch_command`),
   handed over then as `typed` with its first attempt and confirmed by `chat.message` as
-  typed text; the agent stays `starting` until its session start. Codex CLI takes them as
+  typed text, before or after `tui.ready`; the agent stays `starting` until its session
+  start or that `chat.message`, whichever comes first. Codex CLI takes them as
   its own `[PROMPT]` argument, and starts its session (SessionStart) only when its first
   input is submitted (`Capabilities.session_start_on_first_input`): an agent of it with an
   empty queue (a new supervisor) first gets `runtime.FIRST_INPUT` from `lado`, a message
@@ -587,7 +799,7 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `runtime.SPAWN_DEADLINE` (60 s) from its row: past it the spawning process died, and the
   agent ends at once with "its start ended before its window opened" (`SPAWN_DIED`).
   After it the pass looks for agents a screen holds before any hook
-  (`runtime.check_starts`, the 30 s safety net above).
+  (`runtime.check_starts`, the safety net above).
   A failing list changes nothing: only then
   a `tmux has-session` tells a gone tmux session (the loop ends) from another failure (an
   error of the pass; a tmux that cannot run is one too; `loop.tmux_gone`). The supervisor's

@@ -2,7 +2,55 @@
 
 ## 0.45.0 (unreleased)
 
+### New
+
+- **See which model each agent runs on.** The agent's page, the Team chip's tooltip,
+  `lado ls` and `list_agents` show its model and effort and where they came from: the CLI's
+  default or your Codex config (its profile too), as the CLIs report them.
+- **Choose the session's model.** `lado start --model` and the Model field in the launch
+  window's Advanced start the session's agents on a model, checked first against the CLI's
+  own list; a resume keeps it and checks it again.
+- **Run a session on your own model.** A session starts on a saved model or its CLI's default
+  from Settings → Models, checked on its server first. OpenCode and Kilo CLI keep every saved
+  model in `/model` beside their own; `--model ''` is the CLI's own settings.
+- **Run agents on a cloud provider.** A provider's address and key are enough on OpenCode, Kilo CLI,
+  Claude Code and Codex: agents know its limits and compact in time, and a refusal reads in plain words
+  with its status, no key, and ends the turn once the CLI's limited repeats are spent.
+- **Run Claude Code on your own server.** An agent on a saved model of a server with Anthropic's
+  API runs there, with no Claude login: your login and keys stay off the server, and `/model`
+  shows that model alone. Workers can run on other servers or built-in models.
+- **Run Codex on your own server.** An agent on a saved model of a server with the Responses API runs
+  there, with no Codex login, and a refusal reads in plain words. LM Studio loses Codex's tools, so
+  LADO says so before you save the model.
+- **Start a worker on another model.** The supervisor sees every agent CLI's models with
+  `list_models` and names one in `spawn_worker(model=…)`; a silent server or a missing model
+  refuses the worker at once, instead of failing at its first turn.
+- **Find out what a model server is.** `lado model-server probe <address>` names the type
+  of a server in your network (Ollama, LM Studio, OpenAI- or Anthropic-compatible), its
+  models, embeddings ones marked, and the CLIs that can use it, generating nothing; `--key`.
+- **Save model servers and models under names.** `lado model-server add|list|remove` keeps
+  a server, its key in a private file; `lado model add|list|remove` a model on a saved
+  server, checked against its list (no embeddings model). `lado doctor` checks them.
+- **A default model for each agent CLI.** `lado model default` and Settings → Models keep one
+  per agent CLI: one of its own or of your servers, picked from one searchable list. It is
+  kept and shown only: no session uses it yet.
+- **Set models in Settings.** Settings → Models: a card per agent CLI with its default model
+  and models, then your model servers: add, change or remove one (checked as you type), tick
+  a model to save it, rename it, undo a removal (`lado model-server remove --with-models`).
+- **One word for what runs an agent: agent CLI.** The launch window's field is Agent CLI,
+  Settings' section Agent CLIs and environment, the system panel's Agent CLIs; old links to
+  the section and `lado start --provider` keep working.
+
 ### Improved
+
+- **OpenCode and Kilo CLI know your local model's context.** LADO reads it from the server at
+  each start, so agents compact in time; a model too small for an agent is warned about in `lado
+  start` and the launch window. `docs/install.md` says what to expect of small models.
+- **OpenCode no longer stalls without internet.** Its first start on a model of a server takes
+  seconds where it took over a minute. An agent keeps your TUI settings from the first run.
+- **Going back says what happens to your model servers.** `lado update` to an older version
+  warns that servers, models and default models are lost, and lists the folders of keys that
+  stay on disk; `docs/install.md` says how to remove them.
 
 - **A session's card reads at a glance.** Its facts have labels, it names the project, says what
   to do with a stopped or broken session and opens beside the list, so the list stays in sight.
@@ -56,6 +104,16 @@
   still with the composer in sight, and a window of 600 px or less gets the phone layout.
 
 ### Fixed
+
+- **A silent OpenCode or Kilo start asks you nothing.** "Open its terminal" no longer shows for
+  a few seconds before such an agent is ready.
+- **A message right after an OpenCode or Kilo start arrives at once.** It reaches the agent as
+  soon as the agent's input field is ready, and the agent shows `starting` until then.
+- **An OpenCode agent on too small a model stops.** It sent requests without end, `busy` with a
+  silent chat; now the turn ends after three overflows, and the chat says why. LM Studio's
+  refusal for context reads the same way, with the server's text under it.
+- **A failed turn is not called a reply.** A message whose turn ended on an error no longer shows
+  "replied only in its terminal"; the next clean turn decides.
 
 - **A message sent as the session stops says what happened.** Instead of Internal Server Error
   you read that it was not delivered, and your text stays to send after Resume. It can no longer

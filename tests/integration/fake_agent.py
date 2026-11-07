@@ -27,6 +27,7 @@ Every input line is a command, after an optional "[from <name>] ":
                        as {"sh": {command, code}} in "seen")
     tools              write the names of the LADO MCP tools it listed at start to "seen"
                        ("tools")
+    agents             call the LADO MCP tool list_agents; "seen" gets its result ("agents")
     spawn <task>       call the LADO MCP tool spawn_worker; "seen" gets its text ("spawn_text")
     finish <name> [discard]  call the LADO MCP tool finish_worker
     flow_start <flow> <task>  call the LADO MCP tool flow_start
@@ -68,7 +69,12 @@ any other input exits at once with no hook; with FAKE_AGENT_ASKS_UNKNOWN=1 it as
 but its provider does not know it (no Provider.first_hook_blocker), as a screen of a new
 CLI version LADO has not seen. With FAKE_AGENT_TRUST=1 it asks so only when
 $CLAUDE_CONFIG_DIR/.claude.json does not trust its repository's main root, read here as
-Claude Code reads it, not through LADO (trusted). With FAKE_AGENT_HANGUP_HOOK=1 in its
+Claude Code reads it, not through LADO (trusted). With FAKE_AGENT_START_HOLD in its
+environment it runs its session-start hook only once that file exists, as a TUI slow to take
+input, and loses what is typed into its window before; with FAKE_AGENT_START_NOTE too it runs
+that hook once first, with this note, as the server plugin of a silent TUI; with
+FAKE_AGENT_START_KEEPS it keeps what was typed meanwhile instead. With
+FAKE_AGENT_HANGUP_HOOK=1 in its
 environment, when its tmux window is killed (SIGHUP) it runs its session-end hook before it
 exits, as Claude Code does, and writes {"hung_up": <what the hook printed>} to "seen" once
 the hook is done; FAKE_AGENT_HANGUP_DELAY=<seconds> waits that long before the hook, as a
@@ -94,6 +100,7 @@ import re
 import signal
 import subprocess
 import sys
+import termios
 import threading
 import time
 import traceback
@@ -105,7 +112,13 @@ config = json.load(open(sys.argv[1]))
 
 
 def hook(event: str, prompt: str = "", key: str = "", **more) -> str:
-    """Run the agent's hook for `event`; returns what it printed."""
+    """Run the agent's hook for `event`; returns what it printed. Its session-start and
+    prompt-submit hooks name the model and effort of FAKE_AGENT_MODEL and FAKE_AGENT_EFFORT
+    when its environment has them, as a CLI names the model it runs."""
+    if event in ("session_start", "prompt_submit"):
+        for field, variable in (("model", "FAKE_AGENT_MODEL"), ("effort", "FAKE_AGENT_EFFORT")):
+            if os.environ.get(variable):
+                more.setdefault(field, os.environ[variable])
     payload = json.dumps({"prompt": prompt, "key": key, **more})
     result = subprocess.run(config["hooks"][event], input=payload, capture_output=True, text=True)
     return result.stdout.strip()
@@ -395,15 +408,34 @@ def work(text: str) -> bool:
         elif command[0] == "tools":
             lado_mcp.ready.wait()
             report(tools=lado_mcp.tools)
+        elif command[0] == "agents":
+            report(agents=call_tool("list_agents", {}))
         elif command[0] == "spawn":
             call_tool("spawn_worker", {"task": " ".join(command[1:])})
             report(spawn_text=[c.get("text") for c in lado_mcp.last_content])
+        elif command[0] == "spawnwith":  # spawnwith <name>@<provider> <task>
+            name, _, provider = command[1].partition("@")
+            args = {"task": command[2], "name": name, "provider": provider}
+            call_tool("spawn_worker", args)
+            report(spawn_text=[c.get("text") for c in lado_mcp.last_content])
+        elif command[0] == "spawnmodel":  # spawnmodel <name>@<provider or -> <model or ""> <task>
+            name, _, provider = command[1].partition("@")
+            model, _, task = command[2].partition(" ")
+            args = {"task": task, "name": name, "model": "" if model == '""' else model}
+            if provider != "-":
+                args["provider"] = provider
+            call_tool("spawn_worker", args)
+            report(spawn_text=[c.get("text") for c in lado_mcp.last_content])
+        elif command[0] == "listmodels":
+            report(models=call_tool("list_models", {}))
         elif command[0] == "finish":
             call_tool("finish_worker", {"name": command[1], "discard": command[2:] == ["discard"]})
         elif command[0] == "flow_start":
             report(flow_start=call_tool("flow_start", {"flow": command[1], "task": command[2]}))
-        elif command[0] == "spawnrun":
-            call_tool("spawn_worker", {"run": command[1]})
+        elif command[0] == "spawnrun":  # spawnrun <run> [model]
+            args = {"run": command[1], **({"model": command[2]} if command[2:] else {})}
+            call_tool("spawn_worker", args)
+            report(spawn_text=[c.get("text") for c in lado_mcp.last_content])
         elif command[0] == "give_recommendation":
             # give_recommendation <gate|question> <id> [choice]: not "recommend", the first
             # word of LADO's request line, which this loop reads as a command too.
@@ -500,7 +532,15 @@ def main() -> None:
             os._exit(1)
     # Like Claude Code: the MCP server connects while the session-start hook runs.
     lado_mcp.connect()
-    hook("session_start")
+    hold = os.environ.get("FAKE_AGENT_START_HOLD")
+    note = os.environ.get("FAKE_AGENT_START_NOTE")
+    if hold and note:
+        hook("session_start", note=note)
+    while hold and not os.path.exists(hold):
+        time.sleep(0.05)
+    if hold and not os.environ.get("FAKE_AGENT_START_KEEPS"):
+        termios.tcflush(sys.stdin, termios.TCIFLUSH)  # what was typed meanwhile is lost whole
+    hook("session_start", ready=bool(hold))
     text = None
     first = True  # the next input is its first
     continued = False  # this turn goes on from what the turn-end hook printed

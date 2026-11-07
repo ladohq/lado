@@ -1,4 +1,4 @@
-"""Settings → Providers and environment in a browser (openspec changes provider-logins,
+"""Settings → Agent CLIs and environment in a browser (openspec changes provider-logins,
 provider-login-layers): an agent of the fake provider "fake-login" (fake_provider.py), which
 logs in like Claude Code by a pasted token or key, waits for its CLI's login; Needs you leads
 there with "Log in…"; the row's one button opens the sheet that asks how to log in, the
@@ -69,7 +69,7 @@ def test_a_waiting_agent_leads_to_the_sheet_and_starts_with_the_pasted_token(
     expect(fake.get_by_role("link", name=f"supervisor of {session}")).to_be_visible()
     expect(fake.get_by_role("button")).to_have_count(1)  # one button, no field
     expect(fake.get_by_role("textbox")).to_have_count(0)
-    section = page.get_by_role("region", name="Providers and environment")
+    section = page.get_by_role("region", name="Agent CLIs and environment")
     expect(
         section.get_by_text("Sign-ins your agents use. Changes apply to agents started afterwards.")
     ).to_be_visible()
@@ -132,7 +132,7 @@ def test_the_section_shows_the_last_rows_at_once(page: Page, logins, held, serve
     held.write_text("")
     log_in(page, server)
     page.goto(f"{server['url']}/settings#providers-and-environment")
-    section = page.get_by_role("region", name="Providers and environment")
+    section = page.get_by_role("region", name="Agent CLIs and environment")
     refresh = section.get_by_role("button", name="Check the CLIs again")
     # The first visit: each row as soon as its CLI answered; the held one says checking….
     fake = section.get_by_role("listitem", name=TITLE)

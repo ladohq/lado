@@ -63,6 +63,9 @@ export const NEEDS_YOU_PATH = "/needs-you";
 export const PROVIDERS_ANCHOR = "providers-and-environment";
 export const PROVIDERS_PATH = `/settings#${PROVIDERS_ANCHOR}`;
 
+// Settings' section of the configured models and model servers (ModelSettings.tsx).
+export const MODELS_ANCHOR = "models";
+
 // A card in the session's chat: the chat scrolls to the element of that id.
 export const chatPath = (session: string, anchor?: string) =>
   `${sessionPath(session, "activity")}${anchor ? `#${anchor}` : ""}`;

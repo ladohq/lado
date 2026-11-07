@@ -5,6 +5,7 @@ import platform
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -17,6 +18,9 @@ from lado import (
     gui_session,
     kits,
     logins,
+    model_check,
+    model_servers,
+    model_settings,
     project_secrets,
     projects,
     providers,
@@ -179,7 +183,7 @@ def with_logins(versions: list[Check], login_lines: list[Check]) -> list[Check]:
 def provider_checks(
     versions: list[Check], login_lines: list[Check], which: Callable[[str], str | None]
 ) -> list[Check]:
-    """The checks Settings → Providers and environment shows (lado.server.launch): each
+    """The checks Settings → Agent CLIs and environment shows (lado.server.launch): each
     CLI's version and login, the graphical session (macOS) and the agents' environment, as
     `lado doctor` prints them."""
     graphical = check_graphical_session(which)
@@ -797,6 +801,132 @@ def check_project_secrets() -> Check | None:
     return Check("Project secrets", WARN, "; ".join(lines)) if lines else None
 
 
+def check_model_servers(
+    probes: dict[str, model_servers.Probe | str] | None = None,
+) -> Check | None:
+    """The saved model servers (lado.model_settings), all probed at once with their keys:
+    which answer, which do not and why, each configured model on a server whose list lacks
+    its model, each key file that is not a regular file of mode
+    600, and each folder of the keys' that is no saved server's (left over, by a lado.db
+    rolled back or a removal the disk refused). Never FAIL: a server in the network being
+    off is not LADO's to fix. None with neither a server nor a left-over folder; lado.db is
+    read as it is, never made or migrated. `probes` gets each server's probe by its id, or the
+    line of why it failed, for check_default_models."""
+    name = "Model servers"
+    probes = {} if probes is None else probes
+    servers: list[state.ModelServer] = []
+    if state.schema_version() is not None:
+        try:
+            servers = state.model_servers()
+        except state.SchemaError:
+            return Check(name, INFO, NOT_AT_SCHEMA)
+    keys = state.home_path() / model_settings.KEYS
+    try:
+        folders = sorted(os.listdir(keys))
+    except OSError:  # none yet, or not a folder: no key was written there
+        folders = []
+    ids = {server.id for server in servers}
+    left = [
+        f"left over: {keys / entry} (no saved server's)" for entry in folders if entry not in ids
+    ]
+    if not servers and not left:
+        return None
+
+    models = state.models() if servers else []
+
+    def probed(server: state.ModelServer) -> tuple[bool, list[str]]:
+        try:
+            found = probes[server.id] = model_settings.probe_saved(server)
+        except (model_servers.ProbeError, model_settings.Refused) as exc:
+            text = str(exc)
+            if text.startswith(server.address + " "):
+                why = f"{server.name} {text.removeprefix(server.address + ' ')}"
+            else:
+                why = f"{server.name}: {text}"
+            probes[server.id] = why
+            return False, [why]
+        gone = [
+            f'model "{model.name}" ({model.model}) is not in {server.name}\'s list of models'
+            for model in models
+            if model.server == server.id
+            and found.models is not None
+            and model.model not in found.models
+        ]
+        # The probe reads the list: a server that lists its models may still fail a chat.
+        return not gone, [f"{server.name} lists its models ({found.kind})", *gone]
+
+    with ThreadPoolExecutor(max_workers=max(1, len(servers))) as pool:
+        answers = list(pool.map(probed, servers))
+    files = [line for server in servers if (line := _key_file_problem(server))]
+    lines = [text for _, texts in answers for text in texts] + files + left
+    fine = all(ok for ok, _ in answers) and not files and not left
+    return Check(name, OK if fine else WARN, "; ".join(lines))
+
+
+def check_default_models(probes: dict[str, model_servers.Probe | str]) -> Check | None:
+    """Whether each agent CLI's default model can start, by `probes` of check_model_servers,
+    asking no server again: a server whose probe failed, one whose list lacks the model, a
+    built-in name its CLI no longer lists, the agents' environment read once for those lists.
+    Never FAIL: the start refuses it, with its way out, and `Agent environment` says why an
+    environment cannot be read. None with no default; lado.db is read as it is, never made or
+    migrated."""
+    name = "Default models"
+    if state.schema_version() is None:
+        return None
+    try:
+        defaults = model_settings.defaults()
+        by_name = {server.name: server for server in state.model_servers()}
+    except state.SchemaError:
+        return None
+    if not defaults:
+        return None
+    layers: agent_env.Layers | agent_env.AgentEnvError | None = None
+    lines = []
+    for default in defaults:
+        title = model_settings.cli_title(default.ref.cli)
+        said = f"{title}'s default {default.name}"
+        if default.server is not None:
+            found = probes.get(by_name[default.server].id, f"{default.server} was not asked")
+            if isinstance(found, str):
+                lines.append(f"{said}: {found}")
+            elif found.models is not None and default.model not in found.models:
+                lines.append(f"{said}: {default.model} is not in {default.server}'s list of models")
+        elif default.ref.cli in providers.names():
+            if layers is None:
+                try:
+                    layers = agent_env.layers()
+                except agent_env.AgentEnvError as exc:
+                    layers = exc
+            if isinstance(layers, agent_env.AgentEnvError):
+                lines.append(f"{said}: LADO cannot check it: {layers}")
+                continue
+            provider = providers.get(default.ref.cli)
+            listed = provider.model_list(agent_env.merge(layers, provider.login_variables))
+            if model_check.verdict(provider, default.model, listed).kind == model_check.REFUSED:
+                lines.append(f"{said}: its list no longer has it")
+    if lines:
+        return Check(name, WARN, "; ".join(lines))
+    words = [f"{model_settings.cli_title(d.ref.cli)}: {d.name}" for d in defaults]
+    return Check(name, OK, "; ".join(words))
+
+
+def _key_file_problem(server: state.ModelServer) -> str:
+    """What is wrong with the key file of `server`, "" for nothing or no file."""
+    path = model_settings.key_folder(server.id) / model_settings.KEY
+    try:
+        found = os.lstat(path)
+    except FileNotFoundError:
+        return ""
+    except OSError as exc:
+        return f"the key file of {server.name} cannot be read ({exc.strerror})"
+    if not stat.S_ISREG(found.st_mode):
+        return f"the key file of {server.name} is not a regular file ({path})"
+    mode = stat.S_IMODE(found.st_mode)
+    if mode != project_secrets.FILE_MODE:
+        return f"the key file of {server.name} has mode {mode:o}, not 600"
+    return ""
+
+
 def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]:
     graphical = check_graphical_session(which)
     projects_found = check_projects()
@@ -804,6 +934,9 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
     lado_secrets = check_lado_secrets()
     overridden = check_project_variables()
     unused_secrets = check_project_secrets()
+    probes: dict[str, model_servers.Probe | str] = {}
+    servers = check_model_servers(probes)
+    default_models = check_default_models(probes)
     author = check_git_author()
     database = check_database()
     return [
@@ -819,6 +952,8 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
         *([lado_secrets] if lado_secrets else []),
         *([overridden] if overridden else []),
         *([unused_secrets] if unused_secrets else []),
+        *([servers] if servers else []),
+        *([default_models] if default_models else []),
         *([graphical] if graphical else []),
         *check_agent_env(),
         check_config_folders(),

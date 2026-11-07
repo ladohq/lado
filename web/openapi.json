@@ -366,7 +366,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Taken"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Taken"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ModelRefusal"
+                    }
+                  ],
+                  "title": "Response 409 Start Api Sessions Post"
                 }
               }
             }
@@ -1644,6 +1652,698 @@
           },
           "404": {
             "description": "no such project"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/model-settings": {
+      "get": {
+        "summary": "Model Settings Listing",
+        "description": "The configured models and saved servers, asking none; no lado.db made.",
+        "operationId": "model_settings_listing_api_model_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelSettings"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/model-servers": {
+      "post": {
+        "summary": "Add Model Server",
+        "description": "Probe and save a server as `lado model-server add` does (`replace`: --replace).",
+        "operationId": "add_model_server_api_model_servers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelServerAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelServerAdded"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryRefused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/model-servers/check": {
+      "post": {
+        "summary": "Check Model Server",
+        "description": "What the server form says before its Add, as the human types: the refusals under\ntheir fields, the plain-http warning, the probe of the address (with the key only\nafter Check key) and the same-address notes; saves nothing.",
+        "operationId": "check_model_server_api_model_servers_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelServerCheck"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerCheck"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/model-servers/{name}/probe": {
+      "post": {
+        "summary": "Probe Model Server",
+        "description": "The saved server probed now with its kept key: its models and CLIs.",
+        "operationId": "probe_model_server_api_model_servers__name__probe_post",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProbeInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryRefused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/model-servers/{name}": {
+      "delete": {
+        "summary": "Remove Model Server",
+        "description": "Remove a server as `lado model-server remove [--with-models]` does; with\n`with_models`, refused unless its models are `confirmed`, the ones the human was\nasked about.",
+        "operationId": "remove_model_server_api_model_servers__name__delete",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "with_models",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "With Models"
+            }
+          },
+          {
+            "name": "confirmed",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Confirmed"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryRefused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/models/check": {
+      "post": {
+        "summary": "Check Configured Model",
+        "description": "The check `lado model add` would make, saving nothing; a refusal is a 200 of\nkind refused with its field.",
+        "operationId": "check_configured_model_api_models_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelCheck"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/models": {
+      "post": {
+        "summary": "Add Configured Model",
+        "description": "Save a model as `lado model add` does; named by default without a name.",
+        "operationId": "add_configured_model_api_models_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelAdded"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryRefused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/models/{name}": {
+      "patch": {
+        "summary": "Rename Configured Model",
+        "description": "Rename a model, its CLI, model and server kept.",
+        "operationId": "rename_configured_model_api_models__name__patch",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelRename"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryRefused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove Configured Model",
+        "description": "Remove a model as `lado model remove` does, the default on it cleared and named.",
+        "operationId": "remove_configured_model_api_models__name__delete",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelRemoved"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryRefused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/session-model/check": {
+      "post": {
+        "summary": "Check Session Model",
+        "description": "The check a start would make of the model given for a session, saving nothing; a\nrefusal is a 200 of kind refused.",
+        "operationId": "check_session_model_api_session_model_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionModelAsked"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionModelCheck"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/providers/{name}/model-choices": {
+      "get": {
+        "summary": "Provider Model Choices",
+        "description": "What the provider's CLI can run: its list, kept a minute (`fresh`: read now), its\nconfigured models, and the check of the built-in `model` against that list. A list\nthat cannot be read says why; no lado.db made.",
+        "operationId": "provider_model_choices_api_providers__name__model_choices_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Model"
+            }
+          },
+          {
+            "name": "fresh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Fresh"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelChoices"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "no such provider"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/model-defaults/{cli}/check": {
+      "post": {
+        "summary": "Check Model Default",
+        "description": "The check `lado model default` would make of a typed name, saving nothing; a\nrefusal is a 200 of kind refused with its field.",
+        "operationId": "check_model_default_api_model_defaults__cli__check_post",
+        "parameters": [
+          {
+            "name": "cli",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cli"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelDefaultCheck"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelCheck"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/model-defaults/{cli}": {
+      "put": {
+        "summary": "Set Model Default",
+        "description": "Set an agent CLI's default model as `lado model default` does, by reference.",
+        "operationId": "set_model_default_api_model_defaults__cli__put",
+        "parameters": [
+          {
+            "name": "cli",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cli"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelDefaultSet"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelDefaultSaved"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryRefused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Clear Model Default",
+        "description": "Clear an agent CLI's default model, installed or not.",
+        "operationId": "clear_model_default_api_model_defaults__cli__delete",
+        "parameters": [
+          {
+            "name": "cli",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cli"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryRefused"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -3513,6 +4213,16 @@
             },
             "description": "Bad Request"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelRefusal"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -4072,6 +4782,12 @@
           "since": {
             "type": "string",
             "title": "Since"
+          },
+          "model": {
+            "$ref": "#/components/schemas/ModelInfo"
+          },
+          "effort": {
+            "$ref": "#/components/schemas/ModelInfo"
           }
         },
         "type": "object",
@@ -4087,7 +4803,9 @@
           "branch",
           "worktree",
           "spawned_at",
-          "since"
+          "since",
+          "model",
+          "effort"
         ],
         "title": "AgentInfo"
       },
@@ -4248,6 +4966,95 @@
         ],
         "title": "BugReport",
         "description": "The Report a bug page (lado.bug_report.Report): the whole report to show and copy,\nand GitHub's new issue form with it, the oldest kinds of errors left out until the link\nfits."
+      },
+      "CliApi": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "api": {
+            "type": "string",
+            "title": "Api"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "title",
+          "api"
+        ],
+        "title": "CliApi",
+        "description": "An agent CLI (a provider's name and title) and the model server API it speaks."
+      },
+      "CliDefault": {
+        "properties": {
+          "cli": {
+            "type": "string",
+            "title": "Cli"
+          },
+          "external": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External"
+          },
+          "builtin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Builtin"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "server": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server"
+          },
+          "whole_process": {
+            "type": "boolean",
+            "title": "Whole Process"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cli",
+          "external",
+          "builtin",
+          "name",
+          "model",
+          "server",
+          "whole_process"
+        ],
+        "title": "CliDefault",
+        "description": "An agent CLI's default model: `external` the configured model's id or `builtin` the\nCLI's name for it, its name as shown, the model as the CLI names it, the server's name\n(None for a built-in one), and whether a model on a server takes the CLI's whole process:\nthe page says so with no list read."
       },
       "CloneJob": {
         "properties": {
@@ -4582,6 +5389,77 @@
           "at"
         ],
         "title": "CommitInfo"
+      },
+      "ConfiguredModelInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "cli": {
+            "type": "string",
+            "title": "Cli"
+          },
+          "cli_title": {
+            "type": "string",
+            "title": "Cli Title"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "server": {
+            "type": "string",
+            "title": "Server"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "cli",
+          "cli_title",
+          "model",
+          "server"
+        ],
+        "title": "ConfiguredModelInfo",
+        "description": "A configured model: its id, which references hold, its name, CLI (a provider's name,\nand its title), the model as the CLI names it, and its server's name."
+      },
+      "EntryRefused": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "hint": {
+            "type": "string",
+            "title": "Hint"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "hint",
+          "field",
+          "warnings"
+        ],
+        "title": "EntryRefused",
+        "description": "The detail of a 400 that Settings \u2192 Models' API answers for a refusal: the line the\nmatching command prints, its hint (\"\" for none), the field of the form it concerns (\"\"\nfor none), and the warnings given before it (a key over plain http://)."
       },
       "Finish": {
         "properties": {
@@ -5795,6 +6673,17 @@
               }
             ],
             "title": "Title"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
           }
         },
         "type": "object",
@@ -6358,6 +7247,574 @@
         "title": "MessageText",
         "description": "The human's text from the composer, with the full names of the files uploaded for\nit (POST \u2026/artifacts); the text may be empty when there are some."
       },
+      "ModelAdd": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "cli": {
+            "type": "string",
+            "title": "Cli"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "server": {
+            "type": "string",
+            "title": "Server"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cli",
+          "model",
+          "server"
+        ],
+        "title": "ModelAdd",
+        "description": "A configured model to check or save: `name` None for its default name."
+      },
+      "ModelAdded": {
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/ConfiguredModelInfo"
+          },
+          "check": {
+            "$ref": "#/components/schemas/ModelCheck"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "check"
+        ],
+        "title": "ModelAdded"
+      },
+      "ModelCheck": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "default",
+              "ok",
+              "warn",
+              "refused"
+            ],
+            "title": "Kind"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field",
+            "default": ""
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "text"
+        ],
+        "title": "ModelCheck",
+        "description": "lado.model_check's verdict on a model: its kind and its line for the human; for a\nrefusal of a configured model (lado.model_settings), the field of the form it concerns\n(\"\" for none)."
+      },
+      "ModelChoices": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Aliases"
+          },
+          "models": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Models"
+          },
+          "why": {
+            "type": "string",
+            "title": "Why"
+          },
+          "external": {
+            "items": {
+              "$ref": "#/components/schemas/ConfiguredModelInfo"
+            },
+            "type": "array",
+            "title": "External"
+          },
+          "other_name": {
+            "type": "boolean",
+            "title": "Other Name"
+          },
+          "whole_process": {
+            "type": "boolean",
+            "title": "Whole Process"
+          },
+          "read_again": {
+            "type": "boolean",
+            "title": "Read Again"
+          },
+          "check": {
+            "$ref": "#/components/schemas/ModelCheck"
+          }
+        },
+        "type": "object",
+        "required": [
+          "aliases",
+          "models",
+          "why",
+          "external",
+          "other_name",
+          "whole_process",
+          "read_again",
+          "check"
+        ],
+        "title": "ModelChoices",
+        "description": "What an agent CLI can run (lado.model_settings.choices): its aliases and own list\n(`models` None for no full list, `why` saying so), its configured models, whether a name\noutside the list may be given, whether a model on a server takes its whole process,\nwhether reading the list again may change the answer, and the check of the built-in model\nasked about against this list."
+      },
+      "ModelDefaultCheck": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ModelDefaultCheck",
+        "description": "A name typed for a default model, to check before it is set."
+      },
+      "ModelDefaultSaved": {
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/ModelSettings"
+          },
+          "check": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "settings",
+          "check"
+        ],
+        "title": "ModelDefaultSaved",
+        "description": "A default model set: the settings after it and, for a built-in model, the check's\nverdict (None for an external one, which asks no server)."
+      },
+      "ModelDefaultSet": {
+        "properties": {
+          "external": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External"
+          },
+          "builtin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Builtin"
+          },
+          "typed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Typed"
+          }
+        },
+        "type": "object",
+        "title": "ModelDefaultSet",
+        "description": "The default model to set, exactly one of: a row picked, by reference (`external` a\nconfigured model's id, `builtin` the CLI's name for it), or `typed`, a name read as `lado\nmodel default` reads it."
+      },
+      "ModelInfo": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "words": {
+            "type": "string",
+            "title": "Words"
+          },
+          "configured": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configured"
+          },
+          "server": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server"
+          },
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "source",
+          "detail",
+          "words"
+        ],
+        "title": "ModelInfo",
+        "description": "An agent's model or effort, and where it came from."
+      },
+      "ModelRefusal": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "field": {
+            "type": "string",
+            "const": "model",
+            "title": "Field",
+            "default": "model"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "short": {
+            "type": "string",
+            "title": "Short"
+          },
+          "peek": {
+            "type": "string",
+            "title": "Peek"
+          },
+          "retry": {
+            "type": "boolean",
+            "title": "Retry"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "text",
+          "short",
+          "peek",
+          "retry"
+        ],
+        "title": "ModelRefusal",
+        "description": "The detail of a 409 to a start or resume refused for its model: the core's line, and\nwhat the launch window shows (SessionModelCheck)."
+      },
+      "ModelRemoved": {
+        "properties": {
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ConfiguredModelInfo"
+            },
+            "type": "array",
+            "title": "Models"
+          },
+          "servers": {
+            "items": {
+              "$ref": "#/components/schemas/ModelServerInfo"
+            },
+            "type": "array",
+            "title": "Servers"
+          },
+          "defaults": {
+            "items": {
+              "$ref": "#/components/schemas/CliDefault"
+            },
+            "type": "array",
+            "title": "Defaults"
+          },
+          "cleared": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cleared"
+          }
+        },
+        "type": "object",
+        "required": [
+          "models",
+          "servers",
+          "defaults",
+          "cleared"
+        ],
+        "title": "ModelRemoved",
+        "description": "The settings after a model was removed, and the agent CLIs whose default it was: a page\ngone stale knows of no default to ask about, so the answer says one went."
+      },
+      "ModelRename": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ModelRename"
+      },
+      "ModelServerAdd": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "replace": {
+            "type": "boolean",
+            "title": "Replace",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "address"
+        ],
+        "title": "ModelServerAdd",
+        "description": "A model server to save, or with `replace` a saved one's new address and key; `key`\nNone for none (with `replace`: the kept key). No answer gives the key back."
+      },
+      "ModelServerAdded": {
+        "properties": {
+          "server": {
+            "$ref": "#/components/schemas/ModelServerInfo"
+          },
+          "probe": {
+            "$ref": "#/components/schemas/ProbeInfo"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "server",
+          "probe",
+          "notes",
+          "warnings"
+        ],
+        "title": "ModelServerAdded",
+        "description": "A server saved or replaced: as saved, the probe that found it, the notes (another\nserver at its address) and the warnings (its key over plain http://)."
+      },
+      "ModelServerCheck": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "key_typed": {
+            "type": "boolean",
+            "title": "Key Typed",
+            "default": false
+          },
+          "replace": {
+            "type": "boolean",
+            "title": "Replace",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "address"
+        ],
+        "title": "ModelServerCheck",
+        "description": "The server form as typed, for its check before Add: the name, the address, whether a\nkey is typed (`key_typed`), and the key itself only when the human pressed Check key;\n`replace` for Change, where the name is the saved server's own. No answer gives the key\nback."
+      },
+      "ModelServerInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "has_key": {
+            "type": "boolean",
+            "title": "Has Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "address",
+          "kind",
+          "has_key"
+        ],
+        "title": "ModelServerInfo",
+        "description": "A saved model server as lado.db keeps it, asking it nothing, and whether it has a key\nfile (never the key)."
+      },
+      "ModelSettings": {
+        "properties": {
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ConfiguredModelInfo"
+            },
+            "type": "array",
+            "title": "Models"
+          },
+          "servers": {
+            "items": {
+              "$ref": "#/components/schemas/ModelServerInfo"
+            },
+            "type": "array",
+            "title": "Servers"
+          },
+          "defaults": {
+            "items": {
+              "$ref": "#/components/schemas/CliDefault"
+            },
+            "type": "array",
+            "title": "Defaults"
+          }
+        },
+        "type": "object",
+        "required": [
+          "models",
+          "servers",
+          "defaults"
+        ],
+        "title": "ModelSettings",
+        "description": "The human's configured models and model servers, each by name ignoring case, and the\nagent CLIs' default models, by CLI."
+      },
       "NewMarketplace": {
         "properties": {
           "name": {
@@ -6837,6 +8294,74 @@
         },
         "type": "object",
         "title": "PlanUpdateAsk"
+      },
+      "ProbeInfo": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "models": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Models"
+          },
+          "models_why": {
+            "type": "string",
+            "title": "Models Why"
+          },
+          "embeddings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Embeddings"
+          },
+          "apis_why": {
+            "type": "string",
+            "title": "Apis Why"
+          },
+          "clis": {
+            "items": {
+              "$ref": "#/components/schemas/CliApi"
+            },
+            "type": "array",
+            "title": "Clis"
+          },
+          "cli_notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cli Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "address",
+          "models",
+          "models_why",
+          "embeddings",
+          "apis_why",
+          "clis",
+          "cli_notes"
+        ],
+        "title": "ProbeInfo",
+        "description": "What a probe found on a model server (lado.model_servers.Probe): its type, the\naddress that answered (the typed one with its scheme and path filled in), its models\n(None for no list, why in `models_why`), those it types as embeddings, why its APIs\ncould not be told (\"\" when they could), the CLIs that can use it, and for each CLI that has\nits API and refuses its type a line of why."
       },
       "ProjectDeletion": {
         "properties": {
@@ -7538,7 +9063,7 @@
           "ready"
         ],
         "title": "ProviderLogins",
-        "description": "One agent CLI in Settings \u2192 Providers and environment (lado.logins)."
+        "description": "One agent CLI in Settings \u2192 Agent CLIs and environment (lado.logins)."
       },
       "ProviderSuggestion": {
         "properties": {
@@ -8090,6 +9615,17 @@
               }
             ],
             "title": "Prompt"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
           }
         },
         "type": "object",
@@ -8493,6 +10029,50 @@
         ],
         "title": "Sent"
       },
+      "ServerCheck": {
+        "properties": {
+          "probe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProbeInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "refusals": {
+            "items": {
+              "$ref": "#/components/schemas/EntryRefused"
+            },
+            "type": "array",
+            "title": "Refusals"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "probe",
+          "refusals",
+          "warnings",
+          "notes"
+        ],
+        "title": "ServerCheck",
+        "description": "What the server form says before Add: the probe of its address (None when it was not\nprobed or failed), the refusals Add would meet, each under its field, the warnings (a\nkey over plain http://) and the notes (another server at its address)."
+      },
       "SessionAbout": {
         "properties": {
           "repos": {
@@ -8674,6 +10254,22 @@
             ],
             "title": "Project"
           },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "model_missing": {
+            "type": "boolean",
+            "title": "Model Missing",
+            "default": false
+          },
           "project_title": {
             "anyOf": [
               {
@@ -8754,6 +10350,105 @@
         ],
         "title": "SessionKitInfo",
         "description": "A kit of a session as the next agent would take it now (kits.find in its repo)."
+      },
+      "SessionModelAsked": {
+        "properties": {
+          "cli": {
+            "type": "string",
+            "title": "Cli"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cli",
+          "model"
+        ],
+        "title": "SessionModelAsked",
+        "description": "A model for a session of the agent CLI `cli`, as `lado start --model` reads it, in the\nenvironment of the agents of `project` (or of none)."
+      },
+      "SessionModelCheck": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "default",
+              "ok",
+              "warn",
+              "refused"
+            ],
+            "title": "Kind"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field",
+            "default": ""
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "retry": {
+            "type": "boolean",
+            "title": "Retry",
+            "default": false
+          },
+          "short": {
+            "type": "string",
+            "title": "Short",
+            "default": ""
+          },
+          "peek": {
+            "type": "string",
+            "title": "Peek",
+            "default": ""
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "default": []
+          },
+          "server": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "text"
+        ],
+        "title": "SessionModelCheck",
+        "description": "The check a start would make of a model, for the launch window: `text` the line under\nits field. For a refusal, `short` the same to point at the field, `retry` whether a new\ncheck can help. `peek` a few words for the folded Advanced, of a refusal or of the\n`warnings`, those of the chosen model's server only; `server` its name."
       },
       "SessionStatus": {
         "type": "string",

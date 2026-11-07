@@ -27,6 +27,9 @@ RUNS = {
 FOUR = {"task/lad-197": ["analyst", "developer", "reviewer"]}
 
 
+CLI_DEFAULT = {"name": None, "source": "cli", "detail": None, "words": "CLI default"}
+
+
 def agent(name: str, run: str | None, status: str = "idle") -> dict:
     return {
         "name": name,
@@ -41,6 +44,8 @@ def agent(name: str, run: str | None, status: str = "idle") -> dict:
         "worktree": None,
         "spawned_at": "2026-11-06T10:00:00.000Z",
         "since": "2026-11-06T10:00:00.000Z",
+        "model": CLI_DEFAULT,
+        "effort": CLI_DEFAULT,
     }
 
 

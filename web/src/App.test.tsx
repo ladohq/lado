@@ -13,7 +13,7 @@ vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeX
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
 
 const NONE = { gates: 0, questions: 0, agents: 0 };
-const SETTINGS = { kits: ["default"], provider: "claude", permission_mode: null, without: [], ran_seconds: 0, running_since: null, stopped_at: null, busy: 0, title: null, project: null };
+const SETTINGS = { kits: ["default"], provider: "claude", permission_mode: null, without: [], ran_seconds: 0, running_since: null, stopped_at: null, busy: 0, title: null, project: null, model_missing: false };
 
 const SESSIONS: SessionInfo[] = [
   { name: "lado", repo: "/src/lado", status: "running", agents: 3, waiting: NONE, ...SETTINGS },
@@ -638,14 +638,14 @@ test("a stream refused for the token shows how to get in and does not try again"
 
 // Settings and the theme
 
-test("Settings is one flat page: Appearance, Notifications, Providers and environment, then Usage statistics", () => {
+test("Settings is one flat page: Appearance, Notifications, Agent CLIs and environment, Models, then Usage statistics", () => {
   open("/settings");
   const sections = screen
     .getAllByRole("heading", { level: 2 })
     .map((h) => h.textContent);
-  expect(sections).toEqual(["Appearance", "Notifications", "Providers and environment", "Usage statistics"]);
+  expect(sections).toEqual(["Appearance", "Notifications", "Agent CLIs and environment", "Models", "Usage statistics"]);
   // The section itself: Providers.test.tsx.
-  const providers = screen.getByRole("region", { name: "Providers and environment" });
+  const providers = screen.getByRole("region", { name: "Agent CLIs and environment" });
   expect(providers.id).toBe("providers-and-environment");
 });
 

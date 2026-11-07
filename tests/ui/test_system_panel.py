@@ -23,7 +23,7 @@ def test_live_opens_the_system_panel_and_copies_the_system_info(page: Page, serv
     panel = page.get_by_role("dialog", name="System")
     expect(panel.get_by_text(f"LADO {__version__}")).to_be_visible()
     expect(panel.get_by_text("Running")).to_be_visible()
-    expect(panel.get_by_role("region", name="Providers")).to_contain_text("Claude Code")
+    expect(panel.get_by_role("region", name="Agent CLIs")).to_contain_text("Claude Code")
     expect(panel.locator(".system-check")).to_contain_text("No update check")
     panel.get_by_role("button", name="Copy system info").click()
     expect(panel.get_by_text("System info copied")).to_be_visible()

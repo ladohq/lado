@@ -1,0 +1,265 @@
+// The server of Settings → Models in the component tests (ModelSettings.test.tsx,
+// ModelSources.test.tsx): the entries, the CLIs' rows and lists, and the servers' probes,
+// each request recorded; a test sets an answer of its own by "METHOD path".
+import { vi } from "vitest";
+
+import type {
+  CliDefault,
+  ConfiguredModelInfo,
+  ModelChoices,
+  ModelServerInfo,
+  ModelSettings,
+  ProbeInfo,
+  ProviderLogins,
+} from "./api";
+import { claudeRow, cli, codexRow, opencodeRow } from "./fakes";
+
+export type Call = { method: string; path: string; body: unknown };
+type Added = { name: string | null; cli: string; model: string; server: string };
+
+// An agent CLI's default as the API gives it: a built-in model, or a configured one.
+export const builtinDefault = (cliName: string, name: string, wholeProcess = false): CliDefault => ({
+  cli: cliName,
+  external: null,
+  builtin: name,
+  name,
+  model: name,
+  server: null,
+  whole_process: wholeProcess,
+});
+
+export const externalDefault = (saved: ConfiguredModelInfo, wholeProcess = false): CliDefault => ({
+  cli: saved.cli,
+  external: saved.id,
+  builtin: null,
+  name: saved.name,
+  model: saved.model,
+  server: saved.server,
+  whole_process: wholeProcess,
+});
+
+// The columns' fixture: three CLIs on one server. The real LM Studio does not suit Codex CLI.
+export const LMSTUDIO_PROBE: ProbeInfo = {
+  kind: "LM Studio",
+  address: "http://localhost:1234",
+  models: ["qwen3-8b", "text-embedding-nomic"],
+  models_why: "",
+  embeddings: ["text-embedding-nomic"],
+  cli_notes: [],
+  apis_why: "",
+  clis: [
+    { name: "codex", title: "Codex CLI", api: "Responses API" },
+    { name: "kilo", title: "Kilo CLI", api: "chat completions" },
+    { name: "opencode", title: "OpenCode", api: "chat completions" },
+  ],
+};
+
+export const LMSTUDIO: ModelServerInfo = {
+  name: "LM Studio дома",
+  address: "http://localhost:1234",
+  kind: "LM Studio",
+  has_key: false,
+};
+
+export function kiloRow(installed = false): ProviderLogins {
+  return { ...opencodeRow(), cli: { ...cli("kilo", "Kilo CLI"), installed } };
+}
+
+export const model = (name: string, cliName: string, title: string, m: string, server = "LM Studio дома") =>
+  ({ id: `id-${name}`, name, cli: cliName, cli_title: title, model: m, server }) satisfies ConfiguredModelInfo;
+
+export class ModelServer {
+  private saved: ModelSettings = { models: [], servers: [], defaults: [] };
+  get entries(): ModelSettings {
+    return this.saved;
+  }
+  // A test where no default plays a part gives none.
+  set entries(given: Omit<ModelSettings, "defaults"> & { defaults?: CliDefault[] }) {
+    this.saved = { defaults: [], ...given };
+  }
+  logins: ProviderLogins[] = [claudeRow({ login: { ...claudeRow().login, state: "yes" } }), codexRow(), opencodeRow(), kiloRow()];
+  probes: Record<string, ProbeInfo | (() => Response | Promise<Response>)> = {};
+  lists: Record<string, Partial<ModelChoices>> = {}; // by CLI, over a list of `a/one`, `b/two`
+  calls: Call[] = [];
+  answers: Record<string, (body: unknown) => Response | Promise<Response>> = {};
+
+  install() {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path: string, init?: RequestInit) => {
+        const method = init?.method ?? "GET";
+        const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+        this.calls.push({ method, path, body });
+        const own = this.answers[`${method} ${path.split("?")[0]}`];
+        if (own) return own(body);
+        return this.answer(method, decodeURIComponent(path), body);
+      }),
+    );
+  }
+
+  answer(method: string, path: string, body: unknown): Response | Promise<Response> {
+    const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
+    const [where] = path.split("?");
+    if (where === "/api/model-settings") return json(this.entries);
+    if (where === "/api/providers/logins") return json({ providers: this.logins, checking: false, environment: "" });
+    const listOf = where.match(/^\/api\/providers\/(.+)\/model-choices$/);
+    if (listOf) return json(this.choices(listOf[1], new URLSearchParams(path.split("?")[1] ?? "").get("model") ?? ""));
+    const checked = where.match(/^\/api\/model-defaults\/(.+)\/check$/);
+    if (checked && method === "POST") {
+      const { name } = body as { name: string };
+      return json({ ...this.choices(checked[1], name).check, name: "" });
+    }
+    const defaultOf = where.match(/^\/api\/model-defaults\/(.+)$/);
+    if (defaultOf && method === "PUT") {
+      const given = body as { external?: string; builtin?: string; typed?: string };
+      const typed = given.typed?.toLowerCase();
+      const saved = this.entries.models.find(
+        (m) => m.id === given.external || (m.cli === defaultOf[1] && m.name.toLowerCase() === typed),
+      );
+      const set = saved ? externalDefault(saved) : builtinDefault(defaultOf[1], given.builtin ?? given.typed ?? "");
+      this.entries = {
+        ...this.entries,
+        defaults: [...this.entries.defaults.filter((d) => d.cli !== defaultOf[1]), set],
+      };
+      return json({ settings: this.entries, check: saved ? null : { kind: "ok", text: "fine", field: "", name: "" } });
+    }
+    if (defaultOf && method === "DELETE") {
+      this.entries = { ...this.entries, defaults: this.entries.defaults.filter((d) => d.cli !== defaultOf[1]) };
+      return json(this.entries);
+    }
+    const probed = where.match(/^\/api\/model-servers\/(.+)\/probe$/);
+    if (probed && method === "POST") {
+      const found = this.probes[probed[1]];
+      if (typeof found === "function") return found();
+      return found ? json(found) : json({ detail: { message: "no", hint: "", field: "", warnings: [] } }, 400);
+    }
+    if (where === "/api/models" && method === "POST") {
+      const given = body as Added;
+      if (given.name && this.taken(given.name)) return refusal(`the name is taken by the model "${given.name}"`, "name");
+      const added = model(given.name ?? this.named(given), given.cli, this.title(given.cli), given.model, given.server);
+      this.entries = { ...this.entries, models: [...this.entries.models, added] };
+      return json({ model: added, check: { kind: "ok", text: "fine", field: "", name: "" } });
+    }
+    const named = where.match(/^\/api\/models\/(.+)$/);
+    if (named && method === "DELETE") {
+      const gone = this.entries.models.find((m) => m.name === named[1]);
+      const cleared = this.entries.defaults.filter((d) => d.external === gone?.id).map((d) => d.cli);
+      this.entries = {
+        ...this.entries,
+        models: this.entries.models.filter((m) => m.name !== named[1]),
+        defaults: this.entries.defaults.filter((d) => d.external !== gone?.id),
+      };
+      return json({ ...this.entries, cleared });
+    }
+    if (named && method === "PATCH") {
+      const to = (body as { name: string }).name;
+      this.entries = {
+        ...this.entries,
+        models: this.entries.models.map((m) => (m.name === named[1] ? { ...m, name: to } : m)),
+      };
+      return json(this.entries);
+    }
+    if (where === "/api/models/check") {
+      const given = body as Added;
+      return json({ kind: "ok", text: "in the list", field: "", name: given.name ?? this.named(given) });
+    }
+    if (where === "/api/model-servers/check") {
+      // The core's rules in short: a name taken; nothing answers at a port 1243; a gateway
+      // (`gw` in its address) asks for a key, takes "right" or a Change's kept key; a key over
+      // http:// to a host not on the machine; another server at the same address.
+      const given = body as { name: string; address: string; key: string | null; key_typed: boolean; replace: boolean };
+      const refusals = [];
+      const taken = this.entries.servers.find((s) => s.name.toLowerCase() === given.name.toLowerCase());
+      if (taken && !given.replace) refusals.push(detail(`a model server "${taken.name}" is saved already`, "name"));
+      const address = given.address.trim();
+      const url = /^https?:\/\//.test(address) ? address : `http://${address}`;
+      const host = url.replace(/^https?:\/\//, "").split(/[:/]/)[0];
+      const kept = given.replace && !given.key_typed && given.key === null && taken?.has_key; // Change sends it
+      const warnings =
+        (given.key_typed || kept) && url.startsWith("http://") && host !== "localhost"
+          ? [`the key goes to ${host} over plain http://, unencrypted`]
+          : [];
+      if (!address) return json({ probe: null, refusals, warnings: [], notes: [] });
+      if (address.includes(":1243"))
+        refusals.push(detail(`${url} does not answer (connection refused)`, "address"));
+      else if (address.includes("gw") && given.key !== "right" && !kept)
+        refusals.push(detail(given.key === null ? `${url} asks for a key (401): enter it in Key` : `${url} refused the key (401)`, "key"));
+      const probe = refusals.some((r) => r.field !== "name") ? null : { ...LMSTUDIO_PROBE, kind: address.includes("gw") ? "LiteLLM" : "LM Studio", address: url };
+      const notes = probe
+        ? this.entries.servers
+            .filter((s) => s.address === url && !(given.replace && s === taken))
+            .map((s) => `same address as model server "${s.name}"`)
+        : [];
+      return json({ probe, refusals, warnings, notes });
+    }
+    const server = where.match(/^\/api\/model-servers\/(.+)$/);
+    if (server && method === "DELETE") {
+      const confirmed = new URLSearchParams(path.split("?")[1] ?? "").getAll("confirmed");
+      const own = this.entries.models.filter((m) => m.server === server[1]).map((m) => m.name);
+      if ([...own].sort().join("\n") !== [...confirmed].sort().join("\n"))
+        return refusal(`model server "${server[1]}" has other models now: ${own.join(", ")}; nothing was removed`);
+      this.entries = {
+        models: this.entries.models.filter((m) => m.server !== server[1]),
+        servers: this.entries.servers.filter((s) => s.name !== server[1]),
+        defaults: this.entries.defaults.filter((d) => d.server !== server[1]),
+      };
+      return json(this.entries);
+    }
+    if (where === "/api/model-servers" && method === "POST") {
+      const given = body as { name: string; address: string };
+      const saved = { ...LMSTUDIO, name: given.name, address: given.address };
+      this.entries = { ...this.entries, servers: [...this.entries.servers, saved] };
+      return json({ server: saved, probe: LMSTUDIO_PROBE, notes: [], warnings: [], replaced: false });
+    }
+    return json({ detail: `no fake for ${method} ${path}` }, 404);
+  }
+
+  // The core's list in short: the CLI's own, its configured models, and a model checked as the
+  // core does: listed, refused, or warned of with no list.
+  choices(name: string, asked: string): ModelChoices {
+    const list: ModelChoices = {
+      aliases: [],
+      models: ["a/one", "b/two"],
+      why: "",
+      external: this.entries.models.filter((m) => m.cli === name),
+      other_name: false,
+      whole_process: false,
+      read_again: true,
+      check: { kind: "default", text: "", field: "", name: "" },
+      ...this.lists[name],
+    };
+    const kind =
+      asked === ""
+        ? "default"
+        : list.aliases.includes(asked) || list.models?.includes(asked)
+          ? "ok"
+          : list.models === null
+            ? "warn"
+            : "refused";
+    const text = kind === "warn" ? `${list.why}: LADO cannot check ${asked}` : "";
+    return { ...list, check: { kind, text, field: "", name: "" } };
+  }
+
+  title = (cli: string) => this.logins.find((r) => r.cli.name === cli)?.cli.title ?? cli;
+  taken = (name: string) => this.entries.models.some((m) => m.name.toLowerCase() === name.toLowerCase());
+
+  // The core's default name in short: `<model> · <server> · <CLI title>`; ` (2)` when taken.
+  named(given: Added): string {
+    const base = `${given.model} · ${given.server} · ${this.title(given.cli)}`;
+    return this.taken(base) ? `${base} (2)` : base;
+  }
+
+  of(method: string, start: string): Call[] {
+    return this.calls.filter((c) => c.method === method && c.path.startsWith(start));
+  }
+}
+
+export const detail = (message: string, field = "", hint = "", warnings: string[] = []) => ({
+  message,
+  hint,
+  field,
+  warnings,
+});
+
+export const refusal = (message: string, field = "", hint = "", warnings: string[] = []) =>
+  new Response(JSON.stringify({ detail: detail(message, field, hint, warnings) }), { status: 400 });

@@ -154,6 +154,15 @@ class Conn:
 
 
 COOKIE = {auth.cookie_name(PORT): "t"}
+NO_MODEL = {
+    "name": None,
+    "source": "cli",
+    "detail": None,
+    "words": "CLI default",
+    "configured": None,
+    "server": None,
+    "address": None,
+}
 
 
 @pytest.mark.parametrize(
@@ -520,6 +529,8 @@ def test_the_agents_of_a_session(client, session):
         "login_wait": None,
         "branch": None,
         "worktree": None,
+        "model": NO_MODEL,
+        "effort": NO_MODEL,
     }
     assert logged_in(client).get("/api/sessions/x/agents").status_code == 404
     state.set_status("s", "supervisor", state.IDLE)

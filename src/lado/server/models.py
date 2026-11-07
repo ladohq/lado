@@ -6,7 +6,7 @@ import datetime
 import logging
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from lado import (
     artifacts,
@@ -17,6 +17,8 @@ from lado import (
     kits,
     logins,
     marketplaces,
+    model_settings,
+    providers,
     runs,
     runtime,
     scratch,
@@ -63,6 +65,11 @@ class SessionInfo(BaseModel):
     # The id of the project it is in (lado.projects), None for none; it never changes, so
     # the links use it.
     project: str | None
+    # The model chosen for its agents of its provider's CLI (state.PowerTable's default
+    # row), by the saved name of an external one: None for no choice, "" for the CLI's own
+    # settings. The Resume window starts with it.
+    model: str | None = None
+    model_missing: bool = False  # that external model is no longer saved
     # That project's title, None for none: read now, and a rename touches the project's
     # sessions (state.set_project_title), so the feed carries the new one.
     project_title: str | None = None
@@ -460,6 +467,254 @@ class ProviderInfo(BaseModel):
     login_missing: bool = False
 
 
+class ModelCheck(BaseModel):
+    """lado.model_check's verdict on a model: its kind and its line for the human; for a
+    refusal of a configured model (lado.model_settings), the field of the form it concerns
+    ("" for none)."""
+
+    kind: Literal["default", "ok", "warn", "refused"]
+    text: str
+    field: str = ""
+    # The name a save would take: the one given, else its default ("" for a refusal); said
+    # by the check of a model only (Settings → Models' `would be <name>`).
+    name: str = ""
+
+
+class SessionModelAsked(BaseModel):
+    """A model for a session of the agent CLI `cli`, as `lado start --model` reads it, in the
+    environment of the agents of `project` (or of none)."""
+
+    cli: str
+    model: str
+    project: str | None = None
+
+
+class SessionModelCheck(ModelCheck):
+    """The check a start would make of a model, for the launch window: `text` the line under
+    its field. For a refusal, `short` the same to point at the field, `retry` whether a new
+    check can help. `peek` a few words for the folded Advanced, of a refusal or of the
+    `warnings`, those of the chosen model's server only; `server` its name."""
+
+    retry: bool = False
+    short: str = ""
+    peek: str = ""
+    warnings: list[str] = []
+    server: str | None = None
+
+
+class ModelRefusal(BaseModel):
+    """The detail of a 409 to a start or resume refused for its model: the core's line, and
+    what the launch window shows (SessionModelCheck)."""
+
+    message: str
+    field: Literal["model"] = "model"
+    text: str
+    short: str
+    peek: str
+    retry: bool
+
+
+# Settings → Models (lado.server.model_entries over lado.model_settings).
+
+
+class ConfiguredModelInfo(BaseModel):
+    """A configured model: its id, which references hold, its name, CLI (a provider's name,
+    and its title), the model as the CLI names it, and its server's name."""
+
+    id: str
+    name: str
+    cli: str
+    cli_title: str
+    model: str
+    server: str
+
+
+class ModelServerInfo(BaseModel):
+    """A saved model server as lado.db keeps it, asking it nothing, and whether it has a key
+    file (never the key)."""
+
+    name: str
+    address: str
+    kind: str
+    has_key: bool
+
+
+class CliDefault(BaseModel):
+    """An agent CLI's default model: `external` the configured model's id or `builtin` the
+    CLI's name for it, its name as shown, the model as the CLI names it, the server's name
+    (None for a built-in one), and whether a model on a server takes the CLI's whole process:
+    the page says so with no list read."""
+
+    cli: str
+    external: str | None
+    builtin: str | None
+    name: str
+    model: str
+    server: str | None
+    whole_process: bool
+
+
+class ModelSettings(BaseModel):
+    """The human's configured models and model servers, each by name ignoring case, and the
+    agent CLIs' default models, by CLI."""
+
+    models: list[ConfiguredModelInfo]
+    servers: list[ModelServerInfo]
+    defaults: list[CliDefault]
+
+
+class ModelChoices(BaseModel):
+    """What an agent CLI can run (lado.model_settings.choices): its aliases and own list
+    (`models` None for no full list, `why` saying so), its configured models, whether a name
+    outside the list may be given, whether a model on a server takes its whole process,
+    whether reading the list again may change the answer, and the check of the built-in model
+    asked about against this list."""
+
+    aliases: list[str]
+    models: list[str] | None
+    why: str
+    external: list[ConfiguredModelInfo]
+    other_name: bool
+    whole_process: bool
+    read_again: bool
+    check: ModelCheck
+
+
+class ModelRemoved(ModelSettings):
+    """The settings after a model was removed, and the agent CLIs whose default it was: a page
+    gone stale knows of no default to ask about, so the answer says one went."""
+
+    cleared: list[str]
+
+
+class ModelDefaultSet(BaseModel):
+    """The default model to set, exactly one of: a row picked, by reference (`external` a
+    configured model's id, `builtin` the CLI's name for it), or `typed`, a name read as `lado
+    model default` reads it."""
+
+    external: str | None = None
+    builtin: str | None = None
+    typed: str | None = None
+
+    @model_validator(mode="after")
+    def exactly_one(self) -> "ModelDefaultSet":
+        if sum(given is not None for given in (self.external, self.builtin, self.typed)) != 1:
+            raise ValueError("give external, builtin or typed, exactly one")
+        return self
+
+
+class ModelDefaultCheck(BaseModel):
+    """A name typed for a default model, to check before it is set."""
+
+    name: str
+
+
+class CliApi(BaseModel):
+    """An agent CLI (a provider's name and title) and the model server API it speaks."""
+
+    name: str
+    title: str
+    api: str
+
+
+class ProbeInfo(BaseModel):
+    """What a probe found on a model server (lado.model_servers.Probe): its type, the
+    address that answered (the typed one with its scheme and path filled in), its models
+    (None for no list, why in `models_why`), those it types as embeddings, why its APIs
+    could not be told ("" when they could), the CLIs that can use it, and for each CLI that has
+    its API and refuses its type a line of why."""
+
+    kind: str
+    address: str
+    models: list[str] | None
+    models_why: str
+    embeddings: list[str]
+    apis_why: str
+    clis: list[CliApi]
+    cli_notes: list[str]
+
+
+class ModelServerAdd(BaseModel):
+    """A model server to save, or with `replace` a saved one's new address and key; `key`
+    None for none (with `replace`: the kept key). No answer gives the key back."""
+
+    name: str
+    address: str
+    key: str | None = None
+    replace: bool = False
+
+
+class ModelServerCheck(BaseModel):
+    """The server form as typed, for its check before Add: the name, the address, whether a
+    key is typed (`key_typed`), and the key itself only when the human pressed Check key;
+    `replace` for Change, where the name is the saved server's own. No answer gives the key
+    back."""
+
+    name: str
+    address: str
+    key: str | None = None
+    key_typed: bool = False
+    replace: bool = False
+
+
+class ModelServerAdded(BaseModel):
+    """A server saved or replaced: as saved, the probe that found it, the notes (another
+    server at its address) and the warnings (its key over plain http://)."""
+
+    server: ModelServerInfo
+    probe: ProbeInfo
+    notes: list[str]
+    warnings: list[str]
+
+
+class ModelAdd(BaseModel):
+    """A configured model to check or save: `name` None for its default name."""
+
+    name: str | None = None
+    cli: str
+    model: str
+    server: str
+
+
+class ModelAdded(BaseModel):
+    model: ConfiguredModelInfo
+    check: ModelCheck
+
+
+class ModelDefaultSaved(BaseModel):
+    """A default model set: the settings after it and, for a built-in model, the check's
+    verdict (None for an external one, which asks no server)."""
+
+    settings: ModelSettings
+    check: ModelCheck | None
+
+
+class ModelRename(BaseModel):
+    name: str
+
+
+class EntryRefused(BaseModel):
+    """The detail of a 400 that Settings → Models' API answers for a refusal: the line the
+    matching command prints, its hint ("" for none), the field of the form it concerns (""
+    for none), and the warnings given before it (a key over plain http://)."""
+
+    message: str
+    hint: str
+    field: str
+    warnings: list[str]
+
+
+class ServerCheck(BaseModel):
+    """What the server form says before Add: the probe of its address (None when it was not
+    probed or failed), the refusals Add would meet, each under its field, the warnings (a
+    key over plain http://) and the notes (another server at its address)."""
+
+    probe: ProbeInfo | None
+    refusals: list[EntryRefused]
+    warnings: list[str]
+    notes: list[str]
+
+
 class LoginInfo(BaseModel):
     """A CLI's login as its own status command says (Provider.login_status); no value."""
 
@@ -501,7 +756,7 @@ class AgentRefInfo(BaseModel):
 
 
 class ProviderLogins(BaseModel):
-    """One agent CLI in Settings → Providers and environment (lado.logins)."""
+    """One agent CLI in Settings → Agent CLIs and environment (lado.logins)."""
 
     cli: ProviderInfo
     login: LoginInfo
@@ -1004,6 +1259,8 @@ class Launch(BaseModel):
     without: list[str] | None = None
     prompt: str | None = None  # the human's first message to the supervisor (check_prompt)
     title: str | None = None  # the session's title (runtime.check_title)
+    # The session's model, checked before the start: None for none, "" the CLI's own settings.
+    model: str | None = None
 
 
 class Resume(BaseModel):
@@ -1014,6 +1271,9 @@ class Resume(BaseModel):
     permission_mode: str | None = None
     without: list[str] | None = None
     prompt: str | None = None  # the human's first message to the supervisor (check_prompt)
+    # The session's model: None keeps its own (none after a change of provider), "" is the
+    # CLI's own settings.
+    model: str | None = None
 
 
 class Taken(BaseModel):
@@ -1073,6 +1333,20 @@ class Forgotten(BaseModel):
 AgentStatus = Literal["starting", "busy", "idle", "background", "waiting", "stopped"]
 
 
+class ModelInfo(BaseModel):
+    """An agent's model or effort, and where it came from."""
+
+    name: str | None  # None while unknown: the CLI's default
+    source: str  # one of state.MODEL_SOURCES, or a newer LADO's token
+    detail: str | None  # which part of the source, e.g. "profile work"
+    words: str  # what the UI shows for the source (state.source_words)
+    # A model of a saved server (lado.model_settings.shown): `name` is then the model as the
+    # server names it, this its saved name, read now.
+    configured: str | None = None
+    server: str | None = None  # that server's name
+    address: str | None = None  # and address
+
+
 class AgentInfo(BaseModel):
     name: str
     role: str
@@ -1091,6 +1365,8 @@ class AgentInfo(BaseModel):
     worktree: str | None  # a worker's folder; None for the supervisor
     spawned_at: str  # UTC, ISO 8601: its latest spawn
     since: str  # UTC, ISO 8601: when it got its status, as `lado ls` says
+    model: ModelInfo  # the model it runs on
+    effort: ModelInfo  # its reasoning effort
 
 
 class CommitInfo(BaseModel):
@@ -1556,7 +1832,33 @@ def agent_info(agent: state.Agent) -> AgentInfo:
         worktree=agent.cwd if worker else None,
         spawned_at=_iso(spawned) if spawned else added,
         since=_iso(since) if since else added,
+        model=_agent_model(agent),
+        effort=_model_info(agent, agent.effort, agent.effort_source, agent.effort_detail),
     )
+
+
+def _agent_model(agent: state.Agent) -> ModelInfo:
+    info = _model_info(agent, agent.model, agent.model_source, agent.model_detail)
+    found = model_settings.agent_shown(agent)
+    if found is None:
+        return info
+    return info.model_copy(
+        update={
+            "name": found.model,
+            "configured": found.name,
+            "server": found.server,
+            "address": found.address,
+        }
+    )
+
+
+def _model_info(agent: state.Agent, name: str | None, source: str, detail: str | None) -> ModelInfo:
+    try:
+        title = providers.get(agent.provider).title
+    except ValueError:  # a newer LADO's provider
+        title = agent.provider
+    words = state.source_words(source, detail, title)
+    return ModelInfo(name=name, source=source, detail=detail, words=words)
 
 
 def work_info(work: runtime.WorkState) -> WorkInfo:
@@ -1759,6 +2061,29 @@ def session_info(sess: state.Session) -> SessionInfo:
         title=sess.title,
         project=sess.project,
         project_title=project.title if project else None,
+        **_session_model(sess),
+    )
+
+
+def _session_model(sess: state.Session) -> dict:
+    """SessionInfo's `model` and `model_missing`; a table that cannot be read says nothing: a
+    resume that keeps it is refused with its reason."""
+    if sess.power is None or not sess.power.readable:
+        return {"model": None, "model_missing": False}
+    row = sess.power.row()
+    if row.model_id is None:
+        return {"model": row.model, "model_missing": False}
+    saved = state.model_by_id(row.model_id)
+    return {"model": saved.name if saved else row.shown, "model_missing": saved is None}
+
+
+def model_refusal(refused: runtime.ModelRefused) -> ModelRefusal:
+    return ModelRefusal(
+        message=str(refused),
+        text=refused.refused.window,
+        short=refused.refused.short,
+        peek=refused.refused.peek,
+        retry=refused.refused.retry,
     )
 
 

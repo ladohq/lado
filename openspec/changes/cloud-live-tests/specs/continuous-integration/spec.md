@@ -63,34 +63,56 @@ and no skip.
 
 ### Requirement: What a live cell uploads holds no key
 
-Before a live cell ends, it SHALL replace the value of `LADO_LIVE_API_KEY` in every file under
-its output folder, the pytest log and the evidence included, by `<redacted>`; the workflow
-SHALL upload that folder whether the cell passed or not.
+A live cell SHALL write everything outside its output folder while the tests run, and only then
+replace the value of `LADO_LIVE_API_KEY` in every file by `<redacted>` and move the files into
+the output folder; the output folder MUST hold no file before that replacement. The workflow
+SHALL upload the output folder whether the cell passed or not.
 
 #### Scenario: An agent printed its environment
 
 - **WHEN** a failed test's evidence and the pytest log hold the key's value
 - **THEN** the uploaded folder holds `<redacted>` in its place
 
-### Requirement: Codex can reach a remote endpoint through the bridge
+#### Scenario: The job is killed during the tests
 
-With `LADO_LIVE_ENDPOINT` and `LADO_LIVE_CODEX_BRIDGE=1` set, the live tests SHALL start the
-LiteLLM bridge with that endpoint as its upstream and point Codex at the bridge; the bridge's
-config MUST name the upstream's key only by reference to `LADO_LIVE_API_KEY`. Without
-`LADO_LIVE_CODEX_BRIDGE`, Codex SHALL reach the endpoint directly, as before.
+- **WHEN** the job reaches its timeout, or the script crashes, while pytest runs
+- **THEN** the output folder is empty, and the upload sends nothing
 
-#### Scenario: The bridge's config
+#### Scenario: The tests hang
 
-- **WHEN** the bridge starts for a remote endpoint
-- **THEN** its config file holds the endpoint's base URL and `os.environ/LADO_LIVE_API_KEY`, and
-  not the key's value
+- **WHEN** pytest is still running after the cell's own limit, shorter than the job's timeout
+- **THEN** pytest is ended, the cell is red, and its redacted log and evidence are uploaded
 
-#### Scenario: LM Studio's bridge
+### Requirement: The live tests of Codex, OpenCode and Kilo run only on a remote endpoint
 
-- **WHEN** no endpoint is set
-- **THEN** the bridge's upstream is LM Studio's `/v1` with no key, as before
+Codex, OpenCode and Kilo's live tests SHALL reach their model only at `LADO_LIVE_ENDPOINT`, which
+MUST have no default value, with `LADO_LIVE_API_KEY` and `LADO_LIVE_MODEL` (or the CLI's own
+model variable). Without any of them each of these tests SHALL skip and name what to set. No
+live test SHALL start or look for LM Studio or a LiteLLM proxy.
 
-#### Scenario: Without the setting
+#### Scenario: No endpoint on a developer's machine
 
-- **WHEN** an endpoint is set and `LADO_LIVE_CODEX_BRIDGE` is not
-- **THEN** Codex's config names the endpoint and no bridge starts
+- **WHEN** `make test-live PROVIDER=kilo` runs with no `LADO_LIVE_ENDPOINT`
+- **THEN** the tests skip with a reason naming the three variables
+
+#### Scenario: An endpoint without its key
+
+- **WHEN** `LADO_LIVE_ENDPOINT` is set and `LADO_LIVE_API_KEY` is not
+- **THEN** the tests skip with a reason naming the key's variable
+
+#### Scenario: Claude Code
+
+- **WHEN** Claude Code's live test runs with no endpoint
+- **THEN** it runs as before, on its own login
+
+### Requirement: A release candidate's live check is the live workflow
+
+The release's live step SHALL be a run of the live workflow on the release candidate's commit
+with all three cells green, and Claude Code's live test run locally with the human's yes; a
+`make test-live` without the endpoint's variables MUST NOT count as that check.
+
+#### Scenario: The live step of a release candidate
+
+- **WHEN** the commit `Release candidate X.Y.ZrcN` is on `main`
+- **THEN** `gh workflow run live.yml` runs on it before the tag is pushed, and a red cell is rerun
+  by the flaky rule of the checks

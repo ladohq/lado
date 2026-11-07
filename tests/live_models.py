@@ -68,8 +68,12 @@ def codex_config(model: str, base_url: str, env_key: str) -> str:
     """The user's Codex config of the test, which LADO carries into each agent's own
     (providers/codex.py, CARRIED): the model at a Responses endpoint, its key read from the
     variable `env_key`."""
-    provider = {"name": ENDPOINT_PROVIDER, "base_url": base_url, "wire_api": "responses"}
-    provider["env_key"] = env_key
+    provider = {
+        "name": ENDPOINT_PROVIDER,
+        "base_url": base_url,
+        "wire_api": "responses",
+        "env_key": env_key,
+    }
     return toml_text(
         {
             "model": model,

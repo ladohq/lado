@@ -119,8 +119,8 @@ Seven layers; each change gets tests at the lowest layer that can catch its bugs
    what needs a browser.
 5. **Smoke** (`make test-smoke`, marker `smoke`): each real CLI, a local 401 endpoint
    instead of a model. Not in `make check`; in CI.
-6. **Live e2e** (`make test-live`, marker `live`): real CLIs and models. Not in CI: at
-   release; Claude Code only with the human's yes.
+6. **Live e2e** (`make test-live`, marker `live`): real CLIs and models. Weekly and by hand
+   in `live.yml`, every provider on OpenRouter, outside `ci-ok`, and on each RC.
 7. **Container** (`make test-container`, marker `container`): LADO's image with real
    Docker. Not in `make check`; in CI.
 

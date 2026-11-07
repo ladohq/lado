@@ -1,0 +1,65 @@
+# The live tests of every provider on cheap cloud models (docs/testing.md): weekly on
+# main and by hand. Not part of ci.yml, so never of ci-ok: a provider's outage looks like a
+# failed test. The key is a secret of the environment live, open only to main and tags v*, so
+# no run of a pull request gets it. GitHub mails a red scheduled run to whoever last changed
+# the cron line.
+name: Live tests
+
+on:
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live
+  cancel-in-progress: false
+
+jobs:
+  live:
+    name: live ${{ matrix.provider }}
+    if: github.repository == 'ladohq/lado'
+    runs-on: ubuntu-latest
+    environment: live
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # Each provider with its cheapest model that passed the trial
+        # (docs/superpowers/reports/2026-11-07-cloud-live-tests-trial.md).
+        include:
+          - {provider: claude, model: anthropic/claude-haiku-5.5}
+          - {provider: codex, model: qwen/qwen3.7-flash}
+          - {provider: kilo, model: qwen/qwen3.7-flash}
+          - {provider: opencode, model: qwen/qwen3.7-flash}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.12.3"
+          python-version: "3.13"
+      - run: sudo apt-get install -y tmux
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+      - name: uv sync
+        run: uv sync --locked
+      # Red unless the tests passed and none skipped. What it leaves has the key redacted.
+      - name: Live tests
+        env:
+          PROVIDER: ${{ matrix.provider }}
+          LADO_LIVE_ENDPOINT: https://openrouter.ai/api/v1
+          LADO_LIVE_API_KEY: ${{ secrets.LADO_LIVE_API_KEY }}
+          LADO_LIVE_MODEL: ${{ matrix.model }}
+          LADO_LIVE_IMAGE: "1"
+        run: uv run python scripts/smoke_ci.py live "$PROVIDER" "$RUNNER_TEMP/live"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: live-${{ matrix.provider }}
+          path: ${{ runner.temp }}/live
+          retention-days: 5

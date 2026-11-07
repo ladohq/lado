@@ -7087,3 +7087,100 @@ def test_a_clone_on_the_default_model_of_a_server_is_not_refused_for_the_login(
     _default(_claude_on_server(monkeypatch))
     cli_logins.logged_out()
     runtime.check_start_login("claude", None)
+
+
+# A turn no hook ends (Provider.failed_turn).
+
+
+class FailingProvider:
+    """The provider of an agent, whose turn `event` ended; the keys it was given."""
+
+    def __init__(self, event):
+        self.event = event
+        self.asked = []
+        self.keys = None
+
+    def failed_turn(self, agent, keys):
+        self.asked.append(agent.name)
+        self.keys = keys
+        return self.event
+
+    def __getattr__(self, name):
+        return getattr(providers.get("opencode"), name)
+
+
+def _failing(monkeypatch, event):
+    failing = FailingProvider(event)
+    real = providers.get
+    monkeypatch.setattr(
+        runtime.providers, "get", lambda name: failing if name == "codex" else real(name)
+    )
+    return failing
+
+
+def _busy_codex(repo):
+    runtime.start_session(str(repo), "s", None, provider="opencode")
+    runtime.spawn_worker("s", "a task", name="w1")
+    with state.connect() as db:
+        db.execute("UPDATE agents SET provider = 'codex' WHERE name = 'w1'")
+    state.set_status("s", "w1", state.BUSY)
+
+
+REFUSED_TURN = providers.Event(
+    base.TURN_END, error="the model provider refused the key (401)", output_ignored=True
+)
+
+
+def test_check_turns_ends_a_failed_turn_as_a_hook_does(repo, fake_tmux, monkeypatch):
+    _busy_codex(repo)
+    _failing(monkeypatch, REFUSED_TURN)
+    runtime.check_turns("s")
+    assert state.get_agent("s", "w1").status == state.IDLE
+    assert [m.summary for m in state.list_messages("s") if m.recipient == runtime.SUPERVISOR] == [
+        "turn of w1 ended on an error: the model provider refused the key (401); it is idle"
+    ]
+
+
+def test_check_turns_asks_only_about_busy_agents(repo, fake_tmux, monkeypatch):
+    _busy_codex(repo)
+    state.set_status("s", "w1", state.IDLE)
+    failing = _failing(monkeypatch, REFUSED_TURN)
+    runtime.check_turns("s")
+    assert failing.asked == []
+
+
+def test_check_turns_changes_nothing_of_a_turn_that_goes_on(repo, fake_tmux, monkeypatch):
+    _busy_codex(repo)
+    failing = _failing(monkeypatch, None)
+    runtime.check_turns("s")
+    assert failing.asked == ["w1"]
+    assert state.get_agent("s", "w1").status == state.BUSY
+
+
+def test_check_turns_passes_over_an_agent_of_an_unknown_cli(repo, fake_tmux):
+    _busy_codex(repo)
+    with state.connect() as db:
+        db.execute("UPDATE agents SET provider = 'gone' WHERE name = 'w1'")
+    runtime.check_turns("s")
+    assert state.get_agent("s", "w1").status == state.BUSY
+
+
+def test_the_keys_of_a_failed_turn_are_the_kept_key_of_the_agent_s_server(
+    repo, fake_tmux, monkeypatch
+):
+    _busy_codex(repo)
+    failing = _failing(monkeypatch, None)
+    server = state.add_model_server("gw", "Шлюз", "http://gw", "OpenAI-compatible", [CHAT])
+    model_settings._write_key(server.id, "sk-kept")
+    failing.launched_on = lambda agent: server.id
+    runtime.check_turns("s")
+    assert list(failing.keys()) == ["sk-kept"]
+
+
+@pytest.mark.parametrize("launched_on", [None, "removed"], ids=["no server", "a server removed"])
+def test_no_server_has_no_keys(repo, fake_tmux, monkeypatch, launched_on):
+    _busy_codex(repo)
+    failing = _failing(monkeypatch, None)
+    failing.launched_on = lambda agent: launched_on
+    runtime.check_turns("s")
+    assert list(failing.keys()) == []

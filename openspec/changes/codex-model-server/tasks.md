@@ -17,17 +17,17 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-07-codex-model-
 - [x] 2.3 Web search, the carried effort (D3). Check: `tests/test_codex.py`.
 - [x] 2.4 The catalogue, its warning (D4). Check: `tests/test_codex.py`.
 - [x] 2.5 The context (D5). Check: `tests/test_codex.py`.
-- [ ] 2.6 A start and a worker on a server through the fake agent, the key in no file. Check: a new
+- [x] 2.6 A start and a worker on a server through the fake agent, the key in no file. Check: a new
   `tests/integration/test_codex_model_server.py` with `-m integration`.
 
 ## 3. A failed turn
 
-- [ ] 3.1 `without_keys(text, keys)` (D10). Check: `tests/test_providers.py`.
-- [ ] 3.2 Reading the error, each row of D9's table (D9). Check: `tests/test_codex.py`.
-- [ ] 3.3 `failed_turn`: the offset, a line in writing, a later turn, a built-in agent (D8). Check:
+- [x] 3.1 `without_keys(text, keys)` (D10). Check: `tests/test_providers.py`.
+- [x] 3.2 Reading the error, each row of D9's table (D9). Check: `tests/test_codex.py`.
+- [x] 3.3 `failed_turn`: the offset, a line in writing, a later turn, a built-in agent (D8). Check:
   `tests/test_codex.py`.
-- [ ] 3.4 `runtime.check_turns`, the loop's pass, `hooks.handle` (D8). Check: `tests/test_runtime.py`.
-- [ ] 3.5 The line in the chat, idle, no resume, once after a loop's restart, the key echoed. Check:
+- [x] 3.4 `runtime.check_turns`, the loop's pass, `hooks.handle` (D8). Check: `tests/test_runtime.py`.
+- [x] 3.5 The line in the chat, idle, no resume, once after a loop's restart, the key echoed. Check:
   `tests/integration/test_codex_model_server.py` with `-m integration`.
 
 ## 4. Smoke

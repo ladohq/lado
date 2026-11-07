@@ -351,6 +351,12 @@ def test_a_refusal_line_has_lado_s_words_and_the_server_s_first_line():
     assert long.endswith("…") and len(long) == base.ERROR_LIMIT
 
 
+def test_without_keys_takes_the_keys_it_is_given_out_too(monkeypatch):
+    monkeypatch.setenv(f"{base.KEY_VARIABLE}AAAA", "in-the-environment")
+    text = "in-the-environment kept-key kept plain"
+    assert base.without_keys(text, ("kept-key", "kept", "")) == "*** *** *** plain"
+
+
 def test_without_keys_takes_every_server_s_key_out_the_longest_first(monkeypatch):
     monkeypatch.setenv(f"{base.KEY_VARIABLE}A", "abc")
     monkeypatch.setenv(f"{base.KEY_VARIABLE}B", "abcdef")

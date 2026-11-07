@@ -1379,3 +1379,291 @@ def test_a_built_in_agent_s_config_has_nothing_of_a_server(repo, codex_home):
     assert (config["model"], config["model_provider"]) == ("own", "mine")
     assert not {"model_catalog_json", "web_search", "model_context_window"} & set(config)
     assert set(launch.env) == {"CODEX_HOME"}
+
+
+# A failed turn, from the agent's journal.
+
+JOURNAL = "sessions/2026/11/07/rollout-2026-11-07T17-16-38-a.jsonl"
+UNAUTHORIZED = {
+    "message": "unexpected status 401 Unauthorized: Missing Authentication header, "
+    "url: https://user:pass@gw/v1/responses, cf-ray: 8f1-AMS",
+    "codex_error_info": {"http_connection_failed": {"http_status_code": 401}},
+}
+
+
+def _line(kind, **payload):
+    return json.dumps({"type": "event_msg", "payload": {"type": kind, **payload}}) + "\n"
+
+
+def _write(agent, *lines, name=JOURNAL, binary=False):
+    path = base.config_path(agent) / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("ab") as file:
+        for line in lines:
+            file.write(line if binary else line.encode())
+    return path
+
+
+def _failed(agent, keys=()):
+    return providers.get("codex").failed_turn(agent, lambda: keys)
+
+
+@pytest.fixture
+def on_server(repo, catalogue):
+    _launch_on(repo)
+    return _agent(repo)
+
+
+def _read(on_server, error, keys=()):
+    _write(on_server, _line("task_started"), _line("task_complete", error=error))
+    return _failed(on_server, keys)
+
+
+def test_a_refused_key_ends_the_turn_in_lado_s_words(on_server):
+    event = _read(on_server, UNAUTHORIZED)
+    assert event == Event(
+        base.TURN_END,
+        error="the model provider refused the key (401): Missing Authentication header",
+        details="Missing Authentication header",
+        output_ignored=True,
+    )
+
+
+@pytest.mark.parametrize(
+    ("status", "reason", "words"),
+    [
+        (402, "Payment Required", "the model provider asks for payment (402)"),
+        (403, "Forbidden", "the model provider refused access (403)"),
+        (404, "Not Found", "the model provider refused the request (404)"),
+        (413, "Payload Too Large", "the model provider refused the request (413)"),
+        (422, "Unprocessable Entity", "the model provider refused the request (422)"),
+    ],
+)
+def test_each_status_codex_gives_up_on_reads_in_lado_s_words(on_server, status, reason, words):
+    event = _read(
+        on_server,
+        {
+            "message": f"unexpected status {status} {reason}: no such thing, url: http://gw/v1",
+            "codex_error_info": {"http_connection_failed": {"http_status_code": status}},
+        },
+    )
+    assert (event.error, event.details) == (f"{words}: no such thing", "no such thing")
+    assert not event.transient
+
+
+def test_a_status_with_no_text_is_its_words_alone(on_server):
+    event = _read(
+        on_server,
+        {
+            "message": "unexpected status 403 Forbidden, url: http://gw/v1/responses",
+            "codex_error_info": {"http_connection_failed": {"http_status_code": 403}},
+        },
+    )
+    assert (event.error, event.details) == ("the model provider refused access (403)", "")
+
+
+def test_a_limit_keeps_only_the_status(on_server):
+    event = _read(
+        on_server,
+        {
+            "message": "exceeded retry limit, last status: 429 Too Many Requests",
+            "codex_error_info": {"response_too_many_failed_attempts": {"http_status_code": 429}},
+        },
+    )
+    assert event.error == "the model provider limits requests, or the quota is spent (429)"
+    assert event.details == "" and not event.transient
+
+
+@pytest.mark.parametrize(
+    ("body", "line"),
+    [
+        (
+            '{"error": {"message": "unknown model"}}',
+            "the model provider refused the request (400): unknown model",
+        ),
+        (
+            '{"message":"invalid api key secret","code":"InvalidArgument"}',
+            "the model provider refused the key (400): invalid api key secret",
+        ),
+        ('{"error": "plain words"}', "the model provider refused the request (400): plain words"),
+    ],
+    ids=["OpenAI's shape", "cloud.ru's key", "a string"],
+)
+def test_a_body_codex_passes_as_it_came_is_a_400(on_server, body, line):
+    event = _read(on_server, {"message": body, "codex_error_info": "other"})
+    assert event.error == line
+
+
+def test_a_context_too_small_keeps_lado_s_words(on_server):
+    body = json.dumps(
+        {
+            "error": {
+                "type": "exceed_context_size_error",
+                "message": "request (70000 tokens) exceeds the available context size (65536 "
+                "tokens)",
+            }
+        }
+    )
+    event = _read(on_server, {"message": body, "codex_error_info": "other"})
+    assert event.error == base.context_line(body)
+    assert event.error.startswith(base.OVERFLOW)
+
+
+def test_a_server_error_is_temporary(on_server):
+    words = "We’re currently experiencing high demand, which may cause temporary errors."
+    event = _read(on_server, {"message": words, "codex_error_info": "internal_server_error"})
+    assert (event.error, event.transient) == (words, True)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        {"message": "something else", "codex_error_info": "usage_limit_exceeded"},
+        {"message": "something else", "codex_error_info": "other"},
+        {
+            "message": "something else, url: http://gw/v1",
+            "codex_error_info": {"http_connection_failed": {"http_status_code": 408}},
+        },
+    ],
+    ids=["its own kind", "not a body", "a 408"],
+)
+def test_anything_else_is_its_message_and_not_temporary(on_server, error):
+    event = _read(on_server, error)
+    assert (event.error, event.transient) == ("something else", False)
+
+
+def test_an_error_with_no_words_still_ends_the_turn(on_server):
+    assert _read(on_server, {"codex_error_info": "other"}).error
+
+
+def test_a_long_message_is_cut_with_its_whole_text_in_the_details(on_server):
+    words = "w" * 300
+    event = _read(on_server, {"message": words, "codex_error_info": "thing"})
+    assert len(event.error) == base.ERROR_LIMIT and event.details == words
+
+
+def test_the_address_and_the_ray_are_in_nothing(on_server):
+    event = _read(on_server, UNAUTHORIZED)
+    told = event.error + event.details
+    assert "pass" not in told and "gw" not in told and "cf-ray" not in told and "8f1" not in told
+
+
+def test_a_ray_with_no_address_is_cut_too(on_server):
+    event = _read(
+        on_server,
+        {
+            "message": "unexpected status 401 Unauthorized: nope, cf-ray: 8f1-AMS",
+            "codex_error_info": {"http_connection_failed": {"http_status_code": 401}},
+        },
+    )
+    assert event.details == "nope"
+
+
+def test_the_key_goes_before_any_cut(on_server):
+    key = "k" * 200
+    event = _read(
+        on_server,
+        {
+            "message": f"unexpected status 401 Unauthorized: {'x' * 110}{key}, url: http://gw/v1",
+            "codex_error_info": {"http_connection_failed": {"http_status_code": 401}},
+        },
+        keys=(key,),
+    )
+    assert "k" * 5 not in event.error + event.details
+    assert event.details.endswith("***")
+
+
+def test_the_key_in_an_address_is_out_as_well(on_server):
+    event = _read(
+        on_server,
+        {"message": "sk-the-key", "codex_error_info": "thing"},
+        keys=("sk-the-key",),
+    )
+    assert (event.error, event.details) == ("***", "***")
+
+
+def test_no_error_is_no_failed_turn(on_server):
+    _write(on_server, _line("task_started"), _line("task_complete", last_agent_message="done"))
+    assert _failed(on_server) is None
+
+
+def test_no_journal_is_no_failed_turn(on_server):
+    assert _failed(on_server) is None
+
+
+def test_a_later_turn_takes_the_error_back(on_server):
+    _write(
+        on_server,
+        _line("task_started"),
+        _line("task_complete", error=UNAUTHORIZED),
+        _line("task_started"),
+    )
+    assert _failed(on_server) is None
+    assert _failed(on_server) is None
+
+
+def test_a_line_in_writing_waits_for_the_next_pass(on_server):
+    line = _line("task_complete", error=UNAUTHORIZED)
+    _write(on_server, line[:40])
+    assert _failed(on_server) is None
+    _write(on_server, line[40:])
+    assert _failed(on_server).error.startswith("the model provider refused the key")
+
+
+def test_an_error_is_told_once(on_server):
+    assert _read(on_server, UNAUTHORIZED) is not None
+    assert _failed(on_server) is None
+
+
+def test_the_offset_survives_a_new_provider_object(on_server):
+    """The offset is on disk: a restarted loop tells nothing again."""
+    _read(on_server, UNAUTHORIZED)
+    assert codex.CodexProvider().failed_turn(on_server, lambda: ()) is None
+
+
+def test_the_next_failed_turn_is_told_too(on_server):
+    _read(on_server, UNAUTHORIZED)
+    assert _read(on_server, UNAUTHORIZED) is not None
+
+
+def test_a_new_journal_is_read_from_its_start(on_server):
+    _read(on_server, UNAUTHORIZED)
+    later = JOURNAL.replace("17-16-38", "18-00-00")
+    _write(on_server, _line("task_complete", error=UNAUTHORIZED), name=later)
+    assert _failed(on_server) is not None
+
+
+def test_a_line_that_is_no_json_is_passed_over(on_server):
+    _write(on_server, "not json\n", '"text"\n', '{"payload": 1}\n')
+    assert _read(on_server, UNAUTHORIZED) is not None
+
+
+def test_a_journal_of_broken_bytes_is_passed_over(on_server):
+    _write(on_server, b"\xff\xfe\n", binary=True)
+    assert _read(on_server, UNAUTHORIZED) is not None
+
+
+def test_a_key_that_cannot_be_read_leaves_the_error_unread(on_server):
+    """The error waits for the next pass: it is not lost."""
+
+    def fails():
+        raise OSError("no key")
+
+    _write(on_server, _line("task_complete", error=UNAUTHORIZED))
+    with pytest.raises(OSError):
+        providers.get("codex").failed_turn(on_server, fails)
+    assert _failed(on_server) is not None
+
+
+def test_a_built_in_agent_s_journal_is_never_opened(repo, monkeypatch):
+    _launch(repo, model="gpt-5.5")
+    agent = _agent(repo)
+    path = _write(agent, _line("task_complete", error=UNAUTHORIZED))
+    monkeypatch.setattr(codex, "_newest_journal", lambda home: pytest.fail("a journal was read"))
+    assert _failed(agent) is None
+    assert path.exists() and not (base.config_path(agent) / "journal-offset").exists()
+
+
+def test_the_other_clis_end_no_turn_by_a_journal(repo):
+    for name in ("claude", "kilo", "opencode"):
+        assert providers.get(name).failed_turn(_agent(repo), lambda: ()) is None

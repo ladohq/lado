@@ -26,7 +26,7 @@ import os
 import re
 import subprocess
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 
 from lado import state
@@ -65,7 +65,8 @@ WARNING = "Continue only if"
 # refuses, ends with Interrupt and no Stop. Codex reads Interrupt's output only for a
 # message to the human (read in its source, hooks/src/events/interrupt.rs): the queue is
 # typed in after it (output_ignored). A turn that ends on a model or API error runs no hook
-# at all (BACKLOG.md): the agent stays busy.
+# and no `notify`: the agent of a server hears of it from its journal (failed_turn), and
+# one on a built-in model stays busy (BACKLOG.md).
 #
 # No turn's end is Event.background: Stop's input (session, turn, transcript, cwd, model,
 # permission mode, stop_hook_active, last_assistant_message) says nothing of work still
@@ -124,6 +125,9 @@ PROFILE = "lado"  # LADO's permission profile (see _git_profile)
 # (tests/local_models.py).
 LOSES_TOOLS = "its Responses API loses Codex CLI's MCP tools, so the agent could not talk to LADO"
 CATALOGUE = "models.json"  # in the agent's home: its list of models on a server
+# In the agent's home, so that it outlives a restart of the session loop: which journal
+# failed_turn read, and how far.
+JOURNAL_OFFSET = "journal-offset"
 # What LADO decides for an agent on a server, at the top level alone: in a carried profile it
 # would win (_setting). A server may refuse an effort (`reasoning_effort='xhigh' is not
 # supported`) and a tool of type web_search, or bill it.
@@ -152,6 +156,12 @@ PLAIN_MODEL = {
     "upgrade": None,
     "input_modalities": ["text"],
 }
+# An error of Codex's journal (0.162.0, a fake server, every POST answered alike; OpenRouter's
+# wrong key): `<status text>, url: <the address>` and on a real server `, cf-ray: <id>`. An address
+# may hold a password, and a ray is noise.
+ADDRESS = re.compile(r", (?:url|cf-ray): ")
+UNEXPECTED = re.compile(r"unexpected status \d+[^:]*(?:: (.*))?", re.DOTALL)
+NO_WORDS = "Codex CLI's turn ended on an error"
 USING = "Logged in using "  # the start of `codex login status`'s line for a login
 
 # Codex's login (0.162.0, checked by hand): its file CODEX_HOME/auth.json, the system
@@ -544,6 +554,33 @@ class CodexProvider(base.Provider):
         # UserPromptSubmit for it; the Stop that ends that turn has stop_hook_active true.
         return json.dumps({"decision": "block", "reason": text})
 
+    def failed_turn(
+        self, agent: state.Agent, keys: Callable[[], Iterable[str]]
+    ) -> base.Event | None:
+        # Only the journal has such a turn: a `task_complete` with an `error`. An agent on a
+        # built-in model has nothing read (the human's decision of 2026-10-09 stands for it).
+        if self.launched_on(agent) is None:
+            return None
+        home = base.config_path(agent)
+        try:
+            journal = _newest_journal(home)
+            if journal is None:
+                return None
+            start = _journal_offset(home, journal)
+            new = _whole_lines(journal, start)
+        except OSError:  # the agent stopped meanwhile, and its home went with it
+            return None
+        if not new:
+            return None
+        error = _last_error(new)
+        # Before the offset moves: an error whose keys cannot be read now is read again.
+        event = None if error is None else _failed_event(error, keys())
+        try:
+            _keep_offset(home, journal, start + len(new))
+        except OSError:  # told only once it is kept: else every pass would tell it again
+            return None
+        return event
+
     def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> base.Blocker:
         # The agent's login first: its own home has none, and the login's state is read
         # there (lado.runtime, lado.login_wait); on a server none, and nothing of an earlier
@@ -662,6 +699,112 @@ def _user_config(environ, warnings: list[str]) -> tuple[dict, Path]:
             f"cannot read {path}: {error}; nothing of it is carried into the Codex agents' config"
         )
         return {}, path
+
+
+def _newest_journal(home: Path) -> Path | None:
+    """The session journal Codex writes now in the agent's `home`; None before its first."""
+    found = [
+        (path.stat().st_mtime_ns, path.name, path)
+        for path in (home / "sessions").glob("**/rollout-*.jsonl")
+    ]
+    return max(found)[2] if found else None
+
+
+def _journal_offset(home: Path, journal: Path) -> int:
+    """How far failed_turn read `journal`: 0 for a journal it has not read."""
+    try:
+        read = json.loads((home / JOURNAL_OFFSET).read_text())
+    except (OSError, ValueError):
+        return 0
+    return _as_table(read).get("offset", 0) if _as_table(read).get("file") == journal.name else 0
+
+
+def _keep_offset(home: Path, journal: Path, offset: int) -> None:
+    beside = home / f"{JOURNAL_OFFSET}.lado"
+    beside.write_text(json.dumps({"file": journal.name, "offset": offset}))
+    os.replace(beside, home / JOURNAL_OFFSET)
+
+
+def _whole_lines(journal: Path, start: int) -> bytes:
+    """What `journal` holds after `start`, as whole lines: a line in writing waits for the next
+    pass. A journal that did not grow costs one stat."""
+    if journal.stat().st_size <= start:
+        return b""
+    with journal.open("rb") as file:
+        file.seek(start)
+        new = file.read()
+    return new[: new.rfind(b"\n") + 1]
+
+
+def _last_error(lines: bytes) -> dict | None:
+    """The error of the last failed turn in `lines` of a journal; None for none, and for one a
+    later turn follows: the human's next turn has begun, and the agent is busy with it."""
+    error = None
+    for line in lines.splitlines():
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if _as_table(entry).get("type") != "event_msg":
+            continue
+        payload = _as_table(entry.get("payload"))
+        if payload.get("type") == "task_started":
+            error = None
+        elif payload.get("type") == "task_complete" and payload.get("error"):
+            error = _as_table(payload["error"])
+    return error
+
+
+def _server_words(text: str) -> str:
+    """What a server said in `text`, a body as it came: its message in OpenAI's shape, or in
+    cloud.ru's, else `text`."""
+    try:
+        body = json.loads(text)
+    except ValueError:
+        return text
+    inner = _as_table(body).get("error")
+    said = _as_table(inner).get("message") or inner or _as_table(body).get("message")
+    return said if isinstance(said, str) else text
+
+
+def _failed_event(error: dict, keys: Iterable[str]) -> base.Event:
+    """The turn's end for `error` of a journal, with no key and no address. How Codex reports a
+    server's answer, by its `codex_error_info`: most statuses as `http_connection_failed` with
+    the server's text in `message`, a 429 after its repeats with the status alone, a 400 at once
+    as `other` with the body as `message`, a 500 after its repeats as `internal_server_error`,
+    in Codex's own words."""
+    text = base.without_keys(str(error.get("message") or ""), keys)
+    text = ADDRESS.split(text, maxsplit=1)[0].strip()
+    info = error.get("codex_error_info")
+    status, said = None, text
+    failed = _as_table(_as_table(info).get("http_connection_failed")).get("http_status_code")
+    gave_up = _as_table(_as_table(info).get("response_too_many_failed_attempts"))
+    if base.is_refusal(failed):
+        found = UNEXPECTED.fullmatch(text)
+        status, said = failed, _server_words(found[1] or "") if found else text
+    elif base.is_refusal(gave_up.get("http_status_code")):
+        status, said = gave_up["http_status_code"], ""
+    elif info == "other" and _is_object(text):
+        status, said = 400, _server_words(text)
+    if line := base.context_line(text):
+        return base.Event(base.TURN_END, error=line, details=said, output_ignored=True)
+    if status is not None:
+        line = base.refusal_line(status, said)
+        return base.Event(base.TURN_END, error=line, details=said, output_ignored=True)
+    return base.Event(
+        base.TURN_END,
+        error=base.error_line((text.splitlines() or [NO_WORDS])[0]),
+        details=text,
+        transient=info == "internal_server_error",
+        output_ignored=True,
+    )
+
+
+def _is_object(text: str) -> bool:
+    try:
+        return isinstance(json.loads(text), dict)
+    except ValueError:
+        return False
 
 
 def _slugs(text: str) -> list[str] | None:

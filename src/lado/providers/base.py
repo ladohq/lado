@@ -8,7 +8,7 @@ import shutil
 import signal
 import subprocess
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -167,11 +167,12 @@ def context_line(text: str) -> str | None:
     return error_line(OVERFLOW, f"{TOO_SMALL}; {sizes[0]}" if sizes else TOO_SMALL)
 
 
-def without_keys(text: str) -> str:
-    """`text` with the value of each server's key in the agent's environment taken out: a server
-    may repeat the key in its refusal. Before any cut, as half a key would pass this."""
-    keys = [v for name, v in os.environ.items() if name.startswith(KEY_VARIABLE) and v]
-    for key in sorted(keys, key=len, reverse=True):
+def without_keys(text: str, keys: Iterable[str] = ()) -> str:
+    """`text` with the value of each server's key in the agent's environment and each of `keys`
+    taken out: a server may repeat the key in its refusal, and the session loop has no such
+    variable. Before any cut, as half a key would pass this."""
+    known = [v for name, v in os.environ.items() if name.startswith(KEY_VARIABLE)]
+    for key in sorted(filter(None, [*known, *keys]), key=len, reverse=True):
         text = text.replace(key, "***")
     return text
 
@@ -498,6 +499,13 @@ class Provider(ABC):
     def parse_event(self, native: str, payload: str) -> Event | None:
         """Translate a native hook event and its input into a neutral event, or None to
         ignore it."""
+
+    def failed_turn(self, agent: state.Agent, keys: Callable[[], Iterable[str]]) -> Event | None:
+        """The end of a turn of the busy `agent` that no hook reports, as a TURN_END with its
+        error, once; None for none, and by default: a CLI's hooks report it. `keys` gives what
+        to take out of the error (without_keys): the session loop asks this on every pass, and
+        reads a key only for an error (lado.runtime.check_turns)."""
+        return None
 
     def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> Blocker:
         """What the CLI, started in `cwd` with `env`, will ask the human before any hook

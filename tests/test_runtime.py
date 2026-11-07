@@ -6081,9 +6081,7 @@ def test_a_stop_during_the_typing_refuses_the_humans_answer(repo, fake_tmux, mon
     assert str(refused.value) == agent_helpers.cut_off("w1")
 
 
-def test_a_stop_while_a_message_is_typed_again_refuses_the_next_one(
-    repo, fake_tmux, monkeypatch
-):
+def test_a_stop_while_a_message_is_typed_again_refuses_the_next_one(repo, fake_tmux, monkeypatch):
     _session_with_worker(repo)
     state.set_status("s", "w1", state.IDLE)
     runtime.send_message("s", "supervisor", "w1", "first")  # typed, not confirmed: busy
@@ -6094,9 +6092,7 @@ def test_a_stop_while_a_message_is_typed_again_refuses_the_next_one(
     assert str(refused.value) == agent_helpers.cut_off("w1")
 
 
-def test_a_stop_before_the_hand_over_refuses_without_a_list_of_agents(
-    repo, fake_tmux, monkeypatch
-):
+def test_a_stop_before_the_hand_over_refuses_without_a_list_of_agents(repo, fake_tmux, monkeypatch):
     _session_with_worker(repo)
     state.set_status("s", "supervisor", state.IDLE)
     sweep_sent = runtime._sweep_sent
@@ -6120,9 +6116,7 @@ def test_a_stop_before_the_message_is_stored_refuses_in_the_same_words(repo, fak
     assert str(refused.value) == agent_helpers.cut_off("w1")
 
 
-def test_a_tmux_session_gone_without_a_stop_refuses_in_the_same_words(
-    repo, fake_tmux, monkeypatch
-):
+def test_a_tmux_session_gone_without_a_stop_refuses_in_the_same_words(repo, fake_tmux, monkeypatch):
     _session_with_worker(repo)
     state.set_status("s", "supervisor", state.IDLE)
     fake_tmux.append(("kill_session", "s"))  # killed by hand: has_session says no
@@ -6142,9 +6136,7 @@ def test_a_tmux_session_gone_without_a_stop_refuses_in_the_same_words(
     [tmux.TmuxError("server exited unexpectedly"), tmux.TmuxMissing("tmux not found")],
     ids=["tmux failed", "no tmux"],
 )
-def test_a_tmux_failure_of_a_running_session_stays_an_error(
-    repo, fake_tmux, monkeypatch, failure
-):
+def test_a_tmux_failure_of_a_running_session_stays_an_error(repo, fake_tmux, monkeypatch, failure):
     _session_with_worker(repo)
     state.set_status("s", "supervisor", state.IDLE)
 

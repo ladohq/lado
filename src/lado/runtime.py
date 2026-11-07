@@ -2019,17 +2019,11 @@ def _to_running(session: str, or_human: bool = False) -> Iterator[None]:
     try:
         yield
     except state.NotRunning as refused:
-        if _stopped(session):
+        if loop.why_stop(session):
             raise LadoError(CUT_OFF.format(recipient=refused.name)) from None
         names = ", ".join(a.name for a in state.list_agents(session) if a.status != state.STOPPED)
         human = f'; or "{state.HUMAN}"' if or_human else ""
         raise LadoError(f"{refused}; running agents: {names}{human}") from None
-
-
-def _stopped(session: str) -> bool:
-    """Whether the database says the session ended. A stop marks it before it kills tmux."""
-    sess = state.get_session(session)
-    return sess is None or sess.stopped_at is not None
 
 
 def _deliver(session: str, recipient: str, message: int | None = None) -> str:
@@ -2046,7 +2040,8 @@ def _deliver(session: str, recipient: str, message: int | None = None) -> str:
         if hand_over(session, recipient):
             return "sent"
     except tmux.TmuxError as error:
-        if _stopped(session) or loop.tmux_gone(session, error):
+        # The database first: a stop marks the session before it kills tmux.
+        if loop.why_stop(session) or loop.tmux_gone(session, error):
             raise LadoError(CUT_OFF.format(recipient=recipient)) from error
         raise
     # Someone else may have handed it over since it was queued: such a hook, or the

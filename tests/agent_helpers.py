@@ -1,5 +1,5 @@
 """Helpers for tests that run real agent processes: integration (fake agent) and live tests;
-`launched` also for unit tests."""
+`launched`, `cut_off` and `stop_while_typing` also for unit tests."""
 
 import atexit
 import hashlib

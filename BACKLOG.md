@@ -1913,6 +1913,16 @@ neighbour, went in LAD-224; this one was not in that task's report. Wanted: an e
 `.kit-warning` is a warning one, seen in the live window.
 Found: 2026-11-06, design of LAD-224.
 
+## The hints to kill a window or a session by hand match by prefix
+
+Size: S. Why here: only a failed kill prints them, and only a session already gone is at risk.
+
+`runtime.finish_worker`'s hint (`kill-window -t <session>:<worker>`) and `runtime._mark_stopped`'s
+(`kill-session -t <session>`) name their targets without `=`. tmux then matches by prefix: with
+`lad` gone, a human who pastes the hint kills a window or the whole of a running `lad-1`. Wanted:
+both hints print `=<session>:=<worker>` and `=<session>`, as `tmux.py`'s own calls do.
+Found: 2026-11-07, review of branch hotfix/lad-227-stopped-session-delivery (LAD-227).
+
 # P3: maybe never
 
 ## Three 404s in the browser's console of the UI tests have no known cause
@@ -2370,3 +2380,11 @@ leaving the UI.
 Wanted: if it is ever needed, listing those folders in the UI and removing one there, with
 the same unpushed-work check as a project's repository; never a folder LADO did not show.
 Found: 2026-10-21, design of LAD-117.
+
+## `tmux.capture` has no caller in the product
+
+Size: S. Why here: one small function that harms nothing.
+
+Only tests call it (`tests/agent_helpers.py`, `tests/live/test_live.py`). Wanted: it moves to the
+tests' helpers, or stays when the product needs it.
+Found: 2026-11-07, review of branch hotfix/lad-227-stopped-session-delivery (LAD-227).

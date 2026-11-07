@@ -20,7 +20,7 @@ import pytest
 import real_clis
 from agent_helpers import init_repo
 from fake_endpoint import Endpoint
-from real_clis import CLASSES, isolated, with_model  # noqa: F401 (a fixture)
+from real_clis import CLASSES, LOGIN_VARIABLES, isolated, with_model  # noqa: F401 (a fixture)
 
 from lado import providers
 
@@ -70,13 +70,7 @@ def smoke_provider(request, monkeypatch, tmp_path, fake_endpoint, codex_home) ->
     ]:
         (home / folder).mkdir(parents=True, exist_ok=True)
         monkeypatch.setenv(xdg, str(home / folder))
-    for key in (
-        "ANTHROPIC_API_KEY",
-        "ANTHROPIC_AUTH_TOKEN",
-        "CLAUDE_CODE_OAUTH_TOKEN",
-        "OPENAI_API_KEY",
-        "OPENAI_BASE_URL",
-    ):
+    for key in LOGIN_VARIABLES:
         monkeypatch.delenv(key, raising=False)
     if name == "claude":
         config = tmp_path / "claude-config"

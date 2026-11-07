@@ -38,7 +38,7 @@ def unpinned(text: str) -> list[str]:
 
 def test_the_workflows_are_there():
     names = {p.name for p in WORKFLOWS}
-    assert names >= {"ci.yml", "claude.yml", "release.yml", "windows-shell.yml"}
+    assert names >= {"ci.yml", "claude.yml", "live.yml", "release.yml", "windows-shell.yml"}
 
 
 @pytest.mark.parametrize("path", WORKFLOWS, ids=lambda p: p.name)

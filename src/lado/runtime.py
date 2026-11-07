@@ -1976,6 +1976,10 @@ def start_approved_session(session: str, agent: str, name: str, question_id: int
 
 
 TO_HUMAN = "delivered: the human reads it in LADO's UI"
+CUT_OFF = (
+    "The session stopped before this message reached {recipient}, so it was not delivered. "
+    "Send it again after Resume."
+)
 
 
 def post(
@@ -2010,10 +2014,14 @@ def post(
 def _to_running(session: str, or_human: bool = False) -> Iterator[None]:
     """Turn the queue's refusal of a recipient that does not run (checked where the message
     is stored, so it holds against a worker finished meanwhile) into LADO's error, which
-    names the running agents; with `or_human`, the human too."""
+    names the running agents; with `or_human`, the human too. In a stopped session, which
+    has forgotten its agents, none runs: the error says so (CUT_OFF)."""
     try:
         yield
     except state.NotRunning as refused:
+        sess = state.get_session(session)
+        if sess is not None and sess.stopped_at:
+            raise LadoError(CUT_OFF.format(recipient=refused.name)) from None
         names = ", ".join(a.name for a in state.list_agents(session) if a.status != state.STOPPED)
         human = f'; or "{state.HUMAN}"' if or_human else ""
         raise LadoError(f"{refused}; running agents: {names}{human}") from None
@@ -2021,14 +2029,26 @@ def _to_running(session: str, or_human: bool = False) -> Iterator[None]:
 
 def _deliver(session: str, recipient: str, message: int | None = None) -> str:
     """Deliver the recipient's queued messages now if it is idle; says what became of
-    `message`, the one just queued."""
-    # What was typed before and never confirmed goes first, with this one if typed again.
-    _sweep_sent(session, recipient, time.time(), RETRY_DELAYS)
-    # Queue first, then take the queue of an idle agent: a hook that makes the agent idle
-    # does the reverse, so a message is never left behind by an agent that went idle in
-    # between.
-    if hand_over(session, recipient):
-        return "sent"
+    `message`, the one just queued. Typing that fails because the session ended, by a stop
+    or by its tmux session going, is refused (CUT_OFF), whatever tmux said; a session
+    forgotten meanwhile has no Resume, so it is refused as unknown. Any other failure of
+    tmux stays an error."""
+    try:
+        # What was typed before and never confirmed goes first, with this one if typed again.
+        _sweep_sent(session, recipient, time.time(), RETRY_DELAYS)
+        # Queue first, then take the queue of an idle agent: a hook that makes the agent idle
+        # does the reverse, so a message is never left behind by an agent that went idle in
+        # between.
+        if hand_over(session, recipient):
+            return "sent"
+    except tmux.TmuxError as error:
+        # The database first: a stop marks the session before it kills tmux.
+        sess = state.get_session(session)
+        if sess is None:
+            raise LadoError(f'unknown session "{session}"') from error
+        if sess.stopped_at or loop.tmux_gone(session, error):
+            raise LadoError(CUT_OFF.format(recipient=recipient)) from error
+        raise
     # Someone else may have handed it over since it was queued: such a hook, or the
     # session loop's sweep. The agent is busy now, with this message.
     queued = state.get_message(session, message) if message is not None else None

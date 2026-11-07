@@ -57,6 +57,10 @@
 
 ### Fixed
 
+- **A message sent as the session stops says what happened.** Instead of Internal Server Error
+  you read that it was not delivered, and your text stays to send after Resume. It can no longer
+  land in another session whose name starts with the stopped one's.
+
 - **Closing a window puts you back where you were.** After Esc or Cancel in Take control, Resume
   and every other window, the keyboard is on the button that opened it, and Tab goes on from there.
 

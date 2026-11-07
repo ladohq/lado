@@ -1542,17 +1542,6 @@ Wanted: `list_artifacts` takes the session's scope too (e.g. `run="/"`), when a 
 it.
 Found: 2026-10-08, implement of feature/chat-attachments.
 
-## A traceback in hooks.log when the tmux server is gone at an agent's end
-
-Size: S. Why here: noise in hooks.log, no lost work.
-When a live test kills the tmux server, OpenCode's dispose hook runs `agent_ended` →
-`_tell_lead` → `hand_over` → `tmux.send_text`, which fails with `TmuxError: error
-connecting to /private/tmp/tmux-501/lado-test-… (No such file or directory)`, and the hook
-writes the whole traceback to hooks.log.
-Wanted: a tmux server that is gone during the hand-over at an agent's end is no error with
-a traceback; the message just stays queued.
-Found: 2026-10-08, verify of feature/argv-prompt (OpenCode flow live test's hooks.log).
-
 ## CHANGELOG.md conflicts when parallel branches add a line
 
 Size: S. Why here: each such merge goes back to implement for a one-line fix.
@@ -1904,18 +1893,26 @@ past its bottom edge; the rail does not scroll. Left out of LAD-226: a scroll wo
 low windows on a computer. Wanted: the rail's items reachable at any height, a computer's low
 window looking as it does, with a UI test.
 Found: 2026-11-06, design of branch lado/lad-226/task-lad-226 (LAD-226).
-## A message sent as the session stops answers 500
+## A message to an agent whose window is gone answers 500
 
-Size: S. Why here: the human sees a failed send of a message the feed already shows; it needs a
-stop within the moment of delivery, so it is rare.
+Size: S. Why here: the same failed send as a stop's, but only until the loop's window check drops
+the message and tells; it needs an agent's window closed in a session that runs, so it is rare.
 
-`POST /api/sessions/{name}/messages` ends in an uncaught `TmuxError` ("no server running…",
-`tmux.send_text`) when the session stops while the message is delivered, and the server answers
-500. Seen in `tests/ui/test_stopped_session.py`, `test_the_bar_stands_in_the_composers_place`, whose
-session has a tmux server of its own: on a shared server the error's words may differ, not checked.
-Wanted: the failed delivery of a session that stopped answered as a refusal the UI can show, with a
-test that stops the session during the delivery.
-Found: 2026-11-06, branch lado/lad-224/task-lad-224 (LAD-224), the console errors of the UI tests.
+`runtime._deliver` refuses a `TmuxError` only when the session ended (LAD-227). With the session
+running and the agent's window gone, `tmux.send_text` fails with `can't find window`, the error
+goes on, and the server answers 500. Wanted: a refusal in plain words that names the agent, with
+the message's fate left to the loop's check.
+Found: 2026-11-07, design of branch lado/lad-224/task-lad-227 (LAD-227).
+
+## The hints to kill a window or a session by hand match by prefix
+
+Size: S. Why here: only a failed kill prints them, and only a session already gone is at risk.
+
+`runtime.finish_worker`'s hint (`kill-window -t <session>:<worker>`) and `runtime._mark_stopped`'s
+(`kill-session -t <session>`) name their targets without `=`. tmux then matches by prefix: with
+`lad` gone, a human who pastes the hint kills a window or the whole of a running `lad-1`. Wanted:
+both hints print `=<session>:=<worker>` and `=<session>`, as `tmux.py`'s own calls do.
+Found: 2026-11-07, review of branch hotfix/lad-227-stopped-session-delivery (LAD-227).
 
 # P3: maybe never
 
@@ -2374,3 +2371,11 @@ leaving the UI.
 Wanted: if it is ever needed, listing those folders in the UI and removing one there, with
 the same unpushed-work check as a project's repository; never a folder LADO did not show.
 Found: 2026-10-21, design of LAD-117.
+
+## `tmux.capture` has no caller in the product
+
+Size: S. Why here: one small function that harms nothing.
+
+Only tests call it (`tests/agent_helpers.py`, `tests/live/test_live.py`). Wanted: it moves to the
+tests' helpers, or stays when the product needs it.
+Found: 2026-11-07, review of branch hotfix/lad-227-stopped-session-delivery (LAD-227).

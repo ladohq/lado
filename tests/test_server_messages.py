@@ -115,6 +115,14 @@ def test_a_message_to_a_stopped_or_unknown_session_is_refused(client, session):
     assert 'session "s" is stopped' in answer.json()["detail"]
 
 
+def test_a_message_a_stop_cuts_off_is_refused_in_plain_words(client, session, monkeypatch):
+    state.set_status("s", "supervisor", state.IDLE)
+    agent_helpers.stop_while_typing(monkeypatch, "s")
+    answer = client.post(MESSAGES, json={"text": "merge w1, please"})
+    assert answer.status_code == 400
+    assert answer.json()["detail"] == agent_helpers.cut_off("supervisor")
+
+
 def _messages():
     """The session's messages but LADO's requests for the lead's recommendation, which a
     worker's question queues too."""
@@ -174,6 +182,16 @@ def test_the_human_answers_a_tab_in_one_request(client, session):
     again = client.post(ANSWERS, json={"answers": [{"question": ship.id, "text": "no"}]})
     assert again.status_code == 400
     assert again.json()["detail"] == f"question #{ship.id} is answered"
+
+
+def test_an_answer_a_stop_cuts_off_is_refused_in_plain_words(client, session, monkeypatch):
+    state.set_status("s", "w1", state.IDLE)
+    runtime.ask_human("s", "w1", "Ship?", None, ["yes", "no"])
+    [ship] = _messages()
+    agent_helpers.stop_while_typing(monkeypatch, "s")
+    answered = client.post(ANSWERS, json={"answers": [{"question": ship.id, "choice": "yes"}]})
+    assert answered.status_code == 400
+    assert answered.json()["detail"] == agent_helpers.cut_off("w1")
 
 
 def test_a_reply_carries_the_files_uploaded_for_it(client, session):

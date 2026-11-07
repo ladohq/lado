@@ -207,7 +207,7 @@ def new_labelled_session(
 
 
 def new_window(session: str, window: str, cwd: str, cmd: list[str]) -> None:
-    run_chain(["new-window", "-d", "-t", f"{session}:", "-n", window, "-c", cwd, *cmd], NO_RENAME)
+    run_chain(["new-window", "-d", "-t", f"={session}:", "-n", window, "-c", cwd, *cmd], NO_RENAME)
 
 
 def has_session(session: str) -> bool:
@@ -280,7 +280,7 @@ def send_text(session: str, window: str, text: str) -> None:
     """
     if text.endswith("\\"):
         text += " "
-    target = f"{session}:{window}"
+    target = f"={session}:={window}"
     if run("display-message", "-p", "-t", target, "#{pane_in_mode}").strip() == "1":
         run("send-keys", "-t", target, "-X", "cancel")  # copy-mode swallows input
     buffer = f"lado-{uuid.uuid4().hex[:8]}"
@@ -346,7 +346,7 @@ def parse_version(output: str) -> tuple[int, int] | None:
 
 
 def capture(session: str, window: str) -> str:
-    return run("capture-pane", "-p", "-t", f"{session}:{window}")
+    return run("capture-pane", "-p", "-t", f"={session}:={window}")
 
 
 # What tmux writes under a dead pane's text (remain-on-exit): "Pane is dead (status 1, <time>)".

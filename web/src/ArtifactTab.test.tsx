@@ -91,7 +91,7 @@ test("HTML goes to its content address, under the server's sandbox", async () =>
       <ArtifactTab session="lado" record="r1" replace={replace} />
     </MemoryRouter>,
   );
-  await vi.waitFor(() => expect(replace).toHaveBeenCalledWith(`${RECORD}/content`));
+  await waitFor(() => expect(replace).toHaveBeenCalledWith(`${RECORD}/content`));
   expect(replace).toHaveBeenCalledTimes(1);
   expect(document.querySelector("iframe")).toBeNull();
 });

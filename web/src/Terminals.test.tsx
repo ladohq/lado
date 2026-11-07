@@ -50,10 +50,12 @@ const BASE = "ws://localhost:3000/api/sessions/lado/agents";
 
 let narrow = false;
 let served = AGENTS;
+let session = SESSION;
 
 beforeEach(() => {
   localStorage.clear();
   served = AGENTS;
+  session = SESSION;
   FakeSocket.all = [];
   FakeXterm.all = [];
   FakeEventSource.all = [];
@@ -75,7 +77,7 @@ beforeEach(() => {
       const body = path.endsWith("/agents")
         ? served
         : path === "/api/sessions"
-          ? [SESSION]
+          ? [session]
           : path.includes("/messages?")
             ? { items: [], earlier: false }
             : [];
@@ -1023,4 +1025,66 @@ test("a tab closed in control and opened again is in view, unmarked", async () =
   const view = await openTerminal("w1");
   expect(modeOf(view)).toBe("view");
   expect(controlMark("w1")).toBeNull();
+});
+
+// A stopped session's terminal
+
+const STOPPED_TEXT = "Agent not running — resume the session to start it";
+const STOPPED_SESSION: SessionInfo = { ...SESSION, status: "stopped", agents: 0 };
+const sessionNow = (item: SessionInfo) => {
+  act(() => stream().send("change", { kind: "sessions", session: "lado", key: "", op: "update", item }));
+};
+
+async function stoppedAndOpened() {
+  session = STOPPED_SESSION;
+  served = [];
+  await open();
+  expandPanel();
+  return within(panel()).getByRole("tabpanel", { name: "supervisor" });
+}
+
+test("a stopped session's terminal says the agent is not running, under Viewing, and opens no socket", async () => {
+  const view = await stoppedAndOpened();
+  expect(within(view).getByText(STOPPED_TEXT)).toBeTruthy();
+  expect(within(view).getByText("Viewing")).toBeTruthy();
+  expect(within(view).queryByRole("button", { name: "Reconnect" })).toBeNull();
+  expect(within(view).queryByRole("button", { name: "Take control" })).toBeNull();
+  expect(FakeSocket.all).toHaveLength(0);
+});
+
+test("Resume with the terminals open connects the terminal without a press", async () => {
+  const view = await stoppedAndOpened();
+  sessionNow(SESSION);
+  expect(within(view).queryByText(STOPPED_TEXT)).toBeNull();
+  expect(socketOf("supervisor", "view")).toHaveLength(1);
+});
+
+test("Resume with the terminals stored folded opens no socket", async () => {
+  localStorage.setItem("lado.terminals", JSON.stringify({ collapsed: true }));
+  await stoppedAndOpened();
+  sessionNow(SESSION);
+  expect(within(panel()).getByRole("button", { name: "Show the terminals" })).toBeTruthy();
+  expect(FakeSocket.all).toHaveLength(0);
+});
+
+test("a stop ends control and Expand, closes the socket and folds the terminals", async () => {
+  const { view } = await inControl();
+  fireEvent.click(within(panel()).getByRole("button", { name: "Expand terminal" }));
+  expect(panel().className).toContain("expanded");
+  const sockets = [...FakeSocket.all];
+  sessionNow(STOPPED_SESSION);
+  expect(panel().className).not.toContain("expanded");
+  expect(within(panel()).getByRole("button", { name: "Show the terminals" })).toBeTruthy();
+  expect(sockets.every((socket) => socket.closed)).toBe(true);
+  sessionNow(SESSION);
+  expect(modeOf(view)).toBe("view");
+  expect(controlMark("w1")).toBeNull();
+});
+
+test("a running session's terminal closed for good keeps Reconnect", async () => {
+  await open();
+  const view = within(panel()).getByRole("tabpanel", { name: "supervisor" });
+  act(() => socketOf("supervisor", "view")[0].end(4404, "no terminal"));
+  expect(within(view).getByRole("button", { name: "Reconnect" })).toBeTruthy();
+  expect(within(view).queryByText(STOPPED_TEXT)).toBeNull();
 });

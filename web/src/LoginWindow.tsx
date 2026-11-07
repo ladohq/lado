@@ -282,7 +282,9 @@ function Steps({ prompt }: { prompt: Prompt }) {
 function Failed({ title, said, onRetry, onBack }: { title: string; said: string; onRetry?: () => void; onBack?: () => void }) {
   return (
     <div className="login-fail" role="alert">
-      <b>{`${title} did not sign you in`}</b>
+      <p className="problem">
+        <b>{`${title} did not sign you in`}</b>
+      </p>
       {said && (
         <>
           <span className="muted">{`What ${title} said:`}</span>

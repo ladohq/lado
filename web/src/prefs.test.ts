@@ -15,10 +15,12 @@ import {
   storedPanel,
   storeColumn,
   storedColumn,
+  storedArtifactGroups,
   storedFlowsGroups,
   storedLastColumn,
   storedRailCollapsed,
   storedSessionGroups,
+  storeArtifactGroups,
   storeFlowsGroups,
   storeLastColumn,
   storedMinimized,
@@ -144,6 +146,22 @@ test("the Flows tab's groups are remembered in lado.flowsGroups: Active open, Hi
   expect(storedFlowsGroups()).toEqual({ active: "open", history: "folded" });
   localStorage.setItem("lado.flowsGroups", "not json");
   expect(storedFlowsGroups()).toEqual({ active: "open", history: "folded" });
+});
+
+test("the Artifacts tab's folds are kept per session and scope in lado.artifactGroups; another value is no fold", () => {
+  expect(storedArtifactGroups("lado")).toEqual({});
+  storeArtifactGroups("lado", { "task/a": "open", "": "folded" });
+  storeArtifactGroups("other", { "task/a": "folded" });
+  expect(JSON.parse(localStorage.getItem("lado.artifactGroups")!)).toEqual({
+    lado: { "task/a": "open", "": "folded" },
+    other: { "task/a": "folded" },
+  });
+  expect(storedArtifactGroups("lado")).toEqual({ "task/a": "open", "": "folded" });
+  localStorage.setItem("lado.artifactGroups", JSON.stringify({ lado: { "task/a": "sideways", "task/b": "open" }, other: 3 }));
+  expect(storedArtifactGroups("lado")).toEqual({ "task/b": "open" });
+  expect(storedArtifactGroups("other")).toEqual({});
+  localStorage.setItem("lado.artifactGroups", "not json");
+  expect(storedArtifactGroups("lado")).toEqual({});
 });
 
 test("the older key of the stopped sessions is only where Stopped starts, until the groups are stored", () => {

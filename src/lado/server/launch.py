@@ -579,14 +579,19 @@ def _session_kit(name: str) -> models.SessionKitInfo:
         found = kits.find(name)
     except kits.KitError as exc:
         return models.SessionKitInfo(
-            name=name, version="", source="", valid=False, problem=str(exc)
+            name=name, version="", source="", valid=False, problem=str(exc), flows=[]
         )
     try:
         kit = found.load()
     except kits.KitError as exc:
         return models.SessionKitInfo(
-            name=name, version="", source=found.source, valid=False, problem=str(exc)
+            name=name, version="", source=found.source, valid=False, problem=str(exc), flows=[]
         )
     return models.SessionKitInfo(
-        name=name, version=kit.version, source=kit.source, valid=True, problem=None
+        name=name,
+        version=kit.version,
+        source=kit.source,
+        valid=True,
+        problem=None,
+        flows=list(kit.flows),
     )

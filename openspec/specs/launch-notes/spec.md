@@ -12,9 +12,9 @@ while a refusal shows.
 
 Each note under the fields of the New session window SHALL show at one of three levels
 by its class: a hint or a success (`field-note`, `field-note ok`) as quiet 12 px text
-without a ground; a warning (`field-note warn`) as a panel on `--warn-ground` with a
-`--warn` stripe on its left; a refusal (`field-note bad`) as a panel on `--danger-ground`
-with a `--danger` stripe and a round `!` that is not part of its text. Both panels'
+without a ground; a warning (`field-note warn`) as a panel on `--warn-ground`; a refusal (`field-note bad`) as
+a panel on `--danger-ground` with a round `!` that is not part of its text. Neither has a
+stripe on its left. Both panels'
 text is 13 px in `--ink`; no note's text changes.
 
 #### Scenario: A folder outside the workspace in the container

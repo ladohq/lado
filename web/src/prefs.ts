@@ -326,3 +326,22 @@ export const storedFlowsGroups = (): FlowsGroups =>
   storedGroups<FlowsGroup>(FLOWS_GROUPS, { active: "open", history: "folded" });
 
 export const storeFlowsGroups = (groups: FlowsGroups): void => storeGroups(FLOWS_GROUPS, groups);
+
+// The Artifacts tab's groups, each session's by scope ("" is the session's own): only what the
+// human folded or opened, as the scopes come and go; a scope without a value takes the tab's
+// default (ArtifactsTable.tsx).
+export type ArtifactGroups = Record<string, "open" | "folded">;
+
+const ARTIFACT_GROUPS = "lado.artifactGroups";
+
+export function storedArtifactGroups(session: string): ArtifactGroups {
+  const stored = readJson(ARTIFACT_GROUPS)?.[session];
+  if (stored === null || typeof stored !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(stored).filter(([, value]) => value === "open" || value === "folded"),
+  ) as ArtifactGroups;
+}
+
+export function storeArtifactGroups(session: string, groups: ArtifactGroups): void {
+  write(ARTIFACT_GROUPS, JSON.stringify({ ...readJson(ARTIFACT_GROUPS), [session]: groups }));
+}

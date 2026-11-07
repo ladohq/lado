@@ -46,6 +46,37 @@
   start` and the launch window. `docs/install.md` says what to expect of small models.
 - **OpenCode no longer stalls without internet.** Its first start on a model of a server takes
   seconds where it took over a minute. An agent keeps your TUI settings from the first run.
+
+- **A session's card reads at a glance.** Its facts have labels, it names the project, says what
+  to do with a stopped or broken session and opens beside the list, so the list stays in sight.
+  The rows no longer count agents and show how long the session ran.
+
+- **A session with many artifacts reads on one screen.** In a narrow column each artifact takes
+  two lines instead of a card, and from 100 artifacts they go in groups by run that fold, Session
+  first: open work stays open, finished runs fold, and your choice is remembered.
+
+- **The artifact panel says things once.** A title equal to the document's first heading is not
+  repeated, the pill says `session` or `step <name>`, and over the Artifacts tab the link reads
+  Full page. On a phone the bar keeps Download, Copy link and a `⋯` menu with the rest.
+
+- **Empty tabs say where their content comes from.** An empty Flows tab names the flows that can
+  run, or says the session's kits have none; an empty Artifacts tab says what lands there.
+
+- **A run says what it is about.** Its card and row show the first line of its task, a tooltip
+  the rest of it, and an opened step shows how long it took and its note, without repeating its
+  line.
+
+- **Stop no longer shows a button that is off.** With open runs, Stop and forget is gone and the
+  popover says how to forget the session after stopping.
+
+- **Errors and warnings look like what they are.** Each has a ground and an icon instead of a
+  stripe on the left, errors in red and warnings in amber, in both themes; a failed sign-in and
+  the kit windows' warnings too.
+
+- **A stopped session says so and offers Resume.** A bar with Resume session stands in the
+  composer's place, the empty feed tells what it shows, and terminals stay folded, saying the agent
+  is not running. Your terminals' layout comes back after Resume.
+
 - **Your agents stay in sight in the session's head, and the chat gets taller.** On every tab
   the head shows the team with its statuses, as names or avatars by the room, and a list of all
   agents; `Yours | All` moved to the tabs, and the keys hint shows only in an empty field.
@@ -78,6 +109,13 @@
   refusal for context reads the same way, with the server's text under it.
 - **A failed turn is not called a reply.** A message whose turn ended on an error no longer shows
   "replied only in its terminal"; the next clean turn decides.
+
+- **Closing a window puts you back where you were.** After Esc or Cancel in Take control, Resume
+  and every other window, the keyboard is on the button that opened it, and Tab goes on from there.
+
+- **Phone held sideways: Messages between agents is in reach.** Its icon ends the row of tabs on
+  Activity, so a stopped session's empty feed can show what it hides.
+
 - **A session's four tabs stay whole in a narrow chat.** Beside the terminals `Yours | All`
   folds into an icon that does the same, and a tab you reach with Tab no longer hides under
   the fade or the arrow.
@@ -107,6 +145,12 @@
 - **`lado project set` no longer prints a secret in its error.** A value typed with a
   leading `-` before `--`, or as `--secret=…`, was repeated by the refusal; the refusal
   now names none of the command line's words and says how to give the value.
+
+- **Settings stays on screen on a tablet held sideways.** The left rail ends with the visible
+  part of the screen, so Report a bug and Settings can be reached.
+
+- **The Resume window shows the whole folder.** Where wraps a long path onto several lines, so
+  on a phone you can read it to its end.
 
 ## 0.44.0 (2026-11-02)
 

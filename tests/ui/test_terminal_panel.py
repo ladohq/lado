@@ -7,6 +7,7 @@ import re
 import agent_helpers
 import pytest
 from playwright.sync_api import Page, expect
+from test_layout import gives_the_focus_back
 from test_main_screen import log_in, running_session
 
 from lado import runtime, state
@@ -27,6 +28,24 @@ def test_the_supervisors_terminal_opens_to_view_and_takes_what_the_human_types_i
     panel.get_by_role("button", name="Take control").click()
     ask = page.get_by_role("dialog", name="Take control of supervisor")
     expect(ask).to_be_visible()
+    # The backdrop is --scrim, and it covers the terminal: a press there is the dialog's.
+    colours = ask.evaluate(
+        """dialog => {
+          const probe = document.body.appendChild(document.createElement("div"));
+          probe.style.background = "var(--scrim)";
+          const wanted = getComputedStyle(probe).backgroundColor;
+          probe.remove();
+          return [getComputedStyle(dialog, "::backdrop").backgroundColor, wanted];
+        }"""
+    )
+    assert colours[0] == colours[1], colours
+    box = panel.locator(".xterm").bounding_box()
+    assert box is not None
+    hit = page.evaluate(
+        "([x, y]) => document.elementFromPoint(x, y).closest('dialog')?.className ?? null",
+        [box["x"] + box["width"] / 2, box["y"] + box["height"] / 2],
+    )
+    assert hit is not None and "term-ask" in hit, hit
     shot(page, "ask")
     ask.get_by_role("button", name="Take control").click()
     expect(panel).to_contain_text("You're typing into supervisor")
@@ -188,6 +207,21 @@ def test_expand_shows_the_terminal_over_the_page_with_the_same_socket(
     assert [url.rsplit("=", 1)[1] for url in sockets] == ["view", "control", "view"]
 
 
+def near_the_frame(words) -> bool:
+    """The text's colour is within 16 of each channel of frame g5-term's, whose blue tint the
+    terminal's tokens lack (--term-ink is 78 off). Read off a canvas, as a computed color-mix()
+    is not an rgb()."""
+    found = words.evaluate(
+        """e => {
+            const paint = document.createElement('canvas').getContext('2d');
+            paint.fillStyle = getComputedStyle(e).color;
+            paint.fillRect(0, 0, 1, 1);
+            return [...paint.getImageData(0, 0, 1, 1).data].slice(0, 3);
+        }"""
+    )
+    return all(abs(got - want) <= 16 for got, want in zip(found, (154, 161, 173), strict=True))
+
+
 def test_the_supervisors_terminal_comes_back_live_when_its_stopped_session_resumes(
     page: Page, server, repo, shot
 ):
@@ -196,19 +230,32 @@ def test_the_supervisors_terminal_comes_back_live_when_its_stopped_session_resum
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
     panel = page.get_by_role("complementary", name="Terminals")
+    sockets: list[str] = []
+    page.on("websocket", lambda socket: sockets.append(socket.url))
+    panel.get_by_role("button", name="Show the terminals").click()
     view = panel.get_by_role("tabpanel", name="supervisor")
-    status = view.get_by_role("status")
-    expect(status).to_have_text(f'closed: session "{session}" is stopped')
-    expect(view.get_by_role("alert")).to_have_count(0)  # the reason once
-    expect(panel.get_by_role("button", name="Reconnect")).to_be_visible()
+    words = view.get_by_text("Agent not running — resume the session to start it")
+    expect(words).to_be_visible()
+    expect(view).to_contain_text("Viewing")
+    assert words.evaluate("e => getComputedStyle(e).fontSize") == "13px"
+    screen = view.locator(".term-stopped")
+    # Muted as in frame g5-term (154, 161, 173), in both themes, on each theme's ground.
+    expect(screen).to_have_css("background-color", "rgb(27, 30, 36)")
+    assert near_the_frame(words)
+    page.emulate_media(color_scheme="dark")
+    expect(screen).to_have_css("background-color", "rgb(13, 15, 19)")
+    assert near_the_frame(words)
+    page.emulate_media(color_scheme="light")
+    expect(panel.get_by_role("button", name="Reconnect")).to_have_count(0)
     expect(panel.get_by_role("button", name="Take control")).to_have_count(0)
+    assert [url for url in sockets if "/terminal" in url] == []
     shot(page, "stopped")
 
     runtime.start_session(str(repo), session, None, "fake")
     expect(view.locator(".term")).to_have_attribute(
         "data-link", "open", timeout=20_000
     )  # no reload
-    expect(status).to_have_text("")
+    expect(view.get_by_role("status")).to_have_text("")
     shot(page, "resumed")
 
 
@@ -342,3 +389,18 @@ def test_a_narrow_panel_keeps_the_control_words_on_one_line(page: Page, server, 
     assert name.evaluate("e => getComputedStyle(e).textOverflow") == "ellipsis"
     assert panel.locator(".term-control").get_attribute("title") == "You're typing into supervisor"
     shot(page, "narrow")
+
+
+@pytest.mark.parametrize("by", ["Escape", "Cancel"])
+def test_take_control_gives_the_focus_back_when_it_is_closed(page: Page, server, repo, by):
+    session = running_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    panel = page.get_by_role("complementary", name="Terminals")
+    expect(panel.locator(".term")).to_have_attribute("data-link", "open")
+    gives_the_focus_back(
+        page,
+        panel.get_by_role("button", name="Take control"),
+        page.get_by_role("dialog", name="Take control of supervisor"),
+        by,
+    )

@@ -295,7 +295,32 @@ def test_the_line_of_a_stopped_session_is_48_px(page: Page, long_session, server
     expect(head(page).locator(".session-ran")).to_have_text("stopped 2 d ago · ran 4 h")
     expect(head(page).locator(".session-crumb")).to_be_visible()
     line_is_whole(page)
-    actions_are_whole(page, ["Resume…", "Forget…"])
+    actions_are_whole(page, ["Forget…"])
+    shot(page)
+
+
+@pytest.mark.parametrize("width", [1440, 768, 390, 320])
+def test_a_stopped_sessions_head_off_activity_has_resume_with_its_word_and_cuts_the_title(
+    page: Page, long_session, server, shot, width
+):
+    page.set_viewport_size({"width": width, "height": 800})
+    runtime.stop_session(long_session)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{long_session}/flows")
+    actions = head(page).locator(".session-head-actions").get_by_role("button")
+    expect(actions).to_have_count(2)
+    expect(actions.nth(0)).to_have_accessible_name("Resume…")
+    expect(actions.nth(1)).to_have_accessible_name("Forget…")
+    word = actions.nth(0).get_by_text("Resume", exact=True)
+    expect(word).to_be_visible()
+    expect(word).to_have_css("font-size", "14px")
+    assert word.evaluate("e => e.scrollWidth <= e.clientWidth + 1"), "the word is cut"
+    resume = actions.nth(0).bounding_box()
+    assert resume["x"] >= 0 and resume["x"] + resume["width"] <= width
+    assert page.evaluate("document.documentElement.scrollWidth") <= width
+    if width <= 390:  # what lacks room is the title
+        text = head(page).locator(".session-title-text")
+        assert text.evaluate("e => e.scrollWidth > e.clientWidth"), "the title is not cut"
     shot(page)
 
 

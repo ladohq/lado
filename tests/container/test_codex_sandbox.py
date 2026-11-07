@@ -12,8 +12,10 @@ pytestmark = pytest.mark.container
 REPO = "/home/lado/repo"
 
 
-def codex_pid(container, session: str, window: str, timeout: float = 60) -> int:
-    """The pane process of the Codex agent's window, once it runs `codex`."""
+def codex_args(container, session: str, window: str, timeout: float = 60) -> list[str]:
+    """The argv of the Codex agent's window, once it has left `lado.agent_env` for `codex`.
+    Read once and returned as read: a process's cmdline reads empty, with exit 0, while it
+    execs, and the window's one pid goes from Python through `env` to `node` (LAD-214)."""
     deadline, cmdline = time.monotonic() + timeout, ""
     while time.monotonic() < deadline:
         pane = container.exec(
@@ -22,8 +24,9 @@ def codex_pid(container, session: str, window: str, timeout: float = 60) -> int:
         ).stdout.strip()  # fmt: skip
         if pane:
             cmdline = container.exec("cat", f"/proc/{pane}/cmdline", check=False).stdout
-            if "--no-daemon" in cmdline.split("\0"):
-                return int(pane)
+            args = cmdline.split("\0")
+            if "--no-daemon" in args and "lado.agent_env" not in args:
+                return args
         time.sleep(0.5)
     raise AssertionError(f"no codex in {session}:{window}: {cmdline!r}")
 
@@ -48,9 +51,9 @@ def test_a_codex_supervisor_runs_without_the_sandbox_that_cannot_start(container
     assert "Codex's sandbox cannot start here (bwrap:" in started.stderr, started.stderr
     assert "Codex agent supervisor runs without it" in started.stderr, started.stderr
 
-    argv = container.exec("cat", f"/proc/{codex_pid(container, 'cx', 'supervisor')}/cmdline")
-    args = argv.stdout.split("\0")
-    assert args[args.index("-a") + 1] == "on-request", args
-    assert args[args.index("--sandbox") + 1] == "danger-full-access", args
+    args = codex_args(container, "cx", "supervisor")
+    pairs = list(zip(args, args[1:], strict=False))
+    assert ("-a", "on-request") in pairs, args
+    assert ("--sandbox", "danger-full-access") in pairs, args
     config = container.exec("cat", "/home/lado/.lado/agents/cx/supervisor/config.toml").stdout
     assert "default_permissions" not in config and "[permissions" not in config, config

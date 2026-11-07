@@ -109,44 +109,6 @@ test_providers_section::test_the_section_shows_the_last_rows_at_once failed 1 of
 parallel runs of three UI files, waiting 5 s for the end of the CLIs' check; 5 of 5 green
 alone and in CI. That change did not touch the check.
 
-### Vitest tests time out at vitest's default 5 s under load, one entry per test
-
-Size: S: one setting in vite.config.ts; `testTimeout` and `asyncUtilTimeout` are set nowhere.
-
-`cd web && npm test` at a load average of about 60 failed 3 of 365 tests on their 5000 ms
-timeout: Agents "the supervisor comes first, then the agents by spawn" (5791 ms), Chat "the
-chat shows who wrote each message ..." (5180 ms), Flows "the runs come in two groups"
-(5441 ms); `make web` had passed minutes before. The cause is shared:
-`web/vite.config.ts` keeps vitest's default `testTimeout` (5 s), and `findBy`'s default
-1 s, while `make check` runs vitest on a machine other checks keep busy.
-Earlier single failures of the same kind, each passing alone and on the next run:
-- `src/Agents.test.tsx` > "the tab without an agent opens the supervisor, and an unknown one
-  is not found": `Unable to find role="region" and name "Agent supervisor"` (2026-10-04,
-  feature/without-at-kit; 2026-10-05, feature/kit-marketplaces-core, the file took 26 s at
-  load average 100); 2026-10-07, merge of fix/esc-docs, with the Flows one below, twice in
-  a row at load average 74-129 while another worktree ran `uv run pytest -n auto`, which
-  takes no check lock; green when that run had ended.
-- `src/Flows.test.tsx` > "the flows tab without a run opens the first waiting run, else the
-  first active one" (`… "Run feature/flows-tab"`, `… "Run fix/gate-bubble"`) and "with no
-  runs both groups are there and say they are empty; with only ended ones the latest to end
-  opens" (`… "Run fix/older"`): 2026-10-05 at load average 80–160 (feature/session-list-groups),
-  in feature/kits-page-polish (18 vitest workers beside the build) and in
-  feature/opencode-provider after merging main (with the Agents flake; 47 passed alone).
-- `src/Flows.test.tsx` > "the runs come in groups, the ended ones folded and remembered, the
-  tab counts the open ones": `Test timed out in 5000ms` twice in a row (5572 ms, 5823 ms) at
-  load average 180-220 (2026-10-05, feature/lead-skills); it takes about 5 s even when it
-  passes, so it may also need to be made shorter (fewer steps or fake timers).
-- `src/App.test.tsx` > "the Agents tab follows the agents' changes; a reset loads them
-  again": `Unable to find role="navigation" and name "Agents"` at load average 238
-  (2026-10-05, review of feature/kit-marketplaces-core).
-- `src/Launch.test.tsx` > "a refused start shows the core's whole reason and keeps the
-  window": `Unable to find role="alert"` (1257 ms) in one `make web` at load average about
-  8 (2026-10-10, fix/md-tables-wrap, a CSS-only change); 561 of 561 passed on the next run.
-Wanted: one setting for the whole suite (a `testTimeout` and an `asyncUtilTimeout` that
-hold under load), so a test fails only when what it waits for never comes.
-Found: 2026-10-04..06, the tests above; this entry 2026-10-06, investigation of why
-`make check` is slow (worker check-speed).
-
 ### Flaky: integration test "spawned worker reports back to supervisor" times out at `starting` under load
 
 Size: S/M: needs one shared wait helper with a margin.
@@ -187,24 +149,6 @@ Wanted: a bound that tells "at once" from "waited for the timeout" under load to
 compare with the full READY_TIMEOUT, or measure the wait the code does, not wall time).
 Found: 2026-10-04, feature/flows-list (implement, make check); review of
 feature/kit-manifest-v2.
-
-### UI e2e test of the status marks reads the Team buttons before they render
-
-Size: S.
-
-`tests/ui/test_status_marks.py::test_busy_and_background_are_green_and_pulse_and_background_is_half_filled`
-failed in 3 of 3 full `make test-ui` runs (2 on feature/session-start-tool, 1 on main at
-f9d3739) with `ValueError: not enough values to unpack (expected 2, got 0)` at
-`supervisor, w1 = team.get_by_role("button").all()`, and passed alone: Playwright's `.all()`
-does not wait, so the list is empty while the Team group has not rendered its buttons.
-Wanted: wait for the two buttons first (`expect(team.get_by_role("button")).to_have_count(2)`).
-Found: 2026-10-10, implement step of feature/session-start-tool.
-Again on 2026-10-11 (verify of feature/live-cloud-matrix, c8aca85): the same `ValueError` in
-`make check`; passed on both reruns.
-Again on 2026-10-11 (verify of feature/artifact-panel-width, 211f4c8): the same `ValueError`
-in `make test-ui`; passed on its first rerun alone.
-Again on 2026-10-11 (verify of feature/team-run-frames, 5f0841e): the same `ValueError` in
-`make check`; passed on its first rerun. Third time today: worth fixing soon.
 
 ### Launch vitest tests fail now and then under the load of a full run
 
@@ -592,6 +536,41 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
+## test_a_labelled_session_kept_after_its_command_gives_its_text_and_status fails under load
+
+Size: S. Why here: a red unit run for no cause in the work, about one run of `tests/test_tmux.py`
+in eight under `-n auto`; the cause is not known yet, and it may be in `tmux.pane_text` rather
+than in the test, which a login window's text depends on (LAD-168).
+
+Measured on 2026-11-06, tmux 3.3a, 16 workers: 5 red runs of 40 on the file with the fix of
+LAD-191 and 5 of 40 without it, taken in turn, and 15 of 15 green with the test alone under
+`-n0`. Two shapes: `assert ['1', ''] == ['1', '3']` after the whole 10 s (the pane is dead and
+tmux gives no exit status), and `assert '' == 'one\n\nlast words'` with the status there (the
+pane's text is empty). Wanted: the cause found, and the test or `tmux` fixed for it.
+Found: 2026-11-06, branch lado/lado/task-lad-191 (LAD-191).
+## The epic's vitest tests keep `{ timeout: 3000 }` after the suite's wait became 10 s
+
+Size: XS: delete nine options at the merge of the epic. Why here: nothing fails, a wait is only
+shorter than the suite's, but it is a flake on a loaded machine and easy to forget.
+
+`epic/lad-154-models` has 21 `{ timeout: 3000 }` under `web/src`. Main dropped the 12 of
+`Launch.test.tsx` and `ProjectRepos.test.tsx` (LAD-219), so a test sets no timeout of its own
+(`docs/testing.md`); the 9 of `ModelSources.test.tsx` (8) and `ModelCards.test.tsx` (1) exist
+only in the epic and no merge will take them out.
+Wanted: when the epic merges, `grep -rn 'timeout: 3000' web/src` finds nothing.
+Found: 2026-11-06, fix/lad-219-start-in-waits-for-providers, at the gate of LAD-219.
+
+## Esc in the Launch window leaves the focus on the page's body
+
+Size: S. Why here: a keyboard user loses their place after every Esc in that window; an old
+behaviour, and nothing else depends on it.
+
+Closed with Esc, the Launch window leaves the focus on `body`, not on the button that opened it:
+Resume session in a stopped session's bar, Resume in the head, New session (WCAG 2.4.3, seen by
+the ui-review of LAD-196). Cancel was not checked. Wanted: the focus goes back to the button that
+opened the window, with a browser test.
+Found: 2026-11-06, branch lado/lad-196/task-lad-196 (LAD-196).
+
 ## With the rail opened by hand a narrow window's column buttons do nothing
 
 Size: S. Why here: the human accepted it for LAD-193; a press with no answer on the screen is
@@ -925,20 +904,6 @@ running agent") and it has no window.
 Wanted: for a stopped agent the composer and Open terminal are off or hidden, with a hint
 that Finish… comes next.
 Found: 2026-10-06, review of feature/agent-liveness.
-
-## Flaky vitest: Launch's taken name of a running session
-
-Size: S. Why here: it fails `make check` under load.
-
-`web/src/Launch.test.tsx`, "a taken name of a running session of this folder offers to open
-it, not to resume it": under heavy load (load average 27) `findByRole("alert")` does not see
-the answer within its default timeout and `make check` fails; a rerun with no change passes.
-Wanted: the test does not depend on the machine's speed (an explicit timeout, or waiting
-for the mocked fetch).
-Found: 2026-10-06, review of feature/agent-liveness.
-Again 2026-10-07, fix/check-sequential, in `make web` of a `make check`: its sibling "a taken
-name is offered to resume when the session is of this folder" (`Unable to find
-role="alert"`); the rerun passed.
 
 ## `tmux.window_names` splits window names at spaces
 
@@ -1930,15 +1895,60 @@ It failed once in a full run of `make web` and passed 3 times alone and in the n
 change under review did not touch the file. Wanted: its cause found and the test made stable.
 Found: 2026-11-06, review of branch lado/lad-197/task-lad-197-team-head (LAD-197).
 
-## Flaky UI test: `test_the_strips_badges_tell_task_sessions_apart`
+## A row's trouble status is grey where the design says red
 
-Size: S. Why here: seen once in a parallel run under load; alone it passes.
+Size: S. Why here: a session that needs action does not stand out in the list, though its card
+says the trouble in red.
 
-Its check that the badge's text fits read a wider text than the box, likely before the font had
-loaded. Wanted: the test waits for the fonts.
-Found: 2026-11-06, branch lado/lad-197/task-lad-197-team-head (LAD-197).
+`.status-tmux_gone, .status-loop_down` in `web/src/styles.css` give a row's status `--muted`, while
+the mockup of LAD-223 shows `status danger-text` and `docs/design/ui.md` (Look) says `--danger`
+marks a session that needs action. Older than LAD-223, which did not touch it. Wanted: the row's
+status in `--danger`, or the document changed if grey is the choice.
+Found: 2026-11-06, review of branch lado/lad-223/task-lad-223 (LAD-223).
+## The rail's bottom items go past the edge with the keyboard open on a sideways iPad
+
+Size: S. Why here: only while the on-screen keyboard is open, and closing it brings them back.
+
+Wider than 900 px the rail is as high as the app (LAD-226), so with the on-screen keyboard open
+on an iPad held sideways it gets lower than its content, and Report a bug and Settings can lie
+past its bottom edge; the rail does not scroll. Left out of LAD-226: a scroll would also change
+low windows on a computer. Wanted: the rail's items reachable at any height, a computer's low
+window looking as it does, with a UI test.
+Found: 2026-11-06, design of branch lado/lad-226/task-lad-226 (LAD-226).
+## A message sent as the session stops answers 500
+
+Size: S. Why here: the human sees a failed send of a message the feed already shows; it needs a
+stop within the moment of delivery, so it is rare.
+
+`POST /api/sessions/{name}/messages` ends in an uncaught `TmuxError` ("no server running…",
+`tmux.send_text`) when the session stops while the message is delivered, and the server answers
+500. Seen in `tests/ui/test_stopped_session.py`, `test_the_bar_stands_in_the_composers_place`, whose
+session has a tmux server of its own: on a shared server the error's words may differ, not checked.
+Wanted: the failed delivery of a session that stopped answered as a refusal the UI can show, with a
+test that stops the session during the delivery.
+Found: 2026-11-06, branch lado/lad-224/task-lad-224 (LAD-224), the console errors of the UI tests.
+
+## `.kit-danger` in the kit removal window is no notice
+
+Size: S. Why here: one window keeps a look the notices rule replaced everywhere else.
+
+`.kit-danger` has a border and no icon, against `docs/design/ui.md`, Look, Notices. `.kit-alert`, its
+neighbour, went in LAD-224; this one was not in that task's report. Wanted: an error notice, as
+`.kit-warning` is a warning one, seen in the live window.
+Found: 2026-11-06, design of LAD-224.
 
 # P3: maybe never
+
+## Three 404s in the browser's console of the UI tests have no known cause
+
+Size: S. Why here: nothing shows they harm anyone, but one of them is on a window's request.
+
+A run of the whole UI suite logged 404 for `agents/analyst/details`
+(`test_the_agents_tab_says_the_popups_words`), `agents/developer-2/details`
+(`test_an_agents_page_names_the_agent`) and `forget-preview`
+(`test_forget_stopped_sessions_open_runs`). Whether each is the test's own setup or a request the UI
+should not make is not known. Wanted: each explained, and a request for what is gone not sent.
+Found: 2026-11-06, branch lado/lad-224/task-lad-224 (LAD-224), the console errors of the UI tests.
 
 ## A relative LADO_HOME breaks the reads of lado.db
 

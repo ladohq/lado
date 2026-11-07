@@ -7,22 +7,26 @@
 // with no edge or Expand. Its address is the page's with ?view=<record> (on Needs you also
 // &session=<name>). Esc, its close button or a click beside it close it, and the focus goes
 // back where it was (the chip, the row's link). Its top bar holds every button in one row:
-// "Open in Artifacts tab" (the artifact's page with that record) and the viewer's
-// ArtifactActions, then Expand and Close; while the record loads or fails, Expand and
-// Close only. Below COMPACT_BELOW px (the panel's width, or the
-// window's when it takes the whole screen) the actions are icons with tooltips.
+// "Open in Artifacts tab" (the artifact's page with that record; "Full page" when the panel
+// lies over that tab) and the viewer's ArtifactActions, then Expand and Close; while the
+// record loads or fails, Expand and Close only. Below COMPACT_BELOW px (the panel's width, or
+// the window's when it takes the whole screen) the actions are icons with tooltips. On a
+// phone (phone.ts) the bar is Download, Copy link, "⋯" and Close: "⋯" holds the other two.
 import { useEffect, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Link, useMatch, useNavigate, useSearchParams } from "react-router";
 
 import { ApiError, getRecord, type RecordView } from "./api";
 import { changed } from "./artifacts";
-import { Action, ArtifactActions, ArtifactView } from "./ArtifactView";
+import { Action, ArtifactActions, ArtifactView, newTabPath } from "./ArtifactView";
 import { useView } from "./Attachments";
 import { ArtifactsIcon, CloseIcon, ExpandIcon } from "./icons";
 import { useLive, useLiveStore } from "./live";
+import { Menu, useBelow, useDismiss, type MenuItem } from "./Menu";
 import { artifactPath, VIEW_PARAM, VIEW_SESSION_PARAM } from "./paths";
+import { usePhone } from "./phone";
 import { ARTIFACT_PANEL_WIDTH, type ArtifactPanelPrefs, storeArtifactPanel, storedArtifactPanel } from "./prefs";
 import { fitWidth, Splitter } from "./Splitter";
+import { Tooltip } from "./Tooltip";
 
 // The strip of the page the panel always leaves on its left: a click there closes it.
 const ROOM_GAP = 64;
@@ -40,6 +44,45 @@ function useRoom(): number {
   return room;
 }
 
+// A phone's "⋯": its menu under it; Esc gives the focus back to it, and the panel stays.
+function MoreActions({ items }: { items: MenuItem[] }) {
+  const [shown, setShown] = useState(false);
+  const box = useRef<HTMLSpanElement>(null);
+  const more = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  useDismiss(shown, box, () => setShown(false));
+  const below = useBelow(more, menu, shown, true);
+  return (
+    <span ref={box}>
+      <Tooltip tip="More actions">
+        <button
+          ref={more}
+          type="button"
+          className="icon-button"
+          aria-label="More actions"
+          aria-haspopup="menu"
+          aria-expanded={shown}
+          onClick={() => setShown(!shown)}
+        >
+          <span aria-hidden="true">⋯</span>
+        </button>
+      </Tooltip>
+      {shown && (
+        <Menu
+          label="More actions"
+          ref={menu}
+          style={below}
+          items={items}
+          onClose={() => {
+            setShown(false);
+            more.current?.focus();
+          }}
+        />
+      )}
+    </span>
+  );
+}
+
 export function ArtifactPanel({ session, record }: { session: string; record: string }) {
   const live = useLiveStore();
   useEffect(() => live.watch("artifacts", session), [live, session]);
@@ -50,6 +93,10 @@ export function ArtifactPanel({ session, record }: { session: string; record: st
   const opener = useRef<Element | null>(document.activeElement);
   const panel = useRef<HTMLElement>(null);
   const room = useRoom();
+  const phone = usePhone() !== null;
+  const navigate = useNavigate();
+  const overTab = useMatch("/sessions/:session/artifacts/*") !== null;
+  const pageLabel = overTab ? "Full page" : "Open in Artifacts tab";
   const [prefs, setPrefs] = useState(storedArtifactPanel);
   const choose = (next: ArtifactPanelPrefs) => {
     setPrefs(next);
@@ -84,7 +131,8 @@ export function ArtifactPanel({ session, record }: { session: string; record: st
     if (back instanceof HTMLElement && back.isConnected) setTimeout(() => back.focus());
   };
   useEffect(() => {
-    const key = (event: KeyboardEvent) => event.key === "Escape" && close();
+    // An Esc the phone's menu took closes only the menu.
+    const key = (event: KeyboardEvent) => event.key === "Escape" && !event.defaultPrevented && close();
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
   });
@@ -96,6 +144,8 @@ export function ArtifactPanel({ session, record }: { session: string; record: st
     shown?.artifact;
   const stale = shown && artifact && changed({ artifact: artifact.id, hash: shown.record.hash }, artifacts) === "changed";
   const name = artifact ? artifact.full_name : "an artifact";
+  const newTab = shown && newTabPath(session, shown.record);
+  const page = artifact && artifactPath(session, artifact.id, record);
   return (
     <>
       <div className="panel-scrim" aria-hidden="true" onClick={close} />
@@ -118,24 +168,46 @@ export function ArtifactPanel({ session, record }: { session: string; record: st
           />
         )}
         <div className="panel-top">
-          {shown && artifact && (
+          {shown && artifact && page && (
             <span className="panel-actions">
-              <Action label="Open in Artifacts tab" icon={<ArtifactsIcon />} compact={compact}>
-                {(look) => <Link {...look} to={artifactPath(session, artifact.id, record)} />}
-              </Action>
-              <ArtifactActions session={session} artifact={artifact} record={shown.record} compact={compact} />
+              {!phone && (
+                <Action
+                  label={pageLabel}
+                  icon={<ArtifactsIcon />}
+                  compact={compact}
+                  tip={overTab ? "Open as a page in this tab" : undefined}
+                >
+                  {(look) => <Link {...look} to={page} />}
+                </Action>
+              )}
+              <ArtifactActions
+                session={session}
+                artifact={artifact}
+                record={shown.record}
+                compact={compact || phone}
+                noTab={phone}
+              />
+              {phone && (
+                <MoreActions
+                  items={[
+                    ...(newTab ? [{ label: "Open in new tab", href: newTab }] : []),
+                    { label: pageLabel, onSelect: () => navigate(page) },
+                  ]}
+                />
+              )}
             </span>
           )}
-          {!narrow && (
-            <button
-              type="button"
-              className="icon-button panel-expand"
-              aria-label={prefs.expanded ? "Restore width" : "Expand"}
-              title={prefs.expanded ? "Restore width" : "Expand"}
-              onClick={() => choose({ ...prefs, expanded: !prefs.expanded })}
-            >
-              <ExpandIcon expanded={prefs.expanded} />
-            </button>
+          {!narrow && !phone && (
+            <Tooltip tip={prefs.expanded ? "Restore width" : "Widen the panel"}>
+              <button
+                type="button"
+                className="icon-button panel-expand"
+                aria-label={prefs.expanded ? "Restore width" : "Expand"}
+                onClick={() => choose({ ...prefs, expanded: !prefs.expanded })}
+              >
+                <ExpandIcon expanded={prefs.expanded} />
+              </button>
+            </Tooltip>
           )}
           <button type="button" className="icon-button panel-close" aria-label="Close" onClick={close}>
             <CloseIcon />

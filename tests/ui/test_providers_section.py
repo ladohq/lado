@@ -15,6 +15,7 @@ import agent_helpers
 import fake_provider
 import pytest
 from playwright.sync_api import Browser, Page, expect
+from test_kits_page import is_a_notice
 from test_main_screen import log_in
 
 from lado import loop, project_secrets, runtime, state
@@ -311,6 +312,9 @@ def test_a_sign_in_code_that_fails_keeps_the_clis_words(
     expect(window.get_by_text(f"{TITLE} did not sign you in")).to_be_visible(timeout=20000)
     expect(window.locator(".login-fail").get_by_text(said)).to_be_visible()
     expect(window.locator(".login-term")).to_be_hidden()
+    is_a_notice(window.locator("p", has_text="did not sign you in"), "--danger-ground")
+    quote = window.locator(".login-fail blockquote")
+    assert quote.evaluate("quote => getComputedStyle(quote).borderLeftWidth") == "0px"
     shot(page, "failed")
     window.get_by_role("button", name="Get a new code").click()  # a new window, failing again
     expect(window.locator(".login-fail").get_by_text(said)).to_be_visible(timeout=20000)

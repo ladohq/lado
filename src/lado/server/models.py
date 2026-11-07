@@ -63,13 +63,16 @@ class SessionInfo(BaseModel):
     # in place of the name, the name beside it.
     title: str | None
     # The id of the project it is in (lado.projects), None for none; it never changes, so
-    # the feed carries it, and the project's title comes with SessionAbout.
+    # the links use it.
     project: str | None
     # The model chosen for its agents of its provider's CLI (state.PowerTable's default
     # row), by the saved name of an external one: None for no choice, "" for the CLI's own
     # settings. The Resume window starts with it.
     model: str | None = None
     model_missing: bool = False  # that external model is no longer saved
+    # That project's title, None for none: read now, and a rename touches the project's
+    # sessions (state.set_project_title), so the feed carries the new one.
+    project_title: str | None = None
 
 
 class TitleChange(BaseModel):
@@ -1074,6 +1077,7 @@ class SessionKitInfo(BaseModel):
     source: str  # where it is, as `lado kits` says it; "" when it is not found
     valid: bool
     problem: str | None  # why it is not found or does not load
+    flows: list[str]  # its flows' names; none unless valid
 
 
 class SessionAbout(BaseModel):
@@ -2033,6 +2037,7 @@ def gate_info(gate: state.Gate) -> GateInfo:
 
 
 def session_info(sess: state.Session) -> SessionInfo:
+    project = state.get_project(sess.project) if sess.project else None
     gates, questions, agents = state.waiting_for_human(sess.name)
     status = runtime.session_status(sess)
     ran = runtime.session_time(sess, status)
@@ -2053,6 +2058,7 @@ def session_info(sess: state.Session) -> SessionInfo:
         stopped_at=_utc(sess.stopped_at) if sess.stopped_at else None,
         title=sess.title,
         project=sess.project,
+        project_title=project.title if project else None,
         **_session_model(sess),
     )
 

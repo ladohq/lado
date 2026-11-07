@@ -82,7 +82,7 @@ function open(props: Partial<Parameters<typeof Composer>[0]> = {}) {
   return render(
     <section className="chat" aria-label="Chat">
       <p>the feed</p>
-      <Composer session="lado" stopped={false} {...props} />
+      <Composer session="lado" {...props} />
     </section>,
   );
 }
@@ -131,12 +131,6 @@ test("Send with files and no text uploads each, then sends the message with thei
     { path: "/api/sessions/lado/messages", body: { to: "w1", text: "", artifacts: ["a-1a2b3c4d.txt", "shot-1a2b3c4d.png"] } },
   ]);
   expect(revoked).toEqual(["blob:thumb-1", "blob:thumb-2"]);
-});
-
-test("a stopped session's composer has its paperclip off", async () => {
-  serve();
-  open({ stopped: true });
-  expect(((await screen.findByRole("button", { name: "Attach files" })) as HTMLButtonElement).disabled).toBe(true);
 });
 
 test("the thumbnails' object URLs go when the composer goes", async () => {
@@ -268,7 +262,7 @@ test("a failed upload keeps the text and a red chip with its reason; Send again 
   rerender(
     <section className="chat" aria-label="Chat">
       <p>the feed</p>
-      <Composer session="lado" stopped={false} to="w1" />
+      <Composer session="lado" to="w1" />
     </section>,
   );
   fireEvent.click(send());
@@ -342,7 +336,7 @@ test("folded it is hidden, its text kept, and it takes no files dropped on the c
     rerender(
       <section className="chat" aria-label="Chat">
         <p>the feed</p>
-        <Composer session="lado" stopped={false} folded={folded} />
+        <Composer session="lado" folded={folded} />
       </section>,
     );
   hide(true);
@@ -357,9 +351,9 @@ test("folded it is hidden, its text kept, and it takes no files dropped on the c
 });
 
 test("a quote that comes while it is folded takes the focus once it shows", async () => {
-  const { rerender } = render(<Composer session="lado" stopped={false} folded />);
+  const { rerender } = render(<Composer session="lado" folded />);
   act(() => sendQuote("lado", "> A", () => {}));
   expect((screen.getByRole("textbox", { hidden: true }) as HTMLTextAreaElement).value).toBe("> A\n");
-  rerender(<Composer session="lado" stopped={false} folded={false} />);
+  rerender(<Composer session="lado" folded={false} />);
   await waitFor(() => expect(document.activeElement).toBe(field()));
 });

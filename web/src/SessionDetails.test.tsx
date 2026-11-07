@@ -22,8 +22,8 @@ function session(more: Partial<SessionInfo> = {}): SessionInfo {
 const ABOUT: SessionAbout = {
   repos: [{ path: FOLDER, remote: "git@github.com:ladohq/lado.git", branch: "lado/lad-95/task-lad-95" }],
   kits: [
-    { name: "default", version: "0.1.0", source: "built-in", valid: true, problem: null },
-    { name: "uiflow", version: "1.0.0", source: "/kits/uiflow", valid: true, problem: null },
+    { name: "default", version: "0.1.0", source: "built-in", valid: true, problem: null, flows: [] },
+    { name: "uiflow", version: "1.0.0", source: "/kits/uiflow", valid: true, problem: null, flows: [] },
   ],
   provider: {
     name: "claude",
@@ -91,7 +91,7 @@ test("on a phone the head is the status dot, the name as a button and Stop: no f
   const bar = screen.getByRole("banner");
   const name = await within(bar).findByRole("button", { name: "lad-95" });
   expect(name.getAttribute("aria-haspopup")).toBe("dialog");
-  expect(within(bar).getByRole("img", { name: "running · idle · 1 agent" })).toBeTruthy();
+  expect(within(bar).getByRole("img", { name: "running · idle" })).toBeTruthy();
   expect(within(bar).getByRole("button", { name: "Stop session…" })).toBeTruthy();
   await waitFor(() => expect(calls.some((call) => call.path.endsWith("/about"))).toBe(true));
   for (const fact of ["Copy path", "Copy link", "Rename session", "Copy URL"]) {
@@ -99,7 +99,7 @@ test("on a phone the head is the status dot, the name as a button and Stop: no f
   }
   expect(bar.textContent).not.toContain(FOLDER);
   expect(bar.textContent).not.toContain("uiflow");
-  expect(within(bar).getByRole("img", { name: "running · idle · 1 agent" }).getAttribute("tabindex")).toBe("0");
+  expect(within(bar).getByRole("img", { name: "running · idle" }).getAttribute("tabindex")).toBe("0");
 });
 
 test("a phone's head has no breadcrumb and no branch, and its title has the chevron", async () => {
@@ -119,7 +119,7 @@ test("Details' state line says a running session's work without `running`", asyn
   open();
   fireEvent.click(await within(screen.getByRole("banner")).findByRole("button", { name: "lad-95" }));
   const state = screen.getByRole("dialog", { name: "Session details" }).querySelector(".session-details-state")!;
-  expect(state.textContent).toMatch(/^idle · 1 agent · .+ · id lad-95$/);
+  expect(state.textContent).toMatch(/^idle · ran .+ · id lad-95$/);
 });
 
 test("Details' state line says `stopped` once", async () => {
@@ -156,7 +156,7 @@ test("the name opens the details: the state, the whole folder, git, the kits wit
   fireEvent.click(await screen.findByRole("button", { name: "lad-95" }));
   await waitFor(() => expect(sheet().textContent).toContain("uiflow 1.0.0"));
   const text = sheet().textContent!;
-  expect(sheet().querySelector(".session-details-state")!.textContent).toMatch(/^idle · 1 agent · ran (<1|\d+) min · id lad-95$/);
+  expect(sheet().querySelector(".session-details-state")!.textContent).toMatch(/^idle · ran (<1|\d+) min · id lad-95$/);
   expect(text).toContain(FOLDER);
   expect(text).toContain("github.com/ladohq/lado · lado/lad-95/task-lad-95");
   expect(text).toContain("default 0.1.0uiflow 1.0.0");

@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { ApiError, getAccess, newAccessToken, type AccessInfo } from "./api";
 import { useCopy } from "./Copy";
+import { useModal } from "./modal";
 import { QrCode } from "./QrCode";
 
 const TITLE = "Open LADO on another device";
@@ -40,8 +41,8 @@ export function ShareDialog({ onClose }: { onClose: () => void }) {
     setUncopied(done ? null : text);
     return done;
   };
+  useModal(dialog);
   useEffect(() => {
-    dialog.current?.showModal();
     let current = true;
     getAccess().then(
       (found) => current && setAccess(found),

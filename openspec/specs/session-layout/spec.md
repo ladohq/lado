@@ -13,7 +13,8 @@ strip and the tabs when short of room, and a touch screen's visible height.
 In a window wider than 900 px that is not the phone layout, the session's column SHALL be at
 least 420 px wide. Short of room, terminals the human did not open SHALL fold to their strip;
 terminals the human opened SHALL stay and the session list SHALL fold to its strip instead. The
-rail SHALL never fold by itself.
+rail SHALL never fold by itself. A stopped session's terminals count as opened only when the human
+opened them there.
 
 #### Scenario: Terminals nobody opened
 - **WHEN** nothing is stored and the window is 1024 px wide
@@ -28,6 +29,10 @@ rail SHALL never fold by itself.
 - **WHEN** the window is 901, 1024, 1101, 1280 or 1440 px wide, with the terminals opened by the
   human or not
 - **THEN** the chat is at least 420 px wide
+
+#### Scenario: A stopped session
+- **WHEN** the terminals are stored open and a stopped session shows at 1024 px
+- **THEN** they are in their strip and the list is open
 
 ### Requirement: When folding one column is not enough the other gives way
 
@@ -339,3 +344,34 @@ scroll, so that the next Tab goes on from the focused tab.
 #### Scenario: Back with Shift+Tab
 - **WHEN** the row is scrolled to its end and the human moves the focus to the first tab by Shift+Tab
 - **THEN** the first tab stands whole and ‹ goes
+
+### Requirement: Take control dims the whole page
+
+Take control's question SHALL be a modal dialog whose backdrop is `--scrim` and covers the whole
+page, the terminal it asks about too.
+
+#### Scenario: The terminals open
+- **WHEN** the human presses Take control in an open terminal
+- **THEN** the dialog's backdrop computes to `--scrim`, and a click on the terminal behind it reaches
+  no terminal
+
+### Requirement: In a wide window the rail is as high as the app
+
+In a window wider than 900 px the rail SHALL be as high as the app, on every page, so that on a
+touch screen, where the app is as high as the part of the window the human sees, Report a bug
+and Settings stand within that part. A wider window with a fine pointer SHALL keep a rail as
+high as the window.
+
+#### Scenario: A tablet held sideways
+- **WHEN** the UI is opened on a touch screen 1180 px wide and 688 px high, and the part of the
+  window the human sees is 560 px high
+- **THEN** the rail is 560 px high and Settings ends within those 560 px
+
+#### Scenario: A computer's window
+- **WHEN** the UI is opened with a mouse in a window 1280 px wide and 800 px high
+- **THEN** the rail is 800 px high
+
+#### Scenario: A tablet held upright
+- **WHEN** a session's page is opened on a touch screen 820 px wide, and the part of the window
+  the human sees is 600 px high
+- **THEN** the rail is 600 px high, as it was

@@ -354,7 +354,7 @@ def test_resume_of_a_kept_model_the_cli_lacks_says_the_way_out(
             (state.PowerTable.single("fake", "fake-old").to_json(), session),
         )
     log_in(page, server, f"/sessions/{session}")
-    page.get_by_role("button", name="Resume…").click()
+    page.locator(".stopped-bar").get_by_role("button", name="Resume session").click()
     dialog = page.get_by_role("dialog", name="Resume session")
     note = advanced(dialog).locator(".field-note.bad")
     expect(note).to_contain_text(
@@ -386,7 +386,7 @@ def test_resume_of_a_model_no_longer_saved_says_so(
         )
     state.remove_model(QWEN)
     log_in(page, server, f"/sessions/{session}")
-    page.get_by_role("button", name="Resume…").click()
+    page.locator(".stopped-bar").get_by_role("button", name="Resume session").click()
     dialog = page.get_by_role("dialog", name="Resume session")
     expect(advanced(dialog).locator(".field-note.bad")).to_contain_text(
         f"The session ran on the model {QWEN}, which is no longer in Settings → Models.",

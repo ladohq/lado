@@ -91,7 +91,8 @@ button {
     height: 100dvh;
   }
 
-  .rail {
+  /* .app: the base .rail comes later in this file and would win with its 100vh. */
+  .app .rail {
     height: 100%;
   }
 
@@ -467,13 +468,10 @@ h3 {
   font-weight: 600;
 }
 
+/* Its look is the notices' (section "Notices"). */
 .problem {
   margin: 0;
-  padding: 12px 16px;
   white-space: pre-wrap; /* a problem of several lines keeps them */
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-left: 3px solid var(--ink);
 }
 
 .version-banner {
@@ -745,7 +743,6 @@ h3 {
 /* Open LADO on another device (Share.tsx): the warning, then the QR code beside the link. */
 .share-warning {
   margin: 0 0 14px;
-  border-left-color: var(--human);
   font-size: 13px;
 }
 
@@ -866,10 +863,6 @@ h3 {
   background: var(--done-ground);
 }
 
-.update-bad {
-  border-left: 3px solid var(--danger);
-}
-
 .update-clock {
   font-variant-numeric: tabular-nums;
 }
@@ -883,6 +876,19 @@ h3 {
 
 .empty p {
   margin: 0 0 8px;
+}
+
+/* An empty tab: what is missing, then where it comes from. */
+.empty .empty-title {
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.empty .empty-line {
+  margin: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 /* A section to come: a dashed outline, the plan beneath. */
@@ -1549,8 +1555,9 @@ h3 {
   height: 18px;
 }
 
-/* Stop with its word, on a window wide enough and not on a phone. */
-.session-head-actions .icon-button:has(.session-action-word) {
+/* Stop with its word, on a window wide enough and not on a phone; a stopped session's Resume
+   with its word at any width. */
+.session-head-actions .icon-button:has(.session-action-word, .session-resume-word) {
   display: inline-flex;
   flex-direction: row;
   align-items: center;
@@ -1561,7 +1568,8 @@ h3 {
   font-size: 14px;
 }
 
-.session-action-word {
+.session-action-word,
+.session-resume-word {
   font-weight: 500;
 }
 
@@ -1876,6 +1884,13 @@ h3 {
   background: var(--panel);
   box-shadow: 0 2px 8px var(--shadow);
   white-space: nowrap;
+}
+
+/* A notice all the same, out of the line. */
+.session-head .title-edit .field-problem {
+  padding: 4px 8px 4px 28px;
+  border-radius: 6px;
+  background: var(--danger-ground);
 }
 
 .title-edit input {
@@ -2332,9 +2347,6 @@ h3 {
 
 .setting .pv-warn {
   margin-top: 4px;
-  padding: 8px 10px;
-  border-left: 3px solid var(--human);
-  background: var(--human-ground);
   font-size: 13px;
 }
 
@@ -2417,9 +2429,6 @@ h3 {
 
 .setting .pv-none {
   margin-top: 12px;
-  padding: 8px 10px;
-  border-left: 3px solid var(--human);
-  background: var(--human-ground);
   font-size: 13px;
 }
 
@@ -2729,10 +2738,13 @@ h3 {
   font-size: 14px;
 }
 
+.login-fail .problem {
+  margin: 0;
+}
+
 .login-fail blockquote {
   margin: 0;
   padding: 8px 12px;
-  border-left: 3px solid var(--line);
   background: var(--ground);
   font: 13px var(--mono);
   overflow-wrap: anywhere;
@@ -3052,19 +3064,95 @@ h3 {
   border-left: 0;
 }
 
+/* Beside the trigger: the arrow on the left edge, at --arrow-y. */
+.tooltip[data-side="right"]::before {
+  top: var(--arrow-y);
+  left: -5px;
+  margin-top: -4px;
+  margin-left: 0;
+  border-top: 0;
+  border-right: 0;
+}
+
 .tooltip-line + .tooltip-line {
   color: var(--muted);
 }
 
-/* A session's card: its status word in its group's colour (a session in trouble takes
-   .danger-text instead). */
+/* A session's card (Sessions.tsx, SessionTip): one width whatever it says, within the window.
+   Its height is bounded inside the tooltip, whose own overflow would cut the arrow off: the
+   12 px are the tooltip's padding and border. */
+.tooltip:has(.session-tip) {
+  width: min(360px, 100vw - 16px);
+  max-width: min(360px, 100vw - 16px);
+}
+
+.session-tip {
+  display: grid;
+  gap: 6px;
+  max-height: calc(100vh - 16px - 12px);
+  padding: 3px 0;
+  overflow: hidden;
+}
+
+.tip-top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.tip-top b {
+  font-size: 13.5px;
+}
+
+.tip-state {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* The state line's words: in its group's colour when it works, grey when nothing goes on (a
+   session in trouble takes .danger-text instead). */
 .tip-status {
   color: var(--g);
 }
 
-/* What waits for the human, in a session's tooltip. */
-.tooltip-line.waits {
+.tip-muted {
+  color: var(--muted);
+}
+
+/* What waits for the human, in a session's card. */
+.tip-waits {
   color: var(--human);
+  font-weight: 600;
+}
+
+.tip-facts {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 2px 8px;
+  margin: 2px 0 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+.tip-facts dt {
+  color: var(--muted);
+}
+
+.tip-facts dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.tip-facts code {
+  font-size: 11.5px;
+}
+
+.tip-hint {
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
 }
 
 .terminals.expanded {
@@ -3312,11 +3400,6 @@ h3 {
   color: var(--ink);
 }
 
-.term-notice {
-  padding-left: 8px;
-  border-left: 2px solid var(--ink);
-}
-
 .term-tools .quiet {
   display: inline-flex;
   align-items: center;
@@ -3337,7 +3420,7 @@ h3 {
 }
 
 .term-ask::backdrop {
-  background: var(--shadow);
+  background: var(--scrim);
 }
 
 .term-ask p {
@@ -3369,6 +3452,22 @@ h3 {
   padding: 6px 0 0 10px;
   background: var(--term-ground);
   color: var(--term-ink);
+}
+
+.term-stopped {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  font: 13px var(--mono);
+  text-align: center;
+}
+
+/* Muted on the terminal's ground, dark in both themes: --muted is the page's and follows the
+   theme, whatever `color-scheme` an element has (the build resolves light-dark() on the root). */
+.term-stopped p {
+  margin: 0;
+  color: color-mix(in srgb, var(--term-ink) 65%, var(--term-ground));
 }
 
 /* No scrollback in xterm.js (the history is tmux's): its scrollbar would only be an empty
@@ -3985,7 +4084,8 @@ h3 {
    (Agents) stays at its page's left edge. Above the `margin: 0` of the feed's items
    (.chat-start, .run-group). */
 .chat > .chat-feed > *,
-.chat > .composer {
+.chat > .composer,
+.chat > .stopped-bar {
   --chat-side: max(0px, (100% - 860px) / 2);
   margin-inline: var(--chat-side);
 }
@@ -4005,9 +4105,6 @@ h3 {
   text-align: center;
 }
 
-.chat-loading.problem {
-  color: var(--danger);
-}
 
 .chat-start {
   border-bottom: 1px solid var(--line);
@@ -5822,6 +5919,55 @@ button.rec-bar-line {
   gap: 6px;
 }
 
+/* A stopped session's bar in the composer's place (StoppedBar): as wide as its frame. */
+.stopped-bar {
+  display: flex;
+  flex: none;
+  gap: 12px;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 860px;
+  min-height: 52px;
+  padding: 8px 8px 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.stopped-bar-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.stopped-bar-text strong,
+.stopped-bar-text span {
+  display: block;
+}
+
+.stopped-bar-text strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.stopped-bar-text span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.stopped-bar .primary {
+  display: inline-flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+/* The empty feed of a stopped session stands in the feed's middle. */
+.chat-feed > .stopped-empty {
+  margin-block: auto;
+}
+
 /* The composer folded (ComposerFold): a line of 40 px in a dashed frame. */
 .composer-fold {
   display: flex;
@@ -6340,10 +6486,7 @@ button.locked:disabled,
 .field-problem {
   grid-column: 1 / -1;
   margin: 0;
-  color: var(--ink);
   font-size: 13px;
-  border-left: 3px solid var(--ink);
-  padding-left: 8px;
 }
 
 @media (max-width: 760px) {
@@ -6538,6 +6681,20 @@ button.locked:disabled,
   font: 13px var(--mono);
 }
 
+/* Resume's Where: the session's folder, fixed, as a disabled field that wraps, so that a long
+   path shows whole on a phone (an input clips it). */
+.where-fixed {
+  box-sizing: border-box;
+  min-height: 38px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--ground);
+  color: var(--muted);
+  font: 13px var(--mono);
+  overflow-wrap: anywhere;
+}
+
 /* From scratch: the name is the human's words, not a path; Create in takes the whole row. */
 .launch-where input.launch-words {
   font: inherit;
@@ -6595,8 +6752,8 @@ button.locked:disabled,
 }
 
 /* A warning and a refusal are panels (docs/design/ui.md, New session): text 13px in --ink on
-   a ground of their own with a stripe on the left. A warning's icon is the ⚠ of its text; a
-   refusal's round "!" is drawn here, at its first line, and is not part of its text. */
+   a ground of their own. A warning's icon is the ⚠ of its text; a refusal's round "!" is
+   drawn here, at its first line, and is not part of its text. */
 .field-note.warn,
 .field-note.bad {
   color: var(--ink);
@@ -6604,19 +6761,16 @@ button.locked:disabled,
   line-height: 1.4;
   padding: 4px 8px;
   border-radius: 6px;
-  border-left: 3px solid;
 }
 
 .field-note.warn {
   background: var(--warn-ground);
-  border-left-color: var(--warn);
 }
 
 .field-note.bad {
   position: relative;
   padding-left: 28px;
   background: var(--danger-ground);
-  border-left-color: var(--danger);
 }
 
 .field-note.bad::before {
@@ -7056,11 +7210,13 @@ button.locked:disabled,
   background: var(--raised);
 }
 
+/* Its text wraps, in a head that does not. */
 .stop-popover {
   right: 0;
   left: auto;
   z-index: 6;
   width: min(440px, calc(100vw - 32px));
+  white-space: normal;
 }
 
 /* Three buttons: each on one line, the row wrapping when they do not fit; a long name is cut. */
@@ -7075,10 +7231,10 @@ button.locked:disabled,
   white-space: nowrap;
 }
 
-/* Why Stop and forget is off: the session has open runs. */
+/* Why Stop and forget is not offered: the session has open runs. */
 .stop-forget-why {
-  margin: -6px 0 12px;
-  font-size: 12px;
+  margin: 8px 0 0;
+  font-size: 13px;
 }
 
 .link-popover {
@@ -7242,11 +7398,6 @@ button.locked:disabled,
   padding-left: 18px;
 }
 
-.started-problems {
-  padding-left: 8px;
-  border-left: 3px solid var(--ink);
-}
-
 .started-notice .quiet {
   margin-left: auto;
 }
@@ -7394,6 +7545,20 @@ button.locked:disabled,
   overflow-wrap: anywhere;
 }
 
+/* What a run is about, on one line of a card or a row. */
+.run-task-line {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The task's lines in a run's tooltip. */
+.run-task-tip {
+  white-space: pre-line;
+}
+
 .list-row.waits .run-about,
 .list-row.waits .agent-row-about {
   color: var(--human);
@@ -7439,8 +7604,10 @@ button.locked:disabled,
   overscroll-behavior: contain;
 }
 
+/* One column as wide as the list: by default a long line that does not wrap would widen it. */
 .runs-overview ul {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   margin: 6px 0 0;
   padding: 0;
@@ -7949,6 +8116,11 @@ button.locked:disabled,
   background: var(--line);
 }
 
+/* Not the chat's row of avatar and text: what an opened step adds goes under its line. */
+.run-feed .feed-row {
+  display: block;
+}
+
 .feed-line {
   display: grid;
   grid-template-columns: 64px 20px minmax(0, 1fr) 14px; /* the time fits "12:59 PM" */
@@ -8322,8 +8494,6 @@ button.locked:disabled,
 }
 
 .kit-problem {
-  padding-left: 8px;
-  border-left: 3px solid var(--danger);
   overflow-wrap: anywhere;
 }
 
@@ -8371,8 +8541,6 @@ button.locked:disabled,
 
 .kit-warning {
   margin: 0;
-  padding: 6px 10px;
-  border-left: 3px solid var(--danger);
   font-size: 13px;
   overflow-wrap: anywhere;
 }
@@ -8440,11 +8608,6 @@ button.locked:disabled,
 
 .market-problem {
   color: var(--ink);
-}
-
-.market-error {
-  padding-left: 6px;
-  border-left: 3px solid var(--danger);
 }
 
 /* A window of the Kits page: its head and its footer with the buttons stay in place, only
@@ -8767,18 +8930,6 @@ del.kit-mcp-name {
   font-size: 13px;
 }
 
-.kit-alert {
-  padding: 8px 10px;
-  border: 1px solid var(--human);
-  border-radius: 6px;
-  background: var(--human-ground);
-  font-size: 13px;
-}
-
-.kit-alert b {
-  color: var(--human);
-}
-
 .kit-danger {
   padding: 8px 10px;
   border: 1px solid var(--danger);
@@ -8861,33 +9012,10 @@ del.kit-mcp-name {
   overflow: hidden;
 }
 
-.feed-facts {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  margin: 0;
-  border-bottom: 1px solid var(--line);
-  background: var(--ground);
-}
-
-.feed-facts div {
-  padding: 8px 12px;
-  border-right: 1px solid var(--line);
-  overflow-wrap: anywhere;
-}
-
-.feed-facts div:last-child {
-  border-right: 0;
-}
-
-.feed-facts dt {
+/* How long an opened step took, under its line and above its note's frame. */
+.feed-took {
+  margin: 2px 6px 6px 110px; /* under the summary: the line's padding, time, dot and gaps */
   color: var(--muted);
-  font-size: 11px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.feed-facts dd {
-  margin: 0;
   font-size: 13px;
 }
 
@@ -8910,7 +9038,8 @@ del.kit-mcp-name {
     display: none;
   }
 
-  .feed-detail {
+  .feed-detail,
+  .feed-took {
     margin-left: 6px;
   }
 }
@@ -9101,18 +9230,15 @@ del.kit-mcp-name {
   }
 }
 
-/* The tab: its tools, then the table over the whole column, scrolling by itself. The tab is
-   a size container: a narrow column (the terminals open, a phone) shows cards. */
+/* The tab: its tools, then the table or the list over the whole column, scrolling by itself.
+   min-width keeps a long row from widening the column. */
 .artifacts-tab,
 .artifacts-list {
   display: flex;
   flex: 1;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
-}
-
-.artifacts-tab {
-  container-type: inline-size;
 }
 
 .artifacts-tools {
@@ -9124,13 +9250,18 @@ del.kit-mcp-name {
 }
 
 .artifacts-tools .search {
-  flex: 0 1 280px;
+  flex: 1 1 190px;
   width: auto;
+  min-width: 0;
+  max-width: 280px;
   height: 30px;
   margin: 0;
 }
 
+/* As wide as its choice, up to a limit: a run's long name must not take the column. */
 .artifacts-tools select {
+  min-width: 0;
+  max-width: 160px;
   height: 30px;
   padding: 0 8px;
   border: 1px solid var(--line);
@@ -9242,39 +9373,103 @@ del.kit-mcp-name {
   font-style: italic;
 }
 
-/* A narrow column: each row a card. */
-@container (max-width: 720px) {
-  .artifacts-table thead {
-    display: none;
-  }
+/* A narrow column's list: two lines a row. The link stretches over the row, so the line's
+   overflow must not be the box of its ::after: only .artifact-item is positioned. */
+.artifact-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
 
-  .artifacts-table,
-  .artifacts-table tbody,
-  .artifacts-table tr,
-  .artifacts-table td {
-    display: block;
-    width: 100%;
-  }
+.artifact-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  height: 48px;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--line);
+}
 
-  .artifacts-table tr {
-    padding: 8px 0;
-    border-bottom: 1px solid var(--line);
-  }
+.artifact-item:hover {
+  background: var(--raised);
+}
 
-  .artifacts-table td {
-    padding: 1px 4px;
-    border: 0;
-  }
+.artifact-item-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  container-type: inline-size;
+}
 
-  .artifacts-table td.numeric {
-    display: inline-block;
-    width: auto;
-  }
+/* A long run gives way, not the artifact's name: its part is cut at its start, "…-198/", by
+   the right-to-left box; the marks keep the text's own order, its "/" last. */
+.artifact-item .scope-part {
+  display: inline-block;
+  overflow: hidden;
+  max-width: 35cqi;
+  direction: rtl;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
 
-  .artifacts-table td.artifact-cell {
-    display: flex;
-    min-width: 0;
-  }
+.artifact-item .scope-part::before,
+.artifact-item .scope-part::after {
+  content: "\200e";
+}
+
+.artifact-item-line {
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-item-meta {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.artifact-item .artifact-link::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+}
+
+.artifact-item .artifact-link:focus-visible {
+  outline: none;
+}
+
+.artifact-item .artifact-link:focus-visible::after {
+  outline: 2px solid var(--action);
+  outline-offset: -2px;
+}
+
+/* The groups of many artifacts: the lists' band (GroupHead), in the list and on a row of the
+   table. A run's name is exact, so it keeps its case, in mono. */
+section.artifact-group + section.artifact-group {
+  margin-top: 8px;
+}
+
+.artifact-group.of-run .group-name {
+  font-family: var(--mono);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.artifacts-table .artifact-group th {
+  position: static;
+  padding: 6px 0 2px;
+  border: 0;
+  background: none;
+}
+
+.artifacts-table .group-head {
+  margin: 0;
 }
 
 /* An artifact's page, and the viewer in it and in the panel. */
@@ -9516,7 +9711,6 @@ del.kit-mcp-name {
 
 .artifact-tab > p.problem {
   margin: 32px auto;
-  padding: 12px 16px;
 }
 
 /* Not clipped: a clipping box would hold the sticky code bar, which sticks to the tab. */
@@ -9631,16 +9825,10 @@ del.kit-mcp-name {
 
 .artifact-missing {
   max-width: 680px;
-  padding: 14px 16px;
-  border: 1px solid var(--danger);
-  border-left-width: 4px;
-  border-radius: 8px;
-  background: var(--panel);
 }
 
 .artifact-missing h4 {
   margin: 0 0 4px;
-  color: var(--danger);
   font-size: 14px;
 }
 
@@ -11707,6 +11895,83 @@ button.quiet.danger-text {
   font-size: 18px;
 }
 
+/* Notices (docs/design/ui.md, Look): an error or a warning is a ground and an alert icon, never a
+   stripe on the left; the icon is a mask on the text's colour, at the first line. After the
+   pages' rules, whose boxes (.update-banner) these take over; a warning comes last, as
+   Share's is a .problem too. Orange stays what waits for the human: no notice wears it. */
+.problem,
+.update-bad,
+.field-problem,
+.started-problems,
+.kit-problem,
+.market-error,
+.term-notice,
+.artifact-missing,
+.share-warning,
+.update-warning,
+.setting .pv-warn,
+.setting .pv-none,
+.kit-warning {
+  position: relative;
+  padding: 8px 12px 8px 34px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--danger-ground);
+  color: var(--danger);
+}
+
+.problem::before,
+.update-bad::before,
+.field-problem::before,
+.started-problems::before,
+.kit-problem::before,
+.market-error::before,
+.term-notice::before,
+.artifact-missing::before,
+.share-warning::before,
+.update-warning::before,
+.setting .pv-warn::before,
+.setting .pv-none::before,
+.kit-warning::before {
+  --alert: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3l10 18H2z'/%3E%3Cpath d='M12 10v5'/%3E%3Cpath d='M12 18h.01'/%3E%3C/svg%3E");
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  content: "";
+  -webkit-mask: var(--alert) center / contain no-repeat;
+  mask: var(--alert) center / contain no-repeat;
+}
+
+.share-warning,
+.update-warning,
+.setting .pv-warn,
+.setting .pv-none,
+.kit-warning {
+  background: var(--warn-ground);
+  color: var(--warn);
+}
+
+.update-warning {
+  margin: 0;
+}
+
+/* In tight rows: a field's line, a kit's marketplace, the terminal's bar. */
+.field-problem,
+.market-error,
+.term-notice {
+  padding: 4px 8px 4px 28px;
+}
+
+.field-problem::before,
+.market-error::before,
+.term-notice::before {
+  top: 6px;
+  left: 8px;
+}
+
 /* Phone layout (docs/design/ui.md, Phone layout; decided 2026-10-18, LAD-95, LAD-193): a window
    no wider than 600 px, with any pointer, or a touch screen no higher than 500 px. Every rule
    of the phone is here and starts with :root[data-phone], which the Shell sets from phone.ts's
@@ -11863,11 +12128,30 @@ button.quiet.danger-text {
   padding-block: 0;
 }
 
-/* The toggle of the Team row: spec §9's size, second to the card's 44 px. */
+/* The toggle of the Team row, sideways of the tab row: spec §9's size, second to the card's 44 px. */
 :root[data-phone] .icon-button.between-toggle {
   width: 36px;
   height: 36px;
   margin-top: 0;
+}
+
+/* A stopped session's toggle, with its words; pressed, it keeps its look. */
+:root[data-phone] .icon-button.between-toggle.with-words {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  width: auto;
+  height: 44px;
+  padding-inline: 10px;
+  font-size: 13px;
+}
+
+:root[data-phone] .icon-button.between-toggle.with-words:not([aria-pressed="true"]) {
+  border-color: var(--line);
+}
+
+:root[data-phone] .icon-button.between-toggle.with-words[aria-pressed="true"] {
+  background: var(--action-ground);
 }
 
 :root[data-phone] .session-head .session-title {
@@ -11912,6 +12196,11 @@ button.quiet.danger-text {
 
 :root[data-phone] .session-action-word {
   display: none;
+}
+
+:root[data-phone] .session-head-actions .icon-button:has(.session-resume-word) {
+  width: auto;
+  padding-inline: 10px;
 }
 
 /* The session's details (SessionDetails.tsx): a sheet over the page's bottom. */
@@ -12153,10 +12442,39 @@ button.quiet.danger-text {
   min-height: 44px;
 }
 
+:root[data-phone] .stopped-bar .primary {
+  height: 44px;
+}
+
+/* Upright the button stands under the text at full width; sideways the row stays. The span
+   of a button that waits for the connection (Waits) stretches with it. */
+:root[data-phone="tall"] .stopped-bar {
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+:root[data-phone="tall"] .stopped-bar-text {
+  flex-basis: 100%;
+}
+
+:root[data-phone="tall"] .stopped-bar .lost-wait {
+  flex: 1;
+}
+
+:root[data-phone="tall"] .stopped-bar .primary {
+  flex: 1;
+  justify-content: center;
+}
+
 /* Sideways: the chat's room is for the feed; the card is minimized (WaitingCard.tsx). */
-:root[data-phone="short"] .team-row,
 :root[data-phone="short"] .composer-to {
   display: none;
+}
+
+/* The team's row is not there, so the toggle ends the tab row at every level of `data-fit`. */
+:root[data-phone="short"] .session-tabs .between-toggle {
+  display: grid;
 }
 
 :root[data-phone="short"] .activity,

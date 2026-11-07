@@ -189,14 +189,19 @@ def test_a_session_in_a_project_names_it(client, tmp_path, monkeypatch, fake_tmu
     init_repo(projects.folder("shop") / "frontend")
     runtime.start_session(None, "s", None, provider="claude", project="shop", repo_name="frontend")
     [info] = client.get("/api/sessions").json()
-    assert info["project"] == "shop"
+    assert (info["project"], info["project_title"]) == ("shop", "Shop")
     assert about(client)["project"] == {"id": "shop", "title": "Shop"}
     projects.rename("shop", "Shop EU")  # read when asked: a rename shows on the next look
     assert about(client)["project"] == {"id": "shop", "title": "Shop EU"}
+    assert client.get("/api/sessions").json()[0]["project_title"] == "Shop EU"
+    projects.rename("shop", None)  # the id stands in the UI, the field says there is no title
+    [untitled] = client.get("/api/sessions").json()
+    assert (untitled["project"], untitled["project_title"]) == ("shop", None)
 
 
 def test_a_session_without_a_project_names_none(client, session, statuses):
-    assert client.get("/api/sessions").json()[0]["project"] is None
+    [info] = client.get("/api/sessions").json()
+    assert (info["project"], info["project_title"]) == (None, None)
     assert about(client)["project"] is None
 
 
@@ -227,6 +232,7 @@ def test_about_gives_each_kit_in_the_sessions_order_with_its_version_and_source(
         "source": f"user: {(kits_dir / 'team').resolve()}",
         "valid": True,
         "problem": None,
+        "flows": [],
     }
     assert (default["name"], default["valid"]) == ("default", True)
     assert default["source"].startswith("built-in: ")
@@ -241,6 +247,22 @@ def test_about_gives_each_kit_in_the_sessions_order_with_its_version_and_source(
     assert gone["problem"].startswith(f'kit "gone": its folder {kits_dir / "gone"} is missing')
     assert (removed["valid"], removed["version"], removed["source"]) == (False, "", "")
     assert removed["problem"].startswith('kit "removed" not found')
+    assert (broken["flows"], gone["flows"], removed["flows"]) == ([], [], [])
+
+
+def test_about_names_each_kits_flows(client, repo, fake_tmux, statuses):
+    kit = repo.parent / "kits" / "team"
+    (kit / "flows").mkdir(parents=True)
+    (kit / "kit.yaml").write_text("name: team\nversion: 1.2.0\n")
+    for name in ("task", "epic"):
+        (kit / "flows" / f"{name}.yaml").write_text(
+            f"name: {name}\ndescription: one step\nstart: go\nstates:\n"
+            "  go: {agent: supervisor, do: sleep 0, outcomes: {done: end}}\n"
+            "  end: {end: true}\n"
+        )
+    install_kit(kit)
+    runtime.start_session(str(repo), "s", None, kit_names=["team"], provider="claude")
+    assert sorted(about(client)["kits"][0]["flows"]) == ["epic", "task"]
 
 
 def test_about_gives_the_sessions_provider_with_its_version_and_warning(client, session, statuses):

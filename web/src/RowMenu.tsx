@@ -58,7 +58,18 @@ export function RowMenu({ name, items }: { name: string; items: RowMenuItem[] })
           label={name}
           ref={popover}
           style={below}
-          items={items.map((item) => ("copy" in item ? { label: item.label, onSelect: () => void copyOf(item)() } : item))}
+          items={items.map((item) => {
+            if ("copy" in item) return { label: item.label, onSelect: () => void copyOf(item)() };
+            if ("href" in item) return item;
+            // ⋯ has the focus first, so a window the item opens gives it back there: the item goes.
+            return {
+              label: item.label,
+              onSelect: () => {
+                back();
+                item.onSelect();
+              },
+            };
+          })}
           onClose={back}
         />
       )}

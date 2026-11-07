@@ -1,39 +1,50 @@
-// The session's Artifacts tab (docs/design/ui.md, Artifacts): a table of the session's
-// artifacts over the whole column, newest first by their latest record, filtered by scope
-// (the session's or a run's) and by type, and found by name, title, change and author; a
-// narrow column shows each row as a card. A row opens its latest record in the panel over
-// the list (ArtifactPanel.tsx). The artifact's page, its row's link for a new tab and the
-// panel's "Open in Artifacts tab", leads back with "← Artifacts": its latest record, or
-// with ?record= the one an attachment keeps. Live from the feed: a new record moves its
-// artifact to the top.
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+// The session's Artifacts tab (docs/design/ui.md, Artifacts): the session's artifacts over
+// the whole column, newest first by their latest record, filtered by scope (the session's or
+// a run's) and by type, and found by name, title, change and author. A column of TABLE_FROM
+// px and wider shows a table, a narrower one a list of two lines a row, whose latest change
+// is a tooltip. From GROUPS_FROM artifacts both go in groups by scope that fold (prefs.ts,
+// lado.artifactGroups), which stand where they stood on entering the tab. A row opens its latest record in the panel over the list
+// (ArtifactPanel.tsx). The artifact's page, its row's link for a new tab and the panel's
+// "Open in Artifacts tab", leads back with "← Artifacts": its latest record, or with
+// ?record= the one an attachment keeps. Live from the feed: a new record moves its artifact
+// to the top.
+import { useEffect, useId, useRef, useState, type MouseEvent } from "react";
 import { Link, useSearchParams } from "react-router";
 
 import { ApiError, getRecord, type ArtifactInfo, type RecordInfo } from "./api";
-import { changed, kindOf, size, type Kind } from "./artifacts";
+import { changed, groupByScope, GROUPS_FROM, kindOf, KINDS, sessionFirst, size, type Kind, type ScopeGroup } from "./artifacts";
 import { ArtifactView, FullName, KindIcon } from "./ArtifactView";
 import { useView } from "./Attachments";
 import { since } from "./ChatText";
 import { MiniAvatar } from "./FeedRow";
+import { isOpen } from "./Flows";
+import { GroupHead, type Fold } from "./GroupHead";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
 import { artifactPath, RECORD_PARAM, sessionPath } from "./paths";
+import { storeArtifactGroups, storedArtifactGroups, type ArtifactGroups } from "./prefs";
+import { useWidth } from "./Splitter";
+import { Tooltip } from "./Tooltip";
 
 const ALL = "*";
 
+// From this width the table's six columns fit; narrower, the list.
+const TABLE_FROM = 720;
+
 // The type filter's choices: every kind of artifacts.kindOf, or all.
-const KINDS: [Kind | typeof ALL, string][] = [
+const TYPES: [Kind | typeof ALL, string][] = [
   [ALL, "All types"],
-  ["markdown", "Documents"],
-  ["text", "Code and text"],
-  ["image", "Images"],
-  ["html", "HTML"],
-  ["other", "Other"],
+  ...(Object.keys(KINDS) as Kind[]).map((kind): [Kind, string] => [kind, KINDS[kind].filter]),
 ];
 
 export function Artifacts({ session, artifact }: { session: string; artifact?: string }) {
   const live = useLiveStore();
   useEffect(() => live.watch("artifacts", session), [live, session]);
-  const loaded = useLive().artifacts[session] ?? null;
+  useEffect(() => live.watch("runs", session), [live, session]); // which groups start folded
+  const state = useLive();
+  const loaded = state.artifacts[session] ?? null;
+  const runs = state.runs[session];
+  // null until the runs are read; when they fail no run counts as ended: nothing is hidden.
+  const ended = !runs ? null : "items" in runs ? runs.items.filter((one) => !isOpen(one)).map((one) => one.name) : [];
   let shown;
   if (loaded === null) shown = <p className="muted">Loading…</p>;
   else if ("error" in loaded) {
@@ -43,7 +54,7 @@ export function Artifacts({ session, artifact }: { session: string; artifact?: s
       </p>
     );
   } else if (artifact !== undefined) shown = <ArtifactPage session={session} id={artifact} artifacts={loaded} />;
-  else shown = <ArtifactsTable session={session} artifacts={loaded.items} />;
+  else shown = <ArtifactsTable key={session} session={session} artifacts={loaded.items} ended={ended} />;
   return (
     <section className="artifacts-tab" aria-label="Artifacts">
       {shown}
@@ -51,11 +62,45 @@ export function Artifacts({ session, artifact }: { session: string; artifact?: s
   );
 }
 
-function ArtifactsTable({ session, artifacts }: { session: string; artifacts: ArtifactInfo[] }) {
+// A group as it shows now: its heading's name and fold, and the id `fold.controls` names.
+type ShownGroup = ScopeGroup & { name: string; id: string; fold: Fold };
+
+// Where the groups stand: each scope's default fold, then Session and the scopes of open runs
+// and those of ended runs, the runs by freshness on entering the tab.
+type Laid = { defaults: ArtifactGroups; open: string[]; ended: string[] };
+
+// Whether the focus is in a scope's group, by the group's `data-scope`.
+const focusIn = (scope: string) => document.activeElement?.closest("[data-scope]")?.getAttribute("data-scope") === scope;
+
+function ArtifactsTable({ session, artifacts, ended }: { session: string; artifacts: ArtifactInfo[]; ended: string[] | null }) {
+  const [root, width] = useWidth<HTMLDivElement>();
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState(ALL);
   const [kind, setKind] = useState<string>(ALL);
-  if (artifacts.length === 0) return <p className="empty">No artifacts yet</p>;
+  const [folds, setFolds] = useState(() => storedArtifactGroups(session));
+  // Each scope's place and default fold, taken once: on entering the tab, or when its group
+  // first appears, at the end of its part. While the tab is open nothing moves or folds under
+  // the human, whoever writes and whichever run ends; a group with the focus stays open.
+  const [laid, setLaid] = useState<Laid>({ defaults: {}, open: [], ended: [] });
+  const fresh = ended === null ? [] : [...new Set(artifacts.map((one) => one.scope))].filter((one) => !laid.defaults[one]);
+  if (fresh.length > 0) {
+    const over = fresh.filter((one) => ended?.includes(one));
+    const folds = fresh.map((one) => [one, over.includes(one) && !focusIn(one) ? "folded" : "open"]);
+    setLaid({
+      defaults: { ...laid.defaults, ...Object.fromEntries(folds) },
+      open: [...laid.open, ...fresh.filter((one) => !over.includes(one)).sort(sessionFirst)],
+      ended: [...laid.ended, ...over],
+    });
+  }
+  const ids = useId();
+  if (artifacts.length === 0) {
+    return (
+      <div className="empty">
+        <p className="empty-title">No artifacts yet</p>
+        <p className="empty-line">Agents save plans, reviews, images and mockups here (write_artifact).</p>
+      </div>
+    );
+  }
   const runs = [...new Set(artifacts.map((one) => one.scope).filter(Boolean))].sort();
   const wanted = query.trim().toLowerCase();
   const shown = artifacts.filter(
@@ -67,8 +112,33 @@ function ArtifactsTable({ session, artifacts }: { session: string; artifacts: Ar
           text.toLowerCase().includes(wanted),
         )),
   );
+  const fold = (group: string, to: "open" | "folded") => {
+    const next = { ...folds, [group]: to };
+    setFolds(next);
+    storeArtifactGroups(session, next);
+  };
+  // Counted over the session's artifacts: a filter never changes the look, one scope is flat.
+  const groups: ShownGroup[] | null =
+    scope === ALL && artifacts.length >= GROUPS_FROM
+      ? groupByScope(shown, [...laid.open, ...laid.ended]).map((group, at) => {
+          const id = `${ids}-${at}`;
+          const open = (folds[group.scope] ?? laid.defaults[group.scope] ?? "open") === "open";
+          return {
+            ...group,
+            id,
+            name: group.scope || "Session",
+            fold: {
+              open: wanted !== "" || open,
+              controls: id,
+              onToggle: () => fold(group.scope, open ? "folded" : "open"),
+              disabled: wanted !== "",
+            },
+          };
+        })
+      : null;
+  const View = width !== null && width >= TABLE_FROM ? Table : List;
   return (
-    <div className="artifacts-list">
+    <div ref={root} className="artifacts-list">
       <div className="artifacts-tools">
         <input
           type="search"
@@ -88,7 +158,7 @@ function ArtifactsTable({ session, artifacts }: { session: string; artifacts: Ar
           ))}
         </select>
         <span className="segments" role="group" aria-label="Type">
-          {KINDS.map(([value, label]) => (
+          {TYPES.map(([value, label]) => (
             <button key={value} type="button" aria-pressed={kind === value} onClick={() => setKind(value)}>
               {label}
             </button>
@@ -96,50 +166,151 @@ function ArtifactsTable({ session, artifacts }: { session: string; artifacts: Ar
         </span>
       </div>
       <div className="artifacts-scroll">
-        <table className="artifacts-table" aria-label="Artifacts">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Type</th>
-              <th>Size</th>
-              <th>Author</th>
-              <th>Updated</th>
-              <th>Latest change</th>
-            </tr>
-          </thead>
-          <tbody>
-            {shown.map((one) => (
-              <Row key={one.id} session={session} artifact={one} />
-            ))}
-          </tbody>
-        </table>
+        <View session={session} artifacts={shown} groups={groups} bare={scope !== ALL} />
         {shown.length === 0 && <p className="muted list-none">No match</p>}
       </div>
     </div>
   );
 }
 
-// A row: a plain click anywhere on it, or on its name's link (also Enter), opens its latest
-// record in the panel over the list, with the focus on the link, so closing the panel
-// brings it back there. The link keeps the page's address: a click with a modifier or the
-// middle button opens the page in a new tab, as the browser does.
-function Row({ session, artifact }: { session: string; artifact: ArtifactInfo }) {
+// `bare`: a flat list's names go without their run, which the scope filter says.
+type ViewProps = { session: string; artifacts: ArtifactInfo[]; groups: ShownGroup[] | null; bare: boolean };
+
+// A group's run goes by its exact name, so its heading drops the capitals; Session is a word.
+const groupClass = (group: ScopeGroup) => `artifact-group${group.scope ? " of-run" : ""}`;
+
+const groupHead = (group: ShownGroup) => (
+  <GroupHead
+    nameId={`${group.id}-name`}
+    name={group.name}
+    count={group.artifacts.length}
+    unit={group.artifacts.length === 1 ? "artifact" : "artifacts"}
+    fold={group.fold}
+  />
+);
+
+function Table({ session, artifacts, groups, bare }: ViewProps) {
+  return (
+    <table className="artifacts-table" aria-label="Artifacts">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Size</th>
+          <th>Author</th>
+          <th>Updated</th>
+          <th>Latest change</th>
+        </tr>
+      </thead>
+      {groups === null ? (
+        <tbody>
+          {artifacts.map((one) => (
+            <Row key={one.id} session={session} artifact={one} bare={bare} />
+          ))}
+        </tbody>
+      ) : (
+        groups.map((group) => (
+          <tbody key={group.scope} id={group.id} className={groupClass(group)} data-scope={group.scope}>
+            <tr>
+              <th colSpan={6} scope="rowgroup">
+                {groupHead(group)}
+              </th>
+            </tr>
+            {group.fold.open &&
+              group.artifacts.map((one) => <Row key={one.id} session={session} artifact={one} bare />)}
+          </tbody>
+        ))
+      )}
+    </table>
+  );
+}
+
+function List({ session, artifacts, groups, bare }: ViewProps) {
+  if (groups === null) {
+    return (
+      <ul className="artifact-items" aria-label="Artifacts">
+        {artifacts.map((one) => (
+          <ArtifactItem key={one.id} session={session} artifact={one} bare={bare} />
+        ))}
+      </ul>
+    );
+  }
+  return groups.map((group) => (
+    <section key={group.scope} className={groupClass(group)} aria-labelledby={`${group.id}-name`} data-scope={group.scope}>
+      {groupHead(group)}
+      <div id={group.id} hidden={!group.fold.open}>
+        {group.fold.open && (
+          <ul className="artifact-items">
+            {group.artifacts.map((one) => (
+              <ArtifactItem key={one.id} session={session} artifact={one} bare />
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  ));
+}
+
+const Updated = ({ at }: { at: string }) => (
+  <time dateTime={at} title={new Date(at).toLocaleString()}>
+    {since(at)} ago
+  </time>
+);
+
+// How a row opens: a plain click, or Enter on its name's link, opens its latest record in the
+// panel over the list, with the focus on the link, so closing the panel brings it back there.
+// The link keeps the page's address: a click with a modifier or the middle button opens the
+// page in a new tab, as the browser does.
+function useRowOpen(session: string, artifact: ArtifactInfo) {
   const view = useView(session);
   const link = useRef<HTMLAnchorElement>(null);
-  const { latest } = artifact;
   const open = (event: MouseEvent) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     link.current?.focus();
-    view(latest.id);
+    view(artifact.latest.id);
   };
+  return { link, open };
+}
+
+// A row of the list: its link stretches over the row (styles.css), so a press anywhere on it
+// is the link's and the tooltip, the latest change, is the row's. In a group, or with one
+// scope picked, the name goes without its run, which the heading or the filter says.
+function ArtifactItem({ session, artifact, bare = false }: { session: string; artifact: ArtifactInfo; bare?: boolean }) {
+  const { link, open } = useRowOpen(session, artifact);
+  const { latest } = artifact;
+  return (
+    <li className="artifact-item">
+      <KindIcon mediaType={latest.media_type} />
+      <span className="artifact-item-text">
+        <span className="artifact-item-line">
+          <Tooltip tip={latest.summary || null}>
+            <Link ref={link} to={artifactPath(session, artifact.id)} className="artifact-link" onClick={open}>
+              <FullName scope={bare ? "" : artifact.scope} name={artifact.name} />
+            </Link>
+          </Tooltip>
+          {artifact.title && ` · ${artifact.title}`}
+        </span>
+        <span className="artifact-item-line artifact-item-meta">
+          {KINDS[kindOf(latest.media_type)].word} · {latest.author} · <Updated at={latest.created_at} /> ·{" "}
+          {size(latest.size)}
+        </span>
+      </span>
+    </li>
+  );
+}
+
+// A row of the table: a click anywhere on it opens it, as its link does.
+function Row({ session, artifact, bare = false }: { session: string; artifact: ArtifactInfo; bare?: boolean }) {
+  const { link, open } = useRowOpen(session, artifact);
+  const { latest } = artifact;
   return (
     <tr onClick={(event) => !(event.target as Element).closest("a") && open(event)}>
       <td className="artifact-cell">
         <KindIcon mediaType={latest.media_type} />
         <span>
           <Link ref={link} to={artifactPath(session, artifact.id)} className="artifact-link" onClick={open}>
-            <FullName scope={artifact.scope} name={artifact.name} />
+            <FullName scope={bare ? "" : artifact.scope} name={artifact.name} />
           </Link>
           {artifact.title && <span className="artifact-row-title">{artifact.title}</span>}
         </span>
@@ -153,9 +324,7 @@ function Row({ session, artifact }: { session: string; artifact: ArtifactInfo })
         </span>
       </td>
       <td className="numeric">
-        <time dateTime={latest.created_at} title={new Date(latest.created_at).toLocaleString()}>
-          {since(latest.created_at)} ago
-        </time>
+        <Updated at={latest.created_at} />
       </td>
       <td className="artifact-change">{latest.summary}</td>
     </tr>

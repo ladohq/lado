@@ -25,6 +25,7 @@ import { CopyIconButton } from "./Copy";
 import { isOpen } from "./Flows";
 import { messageWindow, useLive, useLiveStore, windowKey, type MessageSpec } from "./live";
 import { ListPage, type Entry } from "./ListPage";
+import { useModal } from "./modal";
 import { agentPath, runPath, sessionPath } from "./paths";
 import { storeAgentMessages } from "./prefs";
 import { quoteArea } from "./quote";
@@ -275,7 +276,7 @@ function AgentPage({ session, agent, lists }: { session: string; agent: AgentInf
       </dl>
       <AgentMessages session={session} name={agent.name} from={agent.spawned_at} />
       <div className="agent-composer">
-        <Composer session={session} stopped={false} to={agent.name} inputRef={composer} />
+        <Composer session={session} to={agent.name} inputRef={composer} />
         {worker && <p className="muted hint">The supervisor gets a one-line copy.</p>}
       </div>
       {finishing && <FinishDialog session={session} agent={agent.name} onClose={() => setFinishing(false)} />}
@@ -402,8 +403,8 @@ function FinishDialog({ session, agent, onClose }: { session: string; agent: str
   const [discarding, setDiscarding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
+  useModal(dialog);
   useEffect(() => {
-    dialog.current?.showModal();
     let current = true;
     getFinishPreview(session, agent).then(
       (value) => current && setPreview({ value }),

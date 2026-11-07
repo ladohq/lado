@@ -18,7 +18,8 @@
 // itself, silently: the page hidden, IDLE_MS without input, its socket lost after it was
 // open, the panel folded. The panel owns which agents are in control. The bar names the
 // connection only while it is not open. A terminal closed for good has Reconnect (to view),
-// and opens again by itself when its agent comes back.
+// and opens again by itself when its agent comes back. A stopped session's terminal opens no
+// socket and says that its agent is not running; its real one is made when the session runs.
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
@@ -38,6 +39,7 @@ import type { AgentInfo } from "./api";
 import { avatar } from "./FeedRow";
 import { CloseIcon, CollapsePanelIcon, ExpandIcon, KeyboardIcon, ViewIcon } from "./icons";
 import { useLive, useLiveStore } from "./live";
+import { useModal } from "./modal";
 import { TERMINAL_PARAM } from "./paths";
 import { usePhone } from "./phone";
 import { PANEL_WIDTH, storeAskControl, storedAskControl } from "./prefs";
@@ -96,10 +98,12 @@ function escapeIsOurs(target: EventTarget | null): boolean {
 export function TerminalPanel({
   session,
   column,
+  stopped,
   children,
 }: {
   session: string;
   column: PanelColumn;
+  stopped: boolean;
   children: ReactNode;
 }) {
   const live = useLiveStore();
@@ -159,6 +163,15 @@ export function TerminalPanel({
     releaseAll();
     setExpanded(false);
   }, [collapsed, releaseAll]);
+  // A stop ends control and Expand as a fold does, whatever is open, and every terminal with
+  // them: after Resume one is made again as the panel shows it.
+  useEffect(() => {
+    if (!stopped) return;
+    releaseAll();
+    setExpanded(false);
+    setPhoneOpen(false);
+    setShown([]);
+  }, [stopped, releaseAll]);
 
   // The selected tab, chosen here or by a chip, scrolls into the tabs' view. Not as the page
   // opens: Chromium's Tab would start from the tab, past Skip to chat.
@@ -231,7 +244,7 @@ export function TerminalPanel({
   }, [phone, phoneOpen, closePhone]);
 
   // A tab's terminal is made the first time it shows in the open panel.
-  const made = collapsed || !column.ready || shown.includes(active) ? shown : [...shown, active];
+  const made = stopped || collapsed || !column.ready || shown.includes(active) ? shown : [...shown, active];
   useEffect(() => {
     if (made !== shown) setShown(made);
   });
@@ -422,7 +435,9 @@ export function TerminalPanel({
               className="term-body"
               hidden={collapsed || agent !== active}
             >
-              {made.includes(agent) && (
+              {stopped ? (
+                <StoppedTerminal />
+              ) : made.includes(agent) && (
                 <AgentTerminal
                   session={session}
                   agent={agent}
@@ -493,6 +508,23 @@ const CONNECTING: LinkState = { phase: "connecting", reason: null };
 const controlText = (agent: string) =>
   `What you type goes straight to ${agent}, as if you typed in its tmux window. Messages LADO ` +
   "delivers to it meanwhile land among your keys.";
+
+// A terminal of a stopped session: nothing to connect to, so no socket and no way to ask for one.
+function StoppedTerminal() {
+  return (
+    <div className="term" data-link="stopped">
+      <div className="term-tools">
+        <span className="term-mode term-view">
+          <ViewIcon />
+          Viewing
+        </span>
+      </div>
+      <div className="term-screen term-stopped">
+        <p>Agent not running — resume the session to start it</p>
+      </div>
+    </div>
+  );
+}
 
 // `info`: the agent as the session's agents list has it, or null while it is not there.
 // `mode` is the panel's; Take control, Release and the terminal's own ends of control
@@ -737,9 +769,7 @@ function AgentTerminal({
 function ControlDialog({ agent, onTake, onCancel }: { agent: string; onTake: () => void; onCancel: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [never, setNever] = useState(false);
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
+  useModal(dialog);
   return (
     <dialog
       ref={dialog}

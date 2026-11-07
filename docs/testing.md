@@ -417,7 +417,10 @@ Seven layers; each change gets tests at the lowest layer that can catch its bugs
    components with vitest (`make web`), `fetch` mocked. vitest runs in en-US whatever the
    machine's locale (`test.env` in `web/vite.config.ts`, held by `web/src/testLocale.test.ts`):
    the UI formats dates and sorts names in the human's locale, and the tests' expected
-   values are en-US's.
+   values are en-US's. A test has 30 s (`testTimeout` in `web/vite.config.ts`) and `waitFor`
+   and `findBy` wait 10 s (`asyncUtilTimeout` in `web/src/testSetup.ts`), so a loaded machine
+   does not fail what only comes late; a test sets no timeout of its own, and waits with
+   Testing Library's `waitFor`, not `vi.waitFor`, whose own 1 s no setting changes.
 2. **Integration** (`make test-integration`): real tmux, git, hooks, `lado mcp` and SQLite
    with the fake agent instead of an LLM. Required for behaviour that crosses processes,
    also the UI server's (one per home, background start, stop), without a browser.

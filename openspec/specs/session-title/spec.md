@@ -90,8 +90,8 @@ SHALL find a session whose title or name holds the text.
 ### Requirement: Where the UI shows a title it shows the name too
 
 Where the UI shows a session's title,
-it SHALL also show the name: in the row, first in its grey line (`lado-2 · 3 agents ·
-1h 12m`); in the session's details, as `id <name>`; in the cards, after the title. The
+it SHALL also show the name: in the row, first in its grey line (`lado-2 · ran
+1 h 12 min`); in the session's details, as `id <name>`; in the cards, after the title. The
 head's line SHALL show the title alone. A session without a title SHALL look as it does
 without this change, but for the `id <name>` the details show for every session.
 

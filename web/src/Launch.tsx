@@ -47,6 +47,7 @@ import { useLaunchModel } from "./LaunchModel";
 import { ProjectField } from "./LaunchProject";
 import { closedBy, looks, resumeAttempt } from "./attempts";
 import { useLive, useLiveStore, useLocked } from "./live";
+import { useModal } from "./modal";
 import { ActionProblem, Waits } from "./waitingParts";
 import { projectPath, PROVIDERS_PATH, sessionPath } from "./paths";
 
@@ -255,9 +256,7 @@ function LaunchDialog({
   const [cloneEnd, setCloneEnd] = useState<{ note: string } | { refused: CloneRefused } | null>(null);
   const branchesAsked = useRef(new Map<string, Promise<RemoteInfo>>());
 
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
+  useModal(dialog);
 
   const cloning = source === "url";
   const scratching = source === "scratch";
@@ -765,6 +764,7 @@ function LaunchDialog({
             recent={recent}
             workspace={workspace}
             disabled={busy || resuming !== null}
+            fixed={resuming !== null}
             head={resuming ? null : <SourceSwitch source={source} onSource={setSource} disabled={busy} />}
           />
         )}
@@ -1144,6 +1144,7 @@ function WhereField({
   recent,
   workspace,
   disabled,
+  fixed,
   head,
 }: {
   path: string;
@@ -1156,6 +1157,7 @@ function WhereField({
   recent: RecentFolder[];
   workspace: Workspace | null; // LADO_REPOS, else ~/workspace; null until it is known
   disabled: boolean;
+  fixed: boolean; // Resume: the session's folder as text that wraps, not a field
   head: ReactNode; // the switch to Clone from URL, beside the label
 }) {
   const ids = useId();
@@ -1184,68 +1186,80 @@ function WhereField({
   return (
     <div className="field launch-where">
       <div className="where-head">
-        <label htmlFor={`${ids}-where`}>Where</label>
+        {fixed ? (
+          <span id={`${ids}-where`} className="field-label">
+            Where
+          </span>
+        ) : (
+          <label htmlFor={`${ids}-where`}>Where</label>
+        )}
         {head}
       </div>
-      <div className="where-box">
-        <input
-          ref={input}
-          id={`${ids}-where`}
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={options.length > 0}
-          aria-controls={`${ids}-folders`}
-          aria-activedescendant={active >= 0 && options[active] ? `${ids}-folder-${active}` : undefined}
-          value={path}
-          placeholder={workspace ? `${withSlash(workspace.path)}…` : ""}
-          autoComplete="off"
-          spellCheck={false}
-          disabled={disabled}
-          onChange={(event) => {
-            onPath(event.target.value);
-            setOpen(true);
-            setActive(-1);
-          }}
-          onFocus={() => {
-            // Also before the workspace is known: a focus that comes first lists its
-            // subfolders once it is, and until then nothing is asked (no parent).
-            if (empty) setOpen(true);
-          }}
-          onBlur={() => setOpen(false)}
-          onKeyDown={(event) => {
-            if (options.length === 0) return;
-            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-              event.preventDefault();
-              const step = event.key === "ArrowDown" ? 1 : -1;
-              setActive((at) => (at + step + options.length) % options.length);
-            } else if (event.key === "Enter" && active >= 0) {
-              event.preventDefault();
-              pick(options[active]);
-            } else if (event.key === "Escape") {
-              event.preventDefault();
-              setOpen(false);
-            }
-          }}
-        />
-        {options.length > 0 && (
-          <ul id={`${ids}-folders`} role="listbox" aria-label="Folders" className="where-list">
-            {options.map((one, i) => (
-              <li
-                key={one}
-                id={`${ids}-folder-${i}`}
-                role="option"
-                aria-selected={i === active}
-                onMouseDown={(event) => {
-                  event.preventDefault(); // keep the input's focus
-                  pick(one);
-                }}
-              >
-                {one}/
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {fixed ? (
+        <div role="group" aria-labelledby={`${ids}-where`} className="where-fixed">
+          {path}
+        </div>
+      ) : (
+        <div className="where-box">
+          <input
+            ref={input}
+            id={`${ids}-where`}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded={options.length > 0}
+            aria-controls={`${ids}-folders`}
+            aria-activedescendant={active >= 0 && options[active] ? `${ids}-folder-${active}` : undefined}
+            value={path}
+            placeholder={workspace ? `${withSlash(workspace.path)}…` : ""}
+            autoComplete="off"
+            spellCheck={false}
+            disabled={disabled}
+            onChange={(event) => {
+              onPath(event.target.value);
+              setOpen(true);
+              setActive(-1);
+            }}
+            onFocus={() => {
+              // Also before the workspace is known: a focus that comes first lists its
+              // subfolders once it is, and until then nothing is asked (no parent).
+              if (empty) setOpen(true);
+            }}
+            onBlur={() => setOpen(false)}
+            onKeyDown={(event) => {
+              if (options.length === 0) return;
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                const step = event.key === "ArrowDown" ? 1 : -1;
+                setActive((at) => (at + step + options.length) % options.length);
+              } else if (event.key === "Enter" && active >= 0) {
+                event.preventDefault();
+                pick(options[active]);
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                setOpen(false);
+              }
+            }}
+          />
+          {options.length > 0 && (
+            <ul id={`${ids}-folders`} role="listbox" aria-label="Folders" className="where-list">
+              {options.map((one, i) => (
+                <li
+                  key={one}
+                  id={`${ids}-folder-${i}`}
+                  role="option"
+                  aria-selected={i === active}
+                  onMouseDown={(event) => {
+                    event.preventDefault(); // keep the input's focus
+                    pick(one);
+                  }}
+                >
+                  {one}/
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {made && !disabled && (
         <div className="recent">
           Workspace:

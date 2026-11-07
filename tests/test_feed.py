@@ -129,6 +129,7 @@ def test_a_change_after_the_start_comes_with_its_item_in_the_form_of_the_rest_ap
             "project": None,
             "model": None,
             "model_missing": False,
+            "project_title": None,
         },
     }
     runtime.set_title("s", "Review")
@@ -137,6 +138,27 @@ def test_a_change_after_the_start_comes_with_its_item_in_the_form_of_the_rest_ap
     state.delete_session("s")
     deleted = stream.until(is_change("sessions", "s"))[-1]
     assert (deleted.data["op"], deleted.data["item"]) == ("delete", None)
+
+
+def test_a_projects_new_title_goes_out_with_each_of_its_sessions(streams, fake_tmux):
+    with state.creating_project("shop", "Shop"):
+        pass
+    state.add_session(state.Session("a", "/a", None, provider="claude", project="shop"))
+    state.add_session(state.Session("b", "/b", None, provider="claude", project="shop"))
+    state.add_session(state.Session("other", "/o", None, provider="claude"))
+    stream = streams()
+    stream.next()  # reset
+
+    def titles(title: str | None) -> dict[str, str | None]:
+        state.set_project_title("shop", title)
+        return {
+            e.data["session"]: e.data["item"]["project_title"]
+            for e in stream.quiet(0.5)
+            if e.event == "change" and e.data["kind"] == "sessions"
+        }
+
+    assert titles("Shop EU") == {"a": "Shop EU", "b": "Shop EU"}
+    assert titles(None) == {"a": None, "b": None}
 
 
 def test_the_item_is_the_rows_current_state_whatever_the_op(streams, fake_tmux):
@@ -589,6 +611,7 @@ def test_a_resumed_stream_gets_the_derived_fields_as_they_are_now(streams, repo,
         "project": None,
         "model": None,
         "model_missing": False,
+        "project_title": None,
     }
     assert stream.quiet(0.3) == []  # a stopped session has nothing derived
 

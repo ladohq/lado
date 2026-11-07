@@ -4,9 +4,11 @@ touch screen (`is_mobile`, `has_touch`) upright at 390x844 and 360x780 and sidew
 
 import re
 
+import agent_helpers
 import pytest
 from playwright.sync_api import Browser, Locator, Page, expect
 from test_gates import LONG_NOTE, MEASURE_SCROLLERS, gated_session, recommended, waiting_card
+from test_launch import stopped_session
 from test_main_screen import log_in, running_session
 
 from lado import runtime, state
@@ -273,6 +275,35 @@ def test_a_wide_touch_screens_other_pages_scroll_inside_the_app(device, server, 
     assert content.evaluate("c => c.scrollTop") == 100
 
 
+def test_a_wide_touch_screens_rail_ends_with_the_part_it_sees(device, server, repo, shot):
+    """iPad held sideways (LAD-226): the rail stayed 100vh, taller than the visible part, and
+    Report a bug and Settings lay under the screen's bottom edge, on every page."""
+    session = running_session(repo)
+    page = opened(device((1180, 688)), server, f"/sessions/{session}")
+    for path in (f"/sessions/{session}", "/needs-you"):
+        page.goto(f"{server['url']}{path}")
+        settings = rail(page).get_by_role("link", name="Settings")
+        expect(settings).to_be_visible()
+        page.evaluate("document.documentElement.style.setProperty('--phone-height', '560px')")
+        assert box(rail(page))["height"] == 560, path
+        assert box(settings)["y"] + box(settings)["height"] <= 560, path
+    shot(page, full_page=False)
+
+
+def test_a_computers_rail_is_as_high_as_the_window(device, server):
+    page = opened(device((1280, 800), touch=False), server, "/needs-you")
+    expect(rail(page)).to_be_visible()
+    assert box(rail(page))["height"] == 800
+
+
+def test_an_upright_tablets_rail_is_as_high_as_the_part_it_sees(device, server, repo):
+    session = running_session(repo)
+    page = opened(device((820, 1180)), server, f"/sessions/{session}")
+    expect(rail(page)).to_be_visible()
+    page.evaluate("document.documentElement.style.setProperty('--phone-height', '600px')")
+    assert box(rail(page))["height"] == 600
+
+
 def test_a_computer_of_a_tablets_width_keeps_the_windows_height(device, server, repo):
     session = running_session(repo)
     page = opened(device((1180, 734), touch=False), server, f"/sessions/{session}")
@@ -284,6 +315,30 @@ def test_a_tablet_elsewhere_keeps_the_computers_frame(device, server):
     page = opened(device((768, 1024)), server, "/needs-you")
     expect(page.get_by_role("banner").locator("h1")).to_have_text("Needs you")
     assert page.locator(".app").evaluate("a => getComputedStyle(a).position") == "static"
+
+
+# The Resume window
+
+
+@pytest.mark.parametrize(
+    "folder",
+    ["clients/acme-corporation/services/platform/backend-monolith-2026", "x" * 80],
+    ids=["deep", "no-break"],
+)
+def test_the_resume_window_shows_a_long_folder_whole(device, server, tmp_path, shot, folder):
+    """On an iPhone Where cut a long path at the field's edge (LAD-226): nothing may be cut."""
+    repo = agent_helpers.init_repo(tmp_path / folder)
+    session = stopped_session(repo)
+    page = opened(device((402, 874)), server, f"/sessions/{session}")
+    page.locator(".stopped-bar").get_by_role("button", name="Resume session").click()
+    dialog = page.get_by_role("dialog", name="Resume session")
+    where = dialog.get_by_role("group", name="Where")
+    expect(where).to_have_text(str(repo))
+    assert box(where)["height"] > 38
+    assert box(where)["x"] + box(where)["width"] <= 402
+    assert where.evaluate("w => w.scrollWidth === w.clientWidth")
+    no_sideways_scroll(page)
+    shot(page, folder[:4], full_page=False)
 
 
 # The menu
@@ -440,6 +495,42 @@ def test_four_tabs_fit_360(device, server, repo, shot):
         found = box(tabs.nth(at))
         assert found["x"] >= 0 and found["x"] + found["width"] <= NARROWEST[0], (at, found)
     shot(page, full_page=False)
+
+
+@pytest.mark.parametrize("size", [SIDEWAYS, (568, 320)], ids=["844x390", "568x320"])
+def test_sideways_the_toggle_ends_the_tab_row_and_shows_the_agents_messages(
+    device, server, repo, shot, size
+):
+    session = running_session(repo)
+    runtime.spawn_worker(session, "Build it", name="w1")
+    agent_helpers.wait_for(
+        lambda: state.get_agent(session, "w1").status == state.IDLE, "w1 idle", session
+    )
+    runtime.send_message(session, "supervisor", "w1", "please review the branch")
+    page = opened(device(size), server, f"/sessions/{session}")
+    row = page.get_by_role("navigation", name="Session sections")
+    tabs = row.get_by_role("link")
+    toggle = row.get_by_role("button", name="Messages between agents")
+    expect(toggle).to_be_visible()
+    expect(page.get_by_role("button", name="Messages between agents")).to_have_count(1)
+    found, last = box(toggle), box(tabs.last)
+    assert found["height"] >= 36
+    assert found["x"] >= last["x"] + last["width"]
+    assert found["x"] + found["width"] <= size[0]
+    for at in range(4):
+        tab = box(tabs.nth(at))
+        assert tab["x"] >= 0 and tab["x"] + tab["width"] <= found["x"], (at, tab)
+    shot(page, "yours", full_page=False)
+    feed = page.get_by_role("log", name="Chat with the session")
+    between = feed.get_by_role("article", name="Message from supervisor to w1")
+    expect(between).to_have_count(0)
+    toggle.tap()
+    expect(toggle).to_have_attribute("aria-pressed", "true")
+    expect(between).to_be_visible()
+    shot(page, "all", full_page=False)
+    tabs.nth(1).tap()
+    expect(tabs.nth(1)).to_have_attribute("aria-current", "page")
+    expect(toggle).to_have_count(0)
 
 
 def test_the_kits_tabs_fit_360(device, server, shot):

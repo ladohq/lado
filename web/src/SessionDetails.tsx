@@ -18,6 +18,7 @@ import {
 } from "./api";
 import { CopyButton } from "./Copy";
 import { CopyIcon, LinkIcon, PencilIcon } from "./icons";
+import { useModal } from "./modal";
 import { projectPath, sessionLink } from "./paths";
 import { shortRemote } from "./remote";
 import { label } from "./sessionLabel";
@@ -273,11 +274,7 @@ export function SessionDetails({
   const [editing, setEditing] = useState(false);
   const back = useRef(false); // the focus goes back to Rename once the field is gone
 
-  useEffect(() => {
-    const shown = dialog.current;
-    shown?.showModal();
-    return () => shown?.close();
-  }, []);
+  useModal(dialog);
   useEffect(() => {
     if (editing || !back.current) return;
     back.current = false;

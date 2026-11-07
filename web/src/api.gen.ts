@@ -3792,6 +3792,8 @@ export interface components {
              * @default false
              */
             model_missing: boolean;
+            /** Project Title */
+            project_title?: string | null;
         };
         /**
          * SessionKitInfo
@@ -3808,6 +3810,8 @@ export interface components {
             valid: boolean;
             /** Problem */
             problem: string | null;
+            /** Flows */
+            flows: string[];
         };
         /**
          * SessionModelAsked

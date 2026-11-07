@@ -1,5 +1,6 @@
 // The live store's list of what waits for the human (Needs you): loaded from /api/waiting,
 // and loaded again on reset and on every change that can change it; never polled.
+import { waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { SessionInfo, WaitingItem } from "./api";
@@ -77,7 +78,7 @@ async function started(): Promise<Live> {
   const live = new Live();
   live.start();
   stream().start();
-  await vi.waitFor(() => expect(live.get().sessions).not.toBeNull());
+  await waitFor(() => expect(live.get().sessions).not.toBeNull());
   return live;
 }
 
@@ -165,5 +166,5 @@ test("a list that cannot load says why", async () => {
   );
   const live = await started();
   live.watch("waiting");
-  await vi.waitFor(() => expect(live.get().waiting).toEqual({ error: "lado.db is newer" }));
+  await waitFor(() => expect(live.get().waiting).toEqual({ error: "lado.db is newer" }));
 });

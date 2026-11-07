@@ -862,11 +862,6 @@ def codex_session(smoke_repo, server: endpoints.Responses) -> state.Agent:
     return state.get_agent(SESSION, "supervisor")
 
 
-def codex_journal(agent: state.Agent) -> str:
-    found = (providers.base.config_path(agent) / "sessions").glob("**/rollout-*.jsonl")
-    return "\n".join(path.read_text() for path in found)
-
-
 @pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
 def test_codex_runs_on_a_server_with_its_tools_and_no_login(
     smoke_repo, smoke_provider, codex_server, fake_endpoint
@@ -900,8 +895,23 @@ def test_codex_runs_on_a_server_with_its_tools_and_no_login(
         if tool.get("type") == "namespace"
         for inner in tool["tools"]
     ]
-    said = codex_journal(agent) + tmux.capture(SESSION, "supervisor")
-    assert "Model metadata" not in said
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
+def test_model_of_a_codex_agent_on_a_server_shows_its_model_alone(
+    smoke_repo, smoke_provider, codex_server
+):
+    """Real Codex takes the agent's list, in the format of the installed binary: with a field it
+    does not read the list, it would show OpenAI's models here."""
+    codex_session(smoke_repo, codex_server)
+    tmux.send_text(SESSION, "supervisor", "/model")
+    shown = lambda: CODEX_MODEL in tmux.capture(SESSION, "supervisor")  # noqa: E731
+    wait_for(shown, "/model's list", 30)
+    screen = tmux.capture(SESSION, "supervisor")
+    print(f"codex: /model shows\n{screen}")
+    assert "On Шлюз" in screen
+    assert "gpt-5" not in screen.lower() and "gpt-6" not in screen.lower()
     runtime.stop_session(SESSION)
 
 

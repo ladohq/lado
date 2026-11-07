@@ -170,14 +170,6 @@ jobs:
         env:
           PROVIDER: ${{ matrix.provider }}
         run: uv run python scripts/smoke_ci.py run "$PROVIDER" "$RUNNER_TEMP/smoke"
-      - name: TEMPORARY sandbox probe (LAD-231 F3)
-        if: always() && matrix.os == 'ubuntu-latest' && matrix.provider == 'codex'
-        continue-on-error: true
-        run: |
-          sysctl kernel.apparmor_restrict_unprivileged_userns || true
-          cd "$(mktemp -d)"
-          "$HOME/.local/bin/codex" sandbox -- true; echo "codex sandbox exit $?"
-          "$HOME/.local/bin/codex" sandbox linux -- true; echo "codex sandbox linux exit $?"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

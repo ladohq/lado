@@ -33,7 +33,9 @@ goes, and a job killed at its timeout, or a crash, would leave an unredacted log
 `tempfile.mkdtemp()`, redacts there, on bytes, as `agent_helpers.keep_evidence` does (the script
 imports nothing of LADO, so it has its own few lines), and only then moves the files to `<out>`.
 Killed before that, nothing is uploaded; the evidence of that run is lost, and the 25-minute limit
-of D4 makes that rare. Retention 5 days, as the smoke's.
+of D4 makes that rare. Retention 5 days, as the smoke's. A window wraps what it shows, and GitHub's
+mask needs the whole value, so `redact` finds the value with non-key characters between its own,
+and the job's log gets the test log only after it (the review's F2): a running cell is silent.
 
 **D6. The trial decides Codex's and Claude Code's routes, before any other code.** The issues say a direct path may fail,
 but the error comes from routing, so an OpenAI model behind OpenRouter may pass where another
@@ -89,7 +91,8 @@ reruns is about 10 runs, $2 to $5: within $10. The trial is about 5 full runs, $
 $5, and the stop at $4 stays.
 
 **D9. Keys and setup: what the human does.** Two keys, never `OPENROUTER_API_KEY` of the agents'
-environment, which is the human's own development key.
+environment, which is the human's own development key. In the event the human allowed that key at
+the design's gate, and the trial ran on it, with its limit of $5, instead of a key of its own.
 
 - The trial's key, limit $5: a project secret `OPENROUTER_LIVE_KEY`, set by the human
   (`lado project set <id> OPENROUTER_LIVE_KEY --secret`), so an agent of the project gets it at

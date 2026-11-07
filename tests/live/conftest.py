@@ -36,7 +36,7 @@ def live_provider(request, monkeypatch, codex_home, tmp_path) -> str:
         pytest.skip(f"{CLASSES[name].command} not installed")
     if reason := live_models.endpoint_problem(name):
         pytest.skip(reason)
-    for variable in live_models.LOGIN_VARIABLES:
+    for variable in real_clis.LOGIN_VARIABLES:
         monkeypatch.delenv(variable, raising=False)
     folder = codex_home if name == "codex" else tmp_path
     folder.mkdir(parents=True, exist_ok=True)

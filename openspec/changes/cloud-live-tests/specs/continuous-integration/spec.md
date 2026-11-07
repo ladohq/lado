@@ -78,6 +78,17 @@ SHALL upload the output folder whether the cell passed or not.
 - **WHEN** a failed test's evidence and the pytest log hold the key's value
 - **THEN** the uploaded folder holds `<redacted>` in its place
 
+#### Scenario: A window wrapped the key
+
+- **WHEN** an agent's screen or the pytest log holds the key's value with spaces, line ends or a
+  CLI's frame between its characters
+- **THEN** the uploaded folder and the job's log hold `<redacted>` in its place
+
+#### Scenario: Evidence with a dangling link
+
+- **WHEN** a red cell's evidence holds a link to a file that does not exist
+- **THEN** the cell's log and the rest of the evidence are uploaded
+
 #### Scenario: The job is killed during the tests
 
 - **WHEN** the job reaches its timeout, or the script crashes, while pytest runs
@@ -86,7 +97,8 @@ SHALL upload the output folder whether the cell passed or not.
 #### Scenario: The tests hang
 
 - **WHEN** pytest is still running after the cell's own limit, shorter than the job's timeout
-- **THEN** pytest is ended, the cell is red, and its redacted log and evidence are uploaded
+- **THEN** pytest is ended, the cell is red, and its redacted log and the evidence of the tests
+  that ended before it are uploaded
 
 ### Requirement: Every provider's live tests run only on a remote endpoint
 

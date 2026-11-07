@@ -31,6 +31,15 @@ CLASSES = {
     "opencode": OpenCodeProvider,
 }
 
+# What a person's login would give; a test says itself what its CLIs use.
+LOGIN_VARIABLES = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+)
+
 CLAUDE_TRUST = "Yes, I trust this folder"
 CODEX_TRUST = "Trust this folder?"
 

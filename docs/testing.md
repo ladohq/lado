@@ -89,7 +89,9 @@ Live tests (`tests/live/`) run the real CLIs with the same isolation, every prov
 remote endpoint, set up by its entry in `live_models.SETUPS`, with nobody's login:
 `LADO_LIVE_ENDPOINT` (its base URL, ending in `/v1`; no default), `LADO_LIVE_API_KEY` (its key,
 only ever in the environment) and `LADO_LIVE_MODEL` (the model, with tools and, for the image
-test, vision), each CLI's own `LADO_LIVE_<CLI>_MODEL` winning. A test skips, naming what to
+test, vision), each CLI's own `LADO_LIVE_<CLI>_MODEL` winning (for OpenCode and Kilo with the
+prefix `endpoint/`, as `LADO_LIVE_KILO_MODEL=endpoint/<model>`: without it the CLI goes past the
+endpoint). A test skips, naming what to
 set, when any of them is unset or its CLI is missing, so a run of skips proves nothing: `make
 test-live` without them ends with no failure. E.g. `LADO_LIVE_ENDPOINT=https://openrouter.ai/api/v1
 LADO_LIVE_API_KEY=<key> LADO_LIVE_MODEL=<model> LADO_LIVE_IMAGE=1 make test-live PROVIDER=codex`.
@@ -366,8 +368,10 @@ merge. Weekly on main (Monday 04:23 UTC), by hand (`gh workflow run live.yml`) a
 release candidate, a cell per provider on Linux, each with its model of the matrix:
 `scripts/smoke_ci.py live <provider> <out>` installs the CLI at its pin and is red unless the
 tests passed and none skipped; `tests/live/test_codex_login.py` is left out, as it needs a
-person's login. It runs them for at most 25 minutes outside `<out>`, then redacts the key and
-moves the log and the evidence there for the upload; a job killed before that uploads
+person's login. It runs them for at most 25 minutes outside `<out>` and silently, then redacts
+the key, also where a window wrapped it, prints the log to the job's and moves the log and the
+evidence to `<out>` for the upload. A test ended by that limit keeps no evidence of its own,
+only the log and what the tests before it kept; a job killed before the redaction uploads
 nothing. The key is the secret `LADO_LIVE_API_KEY` of the environment `live`, which admits only
 `main` and tags `v*`, so no run of a pull request gets it, and only the test step names it.
 A run of the four cells costs about $0.07 (the trial's report). The key's limit, $10 a month, is

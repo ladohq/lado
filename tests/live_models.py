@@ -27,14 +27,6 @@ ENDPOINT = "LADO_LIVE_ENDPOINT"
 API_KEY = "LADO_LIVE_API_KEY"
 ENDPOINT_MODEL = "LADO_LIVE_MODEL"
 ENDPOINT_PROVIDER = "endpoint"  # the provider's name in each CLI's config
-# What a person's login would give; each provider's entry alone says what a test uses.
-LOGIN_VARIABLES = (
-    "ANTHROPIC_API_KEY",
-    "ANTHROPIC_AUTH_TOKEN",
-    "CLAUDE_CODE_OAUTH_TOKEN",
-    "OPENAI_API_KEY",
-    "OPENAI_BASE_URL",
-)
 
 
 def opencode_config(model: str, base_url: str, key_variable: str) -> dict:

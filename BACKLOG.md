@@ -1904,15 +1904,6 @@ goes on, and the server answers 500. Wanted: a refusal in plain words that names
 the message's fate left to the loop's check.
 Found: 2026-11-07, design of branch lado/lad-224/task-lad-227 (LAD-227).
 
-## `.kit-danger` in the kit removal window is no notice
-
-Size: S. Why here: one window keeps a look the notices rule replaced everywhere else.
-
-`.kit-danger` has a border and no icon, against `docs/design/ui.md`, Look, Notices. `.kit-alert`, its
-neighbour, went in LAD-224; this one was not in that task's report. Wanted: an error notice, as
-`.kit-warning` is a warning one, seen in the live window.
-Found: 2026-11-06, design of LAD-224.
-
 ## The hints to kill a window or a session by hand match by prefix
 
 Size: S. Why here: only a failed kill prints them, and only a session already gone is at risk.

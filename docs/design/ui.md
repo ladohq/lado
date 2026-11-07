@@ -3176,7 +3176,8 @@ page (LADO has one source of kits, git).
 - **Remove**: never blocked: the window names the running sessions that use the kit
   (their new agents and runs fail to start) and the stopped ones (a resume needs it), the
   core's lines, as `lado kits remove` prints them; a kit whose folder is gone is only
-  forgotten.
+  forgotten. The line about the running sessions is a warning notice: nothing has failed
+  and Remove stays open, so red is left for a refusal of Remove, shown in the same window.
 - **Marketplaces**: each with enabled (a checkbox), its address, when it was updated, how
   many kits it lists and its problem (not fetched, a list or `index.json` LADO cannot
   read); Update all (one that fails shows its error and the others go on,

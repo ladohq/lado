@@ -165,6 +165,23 @@ back, the UI back.
   `lado project set … --secret` and `lado project unset …` refuse, naming the link (the
   unit tests of these refusals run on Linux only). `LADO_REPOS` keeps your own workspace
   out: `lado` refuses when its `projects/` holds a project.
+- Models (from 0.45.0), with the live runs of section 2 and your own servers:
+  - After a turn of a Kilo agent, `lado ls` names its model: Kilo reports it in
+    `chat.message`, which the live tests do not check (they read Kilo's own `model.json`).
+  - Codex: `lado start --provider codex --model <a name of its list>` starts on it. With a
+    `model` in the repository's own `.codex/config.toml`, note what the agent's card says.
+  - A real model server through `lado model-server probe <address>`: a real LiteLLM is typed
+    OpenAI-compatible; on LM Studio `lado model add` refuses an embeddings model; a second
+    `lado model-server add` of one address names the first (`same address as model server`).
+  - An OpenCode agent on a model too small for its work, on a server that gives OpenCode a
+    context overflow (not LM Studio, which answers 400): the turn ends after three overflows
+    and the chat says why; never an endless `busy`.
+  - Qwen through Alibaba Model Studio, its address ending in `/compatible-mode/v1`, and a
+    model of a provider the CLI logged in to itself (`openrouter/<model>` from its list): a
+    real session answers, uses its tools and LADO's MCP tools.
+  - Settings → Models in Safari and Firefox, and on a real phone: the page does not scroll by
+    itself, a key shows as dots, the page keeps to the phone's width (Settings at 390 px is a
+    known limit, LAD-213), the model picker stays above the keyboard.
 
 There is no fixed soak time: the final follows your "ok".
 
@@ -343,6 +360,8 @@ from schema N to M; its backup is /home/lado/.lado/backups/lado.db.schema-N`. Th
 session resumes: the log has `lado: resumed session "<session>" at the container's start`
 and, a few seconds after the start, `lado ls` shows it running (before, it may still say
 `(stopped)`); the stopped one stays stopped. The UI shows the RC's version.
+From 0.45.0, a session on a chosen model of a CLI not logged in yet resumes too: the kept
+model is not refused because the CLI cannot list its models.
 The second LADO is as it was: `docker compose ps -q` in its folder prints the same
 container id, and its UI still shows `X.Y.Z`.
 

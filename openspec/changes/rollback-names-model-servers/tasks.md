@@ -31,14 +31,14 @@
 
 ## 3. Checks
 
-- [ ] 3.1 `make lint`, `make test`, `openspec validate rollback-names-model-servers --strict`,
+- [x] 3.1 `make lint`, `make test`, `openspec validate rollback-names-model-servers --strict`,
   `openspec validate --specs --strict` and the trial archive of `.lado/sdlc.md` green; report
   the tests as numbers. Check: AC-7.
-- [ ] 3.2 `make test-live` by design.md D8 on OpenCode, Kilo and Codex; `build-report` gives
-  per provider the CLI's version, passed, failed and skipped, repeats, each failure's cause,
-  and the cost if the run shows it, else the trial report's estimate, said as an estimate.
-  Check: AC-8.
-- [ ] 3.3 The pull request's description has the manual check from the start: branch, folder,
+- [x] 3.2 `make test-live` by design.md D8 on OpenCode, Kilo, Codex and Claude Code;
+  `build-report` gives per provider the CLI's version, passed, failed and skipped, repeats,
+  each failure's cause, and the cost if the run shows it, else the trial report's estimate,
+  said as an estimate. Check: AC-8.
+- [x] 3.3 The pull request's description has the manual check from the start: branch, folder,
   commands, expected; `env | grep LADO_` and `unset`; a `LADO_HOME` and `LADO_TMUX_SOCKET` of
   its own. It names what stays: what was not checked, what was declined, what is out of
   scope. Check: AC-9.

@@ -662,11 +662,7 @@ command do it.
 
 Going back to a version before 0.45.0 forgets your model servers, models and default models,
 and their keys stay in `~/.lado/model-servers/` of the home volume. Remove them when you no
-longer need them:
-
-```bash
-docker compose run --rm lado sh -c 'rm -rf ~/.lado/model-servers'
-```
+longer need them: `docker compose run --rm lado sh -c 'rm -rf ~/.lado/model-servers'`.
 
 ### A second LADO
 

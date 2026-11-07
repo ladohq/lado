@@ -62,17 +62,20 @@ the spec `codex-model-server`, so the comment changes only the path.
 
 ### D8. How the live run is made
 
-Per provider, from the worktree, the key only from the environment, the output in a log outside
-the tree:
+Locally: `live.yml` cannot run on this code, as the environment `live` that holds its key admits
+only `main` and tags `v*`. Per provider, from the worktree, the key only from the environment,
+the output in a log outside the tree:
 
 ```bash
 LADO_LIVE_ENDPOINT=https://openrouter.ai/api/v1 LADO_LIVE_API_KEY="$OPENROUTER_API_KEY" \
-LADO_LIVE_MODEL=qwen/qwen3.7-flash LADO_LIVE_IMAGE=1 make test-live PROVIDER=<provider> \
+LADO_LIVE_MODEL=<model> LADO_LIVE_IMAGE=1 make test-live PROVIDER=<provider> \
   > <temp dir>/live-<provider>.log 2>&1
 ```
 
-`<provider>` is `opencode`, `kilo` and `codex`, never empty, as an empty one would start Claude
-Code. A run of skips proves nothing: the report gives the counts per provider, and only
+`<provider>` and `<model>` are the cells of `live.yml`'s matrix, all four with the human's yes:
+`opencode`, `kilo` and `codex` on `qwen/qwen3.7-flash`, `claude` on
+`anthropic/claude-haiku-5.5`, through OpenRouter and with no Claude subscription. A run of skips
+proves nothing: the report gives the counts per provider, and only
 `tests/live/test_codex_login.py` may skip. The log is checked for the key's value without
 printing it. A failure from a model or provider gets one repeat, then the report names it. A
 failure from the epic's code stops the step with a question to the human.

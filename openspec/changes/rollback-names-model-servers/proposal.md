@@ -40,8 +40,8 @@ Options weighed:
   going back now tells.
 - The comment over `LOSES_TOOLS` in `providers/codex.py` names `tests/live_models.py`, which
   replaced the `tests/local_models.py` it names now.
-- `make test-live` runs once on the epic's code on OpenCode, Kilo and Codex, and its result is
-  reported. This changes no file.
+- `make test-live` runs once on the epic's code on OpenCode, Kilo, Codex and Claude Code, and
+  its result is reported. This changes no file.
 
 ## Scope
 
@@ -53,7 +53,6 @@ Options weighed:
 
 - Removing keys in the way back: the older LADO does not know them, and the mechanics of the
   way back do not change in this task.
-- Claude Code in the live run: it needs the human's yes, and it stays for the RC.
 - A repeat of the real way back on its own `LADO_HOME`: the readiness check ran it.
 - A schema change or a new dependency: neither is needed.
 - **The card that waits for you**, also over three lines in CHANGELOG.md: it is not this

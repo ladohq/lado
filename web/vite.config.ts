@@ -29,5 +29,7 @@ export default defineConfig({
     css: true, // tokens.test.ts reads the stylesheets (?raw); left out, they are empty
     // The UI formats and sorts in the human's locale; the tests expect en-US's on any machine.
     env: { LC_ALL: "en_US.UTF-8" },
+    // A loaded machine took tests over vitest's 5 s; a green run is no slower for it.
+    testTimeout: 30_000,
   },
 });

@@ -1061,7 +1061,7 @@ test("while the sessions load the strip's column is busy; a failed load is an al
     }),
   );
   open("/sessions");
-  await vi.waitFor(() => expect(pending.length).toBeGreaterThan(0));
+  await waitFor(() => expect(pending.length).toBeGreaterThan(0));
   const column = strip()!.querySelector(".strip-icons")!;
   expect(column.getAttribute("aria-busy")).toBe("true");
   expect(column.children).toHaveLength(0);

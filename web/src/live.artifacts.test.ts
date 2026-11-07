@@ -1,5 +1,6 @@
 // The live store's list of a session's artifacts: loaded when a page watches it, newest
 // first by their latest record, and kept by the feed's artifacts items.
+import { waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { ArtifactInfo } from "./api";
@@ -36,7 +37,7 @@ test("a session's artifacts come newest first and a new record moves its artifac
   live.start();
   stream().start();
   const stop = live.watch("artifacts", "lado");
-  await vi.waitFor(() => expect(ids(live)).toEqual(["a1@r1", "a2@p1"]));
+  await waitFor(() => expect(ids(live)).toEqual(["a1@r1", "a2@p1"]));
   const written: ArtifactInfo = { ...plan, latest: { ...plan.latest, id: "p2", hash: "h9", created_at: "2026-10-07T13:00:00.000Z" } };
   stream().send("change", { kind: "artifacts", session: "lado", key: "a2", op: "update", item: written });
   expect(ids(live)).toEqual(["a2@p2", "a1@r1"]);

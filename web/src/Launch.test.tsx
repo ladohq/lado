@@ -2104,10 +2104,10 @@ test("a poll that fails is asked again: the clone goes on, Cancel clone stays (F
     json({ session: session("marketplace", { repo: INTO }), resumed: false, changes: [], problems: [], lead: "", warnings: [] });
   const dialog = await cloneReady();
   fireEvent.click(cloneButton());
-  await waitFor(() => expect(polls).toBeGreaterThanOrEqual(2), { timeout: 3000 });
+  await waitFor(() => expect(polls).toBeGreaterThanOrEqual(2));
   expect(within(dialog).queryByRole("alert")).toBeNull();
   expect(screen.getByRole("button", { name: "Cancel clone" })).toBeTruthy();
-  expect(await screen.findByRole("region", { name: "Session marketplace" }, { timeout: 3000 })).toBeTruthy();
+  expect(await screen.findByRole("region", { name: "Session marketplace" })).toBeTruthy();
 });
 
 test("a clone job the server no longer knows ends the clone with why", async () => {
@@ -2115,7 +2115,7 @@ test("a clone job the server no longer knows ends the clone with why", async () 
   answers["GET /api/clones/j1"] = () => json({ detail: "no clone job j1" }, 404);
   const dialog = await cloneReady();
   fireEvent.click(cloneButton());
-  expect((await within(dialog).findByRole("alert", {}, { timeout: 3000 })).textContent).toBe("no clone job j1");
+  expect((await within(dialog).findByRole("alert")).textContent).toBe("no clone job j1");
   await waitFor(() => expect(cloneButton().disabled).toBe(false));
 });
 
@@ -2188,7 +2188,7 @@ test("Cancel clone pressed as the clone ends starts no session; the clone is off
   fireEvent.click(cloneButton());
   fireEvent.click(await screen.findByRole("button", { name: "Cancel clone" }));
   await act(async () => release());
-  expect(await screen.findByText(`the clone ended before Cancel clone; it is in ${INTO}`, {}, { timeout: 3000 })).toBeTruthy();
+  expect(await screen.findByText(`the clone ended before Cancel clone; it is in ${INTO}`)).toBeTruthy();
   expect(within(dialog).getByRole("button", { name: "Folder" }).getAttribute("aria-pressed")).toBe("true");
   expect(where().value).toBe(INTO);
   expect(calls.some((c) => c.method === "POST" && c.path === "/api/sessions")).toBe(false);
@@ -2225,7 +2225,7 @@ test("under StrictMode the clone is still asked for until it ends (F6)", async (
   await screen.findByText("✓ repository found · 3 branches");
   await waitFor(() => expect(cloneButton().disabled).toBe(false));
   fireEvent.click(cloneButton());
-  expect(await screen.findByRole("region", { name: "Session marketplace" }, { timeout: 3000 })).toBeTruthy();
+  expect(await screen.findByRole("region", { name: "Session marketplace" })).toBeTruthy();
 });
 
 test("a window whose page goes away during a clone cancels it at once with a beacon", async () => {
@@ -2263,7 +2263,7 @@ test("a window whose page goes away during a clone cancels it at once with a bea
     window.dispatchEvent(new Event("pagehide"));
     expect(beacon).toHaveBeenCalledTimes(2);
     state = "done";
-    await screen.findByRole("region", { name: "Session marketplace" }, { timeout: 3000 });
+    await screen.findByRole("region", { name: "Session marketplace" });
     expect(atEnd).toBe(2);
     window.dispatchEvent(new Event("pagehide"));
     expect(beacon.mock.calls).toEqual([["/api/clones/j1/cancel"], ["/api/clones/j1/cancel"]]);
@@ -2288,9 +2288,7 @@ test("a clone that ended while the window was away is offered as a folder, not r
         : target(),
     );
   fireEvent.click(cloneButton());
-  expect(
-    await screen.findByText(`the clone ended while this window was away; it is in ${INTO}`, {}, { timeout: 3000 }),
-  ).toBeTruthy();
+  expect(await screen.findByText(`the clone ended while this window was away; it is in ${INTO}`)).toBeTruthy();
   expect(within(dialog).getByRole("button", { name: "Folder" }).getAttribute("aria-pressed")).toBe("true");
   expect(where().value).toBe(INTO);
   expect(within(dialog).queryByRole("alert")).toBeNull();
@@ -2617,6 +2615,8 @@ test("Start in starts in the project's repository chosen", async () => {
   fireEvent.click(repoRadio(dialog, "frontend"));
   await waitFor(() => expect(nameField().value).toBe("shop-frontend"));
   expect(calls.some((c) => c.path === "/api/project-launch?project=shop&repo=frontend")).toBe(true);
+  // A change reaches a field that is off, and its empty value would count as the human's choice.
+  await waitFor(() => expect(providerSelect().disabled).toBe(false));
   fireEvent.change(providerSelect(), { target: { value: "claude" } });
   await waitFor(() => expect(startIn("Shop").disabled).toBe(false));
   fireEvent.click(startIn("Shop"));

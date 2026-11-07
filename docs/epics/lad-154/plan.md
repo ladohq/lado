@@ -449,7 +449,7 @@ A gap of the readiness check (G1, `delivery-report`), and its question on the li
 Check:
 - `lado update <older>`'s warning and `docs/install.md`'s list name saved model servers, models and CLI defaults among what is lost; «What stays» and Docker's «Go back to the version before» say `model-servers/` stays with its keys and how to remove it; a unit test of the warning's text.
 - CHANGELOG's «Set models in Settings» takes three lines at most; the comment in `providers/codex.py` names `tests/live_models.py`.
-- `make test-live` on the epic's code for OpenCode, Kilo and Codex, on OpenRouter with the models of `live.yml`; Claude Code stays for the RC (gate #370: no yes).
+- `make test-live` on the epic's code for all four CLIs, on OpenRouter with the models of `live.yml`, on the human's yes for Claude Code (#4725), locally: GitHub's `live` environment admits only `main` and `v*`.
 
 ### S5a — The user's settings store and model servers in the CLI (M)
 Status: dropped (taken into S3c on D18, question #2721)

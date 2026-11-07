@@ -18,7 +18,7 @@ list). It SHALL ask no server and hold no key or address. A worker SHALL NOT hav
 - **WHEN** `LM Studio дома` does not answer and the supervisor calls `list_models`
 - **THEN** it answers at once with `Локальная Qwen`, and no request reaches a server
 
-#### Scenario: An external model of a CLI its server does not suit
+#### Scenario: An external model of a CLI that runs on no server
 - **WHEN** an external model on LM Studio is ticked for Codex
 - **THEN** its `blocked` says the server does not suit Codex CLI, and why
 

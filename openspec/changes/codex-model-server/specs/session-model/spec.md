@@ -34,7 +34,7 @@ agent CLI SHALL set the field to that CLI's default.
   it. Start the server or pick another model.` with `Check again` and `Use OpenCode's settings`,
   and Start session is off
 
-#### Scenario: A server the CLI cannot use
+#### Scenario: A CLI that runs on no server
 - **WHEN** the field holds Codex CLI's `Локальная GPT`, on LM Studio
 - **THEN** the note has the refusal and `Use Codex CLI's settings`, without `Check again`
 

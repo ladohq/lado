@@ -11,6 +11,10 @@ make a fresh home stop the agent at its start is settled in the agent's home: th
 the repository and of its hooks (launch_command), and the login, a link to the user's login
 file or the agent's own key file (_settle_login).
 
+An agent on a model server runs on an entry of its own config (_on_server), and nothing of the
+user's login reaches it. The server's facts come from Codex CLI 0.162.0 on a fake server and on
+OpenRouter (docs/superpowers/specs/2026-11-07-codex-model-server-design.md).
+
 Checked by hand with Codex CLI 0.162.0 on a local model (Ollama, qwen3-coder:30b), in
 throwaway homes; where Codex's open source was read for a behaviour, the comment says so.
 """
@@ -119,6 +123,35 @@ PROFILE = "lado"  # LADO's permission profile (see _git_profile)
 # it), which LM Studio's Responses API drops: such an agent has no LADO tools
 # (tests/local_models.py).
 LOSES_TOOLS = "its Responses API loses Codex CLI's MCP tools, so the agent could not talk to LADO"
+CATALOGUE = "models.json"  # in the agent's home: its list of models on a server
+# What LADO decides for an agent on a server, at the top level alone: in a carried profile it
+# would win (_setting). A server may refuse an effort (`reasoning_effort='xhigh' is not
+# supported`) and a tool of type web_search, or bill it.
+SERVER_SETTINGS = (
+    "model_reasoning_effort",
+    "web_search",
+    "model_catalog_json",
+    "model_context_window",
+    "model_auto_compact_token_limit",
+)
+# What of the catalogue's entry would add a tool or a parameter a server does not know, or offer
+# what only OpenAI has.
+PLAIN_MODEL = {
+    "apply_patch_tool_type": None,
+    "supports_search_tool": False,
+    "experimental_supported_tools": [],
+    "multi_agent_version": None,
+    "supported_reasoning_levels": [],
+    "default_reasoning_level": None,
+    "supports_reasoning_effort_updates": False,
+    "support_verbosity": False,
+    "default_verbosity": None,
+    "service_tiers": [],
+    "additional_speed_tiers": [],
+    "availability_nux": None,
+    "upgrade": None,
+    "input_modalities": ["text"],
+}
 USING = "Logged in using "  # the start of `codex login status`'s line for a login
 
 # Codex's login (0.162.0, checked by hand): its file CODEX_HOME/auth.json, the system
@@ -218,11 +251,23 @@ class CodexProvider(base.Provider):
     def server_model(self, server: str, model: str) -> str:
         return model
 
+    def launched_on(self, agent: state.Agent) -> str | None:
+        # A model's name says no server: only the launch knows.
+        try:
+            provider = _model_provider(_read_toml(base.config_path(agent) / "config.toml"))
+        except (OSError, ValueError):
+            return None
+        if provider.startswith(base.SERVER_PROVIDER):
+            return provider.removeprefix(base.SERVER_PROVIDER)
+        return None
+
     def needs_login(self, env: Mapping[str, str]) -> bool:
-        # The model provider of the user's config, as carried to the agents (in an agent's
-        # launch environment CODEX_HOME is its own home, whose config.toml carries it):
-        # OpenAI's, and a provider that asks for OpenAI's login, need one. A config that
-        # cannot be read is read as none: the status then decides.
+        # An agent on a server needs none. Else the model provider of the user's config, as
+        # carried to the agents (in an agent's launch environment CODEX_HOME is its own home,
+        # whose config.toml carries it): OpenAI's, and a provider that asks for OpenAI's login,
+        # need one. A config that cannot be read is read as none: the status then decides.
+        if env.get(base.MODEL_SERVER):
+            return False
         config, _ = _user_config(env, [])
         name = _model_provider(config)
         provider = _as_table(_as_table(config.get("model_providers")).get(name))
@@ -403,6 +448,15 @@ class CodexProvider(base.Provider):
                     config["hooks"]["state"][key] = {"trusted_hash": digest}
         if spec.model:
             _choose_model(config, spec.model)
+        env = {"CODEX_HOME": str(home)}
+        if spec.servers:  # one: its start model's (lado.model_settings.agent_servers)
+            server = spec.servers[0]
+            _on_server(config, home, server, spec.environ or os.environ, warnings)
+            env[base.MODEL_SERVER] = server.id
+            if server.key is not None:
+                env[server.key_variable] = server.key
+        else:
+            (home / CATALOGUE).unlink(missing_ok=True)
         if dropped:
             warnings.append(
                 f"cannot write {', '.join(dropped)} of {user_path} into the config of Codex "
@@ -457,7 +511,7 @@ class CodexProvider(base.Provider):
             argv.append(notice)
         return base.Launch(
             argv,
-            {"CODEX_HOME": str(home)},
+            env,
             warnings,
             model=self.session_choice(spec) or _carried(config, "model"),
             effort=_carried(config, "model_reasoning_effort"),
@@ -492,13 +546,17 @@ class CodexProvider(base.Provider):
 
     def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> base.Blocker:
         # The agent's login first: its own home has none, and the login's state is read
-        # there (lado.runtime, lado.login_wait). Then what Codex asks, read from the agent's
-        # own config.toml, which LADO wrote with what it carried: it is what the agent's
-        # Codex reads.
+        # there (lado.runtime, lado.login_wait); on a server none, and nothing of an earlier
+        # launch's. Then what Codex asks, read from the agent's own config.toml, which LADO
+        # wrote with what it carried: it is what the agent's Codex reads.
         folder = Path(cwd)
         home = Path(env.get("CODEX_HOME") or "")
         try:
-            notes = tuple(_settle_login(home, env))
+            if env.get(base.MODEL_SERVER):
+                (home / "auth.json").unlink(missing_ok=True)
+                notes: tuple[str, ...] = ()
+            else:
+                notes = tuple(_settle_login(home, env))
         except OSError as error:
             return base.Blocker(
                 warning=f"cannot give the agent its {self.title} login in {home}: {error}; "
@@ -637,15 +695,91 @@ def _setting(config: dict, key: str) -> tuple[object, str | None]:
     return config.get(key), None
 
 
-def _choose_model(config: dict, model: str) -> None:
-    """Make `model` the one Codex runs with the agent's `config`: at the top level and in
-    the chosen profile, whose value wins over the top level's (_setting)."""
-    config["model"] = model
+def _chosen_profile(config: dict) -> dict:
+    """The table of the profile `config` chooses, to change; a new one, unused, for none."""
     chosen = config.get("profile")
     profiles = config.get("profiles")
     if isinstance(chosen, str) and isinstance(profiles, dict):
         if isinstance(profiles.get(chosen), dict):
-            profiles[chosen]["model"] = model
+            return profiles[chosen]
+    return {}
+
+
+def _choose_model(config: dict, model: str) -> None:
+    """Make `model` the one Codex runs with the agent's `config`: at the top level and in
+    the chosen profile, whose value wins over the top level's (_setting)."""
+    config["model"] = model
+    _chosen_profile(config)["model"] = model
+
+
+def _on_server(
+    config: dict,
+    home: Path,
+    server: base.ServerEntry,
+    environ: Mapping[str, str],
+    warnings: list[str],
+) -> None:
+    """Put the agent's `config` on `server`, over what was carried: the server as a provider, its
+    one model, and what a server may refuse switched off. The key stays out: Codex reads the
+    variable `env_key` names, and with no `env_key` it sends no Authorization, also with
+    OPENAI_API_KEY set and a key in auth.json."""
+    model, _ = server.models[0]
+    name = f"{base.SERVER_PROVIDER}{server.id}"
+    entry = {"name": f"LADO · {server.name}", "base_url": server.base_url, "wire_api": "responses"}
+    if server.key_variable:
+        entry["env_key"] = server.key_variable
+    config["model_providers"] = {**_as_table(config.get("model_providers")), name: entry}
+    profile = _chosen_profile(config)
+    for key in SERVER_SETTINGS:
+        config.pop(key, None)
+        profile.pop(key, None)
+    config["model_provider"] = profile["model_provider"] = name
+    _choose_model(config, model)
+    config["web_search"] = "disabled"
+    limit = server.limits.get(model)
+    if limit is not None:
+        # Past the limit the next turn starts with a compaction, an ordinary request. Codex has
+        # no key for its output, so nothing caps it: the room is only left free.
+        config["model_context_window"] = limit.context
+        config["model_auto_compact_token_limit"] = limit.context - limit.output_room()
+    path = home / CATALOGUE
+    try:
+        models = {"models": [_listed_model(server, limit, home, environ)]}
+    except ValueError as error:
+        path.unlink(missing_ok=True)
+        warnings.append(
+            f"cannot make the list of models of a Codex agent on {server.name} ({error}): its "
+            "/model shows OpenAI's models, which its server does not have"
+        )
+        return
+    path.write_text(json.dumps(models, ensure_ascii=False))
+    config["model_catalog_json"] = str(path)
+
+
+def _listed_model(
+    server: base.ServerEntry, limit: base.Limit | None, home: Path, environ: Mapping[str, str]
+) -> dict:
+    """The agent's one model as an entry of Codex's catalogue, which replaces Codex's whole list
+    and needs every field: the last entry of the installed binary's own that has no `tool_mode`,
+    so that its format is that binary's. ValueError with why there is none."""
+    argv = [CodexProvider.command, "debug", "models", "--bundled"]
+    data = json.loads(base.run_list(argv, {**environ, "CODEX_HOME": str(home)}))
+    listed = _as_table(data).get("models")
+    listed = listed if isinstance(listed, list) else []
+    plain = [m for m in listed if isinstance(m, dict) and "slug" in m and not m.get("tool_mode")]
+    if not plain:
+        raise ValueError(f"`{' '.join(argv)}` printed no model LADO can use")
+    model, name = server.models[0]
+    context = limit.context if limit is not None else None
+    return {
+        **plain[-1],
+        **PLAIN_MODEL,
+        "slug": model,
+        "display_name": name,
+        "description": f"On {server.name}",
+        "context_window": context,
+        "max_context_window": context,
+    }
 
 
 def _carried(config: dict, key: str) -> state.Choice | None:

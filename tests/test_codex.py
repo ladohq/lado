@@ -1071,3 +1071,311 @@ def test_a_launched_agent_gets_its_login_and_trust_with_notes(repo, codex_home):
     assert blocker.reason is None
     assert os.readlink(home / "auth.json") == str(codex_home / "auth.json")
     assert blocker.notes == (f"LADO linked {home / 'auth.json'} to {codex_home / 'auth.json'}",)
+
+
+# On a model server.
+
+CATALOGUE = {
+    "models": [
+        {"slug": "gpt-new", "tool_mode": "code_mode_only", "display_name": "New"},
+        {
+            "slug": "gpt-5.5",
+            "display_name": "GPT-5.5",
+            "description": "Legacy coding model.",
+            "default_reasoning_level": "medium",
+            "supported_reasoning_levels": [{"effort": "low", "description": "fast"}],
+            "shell_type": "unified_exec",
+            "visibility": "list",
+            "additional_speed_tiers": ["fast"],
+            "service_tiers": [{"id": "priority", "name": "Fast", "description": "quick"}],
+            "availability_nux": {"message": "new"},
+            "upgrade": {"model": "gpt-6"},
+            "support_verbosity": True,
+            "default_verbosity": "low",
+            "apply_patch_tool_type": "freeform",
+            "context_window": 272000,
+            "max_context_window": 272000,
+            "experimental_supported_tools": ["x"],
+            "input_modalities": ["text", "image"],
+            "supports_search_tool": True,
+            "supports_reasoning_effort_updates": True,
+            "multi_agent_version": 2,
+            "base_instructions": "the binary's own",
+        },
+        {"slug": "auto-review", "tool_mode": "code_mode_only", "display_name": "Review"},
+    ]
+}
+SECRET = "sk-canary-of-the-key"
+
+
+def _server(key=SECRET, limits=None, model="gw-gpt", name="Шлюз GPT"):
+    return base.ServerEntry(
+        "aaaa1111",
+        "Шлюз",
+        "http://gw:4000/v1",
+        "http://gw:4000",
+        "LADO_MODEL_KEY_AAAA1111" if key else "",
+        key,
+        ((model, name),),
+        limits or {},
+    )
+
+
+@pytest.fixture
+def catalogue(monkeypatch):
+    """`codex debug models --bundled` as the installed Codex prints it; the argv it was asked."""
+    asked = []
+
+    def run_list(argv, env):
+        asked.append((argv, env.get("CODEX_HOME")))
+        return json.dumps(CATALOGUE)
+
+    monkeypatch.setattr(base, "run_list", run_list)
+    return asked
+
+
+def _launch_on(cwd, server=None, environ=None):
+    server = server or _server()
+    agent = _agent(cwd)
+    spec = providers.AgentSpec(
+        ROLE,
+        mcp={"lado": base.mcp_server(agent)},
+        environ=dict(os.environ) if environ is None else environ,
+        model=server.models[0][0],
+        servers=(server,),
+    )
+    launch = providers.get("codex").launch_command(
+        agent, state.Session("s", str(cwd), None, "codex"), spec
+    )
+    return launch, _config(launch)
+
+
+def test_a_server_is_a_provider_of_the_agent_s_config_and_its_choice(repo, catalogue):
+    _, config = _launch_on(repo)
+    assert config["model_provider"] == "lado-aaaa1111"
+    assert config["model"] == "gw-gpt"
+    assert config["model_providers"]["lado-aaaa1111"] == {
+        "name": "LADO · Шлюз",
+        "base_url": "http://gw:4000/v1",
+        "wire_api": "responses",
+        "env_key": "LADO_MODEL_KEY_AAAA1111",
+    }
+
+
+def test_the_user_s_providers_stay_beside_the_server_s(repo, catalogue, codex_home):
+    _user_config(codex_home, '[model_providers.mine]\nbase_url = "http://mine/v1"\n')
+    _, config = _launch_on(repo)
+    assert config["model_providers"]["mine"] == {"base_url": "http://mine/v1"}
+    assert "lado-aaaa1111" in config["model_providers"]
+
+
+def test_a_carried_profile_goes_to_the_server_too(repo, catalogue, codex_home):
+    _user_config(
+        codex_home,
+        'profile = "work"\n'
+        "[profiles.work]\n"
+        'model = "own"\nmodel_provider = "mine"\nmodel_reasoning_effort = "high"\n'
+        'web_search = "live"\n'
+        "[profiles.other]\n"
+        'model = "another"\n',
+    )
+    _, config = _launch_on(repo)
+    assert config["profiles"]["work"] == {"model": "gw-gpt", "model_provider": "lado-aaaa1111"}
+    assert config["profiles"]["other"] == {"model": "another"}
+    assert codex._model_provider(config) == "lado-aaaa1111"
+
+
+def test_the_key_is_in_the_environment_alone(repo, catalogue, lado_home):
+    launch, _ = _launch_on(repo)
+    assert launch.env["LADO_MODEL_KEY_AAAA1111"] == SECRET
+    assert launch.env[base.MODEL_SERVER] == "aaaa1111"
+    assert SECRET not in " ".join(launch.argv)
+    for file in (lado_home / "agents").rglob("*"):
+        if file.is_file() and not file.is_symlink():
+            assert SECRET not in file.read_text(), file
+
+
+def test_lado_s_mcp_servers_are_not_handed_the_key(repo, catalogue):
+    _, config = _launch_on(repo)
+    assert "LADO_MODEL_KEY_AAAA1111" not in config["mcp_servers"]["lado"]["env_vars"]
+
+
+def test_a_server_with_no_key_has_no_env_key(repo, catalogue):
+    launch, config = _launch_on(repo, _server(key=None))
+    assert "env_key" not in config["model_providers"]["lado-aaaa1111"]
+    assert not [name for name in launch.env if name.startswith(base.KEY_VARIABLE)]
+    assert "" not in launch.env
+
+
+def test_the_launch_says_what_it_set_up(repo, catalogue):
+    launch, _ = _launch_on(repo)
+    assert launch.model == state.Choice("gw-gpt", state.SESSION)
+    assert launch.effort is None
+
+
+def test_launched_on_reads_the_agent_s_config(repo, catalogue):
+    _launch_on(repo)
+    assert providers.get("codex").launched_on(_agent(repo)) == "aaaa1111"
+
+
+def test_launched_on_of_a_built_in_agent_is_none(repo):
+    _launch(repo, model="gpt-5.5")
+    assert providers.get("codex").launched_on(_agent(repo)) is None
+
+
+def test_an_agent_that_does_not_run_was_launched_on_nothing(repo):
+    assert providers.get("codex").launched_on(_agent(repo)) is None
+
+
+def test_an_agent_on_a_server_needs_no_login(codex_home):
+    cli = providers.get("codex")
+    env = {"CODEX_HOME": str(codex_home)}
+    assert cli.needs_login(env)
+    assert not cli.needs_login({**env, base.MODEL_SERVER: "aaaa1111"})
+
+
+def test_nothing_of_the_login_reaches_an_agent_on_a_server(repo, catalogue, codex_home):
+    (codex_home / "auth.json").parent.mkdir(parents=True, exist_ok=True)
+    (codex_home / "auth.json").write_text('{"auth_mode": "chatgpt"}')
+    launch, _ = _launch_on(repo)
+    blocker = providers.get("codex").first_hook_blocker(
+        str(repo), {**launch.env, "OPENAI_API_KEY": "sk-the-human-s-own"}
+    )
+    home = Path(launch.env["CODEX_HOME"])
+    assert not (home / "auth.json").is_symlink() and not (home / "auth.json").exists()
+    assert blocker.notes == ()
+
+
+def test_a_home_that_ran_on_a_built_in_model_loses_its_login_link(repo, catalogue, codex_home):
+    built_in, _ = _launch(repo, model="gpt-5.5")
+    _blocker(built_in, repo)
+    home = Path(built_in.env["CODEX_HOME"])
+    assert (home / "auth.json").is_symlink()
+    launch, _ = _launch_on(repo)
+    _blocker(launch, repo)
+    assert not (home / "auth.json").is_symlink()
+
+
+def test_a_home_back_on_a_built_in_model_has_nothing_of_the_server(repo, catalogue, codex_home):
+    launch, _ = _launch_on(repo)
+    home = Path(launch.env["CODEX_HOME"])
+    assert (home / "models.json").exists()
+    built_in, config = _launch(repo, model="gpt-5.5")
+    assert not (home / "models.json").exists()
+    assert "model_catalog_json" not in config and "web_search" not in config
+    assert config.get("model_provider") is None
+    assert "lado-aaaa1111" not in config.get("model_providers", {})
+    assert set(built_in.env) == {"CODEX_HOME"}
+    _blocker(built_in, repo)
+    assert (home / "auth.json").is_symlink()
+
+
+def test_web_search_and_a_carried_effort_stay_off(repo, catalogue, codex_home):
+    _user_config(codex_home, 'model_reasoning_effort = "xhigh"\n')
+    launch, config = _launch_on(repo)
+    assert config["web_search"] == "disabled"
+    assert "model_reasoning_effort" not in config
+    assert launch.effort is None
+
+
+def test_a_built_in_agent_keeps_its_effort_and_its_search(repo, codex_home):
+    _user_config(codex_home, 'model_reasoning_effort = "xhigh"\n')
+    launch, config = _launch(repo)
+    assert config["model_reasoning_effort"] == "xhigh"
+    assert "web_search" not in config
+    assert launch.effort == state.Choice("xhigh", state.CLI_CONFIG)
+
+
+def _catalogue_of(launch, config):
+    assert config["model_catalog_json"] == str(Path(launch.env["CODEX_HOME"]) / "models.json")
+    return json.loads(Path(config["model_catalog_json"]).read_text())["models"]
+
+
+def test_the_agent_s_list_is_its_one_model_in_the_binary_s_format(repo, catalogue):
+    launch, config = _launch_on(repo)
+    [model] = _catalogue_of(launch, config)
+    assert catalogue == [(["codex", "debug", "models", "--bundled"], launch.env["CODEX_HOME"])]
+    assert (model["slug"], model["display_name"]) == ("gw-gpt", "Шлюз GPT")
+    assert model["description"] == "On Шлюз"
+    assert model["base_instructions"] == "the binary's own"
+    assert model["shell_type"] == "unified_exec"
+
+
+def test_the_agent_s_list_adds_no_tool_or_parameter_of_openai_s(repo, catalogue):
+    launch, config = _launch_on(repo)
+    [model] = _catalogue_of(launch, config)
+    off = {
+        "apply_patch_tool_type": None,
+        "supports_search_tool": False,
+        "experimental_supported_tools": [],
+        "multi_agent_version": None,
+        "supported_reasoning_levels": [],
+        "default_reasoning_level": None,
+        "supports_reasoning_effort_updates": False,
+        "support_verbosity": False,
+        "default_verbosity": None,
+        "service_tiers": [],
+        "additional_speed_tiers": [],
+        "availability_nux": None,
+        "upgrade": None,
+        "input_modalities": ["text"],
+    }
+    assert {key: model[key] for key in off} == off
+
+
+def test_a_name_with_a_quote_is_text_in_the_list(repo, catalogue):
+    launch, config = _launch_on(repo, _server(name='Шлюз "GPT"\n'))
+    assert _catalogue_of(launch, config)[0]["display_name"] == 'Шлюз "GPT"\n'
+
+
+@pytest.mark.parametrize(
+    "printed", ["not json", "[]", '{"models": 1}', '{"models": [{"tool_mode": "x"}]}']
+)
+def test_a_list_lado_cannot_use_leaves_codex_s_with_a_warning(repo, monkeypatch, printed):
+    monkeypatch.setattr(base, "run_list", lambda argv, env: printed)
+    launch, config = _launch_on(repo)
+    assert "model_catalog_json" not in config
+    assert not (Path(launch.env["CODEX_HOME"]) / "models.json").exists()
+    [warning] = [w for w in launch.warnings if "/model" in w]
+    assert "OpenAI's models, which its server does not have" in warning
+
+
+def test_a_failing_list_warns_with_why(repo, monkeypatch):
+    def fails(argv, env):
+        raise ValueError("`codex debug models --bundled` failed: boom")
+
+    monkeypatch.setattr(base, "run_list", fails)
+    launch, config = _launch_on(repo)
+    assert "model_catalog_json" not in config
+    assert [w for w in launch.warnings if "boom" in w and "/model" in w]
+
+
+def test_a_known_context_reaches_the_config_and_the_list(repo, catalogue):
+    limits = {"gw-gpt": base.Limit(65536)}
+    launch, config = _launch_on(repo, _server(limits=limits))
+    assert config["model_context_window"] == 65536
+    assert config["model_auto_compact_token_limit"] == 57344
+    [model] = _catalogue_of(launch, config)
+    assert (model["context_window"], model["max_context_window"]) == (65536, 65536)
+
+
+def test_the_compact_limit_leaves_the_output_the_server_reports(repo, catalogue):
+    limits = {"gw-gpt": base.Limit(200000, 1000)}
+    _, config = _launch_on(repo, _server(limits=limits))
+    assert config["model_auto_compact_token_limit"] == 199000
+
+
+def test_an_unknown_context_sets_neither_key(repo, catalogue):
+    launch, config = _launch_on(repo)
+    assert "model_context_window" not in config
+    assert "model_auto_compact_token_limit" not in config
+    [model] = _catalogue_of(launch, config)
+    assert (model["context_window"], model["max_context_window"]) == (None, None)
+
+
+def test_a_built_in_agent_s_config_has_nothing_of_a_server(repo, codex_home):
+    _user_config(codex_home, 'model = "own"\nmodel_provider = "mine"\n')
+    launch, config = _launch(repo)
+    assert (config["model"], config["model_provider"]) == ("own", "mine")
+    assert not {"model_catalog_json", "web_search", "model_context_window"} & set(config)
+    assert set(launch.env) == {"CODEX_HOME"}

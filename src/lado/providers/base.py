@@ -19,6 +19,7 @@ from lado import interpreter, state, tmux
 # id. The CLI's own login is then not what the agent runs on (Provider.needs_login).
 MODEL_SERVER = "LADO_MODEL_SERVER"
 KEY_VARIABLE = "LADO_MODEL_KEY_"  # + the server's id in capitals: an agent's variable of its key
+SERVER_PROVIDER = "lado-"  # + the server's id: its name as a provider of a CLI's own config
 
 # Neutral hook events. A provider maps its own hook events onto these; see lado.hooks.
 SESSION_START = "session_start"

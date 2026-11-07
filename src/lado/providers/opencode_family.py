@@ -78,7 +78,6 @@ ABORTED = "MessageAbortedError"
 # changes and no provider of the user's has (checked with OpenCode 1.18.35 and Kilo 7.8.8 on two
 # servers: `name` of the provider is the group and label in the real /model, `name` of a model
 # its row, a model id may hold a slash, a server with no key takes no apiKey).
-SERVER_PROVIDER = "lado-"
 SERVER_PACKAGE = "@ai-sdk/openai-compatible"  # ships with both; nothing to fetch at a first run
 MODEL_MEMORY = "model.json"  # the CLI's last /model picks, in its state folder
 TUI_SETTINGS = "kv.json"  # the CLI's TUI settings, beside it
@@ -90,14 +89,14 @@ def without_servers(found: object) -> object:
 
     def ours(entry: object) -> bool:
         return isinstance(entry, dict) and str(entry.get("providerID", "")).startswith(
-            SERVER_PROVIDER
+            base.SERVER_PROVIDER
         )
 
     if isinstance(found, dict):
         return {
             key: without_servers(value)
             for key, value in found.items()
-            if not key.startswith(SERVER_PROVIDER) and not ours(value)
+            if not key.startswith(base.SERVER_PROVIDER) and not ours(value)
         }
     if isinstance(found, list):
         return [without_servers(item) for item in found if not ours(item)]
@@ -298,13 +297,13 @@ class OpenCodeFamily(base.Provider):
         return {}
 
     def server_model(self, server: str, model: str) -> str:
-        return f"{SERVER_PROVIDER}{server}/{model}"
+        return f"{base.SERVER_PROVIDER}{server}/{model}"
 
     def on_server(self, reported: str) -> tuple[str, str] | None:
         provider, slash, model = reported.partition("/")
-        if not (slash and model and provider.startswith(SERVER_PROVIDER)):
+        if not (slash and model and provider.startswith(base.SERVER_PROVIDER)):
             return None
-        return provider.removeprefix(SERVER_PROVIDER), model
+        return provider.removeprefix(base.SERVER_PROVIDER), model
 
     @staticmethod
     def server_provider(server: base.ServerEntry) -> dict:
@@ -378,7 +377,7 @@ class OpenCodeFamily(base.Provider):
             config["model"] = spec.model
         if spec.servers:
             config["provider"] = {
-                f"{SERVER_PROVIDER}{s.id}": self.server_provider(s) for s in spec.servers
+                f"{base.SERVER_PROVIDER}{s.id}": self.server_provider(s) for s in spec.servers
             }
         if mode == "plan":
             # The plan agent denies every tool it does not list, LADO's MCP tools too (Kilo

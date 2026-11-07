@@ -11,12 +11,12 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-07-codex-model-
 
 ## 2. The launch
 
-- [ ] 2.1 The provider entry, the model and the provider in a profile, the key in the environment,
+- [x] 2.1 The provider entry, the model and the provider in a profile, the key in the environment,
   `launched_on` (D1). Check: `tests/test_codex.py`.
-- [ ] 2.2 `needs_login`, `first_hook_blocker` on a server (D2). Check: `tests/test_codex.py`.
-- [ ] 2.3 Web search, the carried effort (D3). Check: `tests/test_codex.py`.
-- [ ] 2.4 The catalogue, its warning (D4). Check: `tests/test_codex.py`.
-- [ ] 2.5 The context (D5). Check: `tests/test_codex.py`.
+- [x] 2.2 `needs_login`, `first_hook_blocker` on a server (D2). Check: `tests/test_codex.py`.
+- [x] 2.3 Web search, the carried effort (D3). Check: `tests/test_codex.py`.
+- [x] 2.4 The catalogue, its warning (D4). Check: `tests/test_codex.py`.
+- [x] 2.5 The context (D5). Check: `tests/test_codex.py`.
 - [ ] 2.6 A start and a worker on a server through the fake agent, the key in no file. Check: a new
   `tests/integration/test_codex_model_server.py` with `-m integration`.
 

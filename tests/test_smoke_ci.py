@@ -5,6 +5,7 @@ import importlib.util
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -62,6 +63,111 @@ def test_each_pin_is_its_providers_tested_version(provider, module):
 def test_each_pins_command_is_its_providers_cli():
     for provider, (_, _, command) in smoke_ci.PINS.items():
         assert command == providers.get(provider).command
+
+
+# The live cell (openspec change cloud-live-tests).
+
+
+def test_redact_replaces_the_key_in_every_file(tmp_path):
+    (tmp_path / "evidence").mkdir()
+    (tmp_path / "evidence" / "screen").write_bytes(b"KEY=s3cr3t\n")
+    (tmp_path / "live-codex.log").write_bytes(b"s3cr3t s3cr3t")
+    smoke_ci.redact(tmp_path, "s3cr3t")
+    assert (tmp_path / "evidence" / "screen").read_bytes() == b"KEY=<redacted>\n"
+    assert (tmp_path / "live-codex.log").read_bytes() == b"<redacted> <redacted>"
+
+
+def test_redact_leaves_a_link_and_what_it_points_at(tmp_path):
+    outside = tmp_path / "outside"
+    outside.write_bytes(b"s3cr3t")
+    folder = tmp_path / "folder"
+    folder.mkdir()
+    (folder / "link").symlink_to(outside)
+    smoke_ci.redact(folder, "s3cr3t")
+    assert outside.read_bytes() == b"s3cr3t"
+
+
+def test_redact_without_a_key_changes_nothing(tmp_path):
+    (tmp_path / "log").write_bytes(b"text")
+    smoke_ci.redact(tmp_path, "")
+    assert (tmp_path / "log").read_bytes() == b"text"
+
+
+@pytest.fixture
+def live_cell(monkeypatch):
+    """`live` with its install replaced; `seen` holds each pytest command `cell` gets."""
+    monkeypatch.setattr(smoke_ci, "install", lambda provider: dict(os.environ))
+    monkeypatch.setenv("LADO_LIVE_API_KEY", "s3cr3t")
+    return []
+
+
+@pytest.mark.parametrize("code", [0, 1])
+def test_a_live_cell_leaves_only_redacted_files_in_its_folder(
+    code, tmp_path, monkeypatch, live_cell
+):
+    out = tmp_path / "out"
+
+    def cell(tests, log, work, name, env=None):
+        live_cell.append(tests)
+        assert not out.exists() or not any(out.iterdir())  # nothing there while it runs
+        log.write_text("s3cr3t")
+        (work / "evidence").mkdir()
+        (work / "evidence" / "screen").write_text("s3cr3t")
+        return code
+
+    monkeypatch.setattr(smoke_ci, "cell", cell)
+    assert smoke_ci.live("codex", out) == code
+    assert live_cell[0][:4] == ["timeout", "--kill-after=30", "1500", "uv"]
+    assert live_cell[0][4:] == [
+        "run",
+        "pytest",
+        "-m",
+        "live",
+        "-n0",
+        "-v",
+        "-k",
+        "codex",
+        "--ignore=tests/live/test_codex_login.py",
+    ]
+    assert (out / "live-codex.log").read_text() == "<redacted>"
+    assert (out / "evidence" / "screen").read_text() == "<redacted>"
+
+
+def test_a_crash_during_the_tests_leaves_nothing_to_upload(tmp_path, monkeypatch, live_cell):
+    out = tmp_path / "out"
+
+    def cell(tests, log, work, name, env=None):
+        log.write_text("s3cr3t")
+        raise OSError("killed")
+
+    monkeypatch.setattr(smoke_ci, "cell", cell)
+    with pytest.raises(OSError):
+        smoke_ci.live("codex", out)
+    assert not out.exists() or not any(out.iterdir())
+
+
+def test_a_live_cell_whose_install_fails_is_red_and_runs_no_test(tmp_path, monkeypatch, live_cell):
+    monkeypatch.setattr(smoke_ci, "install", lambda provider: None)
+    monkeypatch.setattr(smoke_ci, "cell", lambda *args, **kwargs: pytest.fail("a test ran"))
+    assert smoke_ci.live("codex", tmp_path / "out") == 1
+
+
+def test_a_live_cell_with_a_skip_is_red_and_keeps_its_log(tmp_path, monkeypatch, live_cell):
+    """The whole of `cell`, on a pytest that skips: the image test without LADO_LIVE_IMAGE."""
+    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+    pytest_stub = tmp_path / "bin" / "timeout"
+    pytest_stub.parent.mkdir()
+    pytest_stub.write_text("#!/bin/sh\necho '====== 2 passed, 1 skipped in 9.00s ======'\n")
+    pytest_stub.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{pytest_stub.parent}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(smoke_ci, "install", lambda provider: dict(os.environ))
+    assert smoke_ci.live("codex", tmp_path / "out") == 1
+    assert "1 skipped" in (tmp_path / "out" / "live-codex.log").read_text()
+
+
+def test_an_unknown_provider_has_no_live_cell(capsys):
+    assert smoke_ci.main(["live", "nobody", "out"]) == 2
+    assert "nobody" in capsys.readouterr().err
 
 
 # The pass rule (AC-6).

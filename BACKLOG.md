@@ -1039,8 +1039,8 @@ once, flow once), Codex 1 of 3 (flow), each the same: `read_messages`, `[call re
 shows each failed turn's input as large as the turns of the same session that did call the
 tools (14,354-14,560 tokens). Hence the human's switch of verify to a gateway with
 qwen3.6-35b-a3b (`LADO_LIVE_ENDPOINT`, design v5); LM Studio stays the default setup.
-2026-11-07: LM Studio left the live tests (LAD-231); the trial on OpenRouter's
-qwen/qwen3.7-flash did not show this answer as text.
+2026-11-07: LM Studio left the live tests (LAD-231). OpenRouter's qwen/qwen3.7-flash did the
+same once in the trial's 36 tests: OpenCode's image test, `red` as text, no `send_message`.
 
 ## The lead answers the human's message to a worker
 

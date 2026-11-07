@@ -370,7 +370,8 @@ person's login. It runs them for at most 25 minutes outside `<out>`, then redact
 moves the log and the evidence there for the upload; a job killed before that uploads
 nothing. The key is the secret `LADO_LIVE_API_KEY` of the environment `live`, which admits only
 `main` and tags `v*`, so no run of a pull request gets it, and only the test step names it.
-The key's limit, $10 a month, is the hard stop: past it, or with no credits on the OpenRouter
+A run of the four cells costs about $0.07 (the trial's report). The key's limit, $10 a month, is
+the hard stop: past it, or with no credits on the OpenRouter
 account behind it, a run goes red with a 402. A red run mails as any failed workflow does;
 rerun its failed cells by hand (`gh run rerun <id> --failed`), a pass on a rerun being a flake.
 

@@ -34,10 +34,9 @@
 - **A default model for each agent CLI.** `lado model default` and Settings → Models keep one
   per agent CLI: one of its own or of your servers, picked from one searchable list. It is
   kept and shown only: no session uses it yet.
-- **Set models in Settings.** Settings → Models shows a card per agent CLI with its default
-  model and the models it runs, then your model servers; tick a server's model to save it,
-  click its name to rename it, undo a removal; add a server, checked as you type, change it
-  and remove it with its models (`lado model-server remove --with-models`).
+- **Set models in Settings.** Settings → Models: a card per agent CLI with its default model
+  and models, then your model servers: add, change or remove one (checked as you type), tick
+  a model to save it, rename it, undo a removal (`lado model-server remove --with-models`).
 - **One word for what runs an agent: agent CLI.** The launch window's field is Agent CLI,
   Settings' section Agent CLIs and environment, the system panel's Agent CLIs; old links to
   the section and `lado start --provider` keep working.
@@ -49,6 +48,9 @@
   start` and the launch window. `docs/install.md` says what to expect of small models.
 - **OpenCode no longer stalls without internet.** Its first start on a model of a server takes
   seconds where it took over a minute. An agent keeps your TUI settings from the first run.
+- **Going back says what happens to your model servers.** `lado update` to an older version
+  warns that servers, models and default models are lost, and lists the folders of keys that
+  stay on disk; `docs/install.md` says how to remove them.
 
 - **A session's card reads at a glance.** Its facts have labels, it names the project, says what
   to do with a stopped or broken session and opens beside the list, so the list stays in sight.

@@ -210,8 +210,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     schema is older than before, so its rollback restores nothing: the version before
     migrates it again. `plan(to, index)` of an older `to` with a lado.db learns the
     release's schema (`update.release_schema`) and, when it is older, builds `Restore`
-    (the copy, its schema and time, the planned sessions it lacks) that `print_plan` warns
-    of; no such copy, or no schema to learn, is a `runtime.LadoError` before anything
+    (the copy, its schema and time, the planned sessions it lacks, the folders of model
+    server keys that stay) that `print_plan` warns of; no such copy, or no schema to learn, is a `runtime.LadoError` before anything
     stops. A session that does not resume is `partial`, never a rollback; a failed
     installer resumes on the old version (`failed`). After the installer the old process
     starts nothing of its own (`providers.lado_command`) and imports nothing more (all its

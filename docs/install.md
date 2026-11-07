@@ -660,6 +660,10 @@ docker compose up -d
 When an upgrade's migration failed, the database is as it was: the first and the last
 command do it.
 
+Going back to a version before 0.45.0 forgets your model servers, models and default models,
+and their keys stay in `~/.lado/model-servers/` of the home volume. Remove them when you no
+longer need them: `docker compose run --rm lado sh -c 'rm -rf ~/.lado/model-servers'`.
+
 ### A second LADO
 
 Another folder with a copy of `compose.yaml`, a `secrets/` of its own or none, and an
@@ -1033,9 +1037,11 @@ no session running).
 
 - The plan warns before it asks: `lado.db` goes back to the copy
   `~/.lado/backups/lado.db.schema-31`, made when 0.43.0 upgraded it; everything LADO
-  recorded since then is lost (sessions, runs, gates, messages, projects); repositories,
-  worktrees and project folders stay on disk. It names the running sessions the copy does
-  not have: they are not started again. `Update? [y/N]`, or `--yes`, is your yes to that.
+  recorded since then is lost (sessions, runs, gates, messages, projects, model servers,
+  models, default models); repositories, worktrees and project folders stay on disk. It
+  names the running sessions the copy does not have: they are not started again. It lists
+  the folders of model server keys the copy has no server for: they stay on disk (What
+  stays, below). `Update? [y/N]`, or `--yes`, is your yes to that.
 - After the installer and the version check it puts the copy back into `lado.db`, keeps
   the copy, says `Restored lado.db from … (schema 31)` and starts the sessions the copy
   has on 0.42.x.
@@ -1069,6 +1075,13 @@ calls `projects/` "your own folder" and `lado project create` refuses until you 
 away; after that, `lado project create` with an id whose `~/.lado/projects/<id>/` is left
 refuses (`… is left from a project <id>: remove it or choose another id`), so an old secret
 is never taken over silently.
+
+Going back to a version before 0.45.0 forgets your model servers, models and default models,
+and `~/.lado/model-servers/` stays with the key of each server: remove it with
+`rm -rf ~/.lado/model-servers` when you no longer need them. Upgrading again brings no server
+back, and `lado doctor` calls each folder left over until you remove it. Going back to a
+version that knows model servers, remove only the folders the warning listed: the others hold
+the keys of servers still saved.
 
 ### The check for a newer version
 

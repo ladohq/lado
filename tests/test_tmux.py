@@ -1,5 +1,7 @@
 import ast
+import os
 import shutil
+import signal
 import subprocess
 import time
 import uuid
@@ -415,13 +417,23 @@ def test_server_running_tells_whether_a_server_runs_and_never_starts_one(tmp_pat
 
 def test_a_labelled_session_kept_after_its_command_gives_its_text_and_status(tmp_path):
     session = f"test-{uuid.uuid4().hex[:6]}"
-    script = "printf 'one\\n\\nlast words\\n'; exit 3"
+    script = "printf 'one\\n\\nlast words\\n'; read _; exit 3"
     tmux.new_labelled_session(
         session, str(tmp_path), ["sh", "-c", script], {"@x": "1", "remain-on-exit": "on"}
     )
     try:
+        # Two races of tmux itself (LAD-225): output it has not read when it learns of the exit
+        # is lost, so the command ends only once its text is in the pane; and it may miss the
+        # exit until the next SIGCHLD, leaving the pane dead without a status.
+        deadline = time.monotonic() + 10
+        while "last words" not in tmux.pane_text(session) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        tmux.run("send-keys", "-t", f"={session}:", "Enter")
+        server = int(tmux.run("display-message", "-p", "#{pid}"))
         deadline = time.monotonic() + 10
         while (row := _dead(session)) != ["1", "3"] and time.monotonic() < deadline:
+            if row == ["1", ""]:
+                os.kill(server, signal.SIGCHLD)
             time.sleep(0.05)
         assert row == ["1", "3"]
         # Without tmux's own "Pane is dead (status 3, …)" line.

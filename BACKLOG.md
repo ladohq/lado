@@ -443,17 +443,6 @@ Wanted: LADO makes `LADO_HOME` with mode 700 and tightens an existing one by def
 warns.
 Found: 2026-10-08, design of feature/argv-prompt.
 
-## Integration flake: `test_unmerged_worker_is_finished_only_with_discard` reads w1 busy
-
-Size: S. Why here: a red CI on a release commit with no real error.
-CI on e7c8773 (Python 3.13, `-n auto`) failed at tests/integration/test_agents.py:598,
-`assert state.get_agent(SESSION, "w1").status == state.IDLE` -> `'busy' == 'idle'`; the
-rerun of the failed jobs passed with no change. The test reads w1's status once, right after
-the supervisor's refused finish, while w1 may still be in a turn.
-Wanted: the test waits for w1 to be idle (as the other status checks do) instead of reading
-it once.
-Found: 2026-10-09, CI of the 0.31.0 release (run 37887140737).
-
 ## A Codex agent whose turn ends on a model or API error stays busy
 
 Size: M. Why here: a Codex worker whose model fails (a 400, a 500, a server that is down)
@@ -519,18 +508,6 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
-## test_a_labelled_session_kept_after_its_command_gives_its_text_and_status fails under load
-
-Size: S. Why here: a red unit run for no cause in the work, about one run of `tests/test_tmux.py`
-in eight under `-n auto`; the cause is not known yet, and it may be in `tmux.pane_text` rather
-than in the test, which a login window's text depends on (LAD-168).
-
-Measured on 2026-11-06, tmux 3.3a, 16 workers: 5 red runs of 40 on the file with the fix of
-LAD-191 and 5 of 40 without it, taken in turn, and 15 of 15 green with the test alone under
-`-n0`. Two shapes: `assert ['1', ''] == ['1', '3']` after the whole 10 s (the pane is dead and
-tmux gives no exit status), and `assert '' == 'one\n\nlast words'` with the status there (the
-pane's text is empty). Wanted: the cause found, and the test or `tmux` fixed for it.
-Found: 2026-11-06, branch lado/lado/task-lad-191 (LAD-191).
 ## The epic's vitest tests keep `{ timeout: 3000 }` after the suite's wait became 10 s
 
 Size: XS: delete nine options at the merge of the epic. Why here: nothing fails, a wait is only

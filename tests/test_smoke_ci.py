@@ -3,8 +3,8 @@ Windows probe)."""
 
 import importlib.util
 import os
-import subprocess
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path

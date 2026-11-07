@@ -475,6 +475,9 @@ def test_worker_does_a_task_reports_and_gets_a_message(
 
     # The UI's terminal on w1, open while LADO delivers to it: a viewer must not stop that.
     viewing = terminal.open(SESSION, "w1", terminal.VIEW)
+    # The passive supervisor may leave the report's body unread, and a sender refuses to write
+    # over a message of w1's that waits for it (runtime._refuse_while_waiting).
+    state.read_messages(SESSION, "supervisor")
     runtime.send_message(SESSION, "supervisor", "w1", FOLLOW_UP, FOLLOW_UP_BODY)
     runtime.send_message(SESSION, "supervisor", "w1", WHILE_BUSY)
     wait_for(

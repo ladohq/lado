@@ -1680,6 +1680,15 @@ test("a project without a title is shown by its id; a session without one has no
   expect(meta().querySelector(".session-details-state")!.textContent).not.toContain("project");
 });
 
+test("a project's new title in the feed reaches the head's breadcrumb and Details with no reload", async () => {
+  await openHead(about({ project: { id: "shop", title: "Shop" } }));
+  abouts = { lado: about({ project: { id: "shop", title: "Shop EU" } }) };
+  const renamed = session("lado", { kits: ["team", "default"], permission_mode: "plan", project: "shop", project_title: "Shop EU" });
+  FakeEventSource.all[0].send("change", { kind: "sessions", session: "lado", key: "", op: "update", item: renamed }, "11");
+  await waitFor(() => expect(crumb().textContent).toBe("Shop EU"));
+  expect(meta().querySelector(".session-details-state")!.textContent).toMatch(/ · project Shop EU$/);
+});
+
 test("the head's branch has the remote and the path in its tooltip, and no Tab stop", async () => {
   await openHead(about());
   const branch = head().querySelector(".session-branch") as HTMLElement;

@@ -61,8 +61,11 @@ class SessionInfo(BaseModel):
     # in place of the name, the name beside it.
     title: str | None
     # The id of the project it is in (lado.projects), None for none; it never changes, so
-    # the feed carries it, and the project's title comes with SessionAbout.
+    # the links use it.
     project: str | None
+    # That project's title, None for none: read now, and a rename touches the project's
+    # sessions (state.set_project_title), so the feed carries the new one.
+    project_title: str | None = None
 
 
 class TitleChange(BaseModel):
@@ -1734,6 +1737,7 @@ def gate_info(gate: state.Gate) -> GateInfo:
 
 
 def session_info(sess: state.Session) -> SessionInfo:
+    project = state.get_project(sess.project) if sess.project else None
     gates, questions, agents = state.waiting_for_human(sess.name)
     status = runtime.session_status(sess)
     ran = runtime.session_time(sess, status)
@@ -1754,6 +1758,7 @@ def session_info(sess: state.Session) -> SessionInfo:
         stopped_at=_utc(sess.stopped_at) if sess.stopped_at else None,
         title=sess.title,
         project=sess.project,
+        project_title=project.title if project else None,
     )
 
 

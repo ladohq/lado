@@ -12,9 +12,9 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function show() {
+function show(side?: "right") {
   render(
-    <Tooltip tip="w1 · developer · claude">
+    <Tooltip tip="w1 · developer · claude" side={side}>
       <button type="button">w1</button>
     </Tooltip>,
   );
@@ -220,8 +220,11 @@ test("the trigger keeps its own handlers, and the tooltip takes no clicks", () =
 });
 
 // A window of 800 × 600; the trigger and the card at the rectangles given (jsdom lays out nothing).
-function placed(trigger: { left: number; top: number; width: number; height: number }) {
-  const card = { width: 200, height: 40 };
+function placed(
+  trigger: { left: number; top: number; width: number; height: number },
+  card = { width: 200, height: 40 },
+  side?: "right",
+) {
   vi.stubGlobal("innerWidth", 800);
   vi.stubGlobal("innerHeight", 600);
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
@@ -231,12 +234,14 @@ function placed(trigger: { left: number; top: number; width: number; height: num
     const [right, bottom] = [r.left + r.width, r.top + r.height];
     return { ...r, x: r.left, y: r.top, right, bottom, toJSON() {} };
   });
-  fireEvent.focus(show());
+  fireEvent.focus(show(side));
   return screen.getByRole("tooltip");
 }
 
 const left = (tip: HTMLElement) => parseFloat(tip.style.left);
+const top = (tip: HTMLElement) => parseFloat(tip.style.top);
 const arrowX = (tip: HTMLElement) => parseFloat(tip.style.getPropertyValue("--arrow-x"));
+const arrowY = (tip: HTMLElement) => parseFloat(tip.style.getPropertyValue("--arrow-y"));
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -274,6 +279,53 @@ test("a card pushed by the window's edge keeps its arrow at the trigger, off its
   tip = placed({ left: 0, top: 100, width: 4, height: 20 });
   expect(left(tip)).toBe(8);
   expect(arrowX(tip)).toBe(16);
+});
+
+test("a tall card goes over its trigger only when there is more room over it than under it", () => {
+  const tall = { width: 200, height: 300 };
+  let tip = placed({ left: 300, top: 200, width: 60, height: 20 }, tall); // 200 over, 369 under
+  expect(tip.dataset.side).toBe("below");
+  expect(top(tip)).toBe(231);
+  cleanup();
+  tip = placed({ left: 300, top: 400, width: 60, height: 20 }, tall);
+  expect(tip.dataset.side).toBe("above");
+  expect(top(tip)).toBe(89);
+});
+
+test("a card taller than the room on both sides stays inside the window", () => {
+  const tip = placed({ left: 300, top: 200, width: 60, height: 20 }, { width: 200, height: 500 });
+  expect(tip.dataset.side).toBe("below");
+  expect(top(tip)).toBe(600 - 8 - 500);
+});
+
+const CARD = { width: 360, height: 214 };
+
+test("side right: beside the trigger, level with it, the arrow on the trigger's middle", () => {
+  const tip = placed({ left: 20, top: 300, width: 240, height: 50 }, CARD, "right");
+  expect(tip.dataset.side).toBe("right");
+  expect(left(tip)).toBe(260 + 11);
+  expect(top(tip)).toBe(325 - 107);
+  expect(top(tip) + arrowY(tip)).toBe(325);
+});
+
+test("side right: moved inside the window at its ends, the arrow stays at the trigger, off the corners", () => {
+  let tip = placed({ left: 20, top: 540, width: 240, height: 50 }, CARD, "right");
+  expect(top(tip)).toBe(600 - 8 - 214);
+  expect(top(tip) + arrowY(tip)).toBe(565);
+  cleanup();
+  tip = placed({ left: 20, top: 0, width: 240, height: 20 }, CARD, "right");
+  expect(top(tip)).toBe(8);
+  expect(arrowY(tip)).toBe(16);
+});
+
+test("side right without room on the right goes under the trigger, or over it", () => {
+  let tip = placed({ left: 20, top: 100, width: 500, height: 50 }, CARD, "right");
+  expect(tip.dataset.side).toBe("below");
+  expect(top(tip)).toBe(161);
+  cleanup();
+  tip = placed({ left: 20, top: 500, width: 500, height: 50 }, CARD, "right");
+  expect(tip.dataset.side).toBe("above");
+  expect(top(tip)).toBe(500 - 11 - 214);
 });
 
 function Silenced({ tip }: { tip: string | null }) {

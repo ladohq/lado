@@ -3585,9 +3585,12 @@ def list_projects() -> list[Project]:
 
 
 def set_project_title(id: str, title: str | None) -> bool:
-    """False when there is no such project."""
+    """False when there is no such project. Its sessions are touched too: the journal sends
+    each with the new title (SessionInfo.project_title), as `projects` is not journaled."""
     with connect() as db:
-        return db.execute("UPDATE projects SET title = ? WHERE id = ?", (title, id)).rowcount == 1
+        found = db.execute("UPDATE projects SET title = ? WHERE id = ?", (title, id)).rowcount == 1
+        db.execute("UPDATE sessions SET project = project WHERE project = ?", (id,))
+        return found
 
 
 def delete_project(id: str) -> bool:

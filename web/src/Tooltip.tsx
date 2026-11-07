@@ -43,7 +43,8 @@ export function focusQuietly(element: HTMLElement) {
   quiet = false;
 }
 
-type Place = { left: number; top: number; side: "below" | "above"; arrow: number };
+// `arrow`: along the edge that faces the trigger, from the card's left or, on the right, its top.
+type Place = { left: number; top: number; side: "below" | "above" | "right"; arrow: number };
 
 type Trigger = {
   onMouseEnter?: (event: MouseEvent<HTMLElement>) => void;
@@ -57,10 +58,12 @@ type Trigger = {
 
 export function Tooltip({
   tip,
+  side,
   when,
   children,
 }: {
   tip: ReactNode;
+  side?: "right"; // beside the trigger, for a card that must not cover what is under it
   when?: (trigger: HTMLElement) => boolean;
   children: ReactElement<Trigger>;
 }) {
@@ -106,25 +109,38 @@ export function Tooltip({
     };
   }, [shown]);
 
-  // Under the trigger, or over it when there is no room below; from the trigger's left, but
-  // far enough left for the arrow to reach a narrow trigger's centre; never past the
-  // window's edge. The arrow points at the trigger's centre, kept off the card's corners.
+  // With `side="right"` beside the trigger when the window has room there, centred on it and
+  // moved no further than the window asks. Else under the trigger, or over it when it does
+  // not fit below and there is more room over it; from the trigger's left, but far enough
+  // left for the arrow to reach a narrow trigger's centre. Never past the window's edge. The
+  // arrow points at the trigger's centre, kept off the card's corners.
   useLayoutEffect(() => {
     if (!shown || !trigger.current || !box.current) return;
     const at = trigger.current.getBoundingClientRect();
     const size = box.current.getBoundingClientRect();
+    const inWindow = (top: number) => Math.max(MARGIN, Math.min(top, window.innerHeight - size.height - MARGIN));
+    const aside = at.right + GAP;
+    if (side === "right" && aside + size.width <= window.innerWidth - MARGIN) {
+      const middle = at.top + at.height / 2;
+      const top = inWindow(middle - size.height / 2);
+      const arrow = Math.max(ARROW_END, Math.min(middle - top, size.height - ARROW_END));
+      setPlace({ left: aside, top, side: "right", arrow });
+      return;
+    }
     const centre = at.left + at.width / 2;
     const wanted = Math.min(at.left, centre - ARROW_END);
     const left = Math.max(MARGIN, Math.min(wanted, window.innerWidth - size.width - MARGIN));
     const below = at.bottom + GAP;
-    const side = below + size.height > window.innerHeight - MARGIN ? "above" : "below";
-    const top = side === "below" ? below : at.top - GAP - size.height;
+    const under = window.innerHeight - MARGIN - below;
+    const over = at.top - GAP - MARGIN;
+    const vertical = size.height > under && over > under ? "above" : "below";
+    const top = vertical === "below" ? below : at.top - GAP - size.height;
     const arrow =
       size.width < 2 * ARROW_END
         ? size.width / 2
         : Math.max(ARROW_END, Math.min(centre - left, size.width - ARROW_END));
-    setPlace({ left, top: Math.max(MARGIN, top), side, arrow });
-  }, [shown]);
+    setPlace({ left, top: inWindow(top), side: vertical, arrow });
+  }, [shown, side]);
 
   const own = children.props;
   const element = cloneElement(children, {
@@ -182,7 +198,11 @@ export function Tooltip({
             className="tooltip"
             data-side={place.side}
             style={
-              { left: place.left, top: place.top, "--arrow-x": `${place.arrow}px` } as CSSProperties
+              {
+                left: place.left,
+                top: place.top,
+                [place.side === "right" ? "--arrow-y" : "--arrow-x"]: `${place.arrow}px`,
+              } as CSSProperties
             }
           >
             {tip}

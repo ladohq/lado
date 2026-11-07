@@ -1,6 +1,6 @@
 // The session's Flows tab: its runs in two groups, a run's page with its head, what goes on
 // now (its gate, answered there) and the history of its events, live from the feed.
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation, useNavigate } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
@@ -678,7 +678,7 @@ test("a waiting run's now is its gate, compact, answered on the page; the run mo
   expect(within(card).queryByRole("list", { name: "Artifacts it reads" })).toBeNull();
   fireEvent.change(within(card).getByRole("textbox"), { target: { value: "ship it" } });
   fireEvent.click(within(card).getByRole("button", { name: "Approve" }));
-  await vi.waitFor(() =>
+  await waitFor(() =>
     expect(posted).toEqual([{ path: "/api/sessions/lado/gates/41/answer", body: { option: "approve", comment: "ship it" } }]),
   );
   stream().send("change", { kind: "gates", session: "lado", key: "41", op: "update", item: gate(41, { answer: "approve", answered_by: "human" }) }, "11");
@@ -697,12 +697,12 @@ test("the gate on a run's page keeps the files of its comment and answers with t
   open(runPath("lado", WAITING.name));
   const card = within(nowCard(await page("feature/flows-tab"))).getByRole("article", { name: "Gate #41" });
   const clip = within(card).getByRole("button", { name: "Attach files" });
-  await vi.waitFor(() => expect(clip.getAttribute("title")).toContain("up to 10 files"));
+  await waitFor(() => expect(clip.getAttribute("title")).toContain("up to 10 files"));
   const log = new File(["boom"], "server.log");
   fireEvent.change(clip.parentElement!.querySelector("input[type=file]")!, { target: { files: [log] } });
   expect(within(card).getByText("1 file, 4 B")).toBeTruthy();
   fireEvent.click(within(card).getByRole("button", { name: "Reject" }));
-  await vi.waitFor(() =>
+  await waitFor(() =>
     expect(posted).toEqual([
       { path: "/api/sessions/lado/artifacts", body: "server.log" },
       { path: "/api/sessions/lado/gates/41/answer", body: { option: "reject", comment: "", artifacts: ["server-1a2b3c4d.log"] } },
@@ -821,7 +821,7 @@ test("a row has the time, who, from, outcome, to and the summary; a way back is 
   expect(fixed.querySelector(".feed-chip")?.className).not.toContain("back");
   expect(findings.querySelector(".feed-chip")?.className).toContain("back");
   expect(findings.querySelector(".feed-dot")?.className).toContain("back");
-  await vi.waitFor(() => expect(findings.querySelector(".feed-who a")?.getAttribute("href")).toBe("/sessions/lado/agents/reviewer"));
+  await waitFor(() => expect(findings.querySelector(".feed-who a")?.getAttribute("href")).toBe("/sessions/lado/agents/reviewer"));
   expect(within(fixed).queryByRole("link", { name: "developer" })).toBeNull(); // finished: no page
   cleanup();
   serve({ ...STEPS, runs: [{ ...ACTIVE, states: [], problem: "unreadable" }] });

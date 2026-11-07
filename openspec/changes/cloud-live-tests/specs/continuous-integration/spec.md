@@ -3,19 +3,24 @@
 ### Requirement: Live tests run weekly and by hand outside ci-ok
 
 The workflow `.github/workflows/live.yml` SHALL run the live tests on a weekly schedule and on
-manual dispatch, a cell per provider of Codex, OpenCode and Kilo on Linux, and on no other
+manual dispatch, a cell per provider of LADO, each with its model, on Linux, and on no other
 event. It MUST NOT be part of `.github/workflows/ci.yml`, so that `ci-ok` never depends on it,
 and two of its runs MUST NOT run at once.
 
 #### Scenario: The weekly run
 
 - **WHEN** the schedule starts the workflow on `main`
-- **THEN** each of the three cells runs its provider's live tests against the cloud model
+- **THEN** each cell runs its provider's live tests against its cloud model
 
 #### Scenario: A red live run does not block a merge
 
 - **WHEN** a cell of the live workflow fails
 - **THEN** `ci-ok` of every pull request is unchanged, and GitHub mails the run's failure
+
+#### Scenario: A provider without a cell
+
+- **WHEN** LADO gains a provider and `live.yml`'s matrix lacks it
+- **THEN** the unit tests fail
 
 #### Scenario: A trigger is added
 
@@ -83,12 +88,13 @@ SHALL upload the output folder whether the cell passed or not.
 - **WHEN** pytest is still running after the cell's own limit, shorter than the job's timeout
 - **THEN** pytest is ended, the cell is red, and its redacted log and evidence are uploaded
 
-### Requirement: The live tests of Codex, OpenCode and Kilo run only on a remote endpoint
+### Requirement: Every provider's live tests run only on a remote endpoint
 
-Codex, OpenCode and Kilo's live tests SHALL reach their model only at `LADO_LIVE_ENDPOINT`, which
-MUST have no default value, with `LADO_LIVE_API_KEY` and `LADO_LIVE_MODEL` (or the CLI's own
-model variable). Without any of them each of these tests SHALL skip and name what to set. No
-live test SHALL start or look for LM Studio or a LiteLLM proxy.
+Each provider's live tests SHALL reach their model only at `LADO_LIVE_ENDPOINT`, which MUST have
+no default value, with `LADO_LIVE_API_KEY` and `LADO_LIVE_MODEL` (or the CLI's own model variable),
+set up by that provider's one entry in `tests/live_models.py`. Without any of them each test SHALL
+skip and name what to set. No live test but `tests/live/test_codex_login.py` SHALL use a person's
+login or config, and none SHALL start or look for LM Studio or a LiteLLM proxy.
 
 #### Scenario: No endpoint on a developer's machine
 
@@ -100,19 +106,36 @@ live test SHALL start or look for LM Studio or a LiteLLM proxy.
 - **WHEN** `LADO_LIVE_ENDPOINT` is set and `LADO_LIVE_API_KEY` is not
 - **THEN** the tests skip with a reason naming the key's variable
 
-#### Scenario: Claude Code
+#### Scenario: Claude Code on the endpoint
 
-- **WHEN** Claude Code's live test runs with no endpoint
-- **THEN** it runs as before, on its own login
+- **WHEN** Claude Code's live test starts with `LADO_LIVE_ENDPOINT` ending in `/v1`
+- **THEN** it has `ANTHROPIC_BASE_URL` without the `/v1`, the key as `ANTHROPIC_AUTH_TOKEN`, a
+  `CLAUDE_CONFIG_DIR` of the test and no other login variable
+
+#### Scenario: A person's subscription is logged in
+
+- **WHEN** the machine's Claude Code is logged in and no endpoint is set
+- **THEN** Claude Code's live tests skip, and they do not use that login
+
+#### Scenario: The agents ran on another model
+
+- **WHEN** a Claude Code agent's transcript names a model other than the test's
+- **THEN** the test fails
 
 ### Requirement: A release candidate's live check is the live workflow
 
-The release's live step SHALL be a run of the live workflow on the release candidate's commit
-with all three cells green, and Claude Code's live test run locally with the human's yes; a
-`make test-live` without the endpoint's variables MUST NOT count as that check.
+The release's live step SHALL be a run of the live workflow with every cell green whose head commit
+is the release candidate's; a `make test-live` without the endpoint's variables MUST NOT count as
+that check.
 
 #### Scenario: The live step of a release candidate
 
 - **WHEN** the commit `Release candidate X.Y.ZrcN` is on `main`
-- **THEN** `gh workflow run live.yml` runs on it before the tag is pushed, and a red cell is rerun
-  by the flaky rule of the checks
+- **THEN** `gh workflow run live.yml` runs before the tag is pushed, `gh run list --workflow
+  live.yml` shows that commit's SHA on the run, and a red cell is rerun by the flaky rule of the
+  checks
+
+#### Scenario: A run of another commit
+
+- **WHEN** the last green run's SHA is not the release candidate's
+- **THEN** the step is not done

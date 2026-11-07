@@ -1,7 +1,7 @@
 # Live tests on a cloud model, in CI
 
 Task: LAD-231. Change: `openspec/changes/cloud-live-tests/` (why and scope in its `proposal.md`,
-the rules in its delta, the decisions D1 to D13 in its `design.md`). This document says how the
+the rules in its delta, the decisions D1 to D16 in its `design.md`). This document says how the
 pieces fit and what the human does by hand.
 
 ## Shape
@@ -9,33 +9,39 @@ pieces fit and what the human does by hand.
 ```
 the trial, first, by hand, on the code as it stands
   └─ Codex direct: cheap model, OpenAI model. Both fail: stop, the human chooses, redesign.
+  └─ Claude Code: haiku, then a cheap model. Both fail: stop, the human decides.
   └─ OpenCode, Kilo, three full runs
 then, only after it worked:
-  LM Studio and LiteLLM removed; one setup left, the remote endpoint
+  LM Studio, LiteLLM and Claude's own login go; one setup left, an entry per provider
 
 schedule (Mon 04:23 UTC) / dispatch
   └─ live.yml, environment `live` (main, tags v*)
-       └─ cell per provider: codex, opencode, kilo (ubuntu)
+       └─ cell per provider, each with its model (ubuntu)
             └─ scripts/smoke_ci.py live <provider> <out>
                  ├─ install the CLI at its pin (three attempts, as the smoke)
                  ├─ timeout 1500 pytest -m live ... into a temp folder, not <out>
                  ├─ pass only with a pass and no skip
                  └─ redact the key there, then move the files to <out>; the workflow uploads <out>
 
-OpenCode, Kilo ── chat completions ──┐
-Codex ─────────── Responses ─────────┴─ OpenRouter ─ cheap model
+OpenCode, Kilo ── chat completions (/api/v1) ──┐
+Codex ─────────── Responses (/api/v1) ─────────┼─ OpenRouter ─ cheap models
+Claude Code ───── Anthropic Messages (/api) ───┘
 ```
 
 `LADO_LIVE_ENDPOINT` is `https://openrouter.ai/api/v1` in `live.yml`, and no default anywhere else:
-without it, its key and a model, the live tests of these three skip and name what to set.
-`LADO_LIVE_IMAGE=1`, and `LADO_LIVE_MODEL` the model the trial settled. All three tests of
+without it, its key and a model, the live tests skip and name what to set.
+`LADO_LIVE_IMAGE=1`, and `LADO_LIVE_MODEL` the matrix's model of the cell. All the tests of
 `tests/live/test_live.py` run for each provider.
+
+Adding a provider: an entry in `live_models.SETUPS`, a pin in `smoke_ci.py`, a line in the matrix;
+the unit tests name what is missing.
 
 ## The workflow
 
 One job `live`, `if: github.repository == 'ladohq/lado'` (a fork's schedule has no secret),
 `environment: live`, `timeout-minutes: 30`, `fail-fast: false`, `permissions: contents: read`,
-`concurrency: {group: live, cancel-in-progress: false}`. Checkout with
+`concurrency: {group: live, cancel-in-progress: false}`. The matrix is an `include` list of
+`{provider, model}`, and the test step passes `LADO_LIVE_MODEL: ${{ matrix.model }}`. Checkout with
 `persist-credentials: false`, as an agent with a shell runs on the runner. Setup as ci.yml's smoke
 job on Linux. `LADO_LIVE_API_KEY: ${{ secrets.LADO_LIVE_API_KEY }}` stands in the `env` of the test
 step alone. Upload `if: always()`, retention 5 days.
@@ -95,7 +101,7 @@ as the project's rule says; a 402 means the month's limit is spent.
 | The live key reaches only main and tags | unit (files), GitHub (the rule, step 8) | `tests/test_live_workflow.py` |
 | A live cell passes only with a pass and no skip | unit | `tests/test_smoke_ci.py` |
 | What a live cell uploads holds no key | unit | `tests/test_smoke_ci.py` |
-| The live tests of Codex, OpenCode and Kilo run only on a remote endpoint | unit; live in the trial | `tests/test_live_models.py` |
+| Every provider's live tests run only on a remote endpoint | unit; live in the trial | `tests/test_live_models.py` |
 | A release candidate's live check is the live workflow | document, checked at the next RC | docs/release.md |
 
 No integration test: nothing of LADO's processes changes; the real crossing is the live layer

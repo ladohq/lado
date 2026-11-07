@@ -79,7 +79,6 @@ In: the trial and its report, the removal of LM Studio and LiteLLM, `live.yml`, 
   flake. Telling a provider's outage from LADO's failure stays an open BACKLOG.md item.
 - cloud.ru: no confirmation of its Responses API and tool calls.
 - A schedule more often than weekly: a month of runs decides.
-- `.lado/sdlc.md` (its "run only at a release" on `make test-live`): the human keeps that file.
 
 ## Impact
 
@@ -88,5 +87,6 @@ In: the trial and its report, the removal of LM Studio and LiteLLM, `live.yml`, 
   `scripts/smoke_ci.py`, `.github/workflows/live.yml` (new); `tests/test_smoke_ci.py`,
   `tests/test_live_workflow.py` (new), `tests/test_workflow_security.py`.
 - docs/testing.md, docs/release.md, AGENTS.md; two BACKLOG.md entries on LM Studio get a line.
+- `.lado/sdlc.md`, its line on `make test-live`, at the human's word during the review.
 - LADO itself does not change: no CHANGELOG.md line, no version bump of its own.
 - The human: two keys, the environment and its secret (design.md D9).

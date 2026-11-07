@@ -80,8 +80,9 @@ Into an epic branch:
 - Excluded from a normal round:
   - `make check` and `make test-integration` as a whole: CI runs them on every push, and a
     full local run takes the machine-wide lock for many minutes;
-  - `make test-live`: real models, run only at a release, Claude Code only with the
-    human's yes;
+  - `make test-live`: real models on OpenRouter, paid; CI runs it weekly and by hand in
+    `live.yml`, outside `ci-ok`, and on each RC; locally only with a limited key and the
+    human's yes, as without one it skips everything;
   - `make test-smoke`: needs the real CLIs; CI runs it.
 - What CI proves: on every pull request and push to main, `ruff format --check`,
   `ruff check`, the unit tests and the integration tests (three shards per Python) on

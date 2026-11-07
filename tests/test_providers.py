@@ -2048,17 +2048,16 @@ def test_a_server_s_model_is_named_as_on_server_reads_it(provider):
     assert cli.on_server(named) == ("aaaa1111", "qwen/qwen3-coder")
 
 
-def test_codex_runs_on_no_server():
+def test_codex_is_told_a_server_s_model_as_it_is():
     cli = providers.get("codex")
-    assert not cli.runs_on_server
-    assert cli.on_server("lado-aaaa1111/qwen3-8b") is None
-    with pytest.raises(NotImplementedError):
-        cli.server_model("aaaa1111", "qwen3-8b")
+    assert cli.external_whole_process
+    assert cli.server_model("aaaa1111", "qwen/qwen3-coder") == "qwen/qwen3-coder"
+    assert cli.on_server("qwen/qwen3-coder") is None
 
 
 def test_claude_code_is_told_a_server_s_model_as_it_is():
     cli = providers.get("claude")
-    assert cli.runs_on_server and cli.external_whole_process
+    assert cli.external_whole_process
     assert cli.server_model("aaaa1111", "qwen/qwen3-coder") == "qwen/qwen3-coder"
     assert cli.on_server("qwen/qwen3-coder") is None
     assert cli.min_context == 65536

@@ -14,9 +14,9 @@ proves nothing. Each request is cut at TIMEOUT, its name lookup included; a POST
 answer then goes once more, cut at LATE_TIMEOUT, and an API still silent is neither proven
 nor missing (`Probe.late`). No redirect is
 followed, so neither a request nor the key reaches another host. The CLIs that suit a
-server follow from the APIs it proved, by each provider's `server_api`; its type is only
-shown. The key goes in the requests' headers and nowhere else: no message is built from
-a request's headers.
+server follow from the APIs it proved, by each provider's `server_api`; its type decides
+only what a provider refuses (`Provider.refuses_server`). The key goes in the requests'
+headers and nowhere else: no message is built from a request's headers.
 """
 
 from __future__ import annotations
@@ -47,7 +47,6 @@ TOO_LARGE = "the answer is larger than 4 MiB"
 LATE = "did not answer in time"  # an API whose POST got no answer even the second time
 
 OLLAMA = "Ollama"
-LMSTUDIO = "LM Studio"
 OPENAI = "OpenAI-compatible"
 ANTHROPIC = "Anthropic-compatible"
 
@@ -151,7 +150,15 @@ class Probe:
     late: frozenset[str] = frozenset()
 
     def clis(self) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
-        return clis(self.apis)
+        return clis(self.apis, self.kind)
+
+    def refused(self) -> list[tuple[providers.Provider, str]]:
+        """Each CLI that has its API here and refuses this type of server, with why."""
+        return [
+            (provider, why)
+            for provider, api in suiting(self.apis, self.kind)[1]
+            if api in self.apis and (why := provider.refuses_server(self.kind))
+        ]
 
     def late_warning(self) -> str | None:
         """What to tell of the `late` APIs when the server is saved; None for none."""
@@ -168,10 +175,11 @@ def late_words(apis: Collection[str]) -> str:
 Suiting = list[tuple[providers.Provider, str]]
 
 
-def suiting(apis: Iterable[str]) -> tuple[Suiting, Suiting]:
-    """The (provider, API) of each CLI that can use a server proving `apis` and of each that
-    cannot, by the API its provider declares, in the registry's order (LADO's one order of
-    the CLIs); a provider that declares none of base.SERVER_APIS is left out."""
+def suiting(apis: Iterable[str], kind: str) -> tuple[Suiting, Suiting]:
+    """The (provider, API) of each CLI that can use a server of the type `kind` proving `apis`
+    and of each that cannot, by the API its provider declares and the types it refuses, in the
+    registry's order (LADO's one order of the CLIs); a provider that declares none of
+    base.SERVER_APIS is left out."""
     apis = frozenset(apis)
     suits: Suiting = []
     not_suits: Suiting = []
@@ -179,13 +187,14 @@ def suiting(apis: Iterable[str]) -> tuple[Suiting, Suiting]:
         provider = providers.get(name)
         api = provider.server_api
         if api in base.SERVER_APIS:
-            (suits if api in apis else not_suits).append((provider, api))
+            fits = api in apis and not provider.refuses_server(kind)
+            (suits if fits else not_suits).append((provider, api))
     return suits, not_suits
 
 
-def clis(apis: Iterable[str]) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+def clis(apis: Iterable[str], kind: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """`suiting` with each CLI's title: (title, API)."""
-    suits, not_suits = suiting(apis)
+    suits, not_suits = suiting(apis, kind)
     return [(p.title, api) for p, api in suits], [(p.title, api) for p, api in not_suits]
 
 
@@ -427,8 +436,13 @@ def lines(found: Probe) -> list[str]:
         groups.append(f"{', '.join(titles)} ({api})")
     out.append(f"CLIs: {'; '.join(groups) or 'none'}")
     if not_suits:
+        refused = {provider.title: why for provider, why in found.refused()}
         said = [
-            f"{title} ({api} {LATE})" if api in found.late else f"{title} (no {api})"
+            f"{title} ({refused[title]})"
+            if title in refused
+            else f"{title} ({api} {LATE})"
+            if api in found.late
+            else f"{title} (no {api})"
             for title, api in not_suits
         ]
         out.append("not: " + ", ".join(said))
@@ -490,7 +504,7 @@ def _kind(
         if isinstance(version.body.get("version"), str):
             return OLLAMA
     if _listing(lmstudio) is not None:
-        return LMSTUDIO
+        return base.LM_STUDIO
     if _listing(listed) is not None:
         return ANTHROPIC if _anthropic_shaped(listed) else OPENAI
     if _anthropic_shaped(versioned):

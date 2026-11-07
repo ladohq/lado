@@ -8340,6 +8340,13 @@
             },
             "type": "array",
             "title": "Clis"
+          },
+          "cli_notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Cli Notes"
           }
         },
         "type": "object",
@@ -8350,10 +8357,11 @@
           "models_why",
           "embeddings",
           "apis_why",
-          "clis"
+          "clis",
+          "cli_notes"
         ],
         "title": "ProbeInfo",
-        "description": "What a probe found on a model server (lado.model_servers.Probe): its type, the\naddress that answered (the typed one with its scheme and path filled in), its models\n(None for no list, why in `models_why`), those it types as embeddings, why its APIs\ncould not be told (\"\" when they could), and the CLIs that can use it."
+        "description": "What a probe found on a model server (lado.model_servers.Probe): its type, the\naddress that answered (the typed one with its scheme and path filled in), its models\n(None for no list, why in `models_why`), those it types as embeddings, why its APIs\ncould not be told (\"\" when they could), the CLIs that can use it, and for each CLI that has\nits API and refuses its type a line of why."
       },
       "ProjectDeletion": {
         "properties": {

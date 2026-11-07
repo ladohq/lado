@@ -3133,7 +3133,8 @@ export interface components {
          * @description What a probe found on a model server (lado.model_servers.Probe): its type, the
          *     address that answered (the typed one with its scheme and path filled in), its models
          *     (None for no list, why in `models_why`), those it types as embeddings, why its APIs
-         *     could not be told ("" when they could), and the CLIs that can use it.
+         *     could not be told ("" when they could), the CLIs that can use it, and for each CLI that has
+         *     its API and refuses its type a line of why.
          */
         ProbeInfo: {
             /** Kind */
@@ -3150,6 +3151,8 @@ export interface components {
             apis_why: string;
             /** Clis */
             clis: components["schemas"]["CliApi"][];
+            /** Cli Notes */
+            cli_notes: string[];
         };
         /**
          * ProjectDeletion

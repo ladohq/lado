@@ -741,6 +741,13 @@ test("the form says why no API could be told, not only that no CLI can use the s
   );
 });
 
+test("the form names a CLI the server's type does not suit, and no other line without one", () => {
+  const note = "Codex CLI: its Responses API loses Codex CLI's MCP tools, so the agent could not talk to LADO";
+  const noted = render(<Found probe={{ ...LMSTUDIO_PROBE, cli_notes: [note] }} />).container;
+  expect(noted.querySelector(".field-note.warn")?.textContent).toBe(`⚠ ${note}`);
+  expect(render(<Found probe={LMSTUDIO_PROBE} />).container.querySelector(".field-note")).toBeNull();
+});
+
 test("the form checks once the typing settles, without a key: the found panel, the name free", async () => {
   await openForm("LM Studio дома", "localhost:1234");
   expect(addButton().disabled).toBe(true);

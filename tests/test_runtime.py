@@ -6733,8 +6733,9 @@ def test_a_worker_on_a_server_its_cli_cannot_run_is_refused(repo, fake_tmux, mon
     with pytest.raises(runtime.LadoError) as error:
         runtime.spawn_worker("s", "a task", name="w1", provider="codex")
     assert str(error.value) == (
-        "Шлюз GPT is on the model server Шлюз; Codex CLI does not run on a model server yet, "
-        f"Kilo CLI and OpenCode do{NOT_GIVEN_WAY_OUT}"
+        "Шлюз GPT is on the model server Шлюз; Шлюз does not suit Codex CLI: its Responses API "
+        "loses Codex CLI's MCP tools, so the agent could not talk to LADO; Kilo CLI and OpenCode "
+        f"do{NOT_GIVEN_WAY_OUT}"
     )
     assert state.get_agent("s", "w1") is None
 
@@ -6894,11 +6895,11 @@ def test_a_model_gone_from_its_server_is_refused(repo, fake_tmux, monkeypatch):
     _nothing_of(repo, fake_tmux, "w1")
 
 
-def test_codex_on_an_external_model_is_refused_asking_no_server(repo, fake_tmux, monkeypatch):
+def test_codex_on_lm_studio_is_refused_asking_no_server(repo, fake_tmux, monkeypatch):
     runtime.start_session(str(repo), "s", None, provider="codex")
     _on_server("Шлюз GPT", cli="codex", model="gw-gpt", server="Шлюз")
     asked = _answers(monkeypatch, "gw-gpt")
-    with pytest.raises(runtime.ModelRefused, match="Codex CLI does not run on a model server"):
+    with pytest.raises(runtime.ModelRefused, match="Шлюз does not suit Codex CLI"):
         runtime.spawn_worker("s", "a task", name="w1", model="Шлюз GPT")
     assert asked == []
     _nothing_of(repo, fake_tmux, "w1")

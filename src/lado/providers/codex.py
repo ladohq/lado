@@ -115,6 +115,10 @@ CARRIED = (
     "model_reasoning_effort",
 )
 PROFILE = "lado"  # LADO's permission profile (see _git_profile)
+# Codex sends a server's MCP tools as one tool of type `namespace` (0.162.0, no setting changes
+# it), which LM Studio's Responses API drops: such an agent has no LADO tools
+# (tests/local_models.py).
+LOSES_TOOLS = "its Responses API loses Codex CLI's MCP tools, so the agent could not talk to LADO"
 USING = "Logged in using "  # the start of `codex login status`'s line for a login
 
 # Codex's login (0.162.0, checked by hand): its file CODEX_HOME/auth.json, the system
@@ -207,6 +211,12 @@ class CodexProvider(base.Provider):
         "Log in here: the login goes to Codex's login file, and your own Codex keeps using "
         "the keyring."
     )
+
+    def refuses_server(self, kind: str) -> str:
+        return LOSES_TOOLS if kind == base.LM_STUDIO else ""
+
+    def server_model(self, server: str, model: str) -> str:
+        return model
 
     def needs_login(self, env: Mapping[str, str]) -> bool:
         # The model provider of the user's config, as carried to the agents (in an agent's

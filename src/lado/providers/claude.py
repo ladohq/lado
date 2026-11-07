@@ -246,7 +246,6 @@ class ClaudeProvider(base.Provider):
     install_hint = "install it: https://docs.anthropic.com/en/docs/claude-code"
     tested_version = TESTED_VERSION
     server_api = base.ANTHROPIC_MESSAGES
-    runs_on_server = True
     # The first request of an agent was 45K tokens with a human's CLAUDE.md, rules and plugins
     # (2.1.319 on LM Studio), 16K with none, before any work; the output goes on top.
     min_context = 65536

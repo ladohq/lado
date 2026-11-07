@@ -1584,20 +1584,53 @@ def test_a_silent_server_is_refused_in_the_words_of_each_place():
     assert refused.value.retry
 
 
+LOSES_TOOLS = "its Responses API loses Codex CLI's MCP tools, so the agent could not talk to LADO"
+
+
 @pytest.mark.parametrize("apis", [(CHAT,), ()], ids=["OpenCode suits", "nothing suits"])
-def test_a_cli_on_no_server_is_refused_with_no_request(apis):
-    server = state.add_model_server("gw", "Шлюз", "http://gw", "OpenAI-compatible", apis)
+def test_a_cli_a_server_s_type_does_not_suit_is_refused_with_no_request(apis):
+    server = state.add_model_server("gw", "Шлюз", "http://gw", base.LM_STUDIO, apis)
     saved = state.add_model("Шлюз GPT", "codex", "gw-gpt", server.id)
     default_on(saved)
     probe = counting_probe()
     start = model_settings.start_model(None, CODEX)
     with pytest.raises(model_settings.Refused) as refused:
         model_settings.check_start(start, CODEX, {}, probe)
-    who = "Kilo CLI and OpenCode do" if apis else "no agent CLI runs on it yet"
+    who = "Kilo CLI and OpenCode do" if apis else "no agent CLI runs on it"
     assert str(refused.value) == (
-        f"Шлюз GPT is on the model server Шлюз; Codex CLI does not run on a model server yet, {who}"
+        f"Шлюз GPT is on the model server Шлюз; Шлюз does not suit Codex CLI: {LOSES_TOOLS}; {who}"
     )
+    assert refused.value.short == "Шлюз does not suit Codex CLI"
+    assert refused.value.peek == "does not suit"
     assert probe.asked == [] and not refused.value.retry
+
+
+def test_codex_on_a_gateway_is_asked_and_passes():
+    server = state.add_model_server("gw", "Шлюз", "http://gw", "OpenAI-compatible", (RESPONSES,))
+    default_on(state.add_model("Шлюз GPT", "codex", "gw-gpt", server.id))
+    probe = counting_probe(found_on_server("gw-gpt", apis=(RESPONSES,)))
+    start = model_settings.start_model(None, CODEX)
+    model_settings.check_start(start, CODEX, {}, probe)
+    assert probe.asked == ["Шлюз"]
+
+
+def test_a_model_of_codex_on_lm_studio_is_not_saved(serve):
+    server = serve("lmstudio")
+    add("lms", server.url)
+    server.requests.clear()
+    with pytest.raises(model_settings.Refused) as refused:
+        add_model("C", "codex", "qwen3-8b", "lms")
+    assert str(refused.value) == (
+        f"lms does not suit Codex CLI: {LOSES_TOOLS}; Kilo CLI and OpenCode do"
+    )
+    assert refused.value.field == model_settings.SERVER_FIELD
+    assert server.requests == []
+    assert state.model("C") is None
+
+
+def test_the_saved_server_s_clis_follow_its_type():
+    server = state.add_model_server("lms", "lms", "http://lms", base.LM_STUDIO, (CHAT, RESPONSES))
+    assert model_settings.clis(server) == ["Kilo CLI", "OpenCode"]
 
 
 @pytest.mark.parametrize(
@@ -1708,7 +1741,7 @@ def test_a_start_below_the_cli_s_need_warns(serve, cli, need):
     ("kind", "how"),
     [
         (
-            model_servers.LMSTUDIO,
+            base.LM_STUDIO,
             "load the model with a larger context (lms load --context-length)",
         ),
         (model_servers.OLLAMA, "raise OLLAMA_CONTEXT_LENGTH, or the context in the Ollama app"),
@@ -1773,10 +1806,13 @@ def test_a_small_model_the_agent_does_not_start_on_does_not_warn(serve):
     assert model_settings.agent_servers(OPENCODE)[1] == []
 
 
-def test_a_cli_on_no_server_gets_no_servers():
-    default_on(entry("Шлюз GPT", cli="codex", model="gw-gpt"))
+def test_codex_gets_the_server_of_its_start_with_that_model_alone():
+    saved = entry("Шлюз GPT", cli="codex", model="gw-gpt", server="Шлюз")
+    entry("Шлюз Mini", cli="codex", model="gw-mini", server="Шлюз")
+    default_on(saved)
     start = model_settings.start_model(None, CODEX)
-    assert model_settings.agent_servers(CODEX, start) == ((), [])
+    entries, _ = model_settings.agent_servers(CODEX, start)
+    assert [(e.name, e.models) for e in entries] == [("Шлюз", (("gw-gpt", "Шлюз GPT"),))]
 
 
 def test_a_cli_of_one_model_per_process_gets_the_server_of_its_start_alone():
@@ -2241,14 +2277,14 @@ def test_a_provider_not_installed_is_refused(installed):
         model_settings.cli_models(session_of("claude"), KILO, env, Lists())
 
 
-def test_an_external_model_of_a_cli_on_no_server_says_why_it_cannot_start(installed):
-    entry("Шлюз GPT", cli="codex", server="Шлюз")
+def test_an_external_model_of_a_cli_its_server_does_not_suit_says_why_it_cannot_start(installed):
+    entry("Шлюз GPT", cli="codex", server="LM Studio дома")
     env = installed("codex")
     [codex] = model_settings.cli_models(session_of("codex"), None, env, Lists())
     [external] = codex["external"]
     assert external["blocked"] == (
-        "Шлюз GPT is on the model server Шлюз; Codex CLI does not run on a model server yet, "
-        "Kilo CLI and OpenCode do"
+        "Шлюз GPT is on the model server LM Studio дома; LM Studio дома does not suit Codex CLI: "
+        f"{LOSES_TOOLS}; Kilo CLI and OpenCode do"
     )
 
 

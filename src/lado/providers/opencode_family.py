@@ -136,7 +136,6 @@ class OpenCodeFamily(base.Provider):
     plugin = PLUGIN
     server_api = base.CHAT_COMPLETIONS  # an OpenAI-compatible provider in its config
     external_whole_process = False
-    runs_on_server = True
     start_silence = START_SILENCE
     config_file_name: str  # the agent's config in its config folder, e.g. "opencode.json"
     tui_config_variable: str  # the CLI's variable for a TUI config, e.g. "OPENCODE_TUI_CONFIG"

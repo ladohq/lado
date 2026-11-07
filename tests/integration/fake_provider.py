@@ -235,7 +235,6 @@ class FakeWindowProvider(FakeProvider):
 class FakeClaudeProvider(FakeLoginProvider):
     title = "Fake Claude"
     server_api = base.ANTHROPIC_MESSAGES
-    runs_on_server = True
     min_context = 32768
     server_model = claude.ClaudeProvider.server_model
     launched_on = claude.ClaudeProvider.launched_on
@@ -267,7 +266,6 @@ class FakeServerProvider(FakeProvider):
     title = "Fake server agent"
     server_api = base.CHAT_COMPLETIONS
     external_whole_process = False
-    runs_on_server = True
     min_context = 32768
     server_model = opencode_family.OpenCodeFamily.server_model
     on_server = opencode_family.OpenCodeFamily.on_server

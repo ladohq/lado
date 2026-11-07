@@ -2,11 +2,11 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-07-codex-model-
 
 ## 1. Who can use a server
 
-- [ ] 1.1 `Provider.refuses_server`, `base.LM_STUDIO`, `suiting(apis, kind)` and its callers, the
+- [x] 1.1 `Provider.refuses_server`, `base.LM_STUDIO`, `suiting(apis, kind)` and its callers, the
   `not:` line (D6). Check: `tests/test_model_servers.py`, `tests/test_cli_model_server.py`.
-- [ ] 1.2 `lado model add`, `check_launch`, `blocked`; `runs_on_server` and its refusal gone (D6).
+- [x] 1.2 `lado model add`, `check_launch`, `blocked`; `runs_on_server` and its refusal gone (D6).
   Check: `tests/test_model_settings.py`, `tests/test_cli_model_settings.py`, `tests/test_providers.py`.
-- [ ] 1.3 `ProbeInfo.cli_notes`, `Found`, `make web-types` (D7). Check: `make web`,
+- [x] 1.3 `ProbeInfo.cli_notes`, `Found`, `make web-types` (D7). Check: `make web`,
   `tests/test_server_model_settings.py`, a test in `web/src/`.
 
 ## 2. The launch

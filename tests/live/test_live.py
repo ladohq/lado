@@ -15,7 +15,7 @@ from pathlib import Path
 
 import agent_helpers
 import pytest
-from local_models import API_KEY, CONFIG_VARIABLES
+from live_models import API_KEY, CONFIG_VARIABLES
 from real_clis import agent_processes, answer_dialogs, check_gone
 
 from lado import artifacts, loop, mcp_server, providers, runs, runtime, state, terminal, tmux
@@ -100,8 +100,7 @@ MCP_TOKEN = "live-s3cr3t"
 
 
 def live_kit() -> Path:
-    """The folder of kit live: beside the test's LADO_HOME, outside the repository (the
-    Claude test's repository has a fixed path)."""
+    """The folder of kit live: beside the test's LADO_HOME, outside the repository."""
     return state.home().parent / "kits" / "live"
 
 
@@ -152,9 +151,6 @@ def start_session(repo, provider: str, monkeypatch=None) -> None:
     assert started.lead == "lead: passive of kit live"
     assert state.get_agent(SESSION, "supervisor").role == "passive"
     check_supervisor_tools()
-    if provider == "claude" and not any("whether to trust" in w for w in started.warnings):
-        # The fixed repo path is trusted from an earlier run: no dialog to check.
-        print("Claude Code trusts the repo already: the wait for its trust dialog is not checked")
 
     def supervisor_idle() -> bool:
         if status("supervisor") == state.IDLE:
@@ -308,7 +304,7 @@ def check_log(provider: str, summary: str) -> None:
 
 def claude_tools(repo, settings: str, permission_mode: str) -> list[str]:
     """The tools a Claude Code agent with these settings sees, from the CLI's init event."""
-    model = providers.get("claude").model  # the test model, see conftest.with_model
+    model = os.environ["ANTHROPIC_MODEL"]  # the test model (live_models.SETUPS)
     cmd = ["claude", "-p", "Reply OK.", "--settings", settings, "--model", model]
     cmd += ["--permission-mode", permission_mode, "--output-format", "stream-json", "--verbose"]
     out, no_input = subprocess.PIPE, subprocess.DEVNULL
@@ -323,18 +319,27 @@ def claude_tools(repo, settings: str, permission_mode: str) -> list[str]:
     pytest.fail("claude printed no init event")
 
 
-def check_models(provider: str, model: str) -> None:
+def check_models(provider: str, model: str, since: float) -> None:
     """Every agent of the session, the lead too, runs on the test model, from the one place
     its CLI reads it: Codex the `model` of its config.toml (carried from the test's user
     config), OpenCode and Kilo the file of OPENCODE_CONFIG / KILO_CONFIG every agent
     inherits, which LADO's own config of the agent does not override, and the models they
     record as used in the test's state (conftest.live_provider) are only it. Claude Code:
-    --model (real_clis.with_model)."""
+    ANTHROPIC_MODEL, and each answer in the transcripts written `since` names it: a model
+    silently ignored would cost money and prove the wrong thing."""
     agents = state.list_agents(SESSION)
     assert {a.name for a in agents} >= {"supervisor", "w1"}
     for agent in agents:
         folder = base.config_dir(agent)
-        if provider == "codex":
+        if provider == "claude":
+            used = {
+                entry["message"]["model"]
+                for transcript in claude_transcripts(agent.cwd, since)
+                for entry in transcript
+                if entry.get("type") == "assistant" and entry.get("message", {}).get("model")
+            }
+            assert used - {"<synthetic>"} == {model}, (agent.name, used)
+        elif provider == "codex":
             config = tomllib.loads((folder / "config.toml").read_text())
             assert config["model"] == model, (agent.name, config.get("model"))
         elif provider in CONFIG_VARIABLES:
@@ -343,8 +348,9 @@ def check_models(provider: str, model: str) -> None:
             own = json.loads((folder / providers.get(provider).config_file_name).read_text())
             assert "model" not in own, (agent.name, own["model"])
     if key := os.environ.get(API_KEY):
-        # An endpoint's key goes to each CLI by reference only (local_models); env.json, the
-        # agent's environment for its window, is removed once read.
+        # The key is in no file of an agent's config: Codex, OpenCode and Kilo take it by
+        # reference, Claude Code in its environment (live_models); env.json, the agent's
+        # environment for its window, is removed once read.
         holding = [
             str(p)
             for a in agents
@@ -470,7 +476,7 @@ def test_worker_does_a_task_reports_and_gets_a_message(
     hello = runtime.git(str(repo), "show", f"{worker.branch}:hello.txt")
     assert hello.strip() == "OK"
     check_agent_config(live_provider, repo, worker)
-    check_models(live_provider, live_model)
+    check_models(live_provider, live_model, since)
     check_no_snapshots(live_provider, repo)
 
     # The UI's terminal on w1, open while LADO delivers to it: a viewer must not stop that.
@@ -684,7 +690,7 @@ def test_a_flow_run_moves_on_when_its_worker_reports(live_repo, live_provider, l
     [told] = [m for m in state.list_messages(SESSION) if m.summary == kept]
     assert "Your role is read-only" in told.body and "finish_worker" not in told.body
     wait_for(lambda: status("w1") == state.IDLE, "w1 to be idle", 120)
-    check_models(live_provider, live_model)
+    check_models(live_provider, live_model, since)
 
     # The human merges; finishing the run's last worker takes the worktree and branch.
     supervisor_quiet()

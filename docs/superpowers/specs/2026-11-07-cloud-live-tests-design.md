@@ -1,0 +1,96 @@
+# Live tests on a cloud model, in CI
+
+Task: LAD-231. Change: `openspec/changes/cloud-live-tests/` (why and scope in its `proposal.md`,
+the rules in its delta, the decisions D1 to D12 in its `design.md`). This document says how the
+pieces fit and what the human does by hand.
+
+## Shape
+
+```
+schedule (Mon 04:23 UTC) / dispatch
+  └─ live.yml, environment `live` (main, tags v*)
+       └─ cell per provider: codex, opencode, kilo (ubuntu)
+            └─ scripts/smoke_ci.py live <provider> <out>
+                 ├─ install the CLI at its pin (three attempts, as the smoke)
+                 ├─ pytest -m live -n0 -v -k <provider> --ignore=tests/live/test_codex_login.py
+                 ├─ pass only with a pass and no skip
+                 └─ redact the key under <out>, then the workflow uploads <out>
+
+OpenCode, Kilo ──────────── chat completions ───────────┐
+Codex ── Responses ── LiteLLM bridge on 127.0.0.1 ──────┴─ OpenRouter ─ cheap model
+         (LADO_LIVE_CODEX_BRIDGE=1; direct without it)
+```
+
+`LADO_LIVE_ENDPOINT` is `https://openrouter.ai/api/v1`, `LADO_LIVE_IMAGE=1`, and
+`LADO_LIVE_MODEL` the model the trial settled. All three tests of `tests/live/test_live.py` run for
+each provider.
+
+## The workflow
+
+One job `live`, `if: github.repository == 'ladohq/lado'` (a fork's schedule has no secret),
+`environment: live`, `timeout-minutes: 30`, `fail-fast: false`, `permissions: contents: read`,
+`concurrency: {group: live, cancel-in-progress: false}`. Checkout with
+`persist-credentials: false`, as an agent with a shell runs on the runner. Setup as ci.yml's smoke
+job on Linux. `LADO_LIVE_API_KEY: ${{ secrets.LADO_LIVE_API_KEY }}` stands in the `env` of the test
+step alone. Upload `if: always()`, retention 5 days.
+
+## What the human does
+
+Nothing here is an agent's: keys are the human's, and a value never passes through an agent.
+
+**Before the trial**
+
+1. On openrouter.ai, Settings, API Keys: create the key `lado-live-trial`, credit limit $5.
+2. Give it to the project, in your own terminal, not in a chat with an agent:
+   `lado project set <project id> OPENROUTER_LIVE_KEY --secret`, and paste the key when asked (or
+   the UI's project page). Agents started after this get it; a running developer is restarted.
+3. Say yes to the trial when the card comes.
+
+**After the trial**
+
+4. `lado project unset <project id> OPENROUTER_LIVE_KEY`, and delete the key on openrouter.ai.
+
+**Before the first CI run** (any time; you have admin rights on the repository)
+
+5. Create the key `lado-live-ci`, limit $10, reset monthly.
+6. Create the environment `live`, with deployments only from `main` and tags `v*`:
+
+   ```bash
+   gh api -X PUT repos/ladohq/lado/environments/live --input - <<'EOF'
+   {"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}
+   EOF
+   gh api -X POST repos/ladohq/lado/environments/live/deployment-branch-policies -f name=main -f type=branch
+   gh api -X POST repos/ladohq/lado/environments/live/deployment-branch-policies -f name='v*' -f type=tag
+   ```
+
+   Or in the browser: Settings, Environments, New environment `live`, Deployment branches and tags:
+   Selected, add branch `main` and tag `v*`. No required reviewers.
+7. Put the key in it, `gh secret set LADO_LIVE_API_KEY --env live --repo ladohq/lado`, and paste
+   the key when asked (with no `--body`, so it stays out of the shell's history).
+8. Check: `gh api repos/ladohq/lado/environments/live/deployment-branch-policies --jq
+   '.branch_policies[] | "\(.type) \(.name)"'` prints `branch main` and `tag v*`.
+
+**After the merge**
+
+9. Press the button: `gh workflow run live.yml`, or Actions, Live tests, Run workflow. This first
+   run closes AC-3. `gh run list --workflow live.yml` shows it.
+
+## A red run
+
+GitHub mails it. Open the run: a cell's log names the test, and its artifact holds the evidence.
+Rerun the failed cells by hand (`gh run rerun <id> --failed`). A pass on a rerun is a flake, noted
+as the project's rule says; a 402 means the month's limit is spent.
+
+## Tests per requirement
+
+| Requirement | Layer | Where |
+|---|---|---|
+| Live tests run weekly and by hand outside ci-ok | unit | `tests/test_live_workflow.py` |
+| The live key reaches only main and tags | unit (files), GitHub (the rule, step 8) | `tests/test_live_workflow.py` |
+| A live cell passes only with a pass and no skip | unit | `tests/test_smoke_ci.py` |
+| What a live cell uploads holds no key | unit | `tests/test_smoke_ci.py` |
+| Codex can reach a remote endpoint through the bridge | unit, fake bridge; live in the trial | `tests/test_local_models.py` |
+
+No integration test: nothing of LADO's processes changes; the real crossing is the live layer
+itself, which the trial runs end to end. Regression: `make test`, `make lint`, and the three test
+files alone first.

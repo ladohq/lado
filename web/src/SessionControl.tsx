@@ -27,6 +27,7 @@ import { ForgetIcon, ResumeIcon, StopIcon } from "./icons";
 import { useLaunch } from "./Launch";
 import { useLive, useLiveStore, useLocked } from "./live";
 import { useBelow, useDismiss } from "./Menu";
+import { useModal } from "./modal";
 import { Tooltip } from "./Tooltip";
 import { ActionProblem, Waits } from "./waitingParts";
 
@@ -314,9 +315,7 @@ function ForgetDialog({ session, onClose }: { session: string; onClose: () => vo
   const [force, setForce] = useState(false);
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
+  useModal(dialog);
   const found = preview !== null && "value" in preview ? preview.value : null;
   const runs = found?.open_runs ?? [];
   const forget = async () => {

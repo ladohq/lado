@@ -8,8 +8,9 @@ import type { GateInfo, NoteInfo, RunEventInfo, RunInfo, SessionInfo } from "./a
 import { App } from "./App";
 import { clock, dayName, since } from "./ChatText";
 import { FakeEventSource, FakeSocket, narrowColumn, stream, wideColumn } from "./fakes";
-import { flowsLine } from "./Flows";
+import { flowsLine, taskTip } from "./Flows";
 import styles from "./styles.css?raw";
+import { TOOLTIP_DELAY_MS } from "./Tooltip";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
@@ -396,6 +397,32 @@ test("a card and a row show the first line of the run's task, a blank task none"
   const [cancelled, ended] = within(group(list, "History")).getAllByRole("link");
   expect(ended.querySelector(".run-task-line")?.textContent).toBe(task);
   expect(cancelled.querySelector(".run-task-line")).toBeNull();
+});
+
+test("a task's tooltip is the task with its lines, cut at 12 lines or 600 characters", () => {
+  const rest = "The rest is on the run's page";
+  expect(taskTip("  \n ")).toBeNull();
+  expect(taskTip(" one\ntwo\n")).toBe("one\ntwo");
+  const lines = Array.from({ length: 40 }, (_, at) => `line ${at + 1}`);
+  expect(taskTip(lines.slice(0, 12).join("\n"))).toBe(lines.slice(0, 12).join("\n"));
+  expect(taskTip(lines.join("\n"))).toBe(`${lines.slice(0, 12).join("\n")}…\n${rest}`);
+  expect(taskTip("x".repeat(600))).toBe("x".repeat(600));
+  expect(taskTip("x".repeat(601))).toBe(`${"x".repeat(600)}…\n${rest}`);
+});
+
+test("a row shows a tooltip for the later lines it hides, and none for a task it shows whole", async () => {
+  HISTORY_OPEN();
+  serve({ runs: [{ ...ACTIVE, task: "first\nsecond" }, { ...ENDED, task: "only line" }] });
+  open(FLOWS);
+  const list = await runs();
+  const [hides] = within(group(list, "Active")).getAllByRole("link");
+  fireEvent.mouseEnter(hides);
+  expect((await screen.findByRole("tooltip")).textContent).toBe("first\nsecond");
+  fireEvent.mouseLeave(hides);
+  const [whole] = within(group(list, "History")).getAllByRole("link");
+  fireEvent.mouseEnter(whole);
+  await new Promise((done) => setTimeout(done, TOOLTIP_DELAY_MS + 50));
+  expect(screen.queryByRole("tooltip")).toBeNull();
 });
 
 test("without open runs the tab is just Flows", async () => {

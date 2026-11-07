@@ -12,7 +12,7 @@ import { useEffect, useId, useRef, useState, type MouseEvent } from "react";
 import { Link, useSearchParams } from "react-router";
 
 import { ApiError, getRecord, type ArtifactInfo, type RecordInfo } from "./api";
-import { changed, groupByScope, GROUPS_FROM, kindOf, KINDS, size, type Kind, type ScopeGroup } from "./artifacts";
+import { changed, groupByScope, GROUPS_FROM, kindOf, KINDS, sessionFirst, size, type Kind, type ScopeGroup } from "./artifacts";
 import { ArtifactView, FullName, KindIcon } from "./ArtifactView";
 import { useView } from "./Attachments";
 import { since } from "./ChatText";
@@ -65,8 +65,8 @@ export function Artifacts({ session, artifact }: { session: string; artifact?: s
 // A group as it shows now: its heading's name and fold, and the id `fold.controls` names.
 type ShownGroup = ScopeGroup & { name: string; id: string; fold: Fold };
 
-// Where the groups stand: each scope's default fold, then the scopes of Session and open runs
-// and those of ended runs, each by freshness on entering the tab.
+// Where the groups stand: each scope's default fold, then Session and the scopes of open runs
+// and those of ended runs, the runs by freshness on entering the tab.
 type Laid = { defaults: ArtifactGroups; open: string[]; ended: string[] };
 
 // Whether the focus is in a scope's group, by the group's `data-scope`.
@@ -88,7 +88,7 @@ function ArtifactsTable({ session, artifacts, ended }: { session: string; artifa
     const folds = fresh.map((one) => [one, over.includes(one) && !focusIn(one) ? "folded" : "open"]);
     setLaid({
       defaults: { ...laid.defaults, ...Object.fromEntries(folds) },
-      open: [...laid.open, ...fresh.filter((one) => !over.includes(one))],
+      open: [...laid.open, ...fresh.filter((one) => !over.includes(one)).sort(sessionFirst)],
       ended: [...laid.ended, ...over],
     });
   }

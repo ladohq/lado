@@ -22,6 +22,7 @@ import { since } from "./ChatText";
 import { useCloneJob, type CloneEnd } from "./cloneJob";
 import { BRANCHES_DEBOUNCE, CloneProgress, cloneRefused, defaultBranch, FolderHint, useDebounced, useLaunch } from "./Launch";
 import { useLive } from "./live";
+import { useModal } from "./modal";
 import { sessionPath } from "./paths";
 import { messageOf } from "./SessionControl";
 import { StatusDot } from "./Sessions";
@@ -214,9 +215,7 @@ function AddRepoDialog({
   const running = clone.job !== null;
   const title = project.title ?? project.id;
 
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
+  useModal(dialog);
 
   // The remote's branches, asked once the URL stops changing; an answer counts only for the
   // URL as it is.
@@ -486,8 +485,8 @@ function DeleteRepoDialog({
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
 
+  useModal(dialog);
   useEffect(() => {
-    dialog.current?.showModal();
     let current = true;
     getRepoRemoval(project.id, name).then(
       (removal) => current && setPreview({ removal }),

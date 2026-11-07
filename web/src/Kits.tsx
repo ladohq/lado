@@ -31,6 +31,7 @@ import { KitCard, type Source, type SourceKind } from "./KitCard";
 import type { RowMenuItem } from "./RowMenu";
 import { PlanContents } from "./KitPlan";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
+import { useModal } from "./modal";
 import { NotFound } from "./pages";
 import { storedKitsSource, storeKitsSource } from "./prefs";
 import { useTitle } from "./Shell";
@@ -572,9 +573,7 @@ function Modal(props: {
   children: ReactNode;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
+  useModal(dialog);
   const frame = (
     <>
       <header className="kits-dialog-head">{props.head ?? <h3>{props.title}</h3>}</header>
@@ -864,7 +863,7 @@ function PlanStep(props: { plan: PlanInfo; onBack: () => void; onAgain: () => vo
       }
     >
       {plan.needs_confirmation && (
-        <p className="kit-alert">
+        <p className="kit-warning">
           <b>Not from the official marketplace.</b> LADO has not checked this kit. Its MCP servers below will run in
           your sessions with your permissions.
         </p>
@@ -1023,7 +1022,7 @@ function UpdateDialog({ kit, tag: first, onClose }: { kit: InstalledKitInfo; tag
       }
     >
       {plan.new_mcp.length > 0 && (
-        <p className="kit-alert">
+        <p className="kit-warning">
           <b>{`New MCP server${plan.new_mcp.length === 1 ? "" : "s"}: ${plan.new_mcp.join(", ")}.`}</b> The new version
           starts what the installed one did not.
         </p>

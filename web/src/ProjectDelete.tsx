@@ -7,6 +7,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { deleteProject, getProjectDeletion, type ProjectDeletion, type ProjectInfo } from "./api";
+import { useModal } from "./modal";
 import { ForgottenSessions } from "./ProjectRepos";
 import { messageOf } from "./SessionControl";
 
@@ -49,8 +50,8 @@ function DeleteProjectDialog({
   const [busy, setBusy] = useState(false);
   const title = project.title ?? project.id;
 
+  useModal(dialog);
   useEffect(() => {
-    dialog.current?.showModal();
     let current = true;
     getProjectDeletion(project.id).then(
       (deletion) => current && setPreview({ deletion }),

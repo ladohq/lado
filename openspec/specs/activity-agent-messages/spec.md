@@ -13,7 +13,7 @@ the browser (docs/design/ui.md, Activity).
 Outside the phone layout, while the tabs fit beside it, a session's Activity tab SHALL end the tab
 bar with a `role="radiogroup"` named "Messages between agents" of two radios `Yours` and `All`, 26 px high, after the word
 `Messages` while the bar has room for it; the keyboard SHALL reach the chosen one by Tab and move
-by the arrows. In the phone layout the team's row SHALL end with one icon button of that name,
+by the arrows. On a phone held upright the team's row SHALL end with one icon button of that name,
 pressed (`aria-pressed`) while the chat shows the messages between agents.
 
 #### Scenario: One line in a narrow column
@@ -99,3 +99,21 @@ agents" SHALL show those words beside its icon, 44 px high, and SHALL keep its n
 #### Scenario: A running session on a phone
 - **WHEN** the human opens Activity of a running session at 390 px
 - **THEN** the button shows only its icon
+
+### Requirement: On a phone held sideways the toggle ends the tab row
+
+On a phone held sideways the icon button "Messages between agents" SHALL end the tab row of the
+Activity tab, as the team's row is not shown there.
+
+#### Scenario: Sideways
+- **WHEN** a running session's Activity is open on a touch screen of 844×390
+- **THEN** the icon button stands at the end of the tab row, at least 36 px high, and a tap
+  presses it and shows the messages between agents
+
+#### Scenario: Sideways on a small phone
+- **WHEN** Activity is open on a touch screen of 568×320
+- **THEN** all four tabs and the icon button show in the row
+
+#### Scenario: Sideways, another tab
+- **WHEN** the human opens the Flows tab on a touch screen of 844×390
+- **THEN** the row has no such button

@@ -21,8 +21,10 @@ test's evidence into `<out>/evidence`.
 `live` is a cell of live.yml: `run`'s install and pass rule on `uv run pytest -m live -n0 -v -k
 <provider>`, without tests/live/test_codex_login.py (a person's login: its skip would fail
 the cell) and ended after LIVE_LIMIT seconds. Its log and evidence are written in a temporary
-folder and reach `<out>` only after the value of `$LADO_LIVE_API_KEY` is redacted in them;
-a cell killed before that leaves `<out>` empty.
+folder and reach `<out>` and the terminal only after the value of `$LADO_LIVE_API_KEY` is
+redacted in them, also where a window wrapped it; a cell killed before that leaves `<out>`
+empty. A test ended by the limit keeps no evidence of its own, only the log and what the
+tests before it kept.
 
 `container` is a cell of ci.yml's job `container`: it installs nothing (LADO's image, which
 `make docker` built before, has its own CLI) and runs `uv run pytest -m container -n0 -v`
@@ -126,27 +128,35 @@ def run(provider: str, out: Path) -> int:
 
 def redact(folder: Path, secret: str) -> None:
     """Replace `secret` by <redacted> in every file under `folder`: artifacts of a public
-    repository can be downloaded by anyone, and GitHub masks only its logs."""
+    repository can be downloaded by anyone, and GitHub masks only whole values in its logs.
+    A window wraps what it shows, so the value is found with anything but a key's characters
+    between its own (spaces, line ends, a CLI's frame) and pytest's `E` opening a line."""
     if not secret:
         return
+    gap = rb"(?:[^0-9A-Za-z-]|(?<=\n)E)*"
+    torn = re.compile(gap.join(re.escape(bytes([c])) for c in secret.encode()))
     for path in folder.rglob("*"):
         if path.is_file() and not path.is_symlink():
             data = path.read_bytes()
-            if secret.encode() in data:
-                path.write_bytes(data.replace(secret.encode(), b"<redacted>"))
+            redacted = torn.sub(b"<redacted>", data)
+            if redacted != data:
+                path.write_bytes(redacted)
 
 
 def live(provider: str, out: Path) -> int:
     """One cell of live.yml. It works in a folder of its own and moves the files to `out`
-    only once redacted: the workflow uploads `out` whatever happened, a killed job too."""
+    only once redacted: the workflow uploads `out` whatever happened, a killed job too. The
+    job's log is public as well, so it gets the test log only then."""
     env = install(provider)
     if env is None:
         return 1
     work = Path(tempfile.mkdtemp(prefix="lado-live-"))
+    log = work / f"live-{provider}.log"
     tests = ["timeout", "--kill-after=30", LIVE_LIMIT, "uv", "run", "pytest", "-m", "live"]
     tests += ["-n0", "-v", "-k", provider, "--ignore=tests/live/test_codex_login.py"]
-    code = cell(tests, work / f"live-{provider}.log", work, f"live {provider}", env)
+    code = cell(tests, log, work, f"live {provider}", env, echo=False)
     redact(work, os.environ.get("LADO_LIVE_API_KEY", ""))
+    print(log.read_text(errors="replace"), flush=True)
     shutil.copytree(work, out, dirs_exist_ok=True)
     shutil.rmtree(work, ignore_errors=True)
     return code
@@ -159,9 +169,13 @@ def container(out: Path) -> int:
     return cell(tests, out / "container.log", out, "container")
 
 
-def cell(tests: list[str], log: Path, out: Path, name: str, env: dict | None = None) -> int:
-    """Run one cell's pytest command: its output to the terminal and to `log`; 0 only by the
-    pass rule; on red, the tests' evidence copied into `<out>/evidence`."""
+def cell(
+    tests: list[str], log: Path, out: Path, name: str, env: dict | None = None, echo: bool = True
+) -> int:
+    """Run one cell's pytest command: its output to `log`, and to the terminal with `echo`; 0
+    only by the pass rule; on red, the tests' evidence copied into `<out>/evidence`, each link
+    as what it names (a dangling one left out: a Codex agent's auth.json with no login). What
+    cannot be copied is named and costs the cell nothing else."""
     # Where a failing test keeps its evidence (tests/real_clis.py, EVIDENCE).
     evidence = Path(tempfile.gettempdir(), "lado-live-evidence")
     shutil.rmtree(evidence, ignore_errors=True)
@@ -174,8 +188,9 @@ def cell(tests: list[str], log: Path, out: Path, name: str, env: dict | None = N
         ) as pytest,
     ):
         for line in pytest.stdout:
-            sys.stdout.write(line)
-            sys.stdout.flush()
+            if echo:
+                sys.stdout.write(line)
+                sys.stdout.flush()
             kept.write(line)
     code = pytest.returncode
     line = summary(log.read_text())
@@ -183,7 +198,12 @@ def cell(tests: list[str], log: Path, out: Path, name: str, env: dict | None = N
         return 0
     print(f"{name}: not passed (exit {code}): {line or 'no summary'}", file=sys.stderr)
     if evidence.is_dir():
-        shutil.copytree(evidence, out / "evidence", dirs_exist_ok=True)
+        try:
+            shutil.copytree(
+                evidence, out / "evidence", dirs_exist_ok=True, ignore_dangling_symlinks=True
+            )
+        except OSError as error:
+            print(f"{name}: evidence not all kept: {error}", file=sys.stderr)
     return 1
 
 

@@ -4,6 +4,7 @@ Windows probe)."""
 import importlib.util
 import os
 import subprocess
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -77,6 +78,33 @@ def test_redact_replaces_the_key_in_every_file(tmp_path):
     assert (tmp_path / "live-codex.log").read_bytes() == b"<redacted> <redacted>"
 
 
+KEY = "sk-or-v1-0123456789abcdefE0123456789abcdef"
+
+
+@pytest.mark.parametrize(
+    "torn",
+    [
+        f"{KEY[:20]}\n{KEY[20:]}",  # tmux's wrap at the window's width
+        f"{KEY[:20]}  \r\n  {KEY[20:]}",
+        f"┃ {KEY[:20]} ┃\n┃ {KEY[20:30]} │\n┃ {KEY[30:]} ┃",  # a CLI's own wrap, in its frame
+        f"E     {KEY[:20]}\nE     {KEY[20:]}",  # pytest's report of a failed wait
+    ],
+)
+def test_redact_finds_a_key_torn_by_a_window(tmp_path, torn):
+    (tmp_path / "screen").write_bytes(f"before {torn} after".encode())
+    smoke_ci.redact(tmp_path, KEY)
+    text = (tmp_path / "screen").read_text()
+    assert "<redacted>" in text and text.endswith(" after")
+    assert KEY[:12] not in text and KEY[-12:] not in text
+
+
+def test_redact_keeps_what_only_looks_like_the_key(tmp_path):
+    text = f"{KEY[:20]} and something else".encode()
+    (tmp_path / "log").write_bytes(text)
+    smoke_ci.redact(tmp_path, KEY)
+    assert (tmp_path / "log").read_bytes() == text
+
+
 def test_redact_leaves_a_link_and_what_it_points_at(tmp_path):
     outside = tmp_path / "outside"
     outside.write_bytes(b"s3cr3t")
@@ -107,7 +135,7 @@ def test_a_live_cell_leaves_only_redacted_files_in_its_folder(
 ):
     out = tmp_path / "out"
 
-    def cell(tests, log, work, name, env=None):
+    def cell(tests, log, work, name, env=None, echo=True):
         live_cell.append(tests)
         assert not out.exists() or not any(out.iterdir())  # nothing there while it runs
         log.write_text("s3cr3t")
@@ -136,7 +164,7 @@ def test_a_live_cell_leaves_only_redacted_files_in_its_folder(
 def test_a_crash_during_the_tests_leaves_nothing_to_upload(tmp_path, monkeypatch, live_cell):
     out = tmp_path / "out"
 
-    def cell(tests, log, work, name, env=None):
+    def cell(tests, log, work, name, env=None, echo=True):
         log.write_text("s3cr3t")
         raise OSError("killed")
 
@@ -152,17 +180,91 @@ def test_a_live_cell_whose_install_fails_is_red_and_runs_no_test(tmp_path, monke
     assert smoke_ci.live("codex", tmp_path / "out") == 1
 
 
-def test_a_live_cell_with_a_skip_is_red_and_keeps_its_log(tmp_path, monkeypatch, live_cell):
-    """The whole of `cell`, on a pytest that skips: the image test without LADO_LIVE_IMAGE."""
-    monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
-    pytest_stub = tmp_path / "bin" / "timeout"
-    pytest_stub.parent.mkdir()
-    pytest_stub.write_text("#!/bin/sh\necho '====== 2 passed, 1 skipped in 9.00s ======'\n")
-    pytest_stub.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{pytest_stub.parent}{os.pathsep}{os.environ['PATH']}")
-    monkeypatch.setattr(smoke_ci, "install", lambda provider: dict(os.environ))
+@pytest.fixture
+def stub_tests(tmp_path, monkeypatch):
+    """The whole of `cell` in a live cell, on a stand-in for `timeout ... pytest`: the script
+    given. Evidence goes under tmp_path; returns where."""
+
+    def stub(script: str) -> Path:
+        command = tmp_path / "bin" / "timeout"
+        command.parent.mkdir()
+        command.write_text(f"#!/bin/sh\n{script}\n")
+        command.chmod(0o755)
+        monkeypatch.setenv("PATH", f"{command.parent}{os.pathsep}{os.environ['PATH']}")
+        monkeypatch.setattr(tempfile, "gettempdir", lambda: str(tmp_path))
+        return tmp_path / "lado-live-evidence"
+
+    return stub
+
+
+def test_a_live_cell_with_a_skip_is_red_and_keeps_its_log(tmp_path, live_cell, stub_tests):
+    stub_tests("echo '====== 2 passed, 1 skipped in 9.00s ======'")
     assert smoke_ci.live("codex", tmp_path / "out") == 1
     assert "1 skipped" in (tmp_path / "out" / "live-codex.log").read_text()
+
+
+def test_a_red_cell_with_a_dangling_link_keeps_its_log_and_evidence(
+    tmp_path, live_cell, stub_tests
+):
+    """A Codex agent's auth.json links to a login the test has not: evidence keeps it so."""
+    evidence = stub_tests("")
+    (tmp_path / "bin" / "timeout").write_text(
+        "#!/bin/sh\n"
+        f"mkdir -p '{evidence}/agents/w1'\n"
+        f"echo kept > '{evidence}/agents/w1/config.toml'\n"
+        f"ln -s /nowhere/auth.json '{evidence}/agents/w1/auth.json'\n"
+        "echo '====== 1 failed in 9.00s ======'\n"
+        "exit 1\n"
+    )
+    assert smoke_ci.live("codex", tmp_path / "out") == 1
+    assert "1 failed" in (tmp_path / "out" / "live-codex.log").read_text()
+    kept = tmp_path / "out" / "evidence" / "agents" / "w1"
+    assert (kept / "config.toml").read_text() == "kept\n"
+    assert not (kept / "auth.json").is_symlink()
+
+
+def test_evidence_that_cannot_be_copied_costs_a_cell_nothing_else(
+    tmp_path, monkeypatch, live_cell, stub_tests, capsys
+):
+    evidence = tmp_path / "lado-live-evidence"
+    stub_tests(f"mkdir -p '{evidence}'; echo '====== 1 failed in 9.00s ======'; exit 1")
+    real = shutil.copytree
+
+    def broken(source, *args, **kwargs):
+        if Path(source) == evidence:
+            raise shutil.Error([(str(evidence), "there", "no luck")])
+        return real(source, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "copytree", broken)
+    assert smoke_ci.live("codex", tmp_path / "out") == 1
+    assert "1 failed" in (tmp_path / "out" / "live-codex.log").read_text()
+    assert "no luck" in capsys.readouterr().err
+
+
+def test_a_torn_key_reaches_neither_the_folder_nor_the_job_s_log(
+    tmp_path, monkeypatch, live_cell, stub_tests, capfd
+):
+    """The job's log is public too, and GitHub's mask needs the whole value."""
+    monkeypatch.setenv("LADO_LIVE_API_KEY", KEY)
+    evidence = stub_tests("")
+    (tmp_path / "bin" / "timeout").write_text(
+        "#!/bin/sh\n"
+        f"echo 'E   {KEY[:20]}'\necho 'E   {KEY[20:]}'\n"
+        f"mkdir -p '{evidence}/screens'\n"
+        f"printf '{KEY[:20]}\\n{KEY[20:]}\\n' > '{evidence}/screens/w1.txt'\n"
+        "echo '====== 1 failed in 9.00s ======'\n"
+        "exit 1\n"
+    )
+    assert smoke_ci.live("codex", tmp_path / "out") == 1
+    printed = capfd.readouterr()
+    for text in (
+        printed.out,
+        printed.err,
+        (tmp_path / "out" / "live-codex.log").read_text(),
+        (tmp_path / "out" / "evidence" / "screens" / "w1.txt").read_text(),
+    ):
+        assert KEY[:20] not in text and KEY[20:] not in text
+    assert "<redacted>" in printed.out and "1 failed" in printed.out
 
 
 def test_an_unknown_provider_has_no_live_cell(capsys):

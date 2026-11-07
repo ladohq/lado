@@ -6,7 +6,7 @@ import type { ProbeInfo } from "./api";
 import { MODEL_DEBOUNCE } from "./Launch";
 import { LMSTUDIO, LMSTUDIO_PROBE, model, ModelServer, refusal } from "./modelFakes";
 import { ModelSettings } from "./ModelSettings";
-import { orderOf, SERVERS_LEAD, tickState } from "./ModelSources";
+import { Found, orderOf, SERVERS_LEAD, tickState } from "./ModelSources";
 
 let server: ModelServer;
 
@@ -733,6 +733,13 @@ const fieldOf = (label: string) => screen.getByLabelText(label).closest(".field"
 const addButton = () => screen.getByRole("button", { name: "Add server" }) as HTMLButtonElement;
 const keyLabel = () => (screen.getByText("Key", { selector: "label" }).textContent ?? "").replace(/^Key\s*/, "");
 const panel = async () => (await screen.findByText(/answers at/)).closest(".mx-found") as HTMLElement;
+
+test("the form says why no API could be told, not only that no CLI can use the server", async () => {
+  const late = "the Anthropic Messages API of http://localhost:1234 did not answer in time: try again";
+  expect(render(<Found probe={{ ...LMSTUDIO_PROBE, clis: [], apis_why: late }} />).container.textContent).toContain(
+    `⚠ APIs: cannot be told: ${late}`,
+  );
+});
 
 test("the form checks once the typing settles, without a key: the found panel, the name free", async () => {
   await openForm("LM Studio дома", "localhost:1234");

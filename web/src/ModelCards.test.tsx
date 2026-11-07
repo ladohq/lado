@@ -560,6 +560,10 @@ test("a tick off on a default this page did not know of says so on the card", as
 // LADO's server gone: every request of the section rejects, as fetch does with no answer.
 const serverStops = () => vi.stubGlobal("fetch", () => Promise.reject(new TypeError("Failed to fetch")));
 
+test("a request LADO's server did not answer promises nothing of what became of it", () => {
+  expect(LADO_DOWN).toBe("LADO's server does not answer: your request may or may not have reached it.");
+});
+
 test("× with LADO's server gone says so in its own words, in its row", async () => {
   server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO] };
   mount();

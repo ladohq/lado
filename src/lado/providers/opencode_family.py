@@ -63,24 +63,17 @@ EVENTS = {
 # A turn that ends on an error: the plugin passes the "session.error" before "session.idle"
 # on with it (Kilo 7.8.3 and OpenCode 1.18.34 publish one, then the other, read in their
 # bundles). The human's Esc is an error too, this one, which their TUIs do not show either.
-# No error is Event.transient: the plugin gets only the error's class name and message (an
-# overloaded API and a refused key are both an APIError), and which ones reach
-# "session.error" is not checked (BACKLOG.md), so LADO resumes none of their agents.
+# No error is Event.transient: which ones reach "session.error" is not checked (BACKLOG.md),
+# so LADO resumes none of their agents. Its `isRetryable` is not read: both CLIs have spent
+# their repeats by then. An error's status gives a provider's refusal LADO's words.
 # No turn's end is Event.background: OpenCode 1.18.35's task tool waits for its subagent
 # (background subagents need its experimental OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS),
 # and "session.idle" says nothing of work still running; Kilo is taken to be as its base,
 # not checked. So their agents are idle at a turn's end, never `background` (BACKLOG.md).
 ABORTED = "MessageAbortedError"
-# LADO's words of a context too small live here alone. A stopped turn is the plugin's (its
-# "stopped" counts the attempts); a server's refusal is not an overflow to the CLI: LM Studio
-# answers HTTP 400, and both report it as UnknownError with the raw JSON (the human's check of
-# LAD-211), so it ends the turn at once and needs no count.
-OVERFLOW = "ContextOverflowError"
-TOO_SMALL = "the model's context is too small for the agent's request"
-REFUSED_FOR_CONTEXT = "exceed_context_size_error"
-SERVER_SIZES = re.compile(
-    r"request \(\d+ tokens\) exceeds the available context size \(\d+ tokens\)"
-)
+# A stopped turn is the plugin's (its "stopped" counts the attempts); a server's refusal is not an
+# overflow to the CLI: LM Studio answers HTTP 400, and both report it as UnknownError with the raw
+# JSON (the human's check of LAD-211), so it ends the turn at once and needs no count.
 # A model server is a provider of the agent's config, under an id of its own that a rename never
 # changes and no provider of the user's has (checked with OpenCode 1.18.35 and Kilo 7.8.8 on two
 # servers: `name` of the provider is the group and label in the real /model, `name` of a model
@@ -123,14 +116,15 @@ def model_entry(name: str, limit: base.Limit | None) -> dict:
 def turn_error(error: Mapping) -> tuple[str, str]:
     """The line of the error a turn ended on and the message's body (Event.error and .details):
     LADO's words go first, as the core cuts a line short (base.error_line)."""
-    name, message = error.get("name") or "UnknownError", error.get("message", "")
+    name = error.get("name") or "UnknownError"
+    message = base.without_keys(error.get("message", ""))
     if error.get("stopped"):
-        words = f"LADO stopped the turn after {error['stopped']} attempts: {TOO_SMALL}"
+        words = f"LADO stopped the turn after {error['stopped']} attempts: {base.TOO_SMALL}"
         return base.error_line(name, f"{words}; {message}" if message else words), message
-    if REFUSED_FOR_CONTEXT in message:
-        sizes = SERVER_SIZES.search(message)
-        words = f"{TOO_SMALL}; {sizes[0]}" if sizes else TOO_SMALL
-        return base.error_line(OVERFLOW, words), f"{name}: {message}"
+    if line := base.context_line(message):
+        return line, f"{name}: {message}"
+    if base.is_refusal(error.get("status")):
+        return base.refusal_line(error["status"], message), message
     whole = f"{name}: {message}"
     return base.error_line(name, message), whole if len(whole) > base.ERROR_LIMIT else ""
 

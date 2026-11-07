@@ -2,6 +2,7 @@
 
 import contextlib
 import os
+import re
 import shlex
 import shutil
 import signal
@@ -17,6 +18,7 @@ from lado import interpreter, state, tmux
 # The launch variable of an agent on a server for a CLI of one model per process: the server's
 # id. The CLI's own login is then not what the agent runs on (Provider.needs_login).
 MODEL_SERVER = "LADO_MODEL_SERVER"
+KEY_VARIABLE = "LADO_MODEL_KEY_"  # + the server's id in capitals: an agent's variable of its key
 
 # Neutral hook events. A provider maps its own hook events onto these; see lado.hooks.
 SESSION_START = "session_start"
@@ -121,6 +123,58 @@ def error_line(kind: str, details: str = "") -> str:
     return text if len(text) <= ERROR_LIMIT else text[: ERROR_LIMIT - 1] + "…"
 
 
+# What a model provider's refusal means, by its status: someone must act, so such a turn is never
+# temporary. 403 has words of its own: a provider also uses it for a quota. The words stand before
+# the first colon, which `lado stats` takes for the error's kind: no server's text in there.
+REFUSALS = {
+    401: "the model provider refused the key",
+    402: "the model provider asks for payment",
+    403: "the model provider refused access",
+    429: "the model provider limits requests, or the quota is spent",
+}
+REFUSED_REQUEST = "the model provider refused the request"  # any other status of is_refusal
+# cloud.ru answers a wrong key with 400 and `invalid api key secret` (the human's check of LAD-220).
+ABOUT_THE_KEY = re.compile(r"api[ _-]?key", re.IGNORECASE)
+# LADO's words of a context too small live here alone, before any other words of a refusal.
+OVERFLOW = "ContextOverflowError"
+TOO_SMALL = "the model's context is too small for the agent's request"
+REFUSED_FOR_CONTEXT = "exceed_context_size_error"
+SERVER_SIZES = re.compile(
+    r"request \(\d+ tokens\) exceeds the available context size \(\d+ tokens\)"
+)
+
+
+def is_refusal(status: object) -> bool:
+    """Whether `status` says a provider will not do it until someone acts: any 4xx but a 408, a
+    request that took too long."""
+    return isinstance(status, int) and 400 <= status < 500 and status != 408
+
+
+def refusal_line(status: int, text: str) -> str:
+    """The Event.error of a turn a provider refused with `status`, by is_refusal."""
+    words = REFUSALS.get(status, REFUSED_REQUEST)
+    if words == REFUSED_REQUEST and status == 400 and ABOUT_THE_KEY.search(text):
+        words = REFUSALS[401]
+    return error_line(f"{words} ({status})", text)
+
+
+def context_line(text: str) -> str | None:
+    """The Event.error of a server's refusal for the context, in `text`; None for any other."""
+    if REFUSED_FOR_CONTEXT not in text:
+        return None
+    sizes = SERVER_SIZES.search(text)
+    return error_line(OVERFLOW, f"{TOO_SMALL}; {sizes[0]}" if sizes else TOO_SMALL)
+
+
+def without_keys(text: str) -> str:
+    """`text` with the value of each server's key in the agent's environment taken out: a server
+    may repeat the key in its refusal. Before any cut, as half a key would pass this."""
+    keys = [v for name, v in os.environ.items() if name.startswith(KEY_VARIABLE) and v]
+    for key in sorted(keys, key=len, reverse=True):
+        text = text.replace(key, "***")
+    return text
+
+
 @dataclass(frozen=True)
 class McpServer:
     """A stdio MCP server: the command that starts it and its environment."""
@@ -136,6 +190,10 @@ class McpServer:
 # sends output as max_tokens (1.18.35, Kilo 7.8.8 alike): their default of 32000 leaves a small
 # model nothing, as Claude Code's does, so it is a quarter of the context at most.
 DEFAULT_OUTPUT = 8192
+# The same on a large context: the CLIs' own default, as a cloud model's long answer or reasoning
+# has room there.
+LARGE_CONTEXT = 131072
+LARGE_OUTPUT = 32000
 
 
 @dataclass(frozen=True)
@@ -146,9 +204,11 @@ class Limit:
     output: int | None = None
 
     def output_room(self) -> int:
-        """The tokens a CLI may ask for as its output: what the server reports or DEFAULT_OUTPUT,
-        at most a quarter of the context, which the prompt needs too."""
-        return max(1, min(self.output or DEFAULT_OUTPUT, self.context // 4))
+        """The tokens a CLI may ask for as its output: what the server reports, else
+        DEFAULT_OUTPUT or on a large context LARGE_OUTPUT, at most a quarter of the context,
+        which the prompt needs too."""
+        default = LARGE_OUTPUT if self.context >= LARGE_CONTEXT else DEFAULT_OUTPUT
+        return max(1, min(self.output or default, self.context // 4))
 
 
 @dataclass(frozen=True)

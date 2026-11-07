@@ -663,6 +663,27 @@ def test_the_server_is_asked_with_its_kept_key(serve):
     assert {r.headers["Authorization"] for r in server.requests} == {"Bearer k-1"}
 
 
+@pytest.fixture
+def short_ceilings(monkeypatch):
+    monkeypatch.setattr(model_servers, "TIMEOUT", 0.3)
+    monkeypatch.setattr(model_servers, "LATE_TIMEOUT", 0.6)
+
+
+def test_a_late_api_saves_the_server_with_a_warning_and_refuses_its_model(serve, short_ceilings):
+    server = serve("late-always")
+    _, warned = add("Шлюз", server.url)
+    assert warned == [
+        f"the Anthropic Messages API of {server.url} did not answer in time: try again"
+    ]
+    assert state.model_server("Шлюз").apis == (CHAT,)
+    with pytest.raises(model_settings.Refused) as refused:
+        add_model("W", "claude", "m1", "Шлюз")
+    assert str(refused.value) == (
+        "the Anthropic Messages API of Шлюз did not answer in time: try again"
+    )
+    assert refused.value.retry
+
+
 def test_a_server_that_does_not_suit_the_cli_is_refused(serve):
     server = serve("openai")  # chat completions only
     add("LM Studio дома", server.url)
@@ -1707,9 +1728,39 @@ def test_a_context_at_the_need_does_not_warn():
     assert model_settings.context_warning(start, OPENCODE, base.Limit(32767)) is not None
 
 
-def test_an_unknown_context_does_not_warn():
+def test_an_unknown_context_off_a_server_does_not_warn():
     start = model_settings.StartModel(name="m", model="m", server=None)
     assert model_settings.context_warning(start, OPENCODE, None) is None
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "http://localhost:1",
+        "http://192.168.1.10:1234",
+        "http://mac-studio.local:1234",
+        "http://gpu-box:8000",
+        "http://ollama.lan:11434",
+        "https://llm.corp.internal",
+        "http://nas.home.arpa:8080",
+    ],
+)
+def test_an_unknown_context_on_a_local_server_does_not_warn(address):
+    server = state.ModelServer("id", "Дома", address, model_servers.OPENAI, (CHAT,), "")
+    start = model_settings.StartModel(name="m", model="m", server=server)
+    assert model_settings.context_warning(start, OPENCODE, None) is None
+
+
+def test_an_unknown_context_on_a_public_server_warns_and_a_known_one_does_not():
+    server = state.ModelServer(
+        "id", "Облако", "https://llm.example.com", model_servers.OPENAI, (CHAT,), ""
+    )
+    start = model_settings.StartModel(name="Большая", model="m", server=server)
+    assert model_settings.context_warning(start, OPENCODE, None) == (
+        "Большая on Облако: the server reports no context for it, so the agent compacts late and "
+        'its answers have no limit; see "A cloud provider" in docs/install.md'
+    )
+    assert model_settings.context_warning(start, OPENCODE, base.Limit(131072)) is None
 
 
 def test_a_cli_with_no_need_never_warns():

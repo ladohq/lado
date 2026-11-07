@@ -15,6 +15,9 @@ import fake_model_server
 import fake_provider
 import pytest
 
+from lado import model_servers
+from lado.cli import main
+
 pytestmark = pytest.mark.integration
 
 SCRIPT = Path(fake_model_server.__file__)
@@ -57,6 +60,25 @@ def closed_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
+
+
+def test_a_late_api_is_named_so_by_the_probe_and_by_model_add(serve, capsys, monkeypatch):
+    """In this process, for short ceilings: the real commands, the server in a process of its
+    own, which holds the POST."""
+    monkeypatch.setattr(model_servers, "TIMEOUT", 0.3)
+    monkeypatch.setattr(model_servers, "LATE_TIMEOUT", 0.6)
+    url = serve("late-always")
+    assert main(["model-server", "probe", url]) == 0
+    said = capsys.readouterr().out
+    assert "Claude Code (Anthropic Messages API did not answer in time)" in said
+    assert "no Anthropic Messages API" not in said
+    assert main(["model-server", "add", "Шлюз", url]) == 0
+    assert "did not answer in time" in capsys.readouterr().err
+    args = ["model", "add", "Малая", "--cli", "claude", "--model", "m1", "--server", "Шлюз"]
+    assert main(args) != 0
+    said = capsys.readouterr().err
+    assert "the Anthropic Messages API of Шлюз did not answer in time: try again" in said
+    assert "has no" not in said
 
 
 def test_probe_a_fake_server_process(serve):

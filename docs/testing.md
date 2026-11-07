@@ -169,12 +169,15 @@ brings Codex's own subagents (gpt-6-sol) gets none of them, after a control: a p
 `codex exec` on the same home gets `collaboration.wait_agent`, or the test fails saying the
 model no longer brings them. It keeps the model each request asks for too (`Endpoint.models`):
 per provider, a session started with a model (`lado start --model`; OpenCode and Kilo
-without the test's `--model`, as the CLI itself) asks the endpoint for that model.
+without the test's `--model`, as the CLI itself) asks the endpoint for that model. Its
+`Anthropic` server and `fake_model_server.Server` take a `refusal` once a session is up: every
+model request then gets that status and body, with `Retry-After: 1` so that a real CLI's repeats of
+a 429 take seconds; the smoke counts the requests per CLI on a 401 and a 429, the key echoed.
 
 The model servers of `lado model-server probe`'s tests are `tests/fake_model_server.py`
 (standard library only): a `Server` on `127.0.0.1` with a profile (`openai`, `ollama`,
-`lmstudio`, `anthropic`, a gateway that answers 400 to every path, a redirect, one that
-hangs, …), optionally behind a key and under a gateway's path, that keeps each request with
+`lmstudio`, `anthropic`, a gateway that answers 400 to every path, a provider's list, a redirect,
+one that hangs, one that holds a POST by `Held`, …), optionally behind a key and under a gateway's path, that keeps each request with
 its headers and body; also a script, `python fake_model_server.py <profile> <port file>
 [<key>]`, for the integration test that runs the real command against it.
 

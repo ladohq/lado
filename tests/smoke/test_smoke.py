@@ -318,6 +318,54 @@ def test_auto_mode_of_the_human_leaves_a_claude_agent_on_a_server_lado_s_tools(
 
 
 @pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+def test_a_claude_agent_on_a_large_context_compacts_before_it_passes_it(
+    smoke_repo, smoke_provider, claude_server, tmp_path
+):
+    """On a server that counts a request's input and max_tokens, as cloud.ru does, reads of 50 KB
+    up to a compaction: the output of 32000 Claude Code would ask for passed 131072 there."""
+    claude_server.context = 131072
+    error = {"type": "invalid_request_error", "message": "Invalid request"}
+    claude_server.over_context = (400, {"type": "error", "error": error})
+    for n in range(12):
+        file = tmp_path / f"part{n:02}.txt"
+        file.write_text(f"line of notes {n}\n" * 3000)
+        claude_server.reads.append(file)
+    runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", "claude", model="Шлюз Qwen"
+    )
+    idle = answering("claude", "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+    wait_for(idle, "the supervisor to be idle after its session start", 120)
+    runtime.write_as_human(SESSION, HUMAN_SAYS)
+    done = lambda: claude_server.compactions == endpoints.COMPACTIONS  # noqa: E731
+    wait_for(done, "its compactions", 240)
+    wait_for(lambda: status(SESSION, "supervisor") == "idle", "the turn's end", 120)
+    asked = [
+        (len(b) // endpoints.TOKEN_BYTES, json.loads(b))
+        for _, _, b in claude_server.requests
+        if b'"max_tokens"' in b
+    ]
+    peak = max(tokens + request["max_tokens"] for tokens, request in asked)
+    print(f"claude: {claude_server.compactions} compactions, the peak of a request {peak}")
+    assert peak <= claude_server.context
+    assert events("supervisor", state.TURN_ERROR) == []
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+def test_the_human_s_effort_does_not_reach_a_server(smoke_repo, smoke_provider, claude_server):
+    """A server may refuse an effort: gpt-oss on cloud.ru answers 400 to the human's `xhigh`."""
+    settings = Path(os.environ["CLAUDE_CONFIG_DIR"], "settings.json")
+    settings.write_text(json.dumps({"effortLevel": "xhigh"}))
+    runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", "claude", model="Шлюз Qwen"
+    )
+    turn_with_tools(claude_server)
+    turns = [json.loads(b) for p, _, b in claude_server.requests if b'"max_tokens"' in b]
+    assert turns and [t for t in turns if "output_config" in t] == []
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
 def test_a_turn_of_a_large_prompt_ends_on_a_context_that_fits_it(
     smoke_repo, smoke_provider, claude_server
 ):
@@ -439,6 +487,116 @@ def test_a_session_on_a_server_s_model_asks_it_with_its_key(
     assert chats(one)[0].headers.get("Authorization") == "Bearer smoke-server-key-one"
     assert json.loads(chats(one)[0].body)["model"] == "m1"
     assert chats(other) == []
+    runtime.stop_session(SESSION)
+
+
+REFUSALS = {
+    400: ("the model provider refused the key (400)", "invalid_request_error"),
+    401: ("the model provider refused the key (401)", "authentication_error"),
+    404: ("the model provider refused the request (404)", "not_found_error"),
+    413: ("the model provider refused the request (413)", "request_too_large"),
+    429: ("the model provider limits requests, or the quota is spent (429)", "rate_limit_error"),
+}
+
+
+def cloud_ru_400(key: str) -> dict:
+    """What cloud.ru answers to a wrong key, the human's report; with the key echoed."""
+    return {"message": f"invalid api key secret {key}", "code": "InvalidArgument"}
+
+
+def check_refusal(status_code: int, key: str, requests) -> None:
+    """The turn ended on the server's `status_code` in LADO's words with no key in them, the
+    agent is idle and the server's count of `requests()` stopped growing."""
+
+    def told():
+        said = [m for m in state.list_messages(SESSION) if m.recipient == state.HUMAN]
+        return [m for m in said if "ended on an error" in m.summary]
+
+    wait_for(told, "the turn's end on a refusal", 300)  # a 401 of Claude Code takes about 150 s
+    [line] = told()
+    print(f"refusal: {line.summary!r} body {line.body!r}, {requests()} requests")
+    assert REFUSALS[status_code][0] in line.summary
+    assert line.summary.endswith("; it is idle")
+    assert key not in line.summary + line.body
+    wait_for(lambda: status(SESSION, "supervisor") == "idle", "the agent to be idle", 30)
+    assert state.get_agent(SESSION, "supervisor").resume_at is None
+
+    def quiet() -> bool:
+        count = requests()
+        time.sleep(5)
+        return requests() == count
+
+    wait_for(quiet, "the server's count of requests to stop growing", 90)
+    print(f"refusal: turn errors {[e.detail for e in events('supervisor', state.TURN_ERROR)]}")
+    assert len(told()) == 1
+    assert len(events("supervisor", state.TURN_ERROR)) == 1
+    for file in state.home().glob("lado.db*"):
+        assert key.encode() not in file.read_bytes()
+    hooks_log = state.home() / "hooks.log"
+    assert not hooks_log.exists() or key not in hooks_log.read_text()
+
+
+@pytest.mark.parametrize("smoke_provider", ["kilo", "opencode"], indirect=True)
+@pytest.mark.parametrize("status_code", [s for s in REFUSALS if s != 413])  # their own overflow
+def test_a_provider_s_refusal_ends_the_turn_within_the_cli_s_repeats(
+    smoke_repo, smoke_provider, monkeypatch, status_code
+):
+    """The key the server repeats stays out of LADO's words, and the CLI's repeats end. No CLI's
+    name in the test's: `-k <provider>` of a CI cell would take the other's case, which skips."""
+    provider = smoke_provider
+    monkeypatch.setitem(providers._PROVIDERS, provider, CLASSES[provider]())
+    key = "smoke-refused-key-0123456789"
+    server = fake_model_server.Server("all", key=key)
+    try:
+        model_settings.add_server("Облако", server.url, key, warn=print, note=print)
+        state.add_model("Облачная", provider, "m1", state.model_server("Облако").id)
+        runtime.start_session(str(smoke_repo), SESSION, None, provider, model="Облачная")
+        idle = answering(provider, "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+        wait_for(idle, "the supervisor to be idle after its session start", 120)
+        error = {"error": {"message": f"Refused for {key}", "type": "refused"}}
+        if status_code == 400:
+            error = cloud_ru_400(key)
+        server.refusal = fake_model_server.Answer(status_code, error, endpoints.RETRY_SOON)
+        runtime.write_as_human(SESSION, HUMAN_SAYS)
+        check_refusal(status_code, key, lambda: len(chats(server)))
+    finally:
+        runtime.stop_session(SESSION)
+        server.close()
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+@pytest.mark.parametrize("status_code", list(REFUSALS))
+def test_a_provider_s_refusal_ends_a_claude_agent_s_turn_within_its_repeats(
+    smoke_repo, smoke_provider, claude_server, status_code
+):
+    """In its TUI, past the CLAUDE_CODE_MAX_RETRIES of 0 the smoke's own environment sets: the
+    agent's settings win. At most 7 repeats, so 8 requests of the turn on a 429 and, as measured,
+    10 on a 401; beside them the TUI asks for the session's title, a request with no tools, and
+    repeats it as much (2.1.295)."""
+    runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", "claude", model="Шлюз Qwen"
+    )
+    idle = answering("claude", "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+    wait_for(idle, "the supervisor to be idle after its session start", 120)
+
+    def asked() -> list[dict]:
+        bodies = [r[2] for r in list(claude_server.requests) if r[0] == "/v1/messages"]
+        return [json.loads(body) for body in bodies if b'"messages"' in body]
+
+    before = len(asked())
+    error = {"type": REFUSALS[status_code][1], "message": f"Refused for {SERVER_KEY}"}
+    answer = {"type": "error", "error": error}
+    claude_server.refusal = (
+        status_code,
+        cloud_ru_400(SERVER_KEY) if status_code == 400 else answer,
+    )
+    runtime.write_as_human(SESSION, HUMAN_SAYS)
+    check_refusal(status_code, SERVER_KEY, lambda: len(asked()))
+    turn = [request for request in asked()[before:] if request.get("tools")]
+    print(f"claude: {len(turn)} requests of the turn, {len(asked()) - before} in all")
+    least, most = {400: (1, 1), 401: (2, 10), 404: (1, 2), 413: (1, 1), 429: (2, 8)}[status_code]
+    assert least <= len(turn) <= most
+    assert len(asked()) - before <= 2 * most
     runtime.stop_session(SESSION)
 
 

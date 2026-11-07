@@ -1295,6 +1295,27 @@ test("the warning's docs/install.md links to its section on GitHub, in a new tab
   );
 });
 
+test("a warning's link goes to the section the warning names", async () => {
+  const qwen = saved(QWEN, "qwen3-8b");
+  modelEntries = { models: [qwen], servers: [], defaults: [defaultOf(qwen)] };
+  sessionCheck = () => ({
+    kind: "ok",
+    text: `${HOME} lists qwen3-8b among its models.`,
+    field: "",
+    name: "",
+    retry: false,
+    short: "",
+    peek: "context unknown",
+    warnings: [`${QWEN} has no context; see "A cloud provider" in docs/install.md`],
+    server: HOME,
+  });
+  await kiloWindow();
+  const link = await screen.findByRole("link", { name: "docs/install.md ↗" });
+  expect(link.getAttribute("href")).toBe(
+    "https://github.com/ladohq/lado/blob/main/docs/install.md#a-cloud-provider",
+  );
+});
+
 test("folded, Advanced names the model and its server, or a built-in model alone", async () => {
   const qwen = saved(QWEN, "qwen3-8b");
   modelEntries = { models: [qwen], servers: [], defaults: [defaultOf(qwen)] };

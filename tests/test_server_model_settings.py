@@ -303,6 +303,48 @@ def check_server(client, name="", address="", key=None, key_typed=False, replace
     return ok(client.post("/api/model-servers/check", json=given))
 
 
+@pytest.fixture
+def short_ceilings(monkeypatch):
+    monkeypatch.setattr(model_servers, "TIMEOUT", 0.3)
+    monkeypatch.setattr(model_servers, "LATE_TIMEOUT", 0.6)
+
+
+def late_words(url):
+    return f"the Anthropic Messages API of {url} did not answer in time: try again"
+
+
+def test_a_late_api_is_said_once_in_the_probe_of_a_check_and_of_an_add(
+    client, serve, short_ceilings
+):
+    late = serve("late-always")
+    found = check_server(client, "Шлюз", late.url)
+    assert found["probe"]["apis_why"] == late_words(late.url)
+    assert found["warnings"] == []
+    added = ok(add_server(client, "Шлюз", late.url))
+    assert added["probe"]["apis_why"] == late_words(late.url)
+    assert added["warnings"] == []
+
+
+def test_a_saved_server_s_probe_says_its_api_is_late_not_missing(client, serve, short_ceilings):
+    late = serve("late-always")
+    ok(add_server(client, "Шлюз", late.url))
+    assert ok(client.post("/api/model-servers/Шлюз/probe"))["apis_why"] == late_words(late.url)
+
+
+def test_a_probe_s_own_reason_stays_before_a_late_api(client, serve, short_ceilings):
+    server = serve("late-control-always")
+    found = check_server(client, "Шлюз", server.url)
+    assert found["probe"]["apis_why"] == f"{server.url} answers 400 to any POST"
+
+
+def test_a_late_check_asks_the_server_again_at_the_next_try(client, serve, short_ceilings):
+    server = serve("late-two-probes")
+    ok(add_server(client, "Шлюз", server.url))
+    first = check(client, cli="claude", model="m1", server="Шлюз")
+    assert first["text"] == "the Anthropic Messages API of Шлюз did not answer in time: try again"
+    assert check(client, cli="claude", model="m1", server="Шлюз")["kind"] != "refused"
+
+
 def test_check_server_of_a_change_takes_the_servers_own_name(client, serve):
     lms = serve("lmstudio")
     ok(add_server(client, "LM Studio дома", lms.url))

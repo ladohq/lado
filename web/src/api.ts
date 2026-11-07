@@ -446,7 +446,7 @@ export const clearModelDefault = (cli: string) => post<ModelSettings>(modelDefau
 
 // A request LADO's server gave no answer to.
 export const unreachable = (error: unknown) => error instanceof Unreached;
-export const LADO_DOWN = "LADO's server does not answer: nothing was done.";
+export const LADO_DOWN = "LADO's server does not answer: your request may or may not have reached it.";
 
 // A failed request of Settings → Models as a refusal: the API's EntryRefused, or any other
 // error's message with no field.

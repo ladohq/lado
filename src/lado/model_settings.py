@@ -34,10 +34,10 @@ from pathlib import Path
 from lado import agent_env, model_check, model_servers, project_secrets, providers, state
 from lado import text as visible
 from lado.providers import base
+from lado.providers.base import KEY_VARIABLE
 
 KEYS = "model-servers"  # under LADO_HOME: a folder per server, by its id
 KEY = "key"  # the key's file in a server's folder
-KEY_VARIABLE = "LADO_MODEL_KEY_"  # + the server's id in capitals: an agent's variable of its key
 MAX_NAME = 64
 SERVER, MODEL = "model server", "model"  # what a name is of, in its refusals
 REFUSED_PEEK = "refused"
@@ -58,6 +58,7 @@ CONTEXT_HOW = {
     model_servers.OLLAMA: "raise OLLAMA_CONTEXT_LENGTH, or the context in the Ollama app",
 }
 CONTEXT_PEEK = "context too small"  # the folded Advanced's words for that warning
+CONTEXT_UNKNOWN_PEEK = "context unknown"  # and for a public server's unknown context
 
 
 # The field of a form a refusal concerns, for the UI ("" for none); the CLI ignores it.
@@ -198,6 +199,8 @@ def add_server(
     if warning:
         warn(warning)
     found = model_servers.probe(address, sent, add_command(name, replace))
+    if late := found.late_warning():
+        warn(late)
     for other in state.model_servers():
         if (saved is None or other.id != saved.id) and same_address(other.address, found.address):
             note(f'same address as model server "{other.name}"')
@@ -446,6 +449,12 @@ def _on_server(
                 retry=True,
             ) from None
         raise Refused(text, exc.hint, SERVER_FIELD, retry=True) from None
+    if api in found.late:
+        raise Refused(
+            f"{model_servers.late_words([api])} of {server.name} {model_servers.LATE}: try again",
+            field=SERVER_FIELD,
+            retry=True,
+        )
     if api not in found.apis:
         suits = [title for title, _ in found.clis()[0]]
         raise Refused(
@@ -1129,8 +1138,18 @@ def context_warning(
     start: StartModel, provider: providers.Provider, limit: base.Limit | None
 ) -> str | None:
     """The warning for `start`, a model reported at `limit`, when its context is below what
-    `provider`'s CLI needs to take a turn; None otherwise, an unknown context too."""
-    if limit is None or limit.context >= provider.min_context:
+    `provider`'s CLI needs to take a turn, or is not known on a server outside the human's
+    machine and network, where a late compaction costs money; None otherwise: an Ollama model
+    not yet running has no known context either."""
+    if limit is None:
+        if start.server is None or model_servers.in_network(start.server.address):
+            return None
+        return (
+            f"{start.name} on {start.server.name}: the server reports no context for it, so the "
+            'agent compacts late and its answers have no limit; see "A cloud provider" in '
+            "docs/install.md"
+        )
+    if limit.context >= provider.min_context:
         return None
     where = f" on {start.server.name}" if start.server is not None else ""
     how = CONTEXT_HOW.get(start.server.kind if start.server else "", CONTEXT_HOW[""])

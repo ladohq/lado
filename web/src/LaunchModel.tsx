@@ -36,17 +36,20 @@ const builtin = (cli: string, model: string): CliDefault => ({
 const nameOf = (value: CliDefault) => (value.external !== null ? value.name : value.model);
 
 const INSTALL_FILE = "docs/install.md";
-const INSTALL_DOCS = `https://github.com/ladohq/lado/blob/main/${INSTALL_FILE}#what-to-expect-of-a-small-model`;
+const INSTALL_DOCS = `https://github.com/ladohq/lado/blob/main/${INSTALL_FILE}`;
+const SECTION = /see "([^"]+)" in $/; // what stands before the file's name
 
-// A warning's text, one string for `lado start` and this window: here its file is a link, as a
-// wheel holds no such file.
+// A warning's text, one string for `lado start` and this window: here its file is a link to the
+// section it names, as a wheel holds no such file.
 function warningText(warning: string): ReactNode {
   const at = warning.indexOf(INSTALL_FILE);
   if (at < 0) return `⚠ ${warning}`;
+  const section = SECTION.exec(warning.slice(0, at))?.[1];
+  const anchor = section ? `#${section.toLowerCase().replaceAll(" ", "-")}` : "";
   return (
     <>
       {`⚠ ${warning.slice(0, at)}`}
-      <a href={INSTALL_DOCS} target="_blank" rel="noreferrer">
+      <a href={INSTALL_DOCS + anchor} target="_blank" rel="noreferrer">
         {`${INSTALL_FILE} ↗`}
       </a>
       {warning.slice(at + INSTALL_FILE.length)}

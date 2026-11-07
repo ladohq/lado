@@ -149,9 +149,22 @@ test("an error, then idle, give one turn end with the error", async () => {
   assert.deepEqual(calls(), [
     {
       event: "session.idle",
-      payload: { sessionID: "s1", error: { name: "APIError", message: "Overloaded" } },
+      payload: { sessionID: "s1", error: { name: "APIError", message: "Overloaded", status: 529 } },
     },
     { event: "session.idle", payload: { sessionID: "s1" } },
+  ])
+})
+
+test("an error with no status of a server says none", async () => {
+  const { plugin } = await load({ "session.idle": hook("session.idle") })
+  const error = { name: "UnknownError", data: { message: "broke", statusCode: "soon" } }
+  await plugin.event(sessionEvent("session.error", "s1", { error }))
+  await plugin.event(sessionEvent("session.idle", "s1"))
+  assert.deepEqual(calls(), [
+    {
+      event: "session.idle",
+      payload: { sessionID: "s1", error: { name: "UnknownError", message: "broke" } },
+    },
   ])
 })
 
@@ -164,7 +177,7 @@ test("the second idle of a turn that ended on an error is no turn's end", async 
   assert.deepEqual(calls(), [
     {
       event: "session.idle",
-      payload: { sessionID: "s1", error: { name: "APIError", message: "Overloaded" } },
+      payload: { sessionID: "s1", error: { name: "APIError", message: "Overloaded", status: 529 } },
     },
   ])
 })

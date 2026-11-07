@@ -321,7 +321,7 @@ can read every file of its `secrets/`.
 An agent's instructions and tools take about 21K tokens on OpenCode, 31K on Kilo
 and on Claude Code from 16K to 45K, with your `CLAUDE.md`, rules and plugins, before its first word,
 so a model needs a context of 32K on OpenCode, 48K on Kilo and 64K on Claude Code. At each start LADO asks the server what context the model has (LM Studio's loaded
-model, Ollama's running one, a gateway's `max_input_tokens`) and tells the agent, which then
+model, Ollama's running one, a list's `max_input_tokens`, `context_length` or `max_model_len`) and tells the agent, which then
 compacts in time; a model below that need is warned about in `lado start` and the launch window,
 and starts all the same. A model reloaded with another context keeps the old limit until a resume.
 On a model too small, the turn ends on an error in the chat, after three attempts or at once when
@@ -345,6 +345,42 @@ else to expect:
 - With no way out to the internet, OpenCode's first start takes seconds on a model of a server.
   Kilo takes 12 s where outside traffic is refused, and over 140 s where packets are dropped
   silently, waiting for its own model list; no setting shortens that.
+- Your own plugins, rules and `CLAUDE.md` count on Claude Code: at 65536 they can fill the context
+  in the first turn. Take a model of 131072 or more, or fewer plugins.
+- On a server that bills, see [A cloud provider](#a-cloud-provider).
+
+#### A cloud provider
+
+Add it as any server, with the address's path: `lado model-server add <name> <address> --key`, as
+`https://foundation-models.api.cloud.ru/v1` or `https://openrouter.ai/api/v1`. Both were checked on
+OpenCode and Kilo; Claude Code on cloud.ru's Anthropic API.
+
+- LADO reads a model's context from the provider's list, and limits answers to what it reports, or
+  to 32K tokens on a context of 128K or more; on Claude Code to 16K at most, so that a request at
+  its compaction still fits the context. A provider that lists no context is warned about at the
+  start: the agent then compacts late and its answers have no limit.
+- A Claude agent on a server names no effort: your `effortLevel` stays out of its requests, as a
+  model may refuse it.
+- **A large context costs money.** The agent compacts only near the model's context: on a 1M model
+  late requests carry up to a million tokens. Prefer a model of 128K to 256K. LADO has no limit of
+  your own to set yet.
+- **What it costs.** LADO does not show what a session spent. Look in the provider's console
+  (cloud.ru) or Activity (OpenRouter); Kilo's TUI shows OpenRouter's cost; Claude Code has `/cost`,
+  its own count, not compared with a bill.
+- **Refusals.** Any 4xx but 408 ends the agent's turn and the chat says why with the status and the
+  server's text, once the CLI's own repeats are spent; on a 404 Claude Code gives its own words
+  instead of the server's. cloud.ru answers a wrong key with 400, and
+  does not check the key when you add the server: the first turn says so. Nothing repeats by itself after that: a run waits for you or the lead, also at
+  night. On a 429 with no `Retry-After` the repeats take about 70 s on all three CLIs; on a 401
+  or 403 OpenCode and Kilo stop at once, Claude Code after about 150 s. A provider's `Retry-After` makes
+  them longer: OpenCode and Kilo wait what it names before each of about five repeats (100 s at
+  20 s, so nearly an hour at 600 s), and until then the agent is busy and the chat says nothing.
+  Claude Code took 160 s at 20 s, and stops at once at 600 s. Claude Code's TUI repeats its request
+  for the session's title too, so a refusing provider may count about twice its requests.
+- **Claude Code with your plugins.** Your own plugins, rules and `CLAUDE.md` count: at 65536 they can
+  fill the context in the first turn. Take a model of 131072 or more, or fewer plugins.
+- A key the provider repeats in an error is removed from LADO's texts, not from the CLI's terminal
+  or its own files.
 
 #### A variable of one project
 

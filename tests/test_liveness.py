@@ -121,9 +121,37 @@ def _w1_busy(repo):
 
 
 def _fail_again():
-    """w1 works again (its resume, or the human), and its turn ends on an overload."""
-    _hook("UserPromptSubmit", "w1", {"prompt": "go on"})
+    """w1 is told to go on, and its turn ends on an overload."""
+    _told_to_go_on("w1")
     _hook("StopFailure", "w1", {"error": "overloaded"})
+
+
+def _told_to_go_on(agent):
+    """The agent's planned resume comes due, and its line reaches it."""
+    runtime.sweep("s", now=state.get_agent("s", agent).resume_at)
+    told = [m for m in state.list_messages("s") if m.recipient == agent and m.sender == "lado"]
+    _hook("UserPromptSubmit", agent, {"prompt": f"[from lado] {told[-1].summary}"})
+
+
+def test_a_resume_the_queue_took_the_place_of_is_not_counted(repo, fake_tmux, resume_delays):
+    """A message from the queue starts a turn before the planned resume is due: nobody was told
+    to go on, so the next failed turn plans the same resume, and the lead hears after two."""
+    _w1_busy(repo)
+    for _ in range(3):
+        _hook("StopFailure", "w1", {"error": "overloaded"})
+        assert state.get_agent("s", "w1").resumes == 1
+        _hook("UserPromptSubmit", "w1", {"prompt": "a message of the queue"})
+        assert state.get_agent("s", "w1").resumes == 0
+    assert _from_lado("supervisor") == []
+
+
+def test_a_second_error_before_the_resume_is_told_counts_once(repo, fake_tmux, resume_delays):
+    _w1_busy(repo)
+    _hook("StopFailure", "w1", {"error": "overloaded"})
+    planned = state.get_agent("s", "w1").resume_at
+    _hook("StopFailure", "w1", {"error": "overloaded"})
+    w1 = state.get_agent("s", "w1")
+    assert (w1.resumes, w1.resume_at) == (1, planned)
 
 
 def test_a_transient_error_plans_a_resume_and_tells_no_one(repo, fake_tmux, resume_delays):
@@ -163,9 +191,10 @@ def test_a_transient_error_of_the_supervisor_goes_to_the_human_once_resumes_are_
     monkeypatch.setattr(runtime, "RESUME_DELAYS", (30.0,))
     runtime.start_session(str(repo), "s", None, provider="claude")
     _hook("SessionStart", "supervisor")
-    for _ in range(2):
-        _hook("UserPromptSubmit", "supervisor", {"prompt": "go"})
-        _hook("StopFailure", "supervisor", {"error": "server_error"})
+    _hook("UserPromptSubmit", "supervisor", {"prompt": "go"})
+    _hook("StopFailure", "supervisor", {"error": "server_error"})
+    _told_to_go_on("supervisor")
+    _hook("StopFailure", "supervisor", {"error": "server_error"})
     assert _from_lado("human") == [
         "turn of supervisor ended on an error after 1 resume: server_error; it is idle"
     ]
@@ -186,7 +215,8 @@ def test_a_turn_end_that_plans_no_resume_starts_the_resumes_again(
     w1 = state.get_agent("s", "w1")
     assert (w1.resume_at, w1.resumes) == (None, 0)
     before = time.time()
-    _fail_again()
+    _hook("UserPromptSubmit", "w1", {"prompt": "go on"})
+    _hook("StopFailure", "w1", {"error": "overloaded"})
     w1 = state.get_agent("s", "w1")
     assert w1.resumes == 1 and before + 30 <= w1.resume_at < before + 120
 

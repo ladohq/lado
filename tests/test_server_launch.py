@@ -1251,7 +1251,7 @@ def test_the_check_warns_of_a_key_over_http_of_the_chosen_model_only(
     server_launch.forget_model_lists()
     saved = _saved(address="http://llm.example.com")
     model_settings._write_key(saved.server, "KEY-CANARY")
-    _server_answers(monkeypatch, "qwen3-8b")
+    _server_answers(monkeypatch, "qwen3-8b", limits={"qwen3-8b": providers.base.Limit(65536)})
     asked = {"cli": "opencode", "model": "Локальная Qwen"}
     answer = client.post(CHECK, json=asked)
     assert answer.json()["warnings"] == [
@@ -1292,6 +1292,22 @@ def test_two_warnings_are_both_named_for_the_folded_advanced(client, monkeypatch
     found = client.post(CHECK, json={"cli": "opencode", "model": "Локальная Qwen"}).json()
     assert len(found["warnings"]) == 2
     assert found["peek"] == "key over http, context too small"
+
+
+def test_the_check_of_a_public_server_s_unknown_context_warns_in_the_folded_advanced(
+    client, monkeypatch, fake_clis
+):
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    server_launch.forget_model_lists()
+    _saved(address="https://llm.example.com")
+    _server_answers(monkeypatch, "qwen3-8b", limits={})
+    found = client.post(CHECK, json={"cli": "opencode", "model": "Локальная Qwen"}).json()
+    assert found["kind"] == "ok"
+    assert found["warnings"] == [
+        "Локальная Qwen on LM Studio дома: the server reports no context for it, so the agent "
+        'compacts late and its answers have no limit; see "A cloud provider" in docs/install.md'
+    ]
+    assert found["peek"] == "context unknown"
 
 
 def test_the_check_of_a_model_of_enough_or_unknown_context_does_not_warn(

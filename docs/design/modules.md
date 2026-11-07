@@ -856,20 +856,25 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     probe`): `address` (the root, `http://` added visibly; ValueError for one it does not
     probe), `probe` (the model list, then Ollama's and LM Studio's own endpoints, the model
     list with `anthropic-version`, one empty POST per API and a control POST in threads,
-    each within `TIMEOUT`, its name lookup included; only the POSTs and that second list
+    each within `TIMEOUT`, its name lookup included, a POST with no answer once more within
+    `LATE_TIMEOUT`; only the POSTs and that second list
     carry `anthropic-version`, the plain list decides the type and the models; no redirect
     followed) giving a frozen `Probe` (address, type, proven APIs, models or no list with
-    why, the models LM Studio types as `embeddings`) or a `ProbeError` with its hint (the
+    why, the models LM Studio types as `embeddings`, the `late` APIs that did not answer
+    either time, neither proven nor missing, with `late_warning`) or a `ProbeError` with its hint (the
     container's `host.docker.internal`), and `lines`, the command's output (`(embeddings)`
     after such a model). `probe`'s `command` is the
     command run without its address, named by the asks-for-a-key line and the container's
     hint (`lado model-server probe`, or `add`). `clis` (and `Probe.clis`) names the
     CLIs whose provider's `server_api` (`providers/base.py`, one of `SERVER_APIS`) the
-    server proved; `plain_http_warning` the warning for a key over plain `http://` to a host
-    that is not local (`localhost`, `host.docker.internal`, a loopback, private or
-    link-local IP; no name resolved); `context_limits` what a server reports of its models'
+    server proved; `is_local` whether a host is the human's (`localhost`,
+    `host.docker.internal`, a loopback, private or link-local IP; no name resolved);
+    `in_network` that, or a name of a local network, for a start's warning of an unknown context;
+    `plain_http_warning` the warning for a key over plain `http://` to a host
+    that is not; `context_limits` what a server reports of its models'
     context (three GETs at once within `LIMIT_TIMEOUT`, read by shape: LM Studio's loaded context,
-    Ollama's running model, a list's `max_input_tokens`; never raises); standard library only,
+    Ollama's running model, a list's `max_input_tokens`, `context_length` or `max_model_len`, with
+    `max_output_tokens` or `top_provider.max_completion_tokens`; never raises); standard library only,
     the key only in the requests' headers.
   - `model_settings.py`: the human's model servers, configured models under names and agent
     CLIs' default models (`lado model-server add|list|remove`, `lado model

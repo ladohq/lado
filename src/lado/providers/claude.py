@@ -53,6 +53,14 @@ TESTED_VERSION = "2.1.295"
 # (Event.transient): an overloaded or failing API, and unknown, which the machine's sleep
 # is too. The others need someone to act and go to the lead at once.
 TRANSIENT = frozenset({"overloaded", "server_error", "unknown"})
+# An agent on a server has its status and the server's text in `last_assistant_message`, a 402
+# being of kind unknown: `API Error: 402 <text>`, `Failed to authenticate. API Error: 401 <text>`,
+# `API Error: Request rejected (429) · <text>`. Two 4xx differ (2.1.295, each from 400 to 451 asked
+# on a fake server): a 413 alone has `error_details`, `request_too_large: 413 <body>`, and a 404
+# has the kind model_not_found with Claude Code's own words, the server's text being in no field.
+REFUSED = re.compile(r"API Error: (?:Request rejected \()?(\d{3})\)?\s*·?\s*(.*)", re.DOTALL)
+REFUSED_DETAILS = re.compile(r"\w+: (\d{3}) (.*)", re.DOTALL)
+NO_SUCH_MODEL = "model_not_found"
 EVENTS = {
     "SessionStart": base.SESSION_START,
     "UserPromptSubmit": base.PROMPT_SUBMIT,
@@ -152,7 +160,23 @@ SERVER_SWITCHES = {
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
     "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+    # By itself 10 repeats, 11 requests in 3 minutes on a 401 or 429. Its delays double from 0.5 s
+    # to about 36 s, so this is 72 s on a 429 with no Retry-After, what OpenCode and Kilo take,
+    # and 149 s and 10 requests on a 401 (2.1.295, measured in its TUI).
+    "CLAUDE_CODE_MAX_RETRIES": "7",
+    # Without it each request names an effort, the user's `effortLevel` or `high`, which a server
+    # may refuse: 400 for gpt-oss on `xhigh`. The word `auto` sends none, here and not as the
+    # settings' `effortLevel`, which the user's beats (2.1.295, 2.1.319).
+    "CLAUDE_CODE_EFFORT_LEVEL": "auto",
 }
+# The most a Claude agent on a server asks for as its output. Claude Code compacts at the same
+# input whatever the output, and that request goes out with its max_tokens: on reads of 50 KB and a
+# context of 131072 the 32000 it asks for by itself passed it, in `claude -p` by 203 tokens
+# (2.1.295) and 4539 (2.1.319), and a server that counts both refused it (the human's check of
+# LAD-220). The TUI's requests are larger: the smoke test holds this value there. A larger tool
+# result at the wrong moment can still pass. CLAUDE_CODE_AUTO_COMPACT_WINDOW, the context less this
+# output, compacts earlier on 2.1.319 and does nothing on 2.1.295, so it cannot stand alone.
+SERVER_OUTPUT = 16384
 # LADO's tools, which auto mode's classifier would judge. It asks the agent's own model, also in a
 # defaultMode inherited from the user's settings: a model that gives it no usable answer has them
 # blocked at every try, and the agent cannot answer anyone (2.1.295, 2.1.319).
@@ -160,6 +184,25 @@ LADO_TOOLS = "mcp__lado__*"
 # With no credential at all Claude Code sends the human's login, so a server with no key gets
 # this word: the helper's output is sent as it is.
 NO_KEY = "no-key"
+
+
+def _refusal(failure: Mapping) -> tuple[str, str] | None:
+    """The line and the server's text of a StopFailure that is a provider's refusal, of an agent
+    on a server alone: a built-in model's errors keep their kind. The hook runs in the agent's
+    environment."""
+    if not os.environ.get(base.MODEL_SERVER):
+        return None
+    said = failure.get("last_assistant_message")
+    said = base.without_keys(said) if isinstance(said, str) else ""
+    found = REFUSED.search(said) or REFUSED_DETAILS.match(
+        base.without_keys(failure.get("error_details") or "")
+    )
+    status, text = (int(found[1]), found[2].strip()) if found else (None, said.strip())
+    if found is None and failure.get("error") == NO_SUCH_MODEL:
+        status = 404
+    if line := base.context_line(text):
+        return line, text
+    return (base.refusal_line(status, text), text) if base.is_refusal(status) else None
 
 
 def _server_settings(server: base.ServerEntry) -> dict:
@@ -180,7 +223,9 @@ def _server_settings(server: base.ServerEntry) -> dict:
         env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] = str(limit.context)
         # By itself it asks for 32000: over a 64K context with a prompt of 45K, where a server
         # ends the stream and Claude Code retries for hours (2.1.319 on LM Studio).
-        env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(limit.output_room())
+        env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(min(limit.output_room(), SERVER_OUTPUT))
+        if limit.output_room() > SERVER_OUTPUT:
+            env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = str(limit.context - SERVER_OUTPUT)
     helper = f"printenv {server.key_variable}" if server.key_variable else f"echo {NO_KEY}"
     return {"env": env, "apiKeyHelper": helper, "availableModels": [model]}
 
@@ -377,11 +422,13 @@ class ClaudeProvider(base.Provider):
             return base.Event(base.SESSION_START, model=model)
         if native == "StopFailure":
             kind = data.get("error") or "unknown"
-            error = base.error_line(kind, data.get("error_details", ""))
+            details = base.without_keys(data.get("error_details", ""))
+            refusal = _refusal(data)
             return base.Event(
                 base.TURN_END,
-                error=error,
-                transient=kind in TRANSIENT,
+                error=refusal[0] if refusal else base.error_line(kind, details),
+                details=refusal[1] if refusal else "",
+                transient=kind in TRANSIENT and not refusal,
                 output_ignored=True,
                 background=_background(data),
             )

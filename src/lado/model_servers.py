@@ -1,15 +1,18 @@
 """What a model server is, from its address: its type, its models and the agent CLIs that
 can use it (`lado model-server probe`).
 
-A probe sends at most one request per check and none that generates: the model list
-first, alone; when it got an HTTP answer, at once Ollama's and LM Studio's own endpoints,
-the model list in Anthropic's way, one POST with the body `{}` per API and a control POST
-to a path no server has, eight at most. Only the POSTs and the list in Anthropic's way carry
+A probe sends one request per check and none that generates: the model list first, alone;
+when it got an HTTP answer, at once Ollama's and LM Studio's own endpoints, the model list
+in Anthropic's way, one POST with the body `{}` per API and a control POST to a path no
+server has: eight, and a POST with no answer once more, twelve at most. Only the POSTs and
+the list in Anthropic's way carry
 `anthropic-version`: the type and the models come from the list asked without it, and the
 other only fills a gap, as a gateway of both APIs lists in Anthropic's shape with it. A POST
 proves its API when the server refuses the empty body with 400 or 422 and a JSON object,
 unless the control is refused the same way: then the server answers every POST alike and
-proves nothing. Each request is cut at TIMEOUT, its name lookup included; no redirect is
+proves nothing. Each request is cut at TIMEOUT, its name lookup included; a POST with no
+answer then goes once more, cut at LATE_TIMEOUT, and an API still silent is neither proven
+nor missing (`Probe.late`). No redirect is
 followed, so neither a request nor the key reaches another host. The CLIs that suit a
 server follow from the APIs it proved, by each provider's `server_api`; its type is only
 shown. The key goes in the requests' headers and nowhere else: no message is built from
@@ -28,7 +31,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 
 import lado
@@ -37,9 +40,11 @@ from lado import text as visible
 from lado.providers import base
 
 TIMEOUT = 5  # seconds per request, its name lookup included
+LATE_TIMEOUT = 15  # seconds for a POST asked again: a first TLS connection, a model being loaded
 LIMIT_TIMEOUT = 2  # seconds for a model's context at a start, which waits for it
 MAX_ANSWER = 4 * 1024 * 1024  # bytes of an answer read; a longer list is no list
 TOO_LARGE = "the answer is larger than 4 MiB"
+LATE = "did not answer in time"  # an API whose POST got no answer even the second time
 
 OLLAMA = "Ollama"
 LMSTUDIO = "LM Studio"
@@ -57,6 +62,9 @@ API_PATHS = {
     base.ANTHROPIC_MESSAGES: "/v1/messages",
 }
 CONTROL = "/v1/lado-no-such-api"  # no server has it: an API's answer here proves nothing
+# A context in a model list, first what a gateway says of the prompt alone (LiteLLM), then
+# cloud.ru's and OpenRouter's field, then vLLM's.
+LISTED_CONTEXT = ("max_input_tokens", "context_length", "max_model_len")
 # Anthropic's API wants it; a gateway of both APIs (LiteLLM) lists its models in Anthropic's
 # shape when it is sent, so the plain list request goes without it.
 ANTHROPIC_VERSION = {"anthropic-version": "2023-06-01"}
@@ -70,6 +78,9 @@ CONTAINER_HINT = (
 # container too) and, by address, loopback, private and link-local networks. A name is never
 # resolved for the rule: it would depend on the network and send the name out.
 LOCAL_HOSTS = ("localhost", "host.docker.internal")
+# Names only a local network resolves. For what is said of a bill, not for the key's rule: a name
+# with these may still be anything, so a key over plain http:// to one is warned about.
+NETWORK_SUFFIXES = (".local", ".lan", ".internal", ".home.arpa")
 PLAIN_HTTP = (
     "the key goes to {host} over plain http://, unencrypted; use https:// if the server has it"
 )
@@ -126,7 +137,8 @@ class Answer:
 class Probe:
     """A server a probe recognised. `models` is None for no list, with why in `models_why`;
     `apis_why` says why no API could be told, "" when they could; `embeddings` the models the
-    server types as embeddings (LM Studio's own list), none for a server that types none."""
+    server types as embeddings (LM Studio's own list), none for a server that types none; `late`
+    the APIs whose POST got no answer either time."""
 
     address: str
     added_scheme: bool
@@ -136,9 +148,21 @@ class Probe:
     models_why: str = ""
     apis_why: str = ""
     embeddings: frozenset[str] = frozenset()
+    late: frozenset[str] = frozenset()
 
     def clis(self) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
         return clis(self.apis)
+
+    def late_warning(self) -> str | None:
+        """What to tell of the `late` APIs when the server is saved; None for none."""
+        if not self.late:
+            return None
+        return f"{late_words(self.late)} of {self.address} {LATE}: try again"
+
+
+def late_words(apis: Collection[str]) -> str:
+    """The APIs that did not answer, in a sentence."""
+    return "the " + ", ".join(api for api in API_PATHS if api in apis)
 
 
 Suiting = list[tuple[providers.Provider, str]]
@@ -217,22 +241,33 @@ def base_url(root: str) -> str:
     return root + API_BASE
 
 
+def is_local(root: str) -> bool:
+    """Whether the server at `root` (an `address`'s root) is on the human's machine or network."""
+    host = urllib.parse.urlsplit(root).hostname or ""
+    if host in LOCAL_HOSTS:
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return ip.is_loopback or ip.is_private or ip.is_link_local
+
+
+def in_network(root: str) -> bool:
+    """Whether the server at `root` is `is_local`, or by its name one of a local network: a name
+    with no dot, or of NETWORK_SUFFIXES. No name is resolved."""
+    host = urllib.parse.urlsplit(root).hostname or ""
+    bare = "." not in host and ":" not in host  # an IPv6 address is no name
+    return is_local(root) or bare or host.endswith(NETWORK_SUFFIXES)
+
+
 def plain_http_warning(root: str, key: str | None) -> str | None:
     """The warning for a key sent over plain http:// to the server at `root` (an
     `address`'s root) that is not on the human's machine or network; None for none."""
     parts = urllib.parse.urlsplit(root)
-    if key is None or parts.scheme != "http":
+    if key is None or parts.scheme != "http" or is_local(root):
         return None
-    host = parts.hostname or ""
-    if host in LOCAL_HOSTS:
-        return None
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        return PLAIN_HTTP.format(host=host)
-    if ip.is_loopback or ip.is_private or ip.is_link_local:
-        return None
-    return PLAIN_HTTP.format(host=host)
+    return PLAIN_HTTP.format(host=parts.hostname or "")
 
 
 def probe(
@@ -269,7 +304,8 @@ def probe(
         (root + MODELS, "GET", ANTHROPIC_VERSION),
     ]
     asked += [(root + path, "POST", ANTHROPIC_VERSION) for path in [*API_PATHS.values(), CONTROL]]
-    version, lmstudio, versioned, *posts, control = _all(opener, asked, headers)
+    version, lmstudio, versioned, *posts = _all(opener, asked, headers)
+    *posts, control = _with_late_posts(opener, asked[-len(posts) :], posts, headers)
     for answer in (listed, version, lmstudio, versioned, *posts, control):
         if answer.status in (401, 403):
             if key is None:
@@ -280,6 +316,7 @@ def probe(
                 )
             raise ProbeError(f"{root} refused the key ({answer.status})", field=KEY)
     apis = frozenset(api for api, a in zip(API_PATHS, posts, strict=True) if a.refuses_as_an_api())
+    late = frozenset(api for api, a in zip(API_PATHS, posts, strict=True) if a.status is None)
     apis_why = ""
     if control.refuses_as_an_api():
         apis, apis_why = frozenset(), f"{root} answers {control.status} to any POST"
@@ -291,11 +328,25 @@ def probe(
         why = f"GET {MODELS}: {listed.said()}"
         if apis_why:
             why += f"; it answers {control.status} to any POST, so its APIs cannot be told"
+        if late:
+            why += f"; {late_words(late)} {LATE}"
         raise ProbeError(
             f"unknown server: {root} answered, but not as an OpenAI-compatible, "
             f"Anthropic-compatible, Ollama or LM Studio server ({why})"
         )
-    return Probe(root, added, kind, apis, models, models_why, apis_why, _embeddings(lmstudio))
+    return Probe(root, added, kind, apis, models, models_why, apis_why, _embeddings(lmstudio), late)
+
+
+def _with_late_posts(
+    opener, asked: list[tuple[str, str, dict[str, str]]], posts: list[Answer], headers
+) -> list[Answer]:
+    """`posts`, the answers to `asked`, with each that got none asked once more."""
+    late = [i for i, answer in enumerate(posts) if answer.status is None]
+    if not late:
+        return posts
+    answers = _all(opener, [asked[i] for i in late], headers, LATE_TIMEOUT)
+    again = dict(zip(late, answers, strict=True))
+    return [again.get(i, answer) for i, answer in enumerate(posts)]
 
 
 def context_limits(root: str, key: str | None) -> dict[str, base.Limit]:
@@ -319,19 +370,27 @@ def _tokens(value: object) -> int | None:
     return None
 
 
-def _limits(items: list, name: str, context: str, output: str = "") -> dict[str, base.Limit]:
-    """The limits of a list's `items`: a model's id under `name`, as `_models` makes it."""
+def _output(item: dict) -> int | None:
+    """The output a list's `item` reports: a gateway's field, else OpenRouter's."""
+    top = item.get("top_provider")
+    nested = top.get("max_completion_tokens") if isinstance(top, dict) else None
+    return _tokens(item.get("max_output_tokens")) or _tokens(nested)
+
+
+def _limits(items: list, name: str, *contexts: str) -> dict[str, base.Limit]:
+    """The limits of a list's `items`: a model's id under `name`, as `_models` makes it, its
+    context the first of `contexts` that is a number of tokens."""
     found = {}
     for item in items:
         if isinstance(item, dict) and isinstance(item.get(name), str):
-            tokens = _tokens(item.get(context))
+            tokens = next(filter(None, (_tokens(item.get(c)) for c in contexts)), None)
             if tokens is not None:
-                found[visible.one_line(item[name])] = base.Limit(tokens, _tokens(item.get(output)))
+                found[visible.one_line(item[name])] = base.Limit(tokens, _output(item))
     return found
 
 
 def _listed_limits(listed: Answer) -> dict[str, base.Limit]:
-    return _limits(_listing(listed) or [], "id", "max_input_tokens", "max_output_tokens")
+    return _limits(_listing(listed) or [], "id", *LISTED_CONTEXT)
 
 
 def _running_limits(running: Answer) -> dict[str, base.Limit]:
@@ -368,7 +427,11 @@ def lines(found: Probe) -> list[str]:
         groups.append(f"{', '.join(titles)} ({api})")
     out.append(f"CLIs: {'; '.join(groups) or 'none'}")
     if not_suits:
-        out.append("not: " + ", ".join(f"{title} (no {api})" for title, api in not_suits))
+        said = [
+            f"{title} ({api} {LATE})" if api in found.late else f"{title} (no {api})"
+            for title, api in not_suits
+        ]
+        out.append("not: " + ", ".join(said))
     return out
 
 

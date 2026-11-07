@@ -121,6 +121,12 @@ TOKEN_BYTES = 4  # a request's bytes per token, as near as a fake needs
 SHELL_TOOL = "Bash"
 MCP_TOOL = "mcp__lado__list_agents"
 SHELL_CALL, MCP_CALL = "toolu_smoke_shell", "toolu_smoke_mcp"
+ASKS_A_SUMMARY = "Do NOT call any tools"  # in Claude Code's request of a compaction (2.1.295)
+# `reads` end with this one: the largest request comes with the second, and a third has Claude Code
+# stop on files it restored after the first two (`Autocompact is thrashing`).
+COMPACTIONS = 2
+# On a refusal: a real CLI's repeats of a 429 take seconds, not a minute.
+RETRY_SOON = (("Retry-After", "1"),)
 
 
 def _tool_use(call: str, name: str, tool_input: dict) -> dict:
@@ -182,18 +188,28 @@ class Anthropic:
     """A server of Anthropic's Messages API on 127.0.0.1 with the model `model` and, with `key`,
     a 401 for a request that carries it in neither `x-api-key` nor `Authorization`. `requests`
     keeps each request as (path, its headers by lower-case name, its body); `marker` is the file
-    the scripted shell tool makes."""
+    the scripted shell tool makes; `refusal`, once set, the status and body every model request
+    gets, with RETRY_SOON; `context` what its list reports and what a request's input and
+    `max_tokens` must fit in, `over_context` what it answers one that does not; `reads` files the
+    next steps have the agent read, and `compactions` the summaries it was asked for."""
 
     def __init__(self, model: str, marker: Path, key: str | None = None):
         self.requests: list[tuple[str, dict[str, str], bytes]] = []
+        self.refusal: tuple[int, object] | None = None
+        self.context = CONTEXT
+        self.over_context: tuple[int, object] = (500, {"message": "Context size has been exceeded"})
+        self.reads: list[Path] = []
+        self.compactions = 0
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
-            def json(self, status: int, answer: object) -> None:
+            def json(self, status: int, answer: object, headers: tuple = ()) -> None:
                 data = json.dumps(answer).encode()
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(data)))
+                for name, value in headers:
+                    self.send_header(name, value)
                 self.end_headers()
                 self.wfile.write(data)
 
@@ -215,7 +231,7 @@ class Anthropic:
                     self.json(401, ANTHROPIC_401)
                 elif (self.command, path) == ("GET", "/v1/models"):
                     listed = {"type": "model", "id": model, "display_name": model}
-                    listed["max_input_tokens"] = CONTEXT
+                    listed["max_input_tokens"] = fake.context
                     self.json(200, {"data": [listed], "has_more": False})
                 elif (self.command, path) == ("POST", "/v1/messages/count_tokens"):
                     self.json(200, {"input_tokens": 1})
@@ -230,9 +246,12 @@ class Anthropic:
                     error = {"type": "invalid_request_error", "message": "model: Field required"}
                     self.json(400, {"type": "error", "error": error})
                     return
+                if fake.refusal is not None:
+                    self.json(*fake.refusal, RETRY_SOON)
+                    return
                 tokens = len(body) // TOKEN_BYTES
-                if tokens + request.get("max_tokens", 0) > CONTEXT:  # as LM Studio ends it
-                    self.json(500, {"message": "Context size has been exceeded"})
+                if tokens + request.get("max_tokens", 0) > fake.context:  # as LM Studio ends it
+                    self.json(*fake.over_context)
                     return
                 content, stop_reason = fake.turn(request)
                 self.stream(_events(request["model"], content, stop_reason, tokens))
@@ -252,6 +271,16 @@ class Anthropic:
         """The next step of the script for `request`: its content and stop reason."""
         latest = _latest(request)
         results = _results(latest)
+        if ASKS_A_SUMMARY in json.dumps(latest):
+            self.compactions += 1
+            if self.compactions == COMPACTIONS:
+                self.reads.clear()
+            return [_text("<summary>The agent read its files.</summary>")], "end_turn"
+        if self.reads and request.get("tools"):  # not a session's title
+            path = self.reads.pop()
+            return [
+                _tool_use(f"toolu_read_{path.stem}", "Read", {"file_path": str(path)})
+            ], "tool_use"
         if SHELL_CALL in results and MCP_CALL not in results:  # a turn's results stay together
             return [_tool_use(MCP_CALL, MCP_TOOL, {})], "tool_use"
         offered = {tool.get("name") for tool in request.get("tools") or []}

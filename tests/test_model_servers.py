@@ -484,6 +484,66 @@ def test_the_limit_is_five_seconds():
     assert ms.TIMEOUT == 5
 
 
+# A POST with no answer in time.
+
+
+@pytest.fixture
+def short_ceilings(monkeypatch):
+    monkeypatch.setattr(ms, "TIMEOUT", 0.3)
+    monkeypatch.setattr(ms, "LATE_TIMEOUT", 0.6)
+
+
+def test_a_late_post_is_asked_once_more_with_a_longer_ceiling():
+    assert ms.LATE_TIMEOUT == 15
+
+
+def test_a_post_that_answers_the_second_time_proves_its_api(serve, short_ceilings):
+    server = serve("late-once")
+    found = ms.probe(server.url)
+    assert base.ANTHROPIC_MESSAGES in found.apis
+    assert found.late == frozenset()
+    assert found.late_warning() is None
+    assert server.paths().count(("POST", fake.MESSAGES)) == 2
+    assert server.paths().count(("POST", fake.CHAT)) == 1
+
+
+def test_a_post_that_never_answers_is_neither_proven_nor_missing(serve, short_ceilings):
+    server = serve("late-always")
+    found = ms.probe(server.url)
+    assert base.ANTHROPIC_MESSAGES not in found.apis
+    assert found.late == {base.ANTHROPIC_MESSAGES}
+    assert server.paths().count(("POST", fake.MESSAGES)) == 2
+    assert "not: Claude Code (Anthropic Messages API did not answer in time), Codex CLI (no " + (
+        "Responses API)"
+    ) in ms.lines(found)
+    assert found.late_warning() == (
+        f"the Anthropic Messages API of {server.url} did not answer in time: try again"
+    )
+
+
+def test_an_api_that_answers_no_is_asked_once(serve, short_ceilings):
+    server = serve("openai")
+    found = ms.probe(server.url)
+    assert found.late == frozenset()
+    assert server.paths().count(("POST", fake.MESSAGES)) == 1
+    assert "Claude Code (no Anthropic Messages API)" in ms.lines(found)[-1]
+
+
+def test_a_late_control_is_asked_again_and_still_proves_nothing(serve, short_ceilings):
+    server = serve("late-control")
+    found = ms.probe(server.url)
+    assert server.paths().count(("POST", fake.CONTROL)) == 2
+    assert found.apis == frozenset()
+    assert found.apis_why == f"{server.url} answers 400 to any POST"
+
+
+def test_a_server_known_by_no_answer_says_what_did_not_answer(serve, short_ceilings):
+    server = serve("late-no-list")
+    with pytest.raises(ms.ProbeError) as raised:
+        ms.probe(server.url)
+    assert "Anthropic Messages API did not answer in time" in str(raised.value)
+
+
 def test_unknown_host_does_not_answer():
     with pytest.raises(ms.ProbeError, match=r"does not answer \(unknown host\)"):
         ms.probe("http://lado-probe-test.invalid:4000")
@@ -716,9 +776,68 @@ def test_a_gateway_reports_in_its_list(serve):
     }
 
 
+def test_a_provider_reports_in_the_fields_of_its_list(serve):
+    assert ms.context_limits(serve("provider-limits").url, None) == {
+        "cloud": base.Limit(131072),
+        "router": base.Limit(131072, 117964),
+        "vllm": base.Limit(32768),
+        "both": base.Limit(16000),
+        "null-first": base.Limit(8192),
+        "odd-top": base.Limit(4096),
+        "both-outputs": base.Limit(4096, 100),
+    }
+
+
 @pytest.mark.parametrize("profile", ["openai", "unknown", "forbidden", "gateway-400"])
 def test_a_server_that_reports_nothing_has_no_limits(serve, profile):
     assert ms.context_limits(serve(profile).url, None) == {}
+
+
+@pytest.mark.parametrize(
+    ("root", "local"),
+    [
+        ("http://localhost:1234", True),
+        ("http://host.docker.internal:1234", True),
+        ("http://127.0.0.1:1234", True),
+        ("http://192.168.1.10:1234", True),
+        ("http://10.0.0.2", True),
+        ("http://169.254.1.1", True),
+        ("http://[::1]:1234", True),
+        ("https://192.168.1.10", True),
+        ("http://8.8.8.8", False),
+        ("https://llm.example.com", False),
+        ("https://foundation-models.api.cloud.ru", False),
+    ],
+)
+def test_what_is_on_the_human_s_machine_or_network(root, local):
+    assert ms.is_local(root) is local
+
+
+@pytest.mark.parametrize(
+    ("root", "inside"),
+    [
+        ("http://localhost:1234", True),
+        ("http://192.168.1.10:1234", True),
+        ("http://mac-studio.local:1234", True),
+        ("http://MAC-STUDIO.LOCAL:1234", True),
+        ("http://gpu-box:8000", True),
+        ("http://ollama.lan:11434", True),
+        ("https://llm.corp.internal", True),
+        ("http://nas.home.arpa", True),
+        ("https://llm.example.com", False),
+        ("https://local.example.com", False),
+        ("http://8.8.8.8", False),
+        ("http://[2001:4860:4860::8888]", False),
+    ],
+)
+def test_a_name_of_the_human_s_network_is_inside_it(root, inside):
+    assert ms.in_network(root) is inside
+
+
+def test_a_key_over_http_to_a_network_name_is_still_warned_of():
+    """The name is not resolved, so the rule of a key stays by address."""
+    assert ms.plain_http_warning("http://gpu-box:8000", "key") is not None
+    assert ms.plain_http_warning("http://mac-studio.local:1234", "key") is not None
 
 
 def test_limits_of_a_closed_port_are_none():

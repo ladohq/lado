@@ -338,7 +338,9 @@ def check_models(provider: str, model: str, since: float) -> None:
                 for entry in transcript
                 if entry.get("type") == "assistant" and entry.get("message", {}).get("model")
             }
-            assert used - {"<synthetic>"} == {model}, (agent.name, used)
+            assert used - {"<synthetic>"} <= {model}, (agent.name, used)
+            # The lead may not have answered yet: it had no turn before w1's report.
+            assert used or agent.name != "w1", "no answer of w1's in its transcripts"
         elif provider == "codex":
             config = tomllib.loads((folder / "config.toml").read_text())
             assert config["model"] == model, (agent.name, config.get("model"))

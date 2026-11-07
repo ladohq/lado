@@ -489,8 +489,8 @@ def test_resume_a_stopped_session(page: Page, server, repo, shot):
     log_in(page, server, f"/sessions/{session}")
     page.locator(".stopped-bar").get_by_role("button", name="Resume session").click()
     dialog = page.get_by_role("dialog", name="Resume session")
-    expect(dialog.get_by_role("combobox", name=re.compile("Where"))).to_have_value(str(repo))
-    expect(dialog.get_by_role("combobox", name=re.compile("Where"))).to_be_disabled()
+    expect(dialog.get_by_role("group", name="Where")).to_have_text(str(repo))
+    expect(dialog.get_by_role("combobox", name=re.compile("Where"))).to_have_count(0)
     expect(dialog.get_by_label("Provider")).to_have_value("fake", timeout=30_000)  # CLIs checked
     shot(page, "window")
 

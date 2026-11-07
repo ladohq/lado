@@ -131,8 +131,11 @@ The entries, in place of `write_endpoint_config`:
 ```python
 # What a person's login would give; each provider's entry alone says what a test uses.
 LOGIN_VARIABLES = (
-    "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN",
-    "OPENAI_API_KEY", "OPENAI_BASE_URL",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
 )
 
 
@@ -273,7 +276,11 @@ def test_a_live_cell_leaves_only_redacted_files_in_its_folder(
     assert smoke_ci.live("codex", out) == code
     assert live_cell[0][:4] == ["timeout", "--kill-after=30", "1500", "uv"]
     assert live_cell[0][-5:] == [
-        "-n0", "-v", "-k", "codex", "--ignore=tests/live/test_codex_login.py",
+        "-n0",
+        "-v",
+        "-k",
+        "codex",
+        "--ignore=tests/live/test_codex_login.py",
     ]
     assert (out / "live-codex.log").read_text() == "<redacted>"
     assert (out / "evidence" / "screen").read_text() == "<redacted>"
@@ -328,8 +335,21 @@ def live(provider: str, out: Path) -> int:
     if env is None:
         return 1
     work = Path(tempfile.mkdtemp(prefix="lado-live-"))
-    tests = ["timeout", "--kill-after=30", LIVE_LIMIT, "uv", "run", "pytest", "-m", "live",
-             "-n0", "-v", "-k", provider, "--ignore=tests/live/test_codex_login.py"]
+    tests = [
+        "timeout",
+        "--kill-after=30",
+        LIVE_LIMIT,
+        "uv",
+        "run",
+        "pytest",
+        "-m",
+        "live",
+        "-n0",
+        "-v",
+        "-k",
+        provider,
+        "--ignore=tests/live/test_codex_login.py",
+    ]
     code = cell(tests, work / f"live-{provider}.log", work, f"live {provider}", env)
     redact(work, os.environ.get("LADO_LIVE_API_KEY", ""))
     shutil.copytree(work, out, dirs_exist_ok=True)

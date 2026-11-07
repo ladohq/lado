@@ -167,7 +167,7 @@ back, the UI back.
   out: `lado` refuses when its `projects/` holds a project.
 - Models (from 0.45.0), with the live runs of section 2 and your own servers:
   - After a turn of a Kilo agent, `lado ls` names its model: Kilo reports it in
-    `chat.message`, which no run has confirmed.
+    `chat.message`, which the live tests do not check (they read Kilo's own `model.json`).
   - Codex: `lado start --provider codex --model <a name of its list>` starts on it. With a
     `model` in the repository's own `.codex/config.toml`, note what the agent's card says.
   - A real model server through `lado model-server probe <address>`: a real LiteLLM is typed

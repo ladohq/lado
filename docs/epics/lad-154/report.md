@@ -1,33 +1,48 @@
 # Readiness report: Model and power choice for agents (LAD-154)
 
-First visit, 2026-11-07, by `delivery`, on the local branch `readiness/lad-154` at c4688ba7:
-`origin/epic/lad-154-models` at 428415b9 with `origin/main` at 27d01d17 merged in. Plan and
-decisions read from the run's branch at 4ab398cc. Previous release: v0.44.0 (schema 35).
-This build: schema 39.
+Second visit, 2026-11-07, by `delivery`, on the local branch `readiness/lad-154` at 104f5bd2:
+`origin/epic/lad-154-models` at 104f5bd2 (S12 merged), which already holds `origin/main` at
+90ab439e (merged by the lead as c4609876), so the base merge had nothing to bring. Plan and
+decisions read from the run's branch at d0c0dd39. Previous release: v0.44.0 (schema 35). This
+build: schema 39. The first visit checked c4688ba7 (the epic at 428415b9 with `main` at
+27d01d17); its results stay below where nothing since touches them, each with its commit.
+
+## Gaps of the first visit
+
+| Gap | Status | Evidence |
+|---|---|---|
+| G1: the way back from 0.45.0 does not say what happens to model servers and their keys | **RESOLVED** by S12 (LAD-235, PR #251, 104f5bd2) | `lado update 0.44.0 --yes` from a real upgraded home now warns `…is lost: sessions, runs, gates, messages, projects, model servers, models, default models.` and `Model server keys stay on disk; remove them when you no longer need them:` with the key's folder; `docs/install.md` names the same loss, "What stays" and Docker's going back say `model-servers/` stays and how to remove it; the unit tests of the warning in `tests/test_self_update.py`. Run below, "Upgrade from 0.44.0, and back" |
 
 ## Verdict
 
-**One gap (G1).** The epic's product is ready in everything else: all 15 steps of D47's and
-D48's scope are done, the checks are green on what will be released, the upgrade from 0.44.0
-loses and changes nothing, and the way back runs.
+**Ready.** All 16 steps of D47's and D48's scope are done, S12 the last, the checks are green on
+what will be released (104f5bd2), the upgrade from 0.44.0 loses and changes nothing, the way
+back runs and now names what it drops and the keys it leaves. `make test-live` passed on the
+epic's code for all four CLIs (#4725). What is left waits for a release or for the human's
+own servers and browsers, and is in the release checklist (Open checks).
 
-**G1: the way back from 0.45.0 does not say what happens to model servers and their keys.**
-`lado update 0.44.0` drops every saved model server, model and CLI default with `lado.db`,
-and its warning and `docs/install.md` list "sessions, runs, gates, messages, projects" only.
-The key file stays on disk, `~/.lado/model-servers/<id>/key`, and neither the warning, nor
-"What stays" in `docs/install.md`, nor 0.44.0's `lado doctor` says so. Evidence and the
-proposed fix are under "Upgrade from 0.44.0, and back".
+## What changed since the first visit
+
+- **The epic branch**, 428415b9 → 104f5bd2: S12 (`src/lado/self_update.py`, its tests,
+  `docs/install.md`, `docs/design/modules.md`, CHANGELOG, a comment in `providers/codex.py`,
+  the spec `update-database`) and `main`'s merge c4609876. S12 touches the update, so the
+  upgrade and the way back were run again (below).
+- **The base**, 27d01d17 → 90ab439e: LAD-231 (#247), the live tests on a remote endpoint:
+  `tests/live/`, `tests/live_models.py`, `scripts/smoke_ci.py`, `.github/workflows/live.yml`,
+  `docs/testing.md`, `.lado/sdlc.md`, and section 2, step 3 of `docs/release.md` (the RC's live
+  run is now `gh workflow run live.yml` on main). No migration, update, install or user's file.
 
 ## The base merge
 
-`git merge origin/main` into `readiness/lad-154`: no conflict, 5 files, all of LAD-232 (PR
-#250: `tests/test_uninstall.py`, its archived change and review report). Nothing to resolve.
-The merge c4688ba7 is local and not pushed; the lead pushes it at `close` after the human's
-yes, or a later visit makes it again.
+`git switch -C readiness/lad-154 origin/epic/lad-154-models`, `git merge origin/main`:
+`Already up to date.` (`git merge-base --is-ancestor origin/main HEAD` holds). Nothing to
+resolve; `readiness/lad-154` is the epic branch as it is, and the lead's push at `close` has
+nothing new to carry. The first visit's merge c4688ba7 (LAD-232, no conflict) is superseded by
+the lead's c4609876.
 
 ## Results of all steps
 
-Fifteen steps done. S4, S5c, S7, S7b and S8 moved to a new epic (D47); S5a and S5b were taken
+Sixteen steps done. S4, S5c, S7, S7b and S8 moved to a new epic (D47); S5a and S5b were taken
 into S3c and S3d (D18); S5d was dropped and S6 moved to "Later" (D42). None is planned or in
 progress.
 
@@ -48,38 +63,46 @@ progress.
 | S9a — a model server for Claude Code | LAD-217 | #226 (141de01f) | `ANTHROPIC_BASE_URL`, key in the environment, smoke, refusal | plan.md S9a: CI 23/23 on 241d2bd5, report `manual-check-226-r2` |
 | S11 — an external provider by key | LAD-220 | #235 (d0464c6a) | the closed list on cloud.ru and OpenRouter, 401, 429, cost | plan.md S11: passed at f9b7e98b, #4501 |
 | S9b — a model server for Codex | LAD-230 | #246 (7c044e39) | `model_providers` in `CODEX_HOME`, refusal, smoke | plan.md S9b: CI 23/23 on 725557bb, passed #4676 |
+| S12 — the way back names model servers, and the live runs | LAD-235 | #251 (104f5bd2) | the warning and `docs/install.md` name the loss and the keys; a unit test; `make test-live` on four CLIs | `gh pr view 251`: 23 of 23 checks SUCCESS; plan.md S12: `make test-live` green on all four at 57630778 (#4725), OpenCode on its second try; G1 seen resolved below |
 
-### The product's checks on what will be released (c4688ba7)
+### The product's checks on what will be released (104f5bd2)
 
 | Command | Result |
 |---|---|
 | `make lint` | exit 0: `All checks passed!` |
-| `make test` | exit 0: **5960 passed, 7 skipped** in 55.7 s. The first run, beside this report's wheel build and `uv tool` runs: the same 5960 passed, and one collection error, `EOFError: marshal data too short` in `tests/live/test_live.py` importing `lado` (a torn `.pyc`, not a test); the rerun alone is clean |
-| `make web` | exit 0: stale-types check, tsc, vitest **1758 passed (1758)**, build |
-| `make test-js` | exit 0: **39 passed**, 0 failed |
+| `make test` | exit 0: **5980 passed, 7 skipped** in 61.0 s |
+| `make web` | exit 0: stale-types check, tsc, vitest **1758 passed (1758)**, 75 files, build |
+| `make test-js` | exit 0 |
 | `openspec validate --specs --strict` | exit 0: **78 passed, 0 failed** |
-| `uv run pytest -m integration -n auto tests/integration` | exit 0: **288 passed, 3 skipped** in 84.8 s |
-| `make test-ui` | exit 0: **581 passed** in 171.7 s |
-| CI on `origin/main` at 27d01d17 (run 42407727620) | success, 23/23 jobs |
+| `uv run pytest -m integration -n auto tests/integration` | exit 0: **288 passed, 3 skipped** in 75.1 s |
+| `uv run pytest -m ui -n auto tests/ui` | **580 passed, 1 failed** in 167.1 s: `test_narrow_layout.py::test_tab_brings_each_tab_clear_of_the_bars_ends`, `Page.wait_for_function: Timeout 30000ms`, run beside this report's upgrade. Rerun alone three times: 1 passed each; its file: 41 passed. A flake by the checks' rule; nothing since c4688ba7 (581 passed) touches `web/` or `tests/ui/` |
+| CI of PR #251 (S12, merge 104f5bd2) | 23 of 23 checks SUCCESS |
+| CI on `origin/main` at 90ab439e (run 42408225654) | success |
 
-CI has not run on c4688ba7 or on the epic branch's 428415b9: no run is listed for the branch,
-and the last CI over the epic's code is PR #246's on 725557bb, 23/23. The final pull request's
+First visit, on c4688ba7: `make test` 5960 passed, 7 skipped; `make web` 1758; `make test-js` 39
+passed; openspec 78; integration 288 passed, 3 skipped; UI 581 passed; CI on `main` at 27d01d17
+(run 42407727620) 23/23.
+
+CI does not run on the epic branch itself (`gh run list --branch epic/lad-154-models`: none);
+the last CI over the epic's code is PR #251's, 23/23. The final pull request's
 CI is the first over the merged result; the smoke and the container tests are not in the table
-above. LAD-232's change against 428415b9 is one test file.
+above, PR #251's CI ran them.
 
 **The epic's numbering.** The diff `origin/main...readiness/lad-154` outside `docs/epics/`
 (300 files) searched for `S1`…`S11` with a letter and for `docs/epics/`: code, `web/`, `docs/`
 but for `docs/superpowers/`, `openspec/`, `CHANGELOG.md`: no hit. 16 hits, none of them the
 epic's numbering in the product: nine are the rule itself in `docs/superpowers/plans/` ("No step
 numbers of the epic…"), seven in `docs/superpowers/reports/2026-11-04-model-settings-page-review.md`
-are the ids of the human's findings of round r2 (`S1`–`S5`).
+are the ids of the human's findings of round r2 (`S1`–`S5`). Second visit: the added lines of
+S12's merge (`git diff 104f5bd2^1 104f5bd2`) and of `main`'s merge c4609876 outside `docs/epics/`,
+searched for `S1`…`S12` with a letter and for `docs/epics/`: no hit.
 
 **CHANGELOG, 0.45.0.** The epic's lines stop where D47 stops: nothing promises effort as a
 choice, a power table, kit marking or `spawn_worker(power=…)`; the word `effort` appears once,
-in "See which model each agent runs on", which S1 built. Of S11's F9 (a line of four lines): no
-S11 line is over three now. Over docs/release.md's three lines are two items, neither from
-S11: **Set models in Settings** (the epic's) and **The card that waits for you** (`main`'s). No
-script refuses them; a remark, not a gap.
+in "See which model each agent runs on", which S1 built (checked again on 104f5bd2:
+`grep -niE 'effort|power'` finds only that line). S12 added "Going back says what happens to your
+model servers", three lines, and cut **Set models in Settings** to three. Over docs/release.md's
+three lines is one item now, **The card that waits for you**, `main`'s, not the epic's.
 
 ## Checked by hand
 
@@ -98,17 +121,36 @@ script refuses them; a remark, not a gap.
 | S9a | Claude Code 2.1.319, LM Studio, cloud.ru's Anthropic API (`manual-check-226-r2`) | the human |
 | S11 | 3 rounds on cloud.ru and OpenRouter, passed at f9b7e98b (#4501) | the human |
 | S9b | every item of the PR on Codex 0.163.0, OpenRouter and LM Studio, a key revoked mid-session (#4676) | the human |
+| S12 | `make test-live` on all four CLIs on OpenRouter with the models of `live.yml`, Claude Code on `anthropic/claude-haiku-5.5` (#4725); the warning's text read at merge_ok #372, #373 | the lead with the human's yes; the human |
 | S3a, S3e | no check of their own; S3e's result by S3d's and S3b's checks; the open check below | nobody |
-| readiness | the upgrade and the way back below, real OpenCode and Codex, a fake server, no model called | `delivery` |
+| readiness | the upgrade and the way back below, real OpenCode and Codex, a fake server, no model called; visit 2 again on 104f5bd2 with OpenCode | `delivery` |
 
-**Never checked by hand** (each in the release checklist, or named in "Later"): `make test-live`
-on any provider (no step's record shows a run); Settings → Models and the picker in Safari, Firefox and on a real
+**Never checked by hand** (each in the release checklist, or named in "Later"): Settings → Models and the picker in Safari, Firefox and on a real
 phone (Chromium only); the stop at the third overflow on a real server; Kilo's model in
-`chat.message`; a resume at the container's start with a CLI not logged in; Qwen through Alibaba
+`chat.message` (the live tests read Kilo's own `model.json`, not the model LADO records); a resume at the container's start with a CLI not logged in; Qwen through Alibaba
 Model Studio and a model of a provider the CLI logged in to itself; on a real provider 429, 402
 and a quota during a turn; Codex on Ollama and vLLM; the epic in LADO's image.
 
 ## Upgrade from 0.44.0, and back
+
+**Second visit, on 104f5bd2** (S12 changes the way back, so it ran again). In
+`/tmp/lado-upgrade-pkV6`, set up as the first visit's below (removed by name afterwards, with its
+tmux server `lado-upg-pkV6` and the fake server's process): `lado==0.44.0` from PyPI, a session
+`app` on OpenCode and a user's `~/.codex/config.toml`; then a wheel of 104f5bd2 as `0.45.0rc0`
+by `uv tool install --force` after `lado stop --all`.
+
+| What | Result |
+|---|---|
+| Migration | `lado: upgraded lado.db from schema 35 to 39; its backup is …/backups/lado.db.schema-35`; `app` listed `(stopped)` |
+| A server, a model, a default | `Saved model server "lab".`, `Saved model "Local": OpenCode, gpt-oss-20b on lab`, `OpenCode's default model: Local`; `lado start <folder>` prints `changed model: CLI default -> Local`; the key in `model-servers/42c49ff4a317/key`, 600 in a 700 folder |
+| Back: `lado update 0.44.0 --yes` | rc 0. The warning: `Everything LADO recorded since then is lost: sessions, runs, gates, messages, projects, model servers, models, default models.` / `Repositories, worktrees and project folders stay on disk.` / `Model server keys stay on disk; remove them when you no longer need them:` / `…/.lado/model-servers/42c49ff4a317`; then `Restored lado.db from …schema-35 (schema 35)`, `Resumed session "app"`, `LADO 0.44.0 is ready.` |
+| After the way back | schema 35, `app` running on 0.44.0; the key folder stays, as the warning said |
+| Up again, then the docs' removal | schema 35 → 39; doctor `[warn] Model servers: left over: …/model-servers/42c49ff4a317 (no saved server's)`, as "What stays" says; after `rm -rf ~/.lado/model-servers` (the docs' command) doctor has no model servers' line; `~/.codex/config.toml` unchanged |
+
+Not seen here: a way back to a version that knows model servers (none is released), where the
+warning lists only the folders the copy has no server for; S12's unit tests cover it.
+
+**First visit, on c4688ba7.**
 
 Done in `/tmp/lado-upgrade-X42j` (removed by name afterwards, with its tmux server
 `lado-upg-X42j`): `uv tool install lado==0.44.0` from PyPI with `UV_TOOL_DIR` and
@@ -139,7 +181,7 @@ OpenCode's `model.json`.
 | Up again | schema 35 → 39 again; `lado model-server list`: none; doctor `[warn] Model servers: left over: …/model-servers/ed6044c73df5 (no saved server's)`, also after the same server is added again under a new id |
 | `lado uninstall --yes` | `Deleted …/.lado`, the key with it; the workspace and the CLIs' own folders stay |
 
-**G1, in full.** The warning (`src/lado/self_update.py:322`) and `docs/install.md:1036` list what
+**G1, in full** (first visit; resolved by S12, see "Gaps of the first visit"). The warning (`src/lado/self_update.py:322`) and `docs/install.md:1036` list what
 is lost; "What stays" (`docs/install.md:1064`) names a project's secrets on disk. Neither knows
 the epic's store: a user going back is not told that their servers, models and defaults go, and
 a key to a paid provider stays in a folder nothing names until they upgrade again. The human's
@@ -176,13 +218,13 @@ Readiness checklist:
 | Users and how they use it | covered: CLI (`lado model`, `model-server`), Settings → Models, the launch window, `list_models` |
 | Scope and what is out | covered: D47, D48; "Later" below |
 | Data and migrations | covered: schema 35 → 39, seen above |
-| Secrets and credentials | covered: the key's file, `{env:…}`, canary tests, seen above; F15 (an agent can read its server's key by `env`) in "Later" on the human's word; **the key left by the way back: G1** |
-| Update and rollback | **gap G1**; the mechanics work, seen above; the image → 4.6 |
+| Secrets and credentials | covered: the key's file, `{env:…}`, canary tests, seen above; F15 (an agent can read its server's key by `env`) in "Later" on the human's word; the key left by the way back is named by the warning and the docs (S12, seen above) |
+| Update and rollback | covered: S1–S3f's migrations, S12's way back, seen above on 104f5bd2; `lado update` onto 0.45.0 → 4.2, the image → 4.5, 4.6 |
 | Removal | covered: `model-server remove`, `--with-models`, `lado uninstall` seen above |
 | Platforms | covered: four CLIs by smoke on Linux and macOS (CI), Docker's hint; live → section 2; browsers and phone → 4.3 |
 | Observability | covered: `lado ls`, the card, doctor's lines, refusals by name, seen above |
 | Tests and what only a human can check | covered: unit, integration, UI e2e, smoke; the human's manual checks; the rest in the release checklist |
-| Documentation | covered but for G1: `docs/install.md` (local models, a cloud provider, limits), `docs/cli.md`, `docs/design/ui.md`, `docs/design/agents.md`, `docs/design/modules.md`, 78 specs. `ROADMAP.md` has no line on the epic; the brief does not ask for one |
+| Documentation | covered: `docs/install.md` (with S12's going back and "What stays") (local models, a cloud provider, limits), `docs/cli.md`, `docs/design/ui.md`, `docs/design/agents.md`, `docs/design/modules.md`, 78 specs. `ROADMAP.md` has no line on the epic; the brief does not ask for one |
 
 ### Later (moved by the human or the plan, not missing)
 
@@ -197,12 +239,14 @@ no task; `/tmp/claude-1000` shared by a container's agents.
 
 ## Open checks
 
-Each moved in this commit into `docs/release.md`, 4.3 "Models" unless it says otherwise.
+Each moved into `docs/release.md` at the first visit (8e9f5096), 4.3 "Models" unless it says
+otherwise; this visit's commit rewrites Kilo's line, since the live tests passed without
+covering it.
 
 | Check | Step | Where | What to run, what to expect |
 |---|---|---|---|
-| `make test-live` per provider, Claude Code with the human's yes | S1–S9b | section 2, step 3, as for any RC; 4.3 says what to look at | green; no step's record shows a run |
-| Kilo's model in `chat.message` | S1 | 4.3 | after a turn of a Kilo agent, `lado ls` names its model |
+| the live tests per provider | S1–S12 | section 2, step 3, as for any RC: `gh workflow run live.yml` on main (LAD-231); 4.3 says what to look at | every cell green; already green on the epic's code for all four CLIs locally (S12, #4725), closed until the RC |
+| Kilo's model in `chat.message` | S1 | 4.3 | after a turn of a Kilo agent, `lado ls` names its model; the live tests check only Kilo's own `model.json` (`check_models` in `tests/live/test_live.py`) |
 | a Codex model list, and a repository's own `.codex/config.toml` | S2 ("Later") | 4.3 | `--model` from the list reaches the agent; a model in the repository's file: what the card says |
 | a resume at the container's start with a CLI not logged in | S2b | 4.6 | the kept model is not refused falsely |
 | the stop at the third overflow on a real server | S10 | 4.3 | the turn ends with LADO's words, no endless `busy`; LM Studio answers 400 and never gets there |
@@ -215,18 +259,18 @@ release` and the release field (the lead's proposal in the plan's State).
 
 ## Questions for the human
 
-1. The plan's State says the live runs and the external-provider checks come **before the final
-   pull request**; docs/release.md runs `make test-live` at the RC anyway. Run them on the epic
-   branch first, as planned, or leave them to the RC? Recommended: OpenCode, Kilo and Codex
-   before the final pull request (the providers `providers/` changed most, and a defect is
-   cheaper to fix on the epic branch than on a frozen `main`), Claude Code with your yes.
+None open. The first visit's question (the live runs before the final pull request or at the RC)
+was answered at S12: the human allowed `make test-live` (#4718) and it ran on all four CLIs
+(#4725).
 
 ## Decisions
 
 50 rows. With a decision: 48; the recommendation was taken in 36 (2 in a changed form, D29 and
 D30, 1 but for one part, D49), partly in 2 (D14, D31), not in 10 (D9, D10, D11, D13, D17, D21,
-D24, D26, D27, D28). Without a yes or no: 2 (Q2, D33). Counter lines: 16, with 121 gates and
-questions decided as recommended, some of them with a comment.
+D24, D26, D27, D28). Without a yes or no: 2 (Q2, D33). Counter lines: 17, S12's new: the
+first visit's 121 gates and questions decided as recommended, some with a comment, and S12's
+seven (#370 also on the line `Epic`, #4718, #371 with the human's remark, #4725, #372 rejected as
+recommended, #373, #4746).
 
 | Date | Where (step, gate) | Question | Options | Recommended (by whom) | Decided (by whom) | Taken? |
 |---|---|---|---|---|---|---|
@@ -281,7 +325,7 @@ questions decided as recommended, some of them with a comment.
 | 2026-11-06 | S9a's manual check, question #4030 (D48) | After the human's report: local models are too slow for development; an external provider by key (cloud.ru) | S9a → S11 → release, S9b to the new epic; S9a → S11 → S9b → release; S9a → S9b → release | S9a → S11, S9b to the new epic (lead) | S9a → S11 → S9b → release (human): S9b stays; S11, a closed list on an external provider by key, comes before it | yes |
 | 2026-11-07 | S9b's design, question #4538 (D49) | The human saved `OPENROUTER_API_KEY` in the project's secrets: may agents use it for paid runs of Codex on OpenRouter? | Allow, as recommended; the human runs them | Allow: `deepseek/deepseek-v4-flash`, short tasks, a separate `LADO_HOME`, the key piped from its file and never shown, the long session left to the human, the secret removed after the check (lead) | Allowed; the secret need not be removed (the human) | Yes, but for the removal |
 
-Epic: plan_ok gate #194 — approved as recommended (Q1 in S5c; Q3 option (a) with the critic's P15 and P17; Q2 open until S3b's merge); step_ok gate #198 (S2) — approved as recommended; step_ok gate #205 (S2b) — approved as recommended; step_ok gate #222 (S3b, Q6 → LAD-179) — approved as recommended; step_ok gate #225 (D18's plan, S3c) — approved as recommended; step_ok gate #236 (S3e, after D19/D20) — approved as recommended; step_ok gate #239 (S3d), step_ok gate #272 (concept v3's plan, S3f) — approved as recommended; step_ok gate #279 (S3b, with D44, D45 from #3511, #3518; design QA of the running build stays, the human did not object at the gate; #3498: no task) — approved as recommended; step_ok gate #286 (D47's plan, S3g; LAD-209, F3 into LAD-203, the new epic's task at `close`, branch task-lad-180b removed) — approved as recommended; step_ok gate #297 (S10's closed list) — approved as recommended; step_ok gate #304 (S10b, LAD-212) — approved as recommended; step_ok gate #308 (S9a; real Claude Code against a fake server allowed) — approved as recommended; step_ok gate #326 (S11, LAD-220, S9b after it) — approved as recommended; step_ok gate #357 (S9b, LAD-230, OpenRouter the server of its real run) — approved as recommended.
+Epic: plan_ok gate #194 — approved as recommended (Q1 in S5c; Q3 option (a) with the critic's P15 and P17; Q2 open until S3b's merge); step_ok gate #198 (S2) — approved as recommended; step_ok gate #205 (S2b) — approved as recommended; step_ok gate #222 (S3b, Q6 → LAD-179) — approved as recommended; step_ok gate #225 (D18's plan, S3c) — approved as recommended; step_ok gate #236 (S3e, after D19/D20) — approved as recommended; step_ok gate #239 (S3d), step_ok gate #272 (concept v3's plan, S3f) — approved as recommended; step_ok gate #279 (S3b, with D44, D45 from #3511, #3518; design QA of the running build stays, the human did not object at the gate; #3498: no task) — approved as recommended; step_ok gate #286 (D47's plan, S3g; LAD-209, F3 into LAD-203, the new epic's task at `close`, branch task-lad-180b removed) — approved as recommended; step_ok gate #297 (S10's closed list) — approved as recommended; step_ok gate #304 (S10b, LAD-212) — approved as recommended; step_ok gate #308 (S9a; real Claude Code against a fake server allowed) — approved as recommended; step_ok gate #326 (S11, LAD-220, S9b after it) — approved as recommended; step_ok gate #357 (S9b, LAD-230, OpenRouter the server of its real run) — approved as recommended; step_ok gate #370 (S12, LAD-235, readiness's G1 and the live runs of OpenCode, Kilo and Codex) — approved, Claude Code's live run not asked for, so it stays for the RC.
 S1: question #2357, gates #196, #197 — approved as recommended
 S2: questions #2471, #2501, gates #200, #202, #203 — approved as recommended
 S2b: questions #2515 (points 1, 3, 4), #2521 (the lead's «нет» against the developer's proposal), gates #206, #207, #208 — approved as recommended
@@ -296,4 +340,5 @@ S10b: gate #304; #3842 (a TUI plugin reports the prompt's focus, the 30 s mark s
 S9a: gate #308; #3880 (full, `/model` only the chosen model, the agent lives with the user's `~/.claude`, no login needed) — as recommended; design_ok #310 — approved; merge_ok #313 — rejected as recommended: F1 (the output capped) and F2 (LADO's tools allowed) of the manual check; merge_ok #319 — approved as recommended after the second manual check (#4077): its F1 and F2 go to S11; base merge #4135, #4147 — pushed as recommended
 S11: gate #326; #4153 (OpenRouter the second provider, keyless requests allowed), #4163 (no limit of one's own, a warning on a public server, LADO's words, Claude Code 7 repeats, no resume after a 429, cost as an honest line in the docs, a real run on OpenCode and Kilo) — as recommended; design_ok #329 — approved; the premise «cloud.ru lists no context» was the lead's mistake: LADO read only `max_input_tokens`; merge_ok #338 — rejected as recommended after the manual check (#4311): a 400 is not a refusal (cloud.ru's wrong key), Claude Code past its context before compaction at 131072 with the output of 32000, `effortLevel` of the user's settings, the resumes' count; merge_ok #350 — approved as recommended after the third manual check (#4501): steps 3 and 5 on Claude Code passed on cloud.ru; base merge #4525 — pushed as recommended
 S9b: gate #357; #4538 (D49), #4550 (the journal read for a Codex agent on a server only, reversing 2026-10-09 for them; one model in `/model`; LM Studio refused by its type, the rest allowed) — as recommended, without the lead's addition of a warning for servers not checked, named again at the gate; design_ok #358 — approved; the analyst's two first runs went to the human's OpenAI login by mistake (two short turns on gpt-6-luna, outside D49's conditions), named to the human; merge_ok #364 — approved as recommended after the manual check (#4676), F15 to «Later» for all CLIs on the human's word; base merge #4695 — pushed as recommended
+S12: gate #370; #4718 (the keys' line in the warning itself, the folders of servers not in the copy alone; `make test-live` allowed, the key has a limit) — as recommended; design_ok #371 — approved with the human's remark that `live.yml` covers all providers; #4725 (all four CLIs locally, Claude Code on `anthropic/claude-haiku-5.5` through OpenRouter) — as recommended; merge_ok #372 — rejected as recommended: F1, one line of `docs/design/modules.md`, no new external round; merge_ok #373 — approved; #4746 (a task for the flake of `test_a_stop_as_the_message_is_typed_refuses_it_on_a_tmux_server_left_empty`, main's LAD-227) — as recommended
 S3f: questions #3358 (`lado model default`, a question before removing a default, the background read for a built-in default only, the card of a CLI not installed), #3395 (one block: a CLI's card holds its models), gate #274 — approved as recommended; #3421 (the shift at the page's end to a derived task, the line after a stale removal fixed in the step) — as recommended; the two QA passes (ui-review/lad-200-qa, lad-200-qa2) and the manual check on dc3d70e8 (all 8 items; a fake server in place of LM Studio), gate #276 — approved as recommended; #3505 (main into the epic branch with the CHANGELOG conflict joined) — as recommended

@@ -6055,3 +6055,118 @@ def test_check_title_is_the_rule_of_set_title():
     assert runtime.check_title("s", "s") is None
     with pytest.raises(runtime.LadoError, match="^a title is at most 80 characters$"):
         runtime.check_title("x" * 81, "s")
+
+
+def _dropped_message(summary):
+    [message] = [m for m in state.list_messages("s") if m.summary == summary]
+    return message.state == state.DROPPED
+
+
+@pytest.mark.parametrize("to", ["supervisor", "w1"])
+def test_a_stop_during_the_typing_refuses_the_humans_message(repo, fake_tmux, monkeypatch, to):
+    _session_with_worker(repo)
+    state.set_status("s", to, state.IDLE)
+    agent_helpers.stop_while_typing(monkeypatch, "s")
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.write_as_human("s", "merge it", to)
+    assert str(refused.value) == agent_helpers.cut_off(to)
+    assert _dropped_message("merge it")
+
+
+def test_a_stop_during_the_typing_refuses_the_humans_answer(repo, fake_tmux, monkeypatch):
+    question = _asked(repo)
+    agent_helpers.stop_while_typing(monkeypatch, "s")
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.answer_question("s", question.id, "yes", "")
+    assert str(refused.value) == agent_helpers.cut_off("w1")
+
+
+def test_a_stop_while_a_message_is_typed_again_refuses_the_next_one(repo, fake_tmux, monkeypatch):
+    _session_with_worker(repo)
+    state.set_status("s", "w1", state.IDLE)
+    runtime.send_message("s", "supervisor", "w1", "first")  # typed, not confirmed: busy
+    monkeypatch.setattr(runtime, "RETRY_DELAYS", (0, 0, 0))
+    agent_helpers.stop_while_typing(monkeypatch, "s")
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.write_as_human("s", "second", "w1")
+    assert str(refused.value) == agent_helpers.cut_off("w1")
+
+
+def test_a_stop_before_the_hand_over_refuses_without_a_list_of_agents(repo, fake_tmux, monkeypatch):
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.IDLE)
+    sweep_sent = runtime._sweep_sent
+
+    def stopped_first(*args):
+        runtime.stop_session("s")
+        sweep_sent(*args)
+
+    monkeypatch.setattr(runtime, "_sweep_sent", stopped_first)
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.write_as_human("s", "merge it")
+    assert str(refused.value) == agent_helpers.cut_off("supervisor")
+    assert _dropped_message("merge it")
+
+
+def test_a_stop_before_the_message_is_stored_refuses_in_the_same_words(repo, fake_tmux):
+    _session_with_worker(repo)
+    state.stop_session("s")
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.post("s", state.LADO, "w1", "your step")
+    assert str(refused.value) == agent_helpers.cut_off("w1")
+
+
+def test_a_tmux_session_gone_without_a_stop_refuses_in_the_same_words(repo, fake_tmux, monkeypatch):
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.IDLE)
+    fake_tmux.append(("kill_session", "s"))  # killed by hand: has_session says no
+
+    def typed(*_):
+        raise tmux.TmuxError("no server running on /tmp/tmux-1/lado")
+
+    monkeypatch.setattr(tmux, "send_text", typed)
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.write_as_human("s", "merge it")
+    assert str(refused.value) == agent_helpers.cut_off("supervisor")
+    assert state.get_session("s").stopped_at is None  # the loop's to find, as ever
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [tmux.TmuxError("server exited unexpectedly"), tmux.TmuxMissing("tmux not found")],
+    ids=["tmux failed", "no tmux"],
+)
+def test_a_tmux_failure_of_a_running_session_stays_an_error(repo, fake_tmux, monkeypatch, failure):
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.IDLE)
+
+    def typed(*_):
+        raise failure
+
+    monkeypatch.setattr(tmux, "send_text", typed)
+    with pytest.raises(type(failure)) as raised:
+        runtime.write_as_human("s", "merge it")
+    assert raised.value is failure
+
+
+def test_a_stopped_agent_of_a_running_session_keeps_the_list_of_running_agents(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.finish_worker("s", "w1", discard=True)
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.write_as_human("s", "merge it", "w1")
+    assert str(refused.value) == 'no running agent "w1"; running agents: supervisor'
+
+
+def test_the_tmux_server_gone_ends_a_line_to_the_lead_quietly(repo, fake_tmux, monkeypatch):
+    """A hook at an agent's end: the line stays for the session's end to drop, no traceback."""
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.IDLE)
+    fake_tmux.append(("kill_session", "s"))
+
+    def typed(*_):
+        raise tmux.TmuxError("error connecting to /tmp/tmux-1/lado (No such file or directory)")
+
+    monkeypatch.setattr(tmux, "send_text", typed)
+    runtime._tell_lead("s", "w1", "w1 ended")
+    [line] = [m for m in state.list_messages("s") if m.summary == "w1 ended"]
+    assert line.state == state.SENT

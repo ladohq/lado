@@ -50,6 +50,54 @@ def test_send_text_pastes_multiline_text(tmp_path):
     assert not tmux.has_session(session)
 
 
+@pytest.fixture
+def neighbour(tmp_path):
+    """A session gone from a tmux server, by its name, and a running session whose name
+    starts with it, with a window of the same name that writes what it gets to `out`."""
+    gone = f"test-{uuid.uuid4().hex[:6]}"
+    other = f"{gone}-1"
+    out = tmp_path / "out.txt"
+    out.touch()
+    tmux.new_session(other, "main", str(tmp_path), ["sh", "-c", f"cat > {out}"])
+    yield gone, other, out
+    tmux.kill_session(other)
+
+
+def test_text_for_a_gone_session_never_reaches_a_session_of_a_longer_name(neighbour):
+    gone, _, out = neighbour
+    with pytest.raises(tmux.TmuxError, match="can't find session"):
+        tmux.send_text(gone, "main", "not for you")
+    time.sleep(0.2)  # what was pasted would be in the file by now
+    assert out.read_text() == ""
+
+
+def test_a_window_of_a_gone_session_never_opens_in_a_session_of_a_longer_name(neighbour, tmp_path):
+    gone, other, _ = neighbour
+    with pytest.raises(tmux.TmuxError, match="can't find session"):
+        tmux.new_window(gone, "w1", str(tmp_path), ["sleep", "30"])
+    assert tmux.list_windows(other) == ["main"]
+
+
+def test_a_window_of_a_gone_session_never_reads_a_session_of_a_longer_name(neighbour):
+    gone, _, _ = neighbour
+    with pytest.raises(tmux.TmuxError, match="can't find session"):
+        tmux.capture(gone, "main")
+
+
+def test_a_running_session_takes_a_window_by_its_exact_name(tmp_path):
+    session = f"test-{uuid.uuid4().hex[:6]}"
+    tmux.new_session(session, "main", str(tmp_path), ["sleep", "30"])
+    try:
+        tmux.new_window(session, "w1", str(tmp_path), ["sh", "-c", "echo ready; sleep 30"])
+        assert tmux.list_windows(session) == ["main", "w1"]
+        deadline = time.time() + 5
+        while time.time() < deadline and "ready" not in tmux.capture(session, "w1"):
+            time.sleep(0.05)
+        assert "ready" in tmux.capture(session, "w1")
+    finally:
+        tmux.kill_session(session)
+
+
 def pasted(monkeypatch, text: str) -> str:
     """What send_text pastes for `text`, before it presses Enter."""
     buffers = []

@@ -78,7 +78,7 @@ def failed_session(lado_home, monkeypatch):
         if args[0] == "list-windows":
             return "".join(f"{name}\n" for name in screens)
         if args[0] == "capture-pane":
-            return screens[args[-1].split(":")[1]]
+            return screens[args[-1].split(":")[1].lstrip("=")]
         raise AssertionError(args)
 
     monkeypatch.setattr(tmux, "run", run)

@@ -491,8 +491,14 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   (`state.take_pending`'s `become`), so the session loop never sees the agent idle with
   the queue the hook takes: exactly one of them hands a message over, and the sender's reply says `sent` also when a hook or the loop handed its
   message over in between (and refuses, as for an agent not running, when the agent was
-  finished or stopped in between). A queue is taken only so, also an agent's first input,
-  but for the third channel:
+  finished or stopped in between). A session's end refuses in one sentence of its own
+  (`runtime.CUT_OFF`, a 400 at the server), however far the delivery got: the session is
+  stopped or unknown by the database, which a stop marks before it kills tmux, or typing
+  failed and its tmux session is gone (`loop.tmux_gone`, whatever tmux's words). Any other
+  failure of tmux stays an error, and the message stays as the stop or the sweep leaves
+  it. tmux calls name a session and a window with `=`: tmux matches any other target by
+  prefix, so text for a stopped `lad` would land in a running `lad-1`. A queue is taken
+  only so, also an agent's first input, but for the third channel:
   - `tool_result`: in the middle of a turn, the result of any call of a `lado` MCP tool
     carries the caller's whole queue (`mcp_server._Server.call_tool`,
     `runtime.take_mid_turn`), after the tool's own content, under `runtime.MID_TURN`

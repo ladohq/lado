@@ -6,9 +6,9 @@ refusal `from error`, else `raise`. `hand_over` itself stays as it is: hooks and
 and have their own handling. Hooks reach `_deliver` through `post`, where `_tell_lead` and
 `_report_failure` already suppress `LadoError`.
 
-**D2. "The session ended" is one helper in `runtime.py`.** True when `state.get_session` gives
-none or a session with `stopped_at`, or when `loop.tmux_gone(session, error)` says so. The database
-goes first: it costs no tmux call and answers for every stop, as `_mark_stopped` marks before it
+**D2. "The session ended" is the session loop's own test.** True when `loop.why_stop` gives a
+reason, for a session unknown or with `stopped_at`, or when `loop.tmux_gone(session, error)` says
+so. The database goes first: it costs no tmux call and answers for every stop, as `_mark_stopped` marks before it
 kills. `tmux_gone` covers a tmux killed by hand or a crash; it answers False for `TmuxMissing` and
 for a tmux that cannot tell, so these stay errors.
 

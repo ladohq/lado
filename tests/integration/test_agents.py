@@ -771,7 +771,7 @@ def test_unmerged_worker_is_finished_only_with_discard(repo):
     supervisor_runs("finish w1")
     assert "is not merged into main" in tmux.capture(SESSION, "supervisor")
     assert windows() == ["supervisor", "w1"]
-    assert state.get_agent(SESSION, "w1").status == state.IDLE
+    wait_status("w1", state.IDLE)
     result = lado_cli("finish", SESSION, "w1", "--discard")
     assert result.returncode == 0, result.stderr
     assert windows() == ["supervisor"]

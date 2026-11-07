@@ -1307,8 +1307,10 @@ Built in the chat task (2026-10-03):
   no stop time, which the head has. The button is the head's Resume (`useResume`): it opens the
   Resume window, whose request and check of the outcome are the window's, and waits while the
   connection is lost. The composer stays mounted behind it, hidden (`folded`), so a draft, its
-  files and a quote show after Resume; a quote gives no sign until then. A file dropped on the
-  chat goes nowhere. An open gate's card stands above the bar with its buttons off, as ever.
+  files and a quote show after Resume; a quote gives no sign until then. A message the stop
+  refused during its delivery shows so too: its text and files stay, and the refusal stands
+  under them after Resume, until Send. A file dropped on the chat goes nowhere. An open gate's
+  card stands above the bar with its buttons off, as ever.
 - **A stopped session's empty feed** (LAD-196): centred in `--muted`, it says what it shows:
   "Nothing was said in this session." under All, "No messages with you. Messages between
   agents are hidden." under Yours (ui-review, F1: under Yours the agents may have talked). A
@@ -3489,7 +3491,8 @@ page (LADO has one source of kits, git).
 - **Remove**: never blocked: the window names the running sessions that use the kit
   (their new agents and runs fail to start) and the stopped ones (a resume needs it), the
   core's lines, as `lado kits remove` prints them; a kit whose folder is gone is only
-  forgotten.
+  forgotten. The line about the running sessions is a warning notice: nothing has failed
+  and Remove stays open, so red is left for a refusal of Remove, shown in the same window.
 - **Marketplaces**: each with enabled (a checkbox), its address, when it was updated, how
   many kits it lists and its problem (not fetched, a list or `index.json` LADO cannot
   read); Update all (one that fails shows its error and the others go on,

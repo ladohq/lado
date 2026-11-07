@@ -8930,13 +8930,6 @@ del.kit-mcp-name {
   font-size: 13px;
 }
 
-.kit-danger {
-  padding: 8px 10px;
-  border: 1px solid var(--danger);
-  border-radius: 6px;
-  font-size: 13px;
-}
-
 .kits-failure {
   display: flex;
   flex-direction: column;

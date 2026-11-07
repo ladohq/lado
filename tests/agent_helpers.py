@@ -1,5 +1,5 @@
 """Helpers for tests that run real agent processes: integration (fake agent) and live tests;
-`launched` also for unit tests."""
+`launched`, `cut_off` and `stop_while_typing` also for unit tests."""
 
 import atexit
 import hashlib
@@ -18,7 +18,26 @@ from pathlib import Path
 import pytest
 import yaml
 
-from lado import interpreter, log, loop, state, tmux
+from lado import interpreter, log, loop, runtime, state, tmux
+
+
+def cut_off(recipient: str) -> str:
+    """The refusal of a message whose delivery a session's end cut off."""
+    return (
+        f"The session stopped before this message reached {recipient}, so it was not "
+        "delivered. Send it again after Resume."
+    )
+
+
+def stop_while_typing(monkeypatch, session: str) -> None:
+    """Under fake_tmux: the session stops as a message is typed, which then fails as it does
+    on a tmux server with other sessions."""
+
+    def typed(*_):
+        runtime.stop_session(session)
+        raise tmux.TmuxError(f"can't find session: {session}")
+
+    monkeypatch.setattr(tmux, "send_text", typed)
 
 
 def fake_logs(session: str, agent: str) -> Path:

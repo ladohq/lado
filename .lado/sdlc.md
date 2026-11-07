@@ -63,6 +63,10 @@ Into an epic branch:
 - Post the comment above with the first line «**Слит PR #<n> в эпик-ветку `<branch>`** —
   войдёт в релиз вместе с эпиком.»; change nothing else: the task stays in review.
 
+The epic branch into the base (the epic's closing): each step task the epic left in review
+goes to `done` with the label `waiting for release` and the field `release`, as a merge into
+the base does above.
+
 ## Checks
 
 | Command | Run from | Notes |

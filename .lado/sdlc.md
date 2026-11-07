@@ -141,6 +141,11 @@ Into an epic branch:
   not acquired by Runner" (no step, no runner) is rerun once by `ci-rerun.yml`: wait for
   the run's second attempt, rerun by this trap only when its `CI rerun` run says it reruns
   nothing or that attempt fails so too, and count it as no test's flake.
+- A local merge check on `BACKLOG.md` — `git merge-tree` and `git merge` report no conflict
+  (`.gitattributes` gives the file `merge=union`), yet the pull request is `dirty` and
+  `mergeable: false` when both sides appended an entry — before saying a pull request can be
+  merged, read `gh pr view <n> --json mergeable,mergeStateStatus`; bring the target in on
+  conflict, keeping both sides' entries.
 - `web/openapi.json` or `web/src/api.gen.ts` stale after an API model change — `make web`
   fails its stale-types check — run `make web-types` and commit both files.
 - A live test added or changed — it only collects without real CLIs — say "written, not

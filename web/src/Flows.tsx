@@ -224,6 +224,25 @@ function taskLine(run: RunInfo): ReactNode {
   return task && <span className="run-task-line">{task}</span>;
 }
 
+// What a run's tooltip shows of its task: at most 12 lines and 600 characters, a limit and no
+// promise of its height, as long lines wrap; the run's page has the rest. null: a blank task.
+const TIP_LINES = 12;
+const TIP_CHARS = 600;
+
+export function taskTip(task: string): string | null {
+  const text = task.trim();
+  if (text === "") return null;
+  const kept = text.split("\n").slice(0, TIP_LINES).join("\n").slice(0, TIP_CHARS);
+  return kept === text ? text : `${kept}…\nThe rest is on the run's page`;
+}
+
+// Whether a run's row hides part of its task now: later lines, or a line cut by the row's width.
+function hidesTask(run: RunInfo, row: HTMLElement): boolean {
+  if (firstLine(run.task).trim() !== run.task.trim()) return true;
+  const line = row.querySelector(".run-task-line");
+  return line !== null && line.scrollWidth > line.clientWidth;
+}
+
 // An open run's card: its name, "Waits for you" when it does, its flow and kit and when it
 // started; its task; the line of what goes on now; its flow's states, as on its page. Found
 // as a row.
@@ -248,11 +267,14 @@ function card(session: string, run: RunInfo): ListEntry {
   };
 }
 
-// A run's row: its name, its task and one line under them; found by its name, task, flow and
-// state.
+// A run's row: its name, its task and one line under them, with a tooltip for what it hides of
+// the task; found by its name, task, flow and state.
 function entry(session: string, run: RunInfo): ListEntry {
+  const tip = taskTip(run.task);
   return {
     key: run.name,
+    tip: tip && <span className="run-task-tip">{tip}</span>,
+    tipWhen: (row) => hidesTask(run, row),
     to: runPath(session, run.name),
     row: (
       <>

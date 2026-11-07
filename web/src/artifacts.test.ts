@@ -48,12 +48,12 @@ test("each kind has its filter's label and its row's word", () => {
   expect(KINDS.other).toEqual({ filter: "Other", word: "File" });
 });
 
-test("artifacts go in groups by scope, in the order they came, so the newest group is first", () => {
+test("artifacts go in groups by scope: Session first, then the runs in the order they came", () => {
   const one = (id: string, scope: string) => artifact({ id, scope });
   const groups = groupByScope([one("a", "run/b"), one("b", ""), one("c", "run/b"), one("d", "run/a")]);
   expect(groups.map((group) => [group.scope, group.artifacts.map((item) => item.id)])).toEqual([
-    ["run/b", ["a", "c"]],
     ["", ["b"]],
+    ["run/b", ["a", "c"]],
     ["run/a", ["d"]],
   ]);
   expect(groupByScope([])).toEqual([]);

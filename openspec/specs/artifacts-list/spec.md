@@ -53,8 +53,8 @@ a row SHALL show the name without its run part.
 
 ### Requirement: The groups stay where they stood while the tab is open
 
-On entering the tab or reloading, the Session group and open runs' groups SHALL come above ended
-runs' groups, each part with its newest record first. While the tab stays open the groups SHALL keep
+On entering the tab or reloading, the Session group SHALL come first, then open runs' groups, then
+ended runs' groups, the runs of each part with the newest record first. While the tab stays open the groups SHALL keep
 their places: a new record goes in its group and changes its count, and a group that first appears
 SHALL go to the end of its part.
 
@@ -85,6 +85,11 @@ SHALL go to the end of its part.
 #### Scenario: One scope
 - **WHEN** the human picks one run in the scope filter
 - **THEN** the list is flat, each row with its name without its run part
+
+#### Scenario: A run with the newest record
+- **WHEN** the human opens Artifacts of a session of 131 artifacts and an open run holds the newest
+  record
+- **THEN** the Session group stands first and that run's group second
 
 ### Requirement: A long run's name leaves the row and the tools their shape
 

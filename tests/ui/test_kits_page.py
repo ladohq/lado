@@ -32,6 +32,27 @@ def local_marketplace(tmp_path) -> str:
     return kit
 
 
+def is_a_notice(line, ground: str) -> None:
+    """`line` is a notice (docs/design/ui.md, Look): the ground of the token `ground`, an alert
+    icon, no border."""
+    look = line.evaluate(
+        """(line, ground) => {
+          const probe = document.body.appendChild(document.createElement("div"));
+          probe.style.background = `var(${ground})`;
+          const wanted = getComputedStyle(probe).backgroundColor;
+          probe.remove();
+          const style = getComputedStyle(line);
+          return {
+            ground: style.backgroundColor === wanted,
+            border: style.borderTopWidth,
+            icon: getComputedStyle(line, "::before").content,
+          };
+        }""",
+        ground,
+    )
+    assert look == {"ground": True, "border": "0px", "icon": '""'}, look
+
+
 def test_a_kit_is_installed_from_a_marketplace_and_removed(page: Page, server, tmp_path, shot):
     kit = local_marketplace(tmp_path)
     page.goto(f"{server['url']}/kits/available?token={server['token']}")
@@ -46,6 +67,8 @@ def test_a_kit_is_installed_from_a_marketplace_and_removed(page: Page, server, t
     row.get_by_role("button", name="Install wiki v1.0.0…").click()
     plan = page.get_by_role("dialog", name="Install wiki v1.0.0")
     expect(plan).to_contain_text("Not from the official marketplace.")
+    is_a_notice(plan.locator("p", has_text="Not from the official marketplace."), "--warn-ground")
+    shot(page, "plan")
     expect(plan.get_by_role("list", name="MCP servers")).to_contain_text("wiki-mcp")
     install = plan.locator("footer").get_by_role("button", name="Install")
     expect(install).to_be_disabled()
@@ -160,6 +183,52 @@ def small_kit(tmp_path, name, version, newer=None) -> str:
     if newer:
         publish(work, files(newer), tag=f"v{newer}")
     return url
+
+
+def test_an_updates_new_mcp_server_is_a_warning(page: Page, server, tmp_path, shot):
+    work = init_repo(tmp_path / "wiki-kit")
+    kit_yaml = "name: wiki\nversion: {0}\ndescription: Keep a wiki.\n"
+    plain = AGENT.replace("mcp: {wiki: {command: [wiki-mcp]}}\n", "")
+    url = publish(
+        work, {"kit.yaml": kit_yaml.format("1.0.0"), "agents/writer.md": plain}, tag="v1.0.0"
+    )
+    kit_core.install(kit_core.plan_add(f"{url}@v1.0.0"))
+    publish(work, {"kit.yaml": kit_yaml.format("1.1.0"), "agents/writer.md": AGENT}, tag="v1.1.0")
+    page.goto(f"{server['url']}/kits?token={server['token']}")
+    open_menu_item(page, "wiki", "Update…")
+    update = page.get_by_role("dialog", name="Update wiki")
+    line = update.locator("p", has_text="New MCP server: wiki.")
+    expect(line).to_be_visible()
+    is_a_notice(line, "--warn-ground")
+    shot(page)
+
+
+@pytest.mark.parametrize("item", ["Update…", "Remove…"])
+def test_a_window_from_a_cards_menu_gives_the_focus_back_to_its_dots(
+    page: Page, server, tmp_path, item
+):
+    small_kit(tmp_path, "wiki", "1.0.0", newer="1.1.0")
+    page.goto(f"{server['url']}/kits?token={server['token']}")
+    card = page.get_by_role("list", name="Kits").get_by_role("listitem", name="wiki")
+    more = card.get_by_role("button", name="Actions for wiki")
+    menu = page.get_by_role("menu", name="wiki")
+    window = page.get_by_role("dialog")
+
+    def came_back():
+        expect(window).to_have_count(0)
+        expect(menu).to_have_count(0)
+        expect(more).to_be_focused()
+
+    more.focus()  # by the keyboard, closed by Esc
+    page.keyboard.press("Enter")
+    menu.get_by_role("menuitem", name=item).focus()
+    page.keyboard.press("Enter")
+    expect(window.get_by_role("button", name="Cancel")).to_be_enabled()  # Esc waits for the plan
+    page.keyboard.press("Escape")
+    came_back()
+    open_menu_item(page, "wiki", item)  # by the mouse, closed by Cancel
+    window.get_by_role("button", name="Cancel").click()
+    came_back()
 
 
 def boxes(locator):

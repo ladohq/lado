@@ -497,6 +497,42 @@ def test_four_tabs_fit_360(device, server, repo, shot):
     shot(page, full_page=False)
 
 
+@pytest.mark.parametrize("size", [SIDEWAYS, (568, 320)], ids=["844x390", "568x320"])
+def test_sideways_the_toggle_ends_the_tab_row_and_shows_the_agents_messages(
+    device, server, repo, shot, size
+):
+    session = running_session(repo)
+    runtime.spawn_worker(session, "Build it", name="w1")
+    agent_helpers.wait_for(
+        lambda: state.get_agent(session, "w1").status == state.IDLE, "w1 idle", session
+    )
+    runtime.send_message(session, "supervisor", "w1", "please review the branch")
+    page = opened(device(size), server, f"/sessions/{session}")
+    row = page.get_by_role("navigation", name="Session sections")
+    tabs = row.get_by_role("link")
+    toggle = row.get_by_role("button", name="Messages between agents")
+    expect(toggle).to_be_visible()
+    expect(page.get_by_role("button", name="Messages between agents")).to_have_count(1)
+    found, last = box(toggle), box(tabs.last)
+    assert found["height"] >= 36
+    assert found["x"] >= last["x"] + last["width"]
+    assert found["x"] + found["width"] <= size[0]
+    for at in range(4):
+        tab = box(tabs.nth(at))
+        assert tab["x"] >= 0 and tab["x"] + tab["width"] <= found["x"], (at, tab)
+    shot(page, "yours", full_page=False)
+    feed = page.get_by_role("log", name="Chat with the session")
+    between = feed.get_by_role("article", name="Message from supervisor to w1")
+    expect(between).to_have_count(0)
+    toggle.tap()
+    expect(toggle).to_have_attribute("aria-pressed", "true")
+    expect(between).to_be_visible()
+    shot(page, "all", full_page=False)
+    tabs.nth(1).tap()
+    expect(tabs.nth(1)).to_have_attribute("aria-current", "page")
+    expect(toggle).to_have_count(0)
+
+
 def test_the_kits_tabs_fit_360(device, server, shot):
     page = opened(device(NARROWEST), server, "/kits")
     tabs = page.get_by_role("navigation", name="Kits").get_by_role("link")

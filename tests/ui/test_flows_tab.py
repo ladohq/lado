@@ -57,6 +57,70 @@ def flow_session(repo, name: str, flow: str) -> str:
     return session
 
 
+def test_a_runs_tooltip_shows_the_task_its_row_hides(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 1280, "height": 900})
+    session = flow_session(repo, "ship", SHIP)
+    long_line = "Add a page that does many things " * 25
+    forty = "\n".join(f"line {at}" for at in range(1, 41))
+    runs.start(session, "ship", long_line.strip(), name="cut")
+    runs.start(session, "ship", "first\nsecond\nthird", name="lines")
+    runs.start(session, "ship", forty, name="many")
+    runs.start(session, "ship", "Add a logout button", name="whole")
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}/flows")
+    overview = page.get_by_role("navigation", name="Flow runs")
+    tip = page.get_by_role("tooltip")
+
+    def card(name: str):
+        return overview.locator(".list-card", has=page.locator(".run-name", has_text=name))
+
+    card("cut").hover()
+    expect(tip).to_contain_text("Add a page that does many things")
+    expect(tip).to_contain_text("The rest is on the run's page")  # 825 characters
+    shot(page, "cut", full_page=False)
+    card("many").hover()
+    expect(tip).to_contain_text("line 12…")
+    expect(tip).not_to_contain_text("line 13")
+    expect(tip).to_contain_text("The rest is on the run's page")
+    lines = tip.bounding_box()
+    assert lines is not None and lines["height"] > 13 * 15, lines  # its breaks are kept
+    shot(page, "many", full_page=False)
+    card("whole").hover()
+    expect(tip).to_have_count(0)
+    page.wait_for_timeout(500)  # past the tooltip's delay
+    expect(tip).to_have_count(0)
+    page.mouse.move(0, 0)
+    card("lines").focus()
+    page.keyboard.press("Shift+Tab")
+    page.keyboard.press("Tab")
+    expect(card("lines")).to_be_focused()
+    expect(tip).to_have_text("first\nsecond\nthird")
+
+
+def test_a_waiting_runs_task_line_stays_muted(page: Page, server, repo):
+    page.set_viewport_size({"width": 1280, "height": 900})
+    session = flows_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}/flows")
+    overview = page.get_by_role("navigation", name="Flow runs")
+    waiting = overview.locator(".list-card.waits")
+    expect(waiting.locator(".run-task-line")).to_have_text("Add a login page")
+    colours = waiting.evaluate(
+        """card => {
+          const probe = document.body.appendChild(document.createElement("div"));
+          const colour = (token) => {
+            probe.style.color = `var(${token})`;
+            return getComputedStyle(probe).color;
+          };
+          const wanted = [colour("--muted"), colour("--human")];
+          probe.remove();
+          const of = (part) => getComputedStyle(card.querySelector(part)).color;
+          return [[of(".run-task-line"), of(".run-about")], wanted];
+        }"""
+    )
+    assert colours[0] == colours[1], colours
+
+
 def flows_session(repo) -> str:
     """A running session of the fake agent with two runs: ship/x took two steps and waits
     at gate "check", ship/y is at its first step."""

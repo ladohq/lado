@@ -20,6 +20,7 @@ import {
 import { PencilIcon } from "./icons";
 import { useDebounced, useLaunch } from "./Launch";
 import { useLive } from "./live";
+import { useModal } from "./modal";
 import { projectPath, sessionPath } from "./paths";
 import { useMedia, usePhone } from "./phone";
 import { ProjectDelete } from "./ProjectDelete";
@@ -373,9 +374,7 @@ function NewProjectDialog({ onClose, onMade }: { onClose: () => void; onMade: (i
   const [refused, setRefused] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
+  useModal(dialog);
 
   const wanted = edited ? `id\0${id}` : `title\0${title}`;
   const asked = useDebounced(wanted);

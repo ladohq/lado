@@ -39,6 +39,7 @@ import type { AgentInfo } from "./api";
 import { avatar } from "./FeedRow";
 import { CloseIcon, CollapsePanelIcon, ExpandIcon, KeyboardIcon, ViewIcon } from "./icons";
 import { useLive, useLiveStore } from "./live";
+import { useModal } from "./modal";
 import { TERMINAL_PARAM } from "./paths";
 import { usePhone } from "./phone";
 import { PANEL_WIDTH, storeAskControl, storedAskControl } from "./prefs";
@@ -768,9 +769,7 @@ function AgentTerminal({
 function ControlDialog({ agent, onTake, onCancel }: { agent: string; onTake: () => void; onCancel: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [never, setNever] = useState(false);
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
+  useModal(dialog);
   return (
     <dialog
       ref={dialog}

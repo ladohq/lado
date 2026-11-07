@@ -2738,10 +2738,13 @@ h3 {
   font-size: 14px;
 }
 
+.login-fail .problem {
+  margin: 0;
+}
+
 .login-fail blockquote {
   margin: 0;
   padding: 8px 12px;
-  border-left: 3px solid var(--line);
   background: var(--ground);
   font: 13px var(--mono);
   overflow-wrap: anywhere;
@@ -7427,8 +7430,12 @@ button.locked:disabled,
   white-space: nowrap;
 }
 
+/* The task's lines in a run's tooltip. */
+.run-task-tip {
+  white-space: pre-line;
+}
+
 .list-row.waits .run-about,
-.list-row.waits .run-task-line,
 .list-row.waits .agent-row-about {
   color: var(--human);
 }
@@ -7510,8 +7517,7 @@ button.locked:disabled,
   background: var(--human-ground);
 }
 
-.list-card.waits .run-about,
-.list-card.waits .run-task-line {
+.list-card.waits .run-about {
   color: var(--human);
 }
 
@@ -8798,18 +8804,6 @@ del.kit-mcp-name {
   gap: 8px;
   color: var(--muted);
   font-size: 13px;
-}
-
-.kit-alert {
-  padding: 8px 10px;
-  border: 1px solid var(--human);
-  border-radius: 6px;
-  background: var(--human-ground);
-  font-size: 13px;
-}
-
-.kit-alert b {
-  color: var(--human);
 }
 
 .kit-danger {
@@ -10642,7 +10636,7 @@ button.quiet.danger-text {
   padding-block: 0;
 }
 
-/* The toggle of the Team row: spec §9's size, second to the card's 44 px. */
+/* The toggle of the Team row, sideways of the tab row: spec §9's size, second to the card's 44 px. */
 :root[data-phone] .icon-button.between-toggle {
   width: 36px;
   height: 36px;
@@ -10982,9 +10976,13 @@ button.quiet.danger-text {
 }
 
 /* Sideways: the chat's room is for the feed; the card is minimized (WaitingCard.tsx). */
-:root[data-phone="short"] .team-row,
 :root[data-phone="short"] .composer-to {
   display: none;
+}
+
+/* The team's row is not there, so the toggle ends the tab row at every level of `data-fit`. */
+:root[data-phone="short"] .session-tabs .between-toggle {
+  display: grid;
 }
 
 :root[data-phone="short"] .activity,

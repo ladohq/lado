@@ -9,7 +9,8 @@
 // next touch elsewhere hides it; a button's or link's tooltip, which only names it, never
 // shows on a tap, not even by the mouse the browser emulates for the tap. A `null` tip stays
 // silent: what is up or on its delay goes, and nothing shows until the pointer or the focus
-// comes anew.
+// comes anew. `when`, asked as the pointer enters or the focus comes, says whether the tip has
+// something to say then: what depends on the trigger's width cannot be known before.
 import {
   cloneElement,
   useEffect,
@@ -58,10 +59,12 @@ type Trigger = {
 export function Tooltip({
   tip,
   side,
+  when,
   children,
 }: {
   tip: ReactNode;
   side?: "right"; // beside the trigger, for a card that must not cover what is under it
+  when?: (trigger: HTMLElement) => boolean;
   children: ReactElement<Trigger>;
 }) {
   const id = useId();
@@ -89,6 +92,7 @@ export function Tooltip({
   useEffect(() => {
     if (silent) hide();
   }, [silent]);
+  const speaks = (target: HTMLElement) => !silent && (when?.(target) ?? true);
 
   useEffect(() => {
     if (!shown) return;
@@ -143,8 +147,8 @@ export function Tooltip({
     "aria-describedby": shown ? id : own["aria-describedby"],
     onMouseEnter: (event) => {
       own.onMouseEnter?.(event);
-      if (touched.current || silent) return;
       const target = event.currentTarget;
+      if (touched.current || !speaks(target)) return;
       clearTimeout(timer.current);
       timer.current = setTimeout(() => show(target), TOOLTIP_DELAY_MS);
     },
@@ -172,7 +176,7 @@ export function Tooltip({
       const returned = left.current && !event.relatedTarget;
       // A focus given by code after a press elsewhere (Details' Copy path) is no keyboard's.
       const keyboard = !pressed.current && (!target.matches(":focus") || target.matches(":focus-visible"));
-      if (keyboard && !returned && !quiet && !silent) show(target);
+      if (keyboard && !returned && !quiet && speaks(target)) show(target);
       pressed.current = false;
     },
     onBlur: (event) => {

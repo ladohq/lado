@@ -892,6 +892,7 @@ function SessionView({ name, tab, item, session }: { name: string; tab: Tab; ite
       <SessionTabs name={name} tab={tab} counts={counts}>
         {FINDS[tab] !== undefined && item === undefined && <Find key={tab} label={FINDS[tab]} />}
         {tab === "activity" && !phone && <MessagesChoice />}
+        {tab === "activity" && phone === "short" && <MessagesToggle />}
       </SessionTabs>
       {tab === "agents" ? (
         <Agents session={name} agent={item} stopped={stopped} />
@@ -1060,8 +1061,9 @@ function SessionTabs({
 
 // The icon toggle Messages between agents (pressed, the feed also shows what agents write to
 // each other; it changes only what the feed shows, and is remembered; decided 2026-10-15,
-// LAD-77, mockup-placement.html variant Б): the end of a phone's team row, the short form of
-// MessagesChoice. `words`: its name beside the icon, in a stopped session's row without a team.
+// LAD-77, mockup-placement.html variant Б): the end of an upright phone's team row, of a sideways
+// phone's tab row, and the short form of MessagesChoice. `words`: its name beside the icon, in a
+// stopped session's row without a team.
 function MessagesToggle({ words = false }: { words?: boolean }) {
   const agentMessages = useAgentMessages();
   const tip = (
@@ -1546,10 +1548,10 @@ function StartedNotice({ name }: { name: string }) {
   );
 }
 
-// The Activity tab: the feed with the composer; on a phone, above them, the team, ended by the
-// icon toggle Messages between agents. A stopped session has no team, and the toggle its words in
-// the room left. Above a phone the team is in the head and the choice in the tab bar
-// (MessagesChoice).
+// The Activity tab: the feed with the composer; on an upright phone, above them, the team, ended
+// by the icon toggle Messages between agents. A stopped session has no team, and the toggle its
+// words in the room left. A sideways phone gives that height to the feed, its toggle ends the tab
+// row. Above a phone the team is in the head and the choice in the tab bar (MessagesChoice).
 function Activity({ info }: { info: SessionInfo }) {
   const session = info.name;
   const stopped = info.status === "stopped";
@@ -1557,7 +1559,7 @@ function Activity({ info }: { info: SessionInfo }) {
   const agentMessages = useAgentMessages();
   return (
     <div className="activity">
-      {phone && (
+      {phone === "tall" && (
         <div className="team-row">
           {!stopped && <Team session={session} />}
           <MessagesToggle words={stopped} />

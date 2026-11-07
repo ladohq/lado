@@ -45,6 +45,7 @@ import { useCopy } from "./Copy";
 import { ProjectField } from "./LaunchProject";
 import { closedBy, looks, resumeAttempt } from "./attempts";
 import { useLive, useLiveStore, useLocked } from "./live";
+import { useModal } from "./modal";
 import { ActionProblem, Waits } from "./waitingParts";
 import { projectPath, PROVIDERS_PATH, sessionPath } from "./paths";
 
@@ -250,9 +251,7 @@ function LaunchDialog({
   const [cloneEnd, setCloneEnd] = useState<{ note: string } | { refused: CloneRefused } | null>(null);
   const branchesAsked = useRef(new Map<string, Promise<RemoteInfo>>());
 
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
+  useModal(dialog);
 
   const cloning = source === "url";
   const scratching = source === "scratch";

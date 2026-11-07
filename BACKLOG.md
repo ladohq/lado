@@ -1894,8 +1894,40 @@ the mockup of LAD-223 shows `status danger-text` and `docs/design/ui.md` (Look) 
 marks a session that needs action. Older than LAD-223, which did not touch it. Wanted: the row's
 status in `--danger`, or the document changed if grey is the choice.
 Found: 2026-11-06, review of branch lado/lad-223/task-lad-223 (LAD-223).
+## A message sent as the session stops answers 500
+
+Size: S. Why here: the human sees a failed send of a message the feed already shows; it needs a
+stop within the moment of delivery, so it is rare.
+
+`POST /api/sessions/{name}/messages` ends in an uncaught `TmuxError` ("no server running…",
+`tmux.send_text`) when the session stops while the message is delivered, and the server answers
+500. Seen in `tests/ui/test_stopped_session.py`, `test_the_bar_stands_in_the_composers_place`, whose
+session has a tmux server of its own: on a shared server the error's words may differ, not checked.
+Wanted: the failed delivery of a session that stopped answered as a refusal the UI can show, with a
+test that stops the session during the delivery.
+Found: 2026-11-06, branch lado/lad-224/task-lad-224 (LAD-224), the console errors of the UI tests.
+
+## `.kit-danger` in the kit removal window is no notice
+
+Size: S. Why here: one window keeps a look the notices rule replaced everywhere else.
+
+`.kit-danger` has a border and no icon, against `docs/design/ui.md`, Look, Notices. `.kit-alert`, its
+neighbour, went in LAD-224; this one was not in that task's report. Wanted: an error notice, as
+`.kit-warning` is a warning one, seen in the live window.
+Found: 2026-11-06, design of LAD-224.
 
 # P3: maybe never
+
+## Three 404s in the browser's console of the UI tests have no known cause
+
+Size: S. Why here: nothing shows they harm anyone, but one of them is on a window's request.
+
+A run of the whole UI suite logged 404 for `agents/analyst/details`
+(`test_the_agents_tab_says_the_popups_words`), `agents/developer-2/details`
+(`test_an_agents_page_names_the_agent`) and `forget-preview`
+(`test_forget_stopped_sessions_open_runs`). Whether each is the test's own setup or a request the UI
+should not make is not known. Wanted: each explained, and a request for what is gone not sent.
+Found: 2026-11-06, branch lado/lad-224/task-lad-224 (LAD-224), the console errors of the UI tests.
 
 ## A relative LADO_HOME breaks the reads of lado.db
 

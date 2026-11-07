@@ -35,6 +35,29 @@ test("the pointer shows the tooltip after a short delay, and leaving hides it", 
   expect(button.getAttribute("aria-describedby")).toBeNull();
 });
 
+test("`when` is asked at each entry and focus: false keeps the tooltip silent, true lets it show", () => {
+  let hides = false;
+  render(
+    <Tooltip tip="the whole task" when={() => hides}>
+      <button type="button">row</button>
+    </Tooltip>,
+  );
+  const row = screen.getByRole("button", { name: "row" });
+  fireEvent.mouseEnter(row);
+  act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS));
+  fireEvent.focus(row);
+  expect(screen.queryByRole("tooltip")).toBeNull();
+  fireEvent.blur(row);
+  fireEvent.mouseLeave(row);
+  hides = true;
+  fireEvent.mouseEnter(row);
+  act(() => vi.advanceTimersByTime(TOOLTIP_DELAY_MS));
+  expect(screen.getByRole("tooltip").textContent).toBe("the whole task");
+  fireEvent.mouseLeave(row);
+  fireEvent.focus(row);
+  expect(screen.getByRole("tooltip").textContent).toBe("the whole task");
+});
+
 test("a pointer that leaves before the delay shows nothing", () => {
   const button = show();
   fireEvent.mouseEnter(button);

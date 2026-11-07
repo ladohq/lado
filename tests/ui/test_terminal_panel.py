@@ -7,6 +7,7 @@ import re
 import agent_helpers
 import pytest
 from playwright.sync_api import Page, expect
+from test_layout import gives_the_focus_back
 from test_main_screen import log_in, running_session
 
 from lado import runtime, state
@@ -388,3 +389,18 @@ def test_a_narrow_panel_keeps_the_control_words_on_one_line(page: Page, server, 
     assert name.evaluate("e => getComputedStyle(e).textOverflow") == "ellipsis"
     assert panel.locator(".term-control").get_attribute("title") == "You're typing into supervisor"
     shot(page, "narrow")
+
+
+@pytest.mark.parametrize("by", ["Escape", "Cancel"])
+def test_take_control_gives_the_focus_back_when_it_is_closed(page: Page, server, repo, by):
+    session = running_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    panel = page.get_by_role("complementary", name="Terminals")
+    expect(panel.locator(".term")).to_have_attribute("data-link", "open")
+    gives_the_focus_back(
+        page,
+        panel.get_by_role("button", name="Take control"),
+        page.get_by_role("dialog", name="Take control of supervisor"),
+        by,
+    )

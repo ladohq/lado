@@ -24,6 +24,7 @@ import { CopyIconButton } from "./Copy";
 import { isOpen } from "./Flows";
 import { messageWindow, useLive, useLiveStore, windowKey, type MessageSpec } from "./live";
 import { ListPage, type Entry } from "./ListPage";
+import { useModal } from "./modal";
 import { agentPath, runPath, sessionPath } from "./paths";
 import { storeAgentMessages } from "./prefs";
 import { quoteArea } from "./quote";
@@ -369,8 +370,8 @@ function FinishDialog({ session, agent, onClose }: { session: string; agent: str
   const [discarding, setDiscarding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<string | null>(null);
+  useModal(dialog);
   useEffect(() => {
-    dialog.current?.showModal();
     let current = true;
     getFinishPreview(session, agent).then(
       (value) => current && setPreview({ value }),

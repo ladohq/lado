@@ -26,7 +26,7 @@ agent works, and `idle` when none does.
 
 #### Scenario: All agents free
 - **WHEN** a running session has 3 agents, none at work, and nothing waits
-- **THEN** its mark is `idle` and its words are `running · idle · 3 agents`
+- **THEN** its mark is `idle` and its words are `running · idle`
 
 ### Requirement: The list's group follows what waits, not the mark
 

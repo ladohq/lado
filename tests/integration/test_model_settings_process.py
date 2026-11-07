@@ -181,7 +181,7 @@ def test_embeddings_same_address_and_several_removed(serve, lado_home):  # noqa:
         f"lado model-server probe {url} lists the models\n"
     )
     assert lado("model", "list").stdout.startswith("No models")
-    for name, cli in (("coder-codex", "codex"), ("coder-oc", "opencode"), ("sp", "kilo")):
+    for name, cli in (("coder-kilo", "kilo"), ("coder-oc", "opencode"), ("sp", "kilo")):
         runs.append(lado("model", "add", name, "--cli", cli, "--model", "qwen3-8b",
                          "--server", "lms"))  # fmt: skip
         assert runs[-1].returncode == 0, runs[-1].stderr
@@ -190,12 +190,12 @@ def test_embeddings_same_address_and_several_removed(serve, lado_home):  # noqa:
     assert (
         runs[-1]
         .stderr.splitlines()[0]
-        .endswith('remove them first: lado model remove "coder-codex" "coder-oc" "sp"')
+        .endswith('remove them first: lado model remove "coder-kilo" "coder-oc" "sp"')
     )
-    runs.append(lado("model", "remove", "coder-codex", "coder-oc", "sp"))
+    runs.append(lado("model", "remove", "coder-kilo", "coder-oc", "sp"))
     assert (runs[-1].returncode, runs[-1].stdout) == (
         0,
-        'Removed model "coder-codex".\nRemoved model "coder-oc".\nRemoved model "sp".\n',
+        'Removed model "coder-kilo".\nRemoved model "coder-oc".\nRemoved model "sp".\n',
     )
     runs.append(lado("model-server", "remove", "lms"))
     assert runs[-1].returncode == 0, runs[-1].stderr

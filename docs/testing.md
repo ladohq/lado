@@ -85,43 +85,47 @@ a test is named by pid and command alone. The environment is read from `/proc` o
 with `ps -E` on macOS. `LADO_TEST_PID` and `LADO_TEST_ID` are marks of the test suite only:
 LADO itself neither sets nor reads them.
 
-Live tests (`tests/live/`) run the real CLIs with the same isolation; a test skips when its CLI
-is missing or not logged in. Models: Claude Code on `haiku` (paid: only with the human's
-yes; `--model`, `real_clis.with_model`); Codex CLI, OpenCode and Kilo on one local model,
-LM Studio's `qwen/qwen3.5-35b-a3b` (`local_models.MODEL`: vision and tools, free). The local
-setup: LM Studio's server running with that model loaded with a context of at least 65536
-(`lms load qwen/qwen3.5-35b-a3b --context-length 65536 -y`; no other large model loaded by
-any server, as 64 GB hold one), and `uvx`. Each provider has one source of the model, in the
-environment every LADO process of the test inherits: OpenCode and Kilo a config file of the
-test as `OPENCODE_CONFIG` / `KILO_CONFIG` (the `lmstudio` provider and `model`), with a state
-folder of the test's own (`XDG_STATE_HOME`: their TUI takes the model an agent used last
-over the config's), the model each recorded checked after the run; Codex the test's own user
-Codex config, which LADO carries (`model`, `model_provider = "bridge"` at a Responses
-endpoint). LM Studio's own Responses API drops the MCP tools Codex sends, so the Codex tests
-start a bridge once per run (`local_models.Bridge`: `uvx --from 'litellm[proxy]==1.104.2'
-litellm` on 127.0.0.1 and a free port, Responses to LM Studio's chat API, a random master
-key Codex reads from `LADO_LIVE_BRIDGE_KEY`, its process group ended after the run; its log
-goes with a failed test's evidence). Overrides: `LADO_LIVE_CLAUDE_MODEL`;
-`LADO_LIVE_OPENCODE_MODEL` / `LADO_LIVE_KILO_MODEL` replace `model` in the file (an
-`lmstudio/<id>` keeps the LM Studio check, another value skips it); `LADO_LIVE_CODEX_MODEL`
-goes through the bridge to LM Studio with the check; `LADO_LIVE_CODEX_BASE_URL` points Codex
-at another Responses endpoint, with no bridge and no check; `LADO_LIVE_LMSTUDIO_URL` (default
-`http://127.0.0.1:1234`). A test skips, saying what to run, when LM Studio does not answer
-(`lms server start`), lacks the model (`lms get`), or has no instance (an `<id>:2` counts)
-loaded with that context (the `lms load` above), and when `uvx` is missing. The image test
-skips before it sends an image when the model does not declare image input (LM Studio's
-`type: vlm`; for another endpoint `LADO_LIVE_IMAGE=1`, and unset is a skip), and fails when
-a model that declares it does not see the image. The other setup, a remote OpenAI-compatible
-endpoint (chat completions and Responses, e.g. a LiteLLM gateway) for Codex, OpenCode and
-Kilo at once: `LADO_LIVE_ENDPOINT` (its base URL, ending in `/v1`), `LADO_LIVE_API_KEY` (its
-key, only ever in the environment: Codex's carried config names it as `env_key`, OpenCode's
-and Kilo's file as `{env:LADO_LIVE_API_KEY}`; a failed test's evidence has it redacted, and
-the tests check that no agent config holds it) and `LADO_LIVE_MODEL` (the model of all three,
-with tools and, for the image test, vision with `LADO_LIVE_IMAGE=1`; no default: unset, or
-no key, is a skip), each CLI's own `LADO_LIVE_*_MODEL` winning; no LM Studio check and no
-bridge then, as the endpoint's Responses API must keep Codex's MCP tools. E.g. `LADO_LIVE_ENDPOINT=<url>
-LADO_LIVE_API_KEY="$(cat <key file>)" LADO_LIVE_MODEL=<model> LADO_LIVE_IMAGE=1 make test-live
-PROVIDER=codex`; never a paid model. The passive supervisor of the live kit is
+Live tests (`tests/live/`) run the real CLIs with the same isolation, every provider on one
+remote endpoint, set up by its entry in `live_models.SETUPS`, with nobody's login:
+`LADO_LIVE_ENDPOINT` (its base URL, ending in `/v1`; no default), `LADO_LIVE_API_KEY` (its key,
+only ever in the environment) and `LADO_LIVE_MODEL` (the model, with tools and, for the image
+test, vision), each CLI's own `LADO_LIVE_<CLI>_MODEL` winning (for OpenCode and Kilo with the
+prefix `endpoint/`, as `LADO_LIVE_KILO_MODEL=endpoint/<model>`: without it the CLI goes past the
+endpoint). A test skips, naming what to
+set, when any of them is unset or its CLI is missing, so a run of skips proves nothing: `make
+test-live` without them ends with no failure. E.g. `LADO_LIVE_ENDPOINT=https://openrouter.ai/api/v1
+LADO_LIVE_API_KEY=<key> LADO_LIVE_MODEL=<model> LADO_LIVE_IMAGE=1 make test-live PROVIDER=codex`.
+A local server can serve as the endpoint, when it has the APIs below. The models CI uses are
+in `live.yml`'s matrix, one per provider; the trial that chose them:
+`docs/superpowers/reports/2026-11-07-cloud-live-tests-trial.md`.
+A paid model only with a limited key and the human's yes; the schedule in CI is that yes,
+given once by LAD-231.
+
+Each provider has one source of the model, in the environment every LADO process of the test
+inherits. OpenCode and Kilo reach the endpoint as a chat completions API, by a config file of
+the test as `OPENCODE_CONFIG` / `KILO_CONFIG` (the `endpoint` provider and `model`, the key as
+`{env:LADO_LIVE_API_KEY}`), with a state folder of the test's own (`XDG_STATE_HOME`: their TUI
+takes the model an agent used last over the config's), the model each recorded checked after
+the run. Codex reaches it as a Responses API, by the test's own user Codex config, which LADO
+carries (`model`, `model_provider = "endpoint"`, the key by its `env_key`); the endpoint must
+keep the MCP tools Codex sends. Claude Code reaches it as an Anthropic API:
+`ANTHROPIC_BASE_URL` is the endpoint without its `/v1`, the key goes as `ANTHROPIC_AUTH_TOKEN`
+(a token it takes without asking; a new `ANTHROPIC_API_KEY` is a question) and the model as
+`ANTHROPIC_MODEL` and `ANTHROPIC_DEFAULT_HAIKU_MODEL`, as its background calls name a haiku of
+their own; each answer in its transcripts is checked to be on that model. The key is a value
+there, as Claude Code has no reference to a variable. A failed test's evidence has the key
+redacted, and the tests check that no agent config holds it. The image test skips before it
+sends an image unless `LADO_LIVE_IMAGE=1` (unset or another value: the model takes none), and
+fails when a model that declares it does not see the image.
+
+No live test uses a Claude subscription. Unit tests cover the login check's logic and
+`CLAUDE_CODE_OAUTH_TOKEN`, the smoke trust, onboarding and the start without a dialog on Linux
+and macOS, the live tests a whole turn with real tools. A real subscription login end to end
+is left to the human's daily use of LADO: the keychain and the macOS graphical session
+(`gui_session.py`), a real token's refresh, a human's own `.claude.json`, and Anthropic's API
+itself with its limits, as the endpoint stands between.
+
+The passive supervisor of the live kit is
 read-only (no command tools; LADO's run messages to it name the human's ways), and every
 live test fails when a `repo_changed` event names it; the test merges only while it is idle.
 No Codex agent asks whether to trust the test's repo: LADO's config of each agent trusts
@@ -131,10 +135,8 @@ agent started on the file made stale so it refreshes it (a running Codex keeps i
 memory and reads the file again only when its own tokens need a refresh): only with `LADO_LIVE_CODEX_HOME` naming a Codex home the human
 logged in to (`CODEX_HOME=<dir> codex login --device-auth`), else it skips.
 Unit tests get a `CODEX_HOME` of their own (`codex_home`, `tests/conftest.py`), never the
-user's `~/.codex`. The Claude test runs Claude Code with the human's own config (it
-unsets the tests' `CLAUDE_CONFIG_DIR`) and a fixed repo path, so LADO records one trusted
-folder for it there; if Claude Code's workspace trust dialog shows all the same, the test
-fails with LADO's reason. Every unit, integration and UI test gets a Claude config of its
+user's `~/.codex`. If Claude Code's workspace trust dialog shows in a live test, the test
+fails with LADO's reason. Every test gets a Claude config of its
 own (`claude_config` in `tests/conftest.py`, autouse, `CLAUDE_CONFIG_DIR` outside
 `tmp_path`), which trusts the `repo` fixture's folder, never the user's: LADO writes the
 trust there; `trust()` with no folder lets a test see the write, `refuse()` the fallback
@@ -360,8 +362,22 @@ first (security and secrets, deleting data, agents' environment, the server's AP
 with the lists `Files read` and `Files not read` (`tests/test_workflow_security.py`). An
 `issue_comment` runs the workflow of the default branch, so a change to it takes effect
 after its merge. Vulnerability reports: SECURITY.md.
-Live tests are not in CI: they run locally, at release only, every provider (Claude Code with
-the human's yes).
+The live tests run in a workflow of their own, `.github/workflows/live.yml`, outside `ci.yml`
+and so outside `ci-ok`: a provider's outage looks like a failed test and must not block a
+merge. Weekly on main (Monday 04:23 UTC), by hand (`gh workflow run live.yml`) and on each
+release candidate, a cell per provider on Linux, each with its model of the matrix:
+`scripts/smoke_ci.py live <provider> <out>` installs the CLI at its pin and is red unless the
+tests passed and none skipped; `tests/live/test_codex_login.py` is left out, as it needs a
+person's login. It runs them for at most 25 minutes outside `<out>` and silently, then redacts
+the key, also where a window wrapped it, prints the log to the job's and moves the log and the
+evidence to `<out>` for the upload. A test ended by that limit keeps no evidence of its own,
+only the log and what the tests before it kept; a job killed before the redaction uploads
+nothing. The key is the secret `LADO_LIVE_API_KEY` of the environment `live`, which admits only
+`main` and tags `v*`, so no run of a pull request gets it, and only the test step names it.
+A run of the four cells costs about $0.07 (the trial's report). The key's limit, $10 a month, is
+the hard stop: past it, or with no credits on the OpenRouter
+account behind it, a run goes red with a 402. A red run mails as any failed workflow does;
+rerun its failed cells by hand (`gh run rerun <id> --failed`), a pass on a rerun being a flake.
 
 A Windows probe, neither in the per-push CI (a run takes 20-25 minutes) nor a release step
 (docs/release.md, section 5): the `Windows probe` workflow
@@ -428,9 +444,9 @@ Seven layers; each change gets tests at the lowest layer that can catch its bugs
    Test infrastructure), and in WSL2 in the Windows probe, a job per provider.
 6. **Live e2e** (`make test-live`, marker `live`): real agent CLIs and real models, one short
    scenario per provider: a worker commits a file, reports to the supervisor and gets a
-   message; then the session stops and no process is left. Never in the default run and
-   not in CI: run locally at release, every provider (Claude Code with the human's yes), and
-   a provider's after changing it.
+   message; then the session stops and no process is left. Never in the default run or
+   `ci-ok`: weekly and by hand in `live.yml`, every provider on OpenRouter, on each RC, and a
+   provider's after changing it.
    When a live or smoke test fails, its report names a folder
    `<temp dir>/lado-live-evidence/<time>-<test>` that keeps the test session's `lado log`,
    `hooks.log`, each agent's config folder and cwd, and each tmux window's screen, taken
@@ -441,6 +457,6 @@ Seven layers; each change gets tests at the lowest layer that can catch its bugs
    of `docker/` or of how LADO behaves in a container's environment. Never in the default
    run or `make check`; in CI on amd64 and arm64 (job `container`, every run).
 
-What must be green before a release (CI, `make test-live`): [docs/release.md](release.md).
+What must be green before a release (CI, `live.yml`): [docs/release.md](release.md).
 The Windows probe is not a release step: it runs weekly, and a red run is fixed as any
 other regression.

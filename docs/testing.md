@@ -159,7 +159,8 @@ the supervisor's session-start hook makes it idle, its CLI lists LADO's MCP tool
 (`mcp_ready`), the human's message with a body is delivered by its own hook, its turn ends
 on the endpoint's error (`turn_error`), a worker's task is delivered, and `lado stop` leaves
 no process. Codex CLI starts its session only on its first input and runs no hook for a
-turn that ends on an API error (BACKLOG.md): its smoke checks that `runtime.FIRST_INPUT` is
+turn that ends on an API error (BACKLOG.md; on a model server LADO reads it from the journal, as
+the Responses tests below show): its smoke checks that `runtime.FIRST_INPUT` is
 delivered instead of the human's message and the turn error, in code, never a skip. A
 failed smoke keeps its evidence as a failed live test does. `make test-smoke
 [PROVIDER=...]`; not in `make check`, which has no CLI. The 401 endpoint is
@@ -169,7 +170,23 @@ offers the model (`Endpoint.tools`, and `tools` in the log's line; a namespace's
 `<namespace>.<name>`), so a Codex test checks that an agent on a model whose metadata
 brings Codex's own subagents (gpt-6-sol) gets none of them, after a control: a plain
 `codex exec` on the same home gets `collaboration.wait_agent`, or the test fails saying the
-model no longer brings them.
+model no longer brings them. It keeps the model each request asks for too (`Endpoint.models`):
+per provider, a session started with a model (`lado start --model`; OpenCode and Kilo
+without the test's `--model`, as the CLI itself) asks the endpoint for that model. Its
+`Anthropic` and `Responses` servers and `fake_model_server.Server` take a `refusal` once a session
+is up: every model request then gets that status and body, with `Retry-After: 1` so that a real
+CLI's repeats of a 429 take seconds; the smoke counts the requests per CLI on a 401 and a 429, the
+key echoed. `Responses` is the same scripted turn for Codex CLI: a shell call, then LADO's tool in
+its `namespace`, with the usage it is told to report. Its tests are the only layer that catches a
+Codex update that changes what LADO reads: the journal's format, the catalogue's (real `/model`
+shows the agent's one model), the tools of a request, a compaction past LADO's limit.
+
+The model servers of `lado model-server probe`'s tests are `tests/fake_model_server.py`
+(standard library only): a `Server` on `127.0.0.1` with a profile (`openai`, `ollama`,
+`lmstudio`, `anthropic`, a gateway that answers 400 to every path, a provider's list, a redirect,
+one that hangs, one that holds a POST by `Held`, …), optionally behind a key and under a gateway's path, that keeps each request with
+its headers and body; also a script, `python fake_model_server.py <profile> <port file>
+[<key>]`, for the integration test that runs the real command against it.
 
 Container tests (`tests/container/`, marker `container`) run LADO's image (`docker/`) with
 real Docker and no model, driving the `docker` CLI from the host against an image built

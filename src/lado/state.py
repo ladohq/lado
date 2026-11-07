@@ -6,22 +6,23 @@ call opens its own short-lived connection and SQLite does the locking.
 
 import datetime
 import json
+import operator
 import os
 import re
 import sqlite3
 import time
 import uuid
 from collections import Counter, defaultdict
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterator, Sequence
 from contextlib import closing, contextmanager, suppress
-from dataclasses import astuple, dataclass, field, replace
+from dataclasses import asdict, astuple, dataclass, field, replace
 from pathlib import Path
 
 from lado.flows import IDENTIFIER
 
 # `lado update` of a later LADO reads this line from this release's wheel to learn the schema
 # it knows (update.release_schema): keep its form, `SCHEMA_VERSION = <N>` on a line of its own.
-SCHEMA_VERSION = 35
+SCHEMA_VERSION = 39
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -585,6 +586,10 @@ GATE_UNANSWERED = (GATE_CANCELLED, GATE_OVERRIDDEN)
 # Session events, by LADO.
 SESSION_STOP = "session_stop"  # detail: what was dropped
 SESSION_RESUME = "session_resume"  # detail: what changed
+# The supervisor's window opened on another model than the last time; detail: the model as its
+# CLI was told it, "" for none. The agents' rows go at a stop: a resume reads here what the
+# session last started on.
+START_MODEL = "start_model"
 # Its runtime was found gone at a stop or resume: created_at is the last sign of life
 # (last_alive), not when it was found; the session_stop follows.
 SESSION_GONE = "session_gone"
@@ -960,6 +965,112 @@ AGENTS_WINDOWS_OPENED = "UPDATE agents SET window_at = created_at"
 SCHEMA += AGENTS_WINDOW_AT + ";\n"
 MIGRATIONS[34] = [AGENTS_WINDOW_AT, AGENTS_WINDOWS_OPENED]
 
+# From version 36: the model and the effort the agent runs on, each a name (NULL while
+# unknown) with its source (MODEL_SOURCES) and a detail of the source (`profile work`). The
+# agents of an older LADO, like a new one, run on their CLI's default.
+AGENTS_MODEL = [
+    "ALTER TABLE agents ADD COLUMN model TEXT",
+    "ALTER TABLE agents ADD COLUMN model_source TEXT NOT NULL DEFAULT 'cli'",
+    "ALTER TABLE agents ADD COLUMN model_detail TEXT",
+    "ALTER TABLE agents ADD COLUMN effort TEXT",
+    "ALTER TABLE agents ADD COLUMN effort_source TEXT NOT NULL DEFAULT 'cli'",
+    "ALTER TABLE agents ADD COLUMN effort_detail TEXT",
+]
+SCHEMA += "".join(f"{step};\n" for step in AGENTS_MODEL)
+MIGRATIONS[35] = AGENTS_MODEL
+
+# From version 37: the session's power table (PowerTable, JSON; NULL for none), the model
+# chosen for it. The sessions of an older LADO, like a new one without a model, have none.
+SESSIONS_POWER = "ALTER TABLE sessions ADD COLUMN power TEXT"
+SCHEMA += SESSIONS_POWER + ";\n"
+MIGRATIONS[36] = [SESSIONS_POWER]
+
+# From version 38: the human's model servers and configured models, each under a name
+# taken ignoring case (`folded`, the name's casefold: SQLite's NOCASE folds ASCII only).
+# A server's key is no column: it is the file `<LADO_HOME>/model-servers/<id>/key`
+# (lado.model_settings), there exactly when the server has one. A server's models are not
+# kept: they change on the server. A model refers to its server by id, which never changes.
+MODEL_SERVERS_TABLE = """
+CREATE TABLE IF NOT EXISTS model_servers (
+    id TEXT PRIMARY KEY,          -- never changes: the key file's folder
+    name TEXT NOT NULL,           -- as the human gave it
+    folded TEXT NOT NULL UNIQUE,  -- name.casefold()
+    address TEXT NOT NULL,        -- the probe's root (lado.model_servers.address)
+    kind TEXT NOT NULL,           -- the probe's type
+    apis TEXT NOT NULL,           -- JSON list of the APIs it proved
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))  -- UTC
+)"""
+MODELS_TABLE_38 = """
+CREATE TABLE IF NOT EXISTS models (
+    folded TEXT PRIMARY KEY,  -- name.casefold()
+    name TEXT NOT NULL,
+    cli TEXT NOT NULL,        -- a provider's name
+    model TEXT NOT NULL,      -- as the CLI names it
+    server TEXT REFERENCES model_servers(id),  -- NULL: the CLI's own way to its models
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))  -- UTC
+)"""
+SCHEMA += MODEL_SERVERS_TABLE + ";\n"
+MIGRATIONS[37] = [MODEL_SERVERS_TABLE, MODELS_TABLE_38]
+
+# From version 39: a configured model always lives on a server and has an id that never
+# changes, so a reference survives a rename; a CLI's own models are no entries, they are read
+# from the CLI. An agent CLI's default model is a reference: external (a model's id) or
+# built-in (the CLI's name for it). No ON DELETE CASCADE: the core clears a default in the
+# transaction that removes its model, and the foreign key refuses a stray delete.
+MODELS_TABLE = """
+CREATE TABLE IF NOT EXISTS models (
+    id TEXT PRIMARY KEY,          -- never changes: references hold it
+    folded TEXT NOT NULL UNIQUE,  -- name.casefold()
+    name TEXT NOT NULL,
+    cli TEXT NOT NULL,            -- a provider's name
+    model TEXT NOT NULL,          -- as the CLI names it
+    server TEXT NOT NULL REFERENCES model_servers(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))  -- UTC
+)"""
+CLI_DEFAULTS_TABLE = """
+CREATE TABLE IF NOT EXISTS cli_defaults (
+    cli TEXT PRIMARY KEY,                 -- a provider's name
+    model_id TEXT REFERENCES models(id),  -- external
+    builtin TEXT,                         -- built-in: the CLI's name for it
+    CHECK ((model_id IS NULL) != (builtin IS NULL))
+)"""
+SCHEMA += MODELS_TABLE + ";\n" + CLI_DEFAULTS_TABLE + ";\n"
+MODELS_BY_ID = [
+    "ALTER TABLE models RENAME TO models_38",
+    MODELS_TABLE,
+    "INSERT INTO models (id, folded, name, cli, model, server, created_at)"
+    " SELECT lower(hex(randomblob(6))), folded, name, cli, model, server, created_at"
+    " FROM models_38 WHERE server IS NOT NULL",
+    "DROP TABLE models_38",
+    CLI_DEFAULTS_TABLE,
+]
+MIGRATIONS[38] = MODELS_BY_ID
+
+# Where an agent's model or effort came from. Each later way of choosing one adds a token;
+# a token this LADO does not know (a newer LADO's row) is shown as itself (source_words).
+CLI_DEFAULT = "cli"  # the CLI's own choice: its default or its own settings
+CLI_CONFIG = "cli-config"  # the user's config of the CLI, carried by LADO into the agent
+SESSION = "session"  # the session's model (PowerTable), chosen with lado start --model
+DEFAULT_MODEL = "default"  # its CLI's default model of Settings → Models (cli_defaults)
+SUPERVISOR_CHOICE = "supervisor"  # named in spawn_worker(model=...)
+CLI_CHANGED = "cli-changed"  # another model than the launch chose, named by the CLI
+MODEL_SOURCES = {
+    CLI_DEFAULT: "CLI default",
+    CLI_CONFIG: "your {cli} config",
+    SESSION: "chosen for the session",
+    DEFAULT_MODEL: "default in Settings",
+    SUPERVISOR_CHOICE: "chosen by the supervisor",
+    CLI_CHANGED: "changed in the agent CLI",
+}
+
+
+def source_words(source: str, detail: str | None, cli_title: str) -> str:
+    """What the human reads for a source of a model or effort: its words for the CLI titled
+    `cli_title` (by its own name: "Codex CLI" says "your Codex config"), then the detail."""
+    words = MODEL_SOURCES.get(source, source).format(cli=cli_title.removesuffix(" CLI"))
+    return f"{words}, {detail}" if detail else words
+
+
 # Note kinds. A report is a state's own: a work state's flow_advance, the answer at an
 # approval or choice gate. An override is the human's past the flow (flow-set's reason, an
 # answer at a loop limit): kept, but never taken for the state's report.
@@ -986,6 +1097,110 @@ class Agent:
     read_only: bool = False  # its role changes nothing in the repository (lado.kits)
     created_at: str = ""  # UTC, "YYYY-MM-DD HH:MM:SS", when it was added; set by the database
     window_at: str | None = None  # UTC, when its window opened (window_opened); None before
+    # What it runs on (AGENTS_MODEL): a name, None while unknown, with its source and detail.
+    model: str | None = None
+    model_source: str = CLI_DEFAULT
+    model_detail: str | None = None
+    effort: str | None = None
+    effort_source: str = CLI_DEFAULT
+    effort_detail: str | None = None
+
+
+@dataclass(frozen=True)
+class Choice:
+    """A model or an effort chosen for an agent at its launch, with where it came from."""
+
+    name: str | None  # None: no name chosen, only a source and its detail
+    source: str  # one of MODEL_SOURCES
+    detail: str | None = None
+
+
+# A power table's levels; an agent takes DEFAULT_LEVEL's row.
+LEVELS = ("light", "normal", "heavy")
+DEFAULT_LEVEL = "normal"
+
+
+@dataclass(frozen=True)
+class PowerRow:
+    """A model of a session, in one of three forms: built-in (`model` as the CLI names it),
+    external (`model_id`, a configured model's id, with `model` and `name` as copies for the
+    words after its removal; a launch reads the entry by id), or the CLI's own settings
+    (`model` "", past any default)."""
+
+    cli: str  # a provider's name
+    model: str
+    model_id: str | None = None
+    name: str | None = None
+
+    @property
+    def shown(self) -> str:
+        """The row's model for the human."""
+        return self.name or self.model
+
+
+@dataclass(frozen=True)
+class PowerTable:
+    """What a session's agents run on, by level: a CLI and a model for each of LEVELS.
+    Kept as one JSON document ({"normal": {"cli": ..., "model": ...}, ...}). `readable` is
+    False for a stored text that is no such table (unreadable): it has no rows, so nothing
+    calls `row` on it unchecked; its session lists as any, and refuses a resume that keeps it
+    (lado.model_settings.start_model)."""
+
+    rows: dict[str, PowerRow]
+    readable: bool = True
+
+    @classmethod
+    def of(cls, row: PowerRow) -> "PowerTable":
+        """The table of one model: every level the same."""
+        return cls({level: row for level in LEVELS})
+
+    @classmethod
+    def single(cls, cli: str, model: str) -> "PowerTable":
+        """The table of one built-in model."""
+        return cls.of(PowerRow(cli, model))
+
+    @classmethod
+    def unreadable(cls) -> "PowerTable":
+        return cls({}, readable=False)
+
+    def row(self, level: str = DEFAULT_LEVEL) -> PowerRow:
+        return self.rows[level]
+
+    def to_json(self) -> str:
+        return json.dumps(
+            {
+                level: {key: value for key, value in asdict(row).items() if value is not None}
+                for level, row in self.rows.items()
+            }
+        )
+
+    @classmethod
+    def from_json(cls, text: str) -> "PowerTable":
+        """The table `text` holds, keys it does not know ignored; never raises: anything else
+        is `unreadable`."""
+        try:
+            found = json.loads(text)
+        except ValueError:
+            return cls.unreadable()
+        if not isinstance(found, dict) or DEFAULT_LEVEL not in found:
+            return cls.unreadable()
+        rows = {level: _power_row(row) for level, row in found.items()}
+        if None in rows.values():
+            return cls.unreadable()
+        return cls(rows)
+
+
+def _power_row(row: object) -> PowerRow | None:
+    """The row a stored `row` holds, None for what is no row."""
+    if not isinstance(row, dict):
+        return None
+    cli, model = row.get("cli"), row.get("model")
+    model_id, name = row.get("model_id"), row.get("name")
+    if not (isinstance(cli, str) and isinstance(model, str)):
+        return None
+    if not all(value is None or isinstance(value, str) for value in (model_id, name)):
+        return None
+    return PowerRow(cli, model, model_id, name)
 
 
 @dataclass
@@ -1001,6 +1216,7 @@ class Session:
     title: str | None = None  # the human's label over the name; None for none
     resume_at_start: bool = False  # stopped by its container's stop, to resume at its start
     project: str | None = None  # the project's id (lado.projects); never changes
+    power: PowerTable | None = None  # the model chosen for it; None: its CLI's default
 
 
 @dataclass(frozen=True)
@@ -1410,8 +1626,8 @@ def add_session(session: Session) -> bool:
     with connect() as db:
         added = db.execute(
             "INSERT INTO sessions"
-            " (name, repo, permission_mode, provider, kits, switched_off, title, project)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (name) DO NOTHING",
+            " (name, repo, permission_mode, provider, kits, switched_off, title, project, power)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (name) DO NOTHING",
             (
                 session.name,
                 session.repo,
@@ -1421,6 +1637,7 @@ def add_session(session: Session) -> bool:
                 json.dumps(session.without),
                 session.title,
                 session.project,
+                _power_json(session.power),
             ),
         ).rowcount
     return added == 1
@@ -1616,13 +1833,14 @@ def fail_resume(old: Session, restored: str) -> None:
 
 def _set_settings(db: sqlite3.Connection, session: Session) -> None:
     db.execute(
-        "UPDATE sessions SET permission_mode = ?, provider = ?, kits = ?, switched_off = ?"
-        " WHERE name = ?",
+        "UPDATE sessions SET permission_mode = ?, provider = ?, kits = ?, switched_off = ?,"
+        " power = ? WHERE name = ?",
         (
             session.permission_mode,
             session.provider,
             json.dumps(session.kits),
             json.dumps(session.without),
+            _power_json(session.power),
             session.name,
         ),
     )
@@ -1691,6 +1909,64 @@ def window_opened(session: str, name: str) -> None:
             " WHERE session = ? AND name = ?",
             (session, name),
         )
+
+
+def set_model(session: str, name: str, model: Choice | None, effort: Choice | None) -> None:
+    """Record what the agent's launch chose for its model and effort; None for nothing
+    chosen, which is the CLI's default. A row that is gone is no error."""
+    values = []
+    for choice in (model, effort):
+        values += (
+            [choice.name, choice.source, choice.detail] if choice else [None, CLI_DEFAULT, None]
+        )
+    with connect() as db:
+        db.execute(
+            "UPDATE agents SET model = ?, model_source = ?, model_detail = ?, effort = ?,"
+            " effort_source = ?, effort_detail = ? WHERE session = ? AND name = ?",
+            (*values, session, name),
+        )
+
+
+def report_model(
+    session: str,
+    name: str,
+    model: str,
+    effort: str | None,
+    same: Callable[[str, str], bool] = operator.eq,
+) -> None:
+    """Record the model and effort the agent's CLI named in an event (base.Event): a model
+    "" or an effort None it did not name, which stays as it was; an effort "" is the
+    model's default one, no name. A name that differs from the agent's is the CLI's own: a
+    model's source becomes CLI_CHANGED, an effort's CLI_DEFAULT, with no detail; but a first
+    model name (the agent had none), or one that `same(chosen, reported)` says is the chosen
+    model's (the agent's provider's Provider.same_model: Claude Code's full name of an alias),
+    replaces the name and keeps the source and the detail. Writes nothing when nothing
+    changes, so a CLI that names its model in every hook adds no change to the journal."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            "SELECT model, effort FROM agents WHERE session = ? AND name = ?", (session, name)
+        ).fetchone()
+        reports = [("model", model)] if model else []
+        if effort is not None:
+            reports.append(("effort", effort or None))
+        sets, values = [], []
+        for column, reported in reports:
+            if not row or reported == row[column]:
+                continue
+            kept = column == "model" and (row[column] is None or same(row[column], reported))
+            if kept:
+                sets.append(f"{column} = ?")
+                values.append(reported)
+            else:
+                sets.append(f"{column} = ?, {column}_source = ?, {column}_detail = NULL")
+                values += [reported, CLI_CHANGED if column == "model" else CLI_DEFAULT]
+        if sets:
+            db.execute(
+                f"UPDATE agents SET {', '.join(sets)} WHERE session = ? AND name = ?",
+                (*values, session, name),
+            )
+        db.execute("COMMIT")
 
 
 def get_agent(session: str, name: str) -> Agent | None:
@@ -1773,10 +2049,14 @@ def set_status(session: str, name: str, status: str) -> None:
 def _set_status(db: sqlite3.Connection, session: str, name: str, status: str) -> None:
     # An agent that waits for nothing in particular has no key; one that stops waiting none.
     # A planned resume holds only while the agent takes input: busy, it goes on anyway;
-    # waiting or starting, the human acts on it already (schedule_resume).
+    # waiting or starting, the human acts on it already (schedule_resume). One dropped so was
+    # told to no one: it does not count.
+    accepts = int(accepts_input(status))
     cur = db.execute(
         "UPDATE agents SET status = ?, waiting_for = NULL,"
-        f" resume_at = CASE WHEN {int(accepts_input(status))} THEN resume_at END"
+        f" resumes = CASE WHEN {accepts} = 0 AND resume_at IS NOT NULL THEN resumes - 1"
+        " ELSE resumes END,"
+        f" resume_at = CASE WHEN {accepts} THEN resume_at END"
         " WHERE session = ? AND name = ? AND status != ?",
         (status, session, name, status),
     )
@@ -1878,12 +2158,16 @@ def _waited_from(db: sqlite3.Connection, session: str, name: str) -> str | None:
 def schedule_resume(session: str, name: str, now: float, delays: tuple[float, ...]) -> int | None:
     """The agent's turn ended on an error that passes by itself: plan to tell it to go on
     after the delay of its next resume, delays[resumes]. Returns that resume's number (1
-    for the first); None, with its resumes back to 0, when it had all of them already."""
+    for the first), the plan it has when one waits still; None, with its resumes back to 0,
+    when it had all of them already."""
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
         row = db.execute(
-            "SELECT resumes FROM agents WHERE session = ? AND name = ?", (session, name)
+            "SELECT resumes, resume_at FROM agents WHERE session = ? AND name = ?", (session, name)
         ).fetchone()
+        if row is not None and row["resume_at"] is not None:
+            db.execute("COMMIT")
+            return row["resumes"]
         done = row["resumes"] if row else 0
         if row is None or done >= len(delays):
             _reset_resumes(db, session, name)
@@ -2109,6 +2393,16 @@ def list_events(session: str, after: int = 0) -> list[Event]:
             (session, after),
         ).fetchall()
     return [Event(*r) for r in rows]
+
+
+def last_start_model(session: str) -> str:
+    """What the session's supervisor last started on (START_MODEL), "" for no model."""
+    with connect() as db:
+        row = db.execute(
+            "SELECT detail FROM events WHERE session = ? AND kind = ? ORDER BY id DESC LIMIT 1",
+            (session, START_MODEL),
+        ).fetchone()
+    return row["detail"] if row else ""
 
 
 def run_events(session: str) -> list[Event]:
@@ -3143,6 +3437,26 @@ def sweep(
     return Swept(typed, [replace(m, state=FAILED) for m in failed])
 
 
+def restart_typed(session: str, name: str) -> bool:
+    """The agent's CLI takes input only now (Event.ready): what was typed before that and not
+    confirmed starts over from this hook, as a first attempt (lado.runtime._plan). So it waits
+    for a prompt that may still hold it, then goes back to the queue. Whether the agent is busy
+    for that typing alone: no turn ran, so no hook would end that (lado.hooks)."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        typed = db.execute(
+            "UPDATE messages SET attempts = 1, sent_at = (SELECT seen_at FROM agents"
+            " WHERE session = ? AND name = ?) WHERE session = ? AND recipient = ? AND state = ?"
+            " AND channel = ?",
+            (session, name, session, name, SENT, TYPED),
+        ).rowcount
+        row = db.execute(
+            "SELECT status FROM agents WHERE session = ? AND name = ?", (session, name)
+        ).fetchone()
+        db.execute("COMMIT")
+    return bool(typed and row and row["status"] == BUSY)
+
+
 def confirm_sent(
     session: str, recipient: str, prompt: str, typed: Callable[[Message], str]
 ) -> None:
@@ -3261,6 +3575,12 @@ def _agent(row: sqlite3.Row) -> Agent:
         read_only=bool(row["read_only"]),
         created_at=row["created_at"],
         window_at=row["window_at"],
+        model=row["model"],
+        model_source=row["model_source"],
+        model_detail=row["model_detail"],
+        effort=row["effort"],
+        effort_source=row["effort_source"],
+        effort_detail=row["effort_detail"],
     )
 
 
@@ -3541,7 +3861,12 @@ def _session(row: sqlite3.Row) -> Session:
         row["title"],
         bool(row["resume_at_start"]),
         row["project"],
+        PowerTable.from_json(row["power"]) if row["power"] else None,
     )
+
+
+def _power_json(power: PowerTable | None) -> str | None:
+    return power.to_json() if power else None
 
 
 @dataclass(frozen=True)
@@ -3627,3 +3952,303 @@ def unset_project_variable(id: str, name: str) -> bool:
             ).rowcount
             == 1
         )
+
+
+# The human's model servers and configured models (lado.model_settings keeps their rules).
+
+
+class NameTaken(Exception):
+    """A model server's or a model's name another one has, ignoring case: `name` is its."""
+
+    def __init__(self, name: str):
+        super().__init__(name)
+        self.name = name
+
+
+@dataclass(frozen=True)
+class ModelServer:
+    id: str
+    name: str
+    address: str
+    kind: str
+    apis: tuple[str, ...]
+    created_at: str  # UTC, YYYY-MM-DD HH:MM:SS
+
+
+@dataclass(frozen=True)
+class ConfiguredModel:
+    id: str
+    name: str
+    cli: str
+    model: str
+    server: str  # the id of its ModelServer
+    created_at: str  # UTC, YYYY-MM-DD HH:MM:SS
+
+
+@dataclass(frozen=True)
+class ModelRef:
+    """A reference to a model of the agent CLI `cli`: external (`model_id`, a configured
+    model's id) or built-in (`builtin`, the model as the CLI names it), exactly one of them."""
+
+    cli: str
+    model_id: str | None
+    builtin: str | None
+
+
+@dataclass(frozen=True)
+class ModelsRemoved:
+    """The configured models removed, by name ignoring case, and the agent CLIs whose default
+    was one of them, cleared in the same transaction, by name."""
+
+    names: list[str]
+    cleared: list[str]
+
+
+def _model_server(row: sqlite3.Row) -> ModelServer:
+    return ModelServer(
+        row["id"],
+        row["name"],
+        row["address"],
+        row["kind"],
+        tuple(json.loads(row["apis"])),
+        row["created_at"],
+    )
+
+
+def _configured_model(row: sqlite3.Row) -> ConfiguredModel:
+    return ConfiguredModel(
+        row["id"], row["name"], row["cli"], row["model"], row["server"], row["created_at"]
+    )
+
+
+def _taken(db: sqlite3.Connection, table: str, name: str) -> NameTaken | None:
+    """NameTaken naming the entry of `table` whose name is `name` ignoring case."""
+    row = db.execute(f"SELECT name FROM {table} WHERE folded = ?", (name.casefold(),)).fetchone()
+    return NameTaken(row["name"]) if row else None
+
+
+def add_model_server(
+    id: str, name: str, address: str, kind: str, apis: Sequence[str]
+) -> ModelServer:
+    """Save a model server; NameTaken when another has its name ignoring case."""
+    with connect() as db:
+        try:
+            db.execute(
+                "INSERT INTO model_servers (id, name, folded, address, kind, apis)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (id, name, name.casefold(), address, kind, json.dumps(list(apis))),
+            )
+        except sqlite3.IntegrityError:
+            taken = _taken(db, "model_servers", name)
+            if taken is None:
+                raise
+            raise taken from None
+        row = db.execute("SELECT * FROM model_servers WHERE id = ?", (id,)).fetchone()
+    return _model_server(row)
+
+
+def replace_model_server(id: str, address: str, kind: str, apis: Sequence[str]) -> bool:
+    """Replace a saved server's address, type and APIs; False when there is no such server.
+    Its models keep referring to it."""
+    with connect() as db:
+        return (
+            db.execute(
+                "UPDATE model_servers SET address = ?, kind = ?, apis = ? WHERE id = ?",
+                (address, kind, json.dumps(list(apis)), id),
+            ).rowcount
+            == 1
+        )
+
+
+def model_servers() -> list[ModelServer]:
+    """Every saved model server, by name ignoring case."""
+    with connect() as db:
+        rows = db.execute("SELECT * FROM model_servers ORDER BY folded, id").fetchall()
+    return [_model_server(row) for row in rows]
+
+
+def model_server(name: str) -> ModelServer | None:
+    """The saved model server named `name` ignoring case."""
+    with connect() as db:
+        row = db.execute(
+            "SELECT * FROM model_servers WHERE folded = ?", (name.casefold(),)
+        ).fetchone()
+    return _model_server(row) if row else None
+
+
+def remove_model_server(id: str) -> bool:
+    """False when there was no such server; sqlite3.IntegrityError while a model refers to
+    it."""
+    with connect() as db:
+        return db.execute("DELETE FROM model_servers WHERE id = ?", (id,)).rowcount == 1
+
+
+class ModelsChanged(Exception):
+    """The models on a server are not the ones confirmed: `names` are the ones on it now, by
+    name ignoring case."""
+
+    def __init__(self, names: list[str]):
+        super().__init__(", ".join(names))
+        self.names = names
+
+
+def _clear_defaults_on(db: sqlite3.Connection, where: str, value: str) -> list[str]:
+    """Delete the defaults on the models matching `where` (a condition on `value`), inside the
+    caller's transaction: the agent CLIs cleared, by name."""
+    rows = db.execute(
+        "SELECT cli FROM cli_defaults WHERE model_id IN"
+        f" (SELECT id FROM models WHERE {where} = ?) ORDER BY cli",
+        (value,),
+    ).fetchall()
+    db.execute(
+        f"DELETE FROM cli_defaults WHERE model_id IN (SELECT id FROM models WHERE {where} = ?)",
+        (value,),
+    )
+    return [row["cli"] for row in rows]
+
+
+def remove_model_server_with_models(
+    id: str, confirmed: Collection[str] | None = None
+) -> ModelsRemoved | None:
+    """Remove the server of id `id`, every configured model on it and the defaults on them, in
+    one transaction: what was removed; None when there was no such server. With `confirmed`,
+    ModelsChanged and nothing removed unless the models on it are those names, ignoring
+    case."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        rows = db.execute(
+            "SELECT name FROM models WHERE server = ? ORDER BY folded", (id,)
+        ).fetchall()
+        names = [row["name"] for row in rows]
+        if confirmed is not None and {n.casefold() for n in names} != {
+            n.casefold() for n in confirmed
+        }:
+            db.execute("ROLLBACK")
+            raise ModelsChanged(names)
+        cleared = _clear_defaults_on(db, "server", id)
+        db.execute("DELETE FROM models WHERE server = ?", (id,))
+        if db.execute("DELETE FROM model_servers WHERE id = ?", (id,)).rowcount != 1:
+            db.execute("ROLLBACK")
+            return None
+        db.execute("COMMIT")
+    return ModelsRemoved(names, cleared)
+
+
+def add_model(name: str, cli: str, model: str, server: str) -> ConfiguredModel:
+    """Save a configured model on the server of id `server`, under a new id; NameTaken when
+    another has its name ignoring case, sqlite3.IntegrityError for a server not saved."""
+    with connect() as db:
+        taken = _taken(db, "models", name)
+        if taken is not None:
+            raise taken
+        try:
+            db.execute(
+                "INSERT INTO models (id, folded, name, cli, model, server)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (uuid.uuid4().hex[:12], name.casefold(), name, cli, model, server),
+            )
+        except sqlite3.IntegrityError:
+            taken = _taken(db, "models", name)
+            if taken is None:
+                raise
+            raise taken from None
+        row = db.execute("SELECT * FROM models WHERE folded = ?", (name.casefold(),)).fetchone()
+    return _configured_model(row)
+
+
+def model_server_by_id(id: str) -> ModelServer | None:
+    """The saved model server of id `id`."""
+    with connect() as db:
+        row = db.execute("SELECT * FROM model_servers WHERE id = ?", (id,)).fetchone()
+    return _model_server(row) if row else None
+
+
+def models() -> list[ConfiguredModel]:
+    """Every configured model, by name ignoring case."""
+    with connect() as db:
+        rows = db.execute("SELECT * FROM models ORDER BY folded").fetchall()
+    return [_configured_model(row) for row in rows]
+
+
+def model(name: str) -> ConfiguredModel | None:
+    """The configured model named `name` ignoring case."""
+    with connect() as db:
+        row = db.execute("SELECT * FROM models WHERE folded = ?", (name.casefold(),)).fetchone()
+    return _configured_model(row) if row else None
+
+
+def model_by_id(id: str) -> ConfiguredModel | None:
+    """The configured model of id `id`."""
+    with connect() as db:
+        row = db.execute("SELECT * FROM models WHERE id = ?", (id,)).fetchone()
+    return _configured_model(row) if row else None
+
+
+def models_on(server: str) -> list[ConfiguredModel]:
+    """The configured models on the server of id `server`, by name ignoring case."""
+    with connect() as db:
+        rows = db.execute(
+            "SELECT * FROM models WHERE server = ? ORDER BY folded", (server,)
+        ).fetchall()
+    return [_configured_model(row) for row in rows]
+
+
+def rename_model(name: str, new: str) -> bool:
+    """Rename the configured model named `name` ignoring case to `new`, its CLI, model and
+    server kept; False when there is none, NameTaken when another has `new` ignoring case."""
+    with connect() as db:
+        try:
+            return (
+                db.execute(
+                    "UPDATE models SET name = ?, folded = ? WHERE folded = ?",
+                    (new, new.casefold(), name.casefold()),
+                ).rowcount
+                == 1
+            )
+        except sqlite3.IntegrityError:
+            taken = _taken(db, "models", new)
+            if taken is None:
+                raise
+            raise taken from None
+
+
+def remove_model(name: str) -> ModelsRemoved | None:
+    """Remove the configured model named `name` ignoring case and the default on it, in one
+    transaction: what was removed; None when there is no such model."""
+    folded = name.casefold()
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute("SELECT name FROM models WHERE folded = ?", (folded,)).fetchone()
+        if row is None:
+            db.execute("ROLLBACK")
+            return None
+        cleared = _clear_defaults_on(db, "folded", folded)
+        db.execute("DELETE FROM models WHERE folded = ?", (folded,))
+        db.execute("COMMIT")
+    return ModelsRemoved([row["name"]], cleared)
+
+
+def cli_defaults() -> list[ModelRef]:
+    """Every agent CLI's default model, by CLI."""
+    with connect() as db:
+        rows = db.execute("SELECT * FROM cli_defaults ORDER BY cli").fetchall()
+    return [ModelRef(row["cli"], row["model_id"], row["builtin"]) for row in rows]
+
+
+def set_cli_default(ref: ModelRef) -> None:
+    """Make `ref` its agent CLI's default model, replacing the one it had;
+    sqlite3.IntegrityError for a model not saved, or a reference that is not exactly one of
+    external and built-in."""
+    with connect() as db:
+        db.execute(
+            "INSERT INTO cli_defaults (cli, model_id, builtin) VALUES (?, ?, ?)"
+            " ON CONFLICT (cli) DO UPDATE SET model_id = excluded.model_id,"
+            " builtin = excluded.builtin",
+            (ref.cli, ref.model_id, ref.builtin),
+        )
+
+
+def clear_cli_default(cli: str) -> bool:
+    """Clear the default model of the agent CLI `cli`; False when it had none."""
+    with connect() as db:
+        return db.execute("DELETE FROM cli_defaults WHERE cli = ?", (cli,)).rowcount == 1

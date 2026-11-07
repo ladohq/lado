@@ -49,8 +49,9 @@ EVIDENCE = Path(tempfile.gettempdir(), "lado-live-evidence")
 def with_model(provider_class: type[base.Provider], model: str) -> base.Provider:
     """The provider, with `--model` added to its agents' argv.
 
-    LADO has no model option yet; this is test-only. Hooks run in their own processes and
-    look up the real provider by name, which parses events the same way.
+    The tests' own model for every session of the provider, apart from a session's model
+    (`lado start --model`). Hooks run in their own processes and look up the real provider
+    by name, which parses events the same way.
     """
 
     class WithModel(provider_class):

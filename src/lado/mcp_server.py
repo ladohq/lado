@@ -14,7 +14,7 @@ from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
 from mcp.server.mcpserver.utilities.types import Image
 from mcp.types import CallToolResult, TextContent
 
-from lado import artifacts, kits, runs, runtime, state, telemetry, tmux
+from lado import artifacts, kits, model_settings, runs, runtime, state, telemetry, tmux
 
 
 @contextmanager
@@ -133,7 +133,9 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
     def list_agents() -> list[dict]:
         """List the agents in this session: role, provider, status (with since when and for
         how many seconds; why it waits when LADO could not deliver it messages, or why it
-        stopped), branch and worktree."""
+        stopped), branch and worktree, and the model and effort it runs on (null while
+        unknown), each with its source (`cli`: the CLI's own choice; `cli-config`: the
+        user's config of the CLI) and the source's detail."""
         since = state.status_since(session)
         now = datetime.datetime.now(datetime.timezone.utc)
         reasons = runtime.status_reasons(session)
@@ -154,6 +156,12 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
                     "worktree": a.cwd,
                     "run": a.run,
                     "task": (a.task or "")[:200],
+                    "model": model_settings.model_name(a),
+                    "model_source": a.model_source,
+                    "model_detail": a.model_detail,
+                    "effort": a.effort,
+                    "effort_source": a.effort_source,
+                    "effort_detail": a.effort_detail,
                 }
             )
         return agents
@@ -344,6 +352,21 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
             with _reasons():
                 return runtime.recommend(session, agent, text, gate, question, choice, disagrees)
 
+        @server.tool()
+        def list_models(provider: str | None = None) -> dict:
+            """The models of each installed agent CLI, the session's first, or of `provider`
+            alone, for spawn_worker's `model`: `starts_on` is what a worker of it starts on with
+            no `model`, `builtin` its own models, `external` the human's on model servers, each
+            with why it cannot start (`blocked`), `note` why a CLI has no full list. It asks no
+            server: spawn_worker checks the one that matters.
+
+            Leave `model` out unless the human or the task names one. When a model is refused,
+            tell the human the reason and ask: never pick another by yourself. It holds for that
+            one spawn.
+            """
+            with _reasons():
+                return runtime.list_models(session, provider)
+
     # COMMAND_TOOLS, the supervisor's.
     if me and me.name == runtime.SUPERVISOR and not me.read_only:
 
@@ -355,6 +378,7 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
             role: str | None = None,
             without: list[str] | None = None,
             run: str | None = None,
+            model: str | None = None,
         ) -> dict:
             """Start a new worker agent on `task` in its own git worktree and branch.
 
@@ -362,25 +386,32 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
             one. Without `name`, the worker is named after its role: "developer", else
             "developer-2", …. `without` switches off skills or MCP servers for this worker,
             e.g. ["skill:x", "mcp:y"], or only those of one kit: ["skill:x@kit"].
-            `provider` is the agent CLI to run it with: "claude", "kilo" or "opencode" (default: the
-            session's). The worker reports back with send_message when it is done or blocked,
-            or with flow_advance when it finished a step of a run.
+            `provider` is the agent CLI to run it with: "claude", "codex", "kilo" or "opencode"
+            (default: the session's). The worker reports back with send_message when it is done
+            or blocked, or with flow_advance when it finished a step of a run.
 
             With `run`, the worker works for that flow run, in the run's worktree and branch.
             If the run's current step waits for a worker, the step is its task: leave out
             `task` (and `role`, which then defaults to the step's role).
+
+            `model` is a name from list_models, which picks the worker's CLI when `provider` is
+            left out; "" is the CLI's own settings. Leave it out unless the human or the task
+            names one: the worker then starts on the session's model. It holds for that one
+            spawn, so give it again for a next worker or after a resume. Whatever the worker
+            starts on is checked first: when a model is refused, no worker exists; tell the human
+            the reason and ask: never pick another by yourself.
             """
             warnings: list[str] = []
             with _reasons():
                 if run:
                     worker = runs.spawn_worker(
-                        session, run, role, task, name, provider, without, warnings
+                        session, run, role, task, name, provider, without, warnings, model
                     )
                 elif not task or not task.strip():
                     raise runtime.LadoError("task is missing; give the worker a task")
                 else:
                     worker = runtime.spawn_worker(
-                        session, task, name, provider, role, without, warnings=warnings
+                        session, task, name, provider, role, without, warnings=warnings, model=model
                     )
             return {
                 "name": worker.name,

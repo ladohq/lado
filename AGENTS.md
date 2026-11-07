@@ -64,7 +64,7 @@ One line per module; each module's behaviour in detail: [docs/design/modules.md]
   - `scratch.py`: a new or empty folder made a repository (`lado start --new`, From scratch).
   - `projects.py`: the workspace (`LADO_REPOS`, else `~/workspace`) and projects in it.
   - `providers/`: the agent CLIs behind one interface: `base.py`, `claude.py`, `codex.py`,
-    `opencode_family.py` (with `opencode_plugin.js`), `kilo.py`, `opencode.py`, `gitpaths.py`.
+    `opencode_family.py` (with `opencode_plugin.js`, `opencode_tui_plugin.js`), `kilo.py`, `opencode.py`, `gitpaths.py`.
   - `tmux.py`: tmux calls on LADO's private server (`tmux -L lado`).
   - `gui_session.py`: where a process runs on macOS (the keychain's graphical session).
   - `agent_env.py`: an agent's environment, from the user's login shell.
@@ -83,12 +83,12 @@ One line per module; each module's behaviour in detail: [docs/design/modules.md]
   - `hooks.py`: neutral hook logic: status, hand-over, the forgotten-reply check.
   - `state.py`: SQLite state in `~/.lado/lado.db`. A schema change: bump `SCHEMA_VERSION`,
     add a step to `MIGRATIONS` and update `tests/agent_helpers.previous_schema`.
-  - `fingerprint.py`: a read-only agent's git fingerprint.
-  - `log.py`: `lado log`; `stats.py`: `lado stats`.
-  - `loop.py`: the session loop, `lado loop <session>`.
+  - `fingerprint.py`: a read-only agent's git fingerprint; `model_check.py` a session's model;
+    `model_servers.py` what a model server is; `model_settings.py` saved servers and models.
+  - `log.py`: `lado log`; `stats.py`: `lado stats`; `loop.py`: the session loop, `lado loop`.
   - `server/`: the UI server (`lado server`, `lado ui`): `app.py`, `auth.py`, `feed.py`,
-    `models.py`, `terminals.py`, `clones.py`, `launch.py`, `provider_check.py`, `run.py`;
-    `static/` the bundle.
+    `models.py`, `terminals.py`, `clones.py`, `launch.py`, `provider_check.py`,
+    `model_entries.py`, `run.py`; `static/` the bundle.
 - `web/`: the web UI (React, TypeScript, Vite). `openapi.json` and `src/api.gen.ts` are made
   by `make web-types` and committed.
 - `tests/`: unit tests; `integration/` (fake agent), `ui/` (browser), `live/` (real CLIs),

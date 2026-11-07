@@ -22,6 +22,15 @@ function Icon({ children }: { children: ReactNode }) {
   );
 }
 
+// A model server: two stacked units.
+export const ServerIcon = () => (
+  <Icon>
+    <rect x="3" y="4" width="18" height="7" rx="1.5" />
+    <rect x="3" y="13" width="18" height="7" rx="1.5" />
+    <path d="M7 7.5h.01M7 16.5h.01" />
+  </Icon>
+);
+
 // The feed's mark while the connection is lost (docs/design/ui.md, A lost connection).
 export const NoNetworkIcon = () => (
   <Icon>

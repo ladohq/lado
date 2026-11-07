@@ -14,13 +14,13 @@ import type {
   SessionInfo,
 } from "./api";
 import { App } from "./App";
-import { FakeEventSource, FakeSocket, narrowColumn, stream, stubDialogs, wideColumn } from "./fakes";
+import { CLI_DEFAULT, FakeEventSource, FakeSocket, narrowColumn, stream, stubDialogs, wideColumn } from "./fakes";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
 
 const NO_WAITS = { gates: 0, questions: 0, agents: 0 };
-const SETTINGS = { kits: ["team"], provider: "claude", permission_mode: null, without: [], ran_seconds: 0, running_since: null, stopped_at: null, busy: 0, title: null, project: null };
+const SETTINGS = { kits: ["team"], provider: "claude", permission_mode: null, without: [], ran_seconds: 0, running_since: null, stopped_at: null, busy: 0, title: null, project: null, model_missing: false };
 const SESSIONS: SessionInfo[] = [
   { name: "lado", repo: "/src/lado", status: "running", agents: 3, waiting: NO_WAITS, ...SETTINGS },
   { name: "old", repo: "/src/old", status: "stopped", agents: 0, waiting: NO_WAITS, ...SETTINGS },
@@ -40,6 +40,8 @@ function agent(name: string, more: Partial<AgentInfo> = {}): AgentInfo {
     worktree: name === "supervisor" ? null : `/src/lado/.lado/worktrees/lado/${name}`,
     spawned_at: "2026-10-04T10:40:00.000Z",
     since: "2026-10-04T10:50:00.000Z",
+    model: CLI_DEFAULT,
+    effort: CLI_DEFAULT,
     ...more,
   };
 }
@@ -355,6 +357,71 @@ test("an agent's page has its head with the run and step, its branch, work, work
   expect(facts.textContent).toContain("“AgentInfo: run step and since”");
   expect(facts.textContent).toMatch(/as of \d/);
   expect(within(region).queryByRole("note")).toBeNull();
+});
+
+test("an agent's page names its model in the head and its model and effort first among the facts", async () => {
+  const config = { source: "cli-config", detail: "profile work", words: "your Codex config, profile work" };
+  serve({
+    agents: [
+      SUPERVISOR,
+      agent("developer", {
+        provider: "codex",
+        model: { name: "gpt-5.6-sol", ...config },
+        effort: { name: "high", ...config },
+      }),
+    ],
+  });
+  open("/sessions/lado/agents/developer");
+  const region = await page("developer");
+  expect(within(region).getByRole("banner").textContent).toContain("developer · codex · gpt-5.6-sol");
+  const facts = region.querySelector("dl")!;
+  expect([...facts.querySelectorAll("dt")].slice(0, 2).map((dt) => dt.textContent)).toEqual(["Model", "Effort"]);
+  const [model, effort] = [...facts.querySelectorAll("dd")];
+  expect(model.textContent).toBe("gpt-5.6-sol · your Codex config, profile work");
+  expect(model.querySelector("code")!.textContent).toBe("gpt-5.6-sol");
+  expect(model.querySelector(".muted")!.textContent).toBe(" · your Codex config, profile work");
+  expect(effort.textContent).toBe("high · your Codex config, profile work");
+});
+
+test.each([
+  ["chosen for the session", "session"],
+  ["default in Settings", "default"],
+  ["changed in the agent CLI", "cli-changed"],
+])("an agent on a server's model names it, its id, server and address: %s", async (words, source) => {
+  const model = {
+    name: "qwen3-8b",
+    source,
+    detail: null,
+    words,
+    configured: "Локальная Qwen",
+    server: "LM Studio дома",
+    address: "http://localhost:1234",
+  };
+  serve({ agents: [SUPERVISOR, agent("developer", { provider: "opencode", model })] });
+  open("/sessions/lado/agents/developer");
+  const region = await page("developer");
+  expect(within(region).getByRole("banner").textContent).toContain("developer · opencode · Локальная Qwen");
+  const fact = region.querySelector("dl dd")!;
+  expect(fact.textContent).toBe(
+    `Локальная Qwen · qwen3-8b · server LM Studio дома, http://localhost:1234 · ${words}`,
+  );
+  expect([...fact.querySelectorAll("code")].map((code) => code.textContent)).toEqual([
+    "qwen3-8b",
+    "http://localhost:1234",
+  ]);
+});
+
+test("an agent whose CLI has named no model says CLI default, with no name", async () => {
+  serve({ agents: [SUPERVISOR, agent("developer", { provider: "kilo" })] });
+  open("/sessions/lado/agents/developer");
+  const region = await page("developer");
+  expect(within(region).getByRole("banner").textContent).toContain("developer · kilo · CLI default model");
+  const [model, effort] = [...region.querySelector("dl")!.querySelectorAll("dd")];
+  for (const fact of [model, effort]) {
+    expect(fact.textContent).toBe("CLI default");
+    expect(fact.querySelector("code")).toBeNull();
+    expect(fact.querySelector(".muted")).not.toBeNull();
+  }
 });
 
 test("an agent's work says what of it is gone", async () => {

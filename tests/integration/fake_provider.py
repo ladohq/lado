@@ -6,12 +6,13 @@ must know the fake providers too. So run as a script, this file is `lado` with t
 
 import dataclasses
 import json
+import os
 import sys
 import time
 from pathlib import Path
 
 from lado import cli, providers, state
-from lado.providers import base, claude
+from lado.providers import base, claude, codex, opencode_family
 
 LADO = Path(__file__).resolve()
 AGENT = LADO.with_name("fake_agent.py")
@@ -97,7 +98,11 @@ class FakeProvider(base.Provider):
         }
         config_file = config_dir / "fake.json"
         config_file.write_text(json.dumps(config, indent=2))
-        return base.Launch([sys.executable, str(AGENT), str(config_file)])
+        # The fake agent names FAKE_AGENT_MODEL in its hooks, as a CLI names its model.
+        env = {"FAKE_AGENT_MODEL": spec.model} if spec.model else {}
+        return base.Launch(
+            [sys.executable, str(AGENT), str(config_file)], env, model=self.session_choice(spec)
+        )
 
     def parse_event(self, native: str, payload: str) -> base.Event | None:
         if native not in EVENTS:
@@ -113,6 +118,10 @@ class FakeProvider(base.Provider):
             output_ignored=data.get("output_ignored", False),
             continued=data.get("continued", False),
             background=data.get("background", False),
+            model=data.get("model", ""),
+            effort=data.get("effort"),
+            note=data.get("note", ""),
+            ready=data.get("ready", False),
         )
 
     def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> base.Blocker:
@@ -127,6 +136,15 @@ class FakeProvider(base.Provider):
 
     def continue_output(self, text: str) -> str | None:
         return text
+
+    def model_list(self, env) -> base.ModelList:
+        # Its list is FAKE_AGENT_MODELS of the agents' environment (comma-separated); none
+        # without it.
+        listed = env.get("FAKE_AGENT_MODELS")
+        if listed is None:
+            return base.ModelList(why="the fake agent gives no list of models")
+        models = tuple(m.strip() for m in listed.split(",") if m.strip())
+        return base.ModelList(models=models, command="FAKE_AGENT_MODELS")
 
 
 ASKS_FIRST = 'Fake agent asks a question first: type "yes" in its terminal'
@@ -213,6 +231,95 @@ class FakeWindowProvider(FakeProvider):
         return (base.LoginAction("login", "Add a login…", (sys.executable, str(LOGIN_SCRIPT))),)
 
 
+# "fake-claude" holds one model per process, as Claude Code does: a model of a server is its whole
+# process, written into its settings by Claude Code's own code, and then it needs no login.
+class FakeClaudeProvider(FakeLoginProvider):
+    title = "Fake Claude"
+    server_api = base.ANTHROPIC_MESSAGES
+    min_context = 32768
+    server_model = claude.ClaudeProvider.server_model
+    launched_on = claude.ClaudeProvider.launched_on
+
+    def needs_login(self, env) -> bool:
+        return not env.get(base.MODEL_SERVER) and super().needs_login(env)
+
+    def launch_command(self, agent, session, spec) -> base.Launch:
+        launch = super().launch_command(agent, session, spec)
+        settings = claude._server_settings(spec.servers[0]) if spec.servers else {}
+        (base.config_dir(agent) / "settings.json").write_text(json.dumps(settings, indent=2))
+        # As Claude Code hands the `env` of its settings to the processes it starts.
+        handed = settings.get("env", {})
+        config_file = base.config_dir(agent) / "fake.json"
+        config = json.loads(config_file.read_text())
+        config["mcp"]["lado"]["env"] = {**config["mcp"]["lado"]["env"], **handed}
+        config_file.write_text(json.dumps(config, indent=2))
+        env = dict(launch.env)
+        for server in spec.servers:
+            env[base.MODEL_SERVER] = server.id
+            if server.key is not None:
+                env[server.key_variable] = server.key
+        return dataclasses.replace(launch, env=env, cli_env=tuple(handed))
+
+
+# "fake-codex" holds one model per process, as Codex does: a model of a server goes into its
+# config.toml, and its failed turn is read from its journal, both by Codex's own code. The tests
+# write the journal.
+class FakeCodexProvider(FakeLoginProvider):
+    title = "Fake Codex"
+    server_api = base.RESPONSES
+    server_model = codex.CodexProvider.server_model
+    launched_on = codex.CodexProvider.launched_on
+    failed_turn = codex.CodexProvider.failed_turn
+
+    def needs_login(self, env) -> bool:
+        return not env.get(base.MODEL_SERVER) and super().needs_login(env)
+
+    def launch_command(self, agent, session, spec) -> base.Launch:
+        launch = super().launch_command(agent, session, spec)
+        config: dict = {}
+        env = dict(launch.env)
+        warnings = list(launch.warnings)
+        if spec.servers:
+            server = spec.servers[0]
+            home = base.config_dir(agent)
+            codex._on_server(config, home, server, spec.environ or os.environ, warnings)
+            env[base.MODEL_SERVER] = server.id
+            if server.key is not None:
+                env[server.key_variable] = server.key
+        codex._write_config(base.config_dir(agent), config)
+        return dataclasses.replace(launch, env=env, warnings=warnings)
+
+
+# "fake-server" takes the model servers of its launch as OpenCode and Kilo do: beside its own
+# models, each key in its environment. FAKE_AGENT_SERVERS says what it got, for the tests.
+class FakeServerProvider(FakeProvider):
+    title = "Fake server agent"
+    server_api = base.CHAT_COMPLETIONS
+    external_whole_process = False
+    min_context = 32768
+    server_model = opencode_family.OpenCodeFamily.server_model
+    on_server = opencode_family.OpenCodeFamily.on_server
+
+    def launch_command(self, agent, session, spec) -> base.Launch:
+        launch = super().launch_command(agent, session, spec)
+        got = [
+            {
+                "id": s.id,
+                "name": s.name,
+                "models": s.models,
+                "key_variable": s.key_variable,
+                "entries": {
+                    model: opencode_family.model_entry(name, s.limits.get(model))
+                    for model, name in s.models
+                },
+            }
+            for s in spec.servers
+        ]
+        keys = {s.key_variable: s.key for s in spec.servers if s.key is not None}
+        env = {**launch.env, "FAKE_AGENT_SERVERS": json.dumps(got), **keys}
+        return dataclasses.replace(launch, env=env)
+
+
 # "fake" gets queued messages from its turn-end hook and confirms them by its prompt-submit
 # hook, like OpenCode and Kilo; "fake-stop" by the next turn's end, like Claude Code;
 # "fake-paste" has them typed into its window; "fake-printed" as "fake-stop", and its CLI
@@ -226,6 +333,9 @@ FAKES = (
     FakeProvider("fake-paste", False),
     FakeLoginProvider("fake-login"),
     FakeWindowProvider("fake-window", True),
+    FakeServerProvider("fake-server", True),
+    FakeClaudeProvider("fake-claude"),
+    FakeCodexProvider("fake-codex"),
 )
 
 

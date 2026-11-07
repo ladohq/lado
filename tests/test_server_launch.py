@@ -10,7 +10,17 @@ import agent_helpers
 import pytest
 from fastapi.testclient import TestClient
 
-from lado import doctor, gitcache, projects, providers, runs, runtime, state
+from lado import (
+    doctor,
+    gitcache,
+    model_servers,
+    model_settings,
+    projects,
+    providers,
+    runs,
+    runtime,
+    state,
+)
 from lado.server import app as server_app
 from lado.server import auth
 from lado.server import launch as server_launch
@@ -33,6 +43,12 @@ def installed(monkeypatch):
     found = set(providers.names())
     monkeypatch.setattr(server_launch, "_installed", lambda provider: provider.name in found)
     return found
+
+
+@pytest.fixture(autouse=True)
+def no_kept_lists():
+    yield
+    server_launch.forget_model_lists()  # kept by the process: no later test gets them
 
 
 def folder(client, path) -> dict:
@@ -940,7 +956,7 @@ def test_a_fresh_start_without_the_login_is_400_and_makes_no_folder(
     assert (answer.status_code, answer.json()["detail"]) == (
         400,
         "Claude Code is not logged in, so the session was not started: log in in LADO's UI "
-        "(Settings → Providers and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN as "
+        "(Settings → Agent CLIs and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN as "
         "LADO's secret or a project secret",
     )
     assert not (tmp_path / "shop").exists()
@@ -1113,3 +1129,318 @@ def test_a_project_with_its_repositories(client, shop):
 def test_no_project_without_a_database(client, lado_home):
     assert client.get("/api/projects/shop").status_code == 404
     assert not (lado_home / "lado.db").exists()
+
+
+def _models(monkeypatch, name, *models):
+    """`name`'s CLI lists `models`; how often it was asked, in the list returned."""
+    asked = []
+
+    def model_list(self, env):
+        asked.append(env)
+        return providers.base.ModelList(models=models, command=f"{name} models")
+
+    monkeypatch.setattr(type(providers.get(name)), "model_list", model_list)
+    return asked
+
+
+def test_a_session_starts_with_a_model(client, repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a")
+    answer = launch(client, repo, name="s", provider="kilo", model="kilo/a")
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["session"]["model"] == "kilo/a"
+    assert state.get_session("s").power == state.PowerTable.single("kilo", "kilo/a")
+    answer = launch(client, repo, name="t", provider="kilo", model="kilo/z")
+    assert answer.status_code == 409
+    assert answer.json()["detail"] == {
+        "message": "kilo/z is not in Kilo CLI's list of models; kilo models prints the list",
+        "field": "model",
+        "text": "kilo/z is not in Kilo CLI's list of models",
+        "short": "kilo/z is not in Kilo CLI's list of models",
+        "peek": "not in its list",
+        "retry": True,
+    }
+    assert state.get_session("t") is None
+
+
+def test_an_empty_model_of_a_new_session_is_the_cli_s_settings(
+    client, repo, fake_tmux, monkeypatch
+):
+    answer = launch(client, repo, name="s", provider="kilo", model="")
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["session"]["model"] == ""
+    assert state.get_session("s").power == state.PowerTable.single("kilo", "")
+
+
+def test_a_kept_model_refused_at_a_resume_is_the_field_s(client, repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a")
+    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
+    runtime.stop_session("s")
+    _models(monkeypatch, "kilo", "kilo/b")
+    answer = client.post("/api/sessions/s/resume", json={})
+    assert answer.status_code == 409
+    assert answer.json()["detail"]["field"] == "model"
+    assert answer.json()["detail"]["message"].endswith("or --model <model> for another")
+
+
+def _saved(name="Локальная Qwen", cli="opencode", model="qwen3-8b", address="http://localhost:1"):
+    server = state.add_model_server(
+        "lm", "LM Studio дома", address, "LM Studio", [providers.base.CHAT_COMPLETIONS]
+    )
+    return state.add_model(name, cli, model, server.id)
+
+
+def _server_answers(monkeypatch, *models, limits=None):
+    chat = frozenset([providers.base.CHAT_COMPLETIONS])
+    monkeypatch.setattr(
+        model_settings,
+        "probe_saved",
+        lambda server: model_servers.Probe(server.address, False, "LM Studio", chat, models),
+    )
+    monkeypatch.setattr(model_servers, "context_limits", lambda root, key: limits or {})
+
+
+def _server_silent(monkeypatch):
+    def probe(server):
+        raise model_servers.ProbeError(
+            f"{server.address} does not answer (refused)", silent="refused"
+        )
+
+    monkeypatch.setattr(model_settings, "probe_saved", probe)
+
+
+CHECK = "/api/session-model/check"
+
+
+def test_the_check_of_the_cli_s_settings_asks_nothing(client, monkeypatch):
+    _server_silent(monkeypatch)
+    found = client.post(CHECK, json={"cli": "opencode", "model": ""}).json()
+    assert found["kind"] == "default"
+
+
+def test_the_check_of_a_model_on_a_server_says_it_answers(client, monkeypatch, fake_clis):
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    server_launch.forget_model_lists()
+    _saved()
+    _server_answers(monkeypatch, "qwen3-8b")
+    found = client.post(CHECK, json={"cli": "opencode", "model": "Локальная Qwen"}).json()
+    assert (found["kind"], found["server"]) == ("ok", "LM Studio дома")
+    assert found["text"] == "LM Studio дома lists qwen3-8b among its models."
+    assert found["warnings"] == []
+
+
+def test_the_check_of_a_silent_server_says_what_the_window_shows(client, monkeypatch, fake_clis):
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    server_launch.forget_model_lists()
+    _saved()
+    _server_silent(monkeypatch)
+    found = client.post(CHECK, json={"cli": "opencode", "model": "Локальная Qwen"}).json()
+    assert found["kind"] == "refused"
+    assert found["text"] == (
+        "LM Studio дома does not answer (refused); qwen3-8b is on it. Start the server or pick "
+        "another model."
+    )
+    assert found["short"] == "LM Studio дома does not answer"
+    assert (found["peek"], found["retry"]) == ("not answering", True)
+    assert found["server"] == "LM Studio дома"
+
+
+def test_the_check_warns_of_a_key_over_http_of_the_chosen_model_only(
+    client, monkeypatch, fake_clis
+):
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    server_launch.forget_model_lists()
+    saved = _saved(address="http://llm.example.com")
+    model_settings._write_key(saved.server, "KEY-CANARY")
+    _server_answers(monkeypatch, "qwen3-8b", limits={"qwen3-8b": providers.base.Limit(65536)})
+    asked = {"cli": "opencode", "model": "Локальная Qwen"}
+    answer = client.post(CHECK, json=asked)
+    assert answer.json()["warnings"] == [
+        "The key of LM Studio дома goes unencrypted (http) to an address outside your machine "
+        "and network."
+    ]
+    assert answer.json()["peek"] == "key over http"
+    assert "KEY-CANARY" not in answer.text
+    asked["model"] = "opencode/big-pickle"
+    assert client.post(CHECK, json=asked).json()["warnings"] == []
+
+
+def test_the_check_warns_of_a_context_too_small_and_lets_the_start_go(
+    client, monkeypatch, fake_clis
+):
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    server_launch.forget_model_lists()
+    _saved()
+    limits = {"qwen3-8b": providers.base.Limit(16000)}
+    _server_answers(monkeypatch, "qwen3-8b", limits=limits)
+    found = client.post(CHECK, json={"cli": "opencode", "model": "Локальная Qwen"}).json()
+    assert found["kind"] == "ok"
+    assert found["warnings"] == [
+        "Локальная Qwen on LM Studio дома has a context of 16,000 tokens; OpenCode needs about "
+        "32,768 for its instructions and tools: load the model with a larger context (lms load "
+        '--context-length); see "What to expect of a small model" in docs/install.md'
+    ]
+    assert found["peek"] == "context too small"
+
+
+def test_two_warnings_are_both_named_for_the_folded_advanced(client, monkeypatch, fake_clis):
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    server_launch.forget_model_lists()
+    saved = _saved(address="http://llm.example.com")
+    model_settings._write_key(saved.server, "KEY-CANARY")
+    limits = {"qwen3-8b": providers.base.Limit(16000)}
+    _server_answers(monkeypatch, "qwen3-8b", limits=limits)
+    found = client.post(CHECK, json={"cli": "opencode", "model": "Локальная Qwen"}).json()
+    assert len(found["warnings"]) == 2
+    assert found["peek"] == "key over http, context too small"
+
+
+def test_the_check_of_a_public_server_s_unknown_context_warns_in_the_folded_advanced(
+    client, monkeypatch, fake_clis
+):
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    server_launch.forget_model_lists()
+    _saved(address="https://llm.example.com")
+    _server_answers(monkeypatch, "qwen3-8b", limits={})
+    found = client.post(CHECK, json={"cli": "opencode", "model": "Локальная Qwen"}).json()
+    assert found["kind"] == "ok"
+    assert found["warnings"] == [
+        "Локальная Qwen on LM Studio дома: the server reports no context for it, so the agent "
+        'compacts late and its answers have no limit; see "A cloud provider" in docs/install.md'
+    ]
+    assert found["peek"] == "context unknown"
+
+
+def test_the_check_of_a_model_of_enough_or_unknown_context_does_not_warn(
+    client, monkeypatch, fake_clis
+):
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    server_launch.forget_model_lists()
+    _saved()
+    asked = {"cli": "opencode", "model": "Локальная Qwen"}
+    _server_answers(monkeypatch, "qwen3-8b", limits={"qwen3-8b": providers.base.Limit(32768)})
+    assert client.post(CHECK, json=asked).json()["warnings"] == []
+    _server_answers(monkeypatch, "qwen3-8b")
+    assert client.post(CHECK, json=asked).json()["warnings"] == []
+
+
+def test_claude_code_with_a_default_on_a_server_is_not_missing_its_login(
+    client, cli_logins, fake_clis
+):
+    cli_logins.logged_out()
+    assert _by_name(client.get("/api/providers"))["claude"]["login_missing"] is True
+    saved = _saved("Шлюз Opus", "claude", "gw-opus")
+    state.set_cli_default(state.ModelRef("claude", saved.id, None))
+    assert _by_name(client.get("/api/providers"))["claude"]["login_missing"] is False
+
+
+def test_the_check_of_a_server_s_type_the_cli_refuses_has_no_way_to_try_again(
+    client, monkeypatch, fake_clis
+):
+    _models(monkeypatch, "codex", "gpt-5")
+    server_launch.forget_model_lists()
+    _saved("Шлюз GPT", "codex", "gw-gpt")
+    found = client.post(CHECK, json={"cli": "codex", "model": "Шлюз GPT"}).json()
+    assert found["kind"] == "refused" and not found["retry"]
+    assert found["text"].startswith(
+        "Шлюз GPT is on the model server LM Studio дома; LM Studio дома does not suit Codex CLI"
+    )
+
+
+def test_the_check_of_an_unknown_cli_is_a_refusal(client):
+    found = client.post(CHECK, json={"cli": "nope", "model": "x"}).json()
+    assert found["kind"] == "refused"
+
+
+def test_a_session_says_its_model_by_its_entry_live(client, repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    saved = _saved()
+    _server_answers(monkeypatch, "qwen3-8b")
+    runtime.start_session(str(repo), "s", None, provider="opencode", model="Локальная Qwen")
+    state.rename_model(saved.name, "Qwen дома")
+    found = client.get("/api/sessions").json()[0]
+    assert (found["model"], found["model_missing"]) == ("Qwen дома", False)
+    state.remove_model("Qwen дома")
+    found = client.get("/api/sessions").json()[0]
+    assert (found["model"], found["model_missing"]) == ("Локальная Qwen", True)
+
+
+def test_a_session_whose_table_cannot_be_read_is_listed(client, repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    with state.connect() as db:
+        db.execute("UPDATE sessions SET power = 'not json' WHERE name = 's'")
+    found = client.get("/api/sessions").json()[0]
+    assert (found["name"], found["model"], found["model_missing"]) == ("s", None, False)
+
+
+def test_a_resume_keeps_changes_or_drops_the_model(client, repo, fake_tmux, monkeypatch):
+    _models(monkeypatch, "kilo", "kilo/a", "kilo/b")
+    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
+    runtime.stop_session("s")
+    assert client.get("/api/sessions").json()[0]["model"] == "kilo/a"
+    answer = client.post("/api/sessions/s/resume", json={})
+    assert (answer.json()["changes"], answer.json()["session"]["model"]) == ([], "kilo/a")
+    runtime.stop_session("s")
+    answer = client.post("/api/sessions/s/resume", json={"model": "kilo/b"})
+    assert answer.json()["changes"] == ["model: kilo kilo/a -> kilo kilo/b"]
+    runtime.stop_session("s")
+    answer = client.post("/api/sessions/s/resume", json={"model": ""})
+    assert answer.json()["changes"] == ["model: kilo kilo/b -> Kilo CLI's settings"]
+    assert answer.json()["session"]["model"] == ""
+
+
+CHOICES = "/api/providers/{}/model-choices"
+
+
+@pytest.mark.parametrize(
+    ("model", "kind", "text"),
+    [
+        ("", "default", "empty: Kilo CLI's default model; type or pick one of its models"),
+        ("kilo/a", "ok", "in Kilo CLI's list of models"),
+        ("kilo/z", "refused", "kilo/z is not in Kilo CLI's list of models"),
+    ],
+)
+def test_a_provider_s_models_and_the_check_of_one(client, monkeypatch, model, kind, text):
+    _models(monkeypatch, "kilo", "kilo/a", "kilo/b")
+    answer = client.get(CHOICES.format("kilo"), params={"model": model})
+    assert answer.status_code == 200, answer.text
+    found = answer.json()
+    assert (found["aliases"], found["models"], found["why"]) == ([], ["kilo/a", "kilo/b"], "")
+    assert found["check"] == {"kind": kind, "text": text, "field": "", "name": ""}
+
+
+def test_a_provider_s_aliases_and_no_list(client):
+    found = client.get(CHOICES.format("claude"), params={"model": "x-1"}).json()
+    assert "opus" in found["aliases"]
+    assert (found["models"], found["check"]["kind"]) == (None, "warn")
+    assert found["why"] == "Claude Code gives no list of models beyond its aliases"
+
+
+def test_the_server_keeps_a_provider_s_list_a_while(client, monkeypatch):
+    asked = _models(monkeypatch, "kilo", "kilo/a")
+    clock = [1000.0]
+    monkeypatch.setattr(server_launch.time, "monotonic", lambda: clock[0])
+    server_launch.forget_model_lists()
+    client.get(CHOICES.format("kilo"), params={"model": "kilo/a"})
+    client.get(CHOICES.format("kilo"), params={"model": "kilo/b"})
+    assert len(asked) == 1
+    clock[0] += server_launch.MODEL_LIST_KEPT + 1
+    client.get(CHOICES.format("kilo"), params={"model": "kilo/a"})
+    assert len(asked) == 2
+
+
+def test_the_server_reads_again_a_list_it_could_not_read(client, monkeypatch):
+    answers = [
+        providers.base.ModelList(why="kilo models failed"),
+        providers.base.ModelList(models=("kilo/a",), command="kilo models"),
+    ]
+    monkeypatch.setattr(type(providers.get("kilo")), "model_list", lambda self, env: answers[0])
+    server_launch.forget_model_lists()
+    found = client.get(CHOICES.format("kilo"), params={"model": "kilo/a"}).json()
+    assert found["check"]["kind"] == "warn"
+    answers.pop(0)
+    found = client.get(CHOICES.format("kilo"), params={"model": "kilo/a"}).json()
+    assert (found["models"], found["check"]["kind"]) == (["kilo/a"], "ok")
+
+
+def test_an_unknown_provider_s_models_are_404(client):
+    assert client.get(CHOICES.format("nope")).status_code == 404

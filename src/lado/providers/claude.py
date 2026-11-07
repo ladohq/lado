@@ -10,7 +10,7 @@ import shutil
 import stat
 import sys
 import tempfile
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 
 from lado import state
@@ -53,6 +53,14 @@ TESTED_VERSION = "2.1.295"
 # (Event.transient): an overloaded or failing API, and unknown, which the machine's sleep
 # is too. The others need someone to act and go to the lead at once.
 TRANSIENT = frozenset({"overloaded", "server_error", "unknown"})
+# An agent on a server has its status and the server's text in `last_assistant_message`, a 402
+# being of kind unknown: `API Error: 402 <text>`, `Failed to authenticate. API Error: 401 <text>`,
+# `API Error: Request rejected (429) · <text>`. Two 4xx differ (2.1.295, each from 400 to 451 asked
+# on a fake server): a 413 alone has `error_details`, `request_too_large: 413 <body>`, and a 404
+# has the kind model_not_found with Claude Code's own words, the server's text being in no field.
+REFUSED = re.compile(r"API Error: (?:Request rejected \()?(\d{3})\)?\s*·?\s*(.*)", re.DOTALL)
+REFUSED_DETAILS = re.compile(r"\w+: (\d{3}) (.*)", re.DOTALL)
+NO_SUCH_MODEL = "model_not_found"
 EVENTS = {
     "SessionStart": base.SESSION_START,
     "UserPromptSubmit": base.PROMPT_SUBMIT,
@@ -98,6 +106,25 @@ def _timeout(event: str) -> int | None:
     return base.TURN_END_HOOK_TIMEOUT if EVENTS.get(event) == base.TURN_END else None
 
 
+# The aliases `--model` takes, each for the latest model of its family: Claude Code's own
+# list (read in the binary of 2.1.295; its help names fable, opus and sonnet). An alias of
+# no family (ANY_FAMILY) picks one of several models.
+ALIASES = (
+    "sonnet",
+    "opus",
+    "haiku",
+    "fable",
+    "best",
+    "sonnet[1m]",
+    "opus[1m]",
+    "fable[1m]",
+    "opusplan",
+)
+ANY_FAMILY = ("best", "opusplan")
+DEFAULT_ALIAS = "default"  # read as an alias, though `--model`'s help names it nowhere
+LONG_CONTEXT = "[1m]"  # an alias's or a model's suffix for its long context window
+
+
 # Variables that log Claude Code in without the keychain: a token, an API key, or another
 # API provider (all in the binary of 2.1.296).
 LOGINS = (
@@ -107,6 +134,100 @@ LOGINS = (
     "CLAUDE_CODE_USE_BEDROCK",
     "CLAUDE_CODE_USE_VERTEX",
 )
+
+
+# What the agent's own settings give an empty value on a model server: each would send another
+# credential or go to another provider. The agent's --settings beat the environment and the
+# user's and the repository's settings, also when they hold apiKeyHelper or `env` (2.1.295 on a
+# fake server, its way out stopped by a proxy: the human's login, ANTHROPIC_API_KEY and a base
+# URL of ~/.claude/settings.json each got out with the address alone). The empty value was seen
+# to end the effect of each.
+SERVER_BLANKS = (
+    *LOGINS,
+    "ANTHROPIC_CUSTOM_HEADERS",
+    "CLAUDE_CODE_USE_FOUNDRY",
+    "CLAUDE_CODE_USE_ANTHROPIC_AWS",
+    "CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD",
+    "CLAUDE_CODE_USE_MANTLE",
+)
+# Read before the settings, so an empty value there does nothing: it goes empty in the launch.
+UNIX_SOCKET = "ANTHROPIC_UNIX_SOCKET"
+# Off on a server: telemetry, which would leave for Anthropic; the betas that add
+# context_management and safeguards to a body a gateway may refuse; the attribution header,
+# LM Studio's own advice for its cache. With these 2.1.295's TUI still tried
+# downloads.claude.ai and github.com (docs/install.md).
+SERVER_SWITCHES = {
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
+    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+    # By itself 10 repeats, 11 requests in 3 minutes on a 401 or 429. Its delays double from 0.5 s
+    # to about 36 s, so this is 72 s on a 429 with no Retry-After, what OpenCode and Kilo take,
+    # and 149 s and 10 requests on a 401 (2.1.295, measured in its TUI).
+    "CLAUDE_CODE_MAX_RETRIES": "7",
+    # Without it each request names an effort, the user's `effortLevel` or `high`, which a server
+    # may refuse: 400 for gpt-oss on `xhigh`. The word `auto` sends none, here and not as the
+    # settings' `effortLevel`, which the user's beats (2.1.295, 2.1.319).
+    "CLAUDE_CODE_EFFORT_LEVEL": "auto",
+}
+# The most a Claude agent on a server asks for as its output. Claude Code compacts at the same
+# input whatever the output, and that request goes out with its max_tokens: on reads of 50 KB and a
+# context of 131072 the 32000 it asks for by itself passed it, in `claude -p` by 203 tokens
+# (2.1.295) and 4539 (2.1.319), and a server that counts both refused it (the human's check of
+# LAD-220). The TUI's requests are larger: the smoke test holds this value there. A larger tool
+# result at the wrong moment can still pass. CLAUDE_CODE_AUTO_COMPACT_WINDOW, the context less this
+# output, compacts earlier on 2.1.319 and does nothing on 2.1.295, so it cannot stand alone.
+SERVER_OUTPUT = 16384
+# LADO's tools, which auto mode's classifier would judge. It asks the agent's own model, also in a
+# defaultMode inherited from the user's settings: a model that gives it no usable answer has them
+# blocked at every try, and the agent cannot answer anyone (2.1.295, 2.1.319).
+LADO_TOOLS = "mcp__lado__*"
+# With no credential at all Claude Code sends the human's login, so a server with no key gets
+# this word: the helper's output is sent as it is.
+NO_KEY = "no-key"
+
+
+def _refusal(failure: Mapping) -> tuple[str, str] | None:
+    """The line and the server's text of a StopFailure that is a provider's refusal, of an agent
+    on a server alone: a built-in model's errors keep their kind. The hook runs in the agent's
+    environment."""
+    if not os.environ.get(base.MODEL_SERVER):
+        return None
+    said = failure.get("last_assistant_message")
+    said = base.without_keys(said) if isinstance(said, str) else ""
+    found = REFUSED.search(said) or REFUSED_DETAILS.match(
+        base.without_keys(failure.get("error_details") or "")
+    )
+    status, text = (int(found[1]), found[2].strip()) if found else (None, said.strip())
+    if found is None and failure.get("error") == NO_SUCH_MODEL:
+        status = 404
+    if line := base.context_line(text):
+        return line, text
+    return (base.refusal_line(status, text), text) if base.is_refusal(status) else None
+
+
+def _server_settings(server: base.ServerEntry) -> dict:
+    """What the agent's settings hold for its one model on `server`. Its key stays out of them:
+    the helper reads it from the agent's environment, and goes out as both x-api-key and
+    Authorization, which covers LM Studio and LiteLLM. Claude Code adds /v1/messages to the
+    root itself."""
+    model, _ = server.models[0]
+    env = {
+        "ANTHROPIC_BASE_URL": server.root,
+        base.MODEL_SERVER: server.id,  # read back by launched_on
+        "ANTHROPIC_DEFAULT_MODEL": model,
+        "ANTHROPIC_SMALL_FAST_MODEL": model,
+        **dict.fromkeys(SERVER_BLANKS, ""),
+        **SERVER_SWITCHES,
+    }
+    if (limit := server.limits.get(model)) is not None:
+        env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] = str(limit.context)
+        # By itself it asks for 32000: over a 64K context with a prompt of 45K, where a server
+        # ends the stream and Claude Code retries for hours (2.1.319 on LM Studio).
+        env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(min(limit.output_room(), SERVER_OUTPUT))
+        if limit.output_room() > SERVER_OUTPUT:
+            env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = str(limit.context - SERVER_OUTPUT)
+    helper = f"printenv {server.key_variable}" if server.key_variable else f"echo {NO_KEY}"
+    return {"env": env, "apiKeyHelper": helper, "availableModels": [model]}
 
 
 # An apiKeySource that is a variable (ANTHROPIC_API_KEY), not Claude Code's own login's key
@@ -124,6 +245,10 @@ class ClaudeProvider(base.Provider):
     command = "claude"
     install_hint = "install it: https://docs.anthropic.com/en/docs/claude-code"
     tested_version = TESTED_VERSION
+    server_api = base.ANTHROPIC_MESSAGES
+    # The first request of an agent was 45K tokens with a human's CLAUDE.md, rules and plugins
+    # (2.1.319 on LM Studio), 16K with none, before any work; the output goes on top.
+    min_context = 65536
     capabilities = base.Capabilities(
         status_events=True,
         permission_event=True,
@@ -195,6 +320,15 @@ class ClaudeProvider(base.Provider):
         }
         if session.permission_mode == BYPASS:
             config["skipDangerousModePermissionPrompt"] = True
+        env: dict[str, str] = {}
+        if spec.servers:  # one: its start model's (lado.model_settings.agent_servers)
+            server = spec.servers[0]
+            config.update(_server_settings(server))
+            config["permissions"]["allow"] = [LADO_TOOLS]
+            env[base.MODEL_SERVER] = server.id
+            env[UNIX_SOCKET] = ""
+            if server.key is not None:
+                env[server.key_variable] = server.key
         settings.write_text(json.dumps(config, indent=2))
 
         # From a file, so the role is not on the command line (checked by hand with 2.1.294
@@ -226,7 +360,50 @@ class ClaudeProvider(base.Provider):
             cmd += ["--add-dir", str(folder)]
         if session.permission_mode:
             cmd += ["--permission-mode", session.permission_mode]
-        return base.Launch(cmd)
+        # --model wins over the user's settings and ANTHROPIC_MODEL (2.1.295's help: "Model
+        # for the current session"); a model's name is no secret on the command line.
+        if spec.model:
+            cmd += ["--model", spec.model]
+        # 2.1.295 hands the `env` of its settings to what it starts, MCP servers too.
+        handed = tuple(config.get("env", ()))
+        return base.Launch(cmd, env, model=self.session_choice(spec), cli_env=handed)
+
+    def model_list(self, env: Mapping[str, str]) -> base.ModelList:
+        return base.ModelList(
+            ALIASES, why=f"{self.title} gives no list of models beyond its aliases", fixed=True
+        )
+
+    def server_model(self, server: str, model: str) -> str:
+        return model
+
+    def launched_on(self, agent: state.Agent) -> str | None:
+        # A model's id says no server, and the same id may be a built-in model: only the
+        # launch knows.
+        try:
+            settings = json.loads((base.config_path(agent) / "settings.json").read_text())
+        except (OSError, ValueError):
+            return None
+        return settings.get("env", {}).get(base.MODEL_SERVER)
+
+    def reserved_model(self, model: str) -> bool:
+        # `--model sonnet` goes out as Claude Code's own full name, not as `sonnet`, whatever the
+        # case, `default` as the default's, and `qwen[1m]` without its suffix; any other name
+        # goes as it is (2.1.295 on a fake server).
+        name = model.lower()
+        return name in ALIASES or name == DEFAULT_ALIAS or name.endswith(LONG_CONTEXT)
+
+    def same_model(self, chosen: str, reported: str) -> bool:
+        """An alias is the same as a full name of its family (`opus`: `claude-opus-5-5`, with
+        or without `[1m]`); an alias of no family is the same as any of Claude's models."""
+        if chosen == reported:
+            return True
+        if chosen not in ALIASES:
+            return False
+        family = chosen.removesuffix(LONG_CONTEXT)
+        name = reported.removesuffix(LONG_CONTEXT)
+        if family in ANY_FAMILY:
+            return name.startswith("claude-")
+        return name.startswith(f"claude-{family}-")
 
     def parse_event(self, native: str, payload: str) -> base.Event | None:
         if native not in EVENTS:
@@ -234,15 +411,23 @@ class ClaudeProvider(base.Provider):
         data = json.loads(payload) if payload.strip() else {}
         if native == "SessionEnd" and data.get("reason") in SWITCHES:
             return base.Event(base.CONVERSATION_END)
-        if native == "SessionStart" and data.get("source") in SWITCHES:
-            return base.Event(base.CONVERSATION_START)
+        if native == "SessionStart":
+            # Its input names the model in the interactive mode LADO runs, also at a
+            # compaction, /clear and a resume, not in `claude -p` (2.1.295, checked by hand);
+            # no hook named the effort.
+            model = data.get("model") if isinstance(data.get("model"), str) else ""
+            if data.get("source") in SWITCHES:
+                return base.Event(base.CONVERSATION_START, model=model)
+            return base.Event(base.SESSION_START, model=model)
         if native == "StopFailure":
             kind = data.get("error") or "unknown"
-            error = base.error_line(kind, data.get("error_details", ""))
+            details = base.without_keys(data.get("error_details", ""))
+            refusal = _refusal(data)
             return base.Event(
                 base.TURN_END,
-                error=error,
-                transient=kind in TRANSIENT,
+                error=refusal[0] if refusal else base.error_line(kind, details),
+                details=refusal[1] if refusal else "",
+                transient=kind in TRANSIENT and not refusal,
                 output_ignored=True,
                 background=_background(data),
             )
@@ -288,6 +473,9 @@ class ClaudeProvider(base.Provider):
             "ANTHROPIC_API_KEY",
         ),
     )
+
+    def needs_login(self, env: Mapping[str, str]) -> bool:
+        return not env.get(base.MODEL_SERVER) and super().needs_login(env)
 
     def login_status(self, env: dict[str, str]) -> base.LoginStatus:
         # `claude auth status --json` (2.1.295, about 0.1 s): loggedIn, authMethod
@@ -344,8 +532,13 @@ class ClaudeProvider(base.Provider):
     def keychain_login(self, env: dict[str, str]) -> str | None:
         # On macOS Claude Code keeps its OAuth login in the login keychain ("Claude
         # Code-credentials"). It needs none with one of LOGINS. apiKeyHelper in its settings
-        # is not read: missing it only warns, and only outside the graphical session.
-        if sys.platform != "darwin" or any(env.get(name) for name in LOGINS):
+        # is not read: missing it only warns, and only outside the graphical session. An agent
+        # on a model server has its own apiKeyHelper, and no use for the login.
+        if (
+            sys.platform != "darwin"
+            or env.get(base.MODEL_SERVER)
+            or any(env.get(name) for name in LOGINS)
+        ):
             return None
         return ", or set `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`) in your login shell"
 
@@ -377,14 +570,18 @@ class ClaudeProvider(base.Provider):
         # theme, then for a key in its environment whether to use it (default "No"). Not
         # while it is not logged in: those agents wait for a login (lado.login_wait), which
         # calls this again once there is one. A login LADO cannot read holds no agent, so
-        # its first run is recorded too, or it would stand on the theme with no reason.
-        if self.login_status(env).state == base.NO:
+        # its first run is recorded too, or it would stand on the theme with no reason. An
+        # agent on a model server waits for no login, and `claude auth status`, which sees no
+        # --settings, would say none; its settings blank ANTHROPIC_API_KEY, so it asks nothing
+        # of the human's key.
+        on_server = bool(env.get(base.MODEL_SERVER))
+        if not on_server and self.login_status(env).state == base.NO:
             return base.Blocker(notes=tuple(notes))
         try:
             if path := _record_first_run(env):
                 notes.append(f"LADO recorded {self.title}'s first run in {path}")
             key = env.get("ANTHROPIC_API_KEY")
-            if key:
+            if key and not on_server:
                 path, rejected = _approve_key(env, key)
                 if rejected:
                     return base.Blocker(

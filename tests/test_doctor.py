@@ -5,6 +5,7 @@ import sqlite3
 import time
 
 import agent_helpers
+import fake_model_server
 import pytest
 
 from lado import (
@@ -15,6 +16,8 @@ from lado import (
     doctor,
     gui_session,
     logins,
+    model_servers,
+    model_settings,
     project_secrets,
     projects,
     providers,
@@ -259,7 +262,7 @@ def test_a_login_line_per_installed_cli(cli_logins, monkeypatch, codex_home):
             "Codex CLI login",
             doctor.WARN,
             "not logged in: new sessions and workers of it are refused, a resumed agent waits "
-            "(Settings → Providers and environment)",
+            "(Settings → Agent CLIs and environment)",
         ),
         doctor.Check(
             "Kilo CLI login", doctor.WARN, "unknown: `kilo auth list` timed out after 10 s"
@@ -281,13 +284,13 @@ def test_claude_not_logged_in_warns_where_to_log_in(cli_logins, capsys, monkeypa
         "Claude Code login",
         doctor.WARN,
         "not logged in: new sessions and workers of it are refused, a resumed agent waits "
-        "(Settings → Providers and environment)",
+        "(Settings → Agent CLIs and environment)",
     )
     monkeypatch.setattr(doctor, "run_checks", lambda: [check])
     assert doctor.main() == 0  # a warning: the exit code stays
     assert (
         "[warn] Claude Code login: not logged in: new sessions and workers of it are refused, a "
-        "resumed agent waits (Settings → Providers and environment)" in capsys.readouterr().out
+        "resumed agent waits (Settings → Agent CLIs and environment)" in capsys.readouterr().out
     )
 
 
@@ -1392,3 +1395,302 @@ def test_the_projects_check_on_an_older_lado_db(ws, lado_home):
     agent_helpers.previous_schema()
     assert doctor.check_projects() == doctor.Check("Projects", doctor.INFO, doctor.NOT_AT_SCHEMA)
     assert state.schema_version() == state.SCHEMA_VERSION - 1  # nothing migrated
+
+
+# The saved model servers.
+
+
+@pytest.fixture
+def serve():
+    servers = []
+
+    def start(profile, **kwargs):
+        server = fake_model_server.Server(profile, **kwargs)
+        servers.append(server)
+        return server
+
+    yield start
+    for server in servers:
+        server.close()
+
+
+def _saved(name, server, key=None):
+    model_settings.add_server(name, server.url, key, warn=lambda _: None, note=lambda _: None)
+
+
+def test_no_server_saved_no_line(lado_home):
+    assert doctor.check_model_servers() is None
+    assert not (lado_home / "lado.db").exists()
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    assert doctor.check_model_servers() is None
+
+
+def test_the_servers_that_answer(serve, monkeypatch):
+    _saved("LM Studio дома", serve("lmstudio"))
+    _saved("work", serve("openai", key="k"), key="k")
+    assert doctor.check_model_servers() == doctor.Check(
+        "Model servers", doctor.OK, "LM Studio дома lists its models (LM Studio); work lists its "
+        "models (OpenAI-compatible)"
+    )  # fmt: skip
+
+
+def test_a_server_that_does_not_answer_warns_and_keeps_the_exit(serve, monkeypatch, capsys):
+    lm = serve("lmstudio")
+    _saved("LM Studio дома", lm)
+    work = serve("openai")
+    _saved("work", work)
+    work.close()
+    found = doctor.check_model_servers()
+    assert found == doctor.Check(
+        "Model servers",
+        doctor.WARN,
+        "LM Studio дома lists its models (LM Studio); work does not answer (connection refused)",
+    )
+    monkeypatch.setattr(doctor, "run_checks", lambda: [doctor.Check("x", doctor.OK, ""), found])
+    assert doctor.main() == 0
+
+
+def test_a_model_its_server_no_longer_lists_warns(serve, monkeypatch):
+    _saved("LM Studio дома", serve("lmstudio"))
+    id = state.model_server("LM Studio дома").id
+    state.add_model("Локальная Qwen", "opencode", "qwen3-8b", id)
+    state.add_model("Gone", "kilo", "gemma-3-12b", id)
+    found = doctor.check_model_servers()
+    assert found == doctor.Check(
+        "Model servers",
+        doctor.WARN,
+        'LM Studio дома lists its models (LM Studio); model "Gone" (gemma-3-12b) is not in LM '
+        "Studio дома's list of models",
+    )
+    monkeypatch.setattr(doctor, "run_checks", lambda: [doctor.Check("x", doctor.OK, ""), found])
+    assert doctor.main() == 0
+
+
+def test_a_server_without_a_list_or_answer_names_no_model(serve):
+    _saved("resp", serve("responses-only"))
+    state.add_model("C", "codex", "gpt-x", state.model_server("resp").id)
+    assert doctor.check_model_servers().level == doctor.OK
+    lm = serve("lmstudio")
+    _saved("lms", lm)
+    state.add_model("Gone", "opencode", "gemma-3-12b", state.model_server("lms").id)
+    lm.close()
+    assert "is not in" not in doctor.check_model_servers().detail
+
+
+def test_a_server_that_refuses_its_key_warns(serve):
+    server = serve("openai", key="k")
+    _saved("work", server, key="k")
+    key = model_settings.key_folder(state.model_server("work").id) / model_settings.KEY
+    key.write_text("other")
+    assert doctor.check_model_servers().detail == "work refused the key (401)"
+
+
+def test_a_key_file_with_a_loose_mode_warns(serve):
+    server = serve("openai", key="k")
+    _saved("work", server, key="k")
+    key = model_settings.key_folder(state.model_server("work").id) / model_settings.KEY
+    key.chmod(0o644)
+    found = doctor.check_model_servers()
+    assert found.level == doctor.WARN
+    assert (
+        found.detail
+        == "work lists its models (OpenAI-compatible); the key file of work has mode 644, not 600"
+    )
+
+
+def test_a_key_folder_that_cannot_be_read_warns_and_keeps_the_report(serve):
+    server = serve("openai", key="k")
+    _saved("work", server, key="k")
+    folder = model_settings.key_folder(state.model_server("work").id)
+    folder.chmod(0)
+    try:
+        found = doctor.check_model_servers()
+    finally:
+        folder.chmod(0o700)
+    assert found == doctor.Check(
+        "Model servers",
+        doctor.WARN,
+        f"work: {folder / 'key'} cannot be read (Permission denied); the key file of work "
+        "cannot be read (Permission denied)",
+    )
+
+
+def test_a_key_file_that_is_a_link_warns(serve, tmp_path):
+    server = serve("openai")
+    _saved("work", server)
+    folder = model_settings.key_folder(state.model_server("work").id)
+    folder.mkdir(parents=True)
+    (tmp_path / "elsewhere").write_text("k")
+    (folder / model_settings.KEY).symlink_to(tmp_path / "elsewhere")
+    found = doctor.check_model_servers()
+    assert found.level == doctor.WARN
+    assert "the key file of work is not a regular file" in found.detail
+
+
+def test_a_folder_of_no_server_is_left_over(lado_home):
+    (lado_home / model_settings.KEYS / "0123abcd").mkdir(parents=True)
+    found = doctor.check_model_servers()
+    assert found == doctor.Check(
+        "Model servers",
+        doctor.WARN,
+        f"left over: {lado_home / model_settings.KEYS / '0123abcd'} (no saved server's)",
+    )
+
+
+def test_the_servers_on_an_older_lado_db_are_not_checked(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    agent_helpers.previous_schema()
+    assert doctor.check_model_servers() == doctor.Check(
+        "Model servers", doctor.INFO, doctor.NOT_AT_SCHEMA
+    )
+    assert state.schema_version() == state.SCHEMA_VERSION - 1  # nothing migrated
+
+
+def test_the_servers_are_probed_at_once(serve, monkeypatch):
+    monkeypatch.setattr(model_servers, "TIMEOUT", 1)
+    for name in ("a", "b", "c"):
+        _saved(name, serve("openai"))
+    hangs = [serve("hang") for _ in range(3)]
+    for saved, hang in zip(state.model_servers(), hangs, strict=True):
+        state.replace_model_server(saved.id, hang.url, saved.kind, saved.apis)
+    started = time.monotonic()
+    found = doctor.check_model_servers()
+    assert time.monotonic() - started < 2.5  # one probe's time, not three
+    assert found.detail.count("does not answer (no answer in 1 s)") == 3
+
+
+def test_the_line_follows_the_project_secrets(serve, monkeypatch):
+    _versions(monkeypatch)
+    monkeypatch.setattr(gui_session.sys, "platform", "linux")
+    _saved("lab", serve("openai"))
+    found = [c.name for c in doctor.run_checks(which=lambda cmd: cmd)]
+    assert "Model servers" in found
+    assert "Default models" not in found  # no default set
+
+
+def _default_on_server(name, cli, model):
+    server = state.model_server(name)
+    saved = state.add_model(f"{model} saved", cli, model, server.id)
+    state.set_cli_default(state.ModelRef(cli, saved.id, None))
+
+
+def _listing(monkeypatch, *models):
+    listed = providers.base.ModelList(models=models, command="codex debug models")
+    monkeypatch.setattr(type(providers.get("codex")), "model_list", lambda self, env: listed)
+
+
+def test_no_default_no_line(serve):
+    _saved("lab", serve("openai"))
+    assert doctor.check_default_models({}) is None
+
+
+def test_a_default_on_a_server_that_has_it(serve):
+    server = serve("openai")
+    _saved("lab", server)
+    known = fake_model_server.PROFILES["openai"][("GET", fake_model_server.MODELS)].body
+    _default_on_server("lab", "opencode", known["data"][0]["id"])
+    probes = {}
+    doctor.check_model_servers(probes)
+    found = doctor.check_default_models(probes)
+    assert found.level == doctor.OK and "OpenCode" in found.detail
+
+
+def test_a_default_on_a_silent_server_is_named(serve):
+    server = serve("openai")
+    _saved("lab", server)
+    _default_on_server("lab", "opencode", "qwen3-8b")
+    server.close()
+    probes = {}
+    doctor.check_model_servers(probes)
+    found = doctor.check_default_models(probes)
+    assert found.name == "Default models" and found.level == doctor.WARN
+    assert "OpenCode's default qwen3-8b saved" in found.detail
+    assert "lab does not answer" in found.detail
+
+
+def test_a_default_its_server_lacks_is_named(serve):
+    _saved("lab", serve("openai"))
+    _default_on_server("lab", "opencode", "no-such-model")
+    probes = {}
+    doctor.check_model_servers(probes)
+    found = doctor.check_default_models(probes)
+    assert found.level == doctor.WARN
+    assert "no-such-model is not in lab's list of models" in found.detail
+
+
+def test_the_defaults_ask_each_server_no_more_than_the_servers_line(serve, monkeypatch):
+    _saved("lab", serve("openai"))
+    _default_on_server("lab", "opencode", "qwen3-8b")
+    asked = []
+    real = model_settings.probe_saved
+    monkeypatch.setattr(
+        model_settings, "probe_saved", lambda server: asked.append(server.name) or real(server)
+    )
+    probes = {}
+    doctor.check_model_servers(probes)
+    doctor.check_default_models(probes)
+    assert asked == ["lab"]
+
+
+def test_a_built_in_default_the_list_lost_is_named(monkeypatch):
+    state.set_cli_default(state.ModelRef("codex", None, "gpt-5.4-old"))
+    _listing(monkeypatch, "gpt-5.6-sol")
+    found = doctor.check_default_models({})
+    assert found.level == doctor.WARN
+    assert found.detail == "Codex CLI's default gpt-5.4-old: its list no longer has it"
+
+
+def test_a_default_on_a_server_that_refuses_its_key_says_so(serve):
+    server = serve("openai", key="k")
+    _saved("lab", server, key="k")
+    _default_on_server("lab", "opencode", "qwen3-8b")
+    (model_settings.key_folder(state.model_server("lab").id) / model_settings.KEY).write_text("x")
+    probes = {}
+    doctor.check_model_servers(probes)
+    found = doctor.check_default_models(probes)
+    assert found.level == doctor.WARN
+    assert "lab refused the key (401)" in found.detail
+    assert "does not answer" not in found.detail
+
+
+def test_defaults_whose_environment_cannot_be_read_are_said_and_read_once(monkeypatch):
+    state.set_cli_default(state.ModelRef("codex", None, "gpt-5.6-sol"))
+    state.set_cli_default(state.ModelRef("claude", None, "opus"))
+    asked = []
+
+    def layers():
+        asked.append(1)
+        raise agent_env.AgentEnvError("your shell failed")
+
+    monkeypatch.setattr(doctor.agent_env, "layers", layers)
+    found = doctor.check_default_models({})
+    assert found.level == doctor.WARN
+    assert (
+        "Codex CLI's default gpt-5.6-sol: LADO cannot check it: your shell failed" in found.detail
+    )
+    assert len(asked) == 1
+
+
+def test_the_agents_environment_is_read_once_for_all_built_in_defaults(monkeypatch):
+    state.set_cli_default(state.ModelRef("codex", None, "gpt-5.6-sol"))
+    state.set_cli_default(state.ModelRef("claude", None, "opus"))
+    _listing(monkeypatch, "gpt-5.6-sol")
+    asked = []
+    real = doctor.agent_env.layers
+    monkeypatch.setattr(doctor.agent_env, "layers", lambda: asked.append(1) or real())
+    assert doctor.check_default_models({}).level == doctor.OK
+    assert len(asked) == 1
+
+
+def test_a_built_in_default_the_list_has_is_fine(monkeypatch):
+    state.set_cli_default(state.ModelRef("codex", None, "gpt-5.6-sol"))
+    _listing(monkeypatch, "gpt-5.6-sol")
+    assert doctor.check_default_models({}).level == doctor.OK
+
+
+def test_the_line_of_the_defaults_is_in_the_checks(monkeypatch):
+    _versions(monkeypatch)
+    monkeypatch.setattr(gui_session.sys, "platform", "linux")
+    state.set_cli_default(state.ModelRef("codex", None, "gpt-5.6-sol"))
+    _listing(monkeypatch, "gpt-5.6-sol")
+    assert "Default models" in [c.name for c in doctor.run_checks(which=lambda cmd: cmd)]

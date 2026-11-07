@@ -52,7 +52,19 @@ OPEN_ON_HOST = "Open it in your browser on the host."  # `lado ui` in a containe
 # `lado telemetry` keeps its files outside lado.db and reads it only.
 # `lado uninstall` shows an older lado.db as it is and stops (so migrates) itself.
 # `lado bug-report` reports lado.db's schema as it is, as `lado doctor`.
-NOT_MIGRATING = ("stop", "doctor", "telemetry", "uninstall", "bug-report")
+# `lado model-server probe` asks a server over the network and keeps nothing, lado.db
+# untouched; `lado model-server` alone prints its help. Its add, list and remove keep the
+# servers in lado.db and migrate, as `lado model` does. A pair is a command and its
+# subcommand.
+NOT_MIGRATING = (
+    "stop",
+    "doctor",
+    "telemetry",
+    "uninstall",
+    "bug-report",
+    ("model-server", "probe"),
+    ("model-server", None),
+)
 
 
 def _check_project_args(args: argparse.Namespace) -> None:
@@ -97,6 +109,7 @@ def cmd_start(args: argparse.Namespace) -> int:
             project=args.project,
             repo_name=args.repo,
             wait_for_login=args.wait_for_login,
+            model=args.model,
         )
     except Exception as exc:
         _sources_warning(unless_in=str(exc))  # a kit not found says it already
@@ -119,8 +132,10 @@ def cmd_start(args: argparse.Namespace) -> int:
     if started.chosen:
         print(f"provider: {started.chosen.line()}")
     print(started.lead)
+    said = {f"changed {change}" for change in started.changes}
     for warning in started.warnings:
-        print(f"lado: {warning}", file=sys.stderr)
+        if warning not in said:
+            print(f"lado: {warning}", file=sys.stderr)
     if args.no_attach or not sys.stdout.isatty():
         print(f"Attach with: lado attach {sess.name}")
         return 0
@@ -161,7 +176,7 @@ def _start_clone(args: argparse.Namespace) -> int:
             print(f"lado: To start a session in it as it is: lado start {folder}", file=sys.stderr)
         return 1
     runtime.check_name(runtime.slug(args.name or Path(folder).name), folder)
-    runtime.check_start_login(args.provider, None)
+    runtime.check_start_login(args.provider, None, args.model)
     cancelled = _cloned(
         url, folder, args.branch, lambda shown: clone.clone(url, folder, args.branch, shown)
     )
@@ -216,7 +231,7 @@ def _start_new(args: argparse.Namespace) -> int:
     if clone.is_url(args.path) or args.folder or args.branch:
         args.start_parser.error("--new takes a folder, not a git URL or a second folder")
     folder = os.path.abspath(os.path.expanduser(args.path))
-    runtime.check_start_login(args.provider, None)
+    runtime.check_start_login(args.provider, None, args.model)
     scratch.make(folder, runtime.slug(args.name or Path(folder).name))
     print(f"Made {folder} a git repository with an empty first commit")
     args.path, args.new = folder, False
@@ -577,6 +592,8 @@ def _agents_path(kits_: list[kits.Kit]) -> str | agent_env.AgentEnvError | None:
 
 
 def cmd_ls(args: argparse.Namespace) -> int:
+    from lado import model_settings
+
     _unfinished_update()
     sessions = state.list_sessions()
     if not sessions:
@@ -602,7 +619,8 @@ def cmd_ls(args: argparse.Namespace) -> int:
             when = since.get(agent.name)
             took = format_duration((now - when).total_seconds()) if when else "-"
             line = f"  {agent.name:<12} {agent.role:<10} {agent.provider:<8} {agent.status:<10}"
-            print(f"{line} {took:<6}  {agent.branch or ''}".rstrip())
+            model = model_settings.model_name(agent) or "-"
+            print(f"{line} {took:<6}  {model:<18} {agent.branch or ''}".rstrip())
             if agent.name in reasons:
                 print(f"    {agent.status}: {reasons[agent.name]}")
         run_since = state.run_since(sess.name)
@@ -1150,9 +1168,16 @@ def _secret_value(args: argparse.Namespace) -> str:
             "pipe it in"
         )
     projects.get(args.id)
+    return _read_secret(f"Value of {args.name} (not shown): ")
+
+
+def _read_secret(prompt: str) -> str:
+    """A secret asked once with `prompt` without echo on a terminal, else the whole of
+    stdin (up to agent_env.MAX_VALUE and a line break, and a little more for its reader to
+    refuse) with one line break at its end dropped; "" for Ctrl-D at the prompt."""
     if sys.stdin.isatty():
         try:
-            return getpass.getpass(f"Value of {args.name} (not shown): ")
+            return getpass.getpass(prompt)
         except EOFError:  # Ctrl-D at the prompt: no value, refused as an empty one
             print(file=sys.stderr)  # the prompt's line ends
             return ""
@@ -1484,6 +1509,293 @@ def cmd_stats(args: argparse.Namespace) -> int:
     return 0
 
 
+_NO_VALUE = object()  # `--key` given without a value, as it must be
+
+
+# What `lado model-server probe` does not take may be a key (`--key -abc`, whose value
+# argparse leaves over, a prefix `--k -abc`, a key with a space): refused without it, where
+# argparse would print it as an unrecognized argument.
+_PROBE_TAKES_NO_MORE = (
+    "lado model-server probe takes an address and --key, nothing more; a server's key is "
+    "never given on the command line (ps and the shell's history keep it): run lado "
+    "model-server probe <address> --key and type it, or pipe it in"
+)
+_ADD_TAKES_NO_MORE = (
+    "lado model-server add takes a name, an address, --key and --replace, nothing more; a "
+    "server's key is never given on the command line (ps and the shell's history keep it): "
+    "run lado model-server add <name> <address> --key and type it, or pipe it in"
+)
+_TAKES_NO_MORE = {"probe": _PROBE_TAKES_NO_MORE, "add": _ADD_TAKES_NO_MORE}
+
+
+class _ServerParser(argparse.ArgumentParser):
+    """The parser of a `lado model-server` command: the errors of those that take a key
+    (an argument of -h or --help, a missing address) would name a word of argv, which may
+    be the key; the usage and a fixed text instead, exit 1."""
+
+    def error(self, message: str):
+        refusal = _TAKES_NO_MORE.get(self.prog.rsplit(" ", 1)[-1])
+        if refusal is None:
+            super().error(message)
+        self.print_usage(sys.stderr)
+        self.exit(1, f"lado: {refusal}\n")
+
+
+def _server_key(args: argparse.Namespace, again: str) -> str | None:
+    """The key of `--key`, None without it: asked without echo or read from stdin, never
+    taken from argv, where `again` (the command run, with its address) is named to run with
+    a bare --key."""
+    if args.key is None:
+        return None
+    if args.key is not _NO_VALUE:
+        raise runtime.LadoError(
+            "a server's key is never given on the command line (ps and the shell's history "
+            f"keep it); run {again} --key and type it, or pipe it in"
+        )
+    from lado import model_settings
+
+    key = _read_secret("Key of the server (not shown): ")
+    try:
+        model_settings.check_key(key)  # empty, or stdin read past the limit: never cut
+    except model_settings.Refused as exc:
+        raise runtime.LadoError(str(exc)) from None
+    return key
+
+
+def _warn_line(line: str) -> None:
+    print(f"lado: warning: {line}", file=sys.stderr)
+
+
+def _refused(exc: Exception) -> int:
+    """A probe's or an entry's refusal and its hint on stderr; exit 1."""
+    for line in (str(exc), getattr(exc, "hint", "")):
+        if line:
+            print(f"lado: {line}", file=sys.stderr)
+    return 1
+
+
+def _table(header: list[str], rows: list[list[str]]) -> None:
+    """`rows` under `header`, each column but the last padded to its widest cell."""
+    widths = [max(len(row[i]) for row in [header, *rows]) for i in range(len(header) - 1)]
+    for row in [header, *rows]:
+        cells = [cell.ljust(width) for cell, width in zip(row[:-1], widths, strict=True)]
+        print("  ".join([*cells, row[-1]]).rstrip())
+
+
+def cmd_model_server_probe(args: argparse.Namespace) -> int:
+    """`lado model-server probe <address> [--key]`: what the server is (lado.model_servers);
+    exit 1 for no server it knows, 2 for an address it does not probe. The key is asked
+    without echo or read from stdin, never taken from argv, and kept nowhere."""
+    from lado import model_servers
+
+    try:
+        root, _ = model_servers.address(args.address)
+    except ValueError as exc:
+        print(f"lado: {exc}", file=sys.stderr)
+        return 2
+    key = _server_key(args, f"{model_servers.PROBE_COMMAND} {root}")
+    warning = model_servers.plain_http_warning(root, key)
+    if warning:
+        _warn_line(warning)
+    try:
+        found = model_servers.probe(args.address, key)
+    except model_servers.ProbeError as exc:
+        return _refused(exc)
+    for line in model_servers.lines(found):
+        print(line)
+    return 0
+
+
+def cmd_model_server_add(args: argparse.Namespace) -> int:
+    """`lado model-server add <name> <address> [--key] [--replace]`: probe the server and save
+    it under the name, or replace a saved one's address and key (lado.model_settings); exit
+    1 for a refusal, 2 for an address the probe does not take. The key as the probe's."""
+    from lado import model_servers, model_settings
+
+    try:
+        root, _ = model_servers.address(args.address)
+    except ValueError as exc:
+        print(f"lado: {exc}", file=sys.stderr)
+        return 2
+    try:
+        saved = model_settings.server_to_add(args.name, args.replace)
+        key = _server_key(args, f"{model_settings.add_command(args.name, args.replace)} {root}")
+        notes: list[str] = []
+        found = model_settings.add_server(
+            args.name, args.address, key, replace=args.replace, warn=_warn_line, note=notes.append
+        )
+    except (model_servers.ProbeError, model_settings.Refused) as exc:
+        return _refused(exc)
+    for line in [*model_servers.lines(found), *notes]:
+        print(line)
+    if saved is not None:
+        print(f'Replaced model server "{saved.name}".')
+    else:
+        print(f'Saved model server "{args.name}".')
+    return 0
+
+
+def cmd_model_server_list(args: argparse.Namespace) -> int:
+    """`lado model-server list`: the saved servers, asking none of them."""
+    from lado import model_settings
+
+    servers = state.model_servers()
+    if not servers:
+        print("No model servers. Add one: lado model-server add <name> <address> [--key]")
+        return 0
+    rows = [
+        [
+            server.name,
+            server.address,
+            server.kind,
+            "yes" if model_settings.has_key(server) else "no",
+            ", ".join(model_settings.clis(server)) or "none",
+        ]
+        for server in servers
+    ]
+    _table(["NAME", "ADDRESS", "TYPE", "KEY", "CLIs"], rows)
+    return 0
+
+
+def cmd_model_server_remove(args: argparse.Namespace) -> int:
+    """`lado model-server remove <name> [--with-models]`: the server and its key file;
+    refused while a model uses it, unless `--with-models` removes those models first."""
+    from lado import model_settings
+
+    try:
+        name = model_settings.remove_server(
+            args.name,
+            with_models=args.with_models,
+            removed=lambda model: print(f'Removed model "{model}".'),
+            cleared=_print_cleared,
+        )
+    except model_settings.Refused as exc:
+        return _refused(exc)
+    print(f'Removed model server "{name}".')
+    return 0
+
+
+def _print_cleared(cli: str) -> None:
+    from lado import model_settings
+
+    print(f"{model_settings.cli_title(cli)}'s default model is cleared.")
+
+
+def cmd_model_add(args: argparse.Namespace) -> int:
+    """`lado model add <name> --cli <cli> --model <model> --server <server>`: check the model
+    against its server's list and save it under the name (lado.model_settings)."""
+    from lado import model_check, model_settings
+
+    try:
+        saved, verdict = model_settings.add_model(args.name, args.cli, args.model, args.server)
+    except model_settings.Refused as exc:
+        return _refused(exc)
+    if verdict.kind == model_check.WARN:
+        _warn_line(verdict.text)
+    server = state.model_server(args.server)
+    on = f" on {server.name}" if server else ""
+    title = providers.get(saved.cli).title
+    print(f'Saved model "{saved.name}": {title}, {saved.model}{on} ({verdict.text})')
+    return 0
+
+
+def _print_defaults(clis: list[str]) -> None:
+    """The default models of `clis`, running no CLI and asking no server."""
+    from lado import model_settings
+
+    shown = {default.ref.cli: default for default in model_settings.defaults()}
+    rows = []
+    for cli in clis:
+        default = shown.get(cli)
+        name = default.name if default else "—"
+        server = default.server if default and default.server else "—"
+        rows.append([model_settings.cli_title(cli), name, server])
+    _table(["CLI", "DEFAULT MODEL", "SERVER"], rows)
+
+
+def cmd_model_default(args: argparse.Namespace) -> int:
+    """`lado model default [<cli> [<model> | --clear]]`: print the agent CLIs' default models,
+    set one or clear it (lado.model_settings)."""
+    from lado import model_check, model_settings
+
+    if args.clear and (args.cli is None or args.model is not None):
+        args.default_parser.error("--clear takes an agent CLI and no model")
+    if args.cli is None:
+        _print_defaults(list(providers.names()))
+        return 0
+    try:
+        if args.clear:
+            title = model_settings.cli_title(args.cli)
+            cleared = model_settings.clear_default(args.cli)
+            print(
+                f"{title}'s default model is cleared."
+                if cleared
+                else f"{title} has no default model."
+            )
+            return 0
+        if args.model is None:
+            model_settings.known_cli(args.cli)
+            _print_defaults([args.cli])
+            return 0
+        ref, verdict = model_settings.set_default(
+            args.cli,
+            args.model,
+            lambda provider: runtime.agents_env(runtime.agent_layers(None), provider),
+        )
+    except model_settings.Refused as exc:
+        return _refused(exc)
+    title = model_settings.cli_title(ref.cli)
+    if verdict is None:
+        saved = state.model_by_id(ref.model_id or "")
+        servers = {server.id: server.name for server in state.model_servers()}
+        if saved is not None:
+            on = servers.get(saved.server, saved.server)
+            print(f"{title}'s default model: {saved.name} ({saved.model} on {on})")
+        return 0
+    if verdict.kind == model_check.WARN:
+        _warn_line(verdict.text)
+    print(f"{title}'s default model: {ref.builtin} ({verdict.text})")
+    return 0
+
+
+def cmd_model_list(args: argparse.Namespace) -> int:
+    """`lado model list`: the configured models, running no CLI and asking no server."""
+    models = state.models()
+    if not models:
+        print(
+            "No models. Add one: lado model add <name> --cli <cli> --model <model> "
+            "--server <server>"
+        )
+        return 0
+    servers = {server.id: server.name for server in state.model_servers()}
+    known = providers.names()
+    rows = [
+        [
+            model.name,
+            providers.get(model.cli).title if model.cli in known else model.cli,
+            model.model,
+            servers.get(model.server, model.server),
+        ]
+        for model in models
+    ]
+    _table(["NAME", "CLI", "MODEL", "SERVER"], rows)
+    return 0
+
+
+def cmd_model_remove(args: argparse.Namespace) -> int:
+    """`lado model remove <name>…`: the models, all found before any is removed; their
+    servers stay."""
+    from lado import model_settings
+
+    try:
+        model_settings.remove_models(
+            args.names, lambda name: print(f'Removed model "{name}".'), _print_cleared
+        )
+    except model_settings.Refused as exc:
+        return _refused(exc)
+    return 0
+
+
 def cmd_ui(args: argparse.Namespace) -> int:
     import webbrowser
 
@@ -1671,6 +1983,13 @@ def main(argv: list[str] | None = None) -> int:
             f"{name}: {', '.join(providers.get(name).permission_modes)}"
             for name in providers.names()
         ),
+    )
+    start.add_argument(
+        "--model",
+        help="the model the session's agents of its provider's CLI start on: a name of the "
+        "CLI's own or of a model saved for it (lado model list), checked before the start; '' "
+        "is the CLI's own settings, past its default model; without it, a resume keeps the "
+        "session's, and a session with none starts on the default model",
     )
     start.add_argument(
         "--kit",
@@ -2034,6 +2353,104 @@ def main(argv: list[str] | None = None) -> int:
     period.add_argument("--all", action="store_true", help="everything kept")
     stats_cmd.set_defaults(func=cmd_stats)
 
+    model_server = commands.add_parser(
+        "model-server", help="model servers in your network: what one is, and yours under names"
+    )
+    model_server.set_defaults(func=lambda _: model_server.print_help() or 0)
+    model_server_sub = model_server.add_subparsers(
+        dest="sub", metavar="<command>", parser_class=_ServerParser
+    )
+    model_server_probe = model_server_sub.add_parser(
+        "probe",
+        help="the server's type, its models and the agent CLIs that can use it",
+        usage="%(prog)s [-h] [--key] address",  # --key takes no value
+    )
+    model_server_probe.add_argument(
+        "address", help="e.g. 192.168.1.10:11434 or https://gw.example/llm (http:// if none)"
+    )
+    model_server_probe.add_argument(
+        "--key",
+        nargs="?",
+        const=_NO_VALUE,
+        help="the server asks for a key: asked without echo, or read from stdin; never given here",
+    )
+    model_server_probe.set_defaults(func=cmd_model_server_probe)
+    model_server_add = model_server_sub.add_parser(
+        "add",
+        help="probe a server and save it under a name, with its key",
+        usage="%(prog)s [-h] [--key] [--replace] name address",  # --key takes no value
+    )
+    model_server_add.add_argument("name", help='e.g. "LM Studio at home" (any case finds it)')
+    model_server_add.add_argument(
+        "address", help="e.g. localhost:1234 or https://gw.example/llm (http:// if none)"
+    )
+    model_server_add.add_argument(
+        "--key",
+        nargs="?",
+        const=_NO_VALUE,
+        help="the server asks for a key: asked without echo, or read from stdin; never given here",
+    )
+    model_server_add.add_argument(
+        "--replace",
+        action="store_true",
+        help="change the address (and with --key the key) of a saved server; its models stay",
+    )
+    model_server_add.set_defaults(func=cmd_model_server_add)
+    model_server_list = model_server_sub.add_parser(
+        "list", help="the saved servers, without asking them"
+    )
+    model_server_list.set_defaults(func=cmd_model_server_list)
+    model_server_remove = model_server_sub.add_parser(
+        "remove",
+        help="remove a saved server and its key; refused while a model uses it, unless "
+        "--with-models",
+    )
+    model_server_remove.add_argument("name")
+    model_server_remove.add_argument(
+        "--with-models", action="store_true", help="remove the models that use it too"
+    )
+    model_server_remove.set_defaults(func=cmd_model_server_remove)
+
+    model_cmd = commands.add_parser(
+        "model", help="your servers' models under names, and each agent CLI's default model"
+    )
+    model_cmd.set_defaults(func=lambda _: model_cmd.print_help() or 0)
+    model_sub = model_cmd.add_subparsers(dest="sub", metavar="<command>")
+    model_add = model_sub.add_parser(
+        "add", help="save a model of a server under a name, checked against the server's list"
+    )
+    model_add.add_argument("name", help='e.g. "Fast" (any case finds it)')
+    model_add.add_argument(
+        "--cli", required=True, metavar="<cli>", help=f"one of {', '.join(providers.names())}"
+    )
+    model_add.add_argument(
+        "--model", required=True, metavar="<model>", help="the model as the CLI names it"
+    )
+    model_add.add_argument(
+        "--server", metavar="<server>", help="a saved model server's name (lado model-server list)"
+    )
+    model_add.set_defaults(func=cmd_model_add)
+    model_list = model_sub.add_parser(
+        "list", help="the saved models, running no CLI and asking no server"
+    )
+    model_list.set_defaults(func=cmd_model_list)
+    model_remove = model_sub.add_parser(
+        "remove", help="remove saved models, all or none; their servers stay"
+    )
+    model_remove.add_argument("names", nargs="+", metavar="name")
+    model_remove.set_defaults(func=cmd_model_remove)
+    model_default = model_sub.add_parser(
+        "default", help="print the agent CLIs' default models, set one or clear it"
+    )
+    model_default.add_argument(
+        "cli", nargs="?", metavar="<cli>", help=f"one of {', '.join(providers.names())}"
+    )
+    model_default.add_argument(
+        "model", nargs="?", metavar="<model>", help="a saved model's name, or one of the CLI's own"
+    )
+    model_default.add_argument("--clear", action="store_true", help="back to the CLI's settings")
+    model_default.set_defaults(func=cmd_model_default, default_parser=model_default)
+
     bug_report_cmd = commands.add_parser(
         "bug-report", help="print a bug report for a new GitHub issue, and open it"
     )
@@ -2054,6 +2471,9 @@ def main(argv: list[str] | None = None) -> int:
     login_wait_cmd.add_argument("args", nargs=argparse.REMAINDER)
 
     args, more = parser.parse_known_args(argv)
+    if more and args.command == "model-server" and args.sub in _TAKES_NO_MORE:
+        print(f"lado: {_TAKES_NO_MORE[args.sub]}", file=sys.stderr)
+        return 1
     if more and hasattr(args, "quiet_parser"):  # words that may be a secret: not repeated
         args.quiet_parser.error("")
     if more:  # as parse_args says it
@@ -2089,7 +2509,8 @@ def main(argv: list[str] | None = None) -> int:
     kicks = args.command not in ("update", "stats") and not removes and not serves
     kicks = kicks and not (args.command == "telemetry" and args.sub == "send")
     try:
-        if args.command not in NOT_MIGRATING:
+        sub = (args.command, getattr(args, "sub", None))
+        if args.command not in NOT_MIGRATING and sub not in NOT_MIGRATING:
             runtime.migrate_if_safe()
         return args.func(args)
     except (

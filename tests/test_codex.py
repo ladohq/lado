@@ -28,12 +28,14 @@ def _agent(cwd, name="w1"):
     )
 
 
-def _launch(cwd, mode=None, spec=None, notice=None, environ=None):
+def _launch(cwd, mode=None, spec=None, notice=None, environ=None, model=None):
     """Launch a Codex agent in `cwd`; its Launch and the config.toml LADO wrote for it."""
     agent = _agent(cwd)
     if spec is None:
         environ = dict(os.environ) if environ is None else environ
-        spec = providers.AgentSpec(ROLE, mcp={"lado": base.mcp_server(agent)}, environ=environ)
+        spec = providers.AgentSpec(
+            ROLE, mcp={"lado": base.mcp_server(agent)}, environ=environ, model=model
+        )
     sess = state.Session("s", str(cwd), mode, "codex")
     launch = providers.get("codex").launch_command(agent, sess, spec, notice=notice)
     return launch, _config(launch)
@@ -573,6 +575,82 @@ def test_codex_maps_native_events(native, payload, expected):
     assert providers.get("codex").parse_event(native, json.dumps(payload)) == expected
 
 
+@pytest.mark.parametrize(
+    ("native", "payload"),
+    [
+        ("SessionStart", {"source": "startup"}),
+        ("UserPromptSubmit", {"prompt": "hi"}),
+        ("Stop", {"stop_hook_active": False}),
+        ("Interrupt", {}),
+        ("PermissionRequest", {"tool_name": "Bash", "tool_input": {}}),
+        ("PostToolUse", {"tool_name": "Bash", "tool_input": {}}),
+    ],
+)
+def test_every_codex_hook_names_the_model(native, payload):
+    cli = providers.get("codex")
+    event = cli.parse_event(native, json.dumps({**payload, "model": "gpt-5.5"}))
+    assert (event.model, event.effort) == ("gpt-5.5", None)  # no hook names the effort
+    assert cli.parse_event(native, json.dumps(payload)).model == ""
+    assert cli.parse_event(native, json.dumps({**payload, "model": 5})).model == ""
+
+
+def test_carried_model_of_the_chosen_profile(repo, codex_home):
+    _user_config(
+        codex_home,
+        'profile = "work"\nmodel = "gpt-5.5"\nmodel_reasoning_effort = "low"\n'
+        '[profiles.work]\nmodel = "gpt-5.6-sol"\nmodel_reasoning_effort = "high"\n',
+    )
+    launch, _ = _launch(repo)
+    assert launch.model == state.Choice("gpt-5.6-sol", state.CLI_CONFIG, "profile work")
+    assert launch.effort == state.Choice("high", state.CLI_CONFIG, "profile work")
+
+
+def test_carried_model_falls_back_to_the_top_level(repo, codex_home):
+    _user_config(
+        codex_home,
+        'profile = "work"\nmodel = "gpt-5.5"\n[profiles.work]\nmodel_reasoning_effort = "high"\n',
+    )
+    launch, _ = _launch(repo)
+    assert launch.model == state.Choice("gpt-5.5", state.CLI_CONFIG)
+    assert launch.effort == state.Choice("high", state.CLI_CONFIG, "profile work")
+
+
+def test_no_carried_model_leaves_none(repo, codex_home):
+    _user_config(codex_home, '[profiles.work]\nmodel = "gpt-5.6-sol"\n')  # not the chosen one
+    launch, _ = _launch(repo)
+    assert (launch.model, launch.effort) == (None, None)
+
+
+def test_session_model_wins_over_the_carried_profile(repo, codex_home):
+    text = (
+        'profile = "work"\nmodel = "gpt-5.5"\n'
+        '[profiles.work]\nmodel = "gpt-5.5"\nmodel_reasoning_effort = "high"\n'
+    )
+    _user_config(codex_home, text)
+    before = (codex_home / "config.toml").read_bytes()
+    launch, config = _launch(repo, model="gpt-5.6-sol")
+    assert config["model"] == "gpt-5.6-sol"
+    assert config["profiles"]["work"] == {"model": "gpt-5.6-sol", "model_reasoning_effort": "high"}
+    assert launch.model == state.Choice("gpt-5.6-sol", state.SESSION)
+    assert launch.effort == state.Choice("high", state.CLI_CONFIG, "profile work")
+    assert (codex_home / "config.toml").read_bytes() == before
+
+
+def test_session_model_without_a_profile_goes_to_the_top_level(repo, codex_home):
+    _user_config(codex_home, '[profiles.other]\nmodel = "gpt-5.5"\n')  # not the chosen one
+    launch, config = _launch(repo, model="gpt-5.6-sol")
+    assert config["model"] == "gpt-5.6-sol"
+    assert config["profiles"] == {"other": {"model": "gpt-5.5"}}
+    assert launch.model == state.Choice("gpt-5.6-sol", state.SESSION)
+
+
+def test_no_session_model_keeps_the_carried_one(repo, codex_home):
+    _user_config(codex_home, 'model = "gpt-5.5"\n')
+    launch, config = _launch(repo)
+    assert config["model"] == "gpt-5.5"
+    assert launch.model == state.Choice("gpt-5.5", state.CLI_CONFIG)
+
+
 def test_codex_pairs_an_approval_with_its_tool_call():
     cli = providers.get("codex")
     asked = {"tool_name": "mcp__echo__echo", "tool_input": {"text": "hello"}, "turn_id": "t"}
@@ -993,3 +1071,654 @@ def test_a_launched_agent_gets_its_login_and_trust_with_notes(repo, codex_home):
     assert blocker.reason is None
     assert os.readlink(home / "auth.json") == str(codex_home / "auth.json")
     assert blocker.notes == (f"LADO linked {home / 'auth.json'} to {codex_home / 'auth.json'}",)
+
+
+# On a model server.
+
+CATALOGUE = {
+    "models": [
+        {"slug": "gpt-new", "tool_mode": "code_mode_only", "display_name": "New"},
+        {
+            "slug": "gpt-5.5",
+            "display_name": "GPT-5.5",
+            "description": "Legacy coding model.",
+            "default_reasoning_level": "medium",
+            "supported_reasoning_levels": [{"effort": "low", "description": "fast"}],
+            "shell_type": "unified_exec",
+            "visibility": "list",
+            "additional_speed_tiers": ["fast"],
+            "service_tiers": [{"id": "priority", "name": "Fast", "description": "quick"}],
+            "availability_nux": {"message": "new"},
+            "upgrade": {"model": "gpt-6"},
+            "support_verbosity": True,
+            "default_verbosity": "low",
+            "apply_patch_tool_type": "freeform",
+            "context_window": 272000,
+            "max_context_window": 272000,
+            "experimental_supported_tools": ["x"],
+            "input_modalities": ["text", "image"],
+            "supports_search_tool": True,
+            "supports_reasoning_effort_updates": True,
+            "multi_agent_version": 2,
+            "base_instructions": "the binary's own",
+        },
+        {"slug": "auto-review", "tool_mode": "code_mode_only", "display_name": "Review"},
+    ]
+}
+SECRET = "sk-canary-of-the-key"
+
+
+def _server(key=SECRET, limits=None, model="gw-gpt", name="Шлюз GPT"):
+    return base.ServerEntry(
+        "aaaa1111",
+        "Шлюз",
+        "http://gw:4000/v1",
+        "http://gw:4000",
+        "LADO_MODEL_KEY_AAAA1111" if key else "",
+        key,
+        ((model, name),),
+        limits or {},
+    )
+
+
+@pytest.fixture
+def catalogue(monkeypatch):
+    """`codex debug models --bundled` as the installed Codex prints it; the argv it was asked."""
+    asked = []
+
+    def run_list(argv, env):
+        asked.append((argv, env.get("CODEX_HOME")))
+        return json.dumps(CATALOGUE)
+
+    monkeypatch.setattr(base, "run_list", run_list)
+    return asked
+
+
+def _launch_on(cwd, server=None, environ=None):
+    server = server or _server()
+    agent = _agent(cwd)
+    spec = providers.AgentSpec(
+        ROLE,
+        mcp={"lado": base.mcp_server(agent)},
+        environ=dict(os.environ) if environ is None else environ,
+        model=server.models[0][0],
+        servers=(server,),
+    )
+    launch = providers.get("codex").launch_command(
+        agent, state.Session("s", str(cwd), None, "codex"), spec
+    )
+    return launch, _config(launch)
+
+
+def test_a_server_is_a_provider_of_the_agent_s_config_and_its_choice(repo, catalogue):
+    _, config = _launch_on(repo)
+    assert config["model_provider"] == "lado-aaaa1111"
+    assert config["model"] == "gw-gpt"
+    assert config["model_providers"]["lado-aaaa1111"] == {
+        "name": "LADO · Шлюз",
+        "base_url": "http://gw:4000/v1",
+        "wire_api": "responses",
+        "env_key": "LADO_MODEL_KEY_AAAA1111",
+    }
+
+
+def test_the_user_s_providers_stay_beside_the_server_s(repo, catalogue, codex_home):
+    _user_config(codex_home, '[model_providers.mine]\nbase_url = "http://mine/v1"\n')
+    _, config = _launch_on(repo)
+    assert config["model_providers"]["mine"] == {"base_url": "http://mine/v1"}
+    assert "lado-aaaa1111" in config["model_providers"]
+
+
+def test_a_carried_profile_goes_to_the_server_too(repo, catalogue, codex_home):
+    _user_config(
+        codex_home,
+        'profile = "work"\n'
+        "[profiles.work]\n"
+        'model = "own"\nmodel_provider = "mine"\nmodel_reasoning_effort = "high"\n'
+        'web_search = "live"\n'
+        "[profiles.other]\n"
+        'model = "another"\n',
+    )
+    _, config = _launch_on(repo)
+    assert config["profiles"]["work"] == {"model": "gw-gpt", "model_provider": "lado-aaaa1111"}
+    assert config["profiles"]["other"] == {"model": "another"}
+    assert codex._model_provider(config) == "lado-aaaa1111"
+
+
+def test_the_key_is_in_the_environment_alone(repo, catalogue, lado_home):
+    launch, _ = _launch_on(repo)
+    assert launch.env["LADO_MODEL_KEY_AAAA1111"] == SECRET
+    assert launch.env[base.MODEL_SERVER] == "aaaa1111"
+    assert SECRET not in " ".join(launch.argv)
+    for file in (lado_home / "agents").rglob("*"):
+        if file.is_file() and not file.is_symlink():
+            assert SECRET not in file.read_text(), file
+
+
+def test_lado_s_mcp_servers_are_not_handed_the_key(repo, catalogue):
+    _, config = _launch_on(repo)
+    assert "LADO_MODEL_KEY_AAAA1111" not in config["mcp_servers"]["lado"]["env_vars"]
+
+
+def test_a_server_with_no_key_has_no_env_key(repo, catalogue):
+    launch, config = _launch_on(repo, _server(key=None))
+    assert "env_key" not in config["model_providers"]["lado-aaaa1111"]
+    assert not [name for name in launch.env if name.startswith(base.KEY_VARIABLE)]
+    assert "" not in launch.env
+
+
+def test_the_launch_says_what_it_set_up(repo, catalogue):
+    launch, _ = _launch_on(repo)
+    assert launch.model == state.Choice("gw-gpt", state.SESSION)
+    assert launch.effort is None
+
+
+def test_launched_on_reads_the_agent_s_config(repo, catalogue):
+    _launch_on(repo)
+    assert providers.get("codex").launched_on(_agent(repo)) == "aaaa1111"
+
+
+def test_launched_on_of_a_built_in_agent_is_none(repo):
+    _launch(repo, model="gpt-5.5")
+    assert providers.get("codex").launched_on(_agent(repo)) is None
+
+
+def test_an_agent_that_does_not_run_was_launched_on_nothing(repo):
+    assert providers.get("codex").launched_on(_agent(repo)) is None
+
+
+def test_an_agent_on_a_server_needs_no_login(codex_home):
+    cli = providers.get("codex")
+    env = {"CODEX_HOME": str(codex_home)}
+    assert cli.needs_login(env)
+    assert not cli.needs_login({**env, base.MODEL_SERVER: "aaaa1111"})
+
+
+def test_nothing_of_the_login_reaches_an_agent_on_a_server(repo, catalogue, codex_home):
+    (codex_home / "auth.json").parent.mkdir(parents=True, exist_ok=True)
+    (codex_home / "auth.json").write_text('{"auth_mode": "chatgpt"}')
+    launch, _ = _launch_on(repo)
+    blocker = providers.get("codex").first_hook_blocker(
+        str(repo), {**launch.env, "OPENAI_API_KEY": "sk-the-human-s-own"}
+    )
+    home = Path(launch.env["CODEX_HOME"])
+    assert not (home / "auth.json").is_symlink() and not (home / "auth.json").exists()
+    assert blocker.notes == ()
+
+
+def test_a_home_that_ran_on_a_built_in_model_loses_its_login_link(repo, catalogue, codex_home):
+    built_in, _ = _launch(repo, model="gpt-5.5")
+    _blocker(built_in, repo)
+    home = Path(built_in.env["CODEX_HOME"])
+    assert (home / "auth.json").is_symlink()
+    launch, _ = _launch_on(repo)
+    _blocker(launch, repo)
+    assert not (home / "auth.json").is_symlink()
+
+
+def test_a_home_back_on_a_built_in_model_has_nothing_of_the_server(repo, catalogue, codex_home):
+    launch, _ = _launch_on(repo)
+    home = Path(launch.env["CODEX_HOME"])
+    assert (home / "models.json").exists()
+    built_in, config = _launch(repo, model="gpt-5.5")
+    assert not (home / "models.json").exists()
+    assert "model_catalog_json" not in config and "web_search" not in config
+    assert config.get("model_provider") is None
+    assert "lado-aaaa1111" not in config.get("model_providers", {})
+    assert set(built_in.env) == {"CODEX_HOME"}
+    _blocker(built_in, repo)
+    assert (home / "auth.json").is_symlink()
+
+
+def test_web_search_and_a_carried_effort_stay_off(repo, catalogue, codex_home):
+    _user_config(codex_home, 'model_reasoning_effort = "xhigh"\n')
+    launch, config = _launch_on(repo)
+    assert config["web_search"] == "disabled"
+    assert "model_reasoning_effort" not in config
+    assert launch.effort is None
+
+
+def test_a_built_in_agent_keeps_its_effort_and_its_search(repo, codex_home):
+    _user_config(codex_home, 'model_reasoning_effort = "xhigh"\n')
+    launch, config = _launch(repo)
+    assert config["model_reasoning_effort"] == "xhigh"
+    assert "web_search" not in config
+    assert launch.effort == state.Choice("xhigh", state.CLI_CONFIG)
+
+
+def _catalogue_of(launch, config):
+    assert config["model_catalog_json"] == str(Path(launch.env["CODEX_HOME"]) / "models.json")
+    return json.loads(Path(config["model_catalog_json"]).read_text())["models"]
+
+
+def test_the_agent_s_list_is_its_one_model_in_the_binary_s_format(repo, catalogue):
+    launch, config = _launch_on(repo)
+    [model] = _catalogue_of(launch, config)
+    assert catalogue == [(["codex", "debug", "models", "--bundled"], launch.env["CODEX_HOME"])]
+    assert (model["slug"], model["display_name"]) == ("gw-gpt", "Шлюз GPT")
+    assert model["description"] == "On Шлюз"
+    assert model["base_instructions"] == "the binary's own"
+    assert model["shell_type"] == "unified_exec"
+
+
+def test_the_agent_s_list_adds_no_tool_or_parameter_of_openai_s(repo, catalogue):
+    launch, config = _launch_on(repo)
+    [model] = _catalogue_of(launch, config)
+    off = {
+        "apply_patch_tool_type": None,
+        "supports_search_tool": False,
+        "experimental_supported_tools": [],
+        "multi_agent_version": None,
+        "supported_reasoning_levels": [],
+        "default_reasoning_level": None,
+        "supports_reasoning_effort_updates": False,
+        "support_verbosity": False,
+        "default_verbosity": None,
+        "service_tiers": [],
+        "additional_speed_tiers": [],
+        "availability_nux": None,
+        "upgrade": None,
+        "input_modalities": ["text"],
+    }
+    assert {key: model[key] for key in off} == off
+
+
+def test_a_name_with_a_quote_is_text_in_the_list(repo, catalogue):
+    launch, config = _launch_on(repo, _server(name='Шлюз "GPT"\n'))
+    assert _catalogue_of(launch, config)[0]["display_name"] == 'Шлюз "GPT"\n'
+
+
+@pytest.mark.parametrize(
+    "printed", ["not json", "[]", '{"models": 1}', '{"models": [{"tool_mode": "x"}]}']
+)
+def test_a_list_lado_cannot_use_leaves_codex_s_with_a_warning(repo, monkeypatch, printed):
+    monkeypatch.setattr(base, "run_list", lambda argv, env: printed)
+    launch, config = _launch_on(repo)
+    assert "model_catalog_json" not in config
+    assert not (Path(launch.env["CODEX_HOME"]) / "models.json").exists()
+    [warning] = [w for w in launch.warnings if "/model" in w]
+    assert "OpenAI's models, which its server does not have" in warning
+
+
+def test_a_failing_list_warns_with_why(repo, monkeypatch):
+    def fails(argv, env):
+        raise ValueError("`codex debug models --bundled` failed: boom")
+
+    monkeypatch.setattr(base, "run_list", fails)
+    launch, config = _launch_on(repo)
+    assert "model_catalog_json" not in config
+    assert [w for w in launch.warnings if "boom" in w and "/model" in w]
+
+
+def test_a_known_context_reaches_the_config_and_the_list(repo, catalogue):
+    limits = {"gw-gpt": base.Limit(65536)}
+    launch, config = _launch_on(repo, _server(limits=limits))
+    assert config["model_context_window"] == 65536
+    assert config["model_auto_compact_token_limit"] == 57344
+    [model] = _catalogue_of(launch, config)
+    assert (model["context_window"], model["max_context_window"]) == (65536, 65536)
+
+
+def test_the_compact_limit_leaves_the_output_the_server_reports(repo, catalogue):
+    limits = {"gw-gpt": base.Limit(200000, 1000)}
+    _, config = _launch_on(repo, _server(limits=limits))
+    assert config["model_auto_compact_token_limit"] == 199000
+
+
+def test_an_unknown_context_sets_neither_key(repo, catalogue):
+    launch, config = _launch_on(repo)
+    assert "model_context_window" not in config
+    assert "model_auto_compact_token_limit" not in config
+    [model] = _catalogue_of(launch, config)
+    assert (model["context_window"], model["max_context_window"]) == (None, None)
+
+
+def test_a_built_in_agent_s_config_has_nothing_of_a_server(repo, codex_home):
+    _user_config(codex_home, 'model = "own"\nmodel_provider = "mine"\n')
+    launch, config = _launch(repo)
+    assert (config["model"], config["model_provider"]) == ("own", "mine")
+    assert not {"model_catalog_json", "web_search", "model_context_window"} & set(config)
+    assert set(launch.env) == {"CODEX_HOME"}
+
+
+# A failed turn, from the agent's journal.
+
+JOURNAL = "sessions/2026/11/07/rollout-2026-11-07T17-16-38-a.jsonl"
+UNAUTHORIZED = {
+    "message": "unexpected status 401 Unauthorized: Missing Authentication header, "
+    "url: https://user:pass@gw/v1/responses, cf-ray: 8f1-AMS",
+    "codex_error_info": {"http_connection_failed": {"http_status_code": 401}},
+}
+
+
+def _line(kind, **payload):
+    return json.dumps({"type": "event_msg", "payload": {"type": kind, **payload}}) + "\n"
+
+
+def _write(agent, *lines, name=JOURNAL, binary=False):
+    path = base.config_path(agent) / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("ab") as file:
+        for line in lines:
+            file.write(line if binary else line.encode())
+    return path
+
+
+def _failed(agent, keys=()):
+    return providers.get("codex").failed_turn(agent, lambda: keys)
+
+
+@pytest.fixture
+def on_server(repo, catalogue):
+    _launch_on(repo)
+    return _agent(repo)
+
+
+def _read(on_server, error, keys=()):
+    _write(on_server, _line("task_started"), _line("task_complete", error=error))
+    return _failed(on_server, keys)
+
+
+def test_a_refused_key_ends_the_turn_in_lado_s_words(on_server):
+    event = _read(on_server, UNAUTHORIZED)
+    assert event == Event(
+        base.TURN_END,
+        error="the model provider refused the key (401): Missing Authentication header",
+        details="Missing Authentication header",
+        output_ignored=True,
+    )
+
+
+@pytest.mark.parametrize(
+    ("status", "reason", "words"),
+    [
+        (402, "Payment Required", "the model provider asks for payment (402)"),
+        (403, "Forbidden", "the model provider refused access (403)"),
+        (404, "Not Found", "the model provider refused the request (404)"),
+        (413, "Payload Too Large", "the model provider refused the request (413)"),
+        (422, "Unprocessable Entity", "the model provider refused the request (422)"),
+    ],
+)
+def test_each_status_codex_gives_up_on_reads_in_lado_s_words(on_server, status, reason, words):
+    event = _read(
+        on_server,
+        {
+            "message": f"unexpected status {status} {reason}: no such thing, url: http://gw/v1",
+            "codex_error_info": {"http_connection_failed": {"http_status_code": status}},
+        },
+    )
+    assert (event.error, event.details) == (f"{words}: no such thing", "no such thing")
+    assert not event.transient
+
+
+def test_a_status_with_no_text_is_its_words_alone(on_server):
+    event = _read(
+        on_server,
+        {
+            "message": "unexpected status 403 Forbidden, url: http://gw/v1/responses",
+            "codex_error_info": {"http_connection_failed": {"http_status_code": 403}},
+        },
+    )
+    assert (event.error, event.details) == ("the model provider refused access (403)", "")
+
+
+def test_a_limit_keeps_only_the_status(on_server):
+    event = _read(
+        on_server,
+        {
+            "message": "exceeded retry limit, last status: 429 Too Many Requests",
+            "codex_error_info": {"response_too_many_failed_attempts": {"http_status_code": 429}},
+        },
+    )
+    assert event.error == "the model provider limits requests, or the quota is spent (429)"
+    assert event.details == "" and not event.transient
+
+
+@pytest.mark.parametrize(
+    ("body", "line"),
+    [
+        (
+            '{"error": {"message": "unknown model"}}',
+            "the model provider refused the request (400): unknown model",
+        ),
+        (
+            '{"message":"invalid api key secret","code":"InvalidArgument"}',
+            "the model provider refused the key (400): invalid api key secret",
+        ),
+        ('{"error": "plain words"}', "the model provider refused the request (400): plain words"),
+    ],
+    ids=["OpenAI's shape", "cloud.ru's key", "a string"],
+)
+def test_a_body_codex_passes_as_it_came_is_a_400(on_server, body, line):
+    event = _read(on_server, {"message": body, "codex_error_info": "other"})
+    assert event.error == line
+
+
+def test_a_context_too_small_keeps_lado_s_words(on_server):
+    body = json.dumps(
+        {
+            "error": {
+                "type": "exceed_context_size_error",
+                "message": "request (70000 tokens) exceeds the available context size (65536 "
+                "tokens)",
+            }
+        }
+    )
+    event = _read(on_server, {"message": body, "codex_error_info": "other"})
+    assert event.error == base.context_line(body)
+    assert event.error.startswith(base.OVERFLOW)
+
+
+def test_a_server_error_is_temporary(on_server):
+    words = "We’re currently experiencing high demand, which may cause temporary errors."
+    event = _read(on_server, {"message": words, "codex_error_info": "internal_server_error"})
+    assert (event.error, event.transient) == (words, True)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        {"message": "something else", "codex_error_info": "usage_limit_exceeded"},
+        {
+            "message": "something else, url: http://gw/v1",
+            "codex_error_info": {"http_connection_failed": {"http_status_code": 408}},
+        },
+    ],
+    ids=["its own kind", "a 408"],
+)
+def test_anything_else_is_its_message_and_not_temporary(on_server, error):
+    event = _read(on_server, error)
+    assert (event.error, event.transient) == ("something else", False)
+
+
+@pytest.mark.parametrize(
+    ("status", "reason"),
+    [
+        (502, "Bad Gateway"),
+        (503, "Service Unavailable"),
+        (504, "Gateway Timeout"),
+        (529, "<unknown status code>"),
+    ],
+)
+def test_any_5xx_codex_gives_up_on_is_temporary(on_server, status, reason):
+    event = _read(
+        on_server,
+        {
+            "message": f"unexpected status {status} {reason}: upstream, url: http://gw/v1",
+            "codex_error_info": {"http_connection_failed": {"http_status_code": status}},
+        },
+    )
+    assert event.transient
+    assert event.error == f"unexpected status {status} {reason}: upstream"
+
+
+def test_a_5xx_after_codex_s_repeats_is_temporary(on_server):
+    event = _read(
+        on_server,
+        {
+            "message": "exceeded retry limit, last status: 503 Service Unavailable",
+            "codex_error_info": {"response_too_many_failed_attempts": {"http_status_code": 503}},
+        },
+    )
+    assert event.transient
+
+
+def test_a_model_at_capacity_is_temporary(on_server):
+    event = _read(
+        on_server,
+        {"message": "Selected model is at capacity", "codex_error_info": "server_overloaded"},
+    )
+    assert (event.error, event.transient) == ("Selected model is at capacity", True)
+
+
+@pytest.mark.parametrize("body", ["Bad Request", "<html>nginx 400</html>", "[1,2]"])
+def test_a_400_with_no_json_object_says_so_as_codex_gives_no_status(on_server, body):
+    """`other` is Codex's word for more than a 400: LADO cannot claim a refusal here, and the
+    server's text stays out of what `lado stats` takes for the error's kind."""
+    event = _read(on_server, {"message": body, "codex_error_info": "other"})
+    assert event.error == f"{codex.NO_WORDS}: {body}"
+    assert (event.details, event.transient) == (body, False)
+    assert event.error.split(":")[0] == codex.NO_WORDS
+
+
+def test_a_body_is_read_before_the_address_is_cut(on_server):
+    body = '{"error":{"message":"bad, url: here"}}'
+    event = _read(on_server, {"message": body, "codex_error_info": "other"})
+    assert event.error == "the model provider refused the request (400): bad, url: here"
+
+
+def test_an_error_with_no_words_still_ends_the_turn(on_server):
+    assert _read(on_server, {"codex_error_info": "other"}).error
+
+
+def test_a_long_message_is_cut_with_its_whole_text_in_the_details(on_server):
+    words = "w" * 300
+    event = _read(on_server, {"message": words, "codex_error_info": "thing"})
+    assert len(event.error) == base.ERROR_LIMIT and event.details == words
+
+
+def test_the_address_and_the_ray_are_in_nothing(on_server):
+    event = _read(on_server, UNAUTHORIZED)
+    told = event.error + event.details
+    assert "pass" not in told and "gw" not in told and "cf-ray" not in told and "8f1" not in told
+
+
+def test_a_ray_with_no_address_is_cut_too(on_server):
+    event = _read(
+        on_server,
+        {
+            "message": "unexpected status 401 Unauthorized: nope, cf-ray: 8f1-AMS",
+            "codex_error_info": {"http_connection_failed": {"http_status_code": 401}},
+        },
+    )
+    assert event.details == "nope"
+
+
+def test_the_key_goes_before_any_cut(on_server):
+    key = "k" * 200
+    event = _read(
+        on_server,
+        {
+            "message": f"unexpected status 401 Unauthorized: {'x' * 110}{key}, url: http://gw/v1",
+            "codex_error_info": {"http_connection_failed": {"http_status_code": 401}},
+        },
+        keys=(key,),
+    )
+    assert "k" * 5 not in event.error + event.details
+    assert event.details.endswith("***")
+
+
+def test_the_key_in_an_address_is_out_as_well(on_server):
+    event = _read(
+        on_server,
+        {"message": "sk-the-key", "codex_error_info": "thing"},
+        keys=("sk-the-key",),
+    )
+    assert (event.error, event.details) == ("***", "***")
+
+
+def test_no_error_is_no_failed_turn(on_server):
+    _write(on_server, _line("task_started"), _line("task_complete", last_agent_message="done"))
+    assert _failed(on_server) is None
+
+
+def test_no_journal_is_no_failed_turn(on_server):
+    assert _failed(on_server) is None
+
+
+def test_a_later_turn_takes_the_error_back(on_server):
+    _write(
+        on_server,
+        _line("task_started"),
+        _line("task_complete", error=UNAUTHORIZED),
+        _line("task_started"),
+    )
+    assert _failed(on_server) is None
+    assert _failed(on_server) is None
+
+
+def test_a_line_in_writing_waits_for_the_next_pass(on_server):
+    line = _line("task_complete", error=UNAUTHORIZED)
+    _write(on_server, line[:40])
+    assert _failed(on_server) is None
+    _write(on_server, line[40:])
+    assert _failed(on_server).error.startswith("the model provider refused the key")
+
+
+def test_an_error_is_told_once(on_server):
+    assert _read(on_server, UNAUTHORIZED) is not None
+    assert _failed(on_server) is None
+
+
+def test_the_offset_survives_a_new_provider_object(on_server):
+    """The offset is on disk: a restarted loop tells nothing again."""
+    _read(on_server, UNAUTHORIZED)
+    assert codex.CodexProvider().failed_turn(on_server, lambda: ()) is None
+
+
+def test_the_next_failed_turn_is_told_too(on_server):
+    _read(on_server, UNAUTHORIZED)
+    assert _read(on_server, UNAUTHORIZED) is not None
+
+
+def test_a_new_journal_is_read_from_its_start(on_server):
+    _read(on_server, UNAUTHORIZED)
+    later = JOURNAL.replace("17-16-38", "18-00-00")
+    _write(on_server, _line("task_complete", error=UNAUTHORIZED), name=later)
+    assert _failed(on_server) is not None
+
+
+def test_a_line_that_is_no_json_is_passed_over(on_server):
+    _write(on_server, "not json\n", '"text"\n', '{"payload": 1}\n')
+    assert _read(on_server, UNAUTHORIZED) is not None
+
+
+def test_a_journal_of_broken_bytes_is_passed_over(on_server):
+    _write(on_server, b"\xff\xfe\n", binary=True)
+    assert _read(on_server, UNAUTHORIZED) is not None
+
+
+def test_a_key_that_cannot_be_read_leaves_the_error_unread(on_server):
+    """The error waits for the next pass: it is not lost."""
+
+    def fails():
+        raise OSError("no key")
+
+    _write(on_server, _line("task_complete", error=UNAUTHORIZED))
+    with pytest.raises(OSError):
+        providers.get("codex").failed_turn(on_server, fails)
+    assert _failed(on_server) is not None
+
+
+def test_a_built_in_agent_s_journal_is_never_opened(repo, monkeypatch):
+    _launch(repo, model="gpt-5.5")
+    agent = _agent(repo)
+    path = _write(agent, _line("task_complete", error=UNAUTHORIZED))
+    monkeypatch.setattr(codex, "_newest_journal", lambda home: pytest.fail("a journal was read"))
+    assert _failed(agent) is None
+    assert path.exists() and not (base.config_path(agent) / "journal-offset").exists()
+
+
+def test_the_other_clis_end_no_turn_by_a_journal(repo):
+    for name in ("claude", "kilo", "opencode"):
+        assert providers.get(name).failed_turn(_agent(repo), lambda: ()) is None

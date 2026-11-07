@@ -199,6 +199,8 @@ def test_sessions_lists_name_repo_status_and_agents(client, repo, fake_tmux):
             "stopped_at": None,
             "title": None,
             "project": None,
+            "model": None,
+            "model_missing": False,
             "project_title": None,
         },
         {
@@ -217,6 +219,8 @@ def test_sessions_lists_name_repo_status_and_agents(client, repo, fake_tmux):
             "stopped_at": "2026-10-05T10:30:00.500Z",
             "title": None,
             "project": None,
+            "model": None,
+            "model_missing": False,
             "project_title": None,
         },
     ]

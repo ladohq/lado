@@ -30,7 +30,7 @@ export function terminalUrl(
   return `${scheme}//${where.host}${path}/terminal?mode=${mode}`;
 }
 
-// A provider's login window (docs/design/ui.md, Providers and environment): always in control.
+// A provider's login window (docs/design/ui.md, Agent CLIs and environment): always in control.
 export function loginTerminalUrl(where: { protocol: string; host: string }, provider: string): string {
   const scheme = where.protocol === "https:" ? "wss:" : "ws:";
   return `${scheme}//${where.host}/api/providers/${encodeURIComponent(provider)}/login/terminal`;

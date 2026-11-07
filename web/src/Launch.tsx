@@ -28,6 +28,7 @@ import {
   type Limits,
   type ProjectLaunch,
   type ProjectPlace,
+  type ModelRefusal,
   type ProviderInfo,
   type ProviderSuggestion,
   type RecentFolder,
@@ -42,6 +43,7 @@ import {
 } from "./api";
 import { useCloneJob } from "./cloneJob";
 import { useCopy } from "./Copy";
+import { useLaunchModel } from "./LaunchModel";
 import { ProjectField } from "./LaunchProject";
 import { closedBy, looks, resumeAttempt } from "./attempts";
 import { useLive, useLiveStore, useLocked } from "./live";
@@ -51,6 +53,8 @@ import { projectPath, PROVIDERS_PATH, sessionPath } from "./paths";
 
 // How long the window waits after a keystroke before it asks the server about the folder.
 export const DEBOUNCE = 200;
+// The same before it asks for the check of a typed model, which may run the CLI's list.
+export const MODEL_DEBOUNCE = 300;
 // The same before it asks a remote for its branches, which goes to the network.
 export const BRANCHES_DEBOUNCE = 500;
 // Up to this many branches the Branch field is a list; more, a field that filters them.
@@ -121,7 +125,7 @@ export function useDebounced<T>(value: T, ms = DEBOUNCE): T {
 type Asked<T> = { value: T } | { error: string; detail?: unknown } | null;
 
 // The server's answer to `ask(key)`, asked again when `key` changes; nothing for a null key.
-function useAsked<T>(key: string | null, ask: (key: string) => Promise<T>): Asked<T> {
+export function useAsked<T>(key: string | null, ask: (key: string) => Promise<T>): Asked<T> {
   const [asked, setAsked] = useState<{ key: string; answer: Asked<T> } | null>(null);
   useEffect(() => {
     if (key === null) return;
@@ -218,6 +222,7 @@ function LaunchDialog({
   const [suggested, setSuggested] = useState<ProviderSuggestion["reason"] | null>(null);
   const [permissionMode, setPermissionMode] = useState(resuming?.permission_mode ?? DEFAULT_MODE);
   const [without, setWithout] = useState(resuming?.without.join(", ") ?? "");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [prompt, setPrompt] = useState(""); // the human's first message to the supervisor
   const [touched, setTouched] = useState<Set<string>>(new Set());
   const [fromLast, setFromLast] = useState(false);
@@ -362,6 +367,20 @@ function LaunchDialog({
   const providerInfo = held ? null : inList;
   const noLogin = inList?.login_missing ? inList : null;
   const canStart = providerInfo?.installed === true && !providerInfo.login_missing;
+
+  const modelRefusal = refused?.status === 409 && isModelRefusal(refused.detail) ? refused.detail : null;
+  const model = useLaunchModel({
+    cli: providerInfo ?? null,
+    project: loginsOf,
+    resuming,
+    busy,
+    refusal: modelRefusal,
+    onClearRefusal: () => setRefused((now) => (now?.status === 409 && isModelRefusal(now.detail) ? null : now)),
+    onShow: () => {
+      if (advanced.current) advanced.current.open = true;
+    },
+  });
+  const modelReady = !model.blocked;
   const modes = providerInfo?.permission_modes ?? [];
 
   // M5: kits, provider and mode of a new session come from the folder's last session; in
@@ -426,6 +445,7 @@ function LaunchDialog({
   const ready =
     (resuming !== null || (current?.ok ?? false)) &&
     canStart &&
+    modelReady &&
     kits.length > 0 &&
     !promptOver;
   const cloneReady =
@@ -434,6 +454,7 @@ function LaunchDialog({
     target !== null &&
     CAN_CLONE.has(target.state) &&
     canStart &&
+    modelReady &&
     kits.length > 0 &&
     shownName !== "";
   const scratchReady =
@@ -445,9 +466,10 @@ function LaunchDialog({
     fresh.author === null &&
     fresh.name_state === "free" &&
     canStart &&
+    modelReady &&
     kits.length > 0;
   const projectReady =
-    !promptOver && projectRepo !== null && canStart && kits.length > 0 && shownName !== "";
+    !promptOver && projectRepo !== null && canStart && modelReady && kits.length > 0 && shownName !== "";
 
   // A new session in `where`, as the window's fields say; from scratch, its folder is made
   // a repository first, and the session takes the name and title of the name typed.
@@ -462,6 +484,7 @@ function LaunchDialog({
       ...(chosenProvider !== null ? { provider: chosenProvider } : {}),
       ...(permissionMode !== DEFAULT_MODE ? { permission_mode: permissionMode } : {}),
       ...(off.length ? { without: off } : {}),
+      ...(model.send !== undefined ? { model: model.send } : {}),
       ...withPrompt,
     });
   };
@@ -614,6 +637,7 @@ function LaunchDialog({
         if (chosenProvider !== null && chosenProvider !== resuming.provider) changed.provider = chosenProvider;
         if (permissionMode !== (resuming.permission_mode ?? DEFAULT_MODE)) changed.permission_mode = permissionMode;
         if (!sameList(off, resuming.without)) changed.without = off;
+        if (model.send !== undefined) changed.model = model.send;
         await resume(resuming, { ...changed, ...withPrompt });
         return;
       }
@@ -631,7 +655,7 @@ function LaunchDialog({
   };
 
   const title = resuming ? "Resume session" : "New session";
-  const taken = refused?.status === 409 ? (refused.detail as Taken) : null;
+  const taken = refused?.status === 409 && modelRefusal === null ? (refused.detail as Taken) : null;
   // The session that has the name is this folder's (in Project: of this project too, as
   // the core resumes none of another project or none): Resume it or Open it.
   const takenHere =
@@ -832,7 +856,7 @@ function LaunchDialog({
           />
 
           <div className="field">
-            <label htmlFor={`${ids}-provider`}>Provider</label>
+            <label htmlFor={`${ids}-provider`}>Agent CLI</label>
             <select
               id={`${ids}-provider`}
               value={providers ? (chosenProvider ?? "") : ""}
@@ -916,8 +940,15 @@ function LaunchDialog({
 
         <FirstMessage text={prompt} onText={setPrompt} limit={maxMessage} disabled={busy} />
 
-        <details className="launch-advanced" ref={advanced}>
-          <summary>Advanced: switch off agents, skills, MCP servers or flows</summary>
+        <details
+          className={`launch-advanced${model.peek && !advancedOpen ? " launch-first" : ""}`}
+          ref={advanced}
+          onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
+        >
+          <summary>
+            {model.peek && !advancedOpen ? model.peek : "Advanced: model, switch off agents, skills, MCP servers or flows"}
+          </summary>
+          <div className="launch-grid">{model.field}</div>
           <label className="field">
             Switch off
             <input
@@ -961,7 +992,7 @@ function LaunchDialog({
         {refused && (
           <div className="launch-refused">
             <p className="problem" role="alert">
-              {refused.message}
+              {modelRefusal ? `Not started: ${modelRefusal.short}. See Model above.` : refused.message}
             </p>
             {switchOff.map((item) => (
               <button
@@ -1044,6 +1075,10 @@ function LaunchDialog({
     </dialog>
   );
 }
+
+// A 409 refused for the model: the field's, not a session that has the name.
+const isModelRefusal = (detail: unknown): detail is ModelRefusal =>
+  typeof detail === "object" && detail !== null && "field" in detail && detail.field === "model";
 
 // Resume's button waits for the connection; New session's, the same button, does not.
 const MaybeWaits = ({ resuming, children }: { resuming: boolean; children: ReactElement<object> }) =>
@@ -1788,7 +1823,7 @@ function ProviderNote({
       </span>
     );
   }
-  if (info === null) return chosen ? <span className="field-note bad">unknown provider {chosen}</span> : null;
+  if (info === null) return chosen ? <span className="field-note bad">unknown agent CLI {chosen}</span> : null;
   if (!info.installed) return <span className="field-note bad">{`${info.detail}; ${info.install_hint}`}</span>;
   if (info.warning) return <span className="field-note warn">⚠ {info.warning}</span>;
   return null;

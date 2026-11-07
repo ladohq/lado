@@ -405,8 +405,8 @@ function SystemPanel({
       </dl>
       {facts === null && system === null && <p className="muted">Loading…</p>}
       {facts && (
-        <section className="system-providers" aria-label="Providers">
-          <h4>Providers</h4>
+        <section className="system-providers" aria-label="Agent CLIs">
+          <h4>Agent CLIs</h4>
           <ul>
             {facts.providers.map((provider) => (
               <ProviderRow key={provider.name} provider={provider} />

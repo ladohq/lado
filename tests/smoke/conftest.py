@@ -26,6 +26,7 @@ from lado import providers
 
 KEY = "smoke-fake-key-0123456789abcdefghij"  # no account's key: the endpoint takes none
 MODEL = "smoke-model"  # the model the endpoint "serves" to OpenCode, Kilo and Codex
+SESSION_MODEL = "smoke-model-2"  # another of its models, for a session's model
 
 
 @pytest.fixture
@@ -43,7 +44,7 @@ def _openai_compatible(endpoint: Endpoint) -> dict:
                 "npm": "@ai-sdk/openai-compatible",
                 "name": "smoke",
                 "options": {"baseURL": f"{endpoint.url}/v1", "apiKey": KEY},
-                "models": {MODEL: {"name": MODEL}},
+                "models": {MODEL: {"name": MODEL}, SESSION_MODEL: {"name": SESSION_MODEL}},
             }
         }
     }

@@ -379,6 +379,21 @@ def test_a_spawn_refused_for_the_login_leaves_the_step_waiting(session, fake_tmu
     assert runs.acting(state.get_run(session, "feature/login")) == "developer"
 
 
+def test_a_model_refused_leaves_the_step_waiting_for_a_later_worker(session, fake_tmux):
+    run = to_implement(session)
+    with pytest.raises(runtime.ModelRefused):
+        runs.spawn_worker(session, "feature/login", model="gpt-9")
+    assert state.get_agent(session, "developer") is None
+    assert runs.acting(state.get_run(session, "feature/login")) == "developer (not spawned)"
+    assert messages("developer") == []
+    assert messages("supervisor")[-1].state == state.PENDING
+    assert Path(run.worktree).exists()
+    runs.spawn_worker(session, "feature/login", model="sonnet")
+    worker = state.get_agent(session, "developer")
+    assert (worker.model, worker.model_source) == ("sonnet", "supervisor")
+    assert runs.acting(state.get_run(session, "feature/login")) == "developer"
+
+
 def advance_to_review(session):
     to_implement(session)
     runs.spawn_worker(session, "feature/login")

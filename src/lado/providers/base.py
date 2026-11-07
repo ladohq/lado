@@ -2,17 +2,24 @@
 
 import contextlib
 import os
+import re
 import shlex
 import shutil
 import signal
 import subprocess
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from lado import agent_env as outside_env
 from lado import interpreter, state, tmux
+
+# The launch variable of an agent on a server for a CLI of one model per process: the server's
+# id. The CLI's own login is then not what the agent runs on (Provider.needs_login).
+MODEL_SERVER = "LADO_MODEL_SERVER"
+KEY_VARIABLE = "LADO_MODEL_KEY_"  # + the server's id in capitals: an agent's variable of its key
+SERVER_PROVIDER = "lado-"  # + the server's id: its name as a provider of a CLI's own config
 
 # Neutral hook events. A provider maps its own hook events onto these; see lado.hooks.
 SESSION_START = "session_start"
@@ -42,9 +49,9 @@ class Capabilities:
     # The session-start hook can hold the first turn until the CLI has listed LADO's MCP
     # tools (lado.hooks waits for it); False where that hook would hold the MCP server too.
     hold_first_turn: bool = False
-    # The CLI loses what is typed into it right after its start, and says by no event when
-    # it takes input: its first messages' lines (never a body) go on its command line as
-    # the `notice` of launch_command, handed over as typed (lado.runtime).
+    # The CLI takes its first messages' lines (never a body) on its command line, as the
+    # `notice` of launch_command, before anything can be typed into it; they are handed over
+    # as typed (lado.runtime).
     notice_on_argv: bool = False
     # The CLI starts its session (its session-start hook) only when its first input is
     # submitted: an agent with an empty queue would never be ready, so LADO gives it a line
@@ -77,6 +84,8 @@ class Event:
     # For TURN_END: why the turn ended on an error (an API error, a rate limit), one short
     # line; "" for a turn that ended as usual, or that the human cancelled.
     error: str = ""
+    # For TURN_END with an error cut to that line: its whole text, "" for one that fits.
+    details: str = ""
     # For TURN_END with an error: the provider says the error passes by itself (an
     # overloaded or failing API), so LADO resumes the agent after a while (lado.hooks).
     transient: bool = False
@@ -91,6 +100,18 @@ class Event:
     # Code's background subagents and shells), so it is `background`, not idle (lado.hooks).
     # A provider that cannot tell leaves it False.
     background: bool = False
+    # The model and the effort the CLI says the agent runs on, in any event that says so
+    # (lado.hooks records them: state.report_model). The model: "" where it does not say.
+    # The effort: None where it does not say; "" where it says the model runs its default
+    # effort, with no name.
+    model: str = ""
+    effort: str | None = None
+    # For SESSION_START: what the lead should know of a start that made the agent ready
+    # (lado.hooks); "" for a start with nothing to say.
+    note: str = ""
+    # For SESSION_START: the CLI says it takes input now, so a wait for messages that went
+    # nowhere is over (lado.hooks). A wait with a key is a dialog's, and stays.
+    ready: bool = False
 
 
 ERROR_LIMIT = 160  # characters of an Event.error
@@ -103,6 +124,59 @@ def error_line(kind: str, details: str = "") -> str:
     return text if len(text) <= ERROR_LIMIT else text[: ERROR_LIMIT - 1] + "…"
 
 
+# What a model provider's refusal means, by its status: someone must act, so such a turn is never
+# temporary. 403 has words of its own: a provider also uses it for a quota. The words stand before
+# the first colon, which `lado stats` takes for the error's kind: no server's text in there.
+REFUSALS = {
+    401: "the model provider refused the key",
+    402: "the model provider asks for payment",
+    403: "the model provider refused access",
+    429: "the model provider limits requests, or the quota is spent",
+}
+REFUSED_REQUEST = "the model provider refused the request"  # any other status of is_refusal
+# cloud.ru answers a wrong key with 400 and `invalid api key secret` (the human's check of LAD-220).
+ABOUT_THE_KEY = re.compile(r"api[ _-]?key", re.IGNORECASE)
+# LADO's words of a context too small live here alone, before any other words of a refusal.
+OVERFLOW = "ContextOverflowError"
+TOO_SMALL = "the model's context is too small for the agent's request"
+REFUSED_FOR_CONTEXT = "exceed_context_size_error"
+SERVER_SIZES = re.compile(
+    r"request \(\d+ tokens\) exceeds the available context size \(\d+ tokens\)"
+)
+
+
+def is_refusal(status: object) -> bool:
+    """Whether `status` says a provider will not do it until someone acts: any 4xx but a 408, a
+    request that took too long."""
+    return isinstance(status, int) and 400 <= status < 500 and status != 408
+
+
+def refusal_line(status: int, text: str) -> str:
+    """The Event.error of a turn a provider refused with `status`, by is_refusal."""
+    words = REFUSALS.get(status, REFUSED_REQUEST)
+    if words == REFUSED_REQUEST and status == 400 and ABOUT_THE_KEY.search(text):
+        words = REFUSALS[401]
+    return error_line(f"{words} ({status})", text)
+
+
+def context_line(text: str) -> str | None:
+    """The Event.error of a server's refusal for the context, in `text`; None for any other."""
+    if REFUSED_FOR_CONTEXT not in text:
+        return None
+    sizes = SERVER_SIZES.search(text)
+    return error_line(OVERFLOW, f"{TOO_SMALL}; {sizes[0]}" if sizes else TOO_SMALL)
+
+
+def without_keys(text: str, keys: Iterable[str] = ()) -> str:
+    """`text` with the value of each server's key in the agent's environment and each of `keys`
+    taken out: a server may repeat the key in its refusal, and the session loop has no such
+    variable. Before any cut, as half a key would pass this."""
+    known = [v for name, v in os.environ.items() if name.startswith(KEY_VARIABLE)]
+    for key in sorted(filter(None, [*known, *keys]), key=len, reverse=True):
+        text = text.replace(key, "***")
+    return text
+
+
 @dataclass(frozen=True)
 class McpServer:
     """A stdio MCP server: the command that starts it and its environment."""
@@ -112,6 +186,48 @@ class McpServer:
     # The names of the agent's variables the server reads (lado.mcp_exec fills its env from
     # them): a CLI that starts a server with only some of its environment passes these on.
     env_vars: list[str] = field(default_factory=list)
+
+
+# `max_tokens` of a model with no output reported. OpenCode compacts near context - output and
+# sends output as max_tokens (1.18.35, Kilo 7.8.8 alike): their default of 32000 leaves a small
+# model nothing, as Claude Code's does, so it is a quarter of the context at most.
+DEFAULT_OUTPUT = 8192
+# The same on a large context: the CLIs' own default, as a cloud model's long answer or reasoning
+# has room there.
+LARGE_CONTEXT = 131072
+LARGE_OUTPUT = 32000
+
+
+@dataclass(frozen=True)
+class Limit:
+    """What a server reports of a model: its context in tokens, its output when it says."""
+
+    context: int
+    output: int | None = None
+
+    def output_room(self) -> int:
+        """The tokens a CLI may ask for as its output: what the server reports, else
+        DEFAULT_OUTPUT or on a large context LARGE_OUTPUT, at most a quarter of the context,
+        which the prompt needs too."""
+        default = LARGE_OUTPUT if self.context >= LARGE_CONTEXT else DEFAULT_OUTPUT
+        return max(1, min(self.output or default, self.context // 4))
+
+
+@dataclass(frozen=True)
+class ServerEntry:
+    """A model server for an agent's config: its id, name, base URL and root (the address a
+    CLI that adds /v1 itself is told), the variable that carries its key to the agent ("" for
+    a server with no key), the key, its models as (model, saved name), and the limits it
+    reported, by model, read at this start."""
+
+    id: str
+    name: str
+    base_url: str
+    root: str
+    key_variable: str
+    key: str | None = field(repr=False)
+    models: tuple[tuple[str, str], ...]
+    limits: Mapping[str, Limit] = field(default_factory=dict, hash=False)
 
 
 @dataclass(frozen=True)
@@ -131,6 +247,15 @@ class AgentSpec:
     # Its role changes nothing in the repository (lado.kits): the CLI's edit tools are taken
     # away. Only for a CLI with Capabilities.deny_edit_tools.
     read_only: bool = False
+    # The model the agent starts on, as its CLI is told it (lado.model_settings.start_model);
+    # None for the CLI's own choice. A provider that applies it returns it in Launch.model
+    # with the source `model_source`.
+    model: str | None = None
+    model_source: str = state.SESSION
+    # The model servers of its config: for a CLI whose models on a
+    # server sit beside its own all of them, for a CLI of one model per process the one it
+    # starts on; each key reaches the agent in its environment only.
+    servers: tuple[ServerEntry, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -143,6 +268,13 @@ class Launch:
     # What the provider could not do as asked and did otherwise, told whoever starts the
     # agent (e.g. a user setting it could not read).
     warnings: list[str] = field(default_factory=list)
+    # The model and the effort the launch set up, with where they came from; None for
+    # nothing set up: the CLI chooses (lado.runtime records them: state.set_model).
+    model: state.Choice | None = None
+    effort: state.Choice | None = None
+    # The names the CLI itself gives the processes it starts, from the config the launch wrote:
+    # a worker spawned through its `lado mcp` must not take them over (lado.runtime._launch_env).
+    cli_env: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -236,10 +368,43 @@ class LoginPrompt:
     lines: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class ModelList:
+    """The models a CLI takes (Provider.model_list): its own aliases, and the names of its
+    own list, from `command` (what the human runs to print it); `models` None when there is
+    no list, with `why`; `fixed` when reading again cannot change the answer (no list is what
+    the CLI gives, not a read that failed)."""
+
+    aliases: tuple[str, ...] = ()
+    models: tuple[str, ...] | None = None
+    command: str = ""
+    why: str = ""
+    fixed: bool = False
+
+
+# The APIs of a model server an agent CLI can speak (lado.model_servers), in the order they
+# are named.
+CHAT_COMPLETIONS = "chat completions"  # OpenAI's POST /v1/chat/completions
+RESPONSES = "Responses API"  # OpenAI's POST /v1/responses
+ANTHROPIC_MESSAGES = "Anthropic Messages API"  # POST /v1/messages
+SERVER_APIS = (CHAT_COMPLETIONS, RESPONSES, ANTHROPIC_MESSAGES)
+LM_STUDIO = "LM Studio"  # the type of a server (lado.model_servers), which a CLI may refuse
+
+MODEL_LIST_TIMEOUT = 15  # seconds a CLI's list command may take; then it is killed
+NO_MODEL_LIST = "LADO knows no list of this CLI's models"
+
+
 def run_status(argv: list[str], env: dict[str, str]) -> subprocess.CompletedProcess | str:
     """Run a CLI's login status command with `env` within LOGIN_TIMEOUT, from the home
     folder (no repository's config is read): its result, or why it has none, for an
     UNKNOWN status. Never prints or keeps the output."""
+    return _run_quietly(argv, env, LOGIN_TIMEOUT)
+
+
+def _run_quietly(
+    argv: list[str], env: Mapping[str, str], timeout: float
+) -> subprocess.CompletedProcess | str:
+    """run_status within `timeout` seconds, for any of a CLI's read-only commands."""
     path = env.get("PATH", os.defpath)
     found = shutil.which(argv[0], path=path)
     if found is None:
@@ -261,13 +426,25 @@ def run_status(argv: list[str], env: dict[str, str]) -> subprocess.CompletedProc
     except OSError as error:
         return f"`{shlex.join(argv)}` failed: {error.strerror or error}"
     try:
-        out, err = process.communicate(timeout=LOGIN_TIMEOUT)
+        out, err = process.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         with contextlib.suppress(ProcessLookupError):
             os.killpg(process.pid, signal.SIGKILL)
         process.communicate()
-        return f"`{shlex.join(argv)}` timed out after {LOGIN_TIMEOUT:g} s"
+        return f"`{shlex.join(argv)}` timed out after {timeout:g} s"
     return subprocess.CompletedProcess(argv, process.returncode, out, err)
+
+
+def run_list(argv: list[str], env: Mapping[str, str]) -> str:
+    """The output of a CLI's list command (run_status, within MODEL_LIST_TIMEOUT); raises
+    ValueError with why there is none: it could not run, or it failed."""
+    found = _run_quietly(argv, env, MODEL_LIST_TIMEOUT)
+    if isinstance(found, str):
+        raise ValueError(found)
+    if found.returncode:
+        first = (found.stderr.strip().splitlines() or [f"exit status {found.returncode}"])[0]
+        raise ValueError(f"`{shlex.join(argv)}` failed: {first.strip()}")
+    return found.stdout
 
 
 class Provider(ABC):
@@ -280,6 +457,16 @@ class Provider(ABC):
     capabilities: Capabilities
     # The values of `lado start --permission-mode` this provider honours.
     permission_modes: tuple[str, ...]
+    # The model server API its CLI speaks (one of SERVER_APIS); "" for none.
+    server_api: str = ""
+    # Whether a model on a server takes the CLI's whole process (its one endpoint), rather
+    # than being one provider among the others in its config.
+    external_whole_process: bool = True
+    # The context in tokens an agent of this CLI needs to take a turn, 0 for no number known.
+    min_context: int = 0
+    # Seconds from an agent's launch to its first hook before LADO shows it as held by a
+    # question it does not know (lado.runtime.check_starts).
+    start_silence: float = 30.0
 
     def check_permission_mode(self, mode: str | None) -> None:
         """Raise ValueError for a permission mode this provider cannot honour."""
@@ -312,6 +499,13 @@ class Provider(ABC):
     def parse_event(self, native: str, payload: str) -> Event | None:
         """Translate a native hook event and its input into a neutral event, or None to
         ignore it."""
+
+    def failed_turn(self, agent: state.Agent, keys: Callable[[], Iterable[str]]) -> Event | None:
+        """The end of a turn of the busy `agent` that no hook reports, as a TURN_END with its
+        error, once; None for none, and by default: a CLI's hooks report it. `keys` gives what
+        to take out of the error (without_keys): the session loop asks this on every pass, and
+        reads a key only for an error (lado.runtime.check_turns)."""
+        return None
 
     def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> Blocker:
         """What the CLI, started in `cwd` with `env`, will ask the human before any hook
@@ -371,6 +565,48 @@ class Provider(ABC):
         stops waiting for it; None when it waits with no limit. By default None."""
         return None
 
+    def model_list(self, env: Mapping[str, str]) -> ModelList:
+        """The models the CLI, started with `env`, takes: its aliases and its own list,
+        from its own command or local files, never a request to a model API; a list that
+        cannot be read is none, with why (lado.model_check). By default none."""
+        return ModelList(why=NO_MODEL_LIST)
+
+    @staticmethod
+    def session_choice(spec: AgentSpec) -> state.Choice | None:
+        """Launch.model for a launch that applied `spec.model`."""
+        return state.Choice(spec.model, spec.model_source) if spec.model else None
+
+    def refuses_server(self, kind: str) -> str:
+        """Why the CLI cannot use a server of the type `kind`, whatever API it proves, as the end
+        of a sentence; "" for a type it can (lado.model_servers.suiting)."""
+        return ""
+
+    def server_model(self, server: str, model: str) -> str:
+        """The model `model` of the server of id `server`, as the CLI is told it."""
+        raise NotImplementedError(f"{self.title} runs on no model server")
+
+    def reserved_model(self, model: str) -> bool:
+        """Whether the CLI reads the name `model` as one of its own, so that a server's model
+        of that name would never reach the server. By default none is."""
+        return False
+
+    def on_server(self, reported: str) -> tuple[str, str] | None:
+        """The id of the server and the model of `reported`, a model as the CLI names it, when
+        it is one of a server LADO put into the agent; None for any other."""
+        return None
+
+    def launched_on(self, agent: state.Agent) -> str | None:
+        """The id of the server `agent`'s launch runs on, for a CLI whose names of a model say
+        no server (on_server), read from what the launch wrote; None for any other, and for an
+        agent that does not run any more."""
+        return None
+
+    def same_model(self, chosen: str, reported: str) -> bool:
+        """Whether the model the CLI names in an event, `reported`, is the one LADO chose,
+        `chosen`, by another name (an alias's full name): its source stays
+        (state.report_model). By default only the same name is."""
+        return chosen == reported
+
     def continue_output(self, text: str) -> str | None:
         """Hook output that makes the agent continue with `text` when its turn ends.
 
@@ -390,15 +626,19 @@ def lado_command(*args: str) -> list[str]:
 # tests/test_project_variables_core.py fails until it does.
 CLI_VARIABLES = frozenset(
     {
+        "ANTHROPIC_UNIX_SOCKET",
         "CLAUDE_CONFIG_DIR",
         "CODEX_HOME",
         "OPENCODE_CONFIG",
         "OPENCODE_CONFIG_CONTENT",
         "OPENCODE_DISABLE_AUTOUPDATE",
+        "OPENCODE_TUI_CONFIG",
         "KILO_CONFIG",
         "KILO_CONFIG_CONTENT",
         "KILO_DISABLE_AUTOUPDATE",
         "KILO_NO_DAEMON",
+        "KILO_TUI_CONFIG",
+        "XDG_STATE_HOME",
     }
 )
 
@@ -445,6 +685,22 @@ def remove_config_dir(agent: state.Agent) -> None:
 def remove_session_config_dirs(session: str) -> None:
     """Remove the config folders of all the session's agents, when none of them runs."""
     shutil.rmtree(configs_root() / session, ignore_errors=True)
+
+
+def state_path(agent: state.Agent) -> Path:
+    """Where the agent's CLI keeps what it remembers, not made. Beside the config folders, not
+    in them: it stays over a stop and a resume, and goes with the agent or its session."""
+    return state.home() / "agent-state" / agent.session / agent.name
+
+
+def remove_agent_state(agent: state.Agent) -> None:
+    """Remove the agent's state folder, for an agent LADO forgets."""
+    shutil.rmtree(state_path(agent), ignore_errors=True)
+
+
+def remove_session_state(session: str) -> None:
+    """Remove the state folders of all the session's agents, for a session LADO forgets."""
+    shutil.rmtree(state.home() / "agent-state" / session, ignore_errors=True)
 
 
 # Seconds a turn-end hook may run before its CLI kills it, given explicitly where the CLI

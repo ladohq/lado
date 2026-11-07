@@ -11,6 +11,10 @@ make a fresh home stop the agent at its start is settled in the agent's home: th
 the repository and of its hooks (launch_command), and the login, a link to the user's login
 file or the agent's own key file (_settle_login).
 
+An agent on a model server runs on an entry of its own config (_on_server), and nothing of the
+user's login reaches it. The server's facts come from Codex CLI 0.162.0 on a fake server and on
+OpenRouter (docs/superpowers/specs/2026-11-07-codex-model-server-design.md).
+
 Checked by hand with Codex CLI 0.162.0 on a local model (Ollama, qwen3-coder:30b), in
 throwaway homes; where Codex's open source was read for a behaviour, the comment says so.
 """
@@ -22,7 +26,7 @@ import os
 import re
 import subprocess
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 
 from lado import state
@@ -61,7 +65,8 @@ WARNING = "Continue only if"
 # refuses, ends with Interrupt and no Stop. Codex reads Interrupt's output only for a
 # message to the human (read in its source, hooks/src/events/interrupt.rs): the queue is
 # typed in after it (output_ignored). A turn that ends on a model or API error runs no hook
-# at all (BACKLOG.md): the agent stays busy.
+# and no `notify`: the agent of a server hears of it from its journal (failed_turn), and
+# one on a built-in model stays busy (BACKLOG.md).
 #
 # No turn's end is Event.background: Stop's input (session, turn, transcript, cwd, model,
 # permission mode, stop_hook_active, last_assistant_message) says nothing of work still
@@ -115,6 +120,49 @@ CARRIED = (
     "model_reasoning_effort",
 )
 PROFILE = "lado"  # LADO's permission profile (see _git_profile)
+# Codex sends a server's MCP tools as one tool of type `namespace` (0.162.0, no setting changes
+# it), which LM Studio's Responses API drops: such an agent has no LADO tools
+# (tests/live_models.py).
+LOSES_TOOLS = "its Responses API loses Codex CLI's MCP tools, so the agent could not talk to LADO"
+CATALOGUE = "models.json"  # in the agent's home: its list of models on a server
+# In the agent's home, so that it outlives a restart of the session loop: which journal
+# failed_turn read, and how far.
+JOURNAL_OFFSET = "journal-offset"
+# What LADO decides for an agent on a server, at the top level alone: in a carried profile it
+# would win (_setting). A server may refuse an effort (`reasoning_effort='xhigh' is not
+# supported`) and a tool of type web_search, or bill it.
+SERVER_SETTINGS = (
+    "model_reasoning_effort",
+    "web_search",
+    "model_catalog_json",
+    "model_context_window",
+    "model_auto_compact_token_limit",
+)
+# What of the catalogue's entry would add a tool or a parameter a server does not know, or offer
+# what only OpenAI has.
+PLAIN_MODEL = {
+    "apply_patch_tool_type": None,
+    "supports_search_tool": False,
+    "experimental_supported_tools": [],
+    "multi_agent_version": None,
+    "supported_reasoning_levels": [],
+    "default_reasoning_level": None,
+    "supports_reasoning_effort_updates": False,
+    "support_verbosity": False,
+    "default_verbosity": None,
+    "service_tiers": [],
+    "additional_speed_tiers": [],
+    "availability_nux": None,
+    "upgrade": None,
+    "input_modalities": ["text"],
+}
+# An error of Codex's journal (0.162.0, a fake server, every POST answered alike; OpenRouter's
+# wrong key): `<status text>, url: <the address>` and on a real server `, cf-ray: <id>`. An address
+# may hold a password, and a ray is noise.
+ADDRESS = re.compile(r", (?:url|cf-ray): ")
+UNEXPECTED = re.compile(r"unexpected status \d+[^:]*(?:: (.*))?", re.DOTALL)
+NO_WORDS = "Codex CLI's turn ended on an error"
+TEMPORARY = ("internal_server_error", "server_overloaded")  # kinds with no status in the journal
 USING = "Logged in using "  # the start of `codex login status`'s line for a login
 
 # Codex's login (0.162.0, checked by hand): its file CODEX_HOME/auth.json, the system
@@ -144,6 +192,7 @@ class CodexProvider(base.Provider):
     command = "codex"
     install_hint = "install it: `npm install -g @openai/codex`"
     tested_version = TESTED_VERSION
+    server_api = base.RESPONSES
     # Text typed in right after the start: not checked, so the first lines go on the command
     # line as Codex's own [PROMPT], submitted once the TUI is ready (after any dialog).
     capabilities = base.Capabilities(
@@ -207,15 +256,58 @@ class CodexProvider(base.Provider):
         "the keyring."
     )
 
+    def refuses_server(self, kind: str) -> str:
+        return LOSES_TOOLS if kind == base.LM_STUDIO else ""
+
+    def server_model(self, server: str, model: str) -> str:
+        return model
+
+    def launched_on(self, agent: state.Agent) -> str | None:
+        # A model's name says no server: only the launch knows.
+        try:
+            provider = _model_provider(_read_toml(base.config_path(agent) / "config.toml"))
+        except (OSError, ValueError):
+            return None
+        if provider.startswith(base.SERVER_PROVIDER):
+            return provider.removeprefix(base.SERVER_PROVIDER)
+        return None
+
     def needs_login(self, env: Mapping[str, str]) -> bool:
-        # The model provider of the user's config, as carried to the agents (in an agent's
-        # launch environment CODEX_HOME is its own home, whose config.toml carries it):
-        # OpenAI's, and a provider that asks for OpenAI's login, need one. A config that
-        # cannot be read is read as none: the status then decides.
+        # An agent on a server needs none. Else the model provider of the user's config, as
+        # carried to the agents (in an agent's launch environment CODEX_HOME is its own home,
+        # whose config.toml carries it): OpenAI's, and a provider that asks for OpenAI's login,
+        # need one. A config that cannot be read is read as none: the status then decides.
+        if env.get(base.MODEL_SERVER):
+            return False
         config, _ = _user_config(env, [])
         name = _model_provider(config)
         provider = _as_table(_as_table(config.get("model_providers")).get(name))
         return name == "openai" or bool(provider.get("requires_openai_auth"))
+
+    def model_list(self, env: Mapping[str, str]) -> base.ModelList:
+        # The catalogue shipped in the binary (`--bundled`: no network; without it Codex
+        # fetches the account's over the network, 0.162.0) and the account's, as Codex
+        # cached it in the user's home; read only. Another model provider has neither.
+        command = "codex debug models"
+        config, _ = _user_config(env, [])
+        provider = _model_provider(config)
+        if provider != "openai":
+            why = f"{self.title} gives no list of models for the model provider `{provider}`"
+            return base.ModelList(command=command, why=why, fixed=True)
+        argv = [self.command, "debug", "models", "--bundled"]
+        try:
+            models = _slugs(base.run_list(argv, env))
+        except ValueError as error:
+            return base.ModelList(command=command, why=str(error))
+        if models is None:
+            why = f"`{' '.join(argv)}` printed no list LADO can read"
+            return base.ModelList(command=command, why=why)
+        try:
+            cached = _slugs((_codex_home(env) / "models_cache.json").read_text())
+        except (OSError, ValueError):
+            cached = None
+        models += [m for m in cached or () if m not in models]
+        return base.ModelList(models=tuple(models), command=command)
 
     def login_actions(self) -> tuple[base.LoginAction, ...]:
         # Into the file the agents share, whatever store the user's own Codex keeps. The
@@ -365,6 +457,17 @@ class CodexProvider(base.Provider):
             for key, digest in _hook_handlers(path) if trust[1] == "trusted" else ():
                 if _as_table(config["hooks"]["state"].get(key)).get("enabled") is not False:
                     config["hooks"]["state"][key] = {"trusted_hash": digest}
+        if spec.model:
+            _choose_model(config, spec.model)
+        env = {"CODEX_HOME": str(home)}
+        if spec.servers:  # one: its start model's (lado.model_settings.agent_servers)
+            server = spec.servers[0]
+            _on_server(config, home, server, spec.environ or os.environ, warnings)
+            env[base.MODEL_SERVER] = server.id
+            if server.key is not None:
+                env[server.key_variable] = server.key
+        else:
+            (home / CATALOGUE).unlink(missing_ok=True)
         if dropped:
             warnings.append(
                 f"cannot write {', '.join(dropped)} of {user_path} into the config of Codex "
@@ -417,22 +520,31 @@ class CodexProvider(base.Provider):
             argv += ["--sandbox", "danger-full-access"]
         if notice:
             argv.append(notice)
-        return base.Launch(argv, {"CODEX_HOME": str(home)}, warnings)
+        return base.Launch(
+            argv,
+            env,
+            warnings,
+            model=self.session_choice(spec) or _carried(config, "model"),
+            effort=_carried(config, "model_reasoning_effort"),
+        )
 
     def parse_event(self, native: str, payload: str) -> base.Event | None:
         if native not in EVENTS:
             return None
         data = json.loads(payload) if payload.strip() else {}
         neutral = EVENTS[native]
+        # Every hook's input names the model the agent runs (0.162.0, its hook input
+        # schemas); none names the reasoning effort.
+        model = data.get("model") if isinstance(data.get("model"), str) else ""
         if native == "Interrupt":
-            return base.Event(neutral, output_ignored=True)
+            return base.Event(neutral, output_ignored=True, model=model)
         if native == "Stop":
-            return base.Event(neutral, continued=bool(data.get("stop_hook_active")))
+            return base.Event(neutral, continued=bool(data.get("stop_hook_active")), model=model)
         if neutral in (base.WAITING, base.RESUMED):
             about = ["tool", data.get("tool_name", ""), data.get("tool_input")]
             digest = hashlib.sha256(json.dumps(about, sort_keys=True).encode()).hexdigest()
-            return base.Event(neutral, key=digest[:16])
-        return base.Event(neutral, data.get("prompt", ""))
+            return base.Event(neutral, key=digest[:16], model=model)
+        return base.Event(neutral, data.get("prompt", ""), model=model)
 
     def hook_limit(self, native: str) -> float | None:
         # The timeout of LADO's handler (_handler), as Codex normalizes it.
@@ -443,15 +555,46 @@ class CodexProvider(base.Provider):
         # UserPromptSubmit for it; the Stop that ends that turn has stop_hook_active true.
         return json.dumps({"decision": "block", "reason": text})
 
+    def failed_turn(
+        self, agent: state.Agent, keys: Callable[[], Iterable[str]]
+    ) -> base.Event | None:
+        # Only the journal has such a turn: a `task_complete` with an `error`. An agent on a
+        # built-in model has nothing read (the human's decision of 2026-10-09 stands for it).
+        if self.launched_on(agent) is None:
+            return None
+        home = base.config_path(agent)
+        try:
+            journal = _newest_journal(home)
+            if journal is None:
+                return None
+            start = _journal_offset(home, journal)
+            new = _whole_lines(journal, start)
+        except OSError:  # the agent stopped meanwhile, and its home went with it
+            return None
+        if not new:
+            return None
+        error = _last_error(new)
+        # Before the offset moves: an error whose keys cannot be read now is read again.
+        event = None if error is None else _failed_event(error, keys())
+        try:
+            _keep_offset(home, journal, start + len(new))
+        except OSError:  # told only once it is kept: else every pass would tell it again
+            return None
+        return event
+
     def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> base.Blocker:
         # The agent's login first: its own home has none, and the login's state is read
-        # there (lado.runtime, lado.login_wait). Then what Codex asks, read from the agent's
-        # own config.toml, which LADO wrote with what it carried: it is what the agent's
-        # Codex reads.
+        # there (lado.runtime, lado.login_wait); on a server none, and nothing of an earlier
+        # launch's. Then what Codex asks, read from the agent's own config.toml, which LADO
+        # wrote with what it carried: it is what the agent's Codex reads.
         folder = Path(cwd)
         home = Path(env.get("CODEX_HOME") or "")
         try:
-            notes = tuple(_settle_login(home, env))
+            if env.get(base.MODEL_SERVER):
+                (home / "auth.json").unlink(missing_ok=True)
+                notes: tuple[str, ...] = ()
+            else:
+                notes = tuple(_settle_login(home, env))
         except OSError as error:
             return base.Blocker(
                 warning=f"cannot give the agent its {self.title} login in {home}: {error}; "
@@ -559,14 +702,248 @@ def _user_config(environ, warnings: list[str]) -> tuple[dict, Path]:
         return {}, path
 
 
+def _newest_journal(home: Path) -> Path | None:
+    """The session journal Codex writes now in the agent's `home`; None before its first."""
+    found = [
+        (path.stat().st_mtime_ns, path.name, path)
+        for path in (home / "sessions").glob("**/rollout-*.jsonl")
+    ]
+    return max(found)[2] if found else None
+
+
+def _journal_offset(home: Path, journal: Path) -> int:
+    """How far failed_turn read `journal`: 0 for a journal it has not read."""
+    try:
+        read = json.loads((home / JOURNAL_OFFSET).read_text())
+    except (OSError, ValueError):
+        return 0
+    return _as_table(read).get("offset", 0) if _as_table(read).get("file") == journal.name else 0
+
+
+def _keep_offset(home: Path, journal: Path, offset: int) -> None:
+    beside = home / f"{JOURNAL_OFFSET}.lado"
+    beside.write_text(json.dumps({"file": journal.name, "offset": offset}))
+    os.replace(beside, home / JOURNAL_OFFSET)
+
+
+def _whole_lines(journal: Path, start: int) -> bytes:
+    """What `journal` holds after `start`, as whole lines: a line in writing waits for the next
+    pass. A journal that did not grow costs one stat."""
+    if journal.stat().st_size <= start:
+        return b""
+    with journal.open("rb") as file:
+        file.seek(start)
+        new = file.read()
+    return new[: new.rfind(b"\n") + 1]
+
+
+def _last_error(lines: bytes) -> dict | None:
+    """The error of the last failed turn in `lines` of a journal; None for none, and for one a
+    later turn follows: the human's next turn has begun, and the agent is busy with it."""
+    error = None
+    for line in lines.splitlines():
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if _as_table(entry).get("type") != "event_msg":
+            continue
+        payload = _as_table(entry.get("payload"))
+        if payload.get("type") == "task_started":
+            error = None
+        elif payload.get("type") == "task_complete" and payload.get("error"):
+            error = _as_table(payload["error"])
+    return error
+
+
+def _body(text: str) -> dict:
+    """The JSON object `text` is; {} for any other text."""
+    try:
+        return _as_table(json.loads(text))
+    except ValueError:
+        return {}
+
+
+def _server_words(text: str) -> str:
+    """What a server said in `text`, a body as it came: its message in OpenAI's shape, or in
+    cloud.ru's, else `text`."""
+    body = _body(text)
+    inner = body.get("error")
+    said = _as_table(inner).get("message") or inner or body.get("message")
+    return said if isinstance(said, str) else text
+
+
+def _failed_event(error: dict, keys: Iterable[str]) -> base.Event:
+    """The turn's end for `error` of a journal, with no key and no address. How Codex reports a
+    server's answer, by its `codex_error_info`: most statuses as `http_connection_failed` with
+    the server's text in `message`, one after its repeats with the status alone, a 500 and a model
+    at capacity in Codex's own words. A 400 comes at once as `other` with the body as `message`
+    and no address, and no status: `other` is more than a 400, so only a JSON object is read as
+    one. Any other `other` keeps LADO's words before the colon, which `lado stats` takes for the
+    error's kind. Every 5xx passes by itself."""
+    message = base.without_keys(str(error.get("message") or ""), keys)
+    info = error.get("codex_error_info")
+    body = _body(message) if info == "other" else {}
+    text = message.strip() if body else ADDRESS.split(message, maxsplit=1)[0].strip()
+    status, said = None, text
+    failed = _as_table(_as_table(info).get("http_connection_failed")).get("http_status_code")
+    gave_up = _as_table(_as_table(info).get("response_too_many_failed_attempts")).get(
+        "http_status_code"
+    )
+    if base.is_refusal(failed):
+        found = UNEXPECTED.fullmatch(text)
+        status, said = failed, _server_words(found[1] or "") if found else text
+    elif base.is_refusal(gave_up):
+        status, said = gave_up, ""
+    elif body:
+        status, said = 400, _server_words(text)
+    if line := base.context_line(text):
+        return base.Event(base.TURN_END, error=line, details=said, output_ignored=True)
+    if status is not None:
+        line = base.refusal_line(status, said)
+        return base.Event(base.TURN_END, error=line, details=said, output_ignored=True)
+    if info == "other":
+        line = base.error_line(NO_WORDS, text)
+    else:
+        line = base.error_line((text.splitlines() or [NO_WORDS])[0])
+    return base.Event(
+        base.TURN_END,
+        error=line,
+        details=text,
+        transient=info in TEMPORARY or _server_failed(failed) or _server_failed(gave_up),
+        output_ignored=True,
+    )
+
+
+def _server_failed(status: object) -> bool:
+    return isinstance(status, int) and 500 <= status < 600
+
+
+def _slugs(text: str) -> list[str] | None:
+    """The models' slugs of a Codex catalogue (`{"models": [{"slug": ...}, ...]}`); None for
+    text that is not one."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("models"), list):
+        return None
+    models = [m.get("slug") for m in data["models"] if isinstance(m, dict)]
+    return [m for m in models if isinstance(m, str) and m]
+
+
 def _model_provider(config: dict) -> str:
     """The model provider Codex runs with `config`: the chosen profile's, else the top
     level's, else OpenAI's."""
+    return str(_setting(config, "model_provider")[0] or "openai")
+
+
+def _setting(config: dict, key: str) -> tuple[object, str | None]:
+    """The value of `key` Codex runs with `config`: the chosen profile's (`profile`), else
+    the top level's; with the profile's name when it came from the profile."""
     chosen = config.get("profile")
     profile = (
         _as_table(_as_table(config.get("profiles")).get(chosen)) if isinstance(chosen, str) else {}
     )
-    return str(profile.get("model_provider") or config.get("model_provider") or "openai")
+    if profile.get(key):
+        return profile[key], chosen
+    return config.get(key), None
+
+
+def _chosen_profile(config: dict) -> dict:
+    """The table of the profile `config` chooses, to change; a new one, unused, for none."""
+    chosen = config.get("profile")
+    profiles = config.get("profiles")
+    if isinstance(chosen, str) and isinstance(profiles, dict):
+        if isinstance(profiles.get(chosen), dict):
+            return profiles[chosen]
+    return {}
+
+
+def _choose_model(config: dict, model: str) -> None:
+    """Make `model` the one Codex runs with the agent's `config`: at the top level and in
+    the chosen profile, whose value wins over the top level's (_setting)."""
+    config["model"] = model
+    _chosen_profile(config)["model"] = model
+
+
+def _on_server(
+    config: dict,
+    home: Path,
+    server: base.ServerEntry,
+    environ: Mapping[str, str],
+    warnings: list[str],
+) -> None:
+    """Put the agent's `config` on `server`, over what was carried: the server as a provider, its
+    one model, and what a server may refuse switched off. The key stays out: Codex reads the
+    variable `env_key` names, and with no `env_key` it sends no Authorization, also with
+    OPENAI_API_KEY set and a key in auth.json."""
+    model, _ = server.models[0]
+    name = f"{base.SERVER_PROVIDER}{server.id}"
+    entry = {"name": f"LADO · {server.name}", "base_url": server.base_url, "wire_api": "responses"}
+    if server.key_variable:
+        entry["env_key"] = server.key_variable
+    config["model_providers"] = {**_as_table(config.get("model_providers")), name: entry}
+    profile = _chosen_profile(config)
+    for key in SERVER_SETTINGS:
+        config.pop(key, None)
+        profile.pop(key, None)
+    config["model_provider"] = profile["model_provider"] = name
+    _choose_model(config, model)
+    config["web_search"] = "disabled"
+    limit = server.limits.get(model)
+    if limit is not None:
+        # Past the limit the next turn starts with a compaction, an ordinary request. Codex has
+        # no key for its output, so nothing caps it: the room is only left free.
+        config["model_context_window"] = limit.context
+        config["model_auto_compact_token_limit"] = limit.context - limit.output_room()
+    path = home / CATALOGUE
+    try:
+        models = {"models": [_listed_model(server, limit, home, environ)]}
+    except ValueError as error:
+        path.unlink(missing_ok=True)
+        warnings.append(
+            f"cannot make the list of models of a Codex agent on {server.name} ({error}): its "
+            "/model shows OpenAI's models, which its server does not have"
+        )
+        return
+    path.write_text(json.dumps(models, ensure_ascii=False))
+    config["model_catalog_json"] = str(path)
+
+
+def _listed_model(
+    server: base.ServerEntry, limit: base.Limit | None, home: Path, environ: Mapping[str, str]
+) -> dict:
+    """The agent's one model as an entry of Codex's catalogue, which replaces Codex's whole list
+    and needs every field: the last entry of the installed binary's own that has no `tool_mode`,
+    so that its format is that binary's. ValueError with why there is none."""
+    argv = [CodexProvider.command, "debug", "models", "--bundled"]
+    data = json.loads(base.run_list(argv, {**environ, "CODEX_HOME": str(home)}))
+    listed = _as_table(data).get("models")
+    listed = listed if isinstance(listed, list) else []
+    plain = [m for m in listed if isinstance(m, dict) and "slug" in m and not m.get("tool_mode")]
+    if not plain:
+        raise ValueError(f"`{' '.join(argv)}` printed no model LADO can use")
+    model, name = server.models[0]
+    context = limit.context if limit is not None else None
+    return {
+        **plain[-1],
+        **PLAIN_MODEL,
+        "slug": model,
+        "display_name": name,
+        "description": f"On {server.name}",
+        "context_window": context,
+        "max_context_window": context,
+    }
+
+
+def _carried(config: dict, key: str) -> state.Choice | None:
+    """The model or effort (`key`) of the carried `config`, as the user's Codex config chose
+    it; None when it names none."""
+    value, profile = _setting(config, key)
+    if not isinstance(value, str) or not value:
+        return None
+    return state.Choice(value, state.CLI_CONFIG, f"profile {profile}" if profile else None)
 
 
 def _as_table(value) -> dict:

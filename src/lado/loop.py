@@ -171,6 +171,7 @@ def run(session: str, interval: float | None = None) -> int:
                     # call: a gone tmux session fails it (tmux_gone).
                     missing = runtime.check_windows(session, missing)
                     runtime.check_starts(session)
+                    runtime.check_turns(session)
                     runtime.sweep(session)
                     errors.worked()
             except state.SchemaError as exc:

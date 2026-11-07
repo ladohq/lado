@@ -95,7 +95,7 @@ def test_a_new_session_without_a_login_is_refused_by_lado_start(repo, marker):
     assert found.returncode == 1, found.stderr
     assert found.stderr.splitlines() == [
         "lado: Fake agent is not logged in, so the session was not started: log in in LADO's UI "
-        "(Settings → Providers and environment, `lado ui`), or set FAKE_AGENT_TOKEN as LADO's "
+        "(Settings → Agent CLIs and environment, `lado ui`), or set FAKE_AGENT_TOKEN as LADO's "
         "secret or a project secret"
     ]
     assert state.get_session(SESSION) is None
@@ -112,7 +112,7 @@ def test_a_resume_by_hand_without_a_login_is_refused_and_the_updates_waits(repo,
     assert found.returncode == 1, found.stderr
     assert found.stderr.splitlines() == [
         "lado: Fake agent is not logged in, so the session was not resumed: log in in LADO's UI "
-        "(Settings → Providers and environment, `lado ui`), or set FAKE_AGENT_TOKEN as LADO's "
+        "(Settings → Agent CLIs and environment, `lado ui`), or set FAKE_AGENT_TOKEN as LADO's "
         "secret or a project secret"
     ]
     assert state.get_session(SESSION).stopped_at
@@ -140,7 +140,7 @@ def test_a_supervisor_spawning_a_worker_without_a_login_gets_the_refusal(repo, m
     [text] = seen()["spawn_text"]
     assert text.endswith(
         "Fake agent is not logged in, so the worker was not started: ask the human to log in "
-        "in Settings → Providers and environment, or start the worker with another provider"
+        "in Settings → Agent CLIs and environment, or start the worker with another provider"
     ), text
     assert [a.name for a in state.list_agents(SESSION)] == ["supervisor"]
     assert runtime.git(str(repo), "branch", "--list", f"lado/{SESSION}/*") == ""

@@ -11,6 +11,7 @@ import type {
   CloneTarget,
   FolderInfo,
   KitInfo,
+  ModelChoices,
   ProjectLaunch,
   ProviderInfo,
   RecentFolder,
@@ -44,6 +45,8 @@ function session(name: string, more: Partial<SessionInfo> = {}): SessionInfo {
     stopped_at: null,
     title: null,
     project: null,
+    model: null,
+    model_missing: false,
     ...more,
   };
 }
@@ -100,6 +103,27 @@ let workspace: { path: string; made: boolean }; // LADO_REPOS, else ~/workspace
 let kits: KitInfo[];
 let abouts: Record<string, SessionAbout>; // by session; none: 404
 let providers: (project: string | null) => Promise<ProviderInfo[]>; // GET /api/providers?project=
+// GET /api/model-settings and POST /api/session-model/check.
+let modelEntries: { models: { cli: string }[]; servers: unknown[]; defaults: unknown[] };
+let sessionCheck: (asked: unknown) => unknown;
+
+// As lado.model_check words them: Claude Code has aliases and no list; Kilo a list.
+function modelsOf(name: string, model: string): Pick<ModelChoices, "aliases" | "models" | "why" | "check"> {
+  const title = name === "claude" ? "Claude Code" : "Kilo CLI";
+  const aliases = name === "claude" ? ["sonnet", "opus"] : [];
+  const models = name === "claude" ? null : ["kilo/small", "kilo/large"];
+  const why = name === "claude" ? "Claude Code gives no list of models beyond its aliases" : "";
+  const verdict: Omit<ModelChoices["check"], "field" | "name"> = !model
+    ? { kind: "default", text: `empty: ${title}'s default model; type or pick one of its models` }
+    : aliases.includes(model)
+      ? { kind: "ok", text: `an alias of ${title}` }
+      : models === null
+        ? { kind: "warn", text: `${why}: LADO cannot check ${model}; a wrong name stops its agents at their first turn` }
+        : models.includes(model)
+          ? { kind: "ok", text: `in ${title}'s list of models` }
+          : { kind: "refused", text: `${model} is not in ${title}'s list of models; kilo models prints the list` };
+  return { aliases, models, why, check: { ...verdict, field: "", name: "" } };
+}
 let answers: Record<string, () => Response | Promise<Response>>; // "METHOD path" -> the server's answer
 let calls: Call[];
 // GET /api/project-launch: Shop with backend and frontend, its last session in backend
@@ -155,6 +179,18 @@ beforeEach(() => {
   kits = [kit("default"), kit("team")];
   abouts = {};
   providers = async () => [provider("claude"), provider("kilo")];
+  modelEntries = { models: [], servers: [], defaults: [] };
+  sessionCheck = () => ({
+    kind: "ok",
+    text: "in its list of models",
+    field: "",
+    name: "",
+    retry: false,
+    short: "",
+    peek: "",
+    warnings: [],
+    server: null,
+  });
   answers = {};
   calls = [];
   projectLaunch = shopLaunch;
@@ -189,6 +225,21 @@ beforeEach(() => {
       }
       if (url.pathname === "/api/kits") return json(kits);
       if (url.pathname === "/api/providers") return json(await providers(url.searchParams.get("project")));
+      const choices = /^\/api\/providers\/([^/]+)\/model-choices$/.exec(url.pathname);
+      if (choices) {
+        const cli = decodeURIComponent(choices[1]);
+        const listed = modelsOf(cli, url.searchParams.get("model") ?? "");
+        const external = modelEntries.models.filter((one) => one.cli === cli);
+        return json({
+          ...listed,
+          external,
+          other_name: listed.models === null,
+          whole_process: false,
+          read_again: false,
+        });
+      }
+      if (url.pathname === "/api/model-settings") return json(modelEntries);
+      if (url.pathname === "/api/session-model/check") return json(sessionCheck(body));
       const about = /^\/api\/sessions\/([^/]+)\/about$/.exec(url.pathname);
       if (about) {
         const found = abouts[decodeURIComponent(about[1])];
@@ -234,7 +285,7 @@ function type(path: string) {
 }
 
 const startButton = () => screen.getByRole("button", { name: "Start session" }) as HTMLButtonElement;
-const providerSelect = () => screen.getByRole("combobox", { name: "Provider" }) as HTMLSelectElement;
+const providerSelect = () => screen.getByRole("combobox", { name: "Agent CLI" }) as HTMLSelectElement;
 
 // A folder that will do, with claude suggested unless `more` says otherwise; the providers
 // answered.
@@ -426,7 +477,7 @@ test("a recent folder is one click, and its last session gives kits, provider an
   await waitFor(() => expect(within(kitsField).getByText("team")).toBeTruthy());
   expect(within(kitsField).queryByText("default")).toBeNull();
   expect(screen.getAllByText("from the last session of this folder").length).toBeGreaterThan(0);
-  await waitFor(() => expect((screen.getByRole("combobox", { name: "Provider" }) as HTMLSelectElement).value).toBe("kilo"));
+  await waitFor(() => expect((screen.getByRole("combobox", { name: "Agent CLI" }) as HTMLSelectElement).value).toBe("kilo"));
   expect(screen.getByText("from the folder's last session")).toBeTruthy();
   expect((screen.getByRole("combobox", { name: "Permission mode" }) as HTMLSelectElement).value).toBe("plan");
 });
@@ -662,7 +713,7 @@ test("providers show checking while their CLIs are asked, a missing one is off, 
   let release: (found: ProviderInfo[]) => void = () => {};
   providers = () => new Promise((resolve) => (release = resolve));
   await openLaunch();
-  const select = screen.getByRole("combobox", { name: "Provider" }) as HTMLSelectElement;
+  const select = screen.getByRole("combobox", { name: "Agent CLI" }) as HTMLSelectElement;
   expect(select.disabled).toBe(true);
   expect(select.textContent).toContain("checking…");
   await act(async () =>
@@ -750,7 +801,7 @@ test("Log in first closes the window and opens Settings' providers", async () =>
   await ready("/src/app", { provider: { name: "claude", reason: "only_installed" } }, true);
   fireEvent.click(await screen.findByRole("button", { name: "Log in first" }));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "New session" })).toBeNull());
-  expect(await screen.findByRole("heading", { name: "Providers and environment" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Agent CLIs and environment" })).toBeTruthy();
 });
 
 test("the Project way asks for the chosen project's providers, where its own login counts", async () => {
@@ -790,7 +841,7 @@ test("Resume of a CLI without its login is off, says Log in first, and another C
 
 test("a mode the new provider does not support goes back to default, and the window says so", async () => {
   await openLaunch();
-  const providerSelect = (await screen.findByRole("combobox", { name: "Provider" })) as HTMLSelectElement;
+  const providerSelect = (await screen.findByRole("combobox", { name: "Agent CLI" })) as HTMLSelectElement;
   await waitFor(() => expect(providerSelect.disabled).toBe(false));
   fireEvent.change(providerSelect, { target: { value: "claude" } });
   const mode = screen.getByRole("combobox", { name: "Permission mode" }) as HTMLSelectElement;
@@ -812,7 +863,7 @@ test("Start sends the window's fields, says Starting… and opens the new sessio
   };
   await openLaunch();
   await ready("/src/app");
-  const providerSelect = screen.getByRole("combobox", { name: "Provider" }) as HTMLSelectElement;
+  const providerSelect = screen.getByRole("combobox", { name: "Agent CLI" }) as HTMLSelectElement;
   await waitFor(() => expect(providerSelect.disabled).toBe(false));
   fireEvent.click(screen.getByText(/Advanced/));
   fireEvent.change(screen.getByRole("textbox", { name: /Switch off/ }), { target: { value: "agent:rev, skill:x" } });
@@ -848,7 +899,7 @@ test("a start's warnings show on the new session's page, such as what its superv
     });
   await openLaunch();
   await ready("/src/app");
-  await waitFor(() => expect((screen.getByRole("combobox", { name: "Provider" }) as HTMLSelectElement).disabled).toBe(false));
+  await waitFor(() => expect((screen.getByRole("combobox", { name: "Agent CLI" }) as HTMLSelectElement).disabled).toBe(false));
   fireEvent.click(startButton());
   expect(await screen.findByRole("region", { name: "Session app" })).toBeTruthy();
   const alert = await screen.findByRole("alert");
@@ -951,7 +1002,7 @@ test("the first message row is folded when the window opens", async () => {
   expect(firstRow().open).toBe(false);
   // It comes before Advanced.
   const rows = [...document.querySelectorAll(".launch-dialog details summary")].map((s) => s.textContent);
-  expect(rows).toEqual([FIRST_ROW, "Advanced: switch off agents, skills, MCP servers or flows"]);
+  expect(rows).toEqual([FIRST_ROW, "Advanced: model, switch off agents, skills, MCP servers or flows"]);
 });
 
 test("a first message is sent with the start", async () => {
@@ -1013,6 +1064,556 @@ test("the Resume window sends its first message", async () => {
   expect(calls.find((c) => c.method === "POST")!.body).toEqual({ prompt: "Continue the review" });
 });
 
+// The session's model (Advanced)
+
+const modelField = () => screen.getByRole("combobox", { name: "Model" }) as HTMLButtonElement;
+const advancedRow = () => screen.getByText(/^Advanced/).closest("details") as HTMLDetailsElement;
+const summary = () => advancedRow().querySelector("summary")!.textContent;
+const posted = () => calls.find((c) => c.method === "POST" && !c.path.includes("session-model"))!.body as { model?: string };
+const checked = () => calls.filter((c) => c.path === "/api/session-model/check");
+
+const QWEN = "Локальная Qwen";
+const HOME = "LM Studio дома";
+const SILENT = `${HOME} does not answer (connection refused); qwen3-8b is on it. Start the server or pick another model.`;
+
+function saved(name: string, model: string, cli = "kilo", server = HOME) {
+  return { id: `id-${name}`, name, cli, cli_title: cli, model, server, whole_process: false };
+}
+
+const defaultOf = (model: ReturnType<typeof saved>) => ({
+  cli: model.cli,
+  external: model.id,
+  builtin: null,
+  name: model.name,
+  model: model.model,
+  server: model.server,
+  whole_process: false,
+});
+
+const silent = () => ({
+  kind: "refused",
+  text: SILENT,
+  field: "server",
+  name: "",
+  retry: true,
+  short: `${HOME} does not answer`,
+  peek: "not answering",
+  warnings: [],
+  server: HOME,
+});
+
+// The window with Kilo CLI chosen, Advanced open.
+async function kiloWindow() {
+  await openLaunch();
+  await ready("/src/app", { provider: { name: "kilo", reason: "only_installed" } });
+  if (!advancedRow().open) fireEvent.click(advancedRow().querySelector("summary")!);
+  await waitFor(() => expect(modelField().disabled).toBe(false));
+}
+
+async function pickRow(name: string | RegExp) {
+  fireEvent.click(modelField());
+  fireEvent.click(await screen.findByRole("option", { name }));
+}
+
+async function startedWith() {
+  answers["POST /api/sessions"] = () => json({ session: session("app", { repo: "/src/app" }), ...STARTED });
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  fireEvent.click(startButton());
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "New session" })).toBeNull());
+  return posted();
+}
+
+test("the Model field comes before Switch off and takes the whole row", async () => {
+  await kiloWindow();
+  const labels = [...advancedRow().querySelectorAll("label")].map((one) => one.textContent?.trim().split("\n")[0]);
+  expect(labels[0]).toMatch(/^Model/);
+  expect(labels[1]).toMatch(/^Switch off/);
+  expect(modelField().closest(".field")!.classList.contains("launch-wide")).toBe(true);
+  expect(modelField().textContent).toContain("Kilo CLI's settings");
+});
+
+test("with no default the field is on the CLI's settings, says nothing and sends nothing", async () => {
+  await kiloWindow();
+  expect(modelField().closest(".field")!.querySelector(".field-note")).toBeNull();
+  expect(summary()).toBe("Advanced: model, switch off agents, skills, MCP servers or flows");
+  expect("model" in (await startedWith())).toBe(false);
+  expect(checked()).toEqual([]);
+});
+
+test("the default is chosen in advance, marked, checked, and sends nothing", async () => {
+  const qwen = saved(QWEN, "qwen3-8b");
+  modelEntries = { models: [qwen], servers: [], defaults: [defaultOf(qwen)] };
+  await kiloWindow();
+  await waitFor(() => expect(modelField().textContent).toContain(QWEN));
+  expect(modelField().textContent).toContain("default");
+  await screen.findByText("Kilo CLI's default model, from Settings → Models.");
+  await waitFor(() => expect(checked().length).toBe(1));
+  expect(checked()[0].body).toEqual({ cli: "kilo", model: QWEN, project: null });
+  expect("model" in (await startedWith())).toBe(false);
+});
+
+test("another pick is for this session only and sends its name", async () => {
+  const qwen = saved(QWEN, "qwen3-8b");
+  const work = saved("Рабочая Qwen", "qwen3-coder-30b");
+  modelEntries = { models: [qwen, work], servers: [], defaults: [defaultOf(qwen)] };
+  await kiloWindow();
+  await waitFor(() => expect(modelField().textContent).toContain(QWEN));
+  await pickRow(/^Рабочая Qwen/);
+  await screen.findByText(`For this session only. Kilo CLI's default model is ${QWEN}.`);
+  expect((await startedWith()).model).toBe("Рабочая Qwen");
+});
+
+test("a built-in pick with no default has no such note, and sends the model", async () => {
+  await kiloWindow();
+  await pickRow("kilo/large");
+  await waitFor(() => expect(modelField().textContent).toContain("kilo/large"));
+  expect(screen.queryByText(/For this session only/)).toBeNull();
+  expect((await startedWith()).model).toBe("kilo/large");
+});
+
+test("a pick stays while the providers are read again, as the same agent CLI comes back", async () => {
+  await kiloWindow();
+  await pickRow("kilo/large");
+  await waitFor(() => expect(modelField().textContent).toContain("kilo/large"));
+  const dialog = screen.getByRole("dialog", { name: "New session" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Project" })); // no project yet: no providers
+  await waitFor(() => expect(modelField().disabled).toBe(true));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Folder" }));
+  await waitFor(() => expect(modelField().disabled).toBe(false));
+  expect(modelField().textContent).toContain("kilo/large");
+  expect(screen.queryByText(/belongs to/)).toBeNull();
+});
+
+test("the CLI's settings past a default send an empty model", async () => {
+  const qwen = saved(QWEN, "qwen3-8b");
+  modelEntries = { models: [qwen], servers: [], defaults: [defaultOf(qwen)] };
+  await kiloWindow();
+  await waitFor(() => expect(modelField().textContent).toContain(QWEN));
+  await pickRow(/^Kilo CLI's settings/);
+  await screen.findByText(`For this session only: the agent CLI chooses, not ${QWEN}.`);
+  expect((await startedWith()).model).toBe("");
+});
+
+test("a server that does not answer opens Advanced, turns Start off and names the ways out", async () => {
+  const qwen = saved(QWEN, "qwen3-8b");
+  modelEntries = { models: [qwen], servers: [], defaults: [defaultOf(qwen)] };
+  sessionCheck = silent;
+  await openLaunch();
+  await ready("/src/app", { provider: { name: "kilo", reason: "only_installed" } });
+  const note = await screen.findByText(SILENT);
+  expect(note.closest("[role=alert]")!.className).toContain("field-note bad");
+  expect(advancedRow().open).toBe(true);
+  expect(modelField().getAttribute("aria-invalid")).toBe("true");
+  expect(modelField().querySelector(".srv.down")).toBeTruthy();
+  await waitFor(() => expect(startButton().disabled).toBe(true));
+  const before = checked().length;
+  fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+  await waitFor(() => expect(checked().length).toBe(before + 1));
+  fireEvent.click(screen.getByRole("button", { name: "Use Kilo CLI's settings" }));
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  expect(screen.queryByText(SILENT)).toBeNull();
+  expect((await startedWith()).model).toBe("");
+});
+
+test("a refusal no new try can help has no Check again", async () => {
+  const opus = saved("Шлюз Opus", "gw-opus");
+  modelEntries = { models: [opus], servers: [], defaults: [defaultOf(opus)] };
+  const text = "Шлюз Opus is on the model server Шлюз; Шлюз does not suit Kilo CLI: why; OpenCode does";
+  sessionCheck = () => ({ ...silent(), text, retry: false, peek: "does not suit" });
+  await kiloWindow();
+  await screen.findByText(text);
+  expect(screen.queryByRole("button", { name: "Check again" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Use Kilo CLI's settings" })).toBeTruthy();
+});
+
+test("a key over plain http warns and leaves Start on", async () => {
+  const qwen = saved(QWEN, "qwen3-8b");
+  modelEntries = { models: [qwen], servers: [], defaults: [defaultOf(qwen)] };
+  const warning = `The key of ${HOME} goes unencrypted (http) to an address outside your machine and network.`;
+  sessionCheck = () => ({
+    kind: "ok",
+    text: `${HOME} lists qwen3-8b among its models.`,
+    field: "",
+    name: "",
+    retry: false,
+    short: "",
+    peek: "key over http",
+    warnings: [warning],
+    server: HOME,
+  });
+  await kiloWindow();
+  await screen.findByText(`✓ ${HOME} lists qwen3-8b among its models.`);
+  expect(screen.getByText(`⚠ ${warning}`).className).toContain("field-note warn");
+  expect(screen.getByText(`⚠ ${warning}`).querySelector("a")).toBeNull();
+  expect(startButton().disabled).toBe(false);
+  fireEvent.click(advancedRow().querySelector("summary")!);
+  await waitFor(() => expect(summary()).toBe(`Advanced: model ${QWEN} on ${HOME} ⚠ key over http`));
+});
+
+test("folded, Advanced says what the warning is about, not always the key", async () => {
+  const qwen = saved(QWEN, "qwen3-8b");
+  modelEntries = { models: [qwen], servers: [], defaults: [defaultOf(qwen)] };
+  sessionCheck = () => ({
+    kind: "ok",
+    text: `${HOME} lists qwen3-8b among its models.`,
+    field: "",
+    name: "",
+    retry: false,
+    short: "",
+    peek: "context too small",
+    warnings: [`${QWEN} on ${HOME} has a context of 4,000 tokens`],
+    server: HOME,
+  });
+  await kiloWindow();
+  await screen.findByText(`✓ ${HOME} lists qwen3-8b among its models.`);
+  fireEvent.click(advancedRow().querySelector("summary")!);
+  await waitFor(() => expect(summary()).toBe(`Advanced: model ${QWEN} on ${HOME} ⚠ context too small`));
+});
+
+test("the warning's docs/install.md links to its section on GitHub, in a new tab", async () => {
+  const qwen = saved(QWEN, "qwen3-8b");
+  modelEntries = { models: [qwen], servers: [], defaults: [defaultOf(qwen)] };
+  sessionCheck = () => ({
+    kind: "ok",
+    text: `${HOME} lists qwen3-8b among its models.`,
+    field: "",
+    name: "",
+    retry: false,
+    short: "",
+    peek: "context too small",
+    warnings: [`${QWEN} is small; see "What to expect of a small model" in docs/install.md`],
+    server: HOME,
+  });
+  await kiloWindow();
+  const link = await screen.findByRole("link", { name: "docs/install.md ↗" });
+  expect(link.getAttribute("href")).toBe(
+    "https://github.com/ladohq/lado/blob/main/docs/install.md#what-to-expect-of-a-small-model",
+  );
+  expect(link.getAttribute("target")).toBe("_blank");
+  expect(link.getAttribute("rel")).toBe("noreferrer");
+  expect(link.closest(".field-note")?.textContent).toBe(
+    `⚠ ${QWEN} is small; see "What to expect of a small model" in docs/install.md ↗`,
+  );
+});
+
+test("a warning's link goes to the section the warning names", async () => {
+  const qwen = saved(QWEN, "qwen3-8b");
+  modelEntries = { models: [qwen], servers: [], defaults: [defaultOf(qwen)] };
+  sessionCheck = () => ({
+    kind: "ok",
+    text: `${HOME} lists qwen3-8b among its models.`,
+    field: "",
+    name: "",
+    retry: false,
+    short: "",
+    peek: "context unknown",
+    warnings: [`${QWEN} has no context; see "A cloud provider" in docs/install.md`],
+    server: HOME,
+  });
+  await kiloWindow();
+  const link = await screen.findByRole("link", { name: "docs/install.md ↗" });
+  expect(link.getAttribute("href")).toBe(
+    "https://github.com/ladohq/lado/blob/main/docs/install.md#a-cloud-provider",
+  );
+});
+
+test("folded, Advanced names the model and its server, or a built-in model alone", async () => {
+  const qwen = saved(QWEN, "qwen3-8b");
+  modelEntries = { models: [qwen], servers: [], defaults: [defaultOf(qwen)] };
+  await kiloWindow();
+  await waitFor(() => expect(modelField().textContent).toContain(QWEN));
+  await pickRow("kilo/large");
+  await waitFor(() => expect(modelField().textContent).toContain("kilo/large"));
+  fireEvent.click(advancedRow().querySelector("summary")!);
+  await waitFor(() => expect(summary()).toBe("Advanced: model kilo/large"));
+  expect(screen.getByText("kilo/large", { selector: ".launch-first-peek" })).toBeTruthy();
+  fireEvent.click(advancedRow().querySelector("summary")!);
+  await pickRow(/^Локальная Qwen/);
+  fireEvent.click(advancedRow().querySelector("summary")!);
+  await waitFor(() => expect(summary()).toBe(`Advanced: model ${QWEN} on ${HOME}`));
+});
+
+test("the list of another agent CLI shows none of the last one's models while it is read", async () => {
+  await kiloWindow();
+  fireEvent.click(modelField());
+  await screen.findByRole("option", { name: "kilo/large" });
+  fireEvent.keyDown(modelField(), { key: "Escape" });
+  let answer: (found: Response) => void = () => {};
+  answers["GET /api/providers/claude/model-choices"] = () => new Promise<Response>((done) => (answer = done));
+  fireEvent.change(providerSelect(), { target: { value: "claude" } });
+  await waitFor(() => expect(modelField().textContent).toContain("Claude Code's settings"));
+  fireEvent.click(modelField());
+  await screen.findByText("reading the models…");
+  expect(screen.queryByRole("option", { name: "kilo/large" })).toBeNull();
+  answer(json({ ...modelsOf("claude", ""), external: [], other_name: true, whole_process: false, read_again: false }));
+  expect(await screen.findByRole("option", { name: "sonnet" })).toBeTruthy();
+});
+
+test("the line of a lost pick goes at the next change of agent CLI", async () => {
+  providers = async () => [provider("claude"), provider("kilo"), provider("codex")];
+  await kiloWindow();
+  await pickRow("kilo/large");
+  await waitFor(() => expect(modelField().textContent).toContain("kilo/large"));
+  fireEvent.change(providerSelect(), { target: { value: "claude" } });
+  await screen.findByText(/^kilo\/large belongs to/);
+  fireEvent.change(providerSelect(), { target: { value: "codex" } });
+  await waitFor(() => expect(screen.queryByText(/belongs to/)).toBeNull());
+});
+
+test("the window reads an open list again when it gets the focus back", async () => {
+  await kiloWindow();
+  fireEvent.click(modelField());
+  await screen.findByRole("option", { name: "kilo/large" });
+  const qwen = saved(QWEN, "qwen3-8b");
+  modelEntries = { models: [qwen], servers: [], defaults: [] };
+  fireEvent.focus(window);
+  expect(await screen.findByRole("option", { name: new RegExp(`^${QWEN}`) })).toBeTruthy();
+});
+
+test("a refusal is scrolled into the window's view", async () => {
+  const seen: Element[] = [];
+  const scroll = vi.fn(function (this: Element) {
+    seen.push(this);
+  });
+  Element.prototype.scrollIntoView = scroll;
+  const qwen = saved(QWEN, "qwen3-8b");
+  modelEntries = { models: [qwen], servers: [], defaults: [defaultOf(qwen)] };
+  sessionCheck = silent;
+  await kiloWindow();
+  await screen.findByText(SILENT);
+  await waitFor(() => expect(scroll).toHaveBeenCalledWith({ block: "center" }));
+  expect(seen.some((one) => one.contains(modelField()) && one.textContent!.includes(SILENT))).toBe(true);
+  delete (Element.prototype as Partial<Element>).scrollIntoView;
+});
+
+test("Check again keeps the refusal and its buttons, off with the focus, until the answer", async () => {
+  const qwen = saved(QWEN, "qwen3-8b");
+  modelEntries = { models: [qwen], servers: [], defaults: [defaultOf(qwen)] };
+  sessionCheck = silent;
+  await kiloWindow();
+  await screen.findByText(SILENT);
+  let answer: (found: Response) => void = () => {};
+  answers["POST /api/session-model/check"] = () => new Promise<Response>((done) => (answer = done));
+  const again = screen.getByRole("button", { name: "Check again" });
+  again.focus();
+  fireEvent.click(again);
+  const checking = await screen.findByRole("button", { name: "Checking…" });
+  expect(checking.getAttribute("aria-disabled")).toBe("true");
+  expect(document.activeElement).toBe(checking);
+  expect(screen.getByText(SILENT)).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Use Kilo CLI's settings" })).toBeTruthy();
+  expect(startButton().disabled).toBe(true);
+  expect(modelField().getAttribute("aria-invalid")).toBe("true");
+  const before = checked().length;
+  fireEvent.click(checking);
+  await new Promise((done) => setTimeout(done, 10));
+  expect(checked().length).toBe(before); // off: no second question
+  answer(json({ ...silent(), kind: "ok", text: "fine", peek: "", short: "", retry: false }));
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  expect(screen.queryByText(SILENT)).toBeNull();
+  expect(document.activeElement).toBe(modelField());
+});
+
+test("Check again that is refused again shows the button back", async () => {
+  const qwen = saved(QWEN, "qwen3-8b");
+  modelEntries = { models: [qwen], servers: [], defaults: [defaultOf(qwen)] };
+  sessionCheck = silent;
+  await kiloWindow();
+  await screen.findByText(SILENT);
+  fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+  expect(await screen.findByRole("button", { name: "Check again" })).toBeTruthy();
+  expect(screen.getByText(SILENT)).toBeTruthy();
+});
+
+test("folded on the CLI's settings past a default, Advanced says so", async () => {
+  const qwen = saved(QWEN, "qwen3-8b");
+  modelEntries = { models: [qwen], servers: [], defaults: [defaultOf(qwen)] };
+  await kiloWindow();
+  await waitFor(() => expect(modelField().textContent).toContain(QWEN));
+  await pickRow(/^Kilo CLI's settings/);
+  fireEvent.click(advancedRow().querySelector("summary")!);
+  await waitFor(() => expect(summary()).toBe("Advanced: model Kilo CLI's settings"));
+});
+
+test("folded with a refusal, Advanced says so", async () => {
+  const qwen = saved(QWEN, "qwen3-8b");
+  modelEntries = { models: [qwen], servers: [], defaults: [defaultOf(qwen)] };
+  sessionCheck = silent;
+  await kiloWindow();
+  await screen.findByText(SILENT);
+  fireEvent.click(advancedRow().querySelector("summary")!);
+  await waitFor(() => expect(summary()).toBe(`Advanced: model ${QWEN} on ${HOME} ! not answering`));
+});
+
+test("another agent CLI takes the field to its default, and says what went", async () => {
+  await kiloWindow();
+  await pickRow("kilo/large");
+  await waitFor(() => expect(modelField().textContent).toContain("kilo/large"));
+  fireEvent.change(providerSelect(), { target: { value: "claude" } });
+  await screen.findByText("kilo/large belongs to Kilo CLI, so the model is back to Claude Code's default.");
+  expect(modelField().textContent).toContain("Claude Code's settings");
+  expect("model" in (await startedWith())).toBe(false);
+});
+
+test("a stale answer of the check is dropped", async () => {
+  const qwen = saved(QWEN, "qwen3-8b");
+  const work = saved("Рабочая Qwen", "qwen3-coder-30b");
+  modelEntries = { models: [qwen, work], servers: [], defaults: [] };
+  let answerFirst: (found: Response) => void = () => {};
+  answers["POST /api/session-model/check"] = () => {
+    const asked = calls.filter((c) => c.path === "/api/session-model/check").at(-1)!.body as { model: string };
+    if (asked.model === QWEN) return new Promise<Response>((done) => (answerFirst = done));
+    return Promise.resolve(json({ ...silent(), kind: "ok", text: "fine", peek: "", short: "", retry: false }));
+  };
+  await kiloWindow();
+  await pickRow(/^Локальная Qwen/);
+  await waitFor(() => expect(checked().length).toBe(1));
+  await pickRow(/^Рабочая Qwen/);
+  await waitFor(() => expect(checked().length).toBe(2));
+  answerFirst(json(silent()));
+  await new Promise((done) => setTimeout(done, 20));
+  expect(screen.queryByText(SILENT)).toBeNull();
+  expect(startButton().disabled).toBe(false);
+});
+
+test("a start refused for its model points at the field", async () => {
+  await kiloWindow();
+  await pickRow("kilo/large");
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  answers["POST /api/sessions"] = () =>
+    json(
+      {
+        detail: {
+          message: "http://localhost:1234 does not answer (connection refused); LADO cannot check qwen3-8b",
+          field: "model",
+          text: SILENT,
+          short: `${HOME} does not answer`,
+          peek: "not answering",
+          retry: true,
+        },
+      },
+      409,
+    );
+  fireEvent.click(advancedRow().querySelector("summary")!);
+  fireEvent.click(startButton());
+  await screen.findByText(`Not started: ${HOME} does not answer. See Model above.`);
+  expect(screen.getByText(SILENT)).toBeTruthy();
+  expect(advancedRow().open).toBe(true);
+  expect(document.activeElement).toBe(modelField());
+  expect(startButton().disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Use Kilo CLI's settings" }));
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  expect(screen.queryByText(/^Not started/)).toBeNull();
+});
+
+test("the list's foot opens Settings in a new tab, and the window reads the models at its focus", async () => {
+  await kiloWindow();
+  writeFirst("Look at the tests");
+  fireEvent.click(modelField());
+  const link = (await screen.findByRole("link", { name: "Settings → Models" })) as HTMLAnchorElement;
+  expect(link.closest(".mp-foot")!.textContent).toContain("The default comes from Settings → Models.");
+  expect(link.target).toBe("_blank");
+  expect(link.getAttribute("href")).toBe("/settings#models");
+  fireEvent.keyDown(modelField(), { key: "Escape" });
+  const qwen = saved(QWEN, "qwen3-8b");
+  modelEntries = { models: [qwen], servers: [], defaults: [defaultOf(qwen)] };
+  fireEvent.focus(window);
+  await waitFor(() => expect(modelField().textContent).toContain(QWEN));
+  expect(firstField().value).toBe("Look at the tests");
+});
+
+test("Other name… takes a name outside the list, inside the window's form", async () => {
+  await openLaunch();
+  await ready("/src/app");
+  fireEvent.click(advancedRow().querySelector("summary")!);
+  await waitFor(() => expect(modelField().disabled).toBe(false));
+  await pickRow(/^Other name/);
+  const typed = screen.getByRole("textbox", { name: "Other name" });
+  expect(typed.closest("form")!.className).not.toContain("mc-other");
+  fireEvent.change(typed, { target: { value: "claude-opus-5-5" } });
+  fireEvent.click(screen.getByRole("button", { name: "Use" }));
+  await waitFor(() => expect(modelField().textContent).toContain("claude-opus-5-5"));
+  expect((await startedWith()).model).toBe("claude-opus-5-5");
+});
+
+async function resumeWindow() {
+  open("/sessions/lado/flows");
+  fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
+  const dialog = await screen.findByRole("dialog", { name: "Resume session" });
+  const button = within(dialog).getByRole("button", { name: "Resume session" }) as HTMLButtonElement;
+  answers["POST /api/sessions/lado/resume"] = () => json({ session: session("lado"), ...STARTED, resumed: true });
+  return button;
+}
+
+async function resumed(button: HTMLButtonElement) {
+  await waitFor(() => expect(button.disabled).toBe(false));
+  fireEvent.click(button);
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Resume session" })).toBeNull());
+  return calls.find((c) => c.method === "POST" && c.path.endsWith("/resume"))!.body;
+}
+
+test("Resume holds the session's model and sends nothing when it stays", async () => {
+  sessions = [session("lado", { status: "stopped", repo: "/src/lado", provider: "kilo", model: "kilo/small" })];
+  const button = await resumeWindow();
+  await waitFor(() => expect(modelField().textContent).toContain("kilo/small"));
+  await waitFor(() => expect(summary()).toBe("Advanced: model kilo/small"));
+  expect(await resumed(button)).toEqual({});
+});
+
+test("Resume sends the CLI's settings when the human leaves the kept model", async () => {
+  sessions = [session("lado", { status: "stopped", repo: "/src/lado", provider: "kilo", model: "kilo/small" })];
+  const button = await resumeWindow();
+  fireEvent.click(advancedRow().querySelector("summary")!);
+  await waitFor(() => expect(modelField().textContent).toContain("kilo/small"));
+  await pickRow(/^Kilo CLI's settings/);
+  expect(await resumed(button)).toEqual({ model: "" });
+});
+
+test("Resume of a session on the CLI's settings keeps them past a default", async () => {
+  const qwen = saved(QWEN, "qwen3-8b");
+  modelEntries = { models: [qwen], servers: [], defaults: [defaultOf(qwen)] };
+  sessions = [session("lado", { status: "stopped", repo: "/src/lado", provider: "kilo", model: "" })];
+  const button = await resumeWindow();
+  await waitFor(() => expect(modelField().textContent).toContain("Kilo CLI's settings"));
+  expect(await resumed(button)).toEqual({});
+});
+
+test("Resume of a kept model refused says it ran on it before", async () => {
+  sessions = [session("lado", { status: "stopped", repo: "/src/lado", provider: "kilo", model: "kilo/old" })];
+  sessionCheck = () => ({ ...silent(), text: "kilo/old is not in Kilo CLI's list of models", peek: "not in its list", server: null });
+  const button = await resumeWindow();
+  await screen.findByText(
+    "kilo/old is not in Kilo CLI's list of models. The session ran on it before. Pick another model, or resume on Kilo CLI's settings.",
+  );
+  expect(advancedRow().open).toBe(true); // the reason Resume is off is in sight
+  expect(button.disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Use Kilo CLI's settings" }));
+  expect(await resumed(button)).toEqual({ model: "" });
+});
+
+test("Resume of a model no longer saved says so, in the field too", async () => {
+  sessions = [
+    session("lado", { status: "stopped", repo: "/src/lado", provider: "kilo", model: "Рабочая Qwen", model_missing: true }),
+  ];
+  const button = await resumeWindow();
+  await screen.findByText(
+    "The session ran on the model Рабочая Qwen, which is no longer in Settings → Models. Pick a model or use Kilo CLI's settings.",
+  );
+  expect(modelField().textContent).toContain("not in Settings");
+  expect(button.disabled).toBe(true);
+  expect(screen.queryByRole("button", { name: "Check again" })).toBeNull();
+  expect(checked()).toEqual([]);
+  fireEvent.click(screen.getByRole("button", { name: "Use Kilo CLI's settings" }));
+  expect(await resumed(button)).toEqual({ model: "" });
+});
+
+test("the window says agent CLI, never provider", async () => {
+  await kiloWindow();
+  const words = screen.getByRole("dialog", { name: "New session" }).textContent ?? "";
+  expect(words).toContain("Agent CLI");
+  expect(words.toLowerCase()).not.toContain("provider");
+});
+
 // Resume
 
 test("Resume fills the window from the session, sends only what changed and shows the changes", async () => {
@@ -1031,7 +1632,7 @@ test("Resume fills the window from the session, sends only what changed and show
   const dialog = await screen.findByRole("dialog", { name: "Resume session" });
   expect(within(dialog).getByRole("group", { name: "Where" }).textContent).toBe("/src/lado");
   expect(within(within(dialog).getByRole("group", { name: "Kits" })).getByText("team")).toBeTruthy();
-  const providerSelect = within(dialog).getByRole("combobox", { name: "Provider" }) as HTMLSelectElement;
+  const providerSelect = within(dialog).getByRole("combobox", { name: "Agent CLI" }) as HTMLSelectElement;
   await waitFor(() => expect(providerSelect.value).toBe("kilo"));
   const mode = within(dialog).getByRole("combobox", { name: "Permission mode" }) as HTMLSelectElement;
   expect(mode.value).toBe("plan");
@@ -1055,7 +1656,7 @@ test("Resume session is off while the session's provider is not installed, on on
   expect(refusal.classList).toContain("bad");
   const resume = within(dialog).getByRole("button", { name: "Resume session" }) as HTMLButtonElement;
   expect(resume.disabled).toBe(true);
-  fireEvent.change(within(dialog).getByRole("combobox", { name: "Provider" }), { target: { value: "claude" } });
+  fireEvent.change(within(dialog).getByRole("combobox", { name: "Agent CLI" }), { target: { value: "claude" } });
   await waitFor(() => expect(resume.disabled).toBe(false));
   expect(within(dialog).queryByText("kilo not found; install kilo")).toBeNull();
   fireEvent.click(resume);
@@ -1068,11 +1669,11 @@ test("Resume session is off while the session's provider is not among the provid
   open("/sessions/lado/flows");
   fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
   const dialog = await screen.findByRole("dialog", { name: "Resume session" });
-  expect((await within(dialog).findByText("unknown provider gone")).classList).toContain("bad");
+  expect((await within(dialog).findByText("unknown agent CLI gone")).classList).toContain("bad");
   expect((within(dialog).getByRole("button", { name: "Resume session" }) as HTMLButtonElement).disabled).toBe(true);
   // The select shows the session's provider, not the first listed one: picking that one
   // is a change, which a select only reports for another option.
-  const select = within(dialog).getByRole("combobox", { name: "Provider" }) as HTMLSelectElement;
+  const select = within(dialog).getByRole("combobox", { name: "Agent CLI" }) as HTMLSelectElement;
   expect(select.value).toBe("gone");
   const gone = within(select).getByRole("option", { name: "gone · unknown" }) as HTMLOptionElement;
   expect(gone.disabled).toBe(true);

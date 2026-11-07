@@ -11,11 +11,13 @@ import time
 from pathlib import Path
 
 import agent_helpers
+import fake_endpoint as endpoints
+import fake_model_server
 import pytest
-from real_clis import SANDBOX_ERROR, agent_processes, answer_dialogs, check_gone, status
+from real_clis import CLASSES, SANDBOX_ERROR, agent_processes, answer_dialogs, check_gone, status
 
-from lado import logins, loop, projects, providers, runtime, state, tmux
-from lado.providers import codex
+from lado import logins, loop, model_settings, projects, providers, runtime, state, tmux
+from lado.providers import codex, opencode_family
 
 pytestmark = pytest.mark.smoke
 
@@ -23,9 +25,9 @@ SESSION = "smoke"
 RECEIVED = (state.DELIVERED, state.READ)
 HUMAN_SAYS = "Smoke test: a line from the human\nwith a body to read"
 TASK = "Smoke test: no model answers; this task only has to reach you."
-# Codex CLI 0.162 runs no hook for a turn that ends on an API error: the agent stays busy,
-# so nothing more is handed over to it, and no turn_error is recorded.
-CODEX_GAP = "A Codex agent whose turn ends on a model or API error stays busy"
+# Codex CLI 0.162 runs no hook for a turn that ends on an API error: on a built-in model the
+# agent stays busy, so nothing more is handed over to it, and no turn_error is recorded.
+CODEX_GAP = "A Codex agent on a built-in model whose turn ends on an API error stays busy"
 
 
 def wait_for(check, what: str, timeout: float):
@@ -120,6 +122,542 @@ def test_a_session_starts_takes_messages_and_stops(smoke_repo, smoke_provider, f
     check_gone(processes, "stop")
     wait_for(lambda: not loop.running(SESSION), "the session loop to end", 5 * loop.INTERVAL)
     agent_helpers.check_loop_ended_by_stop(SESSION)
+
+
+# The session's model per CLI: one the endpoint serves (smoke/conftest.py). Claude Code's is
+# a full name, which it gives no list for; Codex's model provider is the endpoint's, with no
+# list either; OpenCode's and Kilo's is in their own `models` list.
+SESSION_MODELS = {
+    "claude": "claude-smoke-2",
+    "codex": "smoke-model-2",
+    "kilo": "smoke/smoke-model-2",
+    "opencode": "smoke/smoke-model-2",
+}
+
+
+def test_the_session_s_model_reaches_the_cli(
+    smoke_repo, smoke_provider, fake_endpoint, monkeypatch
+):
+    """`lado start --model`: the model is checked against the CLI, passed its own way (argv,
+    config.toml, config content), and the CLI asks the endpoint for it."""
+    provider = smoke_provider
+    if provider in ("kilo", "opencode"):
+        # The CLI itself, without the test's own --model (real_clis.with_model).
+        monkeypatch.setitem(providers._PROVIDERS, provider, CLASSES[provider]())
+    model = SESSION_MODELS[provider]
+    started = runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", provider, model=model
+    )
+    print(f"{provider}: started, warnings {started.warnings}")
+    checked = [w for w in started.warnings if "LADO cannot check" in w]
+    assert bool(checked) == (provider in ("claude", "codex")), started.warnings
+    agent = state.get_agent(SESSION, "supervisor")
+    assert (agent.model, agent.model_source) == (model, state.SESSION)
+    asked = model.removeprefix("smoke/")
+    if provider == "codex":
+        home = providers.base.config_path(agent)
+        assert f'model = "{model}"' in (home / "config.toml").read_text().splitlines()
+        first = delivered(state.LADO, "supervisor", runtime.FIRST_INPUT)
+        wait_for(answering(provider, "supervisor", first), "codex's first input delivered", 120)
+    else:
+        idle = answering(provider, "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+        wait_for(idle, "the supervisor to be idle after its session start", 120)
+        runtime.write_as_human(SESSION, HUMAN_SAYS)
+    wait_for(lambda: asked in fake_endpoint.models, f"a request for {asked}", 120)
+    print(f"{provider}: models asked {fake_endpoint.models}")
+    runtime.stop_session(SESSION)
+
+
+SERVER_KEY = "smoke-claude-server-key"
+SERVER_MODEL = "smoke-qwen"
+CANARY = "smoke-canary-of-the-human"  # in each secret of the human's a test sets
+
+
+@pytest.fixture
+def claude_server(smoke_repo, tmp_path, monkeypatch):
+    """A saved model server of Anthropic's API with the model `Шлюз Qwen` and a key, and every
+    other way out of the machine refused: no request of the real CLI can reach a real host."""
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+        monkeypatch.setenv(name, "http://127.0.0.1:9")
+        monkeypatch.setenv(name.lower(), "http://127.0.0.1:9")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
+    server = endpoints.Anthropic(SERVER_MODEL, tmp_path / "shell-ran", SERVER_KEY)
+    model_settings.add_server("Шлюз", server.url, SERVER_KEY, warn=print, note=print)
+    state.add_model("Шлюз Qwen", "claude", SERVER_MODEL, state.model_server("Шлюз").id)
+    yield server
+    server.close()
+
+
+def turn_with_tools(server: endpoints.Anthropic) -> None:
+    """The supervisor idle, then a turn in which the server has it run a shell and an MCP tool."""
+    idle = answering("claude", "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+    wait_for(idle, "the supervisor to be idle after its session start", 120)
+    runtime.write_as_human(SESSION, endpoints.RUN_TOOLS)
+    wait_for(server.marker.exists, "the shell tool to run", 120)
+    called = lambda: endpoints.MCP_CALL in server.tool_results()  # noqa: E731
+    wait_for(called, "the MCP tool to run", 120)
+    wait_for(lambda: status(SESSION, "supervisor") == "idle", "the turn's end", 120)
+
+
+def claude_output() -> int:
+    """What a Claude agent on the fake's model may ask for: the context is known."""
+    return providers.base.Limit(endpoints.CONTEXT).output_room()
+
+
+def only_the_server_s_key_and_model(server: endpoints.Anthropic) -> None:
+    turns = [r for r in server.requests if r[0] == "/v1/messages" and b'"model"' in r[2]]
+    assert turns, "no turn reached the server"  # LADO's probe sends an empty object
+    for path, headers, body in server.requests:
+        print(f"claude: {path} {sorted(headers)}")
+        assert CANARY not in json.dumps(headers) and CANARY.encode() not in body
+        assert headers.get("x-api-key", SERVER_KEY) == SERVER_KEY
+        assert headers.get("authorization", f"Bearer {SERVER_KEY}") == f"Bearer {SERVER_KEY}"
+    assert {json.loads(body)["model"] for _, _, body in turns} == {SERVER_MODEL}
+    assert [h for _, h, _ in turns if "x-api-key" not in h and "authorization" not in h] == []
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+def test_claude_code_runs_on_a_server_with_no_login_and_no_first_run(
+    smoke_repo, smoke_provider, claude_server, fake_endpoint, monkeypatch
+):
+    """Not logged in, and its first run not recorded: nothing holds the agent, and a turn with
+    a shell and an MCP tool runs on the server alone."""
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN")
+    config = Path(os.environ["CLAUDE_CONFIG_DIR"], ".claude.json")
+    config.write_text("{}")
+    started = runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", "claude", model="Шлюз Qwen"
+    )
+    print(f"claude: started, warnings {started.warnings}")
+    turn_with_tools(claude_server)
+    agent = state.get_agent(SESSION, "supervisor")
+    assert agent.model == SERVER_MODEL
+    assert runtime.status_reasons(SESSION) == {}
+    asked = {json.loads(b)["max_tokens"] for p, _, b in claude_server.requests if b'"model"' in b}
+    assert asked == {claude_output()}
+    assert delivered(state.HUMAN, "supervisor", endpoints.RUN_TOOLS)()
+    only_the_server_s_key_and_model(claude_server)
+    assert fake_endpoint.requests == []
+    settings = (providers.base.config_path(agent) / "settings.json").read_text()
+    assert SERVER_KEY not in settings
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+def test_nothing_of_the_human_s_claude_reaches_a_server(
+    smoke_repo, smoke_provider, claude_server, fake_endpoint, tmp_path, monkeypatch
+):
+    """A login file, a key in the environment, and user settings with a key's helper, a token
+    and another address: the server gets its own key alone, and the other address nothing."""
+    other = endpoints.Anthropic(SERVER_MODEL, tmp_path / "other-ran")
+    home = Path(os.environ["CLAUDE_CONFIG_DIR"])
+    login = {"accessToken": f"sk-ant-oat01-{CANARY}", "refreshToken": f"r-{CANARY}"}
+    login |= {"expiresAt": 4102444800000, "scopes": ["user:inference"]}
+    (home / ".credentials.json").write_text(json.dumps({"claudeAiOauth": login}))
+    env = {"ANTHROPIC_AUTH_TOKEN": f"token-{CANARY}", "ANTHROPIC_BASE_URL": other.url}
+    settings = {"apiKeyHelper": f"echo helper-{CANARY}", "env": env}
+    (home / "settings.json").write_text(json.dumps(settings))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", f"sk-ant-api03-{CANARY}")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", f"shell-{CANARY}")
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", f"oauth-{CANARY}")
+    try:
+        started = runtime.start_session(
+            str(smoke_repo), SESSION, "bypassPermissions", "claude", model="Шлюз Qwen"
+        )
+        print(f"claude: started, warnings {started.warnings}")
+        turn_with_tools(claude_server)
+        only_the_server_s_key_and_model(claude_server)
+        assert other.requests == [] and fake_endpoint.requests == []
+    finally:
+        other.close()
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+@pytest.mark.parametrize(
+    ("variable", "value"),
+    [
+        ("CLAUDE_CODE_USE_BEDROCK", "1"),
+        ("CLAUDE_CODE_USE_MANTLE", "1"),
+        ("ANTHROPIC_UNIX_SOCKET", "/nonexistent/smoke.sock"),
+    ],
+)
+def test_another_way_out_in_the_environment_does_not_take_a_claude_agent_off_its_server(
+    smoke_repo, smoke_provider, claude_server, monkeypatch, variable, value
+):
+    monkeypatch.setenv(variable, value)
+    runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", "claude", model="Шлюз Qwen"
+    )
+    turn_with_tools(claude_server)
+    only_the_server_s_key_and_model(claude_server)
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+def test_auto_mode_of_the_human_leaves_a_claude_agent_on_a_server_lado_s_tools(
+    smoke_repo, smoke_provider, claude_server
+):
+    """Inherited from the user's settings. Its classifier asks the server's model, which gives it
+    no usable answer here: LADO's tools do not go there, or the agent could not answer anyone."""
+    settings = {"permissions": {"defaultMode": "auto"}}
+    Path(os.environ["CLAUDE_CONFIG_DIR"], "settings.json").write_text(json.dumps(settings))
+    runtime.start_session(str(smoke_repo), SESSION, None, "claude", model="Шлюз Qwen")
+    idle = answering("claude", "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+    wait_for(idle, "the supervisor to be idle after its session start", 120)
+    assert "auto mode on" in tmux.capture(SESSION, "supervisor")
+    runtime.write_as_human(SESSION, endpoints.RUN_MCP)
+    called = lambda: endpoints.MCP_CALL in claude_server.tool_results()  # noqa: E731
+    wait_for(called, "the MCP tool's result", 120)
+    wait_for(lambda: status(SESSION, "supervisor") == "idle", "the turn's end", 120)
+    assert "by auto mode" not in tmux.capture(SESSION, "supervisor")
+    last = [r for r in claude_server.requests if b"tool_result" in r[2]][-1]
+    assert b"auto mode" not in last[2].split(b"tool_result", 1)[1]
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+def test_a_claude_agent_on_a_large_context_compacts_before_it_passes_it(
+    smoke_repo, smoke_provider, claude_server, tmp_path
+):
+    """On a server that counts a request's input and max_tokens, as cloud.ru does, reads of 50 KB
+    up to a compaction: the output of 32000 Claude Code would ask for passed 131072 there."""
+    claude_server.context = 131072
+    error = {"type": "invalid_request_error", "message": "Invalid request"}
+    claude_server.over_context = (400, {"type": "error", "error": error})
+    for n in range(12):
+        file = tmp_path / f"part{n:02}.txt"
+        file.write_text(f"line of notes {n}\n" * 3000)
+        claude_server.reads.append(file)
+    runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", "claude", model="Шлюз Qwen"
+    )
+    idle = answering("claude", "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+    wait_for(idle, "the supervisor to be idle after its session start", 120)
+    runtime.write_as_human(SESSION, HUMAN_SAYS)
+    done = lambda: claude_server.compactions == endpoints.COMPACTIONS  # noqa: E731
+    wait_for(done, "its compactions", 240)
+    wait_for(lambda: status(SESSION, "supervisor") == "idle", "the turn's end", 120)
+    asked = [
+        (len(b) // endpoints.TOKEN_BYTES, json.loads(b))
+        for _, _, b in claude_server.requests
+        if b'"max_tokens"' in b
+    ]
+    peak = max(tokens + request["max_tokens"] for tokens, request in asked)
+    print(f"claude: {claude_server.compactions} compactions, the peak of a request {peak}")
+    assert peak <= claude_server.context
+    assert events("supervisor", state.TURN_ERROR) == []
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+def test_the_human_s_effort_does_not_reach_a_server(smoke_repo, smoke_provider, claude_server):
+    """A server may refuse an effort: gpt-oss on cloud.ru answers 400 to the human's `xhigh`."""
+    settings = Path(os.environ["CLAUDE_CONFIG_DIR"], "settings.json")
+    settings.write_text(json.dumps({"effortLevel": "xhigh"}))
+    runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", "claude", model="Шлюз Qwen"
+    )
+    turn_with_tools(claude_server)
+    turns = [json.loads(b) for p, _, b in claude_server.requests if b'"max_tokens"' in b]
+    assert turns and [t for t in turns if "output_config" in t] == []
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+def test_a_turn_of_a_large_prompt_ends_on_a_context_that_fits_it(
+    smoke_repo, smoke_provider, claude_server
+):
+    """A human's own CLAUDE.md and rules brought a prompt to 45K tokens: with the 32000 tokens of
+    output Claude Code asks for by itself that is over 64K, and the server ends the stream."""
+    size = 22000 * endpoints.TOKEN_BYTES
+    Path(os.environ["CLAUDE_CONFIG_DIR"], "CLAUDE.md").write_text("Be brief. " * (size // 10))
+    runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", "claude", model="Шлюз Qwen"
+    )
+    turn_with_tools(claude_server)
+    turns = [r for r in claude_server.requests if r[0] == "/v1/messages" and b'"tools"' in r[2]]
+    largest = max(len(body) for _, _, body in turns) // endpoints.TOKEN_BYTES
+    print(f"claude: the largest prompt is about {largest} tokens")
+    assert largest + 32000 > endpoints.CONTEXT
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+def test_model_of_a_claude_agent_on_a_server_shows_its_model_alone(
+    smoke_repo, smoke_provider, claude_server
+):
+    runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", "claude", model="Шлюз Qwen"
+    )
+    idle = answering("claude", "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+    wait_for(idle, "the supervisor to be idle after its session start", 120)
+    tmux.send_text(SESSION, "supervisor", "/model")
+    shown = lambda: "Default" in tmux.capture(SESSION, "supervisor")  # noqa: E731
+    wait_for(shown, "/model's list", 30)
+    screen = tmux.capture(SESSION, "supervisor")
+    print(f"claude: /model shows\n{screen}")
+    assert SERVER_MODEL in screen
+    for name in ("Opus", "Sonnet", "Haiku", "Fable"):
+        assert name not in screen
+    runtime.stop_session(SESSION)
+
+
+@pytest.fixture
+def two_servers():
+    """Two model servers of OpenAI's kind, each taking a key of its own, and saved."""
+    found = []
+    for name, key in (("first", "smoke-server-key-one"), ("second", "smoke-server-key-two")):
+        server = fake_model_server.Server("all", key=key)
+        found.append(server)
+        model_settings.add_server(name, server.url, key, warn=print, note=print)
+    yield found
+    for server in found:
+        server.close()
+
+
+def chats(server: fake_model_server.Server) -> list[fake_model_server.Request]:
+    return [
+        r for r in server.requests if r.path == fake_model_server.CHAT and b"messages" in r.body
+    ]
+
+
+@pytest.mark.parametrize("smoke_provider", ["kilo", "opencode"], indirect=True)
+def test_an_agent_starts_from_the_user_s_memory_and_leaves_it_as_it_is(
+    smoke_repo, smoke_provider, fake_endpoint, monkeypatch
+):
+    """The CLI's own settings: the agent asks for the model the user last picked, in the user's
+    state folder, not for one of LADO's servers, and that file stays as it was."""
+    provider = smoke_provider
+    monkeypatch.setitem(providers._PROVIDERS, provider, CLASSES[provider]())
+    pick = {"providerID": "smoke", "modelID": "smoke-model-2"}
+    ours = {"providerID": "lado-gone", "modelID": "m1"}
+    memory = Path(os.environ["XDG_STATE_HOME"], provider, "model.json")
+    memory.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps({"recent": [ours, pick], "model": {"code": pick}, "favorite": []})
+    memory.write_text(text)
+    runtime.start_session(str(smoke_repo), SESSION, "bypassPermissions", provider, model="")
+    agent = state.get_agent(SESSION, "supervisor")
+    idle = answering(provider, "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+    wait_for(idle, "the supervisor to be idle after its session start", 120)
+    runtime.write_as_human(SESSION, HUMAN_SAYS)
+    wait_for(lambda: "smoke-model-2" in fake_endpoint.models, "a request for the user's pick", 120)
+    own = providers.base.state_path(agent) / provider / "model.json"
+    print(f"{provider}: the agent's state: {sorted(p.name for p in own.parent.iterdir())}")
+    assert "lado-gone" not in own.read_text()
+    runtime.stop_session(SESSION)
+    assert memory.read_text() == text
+
+
+@pytest.mark.parametrize("smoke_provider", ["kilo", "opencode"], indirect=True)
+@pytest.mark.parametrize("mode", ["bypassPermissions", "plan"])
+def test_a_session_on_a_server_s_model_asks_it_with_its_key(
+    smoke_repo, smoke_provider, two_servers, monkeypatch, mode
+):
+    """Both servers are in the agent's config beside the CLI's own models, under `--model` the
+    CLI runs the session's, in each mode, and its server gets the key of its own."""
+    provider = smoke_provider
+    monkeypatch.setitem(providers._PROVIDERS, provider, CLASSES[provider]())
+    for name in ("first", "second"):
+        state.add_model(f"Модель {name}", provider, "m1", state.model_server(name).id)
+    started = runtime.start_session(str(smoke_repo), SESSION, mode, provider, model="Модель first")
+    print(f"{provider}: started, warnings {started.warnings}")
+    agent = state.get_agent(SESSION, "supervisor")
+    first = state.model_server("first")
+    assert (agent.model, agent.model_source) == (f"lado-{first.id}/m1", state.SESSION)
+
+    # Its servers alone: the whole config would run LADO's plugin, whose hooks are the agent's.
+    config = providers.base.config_path(agent) / f"{provider}.json"
+    servers = json.dumps({"provider": json.loads(config.read_text())["provider"]})
+    env = {**os.environ, **CLASSES[provider]().env(config, servers)}
+    listed = subprocess.run(
+        [provider, "models"], env=env, capture_output=True, text=True, timeout=60
+    ).stdout.split()
+    for name in ("first", "second"):
+        assert f"lado-{state.model_server(name).id}/m1" in listed
+    assert "smoke/smoke-model" in listed  # the CLI's own stay
+
+    idle = answering(provider, "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+    wait_for(idle, "the supervisor to be idle after its session start", 120)
+    runtime.write_as_human(SESSION, HUMAN_SAYS)
+    one, other = two_servers
+    wait_for(lambda: chats(one), "a request to the session's server", 120)
+    print(f"{provider}: asked {[r.path for r in one.requests]}")
+    assert chats(one)[0].headers.get("Authorization") == "Bearer smoke-server-key-one"
+    assert json.loads(chats(one)[0].body)["model"] == "m1"
+    assert chats(other) == []
+    runtime.stop_session(SESSION)
+
+
+REFUSALS = {
+    400: ("the model provider refused the key (400)", "invalid_request_error"),
+    401: ("the model provider refused the key (401)", "authentication_error"),
+    404: ("the model provider refused the request (404)", "not_found_error"),
+    413: ("the model provider refused the request (413)", "request_too_large"),
+    429: ("the model provider limits requests, or the quota is spent (429)", "rate_limit_error"),
+}
+
+
+def cloud_ru_400(key: str) -> dict:
+    """What cloud.ru answers to a wrong key, the human's report; with the key echoed."""
+    return {"message": f"invalid api key secret {key}", "code": "InvalidArgument"}
+
+
+def check_refusal(status_code: int, key: str, requests) -> None:
+    """The turn ended on the server's `status_code` in LADO's words with no key in them, the
+    agent is idle and the server's count of `requests()` stopped growing."""
+
+    def told():
+        said = [m for m in state.list_messages(SESSION) if m.recipient == state.HUMAN]
+        return [m for m in said if "ended on an error" in m.summary]
+
+    wait_for(told, "the turn's end on a refusal", 300)  # a 401 of Claude Code takes about 150 s
+    [line] = told()
+    print(f"refusal: {line.summary!r} body {line.body!r}, {requests()} requests")
+    assert REFUSALS[status_code][0] in line.summary
+    assert line.summary.endswith("; it is idle")
+    assert key not in line.summary + line.body
+    wait_for(lambda: status(SESSION, "supervisor") == "idle", "the agent to be idle", 30)
+    assert state.get_agent(SESSION, "supervisor").resume_at is None
+
+    def quiet() -> bool:
+        count = requests()
+        time.sleep(5)
+        return requests() == count
+
+    wait_for(quiet, "the server's count of requests to stop growing", 90)
+    print(f"refusal: turn errors {[e.detail for e in events('supervisor', state.TURN_ERROR)]}")
+    assert len(told()) == 1
+    assert len(events("supervisor", state.TURN_ERROR)) == 1
+    for file in state.home().glob("lado.db*"):
+        assert key.encode() not in file.read_bytes()
+    hooks_log = state.home() / "hooks.log"
+    assert not hooks_log.exists() or key not in hooks_log.read_text()
+
+
+@pytest.mark.parametrize("smoke_provider", ["kilo", "opencode"], indirect=True)
+@pytest.mark.parametrize("status_code", [s for s in REFUSALS if s != 413])  # their own overflow
+def test_a_provider_s_refusal_ends_the_turn_within_the_cli_s_repeats(
+    smoke_repo, smoke_provider, monkeypatch, status_code
+):
+    """The key the server repeats stays out of LADO's words, and the CLI's repeats end. No CLI's
+    name in the test's: `-k <provider>` of a CI cell would take the other's case, which skips."""
+    provider = smoke_provider
+    monkeypatch.setitem(providers._PROVIDERS, provider, CLASSES[provider]())
+    key = "smoke-refused-key-0123456789"
+    server = fake_model_server.Server("all", key=key)
+    try:
+        model_settings.add_server("Облако", server.url, key, warn=print, note=print)
+        state.add_model("Облачная", provider, "m1", state.model_server("Облако").id)
+        runtime.start_session(str(smoke_repo), SESSION, None, provider, model="Облачная")
+        idle = answering(provider, "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+        wait_for(idle, "the supervisor to be idle after its session start", 120)
+        error = {"error": {"message": f"Refused for {key}", "type": "refused"}}
+        if status_code == 400:
+            error = cloud_ru_400(key)
+        server.refusal = fake_model_server.Answer(status_code, error, endpoints.RETRY_SOON)
+        runtime.write_as_human(SESSION, HUMAN_SAYS)
+        check_refusal(status_code, key, lambda: len(chats(server)))
+    finally:
+        runtime.stop_session(SESSION)
+        server.close()
+
+
+@pytest.mark.parametrize("smoke_provider", ["claude"], indirect=True)
+@pytest.mark.parametrize("status_code", list(REFUSALS))
+def test_a_provider_s_refusal_ends_a_claude_agent_s_turn_within_its_repeats(
+    smoke_repo, smoke_provider, claude_server, status_code
+):
+    """In its TUI, past the CLAUDE_CODE_MAX_RETRIES of 0 the smoke's own environment sets: the
+    agent's settings win. At most 7 repeats, so 8 requests of the turn on a 429 and, as measured,
+    10 on a 401; beside them the TUI asks for the session's title, a request with no tools, and
+    repeats it as much (2.1.295)."""
+    runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", "claude", model="Шлюз Qwen"
+    )
+    idle = answering("claude", "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+    wait_for(idle, "the supervisor to be idle after its session start", 120)
+
+    def asked() -> list[dict]:
+        bodies = [r[2] for r in list(claude_server.requests) if r[0] == "/v1/messages"]
+        return [json.loads(body) for body in bodies if b'"messages"' in body]
+
+    before = len(asked())
+    error = {"type": REFUSALS[status_code][1], "message": f"Refused for {SERVER_KEY}"}
+    answer = {"type": "error", "error": error}
+    claude_server.refusal = (
+        status_code,
+        cloud_ru_400(SERVER_KEY) if status_code == 400 else answer,
+    )
+    runtime.write_as_human(SESSION, HUMAN_SAYS)
+    check_refusal(status_code, SERVER_KEY, lambda: len(asked()))
+    turn = [request for request in asked()[before:] if request.get("tools")]
+    print(f"claude: {len(turn)} requests of the turn, {len(asked()) - before} in all")
+    least, most = {400: (1, 1), 401: (2, 10), 404: (1, 2), 413: (1, 1), 429: (2, 8)}[status_code]
+    assert least <= len(turn) <= most
+    assert len(asked()) - before <= 2 * most
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["kilo", "opencode"], indirect=True)
+def test_a_cli_takes_a_config_with_a_model_s_limit(smoke_repo, smoke_provider, monkeypatch):
+    """The real CLI starts on a model whose config holds `limit`, and asks the server with the
+    output it was told; OpenCode refuses a config it does not understand."""
+    provider = smoke_provider
+    monkeypatch.setitem(providers._PROVIDERS, provider, CLASSES[provider]())
+    server = fake_model_server.Server("gateway-limits")
+    try:
+        model_settings.add_server("малый", server.url, None, warn=print, note=print)
+        saved = state.add_model("Малая", provider, "small", state.model_server("малый").id)
+        started = runtime.start_session(str(smoke_repo), SESSION, None, provider, model=saved.name)
+        assert any("has a context of 16,000 tokens" in line for line in started.warnings)
+        agent = state.get_agent(SESSION, "supervisor")
+        config = json.loads((providers.base.config_path(agent) / f"{provider}.json").read_text())
+        entry = config["provider"][f"lado-{saved.server}"]["models"]["small"]
+        assert entry["limit"] == {"context": 16000, "output": 2048}
+        idle = answering(provider, "supervisor", lambda: status(SESSION, "supervisor") == "idle")
+        wait_for(idle, "the supervisor to be idle after its session start", 120)
+        runtime.write_as_human(SESSION, HUMAN_SAYS)
+        told = lambda: [json.loads(r.body).get("max_tokens") for r in chats(server)]  # noqa: E731
+        wait_for(lambda: 2048 in told(), "a request with the output it was told", 120)
+    finally:
+        runtime.stop_session(SESSION)
+        server.close()
+
+
+@pytest.mark.parametrize("smoke_provider", ["kilo", "opencode"], indirect=True)
+def test_a_message_right_after_the_start_goes_in_at_the_first_attempt(smoke_repo, smoke_provider):
+    """Nothing is typed before the TUI's prompt has focus: the real CLI takes the first paste."""
+    provider = smoke_provider
+    try:
+        runtime.start_session(str(smoke_repo), SESSION, "bypassPermissions", provider)
+        runtime.write_as_human(SESSION, HUMAN_SAYS)
+        summary = HUMAN_SAYS.splitlines()[0]
+        check = answering(provider, "supervisor", delivered(state.HUMAN, "supervisor", summary))
+        wait_for(check, "the human's message", 120)
+        assert message(state.HUMAN, "supervisor", summary).attempts == 1
+    finally:
+        runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["kilo", "opencode"], indirect=True)
+def test_a_tui_plugin_that_does_not_load_leaves_no_agent_starting(
+    smoke_repo, smoke_provider, monkeypatch, tmp_path
+):
+    """A CLI that no longer loads the TUI plugin: the server plugin says so, the message goes."""
+    provider = smoke_provider
+    monkeypatch.setattr(opencode_family, "TUI_PLUGIN", tmp_path / "no-such-plugin.js")
+    try:
+        runtime.start_session(str(smoke_repo), SESSION, "bypassPermissions", provider)
+        runtime.write_as_human(SESSION, HUMAN_SAYS)
+        summary = HUMAN_SAYS.splitlines()[0]
+        check = answering(provider, "supervisor", delivered(state.HUMAN, "supervisor", summary))
+        wait_for(check, "the human's message", 120)
+        line = f"supervisor: {opencode_family.TUI_SILENT_NOTE}"
+        assert line in [m.summary for m in state.list_messages(SESSION)]
+    finally:
+        runtime.stop_session(SESSION)
 
 
 PROBE = Path(__file__).with_name("probe_mcp.py")
@@ -287,6 +825,162 @@ def _codex(home: Path, *args: str, key: str | None = None) -> subprocess.Complet
         text=True,
         timeout=60,
     )
+
+
+CODEX_KEY = "smoke-codex-server-key"
+CODEX_SERVER_MODEL = "smoke/gpt"
+CODEX_MODEL = "Шлюз GPT"
+
+
+@pytest.fixture
+def codex_server(smoke_repo, tmp_path, monkeypatch, codex_home):
+    """A saved model server of the Responses API with the model `Шлюз GPT` and a key, every other
+    way out of the machine refused, and Codex not logged in."""
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+        monkeypatch.setenv(name, "http://127.0.0.1:9")
+        monkeypatch.setenv(name.lower(), "http://127.0.0.1:9")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
+    (codex_home / "auth.json").unlink(missing_ok=True)
+    server = endpoints.Responses(CODEX_SERVER_MODEL, tmp_path / "shell-ran", CODEX_KEY)
+    model_settings.add_server("Шлюз", server.url, CODEX_KEY, warn=print, note=print)
+    state.add_model(CODEX_MODEL, "codex", CODEX_SERVER_MODEL, state.model_server("Шлюз").id)
+    yield server
+    server.close()
+
+
+def codex_session(smoke_repo, server: endpoints.Responses) -> state.Agent:
+    """A Codex session on the server, past its first turn."""
+    started = runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", "codex", model=CODEX_MODEL
+    )
+    print(f"codex: started, warnings {started.warnings}")
+    assert not [w for w in started.warnings if "/model" in w], started.warnings
+    first = delivered(state.LADO, "supervisor", runtime.FIRST_INPUT)
+    wait_for(answering("codex", "supervisor", first), "codex's first input delivered", 120)
+    wait_for(lambda: status(SESSION, "supervisor") == "idle", "the first turn's end", 120)
+    return state.get_agent(SESSION, "supervisor")
+
+
+@pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
+def test_codex_runs_on_a_server_with_its_tools_and_no_login(
+    smoke_repo, smoke_provider, codex_server, fake_endpoint
+):
+    """Not logged in: a turn with a shell and LADO's MCP tool runs on the server alone, with the
+    agent's own list of models, and asks for nothing a server may refuse."""
+    agent = codex_session(smoke_repo, codex_server)
+    runtime.write_as_human(SESSION, endpoints.RUN_TOOLS)
+    wait_for(codex_server.marker.exists, "the shell tool to run", 120)
+    called = lambda: endpoints.MCP_CALL in codex_server.tool_results()  # noqa: E731
+    wait_for(called, "the MCP tool to run", 120)
+    wait_for(lambda: status(SESSION, "supervisor") == "idle", "the turn's end", 120)
+    assert state.get_agent(SESSION, "supervisor").model == CODEX_SERVER_MODEL
+    assert fake_endpoint.requests == []
+    home = providers.base.config_path(agent)
+    assert not (home / "auth.json").exists()
+    assert CODEX_KEY not in (home / "config.toml").read_text()
+    assert CODEX_KEY not in (home / "models.json").read_text()
+    asked = codex_server.asked()
+    assert {request["model"] for request in asked} == {CODEX_SERVER_MODEL}
+    for _, headers, body in codex_server.requests:
+        if b'"model"' in body:
+            assert headers["authorization"] == f"Bearer {CODEX_KEY}"
+    tools = asked[-1]["tools"]
+    print(f"codex: tools {[(t.get('type'), t.get('name')) for t in tools]}")
+    assert not [t for t in tools if t.get("type") in ("web_search", "custom")]
+    assert "reasoning" not in asked[-1] or not (asked[-1]["reasoning"] or {}).get("effort")
+    assert endpoints.LADO_TOOL in [
+        inner["name"]
+        for tool in tools
+        if tool.get("type") == "namespace"
+        for inner in tool["tools"]
+    ]
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
+def test_model_of_a_codex_agent_on_a_server_shows_its_model_alone(
+    smoke_repo, smoke_provider, codex_server
+):
+    """Real Codex takes the agent's list, in the format of the installed binary: with a field it
+    does not read the list, it would show OpenAI's models here."""
+    codex_session(smoke_repo, codex_server)
+    tmux.send_text(SESSION, "supervisor", "/model")
+    shown = lambda: CODEX_MODEL in tmux.capture(SESSION, "supervisor")  # noqa: E731
+    wait_for(shown, "/model's list", 30)
+    screen = tmux.capture(SESSION, "supervisor")
+    print(f"codex: /model shows\n{screen}")
+    assert "On Шлюз" in screen
+    assert "gpt-5" not in screen.lower() and "gpt-6" not in screen.lower()
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
+def test_a_503_of_a_gateway_is_temporary_for_a_codex_agent(
+    smoke_repo, smoke_provider, codex_server
+):
+    codex_session(smoke_repo, codex_server)
+    codex_server.refusal = (503, {"error": {"message": "upstream overloaded"}})
+    runtime.write_as_human(SESSION, HUMAN_SAYS)
+    planned = lambda: state.get_agent(SESSION, "supervisor").resume_at is not None  # noqa: E731
+    wait_for(planned, "a resume", 120)
+    assert not [m for m in state.list_messages(SESSION) if "ended on an error" in m.summary]
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
+def test_a_400_with_no_json_object_names_no_status_for_a_codex_agent(
+    smoke_repo, smoke_provider, codex_server
+):
+    codex_session(smoke_repo, codex_server)
+    codex_server.refusal = (400, "Bad Request")
+    runtime.write_as_human(SESSION, HUMAN_SAYS)
+
+    def told():
+        return [m for m in state.list_messages(SESSION) if "ended on an error" in m.summary]
+
+    wait_for(told, "the turn's end", 60)
+    assert f"{codex.NO_WORDS}: " in told()[0].summary
+    assert "Bad Request" in told()[0].summary
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
+def test_codex_on_a_server_compacts_past_its_limit(smoke_repo, smoke_provider, codex_server):
+    agent = codex_session(smoke_repo, codex_server)
+    written = (providers.base.config_path(agent) / "config.toml").read_text()
+    assert f"model_context_window = {endpoints.CONTEXT}" in written
+    # Past LADO's limit, which leaves the output room, and short of Codex's own 90%.
+    room = providers.base.Limit(endpoints.CONTEXT).output_room()
+    codex_server.tokens = endpoints.CONTEXT - room + 100
+    runtime.write_as_human(SESSION, "a turn that reports the tokens")
+    wait_for(lambda: len(codex_server.asked()) >= 2, "that turn", 120)
+    wait_for(lambda: status(SESSION, "supervisor") == "idle", "that turn's end", 120)
+    assert codex_server.compactions == 0
+    codex_server.tokens = 1
+    runtime.write_as_human(SESSION, "the next turn")
+    wait_for(lambda: codex_server.compactions == 1, "the compaction", 120)
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
+@pytest.mark.parametrize("status_code", [401, 429])
+def test_a_refusal_ends_a_codex_agent_s_turn_in_lado_s_words(
+    smoke_repo, smoke_provider, codex_server, status_code
+):
+    """The journal's format of the installed Codex: only this layer catches a change of it. The
+    server echoes the key, which stays out of LADO's words."""
+    agent = codex_session(smoke_repo, codex_server)
+    error = {"error": {"message": f"Refused for {CODEX_KEY}", "type": "refused"}}
+    codex_server.refusal = (status_code, error)
+    before = len(codex_server.asked())
+    runtime.write_as_human(SESSION, HUMAN_SAYS)
+    check_refusal(status_code, CODEX_KEY, lambda: len(codex_server.asked()))
+    repeats = len(codex_server.asked()) - before
+    print(f"codex: {repeats} requests of the turn")
+    assert 1 <= repeats <= 12
+    assert (providers.base.config_path(agent) / "journal-offset").exists()
+    runtime.stop_session(SESSION)
 
 
 @pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)

@@ -512,7 +512,7 @@ def check_refusal(status_code: int, key: str, requests) -> None:
         said = [m for m in state.list_messages(SESSION) if m.recipient == state.HUMAN]
         return [m for m in said if "ended on an error" in m.summary]
 
-    wait_for(told, "the turn's end on a refusal", 150)
+    wait_for(told, "the turn's end on a refusal", 300)  # a 401 of Claude Code takes about 150 s
     [line] = told()
     print(f"refusal: {line.summary!r} body {line.body!r}, {requests()} requests")
     assert REFUSALS[status_code][0] in line.summary

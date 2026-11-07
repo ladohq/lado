@@ -1039,6 +1039,8 @@ once, flow once), Codex 1 of 3 (flow), each the same: `read_messages`, `[call re
 shows each failed turn's input as large as the turns of the same session that did call the
 tools (14,354-14,560 tokens). Hence the human's switch of verify to a gateway with
 qwen3.6-35b-a3b (`LADO_LIVE_ENDPOINT`, design v5); LM Studio stays the default setup.
+2026-11-07: LM Studio left the live tests (LAD-231); the trial on OpenRouter's
+qwen/qwen3.7-flash did not show this answer as text.
 
 ## The lead answers the human's message to a worker
 
@@ -1797,6 +1799,8 @@ idle, w1 busy`, its task read. Evidence:
 Wanted: find out from the evidence what w1's turn did that long (a slow model turn, or a
 turn's end Codex ran no hook for), then a fix or a longer wait with the reason written down.
 Found: 2026-10-11, live tests of release 0.35.0.
+2026-11-07: LM Studio left the live tests (LAD-231); the Codex image test passed on OpenRouter's
+qwen/qwen3.7-flash in each run of the trial.
 
 ## The chat does not stay at the bottom when its last entry grows in place
 

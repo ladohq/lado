@@ -64,9 +64,12 @@ them into one. Past sections stay as they were written.
 1. `uv version X.Y.ZrcN` (N from 1), commit `Release candidate X.Y.ZrcN` on main, push.
    CHANGELOG.md is not touched: its `## X.Y.Z (unreleased)` stays until the final.
 2. CI is green on that commit, the smoke on Linux and macOS with it.
-3. `make test-live` locally for every provider, Claude Code with the human's yes; a
-   failed test is rerun by the flaky rule of the checks (a pass on rerun is a flake, noted,
-   no code changed for it).
+3. `gh workflow run live.yml` on main at the RC's commit, every cell green. The button runs
+   whatever main is at, so `gh run list --workflow live.yml --limit 1 --json
+   headSha,conclusion` must show the SHA of `git rev-parse HEAD`; a run of another commit does
+   not count, nor does a local `make test-live`, which without its endpoint skips and ends with
+   no failure. A failed cell is rerun by the flaky rule of the checks (a pass on rerun is a
+   flake, noted, no code changed for it).
 4. Push the tag `vX.Y.ZrcN`. Its spelling is PEP 440's, no dash (`v0.37.0rc1`, never
    `v0.37.0-rc1`): the workflow compares the tag with `uv version --short`. The Release
    workflow tests LADO's image on both architectures, publishes `X.Y.ZrcN` to PyPI as a
@@ -381,7 +384,7 @@ cd / && rm -rf /tmp/lado-rc-update /tmp/lado-rc-beside
    field's stickers are named in `.lado/tracker.yaml`.
 
 The live tests are not run again: the code is the last RC's, which they ran on. A patch
-released without an RC gets all of section 2's checks (CI, `make test-live`) on its
+released without an RC gets all of section 2's checks (CI, `live.yml`) on its
 release commit before its tag.
 
 The Windows probe (docs/testing.md, Test infrastructure) is not a release step: Docker,

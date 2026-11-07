@@ -332,12 +332,13 @@ A model on a server is checked by the probe of `lado model add`, within its time
 start and each resume, whether given, kept or a default: a server that does not answer, or a list
 that lacks the model, is refused with exit 1 before anything is stored (`lado:
 http://localhost:1234 does not answer (connection refused); LADO cannot check qwen3-8b`). A silent
-server of another saved model stops nothing. A model on a server for a CLI that runs on none yet
-is refused with no request (`Шлюз GPT is on the model server Шлюз; Codex CLI does not run on a
-model server yet, Claude Code, Kilo CLI and OpenCode do`). A model whose id its CLI reads as its own
+server of another saved model stops nothing. A model on a server of a type its CLI cannot use
+is refused with no request (`Локальная GPT is on the model server LM Studio дома; LM Studio дома
+does not suit Codex CLI: its Responses API loses Codex CLI's MCP tools, so the agent could not talk
+to LADO; Kilo CLI and OpenCode do`). A model whose id its CLI reads as its own
 (Claude Code's `sonnet` or `default` in any case, a name ending in `[1m]`) is refused with no request, when saved too
 (`Claude Code reads sonnet as its own model, so it would not ask Шлюз for it; give the model another
-name on the server`). A Claude Code model on a server needs no Claude login, at a start, a resume, a
+name on the server`). A Claude Code or Codex model on a server needs no login of its CLI, at a start, a resume, a
 worker and before a clone (`lado start <git-url> --model`). A spawned worker's model is checked in the same way,
 given or not, and a refusal leaves no worker; one not given adds `list_models shows the others,
 model="" is the CLI's own settings`. A
@@ -614,7 +615,10 @@ refused that way too, the server answers every POST alike and no API counts. No 
 followed (it would carry the key to another host); proxies and `SSL_CERT_FILE` come from
 the environment. A CLI suits the server when the server proved the API its provider
 declares (`Provider.server_api`): chat completions for OpenCode and Kilo, the Responses API
-for Codex, the Anthropic Messages API for Claude Code; the type is only shown. The CLIs come
+for Codex, the Anthropic Messages API for Claude Code, unless it refuses the server's type
+(`Provider.refuses_server`): LM Studio's Responses API loses Codex's MCP tools, so there `not:` reads
+`Codex CLI (its Responses API loses Codex CLI's MCP tools, so the agent could not talk to LADO)`. The
+type decides nothing else. The CLIs come
 in LADO's order (Claude Code, Codex CLI, Kilo CLI, OpenCode), here and in `lado model-server
 list`, as in the UI. Exit 0:
 
@@ -725,8 +729,9 @@ does not suit <CLI>: it has no <API>; it suits <CLIs>`, `it suits no CLI` for no
 model the server types as embeddings (LM Studio's `(embeddings)` mark) is refused (`<model>
 is an embeddings model on <server>; an agent needs a chat model: lado model-server probe
 <address> lists the models`); then the model is checked against the server's list as against a CLI's (`<model> is not in
-<server>'s list of models; lado model-server probe <address> prints the list`). Claude Code
-and Codex models on a server are saved by that rule, and no session of theirs starts on one yet.
+<server>'s list of models; lado model-server probe <address> prints the list`). A CLI that
+refuses the server's type is refused with no request (`<server> does not suit <CLI>: <why>; <the
+CLIs that run on it> do`).
 Saved: `Saved model "<name>": <CLI>, <model> on <server> (<the check's text>)`, exit
 0; refused: exit 1, nothing saved.
 

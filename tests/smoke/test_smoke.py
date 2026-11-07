@@ -25,9 +25,9 @@ SESSION = "smoke"
 RECEIVED = (state.DELIVERED, state.READ)
 HUMAN_SAYS = "Smoke test: a line from the human\nwith a body to read"
 TASK = "Smoke test: no model answers; this task only has to reach you."
-# Codex CLI 0.162 runs no hook for a turn that ends on an API error: the agent stays busy,
-# so nothing more is handed over to it, and no turn_error is recorded.
-CODEX_GAP = "A Codex agent whose turn ends on a model or API error stays busy"
+# Codex CLI 0.162 runs no hook for a turn that ends on an API error: on a built-in model the
+# agent stays busy, so nothing more is handed over to it, and no turn_error is recorded.
+CODEX_GAP = "A Codex agent on a built-in model whose turn ends on an API error stays busy"
 
 
 def wait_for(check, what: str, timeout: float):

@@ -471,10 +471,12 @@ Wanted: the test waits for w1 to be idle (as the other status checks do) instead
 it once.
 Found: 2026-10-09, CI of the 0.31.0 release (run 37887140737).
 
-## A Codex agent whose turn ends on a model or API error stays busy
+## A Codex agent on a built-in model whose turn ends on an API error stays busy
 
 Size: M. Why here: a Codex worker whose model fails (a 400, a 500, a server that is down)
-looks busy forever; neither the supervisor nor the human is told.
+looks busy forever; neither the supervisor nor the human is told. An agent on a model server has
+its failed turn read from the journal (`Provider.failed_turn`, LAD-230), and this entry holds for
+a built-in model, and for a server gone in the middle of a turn, which Codex waits for without end.
 Codex CLI 0.162 runs no hook at all for such a turn (400 and 500 tried; a refused connection
 it retries forever). Only the rollout at the hooks' `transcript_path` has it: a
 `task_complete` with an `error`. The human's decision for v1: a working model is the user's

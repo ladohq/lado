@@ -2764,6 +2764,10 @@ commands print their lines as before). It says "agent CLI", or "CLI" where room 
 Using it changes nothing of how sessions start, and it says nothing of sessions using a
 default: none does yet.
 
+What answered a server's check (`Found`) names under its Agent CLIs each CLI that has the server's
+API and cannot use its type (`ProbeInfo.cli_notes`), as a `field-note warn` with why: Codex CLI on
+LM Studio. That CLI has no column in the server's list, which comes from `ProbeInfo.clis`.
+
 - **One section, two blocks**, no tabs: an intro (`Choose a default model for each agent CLI,
   and add the models of your own servers.`), then **Your agent CLIs** and **Model servers
   `<n>`** (its count once a server is saved), one under the other, `--gap-block` (24 px)

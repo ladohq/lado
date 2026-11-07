@@ -32,20 +32,20 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-07-codex-model-
 
 ## 4. Smoke
 
-- [ ] 4.1 A Responses stream in `tests/fake_model_server.py`: a shell call, an MCP call, usage. Check:
+- [x] 4.1 A Responses stream in `tests/fake_model_server.py`: a shell call, an MCP call, usage. Check:
   its unit test.
-- [ ] 4.2 Real Codex on it: tools, a turn, the catalogue taken, a compaction. Check: `-m smoke` of the
+- [x] 4.2 Real Codex on it: tools, a turn, the catalogue taken, a compaction. Check: `-m smoke` of the
   new tests with the real CLI here, then CI.
-- [ ] 4.3 Real Codex on 401 and 429, the key echoed, the journal's format held. Check: the same.
+- [x] 4.3 Real Codex on 401 and 429, the key echoed, the journal's format held. Check: the same.
 
 ## 5. Documents
 
-- [ ] 5.1 `docs/install.md`: Codex on a server, what was checked, what Codex cannot do, the line that a
+- [x] 5.1 `docs/install.md`: Codex on a server, what was checked, what Codex cannot do, the line that a
   model can fail with no error. Check: read against D1-D11.
-- [ ] 5.2 `docs/cli.md`, `docs/design/agents.md`, `docs/design/ui.md`, `docs/design/modules.md`,
+- [x] 5.2 `docs/cli.md`, `docs/design/agents.md`, `docs/design/ui.md`, `docs/design/modules.md`,
   `docs/testing.md`, `BACKLOG.md`'s entry (it now holds for a built-in model only). Check: grep for
   `does not run on a model server` and `no session of theirs starts`.
-- [ ] 5.3 CHANGELOG.md under `## 0.45.0 (unreleased)`. Check: docs/release.md's rules by hand.
+- [x] 5.3 CHANGELOG.md under `## 0.45.0 (unreleased)`. Check: docs/release.md's rules by hand.
 
 ## 6. The end
 

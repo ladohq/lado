@@ -30,7 +30,7 @@ const LIMITS: Limits = {
 type Call = { path: string; body: unknown };
 
 // The API: the limits, an upload answers the artifact of its file name (or `refuse` for a
-// name) once `hold` is done, a message answers sent.
+// name) once `hold` is done, a message answers sent (or `refuse.message`).
 function serve(refuse: Record<string, { status: number; detail: string }> = {}, hold: Promise<void> = Promise.resolve()) {
   const calls: Call[] = [];
   const fetch = vi.fn(async (path: string, init?: RequestInit) => {
@@ -46,6 +46,7 @@ function serve(refuse: Record<string, { status: number; detail: string }> = {}, 
     }
     if (init?.method !== "POST") return new Response(JSON.stringify({ items: [], earlier: false })); // Send's cursor
     calls.push({ path: url.pathname, body: JSON.parse(String(init?.body)) });
+    if (refuse.message) return new Response(JSON.stringify({ detail: refuse.message.detail }), { status: refuse.message.status });
     return new Response(JSON.stringify({ result: "sent" }));
   });
   vi.stubGlobal("fetch", fetch);
@@ -348,6 +349,27 @@ test("folded it is hidden, its text kept, and it takes no files dropped on the c
   hide(false);
   expect(form.hidden).toBe(false);
   expect(field().value).toBe("half a thought");
+});
+
+test("a message a stop refused keeps its text and files and shows the refusal, folded and unfolded again", async () => {
+  const refusal = "The session stopped before this message reached supervisor, so it was not delivered. Send it again after Resume.";
+  const refuse = { message: { status: 400, detail: refusal } } as Record<string, { status: number; detail: string }>;
+  const calls = serve(refuse);
+  const { rerender } = render(<Composer session="lado" />);
+  await ready();
+  await pick(file("a.txt"));
+  fireEvent.change(field(), { target: { value: "merge it" } });
+  fireEvent.click(send());
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toBe(refusal));
+  rerender(<Composer session="lado" folded />);
+  rerender(<Composer session="lado" />);
+  expect(field().value).toBe("merge it");
+  expect(chips()).toEqual(["a.txt"]);
+  expect(screen.getByRole("alert").textContent).toBe(refusal);
+  delete refuse.message;
+  fireEvent.click(send());
+  await waitFor(() => expect(field().value).toBe(""));
+  expect(calls.at(-1)?.body).toMatchObject({ text: "merge it" });
 });
 
 test("a quote that comes while it is folded takes the focus once it shows", async () => {

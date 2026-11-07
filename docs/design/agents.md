@@ -193,7 +193,19 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   permission dialog (checked by hand with 2.1.292): the agent stays `busy`, or `waiting`
   after a `PermissionRequest`, until the human's next prompt in its window, whose `Stop`
   ends the turn and hands over the queue (BACKLOG.md). Codex CLI 0.162 runs no hook at all
-  for a turn that ends on a model or API error: the agent stays `busy` (BACKLOG.md); the
+  for a turn that ends on a model or API error. An agent on a built-in model stays `busy`
+  (BACKLOG.md). For one on a server each pass of the session loop asks
+  `Provider.failed_turn` (`runtime.check_turns`, busy agents only): Codex's reads what is new in
+  the agent's newest `sessions/**/rollout-*.jsonl`, whole lines from the offset in
+  `<home>/journal-offset`, kept there so that a restarted loop tells nothing twice. A
+  `task_complete` with an `error` and no later `task_started` is a `TURN_END` through
+  `hooks.handle`, the one path of a hook's, with `output_ignored`, as no hook prints it. A 4xx but
+  408 reads in LADO's words (`base.refusal_line`), any 5xx and `server_overloaded` are temporary,
+  anything else its message. A 400 whose body is no JSON object has no status in the journal
+  (`other`, which is more than a 400): `Codex CLI's turn ended on an error`, then the text. The loop has no variable of the key: it gives
+  the kept one (`base.without_keys(text, keys)`) before everything from `, url: ` or `, cf-ray: `
+  on is cut. This reverses the decision of 2026-10-09 for these agents alone; the smoke holds the
+  journal's format. The
   human's Esc, and a refused approval, run `Interrupt` and no `Stop`: a turn's end whose
   output Codex ignores (`output_ignored`, read in its source), so the queue is typed in, and
   a refused approval ends the wait at once.
@@ -230,7 +242,7 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   variable moves `state` alone, logins stay; the agent's tools see it, and its prompt history and
   `locks` live there too. It is apart from the config folder: it outlasts a stop and a resume, and
   goes with the worker or the session. A CLI whose models on a server sit beside its
-  own (`Provider.runs_on_server`, the OpenCode family) gets every model ticked for it in
+  own (`Provider.external_whole_process` false, the OpenCode family) gets every model ticked for it in
   `AgentSpec.servers` (`model_settings.agent_servers`), whatever it starts on: one OpenAI-compatible
   provider per server, `lado-<server id>`, so a rename changes nothing, labelled `LADO · <server>`,
   its key named as `{env:LADO_MODEL_KEY_<ID>}` and given only in `Launch.env`; a name or id that
@@ -249,7 +261,19 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `@opencode-ai/plugin` is not in OpenCode's config folder: any `plugin` entry makes it wait for
   that install, 72 s with outside traffic refused, 2 s with these or with the package there. LADO's
   plugin imports nothing from it. They reach what the agent runs in its shell too. Claude Code and
-  Codex hold one model per process and get none of it; a model on a server is refused for them
+  Codex hold one model per process and get none of it: the server of their start model alone,
+  with that model. A Codex agent on one gets in its own `config.toml`, over what was carried, a
+  provider `lado-<server id>` with `wire_api = "responses"` and `env_key` (none for a server with
+  no key, and then no `Authorization` goes out, also with `OPENAI_API_KEY` set), `model_provider`
+  and `model` at the top level and in a carried profile, `web_search = "disabled"`, no carried
+  effort, `model_context_window` and `model_auto_compact_token_limit` (the context less
+  `Limit.output_room`) for a known context, and `model_catalog_json`: a `models.json` of its one
+  model, made at launch from the last entry of `codex debug models --bundled` with no `tool_mode`,
+  everything that adds a tool or a parameter off. A list that cannot be made warns, and `/model`
+  then shows OpenAI's models. No `auth.json` is linked or written (`first_hook_blocker`), and
+  `launched_on` reads the provider back. A server of a type the CLI refuses
+  (`Provider.refuses_server`, `model_servers.suiting`: Codex on LM Studio, whose Responses API drops
+  the type `namespace` of its MCP tools) is refused with no request
   (`model_settings.check_launch`). A start or resume checks the supervisor's model
   (`check_start`, by the probe of saving a model, within its timeout), and `spawn_worker` its
   worker's in the same way (`runtime._worker_start`), before anything of the worker exists; a

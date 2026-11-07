@@ -8,7 +8,7 @@ import shutil
 import signal
 import subprocess
 from abc import ABC, abstractmethod
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -19,6 +19,7 @@ from lado import interpreter, state, tmux
 # id. The CLI's own login is then not what the agent runs on (Provider.needs_login).
 MODEL_SERVER = "LADO_MODEL_SERVER"
 KEY_VARIABLE = "LADO_MODEL_KEY_"  # + the server's id in capitals: an agent's variable of its key
+SERVER_PROVIDER = "lado-"  # + the server's id: its name as a provider of a CLI's own config
 
 # Neutral hook events. A provider maps its own hook events onto these; see lado.hooks.
 SESSION_START = "session_start"
@@ -166,11 +167,12 @@ def context_line(text: str) -> str | None:
     return error_line(OVERFLOW, f"{TOO_SMALL}; {sizes[0]}" if sizes else TOO_SMALL)
 
 
-def without_keys(text: str) -> str:
-    """`text` with the value of each server's key in the agent's environment taken out: a server
-    may repeat the key in its refusal. Before any cut, as half a key would pass this."""
-    keys = [v for name, v in os.environ.items() if name.startswith(KEY_VARIABLE) and v]
-    for key in sorted(keys, key=len, reverse=True):
+def without_keys(text: str, keys: Iterable[str] = ()) -> str:
+    """`text` with the value of each server's key in the agent's environment and each of `keys`
+    taken out: a server may repeat the key in its refusal, and the session loop has no such
+    variable. Before any cut, as half a key would pass this."""
+    known = [v for name, v in os.environ.items() if name.startswith(KEY_VARIABLE)]
+    for key in sorted(filter(None, [*known, *keys]), key=len, reverse=True):
         text = text.replace(key, "***")
     return text
 
@@ -250,7 +252,7 @@ class AgentSpec:
     # with the source `model_source`.
     model: str | None = None
     model_source: str = state.SESSION
-    # The model servers of its config (Provider.runs_on_server): for a CLI whose models on a
+    # The model servers of its config: for a CLI whose models on a
     # server sit beside its own all of them, for a CLI of one model per process the one it
     # starts on; each key reaches the agent in its environment only.
     servers: tuple[ServerEntry, ...] = ()
@@ -386,6 +388,7 @@ CHAT_COMPLETIONS = "chat completions"  # OpenAI's POST /v1/chat/completions
 RESPONSES = "Responses API"  # OpenAI's POST /v1/responses
 ANTHROPIC_MESSAGES = "Anthropic Messages API"  # POST /v1/messages
 SERVER_APIS = (CHAT_COMPLETIONS, RESPONSES, ANTHROPIC_MESSAGES)
+LM_STUDIO = "LM Studio"  # the type of a server (lado.model_servers), which a CLI may refuse
 
 MODEL_LIST_TIMEOUT = 15  # seconds a CLI's list command may take; then it is killed
 NO_MODEL_LIST = "LADO knows no list of this CLI's models"
@@ -459,8 +462,6 @@ class Provider(ABC):
     # Whether a model on a server takes the CLI's whole process (its one endpoint), rather
     # than being one provider among the others in its config.
     external_whole_process: bool = True
-    # Whether LADO can put a model of a server into its agent yet.
-    runs_on_server: bool = False
     # The context in tokens an agent of this CLI needs to take a turn, 0 for no number known.
     min_context: int = 0
     # Seconds from an agent's launch to its first hook before LADO shows it as held by a
@@ -498,6 +499,13 @@ class Provider(ABC):
     def parse_event(self, native: str, payload: str) -> Event | None:
         """Translate a native hook event and its input into a neutral event, or None to
         ignore it."""
+
+    def failed_turn(self, agent: state.Agent, keys: Callable[[], Iterable[str]]) -> Event | None:
+        """The end of a turn of the busy `agent` that no hook reports, as a TURN_END with its
+        error, once; None for none, and by default: a CLI's hooks report it. `keys` gives what
+        to take out of the error (without_keys): the session loop asks this on every pass, and
+        reads a key only for an error (lado.runtime.check_turns)."""
+        return None
 
     def first_hook_blocker(self, cwd: str, env: dict[str, str]) -> Blocker:
         """What the CLI, started in `cwd` with `env`, will ask the human before any hook
@@ -567,6 +575,11 @@ class Provider(ABC):
     def session_choice(spec: AgentSpec) -> state.Choice | None:
         """Launch.model for a launch that applied `spec.model`."""
         return state.Choice(spec.model, spec.model_source) if spec.model else None
+
+    def refuses_server(self, kind: str) -> str:
+        """Why the CLI cannot use a server of the type `kind`, whatever API it proves, as the end
+        of a sentence; "" for a type it can (lado.model_servers.suiting)."""
+        return ""
 
     def server_model(self, server: str, model: str) -> str:
         """The model `model` of the server of id `server`, as the CLI is told it."""

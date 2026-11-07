@@ -550,7 +550,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     and `os.replace` (a symlinked config is written through to its target); the temporary
     file goes on any failure; a top level that is not an object is a `ValueError` naming
     the file. The one exception to "Never touch the user's global agent config" (AGENTS.md,
-    LAD-106). Codex CLI (`codex.py`): each
+    LAD-106). Codex CLI (`codex.py`; on a model server `_on_server` and `failed_turn`,
+    docs/design/agents.md): each
     agent's `CODEX_HOME` is its config folder, with a `config.toml` (mode 600) LADO writes
     with a small TOML writer (`toml_text`; a value it cannot write is left out with a
     launch warning): the role as `developer_instructions` (the base prompt stays), Codex's
@@ -867,7 +868,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     command run without its address, named by the asks-for-a-key line and the container's
     hint (`lado model-server probe`, or `add`). `clis` (and `Probe.clis`) names the
     CLIs whose provider's `server_api` (`providers/base.py`, one of `SERVER_APIS`) the
-    server proved; `is_local` whether a host is the human's (`localhost`,
+    server proved and whose `refuses_server` takes its type, `Probe.refused` each that has
+    the API and refuses the type, with why; `is_local` whether a host is the human's (`localhost`,
     `host.docker.internal`, a loopback, private or link-local IP; no name resolved);
     `in_network` that, or a name of a local network, for a start's warning of an unknown context;
     `plain_http_warning` the warning for a key over plain `http://` to a host
@@ -1116,7 +1118,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   - `stats.py`: `lado stats`: the lines of a period's usage (`lines`), from
     `state.usage_summary`, `state.usage_start` and `telemetry.lado_errors`; reads only,
     sends nothing (`cli.cmd_stats` prints them).
-  - `loop.py`: the session loop, `lado loop <session>` (see docs/design/agents.md).
+  - `loop.py`: the session loop, `lado loop <session>` (see docs/design/agents.md): each pass
+    `runtime.check_windows`, `check_starts`, `check_turns` (a turn no hook ends) and `sweep`.
   - `server/`: the UI server, one per `LADO_HOME` (`lado server`, `lado ui`; design and
     rules in [docs/design/ui.md](ui.md), section Server). `auth.py`: the token (written
     whole beside its file and moved over it; `Guard.renew` swaps it in the running server)

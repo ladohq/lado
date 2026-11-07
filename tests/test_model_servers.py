@@ -3,12 +3,14 @@ tests/fake_model_server.py (real HTTP on 127.0.0.1)."""
 
 import socket
 import time
+from dataclasses import replace
 from types import SimpleNamespace
 
 import fake_model_server as fake
 import pytest
 
 from lado import model_servers as ms
+from lado import providers
 from lado.providers import base
 
 PROBED = [
@@ -138,6 +140,47 @@ def test_a_provider_without_an_api_is_left_out(serve, monkeypatch):
     monkeypatch.setattr(ms.providers, "_PROVIDERS", {**ms.providers._PROVIDERS, **registry})
     suits, not_suits = ms.probe(serve("all").url).clis()
     assert "Stand-in" not in [t for t, _ in suits + not_suits]
+
+
+def test_a_cli_a_server_s_type_does_not_suit_is_under_not_with_why(serve):
+    probe = ms.probe(serve("lmstudio").url)
+    assert base.RESPONSES in probe.apis
+    assert [title for title, _ in probe.clis()[0]] == ["Kilo CLI", "OpenCode"]
+    assert ms.lines(probe)[-1] == (
+        "not: Claude Code (no Anthropic Messages API), Codex CLI (its Responses API loses Codex "
+        "CLI's MCP tools, so the agent could not talk to LADO)"
+    )
+
+
+def test_the_refused_are_only_those_with_the_server_s_api(serve):
+    on_lmstudio = ms.probe(serve("lmstudio").url)
+    assert [(p.name, why) for p, why in on_lmstudio.refused()] == [
+        ("codex", providers.get("codex").refuses_server(base.LM_STUDIO))
+    ]
+    assert ms.probe(serve("all").url).refused() == []
+
+
+def test_lm_studio_without_the_responses_api_says_so(serve):
+    apis = frozenset({base.CHAT_COMPLETIONS})
+    probe = replace(ms.probe(serve("lmstudio").url), apis=apis)
+    assert probe.refused() == []
+    assert "Codex CLI (no Responses API)" in ms.lines(probe)[-1]
+
+
+def test_a_gateway_with_the_responses_api_suits_codex(serve):
+    probe = ms.probe(serve("all").url)
+    assert probe.kind == ms.OPENAI
+    assert "Codex CLI" in [title for title, _ in probe.clis()[0]]
+
+
+def test_only_codex_refuses_a_type():
+    refusing = [
+        name
+        for name in providers.names()
+        for kind in (base.LM_STUDIO, ms.OLLAMA, ms.OPENAI, ms.ANTHROPIC)
+        if providers.get(name).refuses_server(kind)
+    ]
+    assert refusing == ["codex"]
 
 
 # The server's type.

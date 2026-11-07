@@ -54,7 +54,7 @@ BREAKS_CONFIG = ('"', "\\")
 # load`, Ollama's Context length); "" for any other.
 CONTEXT_HOW = {
     "": "load the model with a larger context",
-    model_servers.LMSTUDIO: "load the model with a larger context (lms load --context-length)",
+    base.LM_STUDIO: "load the model with a larger context (lms load --context-length)",
     model_servers.OLLAMA: "raise OLLAMA_CONTEXT_LENGTH, or the context in the Ollama app",
 }
 CONTEXT_PEEK = "context too small"  # the folded Advanced's words for that warning
@@ -378,7 +378,7 @@ def default_name(provider: providers.Provider, model: str, server: state.ModelSe
     … until free; each try is cut to MAX_NAME characters before its suffix."""
     suffixes = ["", f" · {provider.title}"]
     base_name = f"{model} · {server.name}"
-    if len(model_servers.suiting(server.apis)[0]) > 1:
+    if len(model_servers.suiting(server.apis, server.kind)[0]) > 1:
         suffixes = [f" · {provider.title}"]
     number = 2
     while True:
@@ -433,6 +433,8 @@ def _on_server(
             "server's API",
             field=SERVER_FIELD,
         )
+    if refusal := _type_refusal(provider, server):
+        raise Refused(refusal, field=SERVER_FIELD)
     try:
         found = probe(server) if probe is not None else probe_saved(server)
     except model_servers.ProbeError as exc:
@@ -944,18 +946,25 @@ def _expands(*texts: str) -> bool:
 
 def _runs_on(server: state.ModelServer) -> str:
     """Which agent CLIs run on `server`, for a refusal."""
-    able = [providers.get(name) for name in providers.names()]
-    titles = [p.title for p in able if p.runs_on_server and p.server_api in server.apis]
+    titles = clis(server)
     if not titles:
-        return "no agent CLI runs on it yet"
+        return "no agent CLI runs on it"
     if len(titles) == 1:
         return f"{titles[0]} does"
     return f"{', '.join(titles[:-1])} and {titles[-1]} do"
 
 
+def _type_refusal(provider: providers.Provider, server: state.ModelServer) -> str:
+    """Why `provider`'s CLI cannot use a server of `server`'s type, and who can; "" for none."""
+    why = provider.refuses_server(server.kind)
+    if not why:
+        return ""
+    return f"{server.name} does not suit {provider.title}: {why}; {_runs_on(server)}"
+
+
 def check_launch(start: StartModel, provider: providers.Provider) -> None:
     """What refuses `start` for an agent of `provider`'s CLI with no request and no list: an
-    entry no longer saved, a server its CLI does not run on, a name its CLI reads as its own,
+    entry no longer saved, a server of a type its CLI refuses, a name its CLI reads as its own,
     text its CLI would expand."""
     if start.gone:
         raise Refused(
@@ -969,13 +978,12 @@ def check_launch(start: StartModel, provider: providers.Provider) -> None:
         )
     if start.server is None or start.entry is None:
         return
-    if not provider.runs_on_server:
+    if refusal := _type_refusal(provider, start.server):
         raise Refused(
-            f"{start.name} is on the model server {start.server.name}; {provider.title} does not "
-            f"run on a model server yet, {_runs_on(start.server)}",
+            f"{start.name} is on the model server {start.server.name}; {refusal}",
             field=MODEL_FIELD,
-            short=f"{provider.title} does not run on a model server yet",
-            peek="no model server yet",
+            short=f"{start.server.name} does not suit {provider.title}",
+            peek="does not suit",
         )
     _check_own_name(provider, start.entry.model, start.server)
     if _expands(start.entry.name, start.entry.model, start.server.name, start.server.address):
@@ -1062,8 +1070,6 @@ def agent_servers(
     process, the server of `start` with that model alone, none on any other start. A key LADO
     does not read, or that would break the config, leaves its server out, but is Refused for
     the server of `start`. Asks each server of the config for its limits."""
-    if not provider.runs_on_server:
-        return (), []
     if not provider.external_whole_process:
         ticked = [model for model in state.models() if model.cli == provider.name]
     elif start is not None and start.entry is not None:
@@ -1278,7 +1284,7 @@ def server_key(server: state.ModelServer) -> str | None:
 
 def clis(server: state.ModelServer) -> list[str]:
     """The titles of the CLIs that can use `server`, by the APIs it proved when saved."""
-    suits, _ = model_servers.clis(server.apis)
+    suits, _ = model_servers.clis(server.apis, server.kind)
     return [title for title, _ in suits]
 
 

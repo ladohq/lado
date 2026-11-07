@@ -6,6 +6,7 @@ knows who is calling) and hooks (so LADO learns when the agent is busy, idle or 
 
 import contextlib
 import enum
+import functools
 import os
 import platform
 import re
@@ -2642,6 +2643,37 @@ def check_starts(session: str, now: datetime | None = None) -> None:
         reason = START_SILENCE_REASON.format(limit=limit)
         if state.block_unheard(session, agent.name, reason):
             loop.log(session, f"{agent.name}: {reason}")
+
+
+def check_turns(session: str) -> None:
+    """One look of the session loop at the busy agents whose turn may have ended with no hook
+    (Provider.failed_turn): such an end takes the one path of a hook's, in the loop's process,
+    which has no variable of a server's key, so the provider gets the kept one."""
+    from lado import hooks  # lado.hooks builds on this module
+
+    for agent in state.list_agents(session):
+        if agent.status != state.BUSY or agent.provider not in providers.names():
+            continue
+        provider = providers.get(agent.provider)
+        event = provider.failed_turn(agent, functools.partial(_server_keys, agent, provider))
+        if event is not None:
+            hooks.handle(provider, event, session, agent.name)
+
+
+def _server_keys(agent: state.Agent, provider: providers.Provider) -> tuple[str, ...]:
+    """The kept key of the server `agent`'s launch runs on. One that cannot be read now, which a
+    launch would have refused, leaves none: the pass must go on for the session's other agents."""
+    from lado import model_settings
+
+    server_id = provider.launched_on(agent)
+    server = state.model_server_by_id(server_id) if server_id else None
+    if server is None:
+        return ()
+    try:
+        key = model_settings.server_key(server)
+    except model_settings.Refused:
+        return ()
+    return (key,) if key else ()
 
 
 def start_note(session: str, name: str, note: str) -> None:

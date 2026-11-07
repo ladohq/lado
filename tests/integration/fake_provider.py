@@ -6,12 +6,13 @@ must know the fake providers too. So run as a script, this file is `lado` with t
 
 import dataclasses
 import json
+import os
 import sys
 import time
 from pathlib import Path
 
 from lado import cli, providers, state
-from lado.providers import base, claude, opencode_family
+from lado.providers import base, claude, codex, opencode_family
 
 LADO = Path(__file__).resolve()
 AGENT = LADO.with_name("fake_agent.py")
@@ -235,7 +236,6 @@ class FakeWindowProvider(FakeProvider):
 class FakeClaudeProvider(FakeLoginProvider):
     title = "Fake Claude"
     server_api = base.ANTHROPIC_MESSAGES
-    runs_on_server = True
     min_context = 32768
     server_model = claude.ClaudeProvider.server_model
     launched_on = claude.ClaudeProvider.launched_on
@@ -261,13 +261,41 @@ class FakeClaudeProvider(FakeLoginProvider):
         return dataclasses.replace(launch, env=env, cli_env=tuple(handed))
 
 
+# "fake-codex" holds one model per process, as Codex does: a model of a server goes into its
+# config.toml, and its failed turn is read from its journal, both by Codex's own code. The tests
+# write the journal.
+class FakeCodexProvider(FakeLoginProvider):
+    title = "Fake Codex"
+    server_api = base.RESPONSES
+    server_model = codex.CodexProvider.server_model
+    launched_on = codex.CodexProvider.launched_on
+    failed_turn = codex.CodexProvider.failed_turn
+
+    def needs_login(self, env) -> bool:
+        return not env.get(base.MODEL_SERVER) and super().needs_login(env)
+
+    def launch_command(self, agent, session, spec) -> base.Launch:
+        launch = super().launch_command(agent, session, spec)
+        config: dict = {}
+        env = dict(launch.env)
+        warnings = list(launch.warnings)
+        if spec.servers:
+            server = spec.servers[0]
+            home = base.config_dir(agent)
+            codex._on_server(config, home, server, spec.environ or os.environ, warnings)
+            env[base.MODEL_SERVER] = server.id
+            if server.key is not None:
+                env[server.key_variable] = server.key
+        codex._write_config(base.config_dir(agent), config)
+        return dataclasses.replace(launch, env=env, warnings=warnings)
+
+
 # "fake-server" takes the model servers of its launch as OpenCode and Kilo do: beside its own
 # models, each key in its environment. FAKE_AGENT_SERVERS says what it got, for the tests.
 class FakeServerProvider(FakeProvider):
     title = "Fake server agent"
     server_api = base.CHAT_COMPLETIONS
     external_whole_process = False
-    runs_on_server = True
     min_context = 32768
     server_model = opencode_family.OpenCodeFamily.server_model
     on_server = opencode_family.OpenCodeFamily.on_server
@@ -307,6 +335,7 @@ FAKES = (
     FakeWindowProvider("fake-window", True),
     FakeServerProvider("fake-server", True),
     FakeClaudeProvider("fake-claude"),
+    FakeCodexProvider("fake-codex"),
 )
 
 

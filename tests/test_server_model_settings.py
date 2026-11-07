@@ -151,12 +151,21 @@ def test_add_server_lmstudio(client, serve):
         "embeddings": [fake.EMBEDDINGS],
         "apis_why": "",
         "clis": [
-            {"name": "codex", "title": "Codex CLI", "api": base.RESPONSES},
             {"name": "kilo", "title": "Kilo CLI", "api": base.CHAT_COMPLETIONS},
             {"name": "opencode", "title": "OpenCode", "api": base.CHAT_COMPLETIONS},
         ],
+        "cli_notes": [
+            "Codex CLI: its Responses API loses Codex CLI's MCP tools, so the agent could not "
+            "talk to LADO"
+        ],
     }
     assert [s.name for s in state.model_servers()] == ["LM Studio дома"]
+
+
+def test_a_server_of_a_type_every_cli_takes_has_no_note(client, serve):
+    added = ok(add_server(client, "gw", serve("all").url))
+    assert added["probe"]["cli_notes"] == []
+    assert "codex" in [cli["name"] for cli in added["probe"]["clis"]]
 
 
 def test_a_server_whose_apis_cannot_be_told_says_why(client, serve):
@@ -394,7 +403,7 @@ def test_check_server_probes_without_a_key_and_saves_nothing(client, serve):
     assert found["probe"]["kind"] == "LM Studio"
     assert found["probe"]["address"] == server.url  # what answered, its scheme filled in
     assert found["probe"]["models"] == ["qwen3-8b", fake.EMBEDDINGS]
-    assert [c["name"] for c in found["probe"]["clis"]] == ["codex", "kilo", "opencode"]
+    assert [c["name"] for c in found["probe"]["clis"]] == ["kilo", "opencode"]
     assert server.requests and all("Authorization" not in r.headers for r in server.requests)
     assert state.model_servers() == []
 

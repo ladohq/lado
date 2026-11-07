@@ -6,6 +6,7 @@ script). Standard library only: it runs with the image's Python under -I.
 
 `Anthropic` is the smoke tests' server of that API that does answer: the probe of a model server
 as `fake_model_server`'s "anthropic" profile, and a scripted turn in Anthropic's streaming form.
+`Responses` is the same for OpenAI's Responses API, as Codex CLI speaks it.
 """
 
 from __future__ import annotations
@@ -298,6 +299,141 @@ class Anthropic:
             if path == "/v1/messages" and body:
                 found += _results(_latest(json.loads(body)))
         return found
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+# What `Responses` has Codex CLI call (0.162): its shell, and LADO's tool in the MCP server's
+# namespace, which the request names.
+CODEX_SHELL = "exec_command"
+LADO_TOOL = "list_agents"
+ASKS_A_COMPACTION = "CONTEXT CHECKPOINT COMPACTION"  # in Codex's request of one (0.162)
+
+
+def _output_text(text: str) -> dict:
+    content = [{"type": "output_text", "text": text, "annotations": []}]
+    return {"type": "message", "id": "msg_smoke", "role": "assistant", "content": content}
+
+
+def _function_call(call: str, name: str, arguments: dict, namespace: str = "") -> dict:
+    item = {"type": "function_call", "id": f"fc_{call}", "call_id": call, "name": name}
+    item["arguments"] = json.dumps(arguments)
+    return {**item, "namespace": namespace} if namespace else item
+
+
+def _namespace_of(request: dict, tool: str) -> str:
+    """The namespace of the request's tools that holds `tool`; "" for none."""
+    for offered in request.get("tools") or []:
+        inner = offered.get("tools") or [] if offered.get("type") == "namespace" else []
+        if tool in [one.get("name") for one in inner]:
+            return offered["name"]
+    return ""
+
+
+class Responses:
+    """A server of OpenAI's Responses API on 127.0.0.1 with the model `model` and, with `key`, a 401
+    for a request without it as a bearer token. `requests` keeps each request as (path, its headers
+    by lower-case name, its body); `marker` is the file the scripted shell call makes; `refusal`,
+    once set, the status and body every model request gets, with RETRY_SOON; `context` what its list
+    reports; `tokens` the input each answer reports as used; `compactions` the summaries it was
+    asked for."""
+
+    def __init__(self, model: str, marker: Path, key: str | None = None):
+        self.requests: list[tuple[str, dict[str, str], bytes]] = []
+        self.refusal: tuple[int, object] | None = None
+        self.context: int | None = CONTEXT
+        self.tokens = 1
+        self.compactions = 0
+        fake = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def json(self, status: int, answer: object, headers: tuple = ()) -> None:
+                data = json.dumps(answer).encode()
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                for name, value in headers:
+                    self.send_header(name, value)
+                self.end_headers()
+                self.wfile.write(data)
+
+            def stream(self, items: list[dict]) -> None:
+                usage = {"input_tokens": fake.tokens, "output_tokens": 1}
+                usage["total_tokens"] = fake.tokens + 1
+                events = [("response.created", {"response": {"id": "resp_smoke"}})]
+                events += [("response.output_item.done", {"item": item}) for item in items]
+                events.append(("response.completed", {"response": {"id": "r", "usage": usage}}))
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.end_headers()
+                for name, body in events:
+                    data = json.dumps({"type": name, **body})
+                    self.wfile.write(f"event: {name}\ndata: {data}\n\n".encode())
+
+            def answer(self):
+                body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                path = self.path.partition("?")[0]
+                headers = {name.lower(): value for name, value in self.headers.items()}
+                fake.requests.append((path, headers, body))
+                if key is not None and headers.get("authorization") != f"Bearer {key}":
+                    self.json(401, OPENAI_401)
+                elif (self.command, path) == ("GET", "/v1/models"):
+                    listed = {"id": model, "object": "model"}
+                    if fake.context is not None:
+                        listed["context_length"] = fake.context
+                    self.json(200, {"object": "list", "data": [listed]})
+                elif (self.command, path) == ("POST", "/v1/responses"):
+                    self.model_turn(body)
+                else:
+                    self.send_error(404)
+
+            def model_turn(self, body: bytes) -> None:
+                request = json.loads(body) if body else {}
+                if not request.get("model"):
+                    self.json(400, {"error": {"message": "missing model"}})
+                elif fake.refusal is not None:
+                    self.json(*fake.refusal, RETRY_SOON)
+                else:
+                    self.stream(fake.turn(request))
+
+            do_GET = do_POST = do_HEAD = answer
+
+            def log_message(self, *args):
+                pass
+
+        self.marker = marker
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
+        self._thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self._thread.start()
+
+    def turn(self, request: dict) -> list[dict]:
+        """The next step of the script for `request`: its output items."""
+        items = request.get("input") or []
+        latest = items[-1] if items else {}
+        if ASKS_A_COMPACTION in json.dumps(latest):
+            self.compactions += 1
+            return [_output_text("The agent ran its tools.")]
+        if latest.get("type") == "function_call_output":
+            if latest.get("call_id") == SHELL_CALL:
+                namespace = _namespace_of(request, LADO_TOOL)
+                return [_function_call(MCP_CALL, LADO_TOOL, {}, namespace)]
+            return [_output_text("done")]
+        if RUN_TOOLS in json.dumps(latest):
+            return [_function_call(SHELL_CALL, CODEX_SHELL, {"cmd": f"touch '{self.marker}'"})]
+        return [_output_text("done")]
+
+    def asked(self) -> list[dict]:
+        """The requests for the model."""
+        bodies = [body for path, _, body in self.requests if path == "/v1/responses" and body]
+        return [r for r in map(json.loads, bodies) if r.get("model")]
+
+    def tool_results(self) -> list[str]:
+        """The ids of the tool calls whose results came back."""
+        items = [item for request in self.asked() for item in request.get("input") or []]
+        return [i["call_id"] for i in items if i.get("type") == "function_call_output"]
 
     def close(self):
         self.server.shutdown()

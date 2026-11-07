@@ -621,7 +621,8 @@ class ProbeInfo(BaseModel):
     """What a probe found on a model server (lado.model_servers.Probe): its type, the
     address that answered (the typed one with its scheme and path filled in), its models
     (None for no list, why in `models_why`), those it types as embeddings, why its APIs
-    could not be told ("" when they could), and the CLIs that can use it."""
+    could not be told ("" when they could), the CLIs that can use it, and for each CLI that has
+    its API and refuses its type a line of why."""
 
     kind: str
     address: str
@@ -630,6 +631,7 @@ class ProbeInfo(BaseModel):
     embeddings: list[str]
     apis_why: str
     clis: list[CliApi]
+    cli_notes: list[str]
 
 
 class ModelServerAdd(BaseModel):

@@ -38,12 +38,14 @@ export const externalDefault = (saved: ConfiguredModelInfo, wholeProcess = false
   whole_process: wholeProcess,
 });
 
+// The columns' fixture: three CLIs on one server. The real LM Studio does not suit Codex CLI.
 export const LMSTUDIO_PROBE: ProbeInfo = {
   kind: "LM Studio",
   address: "http://localhost:1234",
   models: ["qwen3-8b", "text-embedding-nomic"],
   models_why: "",
   embeddings: ["text-embedding-nomic"],
+  cli_notes: [],
   apis_why: "",
   clis: [
     { name: "codex", title: "Codex CLI", api: "Responses API" },

@@ -952,7 +952,7 @@ const warnings = (lines: string[]) =>
   lines.map((line) => <span key={line} className="field-note warn">{`⚠ ${line}`}</span>);
 
 // What answered the form's check: its type and address, its models and the CLIs that can use it,
-// and why its APIs could not be told.
+// why its APIs could not be told, and each CLI its type does not suit, with why.
 export function Found({ probe }: { probe: ProbeInfo }) {
   const embeddings = new Set(probe.embeddings);
   const count = probe.models === null ? null : probe.models.filter((m) => !embeddings.has(m)).length;
@@ -974,6 +974,7 @@ export function Found({ probe }: { probe: ProbeInfo }) {
         <dd>{probe.clis.length ? probe.clis.map((c) => c.title).join(", ") : "none can use it"}</dd>
       </dl>
       {probe.apis_why && <span className="field-note warn">{`⚠ APIs: cannot be told: ${probe.apis_why}`}</span>}
+      {warnings(probe.cli_notes)}
     </div>
   );
 }

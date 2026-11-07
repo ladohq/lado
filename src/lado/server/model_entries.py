@@ -90,7 +90,7 @@ def server_info(server: state.ModelServer) -> models.ModelServerInfo:
 
 
 def probe_info(found: model_servers.Probe) -> models.ProbeInfo:
-    suits, _ = model_servers.suiting(found.apis)
+    suits, _ = model_servers.suiting(found.apis, found.kind)
     return models.ProbeInfo(
         kind=found.kind,
         address=found.address,
@@ -99,6 +99,7 @@ def probe_info(found: model_servers.Probe) -> models.ProbeInfo:
         embeddings=sorted(found.embeddings),
         apis_why=found.apis_why or found.late_warning() or "",
         clis=[models.CliApi(name=p.name, title=p.title, api=api) for p, api in suits],
+        cli_notes=[f"{p.title}: {why}" for p, why in found.refused()],
     )
 
 

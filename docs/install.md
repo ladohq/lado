@@ -271,8 +271,8 @@ Settings → Models or with `lado model-server add`. OpenCode and Kilo CLI agent
 models beside their own, in `/model` under `LADO · <server>`, and a session can start on one: pick
 it in the launch window, or `lado start --model "<name>"`. Its key stays out of every config: it
 reaches the agents only in their environment. Claude Code runs on a server that speaks Anthropic's
-API, as the next paragraph says; Codex does not run on a model server yet, and LADO says so before
-it starts it. Before a session starts, LADO asks the server of the
+API and Codex on one with the Responses API, as the next paragraphs say. Before a session starts,
+LADO asks the server of the
 model it starts on: one that does not answer stops the start, and a server of another model does
 not. In LADO's container `localhost` is the container itself: a server on your machine is
 `http://host.docker.internal:<port>`, for LM Studio `http://host.docker.internal:1234`. The server
@@ -349,11 +349,29 @@ else to expect:
   in the first turn. Take a model of 131072 or more, or fewer plugins.
 - On a server that bills, see [A cloud provider](#a-cloud-provider).
 
+**Codex on a model server.** A Codex model saved on a server with the Responses API runs there, with
+no Codex login: an entry in the agent's own Codex home, your own config untouched, and the key only
+in the agent's environment. Codex sends its MCP tools in a form not every server knows, and an agent
+without them cannot talk to LADO. OpenRouter and LiteLLM keep them. LM Studio's Responses API loses
+them, so LADO does not offer Codex there; put LiteLLM in front of it. Ollama, vLLM and other servers
+are not checked: if a Codex agent works but never answers, this is why.
+
+- The model takes the agent's whole process: `/model` shows that model alone.
+- The agent knows the context the server reports and compacts in time. Codex has no setting for
+  its output: a model that repeats without end stops at your provider's own limit, so set one.
+- A refusal ends the turn in LADO's words within a few seconds of Codex's last repeat. On a 429
+  Codex keeps only the status, not the server's text. On a 400 whose body is no JSON, such as a
+  proxy's page, it keeps no status: the chat reads `Codex CLI's turn ended on an error` and that
+  text. A 5xx passes by itself: LADO resumes the agent after a while.
+- A server that goes away in the middle of a turn is no refusal: Codex waits for it without end and
+  goes on when it returns, and the agent stays busy meanwhile.
+- Web search and the effort of your Codex config stay off: a server may refuse or bill them.
+
 #### A cloud provider
 
 Add it as any server, with the address's path: `lado model-server add <name> <address> --key`, as
 `https://foundation-models.api.cloud.ru/v1` or `https://openrouter.ai/api/v1`. Both were checked on
-OpenCode and Kilo; Claude Code on cloud.ru's Anthropic API.
+OpenCode and Kilo; Claude Code on cloud.ru's Anthropic API; Codex on OpenRouter.
 
 - LADO reads a model's context from the provider's list, and limits answers to what it reports, or
   to 32K tokens on a context of 128K or more; on Claude Code to 16K at most, so that a request at
@@ -375,12 +393,17 @@ OpenCode and Kilo; Claude Code on cloud.ru's Anthropic API.
   or 403 OpenCode and Kilo stop at once, Claude Code after about 150 s. A provider's `Retry-After` makes
   them longer: OpenCode and Kilo wait what it names before each of about five repeats (100 s at
   20 s, so nearly an hour at 600 s), and until then the agent is busy and the chat says nothing.
-  Claude Code took 160 s at 20 s, and stops at once at 600 s. Claude Code's TUI repeats its request
+  Claude Code took 160 s at 20 s, and stops at once at 600 s. Codex stops after 6 requests in about
+  6 s on a fake server with `Retry-After: 1`, 12 in its terminal; a long `Retry-After` was not
+  checked on it. Claude Code's TUI repeats its request
   for the session's title too, so a refusing provider may count about twice its requests.
 - **Claude Code with your plugins.** Your own plugins, rules and `CLAUDE.md` count: at 65536 they can
   fill the context in the first turn. Take a model of 131072 or more, or fewer plugins.
 - A key the provider repeats in an error is removed from LADO's texts, not from the CLI's terminal
   or its own files.
+- A model can fail through a CLI with no error at all: llama-3.3 on cloud.ru's Anthropic API writes
+  its tool calls as text, and gpt-oss after a compaction took the tools for forbidden. LADO cannot
+  see this, so watch the first session on a new model.
 
 #### A variable of one project
 

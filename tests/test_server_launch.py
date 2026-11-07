@@ -1333,14 +1333,16 @@ def test_claude_code_with_a_default_on_a_server_is_not_missing_its_login(
     assert _by_name(client.get("/api/providers"))["claude"]["login_missing"] is False
 
 
-def test_the_check_of_a_cli_on_no_server_has_no_way_to_try_again(client, monkeypatch, fake_clis):
+def test_the_check_of_a_server_s_type_the_cli_refuses_has_no_way_to_try_again(
+    client, monkeypatch, fake_clis
+):
     _models(monkeypatch, "codex", "gpt-5")
     server_launch.forget_model_lists()
     _saved("Шлюз GPT", "codex", "gw-gpt")
     found = client.post(CHECK, json={"cli": "codex", "model": "Шлюз GPT"}).json()
     assert found["kind"] == "refused" and not found["retry"]
     assert found["text"].startswith(
-        "Шлюз GPT is on the model server LM Studio дома; Codex CLI does not run"
+        "Шлюз GPT is on the model server LM Studio дома; LM Studio дома does not suit Codex CLI"
     )
 
 

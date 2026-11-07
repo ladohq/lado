@@ -25,9 +25,9 @@ SESSION = "smoke"
 RECEIVED = (state.DELIVERED, state.READ)
 HUMAN_SAYS = "Smoke test: a line from the human\nwith a body to read"
 TASK = "Smoke test: no model answers; this task only has to reach you."
-# Codex CLI 0.162 runs no hook for a turn that ends on an API error: the agent stays busy,
-# so nothing more is handed over to it, and no turn_error is recorded.
-CODEX_GAP = "A Codex agent whose turn ends on a model or API error stays busy"
+# Codex CLI 0.162 runs no hook for a turn that ends on an API error: on a built-in model the
+# agent stays busy, so nothing more is handed over to it, and no turn_error is recorded.
+CODEX_GAP = "A Codex agent on a built-in model whose turn ends on an API error stays busy"
 
 
 def wait_for(check, what: str, timeout: float):
@@ -825,6 +825,162 @@ def _codex(home: Path, *args: str, key: str | None = None) -> subprocess.Complet
         text=True,
         timeout=60,
     )
+
+
+CODEX_KEY = "smoke-codex-server-key"
+CODEX_SERVER_MODEL = "smoke/gpt"
+CODEX_MODEL = "Шлюз GPT"
+
+
+@pytest.fixture
+def codex_server(smoke_repo, tmp_path, monkeypatch, codex_home):
+    """A saved model server of the Responses API with the model `Шлюз GPT` and a key, every other
+    way out of the machine refused, and Codex not logged in."""
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+        monkeypatch.setenv(name, "http://127.0.0.1:9")
+        monkeypatch.setenv(name.lower(), "http://127.0.0.1:9")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
+    monkeypatch.setenv("no_proxy", "127.0.0.1,localhost")
+    (codex_home / "auth.json").unlink(missing_ok=True)
+    server = endpoints.Responses(CODEX_SERVER_MODEL, tmp_path / "shell-ran", CODEX_KEY)
+    model_settings.add_server("Шлюз", server.url, CODEX_KEY, warn=print, note=print)
+    state.add_model(CODEX_MODEL, "codex", CODEX_SERVER_MODEL, state.model_server("Шлюз").id)
+    yield server
+    server.close()
+
+
+def codex_session(smoke_repo, server: endpoints.Responses) -> state.Agent:
+    """A Codex session on the server, past its first turn."""
+    started = runtime.start_session(
+        str(smoke_repo), SESSION, "bypassPermissions", "codex", model=CODEX_MODEL
+    )
+    print(f"codex: started, warnings {started.warnings}")
+    assert not [w for w in started.warnings if "/model" in w], started.warnings
+    first = delivered(state.LADO, "supervisor", runtime.FIRST_INPUT)
+    wait_for(answering("codex", "supervisor", first), "codex's first input delivered", 120)
+    wait_for(lambda: status(SESSION, "supervisor") == "idle", "the first turn's end", 120)
+    return state.get_agent(SESSION, "supervisor")
+
+
+@pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
+def test_codex_runs_on_a_server_with_its_tools_and_no_login(
+    smoke_repo, smoke_provider, codex_server, fake_endpoint
+):
+    """Not logged in: a turn with a shell and LADO's MCP tool runs on the server alone, with the
+    agent's own list of models, and asks for nothing a server may refuse."""
+    agent = codex_session(smoke_repo, codex_server)
+    runtime.write_as_human(SESSION, endpoints.RUN_TOOLS)
+    wait_for(codex_server.marker.exists, "the shell tool to run", 120)
+    called = lambda: endpoints.MCP_CALL in codex_server.tool_results()  # noqa: E731
+    wait_for(called, "the MCP tool to run", 120)
+    wait_for(lambda: status(SESSION, "supervisor") == "idle", "the turn's end", 120)
+    assert state.get_agent(SESSION, "supervisor").model == CODEX_SERVER_MODEL
+    assert fake_endpoint.requests == []
+    home = providers.base.config_path(agent)
+    assert not (home / "auth.json").exists()
+    assert CODEX_KEY not in (home / "config.toml").read_text()
+    assert CODEX_KEY not in (home / "models.json").read_text()
+    asked = codex_server.asked()
+    assert {request["model"] for request in asked} == {CODEX_SERVER_MODEL}
+    for _, headers, body in codex_server.requests:
+        if b'"model"' in body:
+            assert headers["authorization"] == f"Bearer {CODEX_KEY}"
+    tools = asked[-1]["tools"]
+    print(f"codex: tools {[(t.get('type'), t.get('name')) for t in tools]}")
+    assert not [t for t in tools if t.get("type") in ("web_search", "custom")]
+    assert "reasoning" not in asked[-1] or not (asked[-1]["reasoning"] or {}).get("effort")
+    assert endpoints.LADO_TOOL in [
+        inner["name"]
+        for tool in tools
+        if tool.get("type") == "namespace"
+        for inner in tool["tools"]
+    ]
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
+def test_model_of_a_codex_agent_on_a_server_shows_its_model_alone(
+    smoke_repo, smoke_provider, codex_server
+):
+    """Real Codex takes the agent's list, in the format of the installed binary: with a field it
+    does not read the list, it would show OpenAI's models here."""
+    codex_session(smoke_repo, codex_server)
+    tmux.send_text(SESSION, "supervisor", "/model")
+    shown = lambda: CODEX_MODEL in tmux.capture(SESSION, "supervisor")  # noqa: E731
+    wait_for(shown, "/model's list", 30)
+    screen = tmux.capture(SESSION, "supervisor")
+    print(f"codex: /model shows\n{screen}")
+    assert "On Шлюз" in screen
+    assert "gpt-5" not in screen.lower() and "gpt-6" not in screen.lower()
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
+def test_a_503_of_a_gateway_is_temporary_for_a_codex_agent(
+    smoke_repo, smoke_provider, codex_server
+):
+    codex_session(smoke_repo, codex_server)
+    codex_server.refusal = (503, {"error": {"message": "upstream overloaded"}})
+    runtime.write_as_human(SESSION, HUMAN_SAYS)
+    planned = lambda: state.get_agent(SESSION, "supervisor").resume_at is not None  # noqa: E731
+    wait_for(planned, "a resume", 120)
+    assert not [m for m in state.list_messages(SESSION) if "ended on an error" in m.summary]
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
+def test_a_400_with_no_json_object_names_no_status_for_a_codex_agent(
+    smoke_repo, smoke_provider, codex_server
+):
+    codex_session(smoke_repo, codex_server)
+    codex_server.refusal = (400, "Bad Request")
+    runtime.write_as_human(SESSION, HUMAN_SAYS)
+
+    def told():
+        return [m for m in state.list_messages(SESSION) if "ended on an error" in m.summary]
+
+    wait_for(told, "the turn's end", 60)
+    assert f"{codex.NO_WORDS}: " in told()[0].summary
+    assert "Bad Request" in told()[0].summary
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
+def test_codex_on_a_server_compacts_past_its_limit(smoke_repo, smoke_provider, codex_server):
+    agent = codex_session(smoke_repo, codex_server)
+    written = (providers.base.config_path(agent) / "config.toml").read_text()
+    assert f"model_context_window = {endpoints.CONTEXT}" in written
+    # Past LADO's limit, which leaves the output room, and short of Codex's own 90%.
+    room = providers.base.Limit(endpoints.CONTEXT).output_room()
+    codex_server.tokens = endpoints.CONTEXT - room + 100
+    runtime.write_as_human(SESSION, "a turn that reports the tokens")
+    wait_for(lambda: len(codex_server.asked()) >= 2, "that turn", 120)
+    wait_for(lambda: status(SESSION, "supervisor") == "idle", "that turn's end", 120)
+    assert codex_server.compactions == 0
+    codex_server.tokens = 1
+    runtime.write_as_human(SESSION, "the next turn")
+    wait_for(lambda: codex_server.compactions == 1, "the compaction", 120)
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
+@pytest.mark.parametrize("status_code", [401, 429])
+def test_a_refusal_ends_a_codex_agent_s_turn_in_lado_s_words(
+    smoke_repo, smoke_provider, codex_server, status_code
+):
+    """The journal's format of the installed Codex: only this layer catches a change of it. The
+    server echoes the key, which stays out of LADO's words."""
+    agent = codex_session(smoke_repo, codex_server)
+    error = {"error": {"message": f"Refused for {CODEX_KEY}", "type": "refused"}}
+    codex_server.refusal = (status_code, error)
+    before = len(codex_server.asked())
+    runtime.write_as_human(SESSION, HUMAN_SAYS)
+    check_refusal(status_code, CODEX_KEY, lambda: len(codex_server.asked()))
+    repeats = len(codex_server.asked()) - before
+    print(f"codex: {repeats} requests of the turn")
+    assert 1 <= repeats <= 12
+    assert (providers.base.config_path(agent) / "journal-offset").exists()
+    runtime.stop_session(SESSION)
 
 
 @pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)

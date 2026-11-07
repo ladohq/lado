@@ -211,8 +211,8 @@ agent CLI SHALL set the field to that CLI's default.
   and Start session is off
 
 #### Scenario: A CLI that runs on no server
-- **WHEN** the field holds Claude Code's `Шлюз Opus`
-- **THEN** the note has the refusal and `Use Claude Code's settings`, without `Check again`
+- **WHEN** the field holds Codex CLI's `Локальная GPT`, on LM Studio
+- **THEN** the note has the refusal and `Use Codex CLI's settings`, without `Check again`
 
 #### Scenario: The window says agent CLI
 - **WHEN** the human opens the window
@@ -423,29 +423,6 @@ check the model. A silent server of another ticked model SHALL stop nothing.
 - **WHEN** a session starts on its CLI's settings
 - **THEN** no server is asked
 
-### Requirement: A CLI that runs on no server is refused
-
-A start model on a server for a CLI that does not run on one yet SHALL be refused before any
-request, naming the CLIs that do and that the server suits; a spawned worker SHALL be refused the
-same way.
-
-#### Scenario: Claude Code on a gateway
-- **WHEN** Claude Code's default is `Шлюз Opus` on `Шлюз`, which proves the Anthropic Messages API,
-  and the human starts a Claude session
-- **THEN** no refusal names Claude Code, `Шлюз` is asked, and the session starts on it
-
-#### Scenario: Codex on a gateway
-- **WHEN** Codex's default is `Шлюз GPT` on `Шлюз`, which also suits Claude Code and OpenCode, and the
-  human starts a Codex session
-- **THEN** it refuses with `Шлюз GPT is on the model server Шлюз; Codex CLI does not run on a
-  model server yet, Claude Code, Kilo CLI and OpenCode do`, adding the default's way out, and `Шлюз` is not
-  asked
-
-#### Scenario: A worker of that CLI
-- **WHEN** the supervisor of an OpenCode session spawns a worker with the provider `codex`
-- **THEN** `spawn_worker` fails with the same line, adding `list_models shows the others, model=""
-  is the CLI's own settings` in place of the default's way out, and no worker exists
-
 ### Requirement: A key over plain http is warned about before the start
 
 For each server in the agent's config with a key whose address `model-servers` warns about, the
@@ -632,3 +609,24 @@ the agent SHALL start without it.
 
 - **WHEN** the agent's folder already holds `kv.json`
 - **THEN** it stays as it is
+
+### Requirement: A server a CLI cannot use is refused
+
+A start model on a server of a type its CLI cannot use SHALL be refused before any request, naming why and the CLIs that the server suits; a spawned worker SHALL be refused the same way.
+
+#### Scenario: Claude Code on a gateway
+- **WHEN** Claude Code's default is `Шлюз Opus` on `Шлюз`, which proves the Anthropic Messages API,
+  and the human starts a Claude session
+- **THEN** no refusal names Claude Code, `Шлюз` is asked, and the session starts on it
+
+#### Scenario: Codex on a gateway
+- **WHEN** Codex's default is `Шлюз GPT` on `Шлюз`, which proves the Responses API, and the human starts a Codex session
+- **THEN** no refusal names Codex CLI, `Шлюз` is asked, and the session starts on it
+
+#### Scenario: Codex on LM Studio
+- **WHEN** Codex's default is `Локальная GPT` on `LM Studio дома`, saved before this rule, and the human starts a Codex session
+- **THEN** it refuses with `Локальная GPT is on the model server LM Studio дома; LM Studio дома does not suit Codex CLI: its Responses API loses Codex CLI's MCP tools, so the agent could not talk to LADO; Kilo CLI and OpenCode do`, adding the default's way out, and `LM Studio дома` is not asked
+
+#### Scenario: A worker of that CLI
+- **WHEN** the supervisor of an OpenCode session spawns a worker with the provider `codex` on that model
+- **THEN** `spawn_worker` fails with the same line

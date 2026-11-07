@@ -1218,8 +1218,8 @@ test("a server that does not answer opens Advanced, turns Start off and names th
 test("a refusal no new try can help has no Check again", async () => {
   const opus = saved("Шлюз Opus", "gw-opus");
   modelEntries = { models: [opus], servers: [], defaults: [defaultOf(opus)] };
-  const text = "Шлюз Opus is on the model server Шлюз; Kilo CLI does not run on a model server yet, OpenCode does";
-  sessionCheck = () => ({ ...silent(), text, retry: false, peek: "no model server yet" });
+  const text = "Шлюз Opus is on the model server Шлюз; Шлюз does not suit Kilo CLI: why; OpenCode does";
+  sessionCheck = () => ({ ...silent(), text, retry: false, peek: "does not suit" });
   await kiloWindow();
   await screen.findByText(text);
   expect(screen.queryByRole("button", { name: "Check again" })).toBeNull();

@@ -60,8 +60,9 @@ def test_add_prints_the_probe_and_saves(serve, capsys):
         f"{server.url} (added http://)",
         "type: LM Studio",
         "models: qwen3-8b, text-embedding-nomic-embed-text-v1.5 (embeddings)",
-        "CLIs: Codex CLI (Responses API); Kilo CLI, OpenCode (chat completions)",
-        "not: Claude Code (no Anthropic Messages API)",
+        "CLIs: Kilo CLI, OpenCode (chat completions)",
+        "not: Claude Code (no Anthropic Messages API), Codex CLI (its Responses API loses Codex "
+        "CLI's MCP tools, so the agent could not talk to LADO)",
         'Saved model server "LM Studio дома".',
     ]
     assert err == ""
@@ -305,6 +306,18 @@ def test_list_of_a_server_suiting_no_cli(capsys):
     state.add_model_server("s1", "bare", "https://x", "OpenAI-compatible", ())
     main(["model-server", "list"])
     assert capsys.readouterr().out.splitlines()[1].endswith("no   none")
+
+
+def test_a_model_of_codex_on_lm_studio_exits_1_and_is_not_saved(serve, capsys):
+    main(["model-server", "add", "lms", serve("lmstudio").url])
+    capsys.readouterr()
+    args = ["model", "add", "C", "--cli", "codex", "--model", "qwen3-8b", "--server", "lms"]
+    assert main(args) == 1
+    assert capsys.readouterr().err == (
+        "lado: lms does not suit Codex CLI: its Responses API loses Codex CLI's MCP tools, so the "
+        "agent could not talk to LADO; Kilo CLI and OpenCode do\n"
+    )
+    assert state.models() == []
 
 
 def test_remove_a_server(serve, capsys):
@@ -635,14 +648,14 @@ def test_model_remove_needs_a_name(capsys):
 
 def test_a_removal_s_hint_is_one_command_for_all(serve, capsys):
     main(["model-server", "add", "lms", serve("lmstudio").url])
-    for name, cli in (("coder-codex", "codex"), ("coder-oc", "opencode"), ("sp", "kilo")):
+    for name, cli in (("coder-kilo", "kilo"), ("coder-oc", "opencode"), ("sp", "kilo")):
         main(["model", "add", name, "--cli", cli, "--model", "qwen3-8b", "--server", "lms"])
     capsys.readouterr()
     assert main(["model-server", "remove", "lms"]) == 1
     hint = capsys.readouterr().err.splitlines()[0]
     assert hint == (
-        'lado: model server "lms" is used by the models coder-codex, coder-oc, sp; remove them '
-        'first: lado model remove "coder-codex" "coder-oc" "sp"'
+        'lado: model server "lms" is used by the models coder-kilo, coder-oc, sp; remove them '
+        'first: lado model remove "coder-kilo" "coder-oc" "sp"'
     )
     command = hint.split("remove them first: lado ", 1)[1]
     assert main(shlex.split(command)) == 0

@@ -5,11 +5,11 @@ the network; the official marketplace is never fetched."""
 import json
 
 import pytest
-from agent_helpers import init_repo, publish
+from agent_helpers import init_repo, publish, wait_for
 from playwright.sync_api import Page, expect
 
 from lado import kits as kit_core
-from lado import marketplaces, state
+from lado import marketplaces, runtime, state
 
 pytestmark = pytest.mark.ui
 
@@ -201,6 +201,25 @@ def test_an_updates_new_mcp_server_is_a_warning(page: Page, server, tmp_path, sh
     expect(line).to_be_visible()
     is_a_notice(line, "--warn-ground")
     shot(page)
+
+
+def test_a_running_session_of_the_kit_is_a_warning_in_its_removal_window(
+    page: Page, server, repo, tmp_path, shot
+):
+    small_kit(tmp_path, "wiki", "1.0.0")
+    session = "uses-wiki"
+    runtime.start_session(str(repo), session, None, "fake", ["default", "wiki"])
+    wait_for(lambda: state.get_agent(session, "supervisor").status == state.IDLE, "idle", session)
+    page.goto(f"{server['url']}/kits?token={server['token']}")
+    open_menu_item(page, "wiki", "Remove…")
+    remove = page.get_by_role("dialog", name="Remove wiki?")
+    line = remove.locator("p", has_text=session)
+    expect(line).to_be_visible()
+    expect(remove.get_by_role("button", name="Remove", exact=True)).to_be_enabled()
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        is_a_notice(line, "--warn-ground")
+        shot(page, theme)
 
 
 @pytest.mark.parametrize("item", ["Update…", "Remove…"])

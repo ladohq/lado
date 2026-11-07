@@ -91,7 +91,8 @@ button {
     height: 100dvh;
   }
 
-  .rail {
+  /* .app: the base .rail comes later in this file and would win with its 100vh. */
+  .app .rail {
     height: 100%;
   }
 
@@ -6678,6 +6679,20 @@ button.locked:disabled,
 .launch-where input {
   width: 100%;
   font: 13px var(--mono);
+}
+
+/* Resume's Where: the session's folder, fixed, as a disabled field that wraps, so that a long
+   path shows whole on a phone (an input clips it). */
+.where-fixed {
+  box-sizing: border-box;
+  min-height: 38px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--ground);
+  color: var(--muted);
+  font: 13px var(--mono);
+  overflow-wrap: anywhere;
 }
 
 /* From scratch: the name is the human's words, not a path; Create in takes the whole row. */

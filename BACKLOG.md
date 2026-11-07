@@ -1894,6 +1894,16 @@ the mockup of LAD-223 shows `status danger-text` and `docs/design/ui.md` (Look) 
 marks a session that needs action. Older than LAD-223, which did not touch it. Wanted: the row's
 status in `--danger`, or the document changed if grey is the choice.
 Found: 2026-11-06, review of branch lado/lad-223/task-lad-223 (LAD-223).
+## The rail's bottom items go past the edge with the keyboard open on a sideways iPad
+
+Size: S. Why here: only while the on-screen keyboard is open, and closing it brings them back.
+
+Wider than 900 px the rail is as high as the app (LAD-226), so with the on-screen keyboard open
+on an iPad held sideways it gets lower than its content, and Report a bug and Settings can lie
+past its bottom edge; the rail does not scroll. Left out of LAD-226: a scroll would also change
+low windows on a computer. Wanted: the rail's items reachable at any height, a computer's low
+window looking as it does, with a UI test.
+Found: 2026-11-06, design of branch lado/lad-226/task-lad-226 (LAD-226).
 ## A message sent as the session stops answers 500
 
 Size: S. Why here: the human sees a failed send of a message the feed already shows; it needs a

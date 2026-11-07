@@ -622,7 +622,8 @@ test("a stopped session of the folder is offered to resume, and Resume it turns 
   expect(screen.getByText("a stopped session lado exists for this folder")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Resume it" }));
   const dialog = await screen.findByRole("dialog", { name: "Resume session" });
-  expect(where().disabled).toBe(true);
+  expect(within(dialog).getByRole("group", { name: "Where" }).textContent).toBe("/src/lado");
+  expect(within(dialog).queryByRole("combobox", { name: /Where/ })).toBeNull();
   expect((within(dialog).getByRole("textbox", { name: "Name" }) as HTMLInputElement).disabled).toBe(true);
   expect(within(dialog).getByRole("button", { name: "Resume session" })).toBeTruthy();
 });
@@ -1028,7 +1029,7 @@ test("Resume fills the window from the session, sends only what changed and show
   open("/sessions/lado/flows");
   fireEvent.click(await screen.findByRole("button", { name: "Resume…" }));
   const dialog = await screen.findByRole("dialog", { name: "Resume session" });
-  expect(where().value).toBe("/src/lado");
+  expect(within(dialog).getByRole("group", { name: "Where" }).textContent).toBe("/src/lado");
   expect(within(within(dialog).getByRole("group", { name: "Kits" })).getByText("team")).toBeTruthy();
   const providerSelect = within(dialog).getByRole("combobox", { name: "Provider" }) as HTMLSelectElement;
   await waitFor(() => expect(providerSelect.value).toBe("kilo"));

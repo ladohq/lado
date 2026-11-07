@@ -93,6 +93,12 @@
   leading `-` before `--`, or as `--secret=…`, was repeated by the refusal; the refusal
   now names none of the command line's words and says how to give the value.
 
+- **Settings stays on screen on a tablet held sideways.** The left rail ends with the visible
+  part of the screen, so Report a bug and Settings can be reached.
+
+- **The Resume window shows the whole folder.** Where wraps a long path onto several lines, so
+  on a phone you can read it to its end.
+
 ## 0.44.0 (2026-11-02)
 
 ### New

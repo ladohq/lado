@@ -6,6 +6,7 @@ knows who is calling) and hooks (so LADO learns when the agent is busy, idle or 
 
 import contextlib
 import enum
+import functools
 import os
 import platform
 import re
@@ -2654,7 +2655,7 @@ def check_turns(session: str) -> None:
         if agent.status != state.BUSY or agent.provider not in providers.names():
             continue
         provider = providers.get(agent.provider)
-        event = provider.failed_turn(agent, lambda a=agent, p=provider: _server_keys(a, p))
+        event = provider.failed_turn(agent, functools.partial(_server_keys, agent, provider))
         if event is not None:
             hooks.handle(provider, event, session, agent.name)
 

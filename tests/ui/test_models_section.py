@@ -410,7 +410,7 @@ def test_a_server_added_ticked_renamed_unticked_refreshed_and_removed(
     found = models.locator(".mx-found")
     expect(found).to_contain_text(f"✓ LM Studio answers at {lms.url}")
     expect(found).to_contain_text("1 embeddings model hidden: agents cannot run on it.")
-    expect(found).to_contain_text("Codex CLI, Kilo CLI, OpenCode")
+    expect(found).to_contain_text("Agent CLIsKilo CLI, OpenCode")
     expect(models.locator("label", has_text="Key")).to_contain_text("optional")
     shot(page, "form-checked")
     add = models.get_by_role("button", name="Add server", exact=True)
@@ -550,6 +550,20 @@ def test_the_form_checks_before_add_a_silent_server_and_change(page: Page, clis,
         assert state.model("qwen3-8b · lab · OpenCode").server == state.model_server("lab").id
     finally:
         moved.close()
+
+
+def test_the_form_names_the_cli_a_server_s_type_does_not_suit(page: Page, clis, server, lms, shot):
+    open_settings(page, server)
+    start_form(page, "LM Studio дома", lms.url)
+    found = section(page).locator(".mx-found")
+    expect(found).to_contain_text("LM Studio answers at")
+    expect(found.locator("dd").nth(1)).to_contain_text("Kilo CLI, OpenCode")
+    expect(found.locator("dd").nth(1)).not_to_contain_text("Codex CLI")
+    expect(found.locator(".field-note.warn")).to_have_text(
+        "⚠ Codex CLI: its Responses API loses Codex CLI's MCP tools, so the agent could not talk "
+        "to LADO"
+    )
+    shot(page, "note")
 
 
 def test_key_and_new_key_are_dots_as_a_projects_secret(page: Page, clis, server, lms):

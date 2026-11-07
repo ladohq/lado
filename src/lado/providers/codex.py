@@ -755,15 +755,20 @@ def _last_error(lines: bytes) -> dict | None:
     return error
 
 
+def _body(text: str) -> dict:
+    """The JSON object `text` is; {} for any other text."""
+    try:
+        return _as_table(json.loads(text))
+    except ValueError:
+        return {}
+
+
 def _server_words(text: str) -> str:
     """What a server said in `text`, a body as it came: its message in OpenAI's shape, or in
     cloud.ru's, else `text`."""
-    try:
-        body = json.loads(text)
-    except ValueError:
-        return text
-    inner = _as_table(body).get("error")
-    said = _as_table(inner).get("message") or inner or _as_table(body).get("message")
+    body = _body(text)
+    inner = body.get("error")
+    said = _as_table(inner).get("message") or inner or body.get("message")
     return said if isinstance(said, str) else text
 
 
@@ -784,7 +789,7 @@ def _failed_event(error: dict, keys: Iterable[str]) -> base.Event:
         status, said = failed, _server_words(found[1] or "") if found else text
     elif base.is_refusal(gave_up.get("http_status_code")):
         status, said = gave_up["http_status_code"], ""
-    elif info == "other" and _is_object(text):
+    elif info == "other" and _body(text):
         status, said = 400, _server_words(text)
     if line := base.context_line(text):
         return base.Event(base.TURN_END, error=line, details=said, output_ignored=True)
@@ -798,13 +803,6 @@ def _failed_event(error: dict, keys: Iterable[str]) -> base.Event:
         transient=info == "internal_server_error",
         output_ignored=True,
     )
-
-
-def _is_object(text: str) -> bool:
-    try:
-        return isinstance(json.loads(text), dict)
-    except ValueError:
-        return False
 
 
 def _slugs(text: str) -> list[str] | None:

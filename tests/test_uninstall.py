@@ -420,16 +420,14 @@ def test_the_agents_processes_are_taken_before_the_stop_and_waited_for(
     monkeypatch.setattr(
         tmux, "pane_pids", lambda session: taken.append(fake_tmux[:]) or tmux_server.panes[session]
     )
-    ended = threading.Event()
 
     def kill_session(session):
         fake_tmux.append(("kill_session", session))
 
         def hangup():
+            # no agent.wait() here: it would hold Popen's lock, and poll() would answer None
             time.sleep(1)
             agent.terminate()
-            agent.wait()
-            ended.set()
 
         threading.Thread(target=hangup, daemon=True).start()
 
@@ -438,7 +436,9 @@ def test_the_agents_processes_are_taken_before_the_stop_and_waited_for(
     seen = []  # whether the agent had ended when the repositories were read after the stop
     repos = uninstall._repos
     monkeypatch.setattr(
-        uninstall, "_repos", lambda sessions: seen.append(ended.is_set()) or repos(sessions)
+        uninstall,
+        "_repos",
+        lambda sessions: seen.append(agent.poll() is not None) or repos(sessions),
     )
     code, lines = run(found)
     assert code == 0, lines

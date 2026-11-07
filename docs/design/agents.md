@@ -493,10 +493,11 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   message over in between (and refuses, as for an agent not running, when the agent was
   finished or stopped in between). A session's end refuses in one sentence of its own
   (`runtime.CUT_OFF`, a 400 at the server), however far the delivery got: the session is
-  stopped or unknown by the database, which a stop marks before it kills tmux, or typing
-  failed and its tmux session is gone (`loop.tmux_gone`, whatever tmux's words). Any other
-  failure of tmux stays an error, and the message stays as the stop or the sweep leaves
-  it. tmux calls name a session and a window with `=`: tmux matches any other target by
+  stopped by the database, which a stop marks before it kills tmux, or typing failed and
+  its tmux session is gone (`loop.tmux_gone`, whatever tmux's words). A session the
+  database does not know has no Resume: `no running agent` where a message is stored,
+  `unknown session` when it was forgotten during the typing. Any other failure of tmux
+  stays an error, and the message stays as the stop or the sweep leaves it. tmux calls name a session and a window with `=`: tmux matches any other target by
   prefix, so text for a stopped `lad` would land in a running `lad-1`. A queue is taken
   only so, also an agent's first input, but for the third channel:
   - `tool_result`: in the middle of a turn, the result of any call of a `lado` MCP tool

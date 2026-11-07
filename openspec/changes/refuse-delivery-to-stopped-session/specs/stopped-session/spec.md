@@ -40,6 +40,10 @@ the delivery got. A tmux failure of a session that still runs SHALL stay an erro
 - **WHEN** a message goes to a stopped agent while its session runs
 - **THEN** the refusal still names the running agents
 
+#### Scenario: A session LADO does not know
+- **WHEN** a message goes to a session with no record, or its session is forgotten during the typing
+- **THEN** the refusal says the agent does not run or the session is unknown, and promises no Resume
+
 ### Requirement: The composer keeps a message refused by a stop
 
 A message refused because the session stopped SHALL stay in the composer with its files, and the

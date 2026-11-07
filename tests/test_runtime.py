@@ -6149,6 +6149,27 @@ def test_a_tmux_failure_of_a_running_session_stays_an_error(repo, fake_tmux, mon
     assert raised.value is failure
 
 
+def test_a_message_in_an_unknown_session_promises_no_resume(lado_home):
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.send_message("nowhere", "supervisor", "nobody", "hello")
+    assert str(refused.value) == 'no running agent "nobody"; running agents: ; or "human"'
+
+
+def test_a_session_forgotten_during_the_typing_promises_no_resume(repo, fake_tmux, monkeypatch):
+    _session_with_worker(repo)
+    state.set_status("s", "supervisor", state.IDLE)
+
+    def typed(*_):
+        runtime.stop_session("s")
+        runtime.forget_session("s", force=True)
+        raise tmux.TmuxError("can't find session: s")
+
+    monkeypatch.setattr(tmux, "send_text", typed)
+    with pytest.raises(runtime.LadoError) as refused:
+        runtime.write_as_human("s", "merge it")
+    assert str(refused.value) == 'unknown session "s"'
+
+
 def test_a_stopped_agent_of_a_running_session_keeps_the_list_of_running_agents(repo, fake_tmux):
     _session_with_worker(repo)
     runtime.finish_worker("s", "w1", discard=True)

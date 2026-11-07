@@ -49,10 +49,10 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-07-codex-model-
 
 ## 6. The end
 
-- [ ] 6.1 `make lint`, `make test`, `make web`, the changed tests with their markers,
+- [x] 6.1 `make lint`, `make test`, `make web`, the changed tests with their markers,
   `openspec validate codex-model-server --strict`, `openspec validate --specs --strict`, a trial
   archive in a copy, before the first review.
-- [ ] 6.2 At archive, the new capability's Purpose replaces the placeholder `openspec archive` writes,
+- [x] 6.2 At archive, the new capability's Purpose replaces the placeholder `openspec archive` writes,
   or `openspec validate --specs --strict` fails: `A Codex agent whose model is on a model server runs
   there with its tools, MCP servers and hooks, and nothing of the human's Codex login reaches that
   server.` The trial archive puts the same text in its copy. Check: the trial archive passes.

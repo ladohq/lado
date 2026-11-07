@@ -1096,7 +1096,7 @@ function RemoveKitDialog({ kit, onClose }: { kit: InstalledKitInfo; onClose: () 
           {users.error}
         </p>
       )}
-      {found?.running_line && <p className="kit-danger">{found.running_line}</p>}
+      {found?.running_line && <p className="kit-warning">{found.running_line}</p>}
       {found?.stopped_line && <p className="muted">{found.stopped_line}</p>}
       {found && !found.running_line && !found.stopped_line && <p>No session uses it.</p>}
       {kit.missing ? (

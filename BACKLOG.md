@@ -1917,15 +1917,6 @@ Wanted: the failed delivery of a session that stopped answered as a refusal the 
 test that stops the session during the delivery.
 Found: 2026-11-06, branch lado/lad-224/task-lad-224 (LAD-224), the console errors of the UI tests.
 
-## `.kit-danger` in the kit removal window is no notice
-
-Size: S. Why here: one window keeps a look the notices rule replaced everywhere else.
-
-`.kit-danger` has a border and no icon, against `docs/design/ui.md`, Look, Notices. `.kit-alert`, its
-neighbour, went in LAD-224; this one was not in that task's report. Wanted: an error notice, as
-`.kit-warning` is a warning one, seen in the live window.
-Found: 2026-11-06, design of LAD-224.
-
 # P3: maybe never
 
 ## Three 404s in the browser's console of the UI tests have no known cause

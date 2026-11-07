@@ -18,7 +18,7 @@
 
 ## 3. The checks
 
-- [ ] 3.1 `make lint`, `make web`, `make test`, `uv run pytest -m ui tests/ui/test_kits_page.py
+- [x] 3.1 `make lint`, `make web`, `make test`, `uv run pytest -m ui tests/ui/test_kits_page.py
   tests/ui/test_session_list.py`, `openspec validate kit-removal-notice --strict`,
   `openspec validate --specs --strict` and the trial archive of the settings.
-- [ ] 3.2 Screenshots of the window in both themes as run artifacts, named in `build-report`.
+- [x] 3.2 Screenshots of the window in both themes as run artifacts, named in `build-report`.

@@ -360,7 +360,9 @@ are not checked: if a Codex agent works but never answers, this is why.
 - The agent knows the context the server reports and compacts in time. Codex has no setting for
   its output: a model that repeats without end stops at your provider's own limit, so set one.
 - A refusal ends the turn in LADO's words within a few seconds of Codex's last repeat. On a 429
-  Codex keeps only the status, not the server's text.
+  Codex keeps only the status, not the server's text. On a 400 whose body is no JSON, such as a
+  proxy's page, it keeps no status: the chat reads `Codex CLI's turn ended on an error` and that
+  text. A 5xx passes by itself: LADO resumes the agent after a while.
 - A server that goes away in the middle of a turn is no refusal: Codex waits for it without end and
   goes on when it returns, and the agent stays busy meanwhile.
 - Web search and the effort of your Codex config stay off: a server may refuse or bill them.

@@ -916,6 +916,36 @@ def test_model_of_a_codex_agent_on_a_server_shows_its_model_alone(
 
 
 @pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
+def test_a_503_of_a_gateway_is_temporary_for_a_codex_agent(
+    smoke_repo, smoke_provider, codex_server
+):
+    codex_session(smoke_repo, codex_server)
+    codex_server.refusal = (503, {"error": {"message": "upstream overloaded"}})
+    runtime.write_as_human(SESSION, HUMAN_SAYS)
+    planned = lambda: state.get_agent(SESSION, "supervisor").resume_at is not None  # noqa: E731
+    wait_for(planned, "a resume", 120)
+    assert not [m for m in state.list_messages(SESSION) if "ended on an error" in m.summary]
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
+def test_a_400_with_no_json_object_names_no_status_for_a_codex_agent(
+    smoke_repo, smoke_provider, codex_server
+):
+    codex_session(smoke_repo, codex_server)
+    codex_server.refusal = (400, "Bad Request")
+    runtime.write_as_human(SESSION, HUMAN_SAYS)
+
+    def told():
+        return [m for m in state.list_messages(SESSION) if "ended on an error" in m.summary]
+
+    wait_for(told, "the turn's end", 60)
+    assert f"{codex.NO_WORDS}: " in told()[0].summary
+    assert "Bad Request" in told()[0].summary
+    runtime.stop_session(SESSION)
+
+
+@pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
 def test_codex_on_a_server_compacts_past_its_limit(smoke_repo, smoke_provider, codex_server):
     agent = codex_session(smoke_repo, codex_server)
     written = (providers.base.config_path(agent) / "config.toml").read_text()

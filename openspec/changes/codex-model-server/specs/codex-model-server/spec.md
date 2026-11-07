@@ -62,7 +62,7 @@ The `/model` of a Codex agent on a server SHALL offer that agent's one model und
 
 #### Scenario: The real CLI takes the list
 - **WHEN** real Codex starts with that file
-- **THEN** it runs a turn, and no warning of missing model metadata appears
+- **THEN** it runs a turn, and its `/model` shows that one model alone
 
 ### Requirement: A Codex agent on a server asks for nothing a server may refuse
 

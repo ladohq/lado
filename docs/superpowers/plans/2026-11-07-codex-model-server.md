@@ -78,9 +78,9 @@ is idle, the chat's line is LADO's, no resume for a 401, a resume for a 500, the
 Layer: smoke, real Codex, a fake Responses server. The only layer that catches a Codex update, so it
 holds the journal's format and the catalogue.
 
-`tests/fake_model_server.py` gets a Responses stream: a shell call, an MCP call to LADO's `list_agents`,
+`tests/fake_endpoint.py` gets a Responses stream: a shell call, an MCP call to LADO's `list_agents`,
 a reply, usage. Then: the session reaches idle; the tools have LADO's in a `namespace` and no
-`web_search` or `custom`; no `Model metadata` warning; usage past the limit brings a compaction request;
+`web_search` or `custom`; the real `/model` shows the agent's model alone; usage past the limit brings a compaction request;
 401 and 429 end the turn in LADO's words, with a count of requests that stops, the key echoed and in no
 text. The existing smoke's Codex branch keeps its built-in checks.
 

@@ -200,8 +200,9 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `<home>/journal-offset`, kept there so that a restarted loop tells nothing twice. A
   `task_complete` with an `error` and no later `task_started` is a `TURN_END` through
   `hooks.handle`, the one path of a hook's, with `output_ignored`, as no hook prints it. A 4xx but
-  408 reads in LADO's words (`base.refusal_line`), `internal_server_error` (a 500 after Codex's
-  repeats) is temporary, anything else its message. The loop has no variable of the key: it gives
+  408 reads in LADO's words (`base.refusal_line`), any 5xx and `server_overloaded` are temporary,
+  anything else its message. A 400 whose body is no JSON object has no status in the journal
+  (`other`, which is more than a 400): `Codex CLI's turn ended on an error`, then the text. The loop has no variable of the key: it gives
   the kept one (`base.without_keys(text, keys)`) before everything from `, url: ` or `, cf-ray: `
   on is cut. This reverses the decision of 2026-10-09 for these agents alone; the smoke holds the
   journal's format. The

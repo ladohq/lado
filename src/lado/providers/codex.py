@@ -162,6 +162,7 @@ PLAIN_MODEL = {
 ADDRESS = re.compile(r", (?:url|cf-ray): ")
 UNEXPECTED = re.compile(r"unexpected status \d+[^:]*(?:: (.*))?", re.DOTALL)
 NO_WORDS = "Codex CLI's turn ended on an error"
+TEMPORARY = ("internal_server_error", "server_overloaded")  # kinds with no status in the journal
 USING = "Logged in using "  # the start of `codex login status`'s line for a login
 
 # Codex's login (0.162.0, checked by hand): its file CODEX_HOME/auth.json, the system
@@ -775,34 +776,47 @@ def _server_words(text: str) -> str:
 def _failed_event(error: dict, keys: Iterable[str]) -> base.Event:
     """The turn's end for `error` of a journal, with no key and no address. How Codex reports a
     server's answer, by its `codex_error_info`: most statuses as `http_connection_failed` with
-    the server's text in `message`, a 429 after its repeats with the status alone, a 400 at once
-    as `other` with the body as `message`, a 500 after its repeats as `internal_server_error`,
-    in Codex's own words."""
-    text = base.without_keys(str(error.get("message") or ""), keys)
-    text = ADDRESS.split(text, maxsplit=1)[0].strip()
+    the server's text in `message`, one after its repeats with the status alone, a 500 and a model
+    at capacity in Codex's own words. A 400 comes at once as `other` with the body as `message`
+    and no address, and no status: `other` is more than a 400, so only a JSON object is read as
+    one. Any other `other` keeps LADO's words before the colon, which `lado stats` takes for the
+    error's kind. Every 5xx passes by itself."""
+    message = base.without_keys(str(error.get("message") or ""), keys)
     info = error.get("codex_error_info")
+    body = _body(message) if info == "other" else {}
+    text = message.strip() if body else ADDRESS.split(message, maxsplit=1)[0].strip()
     status, said = None, text
     failed = _as_table(_as_table(info).get("http_connection_failed")).get("http_status_code")
-    gave_up = _as_table(_as_table(info).get("response_too_many_failed_attempts"))
+    gave_up = _as_table(_as_table(info).get("response_too_many_failed_attempts")).get(
+        "http_status_code"
+    )
     if base.is_refusal(failed):
         found = UNEXPECTED.fullmatch(text)
         status, said = failed, _server_words(found[1] or "") if found else text
-    elif base.is_refusal(gave_up.get("http_status_code")):
-        status, said = gave_up["http_status_code"], ""
-    elif info == "other" and _body(text):
+    elif base.is_refusal(gave_up):
+        status, said = gave_up, ""
+    elif body:
         status, said = 400, _server_words(text)
     if line := base.context_line(text):
         return base.Event(base.TURN_END, error=line, details=said, output_ignored=True)
     if status is not None:
         line = base.refusal_line(status, said)
         return base.Event(base.TURN_END, error=line, details=said, output_ignored=True)
+    if info == "other":
+        line = base.error_line(NO_WORDS, text)
+    else:
+        line = base.error_line((text.splitlines() or [NO_WORDS])[0])
     return base.Event(
         base.TURN_END,
-        error=base.error_line((text.splitlines() or [NO_WORDS])[0]),
+        error=line,
         details=text,
-        transient=info == "internal_server_error",
+        transient=info in TEMPORARY or _server_failed(failed) or _server_failed(gave_up),
         output_ignored=True,
     )
+
+
+def _server_failed(status: object) -> bool:
+    return isinstance(status, int) and 500 <= status < 600
 
 
 def _slugs(text: str) -> list[str] | None:

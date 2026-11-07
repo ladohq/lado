@@ -22,7 +22,7 @@ A turn of OpenCode, Kilo, or a Claude or Codex agent on a server that ends on a 
 
 ### Requirement: Any other 4xx of a provider is a refusal too
 
-Such a turn ending on any other 4xx but 408 SHALL read `the model provider refused the request (<status>)`, then the server's text, and a 400 whose text names an API key `the model provider refused the key (400)`. A server's refusal for the context SHALL keep LADO's words of a context too small, whatever its status.
+Such a turn ending on any other 4xx but 408 SHALL read `the model provider refused the request (<status>)`, then the server's text, and a 400 whose text names an API key `the model provider refused the key (400)`. A server's refusal for the context SHALL keep LADO's words of a context too small, whatever its status. Codex gives no status for a 400 whose body is no JSON object: that turn SHALL read `Codex CLI's turn ended on an error`, then the server's text.
 
 #### Scenario: cloud.ru's wrong key
 - **WHEN** a server answers 400 with `{"message":"invalid api key secret","code":"InvalidArgument"}`
@@ -95,8 +95,16 @@ For a busy Codex agent on a server, the session loop SHALL read what is new in i
 - **THEN** the line reads `the model provider refused the request (400): unknown model`
 
 #### Scenario: A server error
-- **WHEN** a server answers 500 until Codex gives up
+- **WHEN** a server answers 500, 502, 503, 504 or 529, or Codex says the model is at capacity, until Codex gives up
 - **THEN** the turn is temporary, and LADO plans a resume
+
+#### Scenario: A 400 with no JSON object
+- **WHEN** a server answers 400 with `Bad Request`, for which Codex gives no status
+- **THEN** the line reads `Codex CLI's turn ended on an error: Bad Request`, the turn is not temporary, and `lado stats` counts LADO's words alone
+
+#### Scenario: A body that holds an address
+- **WHEN** a server answers 400 with `{"error": {"message": "bad, url: here"}}`
+- **THEN** the line reads `the model provider refused the request (400): bad, url: here`
 
 #### Scenario: The address
 - **WHEN** Codex's error ends with `, url: https://user:pass@gw/v1/responses`

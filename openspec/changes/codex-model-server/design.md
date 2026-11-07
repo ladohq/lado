@@ -111,14 +111,20 @@ told twice. The pass costs one `stat` per busy agent on a server when nothing gr
 |---|---|---|
 | `http_connection_failed.http_status_code` | `unexpected status 404 Not Found: <text>, url: …` | status, `<text>` |
 | `response_too_many_failed_attempts.http_status_code` | `exceeded retry limit, last status: 429 …` | status, no text |
-| `other`, a JSON body | `{"error": {"message": …}}` | 400 (the one status Codex passes so), that message |
-| `internal_server_error` | Codex's own words | temporary |
+| `other`, a JSON object | `{"error": {"message": …}}` | 400 (the one status Codex passes so), that message |
+| `other`, any other text | `Bad Request`, an HTML page, empty | `Codex CLI's turn ended on an error`, then the text, not temporary |
+| `internal_server_error`, `server_overloaded` | Codex's own words | temporary |
+| a status of 500-599 in either of the first two rows | as there | its message, temporary |
 | anything else | any | its message, not temporary |
 
 A status of `base.is_refusal` goes through `base.refusal_line`, `base.context_line` first as on
 OpenCode. Everything from `, url: ` on is cut before any line is made: an address may hold a password,
-and a `cf-ray` is noise. `details` is the text so cut. `transient` is true only for
-`internal_server_error`.
+and a `cf-ray` is noise; a JSON object of `other`, to which Codex adds no address, is read whole first.
+`details` is the text so cut. Every 5xx is temporary, as on Claude Code; 408 is not.
+
+`other` has no status and is more than a 400, so a 400 whose body is no JSON object cannot be told
+from another error: LADO does not claim a refusal there and names this in `docs/install.md`. LADO's
+words stand before the colon, so that `lado stats` keeps the server's text out of the error's kind.
 
 ### D10. The key in the loop
 

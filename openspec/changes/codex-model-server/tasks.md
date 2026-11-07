@@ -32,7 +32,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-07-codex-model-
 
 ## 4. Smoke
 
-- [x] 4.1 A Responses stream in `tests/fake_model_server.py`: a shell call, an MCP call, usage. Check:
+- [x] 4.1 A Responses stream in `tests/fake_endpoint.py`: a shell call, an MCP call, usage. Check:
   its unit test.
 - [x] 4.2 Real Codex on it: tools, a turn, the catalogue taken, a compaction. Check: `-m smoke` of the
   new tests with the real CLI here, then CI.

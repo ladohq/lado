@@ -33,8 +33,8 @@ Options weighed for a refused turn (the human's question #4550):
 Options weighed for `/model` (#4550):
 
 - A (taken): the agent's own list of one model, built from the installed Codex's own catalogue, so
-  that its format follows the binary. It also carries the context and ends the warning `Model metadata
-  not found`. Long-term cost: a field of the catalogue that matters changes meaning with a Codex
+  that its format follows the binary. It also carries the context; the smoke reads the real `/model`, as the
+  absence of the warning `Model metadata not found` proved nothing. Long-term cost: a field of the catalogue that matters changes meaning with a Codex
   update; a list that cannot be read costs a loud warning, not the start.
 - B: leave OpenAI's names and say so in `docs/install.md`. Free, and a trap.
 
@@ -64,8 +64,9 @@ Codex has no setting for.
 - `model_context_window` and `model_auto_compact_token_limit` come from what the server reports.
 - `/model` offers the agent's one model.
 - Its web search tool and its carried effort stay off on a server.
-- A turn such an agent ends on a 4xx but 408 reads in LADO's words and ends the turn; a 5xx is
-  temporary, as on Claude Code. The key and the address are in no text of LADO's.
+- A turn such an agent ends on a 4xx but 408 reads in LADO's words and ends the turn, but for a 400
+  whose body is no JSON object, for which Codex gives no status; a 5xx is temporary, as on Claude
+  Code. The key and the address are in no text of LADO's.
 - LM Studio does not suit Codex: the probe's `not:` line, the form's note, `lado model add`,
   `list_models`' `blocked`, a start and a spawn say the same words.
 - `Provider.runs_on_server` and the refusal `does not run on a model server yet` are gone.
@@ -78,9 +79,9 @@ Codex has no setting for.
 ## Scope
 
 `providers/base.py`, `providers/codex.py`, `providers/claude.py`, `providers/opencode_family.py`,
-`model_servers.py`, `model_settings.py`, `runtime.py`, `loop.py`, `hooks.py`, `server/models.py`,
-`server/model_entries.py`, `web/src/ModelSources.tsx`: 12 code files, and the generated
-`web/openapi.json`, `web/src/api.gen.ts`. Tests, `tests/fake_model_server.py`; docs. One new API field
+`model_servers.py`, `model_settings.py`, `runtime.py`, `loop.py`, `server/models.py`,
+`server/model_entries.py`, `web/src/ModelSources.tsx`: 11 code files, and the generated
+`web/openapi.json`, `web/src/api.gen.ts`. Tests, `tests/fake_endpoint.py`; docs. One new API field
 (`ProbeInfo.cli_notes`). No schema change, no new dependency, no MCP tool, no CLI option, no new
 screen.
 

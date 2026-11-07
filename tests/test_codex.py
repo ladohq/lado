@@ -1519,17 +1519,72 @@ def test_a_server_error_is_temporary(on_server):
     "error",
     [
         {"message": "something else", "codex_error_info": "usage_limit_exceeded"},
-        {"message": "something else", "codex_error_info": "other"},
         {
             "message": "something else, url: http://gw/v1",
             "codex_error_info": {"http_connection_failed": {"http_status_code": 408}},
         },
     ],
-    ids=["its own kind", "not a body", "a 408"],
+    ids=["its own kind", "a 408"],
 )
 def test_anything_else_is_its_message_and_not_temporary(on_server, error):
     event = _read(on_server, error)
     assert (event.error, event.transient) == ("something else", False)
+
+
+@pytest.mark.parametrize(
+    ("status", "reason"),
+    [
+        (502, "Bad Gateway"),
+        (503, "Service Unavailable"),
+        (504, "Gateway Timeout"),
+        (529, "<unknown status code>"),
+    ],
+)
+def test_any_5xx_codex_gives_up_on_is_temporary(on_server, status, reason):
+    event = _read(
+        on_server,
+        {
+            "message": f"unexpected status {status} {reason}: upstream, url: http://gw/v1",
+            "codex_error_info": {"http_connection_failed": {"http_status_code": status}},
+        },
+    )
+    assert event.transient
+    assert event.error == f"unexpected status {status} {reason}: upstream"
+
+
+def test_a_5xx_after_codex_s_repeats_is_temporary(on_server):
+    event = _read(
+        on_server,
+        {
+            "message": "exceeded retry limit, last status: 503 Service Unavailable",
+            "codex_error_info": {"response_too_many_failed_attempts": {"http_status_code": 503}},
+        },
+    )
+    assert event.transient
+
+
+def test_a_model_at_capacity_is_temporary(on_server):
+    event = _read(
+        on_server,
+        {"message": "Selected model is at capacity", "codex_error_info": "server_overloaded"},
+    )
+    assert (event.error, event.transient) == ("Selected model is at capacity", True)
+
+
+@pytest.mark.parametrize("body", ["Bad Request", "<html>nginx 400</html>", "[1,2]"])
+def test_a_400_with_no_json_object_says_so_as_codex_gives_no_status(on_server, body):
+    """`other` is Codex's word for more than a 400: LADO cannot claim a refusal here, and the
+    server's text stays out of what `lado stats` takes for the error's kind."""
+    event = _read(on_server, {"message": body, "codex_error_info": "other"})
+    assert event.error == f"{codex.NO_WORDS}: {body}"
+    assert (event.details, event.transient) == (body, False)
+    assert event.error.split(":")[0] == codex.NO_WORDS
+
+
+def test_a_body_is_read_before_the_address_is_cut(on_server):
+    body = '{"error":{"message":"bad, url: here"}}'
+    event = _read(on_server, {"message": body, "codex_error_info": "other"})
+    assert event.error == "the model provider refused the request (400): bad, url: here"
 
 
 def test_an_error_with_no_words_still_ends_the_turn(on_server):

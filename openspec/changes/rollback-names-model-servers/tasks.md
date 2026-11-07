@@ -12,18 +12,18 @@
 
 ## 2. Documents and the comment
 
-- [ ] 2.1 `docs/install.md`, "Going back to an older version": the list of what is lost gets
+- [x] 2.1 `docs/install.md`, "Going back to an older version": the list of what is lost gets
   model servers, models and default models, and the bullet says the warning names the key
   folders that stay. Check: AC-4.
-- [ ] 2.2 `docs/install.md`, the "What stays" paragraph of that section: going back to a
+- [x] 2.2 `docs/install.md`, the "What stays" paragraph of that section: going back to a
   version before 0.45.0 forgets the servers, models and defaults and leaves
   `~/.lado/model-servers/` with the keys; `rm -rf ~/.lado/model-servers` removes it; upgrading
   again brings no server back, and `lado doctor` calls the folders left over until they are
   removed; going back to a version that knows model servers, remove only the folders the
   warning listed, as the others hold the keys of servers still saved. Check: AC-4.
-- [ ] 2.3 `docs/install.md`, Docker's "Go back to the version before": the same in short, with
+- [x] 2.3 `docs/install.md`, Docker's "Go back to the version before": the same in short, with
   `docker compose run --rm lado sh -c 'rm -rf ~/.lado/model-servers'`. Check: AC-4.
-- [ ] 2.4 `CHANGELOG.md`, `## 0.45.0 (unreleased)`: **Set models in Settings** in at most three
+- [x] 2.4 `CHANGELOG.md`, `## 0.45.0 (unreleased)`: **Set models in Settings** in at most three
   lines, keeping what it promises; under `### Improved` one item in the user's words, at most
   three lines, on what going back says of model servers and their keys. Check: AC-5.
 - [x] 2.5 `src/lado/providers/codex.py`: the comment over `LOSES_TOOLS` names

@@ -1,11 +1,11 @@
 ## 1. The warning
 
-- [ ] 1.1 `tests/test_self_update.py` (unit): `warning()` takes the new words of design.md D5;
+- [x] 1.1 `tests/test_self_update.py` (unit): `warning()` takes the new words of design.md D5;
   new tests, first red: a copy with no table of model servers lists the key's folder; a copy
   with one server of two lists only the other; no `model-servers/`, and a folder with no key,
   give no line about keys; an unreadable `model-servers/` lists that folder and the plan goes
   on. Check: AC-1, AC-2, AC-3.
-- [ ] 1.2 `src/lado/self_update.py`: `Restore.keys`, filled in `_way_back` and printed by
+- [x] 1.2 `src/lado/self_update.py`: `Restore.keys`, filled in `_way_back` and printed by
   `print_plan`, by design.md D1 to D5; `Restore`'s docstring says what `keys` is. Check: the
   tests of 1.1 green; `tests/integration/test_update_process.py` run with `-m integration`
   stays green.
@@ -26,7 +26,7 @@
 - [ ] 2.4 `CHANGELOG.md`, `## 0.45.0 (unreleased)`: **Set models in Settings** in at most three
   lines, keeping what it promises; under `### Improved` one item in the user's words, at most
   three lines, on what going back says of model servers and their keys. Check: AC-5.
-- [ ] 2.5 `src/lado/providers/codex.py`: the comment over `LOSES_TOOLS` names
+- [x] 2.5 `src/lado/providers/codex.py`: the comment over `LOSES_TOOLS` names
   `tests/live_models.py` (design.md D7). Check: AC-6.
 
 ## 3. Checks

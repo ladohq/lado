@@ -122,7 +122,7 @@ CARRIED = (
 PROFILE = "lado"  # LADO's permission profile (see _git_profile)
 # Codex sends a server's MCP tools as one tool of type `namespace` (0.162.0, no setting changes
 # it), which LM Studio's Responses API drops: such an agent has no LADO tools
-# (tests/local_models.py).
+# (tests/live_models.py).
 LOSES_TOOLS = "its Responses API loses Codex CLI's MCP tools, so the agent could not talk to LADO"
 CATALOGUE = "models.json"  # in the agent's home: its list of models on a server
 # In the agent's home, so that it outlives a restart of the session loop: which journal

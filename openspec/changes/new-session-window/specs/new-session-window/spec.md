@@ -18,7 +18,8 @@ Cancel and the start button. The window SHALL have no source switch and no Advan
 
 Where's list SHALL show a group **Recent**: the places of the latest started sessions, at most
 10, latest first, a folder by its last segment and a project repository by its name with the
-badge `Project <title>`, each with its path muted and the time of its last start; then a
+badge `Project <title>`, each with its path muted and the time its session started (a running
+one) or stopped; then a
 group **Somewhere else**: Other folder…, Clone from URL…, New empty folder… and Project….
 
 #### Scenario: A folder and a project repository
@@ -155,9 +156,19 @@ open Team, focus Session name and offer `Use <next free name>`.
 ### Requirement: The footer says what is missing
 
 While the start button is off, the footer SHALL show `To start: ` and the missing items as
-links that focus their fields (opening Team when needed): choose a place, name the folder,
-choose an agent, choose a smaller folder, tell git who you are, wait for the count, fix the
-model, shorten the task, log in to `<CLI>`.
+links that focus their fields (opening Team when needed): choose a place, wait for the check,
+name the folder, wait for the agent CLIs, choose an agent (also when their list failed),
+choose a team setup, choose a smaller folder, choose another folder, tell git who you are,
+wait for the count, fix the model, shorten the task, log in to `<CLI>`.
+
+#### Scenario: The agent CLIs not known yet
+- **WHEN** the folder will do and `/api/providers` has not answered
+- **THEN** the start button is off and the footer reads `To start: wait for the agent CLIs`
+
+#### Scenario: Enter beside a stopped session
+- **WHEN** the place has a stopped session, Task is empty and the human presses Enter in a
+  field of the window
+- **THEN** the window resumes that session, as its blue button `Resume <name>` would
 
 #### Scenario: No agent chosen
 - **WHEN** two CLIs are installed and none is suggested
@@ -201,8 +212,8 @@ field's `aria-describedby`, and a refusal SHALL set `aria-invalid` on it.
 ### Requirement: The window keeps its draft until a start
 
 Closing the New session window without a start SHALL keep Where's choice, Task and the Team
-fields for its next opening in the page; a start SHALL clear them, and a reload of the page
-loses them.
+fields, the model picked too (for the agent CLI it was picked for), for its next opening in
+the page; a start SHALL clear them, and a reload of the page loses them.
 
 #### Scenario: Esc with a task typed
 - **WHEN** the human types a task, presses Esc and opens New session again

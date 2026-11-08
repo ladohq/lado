@@ -366,9 +366,12 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     count so far; git's warning about a folder it cannot read is `unreadable` with its line),
     so the preview and the commit cannot disagree; of the listed, a name of `SECRETS` is left
     out as `secret`, a file over `MAX_FILE` as `large`, a nested repository (git's `dir/`) as
-    `repository`. `command` is the same by hand, the left-out paths as `.gitignore` lines
-    (`ignore_line`: anchored, git's pattern characters escaped) quoted by `shlex.quote`, then
-    `NOT_REPO_HINT`'s command. `make` checks again (git's author by `scratch.author_problem`,
+    `repository`; a left-out name with a line break or bytes that are no UTF-8 refuses the
+    folder (`odd_name`), and a refused preview lists nothing left out. `command` is the same
+    by hand, each left-out path's `shell_line` (its `.gitignore` line, `ignore_line`:
+    anchored, git's pattern characters escaped, quoted by `shlex.quote`; the server gives it
+    per path, so the window quotes nothing), then `MAKE` (`NOT_REPO_HINT`'s command). `make`
+    checks again (git's author by `scratch.author_problem`,
     a folder outside git, the preview's refusal, `include` naming only files left out), then
     appends the left-out paths not included to `.gitignore`, `git init`, the branch as
     `scratch.make`, `git add -A` and one commit `First commit` with no signing and no hooks;

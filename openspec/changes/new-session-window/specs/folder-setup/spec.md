@@ -34,12 +34,37 @@ subfolder.
 
 The preview SHALL refuse, before any listing, the home folder, `/`, the workspace itself and
 a folder that holds the workspace (`home`), and SHALL stop and refuse past 20,000 files or 2
-GiB (`too_big`, with the count so far).
+GiB (`too_big`, with the count so far); the window SHALL say `Choose a smaller folder:` with
+`this is your home folder.`, `this one holds over 20,000 files.` or `this one holds over 2
+GB.`, and the footer `To start: choose a smaller folder`.
 
 #### Scenario: Too many files
 - **WHEN** the folder holds 180,000 files
-- **THEN** the preview refuses with `too_big` and the window says `Choose a smaller folder:
-  this one holds 180,000 files.`
+- **THEN** the preview stops past 20,000 and refuses with `too_big`, and the window says
+  `Choose a smaller folder: this one holds over 20,000 files.`
+
+### Requirement: A folder the set-up cannot handle is refused with why
+
+The preview SHALL refuse a folder git cannot list whole, with git's line (`unreadable`), and
+a folder holding a path to leave out whose name has a line break or bytes that are no UTF-8
+(`odd_name`, the name escaped), as no `.gitignore` line or text could carry it; the window
+SHALL say `Choose another folder` with why, and the footer `To start: choose another
+folder`.
+
+#### Scenario: A secret named with a line break
+- **WHEN** the folder holds a file `.env` followed by a line break and `ok.txt` in its name
+- **THEN** the preview refuses with `odd_name`, nothing is committed, and the folder check
+  answers with the refusal, not a server error
+
+### Requirement: The set-up refuses what it was not offered
+
+Setting up SHALL refuse, changing nothing, a folder inside a git repository (`not_plain`)
+and an `include` naming a path the preview does not leave out or a `repository` one
+(`bad_include`).
+
+#### Scenario: A nested repository ticked in
+- **WHEN** a start asks to include `old-site/`, a separate git repository
+- **THEN** it is refused with `bad_include` and the folder has no `.git`
 
 ### Requirement: The set-up makes one commit and leaves out what it was told
 
@@ -68,10 +93,11 @@ back as it was (removed when it made it), and refuse with git's line.
 
 ### Requirement: The server previews and starts a set-up
 
-`GET /api/folders` SHALL give `setup` (files, bytes, left out, refusal, author problem, the
-manual command) for a folder of files outside git; `POST /api/sessions` SHALL take `where:
-{kind: "setup", path, include}`, set the folder up, then start as for a folder; a start
-refused after the set-up SHALL leave the repository made.
+`GET /api/folders` SHALL give `setup` (files, bytes, the left-out paths each with its line of
+the manual command, refusal, author problem, the manual command's rest and the file limit) for
+a folder of files outside git; `POST /api/sessions` SHALL take `where: {kind: "setup", path,
+include}`, refuse a name another folder's session has before any change, set the folder up,
+then start as for a folder; a start refused after the set-up SHALL leave the repository made.
 
 #### Scenario: Set up and start
 - **WHEN** `POST /api/sessions` gets `where: {kind: "setup", path: "~/workspace/notes",
@@ -91,10 +117,16 @@ ticks and Copy, and the button `Set up and start in <folder>`.
 - **THEN** the line counts 129 files, the row of `.env` says `Will be saved in the history`,
   and the command under Do it yourself no longer names `.env`
 
-#### Scenario: While counting
-- **WHEN** the preview has not answered yet
+#### Scenario: While counting again
+- **WHEN** a plain folder is checked again (after a refused set-up) and the preview has not
+  answered yet
 - **THEN** the panel reads `Not yet set up for LADO. Counting files…`, the button is off and
-  the footer reads `To start: wait for the count`
+  the footer reads `To start: wait for the count`; a failed answer shows its error instead
+
+#### Scenario: The first check
+- **WHEN** the human picks a folder whose check has not answered yet
+- **THEN** the note reads `checking…` and the footer `To start: wait for the check`, as the
+  window does not yet know the folder is outside git
 
 ### Requirement: Git's missing author keeps the set-up off
 
@@ -105,4 +137,5 @@ Check again (in LADO's container the `.env` text and no Check again), and keep t
 #### Scenario: No author
 - **WHEN** git has no `user.email` and the human picks a plain folder
 - **THEN** the author's text and command show, the footer reads `To start: tell git who you
-  are`, and Check again checks the folder anew
+  are`, and Check again checks the folder anew: until the answer the text stays and the
+  button reads `Checking…`, off with the focus on it

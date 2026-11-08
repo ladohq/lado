@@ -1580,12 +1580,18 @@ connection, above).
   reason `looks like a secret`, `<size>, larger than 50 MB`, `a separate git repository`,
   that one off; a ticked secret's row reads `Will be saved in the history.`), and the count
   follows the ticks. Do it yourself shows `Run in this folder, then choose it again:` and the
-  command, rebuilt from the ticks with the core's quoting (`setupCommand`, `shellQuote`),
-  with Copy. Refusals: `Choose a smaller folder: this is your home folder.`, `… this one holds
-  over 20,000 files.` or `… over 2 GB.`, `Choose another folder: git cannot read all of it
-  (<git's line>).`; git's missing author: `Git doesn't know who you are yet. Tell it once for
-  this computer:` with the command, Copy and **Check again** (in LADO's container the `.env`
-  text and no Check again). While it is checked again the panel reads `Counting files…`. The
+  command, put together from the ticks with the core's line of each path left out
+  (`LeftOutInfo.line`) and its rest (`SetupInfo.make`): the window quotes nothing itself
+  (`setupCommand`), with Copy. Refusals: `Choose a smaller folder: this is your home
+  folder.`, `… this one holds over 20,000 files.` or `… over 2 GB.` (the limit is
+  `SetupInfo.max_files`), `Choose another folder: git cannot read all of it (<git's line>).`,
+  `Choose another folder, or rename <name>: LADO cannot leave out a name with a line break or
+  bytes that are no text.` (`odd_name`); git's missing author: `Git doesn't know who you are
+  yet. Tell it once for this computer:` with the command, Copy and **Check again** (in LADO's
+  container the `.env` text and no Check again). The window cannot know a folder is plain
+  before its check answers (`checking…`, `wait for the check`); checked again (Check again, a
+  refused set-up), the last answer stays in place: the author's text with `Checking…` (off,
+  the focus kept), else `Counting files…`, and a failed ask shows its error. The
   button **Set up and start in <folder>** sends `where: {kind: "setup", path, include}`;
   the server sets the folder up (`setup.make`: one commit, the left-out paths not ticked
   appended to `.gitignore`, rolled back on a failure) and starts as for a folder.
@@ -1655,9 +1661,11 @@ connection, above).
   race) opens Team, shows the core's text under Session name (`aria-invalid`, the focus
   there) and offers **Use <next>**.
 - **The footer**: while the main button is off, `To start: ` and what is missing as links
-  that focus their field, opening Team when needed (choose a place, name the folder, choose
-  an agent, choose a team setup, choose a smaller folder, tell git who you are, wait for the
-  count, wait for the check, fix the model, shorten the task, log in to `<CLI>`); **Cancel** a
+  that focus their field, opening Team when needed (choose a place, wait for the check, name
+  the folder, wait for the agent CLIs, choose an agent (also when their list failed), choose
+  a team setup, choose a smaller folder, choose another folder, tell git who you are, wait
+  for the count, fix the model, shorten the task, log in to `<CLI>`); Enter in a field does
+  what the blue button does (beside a stopped session with no task, Resume); **Cancel** a
   text button (Cancel clone while a clone runs); the start button naming the place: **Start
   in <folder>**, **Start in <title>**, **Clone and start in <folder>**, **Create and start**,
   **Set up and start in <folder>**. While it works the button keeps the focus (`aria-disabled`,
@@ -1665,7 +1673,8 @@ connection, above).
   puts the focus on the field to fix, else on the refusal (`role="alert"`), never on the
   page's body. On a phone two actions are a column, Resume on top, and × closes.
 - **The draft**: Esc, ×, Cancel keep Where's choice, Task and Team's fields in
-  `LaunchProvider`'s state for the next opening (the model's choice is not kept); a start
+  `LaunchProvider`'s state for the next opening (the Model field's choice too, for the agent
+  CLI it was made for); a start
   clears them, a reload of the page loses them.
 - **Info buttons** (`InfoTip.tsx`): a 16 px (i) in a 24 px target (44 px on a phone) beside a
   label, `About <field>`, `aria-expanded`; a press, Enter or Space opens and closes it, its

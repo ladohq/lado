@@ -51,7 +51,8 @@ buttons keep their places; Enter in Task is a new line, never a submit. `Resume 
 `POST /api/sessions/{name}/resume` with the Team fields the human changed and `prompt` = Task,
 as the Resume window does.
 
-**D6. The draft lives in `LaunchProvider`'s state.** Where's choice, Task and the Team fields of
+**D6. The draft lives in `LaunchProvider`'s state.** Where's choice, Task and the Team fields
+(the Model field's choice too, for the agent CLI it was made for) of
 the New session window are kept in the provider's React state when the window closes without a
 start, and cleared by a start; a reload of the page clears them (the human's answer #4841: "until
 the start or a reload"). The Resume window keeps none: it opens from the session.
@@ -79,15 +80,22 @@ the author check (`scratch.author_problem`), `git init`, the branch as `scratch.
 left-out paths not in `include` appended to `.gitignore` (made when missing), `git add -A`, one
 commit `First commit` with no signing and no hooks. A failure removes the `.git` it made and
 puts `.gitignore` back as it was (its bytes kept before the write, or removed when new):
-`SetupError` with git's line. `include` naming a `repository` item is refused.
+`SetupError` with git's line. `include` naming a `repository` item, or a path the preview does
+not leave out, is refused (`bad_include`), a folder in git too (`not_plain`). The preview also
+refuses a folder git cannot list whole (`unreadable`, git's line) and one holding a path to
+leave out whose name has a line break or bytes that are no UTF-8 (`odd_name`): no `.gitignore`
+line can hold the one, no text the other. A refused preview lists nothing left out.
 
 **D9. The set-up's API.** `GET /api/folders` gains `setup: SetupInfo | None` for a folder whose
 check is `not_repo` and that is not empty (`scratch` false): `{files, bytes, left_out:
-[{path, reason, size}], refusal: {kind, files, bytes} | null, author: ScratchProblem | null,
-command}`, `command` the "Do it yourself" line built by the core from the left-out list
-(`printf '%s\n' <quoted paths> >> .gitignore && ` + `NOT_REPO_HINT`'s command); the window
-rebuilds it from the ticks with the same quoting (`shlex.quote` rules, ported). The preview runs
-in the request's thread pool; the window shows "Counting files…" until it answers. `POST
+[{path, reason, size, line}], refusal: {kind, files, bytes, line} | null, author:
+ScratchProblem | null, make, max_files}`: each left-out path's `line` is its `.gitignore`
+line quoted for the shell by the core (`setup.shell_line`), `make` the command after them
+(`NOT_REPO_HINT`'s), so the window builds "Do it yourself" from the ticks as `printf '%s\n'
+<lines> >> .gitignore && <make>` with no quoting of its own (one source: the core). The
+preview runs in the request's thread pool; the window cannot know a folder is outside git
+before the check answers, so it shows "checking…" first, and "Counting files…" only while a
+plain folder is checked again (Check again keeps the author's text, "Checking…"). `POST
 /api/sessions` takes `where: {kind: "setup", path, include: [..]}`: the server runs
 `setup.make`, then starts as for a folder; a refusal before the commit is 400 with nothing left
 behind; a start refused after it switches the window to that folder (now a repository) with

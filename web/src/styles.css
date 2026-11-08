@@ -2300,10 +2300,12 @@ h3 {
   min-width: 0;
 }
 
-/* Above 900 px `.content` scrolls, under the top bar; at or under it the window does. */
+/* Above 900 px `.content` scrolls, under the top bar, and its own padding is above the list: at
+   0 it sticks where it stands, on a short page too (LAD-244). At or under 900 px the window
+   scrolls. */
 .snav {
   position: sticky;
-  top: 28px;
+  top: 0;
 }
 
 .snav ul {

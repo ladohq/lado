@@ -104,6 +104,7 @@ def test_each_page_beside_the_list(browser: Browser, clis, saved, server, shot, 
         expect(page).to_have_url(f"{server['url']}/settings/general")  # a computer opens General
         sections = page.get_by_role("navigation", name="Settings sections")
         expect(sections.get_by_role("link")).to_have_text(list(PAGES.values()))
+        tops = {}
         for slug, name in PAGES.items():
             sections.get_by_role("link", name=name).click()
             expect(page).to_have_url(f"{server['url']}/settings/{slug}")
@@ -127,7 +128,10 @@ def test_each_page_beside_the_list(browser: Browser, clis, saved, server, shot, 
             no_sideways_scroll(page)
             box = sections.bounding_box()
             assert box and box["width"] == (232 if size == "computer" else 196), box
+            tops[slug] = box["y"]
             shot(page, f"{slug}-{size}-{theme}")
+        # The list stands still whichever page is open, a short one too (LAD-244).
+        assert len(set(tops.values())) == 1, tops
     finally:
         context.close()
 

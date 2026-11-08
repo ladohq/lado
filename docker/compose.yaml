@@ -25,7 +25,7 @@
 #   docker compose up -d
 #   docker compose exec lado lado ui --no-open               # the UI's link with its token
 #
-# The agent CLIs' logins: first the UI's Settings → Agent CLIs and environment, which logs
+# The agent CLIs' logins: first the UI's Settings → Agent CLIs, which logs
 # Claude Code, Codex, OpenCode and Kilo in from the page (a phone too: Codex by a sign-in
 # code) and keeps Claude Code's token and Codex's token or key; the ways below are for the
 # terminal.

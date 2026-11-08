@@ -125,10 +125,20 @@ export const KitsIcon = () => (
   </Icon>
 );
 
+// A cogwheel with eight teeth: Settings on the rail and its General section.
 export const SettingsIcon = () => (
   <Icon>
+    <path d="M21.02 10.17L21.02 13.83L18.46 14.43L18.29 14.85L19.67 17.08L17.08 19.67L14.85 18.29L14.43 18.46L13.83 21.02L10.17 21.02L9.57 18.46L9.15 18.29L6.92 19.67L4.33 17.08L5.71 14.85L5.54 14.43L2.98 13.83L2.98 10.17L5.54 9.57L5.71 9.15L4.33 6.92L6.92 4.33L9.15 5.71L9.57 5.54L10.17 2.98L13.83 2.98L14.43 5.54L14.85 5.71L17.08 4.33L19.67 6.92L18.29 9.15L18.46 9.57Z" />
     <circle cx="12" cy="12" r="3" />
-    <path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4 18 18M6 18l1.6-1.6M16.4 7.6 18 6" />
+  </Icon>
+);
+
+// A question mark in a circle: Help on the rail.
+export const HelpIcon = () => (
+  <Icon>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M9.7 9.6a2.4 2.4 0 1 1 3.3 2.2c-.6.3-1 .8-1 1.5v.6" />
+    <path d="M12 16.6v.1" />
   </Icon>
 );
 

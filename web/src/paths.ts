@@ -59,12 +59,16 @@ export const projectPath = (id: string) => `/projects/${encodeURIComponent(id)}`
 // The Needs you page (NeedsYou.tsx), whose rail link counts what waits.
 export const NEEDS_YOU_PATH = "/needs-you";
 
-// Settings' section of the agent CLIs' logins (Providers.tsx): the page scrolls to it.
-export const PROVIDERS_ANCHOR = "providers-and-environment";
-export const PROVIDERS_PATH = `/settings#${PROVIDERS_ANCHOR}`;
+// Settings' pages (Settings.tsx, settingsSections.ts). Agent CLIs scrolls to a CLI's row at
+// #<provider name> and focuses its login button (Providers.tsx).
+export const GENERAL_PATH = "/settings/general";
+export const MODEL_SERVERS_PATH = "/settings/model-servers";
+export const STATISTICS_PATH = "/settings/statistics";
+export const agentClisPath = (cli?: string) => `/settings/agent-clis${cli ? `#${encodeURIComponent(cli)}` : ""}`;
 
-// Settings' section of the configured models and model servers (ModelSettings.tsx).
-export const MODELS_ANCHOR = "models";
+// Help's links on the rail (Shell.tsx); GITHUB also in the system panel and Report a bug.
+export const DOCS_URL = "https://github.com/ladohq/lado#readme";
+export const GITHUB = "https://github.com/ladohq/lado";
 
 // A card in the session's chat: the chat scrolls to the element of that id.
 export const chatPath = (session: string, anchor?: string) =>

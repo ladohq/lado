@@ -84,7 +84,7 @@ errors, none older than 30 days).
 
 Any of:
 
-- Settings → Usage statistics → Don't send
+- Settings → Statistics → Don't send
 - `lado telemetry off` (it also drops what waits)
 - `DO_NOT_TRACK=1` or `LADO_TELEMETRY=0` in the environment of LADO (the UI server's for the
   UI): nothing is sent, whatever the choice

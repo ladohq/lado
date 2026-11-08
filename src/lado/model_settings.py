@@ -73,7 +73,7 @@ MODEL_FIELD = "model"
 class Refused(Exception):
     """Why a command on the entries changed nothing, one line; `hint` what the human can try
     ("" for none); `field` the field it concerns; `page` and `page_hint` the line and the
-    hint for Settings → Models, which names no command (None: the same as the command's).
+    hint for Settings' pages, which name no command (None: the same as the command's).
     For the launch window: `window` the line under its Model field, `short` the same for a
     line that points there, `peek` a few words for the folded Advanced (None: `page`,
     `window`, REFUSED_PEEK), `retry` whether a new check can help."""
@@ -144,7 +144,7 @@ def _server_taken(name: str) -> Refused:
         f'a model server "{name}" is saved already; to change its address or key: '
         f'lado model-server add "{name}" <address> [--key] --replace',
         field=NAME,
-        page=f'a model server "{name}" is saved already; its Change sets another address or key',
+        page=f'A model server "{name}" is saved already; its Change sets another address or key',
     )
 
 
@@ -696,7 +696,7 @@ def check_default(
         if name in own or saved.name in own:
             raise Refused(
                 f'"{saved.name}" is both a saved model of {provider.title} and one of its own; '
-                "rename the saved one: Settings → Models",
+                "rename the saved one: Settings → Model servers",
                 field=MODEL_FIELD,
             )
         return state.ModelRef(cli, saved.id, None), None
@@ -776,7 +776,7 @@ def _external(saved: state.ConfiguredModel, source: str) -> StartModel:
 
 def start_model(power: state.PowerTable | None, provider: providers.Provider) -> StartModel:
     """What an agent of `provider`'s CLI in a session with the table `power` starts on, read
-    now: its table's row when it is of that CLI, else the CLI's default of Settings → Models,
+    now: its table's row when it is of that CLI, else the CLI's default of Settings → Agent CLIs,
     else the CLI's choice. Reads lado.db only. Refused for a table that cannot be read."""
     note = None
     if power is not None:
@@ -1248,7 +1248,7 @@ def _model_taken(name: str) -> Refused:
     return Refused(
         f'a model "{name}" is saved already; remove it first: lado model remove "{name}"',
         field=NAME,
-        page=f'the name is taken by the model "{name}"',
+        page=f'The name is taken by the model "{name}"',
     )
 
 

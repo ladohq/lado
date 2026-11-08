@@ -13,7 +13,7 @@ generate nothing, with one clear line for each way it can fail and the key kept 
 LM Studio, OpenAI-compatible or Anthropic-compatible), its models, the agent CLIs that can
 use it with the API each uses, and each CLI that cannot with the API it lacks, and exit 0.
 The CLIs SHALL come in LADO's one order of the agent CLIs (Claude Code, Codex CLI, Kilo CLI,
-OpenCode), the order of Settings → Models. `lado model-server` alone SHALL print its help.
+OpenCode), the order of Settings → Agent CLIs. `lado model-server` alone SHALL print its help.
 Nothing else in LADO SHALL change.
 
 #### Scenario: An Ollama server that speaks two APIs
@@ -558,12 +558,12 @@ added, `/v1` and `/` dropped at the end), their scheme, host ignoring case, port
 A probe SHALL give why a server has no list of models only when it has none: when the list
 asked without `anthropic-version` fails and the one asked with it gives the models, the
 probe SHALL have those models and no why. Every place that shows the why (`lado
-model-server probe` and `add`, Settings → Models) SHALL show it only with no list.
+model-server probe` and `add`, Settings → Model servers) SHALL show it only with no list.
 
 #### Scenario: An Anthropic API that lists its models only with its version header
 - **WHEN** the server refuses `GET /v1/models` without `anthropic-version` with 400 and
   lists `claude-x` in Anthropic's shape with it
-- **THEN** the probe has the models `claude-x` and no why, and Settings → Models shows
+- **THEN** the probe has the models `claude-x` and no why, and Settings → Model servers shows
   `claude-x` with no `no list` reason
 
 #### Scenario: A list that fails both ways
@@ -691,9 +691,9 @@ An API whose POST got no answer even the second time SHALL be neither proven nor
 - **THEN** it is sent once more with the late POSTs, and a control refused the same way proves nothing as before
 
 #### Scenario: Settings → Models
-- **WHEN** a probe of Settings → Models, in its form or of a saved server, meets a late API
+- **WHEN** a probe of Settings → Model servers, in its form or of a saved server, meets a late API
 - **THEN** the probe's `apis_why` names it, once, and the page reads `⚠ APIs: cannot be told:` with those words
 
 #### Scenario: Trying again
-- **WHEN** the check of a model in Settings → Models met a late API and the server answers now
+- **WHEN** the check of a model in Settings → Model servers met a late API and the server answers now
 - **THEN** the next check asks the server anew: a probe with a late API is not kept

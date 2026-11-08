@@ -9,7 +9,7 @@
 #     ghcr.io/ladohq/lado:<version>
 #   docker exec lado lado ui --no-open            # the UI's link with its token
 #
-# The agent CLIs' logins: first the UI's Settings → Agent CLIs and environment (Claude
+# The agent CLIs' logins: first the UI's Settings → Agent CLIs (Claude
 # Code, Codex, OpenCode and Kilo, from a phone too; it keeps Claude Code's token and
 # Codex's token or key).
 #

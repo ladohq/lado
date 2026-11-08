@@ -3,21 +3,22 @@
 // its key, so several LADO tabs show one. Off by default; turned on from Needs you or
 // Settings, which ask the browser's permission; what the browser refuses is said in words.
 // The notifier lives in the shell, so it works on every page.
-import { useEffect, useRef, useSyncExternalStore } from "react";
-import { Link, useNavigate } from "react-router";
+import { useEffect, useId, useRef, useSyncExternalStore } from "react";
+import { Link, useLocation, useNavigate } from "react-router";
 
 import { useLive, useLiveStore } from "./live";
+import { GENERAL_PATH } from "./paths";
 import { storedNotifications, storeNotifications } from "./prefs";
 import { labelOf } from "./sessionLabel";
 import { waitingTarget, waitingText } from "./waiting";
 
-const UNSUPPORTED = "This browser cannot show notifications.";
-const INSECURE =
-  "The browser shows notifications only on a secure page: open LADO at the address lado ui prints (127.0.0.1 or localhost).";
+// Settings → General and Needs you say them alike.
+const UNSUPPORTED = "Not supported by this browser.";
+const INSECURE = "Needs a secure page: open LADO at 127.0.0.1 or localhost.";
 const DENIED =
-  "The browser blocks notifications for this page: allow them in the site's settings (the icon left of the address), then turn them on again.";
-const DISMISSED = "The browser did not allow notifications: turn them on again and allow them.";
-const ASK_AGAIN = "The browser asks again before it shows notifications: turn them on again and allow them.";
+  "Blocked by the browser: allow them in the site settings (icon left of the address), then switch on again.";
+const DISMISSED = "Not allowed: switch on again and allow them.";
+const ASK_AGAIN = "The browser asks again: switch on and allow them.";
 
 type Support = "ok" | "unsupported" | "insecure";
 
@@ -86,7 +87,7 @@ export function NotificationsOffer() {
   if (on) {
     return (
       <p className="notify-offer muted">
-        Browser notifications are on. <Link to="/settings">Settings</Link>
+        Browser notifications are on. <Link to={`${GENERAL_PATH}#notifications`}>Settings</Link>
         {problem && <span className="field-problem"> {problem}</span>}
       </p>
     );
@@ -102,26 +103,54 @@ export function NotificationsOffer() {
   );
 }
 
-// In Settings: the switch.
+// In Settings → General: the row with its switch, #notifications; a link there (Needs you's
+// Settings) scrolls to it and focuses the switch.
 export function NotificationsSetting() {
   const { on, problem, possible } = useNotifications();
+  // A browser with no notifications (an iPhone's Safari) leaves nothing to fix: a grey line
+  // under the description, not a refusal.
+  const none = problem === UNSUPPORTED;
+  const id = useId();
+  const row = useRef<HTMLDivElement>(null);
+  const toggle = useRef<HTMLInputElement>(null);
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (hash !== "#notifications") return;
+    row.current?.scrollIntoView({ block: "center" });
+    toggle.current?.focus({ preventScroll: true });
+  }, [hash]);
   return (
-    <>
-      <label className="switch setting-switch">
-        <input
-          type="checkbox"
-          checked={on}
-          disabled={!possible}
-          onChange={(event) => void (event.target.checked ? enable() : disable())}
-        />
-        Browser notifications
-      </label>
-      <p className="muted">
-        One notification for each new thing that waits for you (a gate, a question, an agent), while this tab is in
-        the background. A click brings you to it. No sound.
-      </p>
-      {problem && <p className="field-problem">{problem}</p>}
-    </>
+    <div className="srow" id="notifications" ref={row}>
+      <div className="srow-text">
+        <label className="srow-name" htmlFor={`${id}-switch`}>
+          Browser notifications
+        </label>
+        <p className="srow-desc" id={`${id}-desc`}>
+          When something waits for you and this tab is hidden.
+        </p>
+        {none && <p className="srow-desc">{UNSUPPORTED}</p>}
+      </div>
+      <div className="srow-ctl">
+        <span className="sw-hit">
+          <input
+            ref={toggle}
+            id={`${id}-switch`}
+            className="sw"
+            type="checkbox"
+            role="switch"
+            aria-describedby={`${id}-desc`}
+            checked={on}
+            disabled={!possible}
+            onChange={(event) => void (event.target.checked ? enable() : disable())}
+          />
+        </span>
+      </div>
+      {problem && !none && (
+        <div className="srow-problem">
+          <p className="field-problem">{problem}</p>
+        </div>
+      )}
+    </div>
   );
 }
 

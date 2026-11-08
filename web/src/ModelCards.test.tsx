@@ -1,10 +1,14 @@
-// Settings → Models' cards of the agent CLIs: the default model on each, what the page reads and
-// when, and removing what is a default. The rename, × and Undo of a model: ModelSettings.test.tsx.
+// A CLI's default model in its row on Settings → Agent CLIs (CliDefault.tsx): the picker, what
+// it reads and when, its warnings and their ways out; and on Model servers, removing what is a
+// default and what LADO's server not answering does there. The table's rename, × and Undo:
+// ModelSettings.test.tsx.
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useEffect, useState } from "react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { LADO_DOWN } from "./api";
+import { getProviderLogins, LADO_DOWN, type ProviderLogins } from "./api";
+import { CliDefault } from "./CliDefault";
 import { MODEL_DEBOUNCE } from "./Launch";
 import {
   builtinDefault,
@@ -16,7 +20,8 @@ import {
   ModelServer,
   refusal,
 } from "./modelFakes";
-import { LEAD, LEAD_NO_MODELS, ModelSettings, UNDO_MS } from "./ModelSettings";
+import { ModelSettings, UNDO_MS } from "./ModelSettings";
+import { useModelSettings } from "./useModelSettings";
 
 let server: ModelServer;
 
@@ -31,7 +36,25 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// Each CLI's default as Agent CLIs' rows hold it, a group per CLI (Providers.test.tsx: the rows).
+function Defaults() {
+  const settings = useModelSettings();
+  const [rows, setRows] = useState<ProviderLogins[]>([]);
+  useEffect(() => {
+    void getProviderLogins().then((page) => setRows(page.providers));
+  }, []);
+  return rows.map((row) => (
+    <div key={row.cli.name} role="group" aria-label={row.cli.title}>
+      <CliDefault row={row} settings={settings} />
+    </div>
+  ));
+}
+
 function mount() {
+  return render(<Defaults />);
+}
+
+function mountPage() {
   return render(
     <MemoryRouter>
       <ModelSettings />
@@ -40,57 +63,25 @@ function mount() {
 }
 
 const card = (title: string) => screen.findByRole("group", { name: title });
+const table = () => screen.findByRole("table", { name: "Your models" });
 const field = (title: string) => screen.findByRole("combobox", { name: `Default model of ${title}` });
-const names = (where: HTMLElement) =>
-  within(where)
-    .queryAllByRole("button", { name: /^Rename / })
-    .map((b) => b.textContent);
 const reads = () => server.calls.filter((c) => c.path.includes("/model-choices"));
 const probes = () => server.calls.filter((c) => c.path.endsWith("/probe"));
 
 const QWEN = model("Локальная Qwen", "opencode", "OpenCode", "qwen3-8b");
 const CODER = model("Рабочая Qwen", "opencode", "OpenCode", "qwen3-coder-30b");
 
-test("a card per agent CLI: the installed ones in LADO's order, then the others, each on its settings", async () => {
-  server.logins = [kiloRow(false), ...server.logins.slice(0, 3)];
+test("each installed CLI has its picker, on its settings, whatever its login; one not installed has none", async () => {
+  server.logins = [...server.logins.slice(0, 3), kiloRow(false)];
   mount();
-  await card("Claude Code");
-  const titles = screen.getAllByRole("group").map((g) => g.getAttribute("aria-label"));
-  expect(titles).toEqual(["Claude Code", "Codex CLI", "OpenCode", "Kilo CLI"]);
-  expect((await field("OpenCode")).textContent).toContain("OpenCode's settings");
-  expect(within(await card("Claude Code")).getByText("logged in")).toBeTruthy();
-  expect(within(await card("OpenCode")).queryByRole("table")).toBeNull();
+  await card("Kilo CLI");
+  for (const title of ["Claude Code", "Codex CLI", "OpenCode"])
+    expect((await field(title)).textContent).toContain(`${title}'s settings`);
+  expect(within(await card("Kilo CLI")).queryByRole("combobox")).toBeNull();
+  expect((await card("Kilo CLI")).textContent).toBe("");
 });
 
-test("the blocks are Your agent CLIs then Model servers; the lead says how to add models", async () => {
-  mount();
-  await card("Claude Code");
-  expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
-    "Your agent CLIs",
-    "Model servers ",
-  ]);
-  expect(screen.getByText(LEAD_NO_MODELS)).toBeTruthy();
-  cleanup();
-  server.entries = { ...server.entries, models: [QWEN], servers: [LMSTUDIO] };
-  mount();
-  await card("OpenCode");
-  expect(screen.getByText(LEAD)).toBeTruthy();
-  expect(LEAD).toMatch(/^New sessions and workers of each agent CLI start on its default model\. /);
-  expect(LEAD_NO_MODELS).toMatch(/^New sessions and workers of each agent CLI start on its default model\. /);
-});
-
-test("a model of a CLI LADO does not know has a card of its own, its field off", async () => {
-  server.entries = {
-    ...server.entries,
-    models: [model("Старая", "gemini", "gemini", "g-1")],
-    servers: [LMSTUDIO],
-  };
-  mount();
-  await card("gemini");
-  expect(((await field("gemini")) as HTMLButtonElement).disabled).toBe(true);
-});
-
-test("opening the page reads only the lists of built-in defaults, and no server", async () => {
+test("opening the rows reads only the lists of built-in defaults, and no server", async () => {
   server.entries = {
     models: [QWEN],
     servers: [LMSTUDIO],
@@ -122,49 +113,6 @@ test("an older read that answers late changes nothing: the latest list stands", 
   server.lists.opencode = {}; // the older read, answering last: it is not
   await act(async () => answers[0]());
   expect(within(opencode).queryByText(/no longer lists/)).toBeNull();
-});
-
-test("a card's models: the default first, the others by name, under Your models <n>", async () => {
-  const alpha = model("Alpha", "opencode", "OpenCode", "m-a");
-  server.entries = {
-    models: [alpha, QWEN, CODER],
-    servers: [LMSTUDIO],
-    defaults: [externalDefault(CODER)],
-  };
-  mount();
-  const opencode = await card("OpenCode");
-  expect(names(opencode)).toEqual(["Рабочая Qwen", "Alpha", "Локальная Qwen"]);
-  expect(within(opencode).getByText("Your models")).toBeTruthy();
-  expect(within(opencode).getByRole("table", { name: "Your models on OpenCode" })).toBeTruthy();
-});
-
-const nine = () => "abcdefghi".split("").map((c) => model(`m-${c}`, "opencode", "OpenCode", `id-${c}`));
-
-test("more than five models fold to five with the default among them; the state lasts through a reload", async () => {
-  const models = nine();
-  server.entries = { models, servers: [LMSTUDIO], defaults: [externalDefault(models[8])] };
-  mount();
-  const opencode = await card("OpenCode");
-  expect(names(opencode)).toEqual(["m-i", "m-a", "m-b", "m-c", "m-d"]);
-  const more = within(opencode).getByRole("button", { name: "Show all 9 models" });
-  expect(more.getAttribute("aria-expanded")).toBe("false");
-  more.focus();
-  fireEvent.click(more);
-  expect(names(opencode)).toHaveLength(9);
-  const fewer = within(opencode).getByRole("button", { name: "Show fewer" });
-  expect(fewer).toBe(more);
-  expect(document.activeElement).toBe(fewer);
-  fireEvent.click(within(opencode).getByRole("button", { name: "Remove m-a" }));
-  await within(opencode).findByRole("button", { name: "Undo" });
-  expect(names(opencode)).toHaveLength(8); // no removal folds it
-});
-
-test("exactly five models do not fold", async () => {
-  server.entries = { ...server.entries, models: nine().slice(0, 5), servers: [LMSTUDIO] };
-  mount();
-  const opencode = await card("OpenCode");
-  expect(names(opencode)).toHaveLength(5);
-  expect(within(opencode).queryByRole("button", { name: /^Show/ })).toBeNull();
 });
 
 test("a pick saves at once by reference and keeps the focus on the field", async () => {
@@ -203,7 +151,7 @@ test("a refused pick shows under the field as an alert, the value as it was", as
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
 });
 
-test("a built-in default the list lost stays on the card with its warning and a way out", async () => {
+test("a built-in default the list lost stays in the row with its warning and a way out", async () => {
   server.entries = { ...server.entries, defaults: [builtinDefault("opencode", "old/model")] };
   mount();
   const opencode = await card("OpenCode");
@@ -218,7 +166,7 @@ test("a built-in default the list lost stays on the card with its warning and a 
   expect(document.activeElement).toBe(await field("OpenCode"));
 });
 
-test("a list that cannot be read: the card warns of a built-in default with Check again", async () => {
+test("a list that cannot be read: the row warns of a built-in default with Check again", async () => {
   server.lists.opencode = { models: null, why: "`opencode models` timed out", other_name: true };
   server.entries = { ...server.entries, defaults: [builtinDefault("opencode", "a/one")] };
   mount();
@@ -240,13 +188,12 @@ test("a silent server shows on opening the picker, and stays until Check again f
   expect(within(opencode).queryByText(/does not answer/)).toBeNull(); // the page asks no server
   fireEvent.click(await field("OpenCode"));
   const line = await within(opencode).findByText(
-    "⚠ LM Studio дома does not answer (connection refused); Локальная Qwen is on it. Start the server or pick another model.",
+    "⚠ LM Studio дома does not answer (connection refused). Start it or pick another model.",
   );
   expect(probes()).toHaveLength(1);
   fireEvent.keyDown(await field("OpenCode"), { key: "Escape" });
   expect(line.isConnected).toBe(true);
   expect(server.of("DELETE", "/api/model-defaults")).toEqual([]);
-  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
   server.probes[LMSTUDIO.name] = { ...LMSTUDIO_PROBE, models: ["qwen3-8b"] };
   fireEvent.click(within(opencode).getByRole("button", { name: "Check again" }));
   await waitFor(() => expect(within(opencode).queryByText(/does not answer/)).toBeNull());
@@ -300,7 +247,7 @@ test("each server of the CLI's models is asked once per opening", async () => {
   await waitFor(() => expect(probes()).toHaveLength(2));
 });
 
-test("the card says an external default takes the whole process, by the provider's word", async () => {
+test("the row says an external default takes the whole process, by the provider's word", async () => {
   const gateway = model("Шлюз Opus", "claude", "Claude Code", "claude-opus-4-5", "work");
   server.entries = {
     models: [gateway],
@@ -318,28 +265,18 @@ test("the card says an external default takes the whole process, by the provider
   expect(screen.queryByText(/takes the whole process/)).toBeNull();
 });
 
-test("a CLI not installed: the field shows its value, does not open, and the default clears", async () => {
+test("a CLI not installed with a default: one line that it cannot run, and its settings clear it", async () => {
   server.logins = [...server.logins.slice(0, 3), kiloRow(false)];
   const saved = model("Qwen в Kilo", "kilo", "Kilo CLI", "qwen3-8b");
   server.entries = { models: [saved], servers: [LMSTUDIO], defaults: [externalDefault(saved)] };
   mount();
   const kilo = await card("Kilo CLI");
-  expect(await within(kilo).findByText("⚠ not installed: its default model cannot run")).toBeTruthy();
-  const off = (await field("Kilo CLI")) as HTMLButtonElement;
-  expect(off.disabled).toBe(true);
-  expect(off.textContent).toContain("Qwen в Kilo");
+  expect(await within(kilo).findByText("Default model: Qwen в Kilo — cannot run: not installed")).toBeTruthy();
+  expect(within(kilo).queryByRole("combobox")).toBeNull();
   expect(reads()).toEqual([]);
-  expect(within(kilo).getByRole("button", { name: "Rename Qwen в Kilo" })).toBeTruthy();
   fireEvent.click(within(kilo).getByRole("button", { name: "Use Kilo CLI's settings" }));
-  await within(kilo).findByText("⚠ not installed: its models cannot run");
-  expect(off.textContent).toContain("Kilo CLI's settings");
-});
-
-test("a CLI not installed with nothing saved says only that", async () => {
-  server.logins = [...server.logins.slice(0, 3), kiloRow(false)];
-  mount();
-  const kilo = await card("Kilo CLI");
-  expect(await within(kilo).findByText("⚠ not installed")).toBeTruthy();
+  await waitFor(() => expect(kilo.textContent).toBe(""));
+  expect(server.of("DELETE", "/api/model-defaults/kilo")).toHaveLength(1);
 });
 
 test("Other name: a field with the search's text, the check once the typing settles, Use sets it", async () => {
@@ -387,361 +324,6 @@ test("Other name: Cancel closes it with the focus on the field, a refused name t
   expect(document.activeElement).toBe(await field("OpenCode"));
 });
 
-// Removing what is a default.
-
-test("× on a default asks in place, the focus on Cancel; Cancel and Esc keep the model", async () => {
-  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
-  mount();
-  const opencode = await card("OpenCode");
-  const remove = within(opencode).getByRole("button", { name: "Remove Локальная Qwen" });
-  fireEvent.click(remove);
-  const question = within(opencode).getByRole("alertdialog");
-  expect(question.textContent).toContain(
-    "Remove Локальная Qwen? It is OpenCode's default model: OpenCode goes back to its settings.",
-  );
-  const cancel = within(question).getByRole("button", { name: "Cancel" });
-  await waitFor(() => expect(document.activeElement).toBe(cancel));
-  fireEvent.click(cancel);
-  expect(within(opencode).queryByRole("alertdialog")).toBeNull();
-  const again = within(opencode).getByRole("button", { name: "Remove Локальная Qwen" });
-  await waitFor(() => expect(document.activeElement).toBe(again));
-  fireEvent.click(again);
-  fireEvent.keyDown(within(opencode).getByRole("alertdialog"), { key: "Escape" });
-  expect(within(opencode).queryByRole("alertdialog")).toBeNull();
-  expect(server.of("DELETE", "/api/models/")).toEqual([]);
-});
-
-test("× on any other model asks nothing", async () => {
-  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
-  mount();
-  const opencode = await card("OpenCode");
-  fireEvent.click(within(opencode).getByRole("button", { name: "Remove Рабочая Qwen" }));
-  await within(opencode).findByRole("button", { name: "Undo" });
-  expect(within(opencode).queryByRole("alertdialog")).toBeNull();
-});
-
-test("a default removed says the CLI is back on its settings; Undo brings the model and the default back", async () => {
-  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
-  mount();
-  const opencode = await card("OpenCode");
-  fireEvent.click(within(opencode).getByRole("button", { name: "Remove Локальная Qwen" }));
-  fireEvent.click(within(opencode).getByRole("button", { name: "Remove model" }));
-  const undo = await within(opencode).findByRole("button", { name: "Undo" });
-  expect(undo.closest("[role=row]")?.textContent).toContain(
-    "Removed Локальная Qwen. OpenCode is back on its settings.",
-  );
-  expect((await field("OpenCode")).textContent).toContain("OpenCode's settings");
-  fireEvent.click(undo);
-  await within(opencode).findByRole("button", { name: "Rename Локальная Qwen" });
-  await waitFor(async () => expect((await field("OpenCode")).textContent).toContain("Локальная Qwen"));
-  const added = server.entries.models.find((m) => m.name === QWEN.name);
-  expect(server.of("PUT", "/api/model-defaults/opencode")[0].body).toEqual({ external: added?.id });
-});
-
-test("Undo of a default whose second call is refused: the model is back, the row says why", async () => {
-  server.entries = { models: [QWEN], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
-  server.answers["PUT /api/model-defaults/opencode"] = () => refusal("OpenCode is not installed", "cli");
-  mount();
-  const opencode = await card("OpenCode");
-  fireEvent.click(within(opencode).getByRole("button", { name: "Remove Локальная Qwen" }));
-  fireEvent.click(within(opencode).getByRole("button", { name: "Remove model" }));
-  fireEvent.click(await within(opencode).findByRole("button", { name: "Undo" }));
-  const row = (await within(opencode).findByRole("button", { name: "Rename Локальная Qwen" })).closest("[role=row]");
-  await waitFor(() => expect(row?.textContent).toContain("OpenCode is not installed"));
-});
-
-test("a default gone with its server says so on the card until the next change", async () => {
-  server.entries = { models: [QWEN], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
-  mount();
-  const opencode = await card("OpenCode");
-  fireEvent.click(within(screen.getByRole("list")).getByRole("button", { name: `Remove ${LMSTUDIO.name}` }));
-  const question = await screen.findByRole("alertdialog");
-  await waitFor(() =>
-    expect(question.textContent).toContain(
-      "Remove LM Studio дома and its 1 model: Локальная Qwen? Локальная Qwen is OpenCode's default model: OpenCode goes back to its settings.",
-    ),
-  );
-  const confirm = within(question).getByRole("button", { name: "Remove server and 1 model" }) as HTMLButtonElement;
-  await waitFor(() => expect(confirm.disabled).toBe(false));
-  fireEvent.click(confirm);
-  await within(opencode).findByText("Its default model Локальная Qwen was removed with LM Studio дома.");
-  expect((await field("OpenCode")).textContent).toContain("OpenCode's settings");
-  fireEvent.click(await field("OpenCode"));
-  fireEvent.click(await screen.findByRole("option", { name: "a/one" }));
-  await waitFor(() => expect(within(opencode).queryByText(/was removed with/)).toBeNull());
-});
-
-test("a default removed elsewhere with its server shows the same line at the next reload", async () => {
-  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
-  mount();
-  const opencode = await card("OpenCode");
-  server.entries = { models: [], servers: [], defaults: [] };
-  fireEvent.click(within(opencode).getByRole("button", { name: "Remove Рабочая Qwen" }));
-  await within(opencode).findByText("Its default model Локальная Qwen was removed with LM Studio дома.");
-});
-
-test("two defaults on a server: one sentence names them both", async () => {
-  const kilo = model("Qwen в Kilo", "kilo", "Kilo CLI", "qwen3-8b");
-  server.entries = {
-    models: [kilo, QWEN],
-    servers: [LMSTUDIO],
-    defaults: [externalDefault(kilo), externalDefault(QWEN)],
-  };
-  mount();
-  await card("OpenCode");
-  fireEvent.click(screen.getByRole("button", { name: `Remove ${LMSTUDIO.name}` }));
-  const question = await screen.findByRole("alertdialog");
-  await waitFor(() =>
-    expect(question.textContent).toContain(
-      "Qwen в Kilo is Kilo CLI's default model and Локальная Qwen is OpenCode's: they go back to their settings.",
-    ),
-  );
-});
-
-test("unticking a default asks under its row, the tick staying on until the answer", async () => {
-  server.entries = { models: [QWEN], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
-  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
-  mount();
-  await card("OpenCode");
-  fireEvent.click(await screen.findByRole("button", { name: LMSTUDIO.name }));
-  fireEvent.click(await screen.findByRole("button", { name: "qwen3-8b" }));
-  const tick = (await screen.findByRole("checkbox", { name: "qwen3-8b on OpenCode" })) as HTMLInputElement;
-  fireEvent.click(tick);
-  const question = await screen.findByRole("alertdialog");
-  expect(question.textContent).toContain(
-    "Remove Локальная Qwen? It is OpenCode's default model: OpenCode goes back to its settings.",
-  );
-  expect(tick.checked).toBe(true);
-  expect(server.of("DELETE", "/api/models/")).toEqual([]);
-  fireEvent.click(within(question).getByRole("button", { name: "Cancel" }));
-  expect(screen.queryByRole("alertdialog")).toBeNull();
-  expect(tick.checked).toBe(true);
-  fireEvent.click(tick);
-  fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Remove model" }));
-  await waitFor(() => expect(tick.checked).toBe(false));
-  expect(server.of("DELETE", "/api/models/")).toHaveLength(1);
-  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull(); // a tick leaves no Undo
-});
-
-// A default set in another window: this page shows none, and the removal finds one.
-function setElsewhere(saved: ReturnType<typeof model>) {
-  server.entries = { ...server.entries, defaults: [externalDefault(saved)] };
-}
-
-test("× on a default this page did not know of: its row says so, and Undo sets it again", async () => {
-  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO] };
-  mount();
-  const opencode = await card("OpenCode");
-  setElsewhere(QWEN);
-  fireEvent.click(within(opencode).getByRole("button", { name: "Remove Локальная Qwen" }));
-  const undo = await within(opencode).findByRole("button", { name: "Undo" });
-  expect(undo.closest("[role=row]")?.textContent).toContain(
-    "Removed Локальная Qwen. OpenCode is back on its settings.",
-  );
-  fireEvent.click(undo);
-  await within(opencode).findByRole("button", { name: "Rename Локальная Qwen" });
-  await waitFor(() => expect(server.of("PUT", "/api/model-defaults/opencode")).toHaveLength(1));
-});
-
-test("a tick off on a default this page did not know of says so on the card", async () => {
-  server.entries = { models: [QWEN], servers: [LMSTUDIO] };
-  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
-  mount();
-  const opencode = await card("OpenCode");
-  fireEvent.click(await screen.findByRole("button", { name: LMSTUDIO.name }));
-  fireEvent.click(await screen.findByRole("button", { name: "qwen3-8b" }));
-  const tick = (await screen.findByRole("checkbox", { name: "qwen3-8b on OpenCode" })) as HTMLInputElement;
-  setElsewhere(QWEN);
-  fireEvent.click(tick);
-  await within(opencode).findByText("Its default model Локальная Qwen was removed.");
-  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
-});
-
-// LADO's server gone: every request of the section rejects, as fetch does with no answer.
-const serverStops = () => vi.stubGlobal("fetch", () => Promise.reject(new TypeError("Failed to fetch")));
-
-test("a request LADO's server did not answer promises nothing of what became of it", () => {
-  expect(LADO_DOWN).toBe("LADO's server does not answer: your request may or may not have reached it.");
-});
-
-test("× with LADO's server gone says so in its own words, in its row", async () => {
-  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO] };
-  mount();
-  const opencode = await card("OpenCode");
-  serverStops();
-  fireEvent.click(within(opencode).getByRole("button", { name: "Remove Рабочая Qwen" }));
-  expect(await within(opencode).findByText(LADO_DOWN)).toBeTruthy();
-  expect(within(opencode).queryByText(/Failed to fetch/)).toBeNull();
-});
-
-test("a rename with LADO's server gone says so under its field", async () => {
-  server.entries = { models: [QWEN], servers: [LMSTUDIO] };
-  mount();
-  const opencode = await card("OpenCode");
-  serverStops();
-  fireEvent.click(within(opencode).getByRole("button", { name: "Rename Локальная Qwen" }));
-  const name = within(opencode).getByRole("textbox", { name: "Name of Локальная Qwen" });
-  fireEvent.change(name, { target: { value: "Другая" } });
-  fireEvent.keyDown(name, { key: "Enter" });
-  expect(await within(opencode).findByText(LADO_DOWN)).toBeTruthy();
-});
-
-test("a server's list with LADO's server gone blames no model server, and ↻ keeps the focus", async () => {
-  server.entries = { models: [QWEN], servers: [LMSTUDIO] };
-  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
-  mount();
-  fireEvent.click(await screen.findByRole("button", { name: LMSTUDIO.name }));
-  const again = await screen.findByRole("button", { name: "Read the models again" });
-  serverStops();
-  again.focus();
-  fireEvent.click(again);
-  expect(await screen.findByText(`⚠ ${LADO_DOWN}`)).toBeTruthy();
-  expect(screen.queryByText(/stays saved/)).toBeNull();
-  await waitFor(() =>
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Read the models again" })),
-  );
-});
-
-test("a model server's refusal still says its models stay saved, and ↻ keeps the focus", async () => {
-  server.entries = { models: [QWEN], servers: [LMSTUDIO] };
-  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
-  mount();
-  fireEvent.click(await screen.findByRole("button", { name: LMSTUDIO.name }));
-  const again = await screen.findByRole("button", { name: "Read the models again" });
-  server.probes[LMSTUDIO.name] = () => refusal("http://localhost:1234 does not answer (connection refused)");
-  again.focus();
-  fireEvent.click(again);
-  expect(await screen.findByText(/Its model stays saved/)).toBeTruthy();
-  await waitFor(() =>
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Read the models again" })),
-  );
-});
-
-test("↻ pressed while React still owes the first read's effects keeps the focus", async () => {
-  server.entries = { models: [QWEN], servers: [LMSTUDIO] };
-  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
-  mount();
-  // A slow machine: the scheduler's time slice is always over, so it yields between the commit
-  // of the read and its effects, and the press below comes in between, as on a loaded runner.
-  let now = 0;
-  const clock = vi.spyOn(performance, "now").mockImplementation(() => (now += 100));
-  const shown = new Promise<HTMLElement>((resolve) => {
-    const seen = new MutationObserver(() => {
-      const button = screen.queryByRole("button", { name: "Read the models again" });
-      if (button) {
-        seen.disconnect();
-        resolve(button);
-      }
-    });
-    seen.observe(document.body, { childList: true, subtree: true });
-  });
-  fireEvent.click(await screen.findByRole("button", { name: LMSTUDIO.name }));
-  const again = await shown;
-  server.probes[LMSTUDIO.name] = () => refusal("http://localhost:1234 does not answer (connection refused)");
-  again.focus();
-  fireEvent.click(again);
-  clock.mockRestore();
-  expect(await screen.findByText(/Its model stays saved/)).toBeTruthy();
-  await waitFor(() =>
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Read the models again" })),
-  );
-});
-
-test("a refused Undo keeps its button and the focus on it", async () => {
-  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO] };
-  mount();
-  const opencode = await card("OpenCode");
-  fireEvent.click(within(opencode).getByRole("button", { name: "Remove Рабочая Qwen" }));
-  const undo = (await within(opencode).findByRole("button", { name: "Undo" })) as HTMLButtonElement;
-  await waitFor(() => expect(document.activeElement).toBe(undo));
-  serverStops();
-  fireEvent.click(undo);
-  expect(undo.disabled).toBe(false); // a disabled button would drop the focus
-  expect(await within(opencode).findByText(LADO_DOWN)).toBeTruthy();
-  expect(document.activeElement).toBe(undo);
-  expect(undo.getAttribute("aria-disabled")).toBeNull();
-});
-
-test("Undo running out with the focus on it hands the focus to the field", async () => {
-  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO] };
-  mount();
-  vi.useFakeTimers({ shouldAdvanceTime: true });
-  const opencode = await card("OpenCode");
-  fireEvent.click(within(opencode).getByRole("button", { name: "Remove Рабочая Qwen" }));
-  const undo = await within(opencode).findByRole("button", { name: "Undo" });
-  await waitFor(() => expect(document.activeElement).toBe(undo));
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(UNDO_MS + 10);
-  });
-  expect(within(opencode).queryByRole("button", { name: "Undo" })).toBeNull();
-  expect(document.activeElement).toBe(await field("OpenCode"));
-});
-
-test("Undo running out with the focus elsewhere moves nothing", async () => {
-  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO] };
-  mount();
-  vi.useFakeTimers({ shouldAdvanceTime: true });
-  const opencode = await card("OpenCode");
-  fireEvent.click(within(opencode).getByRole("button", { name: "Remove Рабочая Qwen" }));
-  await within(opencode).findByRole("button", { name: "Undo" });
-  const elsewhere = screen.getByRole("button", { name: /Add server/ });
-  elsewhere.focus();
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(UNDO_MS + 10);
-  });
-  expect(document.activeElement).toBe(elsewhere);
-});
-
-// What design QA found on the running page.
-
-test("a default removed from a folded table keeps its row first, Undo in view, and the count says models", async () => {
-  const models = nine();
-  server.entries = { models, servers: [LMSTUDIO], defaults: [externalDefault(models[8])] };
-  mount();
-  const opencode = await card("OpenCode");
-  fireEvent.click(within(opencode).getByRole("button", { name: "Remove m-i" }));
-  fireEvent.click(within(opencode).getByRole("button", { name: "Remove model" }));
-  const undo = await within(opencode).findByRole("button", { name: "Undo" });
-  await waitFor(() => expect(document.activeElement).toBe(undo));
-  const first = within(opencode).getAllByRole("row")[1];
-  expect(first.textContent).toContain("Removed m-i. OpenCode is back on its settings.");
-  expect(within(opencode).getByRole("button", { name: "Show all 8 models" })).toBeTruthy();
-});
-
-test("a model renamed past the fold stays in view with the focus on it", async () => {
-  server.entries = { models: nine(), servers: [LMSTUDIO] };
-  mount();
-  const opencode = await card("OpenCode");
-  fireEvent.click(within(opencode).getByRole("button", { name: "Rename m-b" }));
-  const field = within(opencode).getByRole("textbox", { name: "Name of m-b" });
-  fireEvent.change(field, { target: { value: "я-последняя" } });
-  fireEvent.keyDown(field, { key: "Enter" });
-  const renamed = await within(opencode).findByRole("button", { name: "Rename я-последняя" });
-  await waitFor(() => expect(document.activeElement).toBe(renamed));
-});
-
-const offline = (path: string) => {
-  server.answers[path] = () => Promise.reject(new TypeError("Failed to fetch"));
-};
-
-test("LADO's server gone: one line of its own, the value as it was, no model server blamed", async () => {
-  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
-  mount();
-  const opencode = await card("OpenCode");
-  const opening = await field("OpenCode");
-  offline(`POST /api/model-servers/${encodeURIComponent(LMSTUDIO.name)}/probe`);
-  offline("PUT /api/model-defaults/opencode");
-  fireEvent.click(opening);
-  fireEvent.click(await screen.findByRole("option", { name: /Рабочая Qwen/ }));
-  const alert = await within(opencode).findByRole("alert");
-  expect(alert.textContent).toBe("LADO's server does not answer: the value was not saved.");
-  await waitFor(() => expect(probes()).toHaveLength(1));
-  expect(within(opencode).queryByText(/Start the server/)).toBeNull();
-  expect(within(opencode).queryByText(/Failed to fetch/)).toBeNull();
-  expect(opening.querySelector(".srv.down")).toBeNull();
-  expect(opening.textContent).toContain("Локальная Qwen");
-});
-
 test("Other name: Enter is Use, and off while refused", async () => {
   server.lists.opencode = { models: null, why: "no list", other_name: true };
   mount();
@@ -773,36 +355,6 @@ test("Other name: the check is the core's for the name typed, and a row picked m
   await waitFor(() => expect(within(opencode).queryByRole("textbox", { name: "Other name" })).toBeNull());
 });
 
-test("the picker shows what the core lists now, not what the page read at its opening", async () => {
-  server.entries = { models: [QWEN], servers: [LMSTUDIO] };
-  mount();
-  await card("OpenCode");
-  server.entries = { ...server.entries, models: [CODER] }; // another window, or `lado model add`
-  fireEvent.click(await field("OpenCode"));
-  expect(await screen.findByRole("option", { name: /Рабочая Qwen/ })).toBeTruthy();
-  expect(screen.queryByRole("option", { name: /Локальная Qwen/ })).toBeNull();
-});
-
-test("five models and a removed row: no Show all, as nothing is folded", async () => {
-  const models = nine().slice(0, 6);
-  server.entries = { models, servers: [LMSTUDIO] };
-  mount();
-  const opencode = await card("OpenCode");
-  expect(within(opencode).getByRole("button", { name: "Show all 6 models" })).toBeTruthy();
-  fireEvent.click(within(opencode).getByRole("button", { name: "Remove m-a" }));
-  await within(opencode).findByRole("button", { name: "Undo" });
-  expect(within(opencode).queryByRole("button", { name: /^Show/ })).toBeNull();
-  expect(names(opencode)).toHaveLength(5);
-});
-
-test("the page says new sessions and workers start on a default", async () => {
-  server.entries = { models: [QWEN], servers: [LMSTUDIO], defaults: [externalDefault(QWEN, true)] };
-  mount();
-  await card("OpenCode");
-  const text = (document.querySelector(".setting.mx") as HTMLElement).textContent ?? "";
-  expect(text).toContain("New sessions and workers of each agent CLI start on its default model.");
-});
-
 test("Other name: the check of the typed name is a status tied to its field; the saved one's warning waits", async () => {
   server.lists.opencode = { models: null, why: "no list", other_name: true };
   server.entries = { ...server.entries, defaults: [builtinDefault("opencode", "saved/name")] };
@@ -825,55 +377,14 @@ test("Other name: the check of the typed name is a status tied to its field; the
   expect(within(opencode).getByText(/LADO cannot check saved\/name/)).toBeTruthy();
 });
 
-test("Remove server: Esc is Cancel, the focus back on its button", async () => {
+test("the picker shows what the core lists now, not what the page read at its opening", async () => {
   server.entries = { models: [QWEN], servers: [LMSTUDIO] };
   mount();
   await card("OpenCode");
-  const remove = screen.getByRole("button", { name: `Remove ${LMSTUDIO.name}` });
-  fireEvent.click(remove);
-  const question = await screen.findByRole("alertdialog");
-  fireEvent.keyDown(question, { key: "Escape" });
-  expect(screen.queryByRole("alertdialog")).toBeNull();
-  await waitFor(() => expect(document.activeElement).toBe(remove));
-  fireEvent.click(remove);
-  fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Cancel" }));
-  await waitFor(() => expect(document.activeElement).toBe(remove));
-});
-
-test("a server removed: the focus goes to Add server", async () => {
-  server.entries = { models: [], servers: [LMSTUDIO] };
-  mount();
-  await card("OpenCode");
-  fireEvent.click(screen.getByRole("button", { name: `Remove ${LMSTUDIO.name}` }));
-  const question = await screen.findByRole("alertdialog");
-  const confirm = within(question).getByRole("button", { name: "Remove server" }) as HTMLButtonElement;
-  await waitFor(() => expect(confirm.disabled).toBe(false));
-  fireEvent.click(confirm);
-  const add = await screen.findByRole("button", { name: /Add server/ });
-  await waitFor(() => expect(document.activeElement).toBe(add));
-});
-
-test("a tick keeps the focus through its save and through the question", async () => {
-  server.entries = { models: [QWEN], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
-  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
-  mount();
-  await card("OpenCode");
-  fireEvent.click(await screen.findByRole("button", { name: LMSTUDIO.name }));
-  fireEvent.click(await screen.findByRole("button", { name: "qwen3-8b" }));
-  const kilo = (await screen.findByRole("checkbox", { name: "qwen3-8b on Codex CLI" })) as HTMLInputElement;
-  kilo.focus();
-  fireEvent.click(kilo);
-  expect(kilo.disabled).toBe(false); // a disabled box would drop the focus
-  await waitFor(() => expect(kilo.checked).toBe(true));
-  expect(document.activeElement).toBe(kilo);
-  const tick = (await screen.findByRole("checkbox", { name: "qwen3-8b on OpenCode" })) as HTMLInputElement;
-  fireEvent.click(tick);
-  fireEvent.keyDown(await screen.findByRole("alertdialog"), { key: "Escape" });
-  await waitFor(() => expect(document.activeElement).toBe(tick));
-  fireEvent.click(tick);
-  fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Remove model" }));
-  await waitFor(() => expect(tick.checked).toBe(false));
-  expect(document.activeElement).toBe(tick);
+  server.entries = { ...server.entries, models: [CODER] }; // another window, or `lado model add`
+  fireEvent.click(await field("OpenCode"));
+  expect(await screen.findByRole("option", { name: /Рабочая Qwen/ })).toBeTruthy();
+  expect(screen.queryByRole("option", { name: /Локальная Qwen/ })).toBeNull();
 });
 
 test("Check again that finds the server well hands the focus to the field", async () => {
@@ -906,54 +417,396 @@ test("Check again of a list that reads now hands the focus to the field", async 
   await waitFor(async () => expect(document.activeElement).toBe(await field("OpenCode")));
 });
 
-test("Use <CLI>'s settings on a CLI not installed hands the focus on within the card", async () => {
-  server.logins = [...server.logins.slice(0, 3), kiloRow(false)];
-  const saved = model("Qwen в Kilo", "kilo", "Kilo CLI", "qwen3-8b");
-  server.entries = { models: [saved], servers: [LMSTUDIO], defaults: [externalDefault(saved)] };
-  mount();
-  const kilo = await card("Kilo CLI");
-  fireEvent.click(await within(kilo).findByRole("button", { name: "Use Kilo CLI's settings" }));
-  const name = within(kilo).getByRole("button", { name: "Rename Qwen в Kilo" });
-  await waitFor(() => expect(document.activeElement).toBe(name));
+// LADO's server gone: every request rejects, as fetch does with no answer.
+const serverStops = () => vi.stubGlobal("fetch", () => Promise.reject(new TypeError("Failed to fetch")));
+const offline = (path: string) => {
+  server.answers[path] = () => Promise.reject(new TypeError("Failed to fetch"));
+};
+
+test("a request LADO's server did not answer promises nothing of what became of it", () => {
+  expect(LADO_DOWN).toBe("LADO's server does not answer: your request may or may not have reached it.");
 });
 
-test("Use <CLI>'s settings on a card with nothing else to focus takes the card itself", async () => {
-  server.logins = [...server.logins.slice(0, 3), kiloRow(false)];
-  server.entries = { ...server.entries, defaults: [builtinDefault("kilo", "a/one")] };
+test("LADO's server gone: one line of its own, the value as it was, no model server blamed", async () => {
+  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
   mount();
-  const kilo = await card("Kilo CLI");
-  fireEvent.click(await within(kilo).findByRole("button", { name: "Use Kilo CLI's settings" }));
-  await waitFor(() => expect(document.activeElement).toBe(kilo));
+  const opencode = await card("OpenCode");
+  const opening = await field("OpenCode");
+  offline(`POST /api/model-servers/${encodeURIComponent(LMSTUDIO.name)}/probe`);
+  offline("PUT /api/model-defaults/opencode");
+  fireEvent.click(opening);
+  fireEvent.click(await screen.findByRole("option", { name: /Рабочая Qwen/ }));
+  const alert = await within(opencode).findByRole("alert");
+  expect(alert.textContent).toBe("LADO's server does not answer: the value was not saved.");
+  await waitFor(() => expect(probes()).toHaveLength(1));
+  expect(within(opencode).queryByText(/Start it/)).toBeNull();
+  expect(within(opencode).queryByText(/Failed to fetch/)).toBeNull();
+  expect(opening.querySelector(".srv.down")).toBeNull();
+  expect(opening.textContent).toContain("Локальная Qwen");
 });
 
-test("a CLI found not installed after its list was read keeps only its chip", async () => {
-  server.lists.kilo = { models: null, why: "`kilo` is not on the agents' PATH", other_name: true };
-  server.entries = { ...server.entries, defaults: [builtinDefault("kilo", "old/gone-model")] };
-  server.logins = [...server.logins.slice(0, 3), kiloRow(true)];
-  mount();
-  const kilo = await card("Kilo CLI");
-  await within(kilo).findByText(/LADO cannot check old\/gone-model/);
-  cleanup();
-  server.logins = [...server.logins.slice(0, 3), { ...kiloRow(false), ready: false }];
-  let asked = 0;
-  server.answers["GET /api/providers/logins"] = () => {
-    asked += 1;
-    const row = asked === 1 ? { ...kiloRow(false), ready: false } : kiloRow(false);
-    const providers = [...server.logins.slice(0, 3), row];
-    return new Response(JSON.stringify({ providers, checking: asked === 1, environment: "" }));
+// Removing what is a default, on Model servers.
+
+test("× on a default asks in place, the focus on Cancel; Cancel and Esc keep the model", async () => {
+  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
+  mountPage();
+  const yours = await table();
+  const remove = within(yours).getByRole("button", { name: "Remove Локальная Qwen" });
+  fireEvent.click(remove);
+  const question = within(yours).getByRole("alertdialog");
+  expect(question.textContent).toContain(
+    "Remove Локальная Qwen? It is OpenCode's default model: OpenCode goes back to its settings.",
+  );
+  const cancel = within(question).getByRole("button", { name: "Cancel" });
+  await waitFor(() => expect(document.activeElement).toBe(cancel));
+  fireEvent.click(cancel);
+  expect(within(yours).queryByRole("alertdialog")).toBeNull();
+  const again = within(yours).getByRole("button", { name: "Remove Локальная Qwen" });
+  await waitFor(() => expect(document.activeElement).toBe(again));
+  fireEvent.click(again);
+  fireEvent.keyDown(within(yours).getByRole("alertdialog"), { key: "Escape" });
+  expect(within(yours).queryByRole("alertdialog")).toBeNull();
+  expect(server.of("DELETE", "/api/models/")).toEqual([]);
+});
+
+test("× on any other model asks nothing", async () => {
+  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
+  mountPage();
+  const yours = await table();
+  fireEvent.click(within(yours).getByRole("button", { name: "Remove Рабочая Qwen" }));
+  await within(yours).findByRole("button", { name: "Undo" });
+  expect(within(yours).queryByRole("alertdialog")).toBeNull();
+});
+
+test("a default removed says the CLI is back on its settings; Undo brings the model and the default back", async () => {
+  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
+  mountPage();
+  const yours = await table();
+  fireEvent.click(within(yours).getByRole("button", { name: "Remove Локальная Qwen" }));
+  fireEvent.click(within(yours).getByRole("button", { name: "Remove model" }));
+  const undo = await within(yours).findByRole("button", { name: "Undo" });
+  expect(undo.closest("[role=row]")?.textContent).toContain(
+    "Removed Локальная Qwen. OpenCode is back on its settings.",
+  );
+  fireEvent.click(undo);
+  const back = await within(yours).findByRole("button", { name: "Rename Локальная Qwen" });
+  await waitFor(() => expect(back.closest("[role=row]")?.textContent).toContain("OpenCode · default"));
+  const added = server.entries.models.find((m) => m.name === QWEN.name);
+  expect(server.of("PUT", "/api/model-defaults/opencode")[0].body).toEqual({ external: added?.id });
+});
+
+test("Undo of a default whose second call is refused: the model is back, the row says why", async () => {
+  server.entries = { models: [QWEN], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
+  server.answers["PUT /api/model-defaults/opencode"] = () => refusal("OpenCode is not installed", "cli");
+  mountPage();
+  const yours = await table();
+  fireEvent.click(within(yours).getByRole("button", { name: "Remove Локальная Qwen" }));
+  fireEvent.click(within(yours).getByRole("button", { name: "Remove model" }));
+  fireEvent.click(await within(yours).findByRole("button", { name: "Undo" }));
+  const row = (await within(yours).findByRole("button", { name: "Rename Локальная Qwen" })).closest("[role=row]");
+  await waitFor(() => expect(row?.textContent).toContain("OpenCode is not installed"));
+});
+
+test("a server with a default on it: its question names the default, and confirmed it clears it", async () => {
+  server.entries = { models: [QWEN], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
+  mountPage();
+  await table();
+  fireEvent.click(screen.getByRole("button", { name: `Remove ${LMSTUDIO.name}` }));
+  const question = await screen.findByRole("alertdialog");
+  await waitFor(() =>
+    expect(question.textContent).toContain(
+      "Remove LM Studio дома and its 1 model: Локальная Qwen? Локальная Qwen is OpenCode's default model: OpenCode goes back to its settings.",
+    ),
+  );
+  const confirm = within(question).getByRole("button", { name: "Remove server and 1 model" }) as HTMLButtonElement;
+  await waitFor(() => expect(confirm.disabled).toBe(false));
+  fireEvent.click(confirm);
+  await waitFor(() => expect(server.entries.defaults).toEqual([]));
+  expect(screen.queryByText(/was removed with/)).toBeNull(); // no line of it on this page
+});
+
+test("two defaults on a server: one sentence names them both", async () => {
+  const kilo = model("Qwen в Kilo", "kilo", "Kilo CLI", "qwen3-8b");
+  server.entries = {
+    models: [kilo, QWEN],
+    servers: [LMSTUDIO],
+    defaults: [externalDefault(kilo), externalDefault(QWEN)],
   };
-  mount();
-  const off = await card("Kilo CLI");
-  await within(off).findByText("⚠ not installed: its default model cannot run", undefined, { timeout: 3000 });
-  expect(within(off).queryByText(/LADO cannot check/)).toBeNull();
-  expect(within(off).queryByRole("button", { name: "Check again" })).toBeNull();
-  expect(within(off).getByRole("button", { name: "Use Kilo CLI's settings" })).toBeTruthy();
+  mountPage();
+  await table();
+  fireEvent.click(screen.getByRole("button", { name: `Remove ${LMSTUDIO.name}` }));
+  const question = await screen.findByRole("alertdialog");
+  await waitFor(() =>
+    expect(question.textContent).toContain(
+      "Qwen в Kilo is Kilo CLI's default model and Локальная Qwen is OpenCode's: they go back to their settings.",
+    ),
+  );
+});
+
+test("unticking a default asks under its row, the tick staying on until the answer", async () => {
+  server.entries = { models: [QWEN], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
+  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
+  mountPage();
+  await table();
+  fireEvent.click(await screen.findByRole("button", { name: LMSTUDIO.name }));
+  fireEvent.click(await screen.findByRole("button", { name: "qwen3-8b" }));
+  const tick = (await screen.findByRole("checkbox", { name: "qwen3-8b on OpenCode" })) as HTMLInputElement;
+  fireEvent.click(tick);
+  const question = await screen.findByRole("alertdialog");
+  expect(question.textContent).toContain(
+    "Remove Локальная Qwen? It is OpenCode's default model: OpenCode goes back to its settings.",
+  );
+  expect(tick.checked).toBe(true);
+  expect(server.of("DELETE", "/api/models/")).toEqual([]);
+  fireEvent.click(within(question).getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+  expect(tick.checked).toBe(true);
+  fireEvent.click(tick);
+  fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Remove model" }));
+  await waitFor(() => expect(tick.checked).toBe(false));
+  expect(server.of("DELETE", "/api/models/")).toHaveLength(1);
+  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull(); // a tick leaves no Undo
+});
+
+// A default set in another window: this page shows none, and the removal finds one.
+function setElsewhere(saved: ReturnType<typeof model>) {
+  server.entries = { ...server.entries, defaults: [externalDefault(saved)] };
+}
+
+test("× on a default this page did not know of: its row says so, and Undo sets it again", async () => {
+  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO] };
+  mountPage();
+  const yours = await table();
+  setElsewhere(QWEN);
+  fireEvent.click(within(yours).getByRole("button", { name: "Remove Локальная Qwen" }));
+  const undo = await within(yours).findByRole("button", { name: "Undo" });
+  expect(undo.closest("[role=row]")?.textContent).toContain(
+    "Removed Локальная Qwen. OpenCode is back on its settings.",
+  );
+  fireEvent.click(undo);
+  await within(yours).findByRole("button", { name: "Rename Локальная Qwen" });
+  await waitFor(() => expect(server.of("PUT", "/api/model-defaults/opencode")).toHaveLength(1));
+});
+
+test("a tick off on a default this page did not know of clears it, leaving no Undo", async () => {
+  server.entries = { models: [QWEN], servers: [LMSTUDIO] };
+  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
+  mountPage();
+  await table();
+  fireEvent.click(await screen.findByRole("button", { name: LMSTUDIO.name }));
+  fireEvent.click(await screen.findByRole("button", { name: "qwen3-8b" }));
+  const tick = (await screen.findByRole("checkbox", { name: "qwen3-8b on OpenCode" })) as HTMLInputElement;
+  setElsewhere(QWEN);
+  fireEvent.click(tick);
+  await waitFor(() => expect(server.entries.defaults).toEqual([]));
+  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+});
+
+test("× with LADO's server gone says so in its own words, in its row", async () => {
+  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO] };
+  mountPage();
+  const yours = await table();
+  serverStops();
+  fireEvent.click(within(yours).getByRole("button", { name: "Remove Рабочая Qwen" }));
+  expect(await within(yours).findByText(LADO_DOWN)).toBeTruthy();
+  expect(within(yours).queryByText(/Failed to fetch/)).toBeNull();
+});
+
+test("a rename with LADO's server gone says so under its field", async () => {
+  server.entries = { models: [QWEN], servers: [LMSTUDIO] };
+  mountPage();
+  const yours = await table();
+  serverStops();
+  fireEvent.click(within(yours).getByRole("button", { name: "Rename Локальная Qwen" }));
+  const name = within(yours).getByRole("textbox", { name: "Name of Локальная Qwen" });
+  fireEvent.change(name, { target: { value: "Другая" } });
+  fireEvent.keyDown(name, { key: "Enter" });
+  expect(await within(yours).findByText(LADO_DOWN)).toBeTruthy();
+});
+
+test("a server's list with LADO's server gone blames no model server, and ↻ keeps the focus", async () => {
+  server.entries = { models: [QWEN], servers: [LMSTUDIO] };
+  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
+  mountPage();
+  fireEvent.click(await screen.findByRole("button", { name: LMSTUDIO.name }));
+  const again = await screen.findByRole("button", { name: "Read the models again" });
+  serverStops();
+  again.focus();
+  fireEvent.click(again);
+  expect(await screen.findByText(`⚠ ${LADO_DOWN}`)).toBeTruthy();
+  expect(screen.queryByText(/stays saved/)).toBeNull();
+  await waitFor(() =>
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Read the models again" })),
+  );
+});
+
+test("a model server's refusal says what it does, that its models stay saved, and ↻ keeps the focus", async () => {
+  server.entries = { models: [QWEN], servers: [LMSTUDIO] };
+  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
+  mountPage();
+  fireEvent.click(await screen.findByRole("button", { name: LMSTUDIO.name }));
+  const again = await screen.findByRole("button", { name: "Read the models again" });
+  server.probes[LMSTUDIO.name] = () => refusal(`${LMSTUDIO.address} does not answer (connection refused)`);
+  again.focus();
+  fireEvent.click(again);
+  expect(await screen.findByText("⚠ Does not answer (connection refused)")).toBeTruthy();
+  expect(
+    screen.getByText("Its model stays saved; agents on it stop at their first turn until it answers."),
+  ).toBeTruthy();
+  await waitFor(() =>
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Read the models again" })),
+  );
+  // Your models marks its server too, the reason in its title.
+  const from = within(await table()).getByText(`⚠ ${LMSTUDIO.name}`, { selector: ".mx-from" });
+  expect(from.getAttribute("title")).toContain("does not answer (connection refused)");
+});
+
+test("↻ pressed while React still owes the first read's effects keeps the focus", async () => {
+  server.entries = { models: [QWEN], servers: [LMSTUDIO] };
+  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
+  mountPage();
+  // A slow machine: the scheduler's time slice is always over, so it yields between the commit
+  // of the read and its effects, and the press below comes in between, as on a loaded runner.
+  let now = 0;
+  const clock = vi.spyOn(performance, "now").mockImplementation(() => (now += 100));
+  const shown = new Promise<HTMLElement>((resolve) => {
+    const seen = new MutationObserver(() => {
+      const button = screen.queryByRole("button", { name: "Read the models again" });
+      if (button) {
+        seen.disconnect();
+        resolve(button);
+      }
+    });
+    seen.observe(document.body, { childList: true, subtree: true });
+  });
+  fireEvent.click(await screen.findByRole("button", { name: LMSTUDIO.name }));
+  const again = await shown;
+  server.probes[LMSTUDIO.name] = () => refusal("http://localhost:1234 does not answer (connection refused)");
+  again.focus();
+  fireEvent.click(again);
+  clock.mockRestore();
+  expect(await screen.findByText(/Its model stays saved/)).toBeTruthy();
+  await waitFor(() =>
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Read the models again" })),
+  );
+});
+
+test("a refused Undo keeps its button and the focus on it", async () => {
+  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO] };
+  mountPage();
+  const yours = await table();
+  fireEvent.click(within(yours).getByRole("button", { name: "Remove Рабочая Qwen" }));
+  const undo = (await within(yours).findByRole("button", { name: "Undo" })) as HTMLButtonElement;
+  await waitFor(() => expect(document.activeElement).toBe(undo));
+  serverStops();
+  fireEvent.click(undo);
+  expect(undo.disabled).toBe(false); // a disabled button would drop the focus
+  expect(await within(yours).findByText(LADO_DOWN)).toBeTruthy();
+  expect(document.activeElement).toBe(undo);
+  expect(undo.getAttribute("aria-disabled")).toBeNull();
+});
+
+test("Undo running out with the focus on it hands the focus to the table", async () => {
+  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO] };
+  mountPage();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const yours = await table();
+  fireEvent.click(within(yours).getByRole("button", { name: "Remove Рабочая Qwen" }));
+  const undo = await within(yours).findByRole("button", { name: "Undo" });
+  await waitFor(() => expect(document.activeElement).toBe(undo));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(UNDO_MS + 10);
+  });
+  expect(within(yours).queryByRole("button", { name: "Undo" })).toBeNull();
+  expect(document.activeElement).toBe(yours);
+});
+
+test("Undo running out with the focus elsewhere moves nothing", async () => {
+  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO] };
+  mountPage();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const yours = await table();
+  fireEvent.click(within(yours).getByRole("button", { name: "Remove Рабочая Qwen" }));
+  await within(yours).findByRole("button", { name: "Undo" });
+  const elsewhere = screen.getByRole("button", { name: /Add server/ });
+  elsewhere.focus();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(UNDO_MS + 10);
+  });
+  expect(document.activeElement).toBe(elsewhere);
+});
+
+test("a model renamed takes its place by name, the focus on it", async () => {
+  const alpha = model("Alpha", "opencode", "OpenCode", "m-a");
+  server.entries = { models: [alpha, QWEN, CODER], servers: [LMSTUDIO] };
+  mountPage();
+  const yours = await table();
+  fireEvent.click(within(yours).getByRole("button", { name: "Rename Alpha" }));
+  const name = within(yours).getByRole("textbox", { name: "Name of Alpha" });
+  fireEvent.change(name, { target: { value: "я-последняя" } });
+  fireEvent.keyDown(name, { key: "Enter" });
+  const renamed = await within(yours).findByRole("button", { name: "Rename я-последняя" });
+  await waitFor(() => expect(document.activeElement).toBe(renamed));
+  const shown = within(yours)
+    .getAllByRole("button", { name: /^Rename / })
+    .map((b) => b.textContent);
+  expect(shown).toEqual(["Локальная Qwen", "Рабочая Qwen", "я-последняя"]);
+});
+
+test("Remove server: Esc is Cancel, the focus back on its button", async () => {
+  server.entries = { models: [QWEN], servers: [LMSTUDIO] };
+  mountPage();
+  await table();
+  const remove = screen.getByRole("button", { name: `Remove ${LMSTUDIO.name}` });
+  fireEvent.click(remove);
+  const question = await screen.findByRole("alertdialog");
+  fireEvent.keyDown(question, { key: "Escape" });
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(remove));
+  fireEvent.click(remove);
+  fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(document.activeElement).toBe(remove));
+});
+
+test("a server removed: the focus goes to Add server", async () => {
+  server.entries = { models: [], servers: [LMSTUDIO] };
+  mountPage();
+  fireEvent.click(await screen.findByRole("button", { name: `Remove ${LMSTUDIO.name}` }));
+  const question = await screen.findByRole("alertdialog");
+  const confirm = within(question).getByRole("button", { name: "Remove server" }) as HTMLButtonElement;
+  await waitFor(() => expect(confirm.disabled).toBe(false));
+  fireEvent.click(confirm);
+  const add = await screen.findByRole("button", { name: /Add server/ });
+  await waitFor(() => expect(document.activeElement).toBe(add));
+});
+
+test("a tick keeps the focus through its save and through the question", async () => {
+  server.entries = { models: [QWEN], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
+  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
+  mountPage();
+  await table();
+  fireEvent.click(await screen.findByRole("button", { name: LMSTUDIO.name }));
+  fireEvent.click(await screen.findByRole("button", { name: "qwen3-8b" }));
+  const kilo = (await screen.findByRole("checkbox", { name: "qwen3-8b on Codex CLI" })) as HTMLInputElement;
+  kilo.focus();
+  fireEvent.click(kilo);
+  expect(kilo.disabled).toBe(false); // a disabled box would drop the focus
+  await waitFor(() => expect(kilo.checked).toBe(true));
+  expect(document.activeElement).toBe(kilo);
+  const tick = (await screen.findByRole("checkbox", { name: "qwen3-8b on OpenCode" })) as HTMLInputElement;
+  fireEvent.click(tick);
+  fireEvent.keyDown(await screen.findByRole("alertdialog"), { key: "Escape" });
+  await waitFor(() => expect(document.activeElement).toBe(tick));
+  fireEvent.click(tick);
+  fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Remove model" }));
+  await waitFor(() => expect(tick.checked).toBe(false));
+  expect(document.activeElement).toBe(tick);
 });
 
 test("From holds the server's name and address on hover", async () => {
   server.entries = { models: [QWEN], servers: [LMSTUDIO] };
-  mount();
-  const opencode = await card("OpenCode");
-  const from = within(opencode).getByText("LM Studio дома", { selector: ".mx-from" });
+  mountPage();
+  const yours = await table();
+  const from = within(yours).getByText("LM Studio дома", { selector: ".mx-from" });
   expect(from.getAttribute("title")).toBe(`LM Studio дома · ${LMSTUDIO.address}`);
 });

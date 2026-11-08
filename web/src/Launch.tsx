@@ -49,7 +49,7 @@ import { closedBy, looks, resumeAttempt } from "./attempts";
 import { useLive, useLiveStore, useLocked } from "./live";
 import { useModal } from "./modal";
 import { ActionProblem, Waits } from "./waitingParts";
-import { projectPath, PROVIDERS_PATH, sessionPath } from "./paths";
+import { agentClisPath, projectPath, sessionPath } from "./paths";
 
 // How long the window waits after a keystroke before it asks the server about the folder.
 export const DEBOUNCE = 200;
@@ -898,7 +898,7 @@ function LaunchDialog({
               noLogin={noLogin}
               onLogIn={() => {
                 onClose();
-                navigate(PROVIDERS_PATH);
+                navigate(agentClisPath(noLogin?.name));
               }}
             />
             {providers !== null && chosenProvider === null && !held && (

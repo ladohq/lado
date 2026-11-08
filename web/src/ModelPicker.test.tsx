@@ -440,7 +440,7 @@ test("in the launch window Tab reaches the link, then the button of the foot", (
   const { field } = mount({ where: "launch" });
   fireEvent.keyDown(field, { key: "Enter" });
   fireEvent.keyDown(field, { key: "Tab" });
-  const link = screen.getByRole("link", { name: "Settings → Models" });
+  const link = screen.getByRole("link", { name: "Settings → Agent CLIs" });
   expect(document.activeElement).toBe(link);
   fireEvent.keyDown(link, { key: "Tab" }); // not the last: the browser goes on
   expect(screen.getByRole("listbox")).toBeTruthy();

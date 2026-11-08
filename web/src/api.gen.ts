@@ -2132,7 +2132,7 @@ export interface components {
         };
         /**
          * EntryRefused
-         * @description The detail of a 400 that Settings → Models' API answers for a refusal: the line the
+         * @description The detail of a 400 that the model settings' API answers for a refusal: the line the
          *     matching command prints, its hint ("" for none), the field of the form it concerns (""
          *     for none), and the warnings given before it (a key over plain http://).
          */
@@ -3359,7 +3359,7 @@ export interface components {
         };
         /**
          * ProviderLogins
-         * @description One agent CLI in Settings → Agent CLIs and environment (lado.logins).
+         * @description One agent CLI in Settings → Agent CLIs (lado.logins).
          */
         ProviderLogins: {
             cli: components["schemas"]["ProviderInfo"];

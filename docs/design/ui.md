@@ -2373,11 +2373,14 @@ redirects read; a section's page is `Settings.tsx`'s `PAGES` by its slug.
   `/settings/<unknown>` to `/settings`.
 - **A setting is a row** (`.srows`, `.srow`): its name and at most one short grey line on the
   left, its control on the right, a thin `--line` between rows, no card; the name labels the
-  control, the line describes it; a control too wide to sit beside its name (`.srow-wide`)
-  goes under it at 900 px and narrower; a refusal, one line, under the row. A setting that
-  applies at once and is on or off is a switch (`.sw`, a checkbox `role="switch"` drawn with
-  tokens; 44 × 26 px in a 52 × 44 target on a phone); two or three exclusive choices, or a
-  choice not made yet, are segments.
+  control, the line describes it; a refusal, one line, under the row.
+- **One rule for on and off** (LAD-243): a setting that applies at once and is on or off is a
+  switch (`.sw`, a checkbox `role="switch"` drawn with tokens; 44 × 26 px in a 52 × 44 target
+  on a phone), a choice not made yet shown as off with its line; two or three exclusive values
+  are segments (Theme).
+- **One rule for removing** (LAD-243): what can be brought back goes at once, with Undo where
+  the human acted (a model, by × or by its tick, an agent CLI's default too); only what cannot
+  (a server and its key, a CLI's login) asks first.
 - **General**: two rows, Theme (System, Light, Dark) and Browser notifications (`When
   something waits for you and this tab is hidden.`, the switch; Notifications below).
 - **Not built yet**: groups of sections (from six sections) and Find a setting (from eight),
@@ -2415,15 +2418,17 @@ change feed: a choice made in the CLI shows after a reload.
   and never sent, "Nothing is sent until you choose…", **What is sent** (a disclosure that
   loads the preview once), **Send statistics**, **Don't send** and What LADO collects ↗.
   A choice hides it.
-- **Settings → Statistics** (`/settings/statistics`, LAD-238): one setting row, its name
-  "Send anonymous statistics and errors to LADO's maintainers" labelling Send / Don't send
-  (under the name at 900 px and narrower, the row's width on a phone), and one grey line for
-  the state: not chosen, "Nothing is sent until you choose. What LADO collects ↗" (neither
-  segment checked); on, "Last sent today at 09:12. What LADO collects ↗" (or "Not sent
-  yet."), then under the row `Last try failed: <reason>` when the last try failed and What
-  the next report sends; off, "Nothing is sent. What LADO collects ↗"; off by the
-  environment, "Off: `DO_NOT_TRACK=1` is set in the server's environment." with the choice
-  disabled on Don't send; no endpoint, disabled, "No statistics endpoint: nothing is sent."
+- **Settings → Statistics** (`/settings/statistics`, LAD-238; a switch since LAD-243): one
+  setting row, its name "Send anonymous statistics and errors to LADO's maintainers"
+  labelling a switch beside it at every width, on only while the choice is on, and one grey
+  line for the state: not chosen, "Nothing is sent until you choose. What LADO collects ↗"
+  (the switch off; the banner still asks); on, "Last sent today at 09:12. What LADO collects
+  ↗" (or "Not sent yet."), then under the row `Last try failed: <reason>` when the last try
+  failed and What the next report sends; off, "Nothing is sent. What LADO collects ↗"; off
+  by the environment, "Off: `DO_NOT_TRACK=1` is set in the server's environment." with the
+  switch off and disabled; no endpoint, off and disabled, "No statistics endpoint: nothing
+  is sent." Turning it on chooses `on`, off `off`; a refusal shows under the row and the
+  switch keeps the state as read.
   What is anonymous and the variables that switch it off are in docs/telemetry.md, behind the
   link.
 
@@ -2950,18 +2955,21 @@ LM Studio. That CLI has no column in the server's list, which comes from `ProbeI
   meanwhile do not start its time over) saves the model again with its name, CLI, model
   and server (`POST /api/models`, the checks of `lado model add`), the focus then on its
   name, a refusal in the row; the row goes once the reload brought the model back. × on a
-  CLI's default asks in place first, the focus on Cancel, Esc as Cancel (`Remove <name>? It is
-  <CLI>'s default model: <CLI> goes back to its settings.`); its row then adds `<CLI> is back on
-  its settings.` and Undo sets the default again by the id the model got back
-  (`PUT /api/model-defaults/{cli}`), a refusal of that second call in the model's row. Unticking
-  a default asks the same under its CLI's row, the tick on until the answer, and leaves no
-  Undo. A page gone stale may remove a default without asking, as another window set it: the
-  answer of `DELETE /api/models/{name}` names it (`cleared`), so the row says so and Undo sets it
-  again; a tick says nothing of it (the default's removal is not carried to Agent CLIs). After
-  `UNDO_MS` (10 s) only Undo goes: `Removed <name>.` stays until the human's next change in
-  the section (a tick, ×, Undo, a rename, a model id added, a server added, changed or
-  removed) or the page's next opening. A server removed has no Undo: its key goes with it
-  and LADO keeps no copy.
+  CLI's default asks nothing either (LAD-243): the answer of `DELETE /api/models/{name}` names
+  the defaults it cleared (`cleared`, also one another window set), its row then adds `<CLI>
+  is back on its settings.` and Undo sets the default again by the id the model got back
+  (`PUT /api/model-defaults/{cli}`), a refusal of that second call in the model's row.
+  Unticking a model, a default too, removes it at once and leaves under that CLI's tick in the
+  open list (`.mx-sub-undo`) the same line, `Removed <name>.` with `<CLI> is back on its
+  settings.` for a default, and Undo, the focus staying on the tick (Undo is the next Tab
+  stop); Your models shows no Undo for it, as Undo shows only where the human acted. That Undo
+  saves the model again under its name, sets the default again, and gives the focus back to
+  the tick; a refused default shows in the line. A tick again takes the line away and sets no
+  default; closing the list drops it. One state, one line and one `UNDO_MS` serve both places
+  (`removedModels.tsx`: `useRemovedModels`, `UndoLine`). After `UNDO_MS` (10 s) only Undo
+  goes: `Removed <name>.` stays until the human's next change in the section (a tick, ×, Undo,
+  a rename, a model id added, a server added, changed or removed) or the page's next opening.
+  A server removed has no Undo and asks first: its key goes with it and LADO keeps no copy.
 - **The sources**: Servers lists every saved server, by name at the first showing
   and one added here at the end, where the form was, then **+ Add server**. Each is a row
   between thin lines, without a frame: a chevron in a framed 28 px box that turns when open, its name, whole and wrapped,
@@ -2988,8 +2996,8 @@ LM Studio. That CLI has no column in the server's list, which comes from `ProbeI
   stays while the core is asked again). Esc closes it. The row says `in <CLI>, …` in green
   and ends in a framed chevron; a server no installed CLI can use says `No installed CLI
   can use this server.` and its rows have no ticks. A tick is on exactly when a configured
-  model has that CLI, model and server; ticking saves one, unticking removes it with no
-  Undo row (the tick is its own undo), and a refusal shows in the tick's row. While the page
+  model has that CLI, model and server; ticking saves one, unticking removes it with its line
+  and Undo under the tick (× and Undo above), and a refusal shows in the tick's row. While the page
   stays open it remembers the name of each model it unticked: its row says `would be
   <name>`, and a tick again saves the model under that name, or under its default when the
   name was taken meanwhile; a ticked model is titled `Unticking removes <name>.`. Several

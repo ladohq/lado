@@ -52,7 +52,7 @@ def test_settings_not_chosen_is_off_and_turning_it_on_answers_the_banner(
     expect(banner).to_be_visible()
     page.goto(f"{server['url']}/settings/statistics")
     section = page.get_by_role("region", name="Statistics", exact=True)
-    switch =section.get_by_role("switch", name=NAME)
+    switch = section.get_by_role("switch", name=NAME)
     expect(switch).not_to_be_checked()
     expect(switch).to_be_enabled()
     expect(section).to_contain_text("Nothing is sent until you choose. What LADO collects ↗")

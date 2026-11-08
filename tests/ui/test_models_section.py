@@ -245,7 +245,9 @@ def test_other_name_on_claude_code_warns_and_stays(page: Page, clis, server, sho
     assert state.cli_defaults() == [state.ModelRef("claude", None, "claude-opus-4-1-20250805")]
 
 
-def test_an_external_default_removed_without_a_question_and_undo(page: Page, clis, server, lms, shot):
+def test_an_external_default_removed_without_a_question_and_undo(
+    page: Page, clis, server, lms, shot
+):
     saved_server(lms)
     state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
     state.add_model("Рабочая Qwen", "opencode", "qwen3-8b", "s1")

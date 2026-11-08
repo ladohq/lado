@@ -46,6 +46,9 @@
 
 ### Improved
 
+- **One rule in Settings for on and off, and for removing.** Statistics is a switch like
+  Browser notifications. Removing a model never asks, a default's neither, and a model
+  unticked under a server can be undone too; only removing a server still asks.
 - **OpenCode and Kilo CLI know your local model's context.** LADO reads it from the server at
   each start, so agents compact in time; a model too small for an agent is warned about in `lado
   start` and the launch window. `docs/install.md` says what to expect of small models.

@@ -1,5 +1,8 @@
-"""Report a bug in the browser (docs/design/ui.md, Report a bug): the rail's item on a
-session's page opens the page with the report and GitHub's form, which is never followed."""
+"""Report a bug in the browser (docs/design/ui.md, Report a bug; Help): the rail's Help on a
+session's page opens its menu, whose Report a bug opens the page with the report and GitHub's
+form, which is never followed."""
+
+import re
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -22,8 +25,19 @@ def test_report_a_bug_from_a_session_s_page(page: Page, server, repo, shot):
     github = []
     page.on("request", lambda request: "github.com" in request.url and github.append(request.url))
     rail = page.get_by_role("navigation", name="Sections")
-    rail.get_by_role("link", name="Report a bug").click()
+    help_ = rail.get_by_role("button", name="Help")
+    help_.click()
+    menu = page.get_by_role("menu", name="Help")
+    expect(menu.get_by_role("menuitem")).to_have_text(["Documentation↗", "GitHub↗", "Report a bug"])
+    expect(menu.get_by_role("menuitem", name="Documentation")).to_be_focused()
+    box, beside = help_.bounding_box(), menu.bounding_box()
+    assert beside["x"] >= box["x"] + box["width"]  # beside the rail, its bottom on Help's
+    assert abs(beside["y"] + beside["height"] - (box["y"] + box["height"])) <= 1
+    shot(page, "help")
+    menu.get_by_role("menuitem", name="Report a bug").click()
     expect(page).to_have_url(f"{server['url']}/report")
+    expect(menu).to_have_count(0)
+    expect(help_).to_have_class(re.compile(r"\bis-current\b"))
     expect(page.get_by_role("banner").locator("h1")).to_have_text("Report a bug")
     text = page.locator("pre.log")
     expect(text).to_contain_text("### LADO system info")
@@ -43,9 +57,12 @@ def test_report_a_bug_from_a_session_s_page(page: Page, server, repo, shot):
     assert page.evaluate("navigator.clipboard.readText()") == shown
     shot(page, "page")
     page.get_by_role("button", name="Collapse menu").click()
-    report = rail.get_by_role("link", name="Report a bug")
-    expect(report).to_have_attribute("title", "Report a bug")
-    expect(report.locator("svg")).to_be_visible()
-    expect(report.locator(".rail-name")).to_be_hidden()
+    expect(help_).to_have_attribute("title", "Help")
+    expect(help_.locator("svg")).to_be_visible()
+    expect(help_.locator(".rail-name")).to_be_hidden()
+    help_.click()
+    expect(page.get_by_role("menu", name="Help")).to_be_in_viewport(ratio=1)
     shot(page, "collapsed")
+    page.keyboard.press("Escape")
+    expect(help_).to_be_focused()
     assert github == []

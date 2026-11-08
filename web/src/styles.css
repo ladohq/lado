@@ -239,8 +239,8 @@ button.rail-link {
   box-shadow: inset 3px 0 0 var(--action);
 }
 
-/* Help's menu (Shell.tsx): beside the rail, placed fixed by useBeside; until it is placed,
-   right of Help. On a phone, over Help across the drawer, its items 44 px. */
+/* Help's menu (Shell.tsx): beside the rail, placed fixed in the body by useBeside; on a
+   phone, over Help across the drawer, its items 44 px. */
 .help-wrap {
   position: relative;
 }
@@ -248,8 +248,6 @@ button.rail-link {
 .action-menu.help-menu {
   top: auto;
   right: auto;
-  bottom: 0;
-  left: calc(100% + 8px);
   z-index: 47;
   min-width: 210px;
 }
@@ -11262,9 +11260,13 @@ section.artifact-group + section.artifact-group {
   background: none;
 }
 
+/* The gap above Add server is the button's, so a server added takes the form's very place. */
 .spage .mx-add-slot {
-  padding-top: 8px;
   border-bottom: 0;
+}
+
+.spage .mx-add-slot > .mx-add {
+  margin-top: 8px;
 }
 
 /* An icon button: ✎, 🗑, ↻ and ×. */
@@ -13036,6 +13038,12 @@ button.quiet.danger-text {
 :root[data-phone] .cli-model {
   grid-template-columns: minmax(0, 1fr);
   row-gap: 4px;
+}
+
+/* Model servers: Add server and a model's name (a click renames it) 44 px high too. */
+:root[data-phone] .spage .mx-add,
+:root[data-phone] .spage .mx-name {
+  min-height: 44px;
 }
 
 :root[data-phone] .cli-ml {

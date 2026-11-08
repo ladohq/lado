@@ -78,7 +78,12 @@ describe("placeBeside", () => {
   const size = { width: 220, height: 130 };
 
   it("puts a menu right of its item, its bottom on the item's bottom", () => {
-    expect(placeBeside(help, size, { width: 1000, height: 800 })).toEqual({ position: "fixed", left: 68, top: 570 });
+    expect(placeBeside(help, size, { width: 1000, height: 800 })).toEqual({
+      position: "fixed",
+      left: 68,
+      top: 570,
+      bottom: "auto",
+    });
   });
 
   it("keeps a menu 8px inside the window's bottom on a short window", () => {
@@ -86,6 +91,7 @@ describe("placeBeside", () => {
       position: "fixed",
       left: 68,
       top: 422,
+      bottom: "auto",
     });
     expect(placeBeside({ right: 60, bottom: 600 }, size, { width: 1000, height: 560 }).top).toBe(422);
   });

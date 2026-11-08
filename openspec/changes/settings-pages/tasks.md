@@ -57,7 +57,7 @@ with its files, interfaces and tests).
 
 ## 10. Browser tests
 
-- [ ] 10.1 `tests/ui/test_settings_pages.py` and the changed UI tests: pages at 390/768/1440 light and
+- [x] 10.1 `tests/ui/test_settings_pages.py` and the changed UI tests: pages at 390/768/1440 light and
   dark, redirects, arrival focus, Help, no sideways scroll, 44 px targets, names whole; screenshots of
   each page as run artifacts (AC-1..AC-8). Checked: each file `uv run pytest -m ui <file>`, then
   `uv run pytest -m ui -n auto tests/ui`.

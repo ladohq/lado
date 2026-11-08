@@ -17,6 +17,7 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
+import { createPortal } from "react-dom";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 
 import { getHealth, onDenied } from "./api";
@@ -422,8 +423,8 @@ function LaunchLink({ collapsed }: { collapsed: boolean }) {
 }
 
 // Help on the rail: a menu of Documentation and GitHub, in a new tab, and Report a bug. It
-// opens beside the rail (useBeside), or above Help across the drawer on a phone (styles.css);
-// Esc gives the focus back to Help. On /report Help wears the rail's current look: Report a
+// opens beside the rail (useBeside), in the body, as the sticky rail is a layer under the page;
+// on a phone over Help across the drawer (styles.css). Esc gives the focus back to Help. On /report Help wears the rail's current look: Report a
 // bug lives in it. It is no link, so the look is a class, not aria-current.
 function HelpButton({ collapsed, phone }: { collapsed: boolean; phone: boolean }) {
   const [open, setOpen] = useState(false);
@@ -433,9 +434,13 @@ function HelpButton({ collapsed, phone }: { collapsed: boolean; phone: boolean }
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const beside = useBeside(button, menu, open && !phone);
-  const close = useCallback(() => setOpen(false), []);
+  // A press outside Help and its menu closes it.
+  const close = useCallback((event: MouseEvent) => {
+    if (!menu.current?.contains(event.target as Node)) setOpen(false);
+  }, []);
   useDismiss(open, wrap, close);
   const current = pathname === "/report";
+  const placed = (shown: ReactNode) => (phone ? shown : createPortal(shown, document.body));
   return (
     <div className="help-wrap" ref={wrap}>
       <button
@@ -451,7 +456,7 @@ function HelpButton({ collapsed, phone }: { collapsed: boolean; phone: boolean }
         <HelpIcon />
         <span className="rail-name">Help</span>
       </button>
-      {open && (
+      {open && placed(
         <Menu
           label="Help"
           ref={menu}
@@ -474,7 +479,7 @@ function HelpButton({ collapsed, phone }: { collapsed: boolean; phone: boolean }
             setOpen(false);
             button.current?.focus();
           }}
-        />
+        />,
       )}
     </div>
   );

@@ -1,5 +1,6 @@
-"""Settings → Models in a browser (openspec change model-settings-page): its two blocks, Your
-agent CLIs and Model servers, against a real `lado server`, the fake model server of
+"""The model settings in a browser (openspec changes model-settings-page, settings-pages): each
+CLI's default model in its row on Settings → Agent CLIs, and Settings → Model servers with its
+two blocks, Servers and Your models, against a real `lado server`, the fake model server of
 tests/fake_model_server.py in the test's process, and stand-ins of Claude Code, Codex CLI,
 OpenCode and Kilo CLI on the server's PATH that print a version (Claude Code's aliases are its
 provider's own list; Kilo CLI's `kilo models` prints 323 models). Nothing moves under the
@@ -21,10 +22,7 @@ from lado import model_settings, state
 
 pytestmark = pytest.mark.ui
 
-LEAD_NO_MODELS = (
-    "New sessions and workers of each agent CLI start on its default model. To add models of "
-    "your own, add a model server below and tick the agent CLIs that run them."
-)
+NONE_YET = "None yet: open a server and tick the agent CLIs that run a model."
 KILO_MODELS = 323
 CHAT = "chat completions"
 UNDO_S = 10
@@ -63,7 +61,24 @@ def closed_port() -> int:
 
 
 def section(page: Page):
-    return page.get_by_role("region", name="Models")
+    """Settings → Model servers."""
+    return page.get_by_role("region", name="Model servers")
+
+
+def agent_clis(page: Page):
+    """Settings → Agent CLIs."""
+    return page.get_by_role("region", name="Agent CLIs", exact=True)
+
+
+def yours(page: Page):
+    """Your models, the table of every CLI's models."""
+    return section(page).get_by_role("table", name="Your models")
+
+
+def model_row(page: Page, name: str):
+    return (
+        yours(page).get_by_role("row").filter(has=page.get_by_role("button", name=f"Rename {name}"))
+    )
 
 
 def source(page: Page, name: str):
@@ -77,11 +92,12 @@ def toggle(page: Page, name: str):
 
 
 def card(page: Page, title: str):
-    return section(page).get_by_role("group", name=title, exact=True)
+    """A CLI's row on Agent CLIs: its login and its default model."""
+    return agent_clis(page).get_by_role("listitem", name=title, exact=True)
 
 
 def picker(page: Page, title: str):
-    return section(page).get_by_role("combobox", name=f"Default model of {title}", exact=True)
+    return agent_clis(page).get_by_role("combobox", name=f"Default model of {title}", exact=True)
 
 
 def saved_server(lms, id="s1", name="LM Studio дома") -> str:
@@ -102,12 +118,18 @@ def stays(locator: Locator, before: float) -> None:
 
 
 def open_settings(page: Page, server) -> None:
+    """Settings → Model servers, its entries read."""
     log_in(page, server)
-    page.goto(f"{server['url']}/settings#models")
-    expect(section(page).get_by_role("heading", name="Your agent CLIs")).to_be_visible()
-    # Agent CLIs and environment, above, grows once its check ends: measured after that.
+    page.goto(f"{server['url']}/settings/model-servers")
+    expect(section(page).get_by_role("heading", name=re.compile("^Servers"))).to_be_visible()
+
+
+def open_clis(page: Page, server) -> None:
+    """Settings → Agent CLIs, its check ended and its pickers there."""
+    log_in(page, server)
+    page.goto(f"{server['url']}/settings/agent-clis")
     expect(page.locator(".pv-refresh.spinning")).to_have_count(0, timeout=30_000)
-    expect(page.locator(".pv-list")).to_be_visible()
+    expect(picker(page, "Claude Code")).to_be_visible()
 
 
 def start_form(page: Page, name: str, address: str) -> None:
@@ -127,38 +149,38 @@ def add_server(page: Page, name: str, address: str) -> Locator:
     return lm
 
 
-def test_first_open_a_card_per_cli_and_nothing_asked(page: Page, clis, server, lms, shot):
+def test_first_open_servers_then_your_models_and_nothing_asked(page: Page, clis, server, lms, shot):
     saved_server(lms)
     page.set_viewport_size({"width": 1280, "height": 900})
     open_settings(page, server)
     models = section(page)
     expect(models.get_by_role("tablist")).to_have_count(0)
-    expect(models.get_by_role("heading", level=3)).to_have_text(
-        ["Your agent CLIs", "Model servers 1"]
-    )
-    expect(models.get_by_text(LEAD_NO_MODELS)).to_be_visible()
-    for title in ("Claude Code", "Codex CLI", "Kilo CLI", "OpenCode"):
-        expect(card(page, title)).to_be_visible()
-    expect(picker(page, "Claude Code")).to_have_text(re.compile("Claude Code's settings"))
+    expect(models.get_by_role("heading", level=3)).to_have_text(["Servers 1", "Your models"])
+    expect(models.get_by_text(NONE_YET)).to_be_visible()
+    expect(models.get_by_role("combobox")).to_have_count(0)  # no card of a CLI
     expect(models.locator(".mx-hit[aria-expanded=true]")).to_have_count(0)  # all closed
-    assert lms.requests == []
     shot(page, "first-open")
+    open_clis(page, server)
+    for title in ("Claude Code", "Codex CLI", "Kilo CLI", "OpenCode"):
+        expect(picker(page, title)).to_have_text(re.compile(f"{title}'s settings"))
+    assert lms.requests == []
+    shot(page, "agent-clis")
 
 
 def test_a_built_in_default_from_a_long_list_searched_and_cleared(page: Page, clis, server, shot):
     page.set_viewport_size({"width": 1280, "height": 900})
-    open_settings(page, server)
+    open_clis(page, server)
     field = picker(page, "Kilo CLI")
     field.scroll_into_view_if_needed()
     before = top(field)
     field.click()
-    search = section(page).get_by_placeholder(f"Search {KILO_MODELS} models")
+    search = agent_clis(page).get_by_placeholder(f"Search {KILO_MODELS} models")
     expect(search).to_be_focused()
-    expect(section(page).get_by_role("option")).to_have_count(KILO_MODELS + 1)
+    expect(agent_clis(page).get_by_role("option")).to_have_count(KILO_MODELS + 1)
     shot(page, "kilo-picker")
     search.fill("model-32")
-    expect(section(page).get_by_role("option")).to_have_count(4)  # 32, 320-322
-    expect(section(page).get_by_text(f"4 of {KILO_MODELS}")).to_be_visible()
+    expect(agent_clis(page).get_by_role("option")).to_have_count(4)  # 32, 320-322
+    expect(agent_clis(page).get_by_text(f"4 of {KILO_MODELS}")).to_be_visible()
     search.press("ArrowDown")
     search.press("Enter")
     expect(field).to_have_text(re.compile("vendor/model-320"))
@@ -167,15 +189,15 @@ def test_a_built_in_default_from_a_long_list_searched_and_cleared(page: Page, cl
     assert state.cli_defaults() == [state.ModelRef("kilo", None, "vendor/model-320")]
     shot(page, "kilo-default")
     field.click()
-    section(page).get_by_role("option", name="Kilo CLI's settings").click()
+    agent_clis(page).get_by_role("option", name="Kilo CLI's settings").click()
     expect(field).to_have_text(re.compile("Kilo CLI's settings"))
     assert state.cli_defaults() == []
 
 
-def test_a_list_lost_default_shows_on_the_card_after_opening(page: Page, clis, server, shot):
+def test_a_list_lost_default_shows_in_its_row_after_opening(page: Page, clis, server, shot):
     state.set_cli_default(state.ModelRef("kilo", None, "old/gone"))
     page.set_viewport_size({"width": 1280, "height": 900})
-    open_settings(page, server)
+    open_clis(page, server)
     kilo = card(page, "Kilo CLI")
     expect(
         kilo.get_by_text(
@@ -192,24 +214,24 @@ def test_a_list_lost_default_shows_on_the_card_after_opening(page: Page, clis, s
 
 def test_other_name_on_claude_code_warns_and_stays(page: Page, clis, server, shot):
     page.set_viewport_size({"width": 1280, "height": 900})
-    open_settings(page, server)
+    open_clis(page, server)
     claude = card(page, "Claude Code")
     picker(page, "Claude Code").click()
-    expect(section(page).get_by_text("BUILT-IN · aliases")).to_be_visible()
+    expect(agent_clis(page).get_by_text("BUILT-IN · aliases")).to_be_visible()
     shot(page, "claude-picker")
     # The active row stays clear of the row pinned at the bottom, whichever way it moves.
     field = picker(page, "Claude Code")
     page.keyboard.press("End")
-    pinned = section(page).locator(".mp-other").bounding_box()
+    pinned = agent_clis(page).locator(".mp-other").bounding_box()
     for _ in range(3):
         page.keyboard.press("ArrowUp")
-        active = section(page).locator(".mp-active").bounding_box()
+        active = agent_clis(page).locator(".mp-active").bounding_box()
         assert pinned and active and active["y"] + active["height"] <= pinned["y"] + 1, (
             active,
             pinned,
         )
     expect(field).to_be_focused()
-    section(page).get_by_role("option", name=re.compile("Other name…")).click()
+    agent_clis(page).get_by_role("option", name=re.compile("Other name…")).click()
     name = claude.get_by_role("textbox", name="Other name")
     expect(name).to_be_focused()
     name.fill("claude-opus-4-1-20250805")
@@ -228,17 +250,21 @@ def test_an_external_default_removed_with_a_question_and_undo(page: Page, clis, 
     state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
     state.add_model("Рабочая Qwen", "opencode", "qwen3-8b", "s1")
     page.set_viewport_size({"width": 1280, "height": 900})
-    open_settings(page, server)
+    open_clis(page, server)
     field = picker(page, "OpenCode")
     field.click()
-    section(page).get_by_role("option", name=re.compile("Локальная Qwen")).click()
+    agent_clis(page).get_by_role("option", name=re.compile("Локальная Qwen")).click()
     expect(field).to_contain_text("Локальная Qwen")
     expect(field.locator(".srv")).to_have_text("LM Studio дома")
     saved = state.model("Локальная Qwen")
     assert state.cli_defaults() == [state.ModelRef("opencode", saved.id, None)]
-    opencode = card(page, "OpenCode")
-    opencode.get_by_role("button", name="Remove Локальная Qwen").click()
-    ask = opencode.get_by_role("alertdialog")
+    page.get_by_role("navigation", name="Settings sections").get_by_role(
+        "link", name="Model servers"
+    ).click()
+    table = yours(page)
+    expect(model_row(page, "Локальная Qwen")).to_contain_text("OpenCode · default")
+    table.get_by_role("button", name="Remove Локальная Qwen").click()
+    ask = table.get_by_role("alertdialog")
     expect(ask).to_contain_text(
         "It is OpenCode's default model: OpenCode goes back to its settings."
     )
@@ -247,19 +273,23 @@ def test_an_external_default_removed_with_a_question_and_undo(page: Page, clis, 
     ask.press("Escape")
     expect(ask).to_have_count(0)
     assert state.model("Локальная Qwen") is not None
-    opencode.get_by_role("button", name="Remove Локальная Qwen").click()
-    opencode.get_by_role("button", name="Remove model").click()
-    undo = opencode.get_by_role("button", name="Undo")
+    table.get_by_role("button", name="Remove Локальная Qwen").click()
+    table.get_by_role("button", name="Remove model").click()
+    undo = table.get_by_role("button", name="Undo")
     expect(undo).to_be_focused()
-    expect(opencode.get_by_text("OpenCode is back on its settings.")).to_be_visible()
-    expect(field).to_have_text(re.compile("OpenCode's settings"))
+    expect(table.get_by_text("OpenCode is back on its settings.")).to_be_visible()
     assert state.cli_defaults() == []
     shot(page, "default-removed")
     undo.click()
-    expect(opencode.get_by_role("button", name="Rename Локальная Qwen")).to_be_focused()
-    expect(field).to_contain_text("Локальная Qwen")
+    expect(table.get_by_role("button", name="Rename Локальная Qwen")).to_be_focused()
+    expect(model_row(page, "Локальная Qwen")).to_contain_text("OpenCode · default")
     back = state.model("Локальная Qwen")
     assert state.cli_defaults() == [state.ModelRef("opencode", back.id, None)]
+    # Agent CLIs reads the settings when it opens: its picker shows the default back.
+    page.get_by_role("navigation", name="Settings sections").get_by_role(
+        "link", name="Agent CLIs"
+    ).click()
+    expect(picker(page, "OpenCode")).to_contain_text("Локальная Qwen")
 
 
 def test_a_request_lado_s_server_did_not_answer_promises_nothing(
@@ -269,13 +299,13 @@ def test_a_request_lado_s_server_did_not_answer_promises_nothing(
     state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
     page.set_viewport_size({"width": 1280, "height": 900})
     open_settings(page, server)
-    opencode = card(page, "OpenCode")
-    x = opencode.get_by_role("button", name="Remove Локальная Qwen")
+    table = yours(page)
+    x = table.get_by_role("button", name="Remove Локальная Qwen")
     expect(x).to_be_visible()
     page.route("**/api/**", lambda route: route.abort())
     x.click()
     expect(
-        opencode.get_by_text(
+        table.get_by_text(
             "LADO's server does not answer: your request may or may not have reached it."
         )
     ).to_be_visible()
@@ -289,31 +319,31 @@ def test_a_silent_server_shows_when_the_picker_opens(page: Page, clis, server, l
     state.set_cli_default(state.ModelRef("opencode", saved.id, None))
     lms.close()
     page.set_viewport_size({"width": 1280, "height": 900})
-    open_settings(page, server)
+    open_clis(page, server)
     opencode = card(page, "OpenCode")
     expect(opencode.get_by_text("does not answer")).to_have_count(0)  # the page asks no server
     picker(page, "OpenCode").click()
     expect(opencode.get_by_text(re.compile("^⚠ LM Studio дома does not answer"))).to_be_visible()
-    expect(section(page).get_by_role("option", name=re.compile("Локальная Qwen"))).to_contain_text(
-        "not answering"
-    )
+    expect(
+        agent_clis(page).get_by_role("option", name=re.compile("Локальная Qwen"))
+    ).to_contain_text("not answering")
     shot(page, "silent-default")
     page.keyboard.press("Escape")
     expect(opencode.get_by_role("button", name="Check again")).to_be_visible()
     assert state.cli_defaults() == [state.ModelRef("opencode", saved.id, None)]
 
 
-def test_the_picker_of_the_last_card_lies_over_the_page_in_view(page: Page, clis, server, shot):
+def test_the_picker_of_the_last_row_lies_over_the_page_in_view(page: Page, clis, server, shot):
     page.set_viewport_size({"width": 1280, "height": 600})
-    open_settings(page, server)
-    field = picker(page, "Kilo CLI")
+    open_clis(page, server)
+    field = agent_clis(page).locator(".model-pick").last
     field.evaluate(
         "f => { const c = document.querySelector('.content');"
         " c.scrollTop += f.getBoundingClientRect().bottom - c.getBoundingClientRect().bottom + 8; }"
     )
     height = page.evaluate("document.querySelector('.content').scrollHeight")
     field.click()
-    pop = section(page).locator(".mp-pop")
+    pop = agent_clis(page).locator(".mp-pop")
     expect(pop).to_be_visible()
     box, at = pop.bounding_box(), field.bounding_box()
     assert box and at
@@ -348,7 +378,9 @@ def test_a_tick_in_the_middle_of_a_long_list_moves_nothing(
     middle.scroll_into_view_if_needed()
     before = top(middle)
     middle.click()
-    expect(card(page, "Kilo CLI").get_by_role("table")).to_be_visible()  # its table added above
+    expect(
+        model_row(page, "vendor/model-160 · LM Studio дома · Kilo CLI")
+    ).to_be_visible()  # a row below
     expect(middle).to_be_checked()
     stays(middle, before)
     shot(page, "server-long-list")
@@ -362,7 +394,7 @@ def test_x_undo_and_undo_running_out_move_nothing(page: Page, clis, server, lms,
     state.add_model("gpt-5-codex", "opencode", "qwen3-8b", "s1")
     page.set_viewport_size({"width": 1280, "height": 900})
     open_settings(page, server)
-    opencode = card(page, "OpenCode")
+    opencode = yours(page)
     x = opencode.get_by_role("button", name="Remove Claude Sonnet")
     x.scroll_into_view_if_needed()
     row = opencode.get_by_role("row").nth(1)
@@ -414,9 +446,10 @@ def test_a_server_added_ticked_renamed_unticked_refreshed_and_removed(
     expect(models.locator("label", has_text="Key")).to_contain_text("optional")
     shot(page, "form-checked")
     add = models.get_by_role("button", name="Add server", exact=True)
-    # Room under the page: with the form at its very end, the page getting shorter moves it
-    # whatever the section does, as the window has nothing left to scroll.
-    page.add_style_tag(content=".setting.mx { margin-bottom: 600px; }")
+    # Room under the page and above it: with the form at its very end, the page getting
+    # shorter moves it whatever the page does, and lines going above a tick at the page's top
+    # (the saved server's) move it too, as the window has nothing left to scroll.
+    page.add_style_tag(content=".setting.mx { margin-top: 600px; margin-bottom: 1200px; }")
     add.scroll_into_view_if_needed()
     at = top(models.locator(".mx-form"))
     add.click()
@@ -437,12 +470,12 @@ def test_a_server_added_ticked_renamed_unticked_refreshed_and_removed(
     before = top(opencode)
     opencode.click()
     expect(row).to_contain_text("in OpenCode")
-    expect(card(page, "OpenCode").get_by_role("table")).to_be_visible()  # its table above
+    expect(yours(page)).to_be_visible()  # the table added below
     stays(opencode, before)
     shot(page, "server-model-clis")
 
     name = "qwen3-8b · LM Studio дома · OpenCode"
-    opencode_card = card(page, "OpenCode")
+    opencode_card = yours(page)
     opencode_card.get_by_role("button", name=f"Rename {name}").click()
     field = opencode_card.get_by_role("textbox", name=f"Name of {name}")
     field.fill("Другое")
@@ -477,7 +510,7 @@ def test_a_server_added_ticked_renamed_unticked_refreshed_and_removed(
     first = lm.locator(".mx-list .mx-row").first
     expect(first).to_contain_text("no longer listed")
     expect(first).to_contain_text("in OpenCode")
-    expect(card(page, "OpenCode").get_by_text("⚠ not in list")).to_be_visible()
+    expect(yours(page).get_by_text("⚠ not in list")).to_be_visible()
     shot(page, "refreshed")
 
     id = state.model_server("LM Studio дома").id
@@ -496,12 +529,12 @@ def test_a_server_added_ticked_renamed_unticked_refreshed_and_removed(
     confirm.click()
     removed = "Removed LM Studio дома and its 1 model."
     expect(models.get_by_text(removed)).to_be_visible()
-    expect(card(page, "OpenCode").get_by_role("table")).to_have_count(0)  # its table above went
+    expect(yours(page)).to_have_count(0)  # the table below went
     line = models.locator("li.mx-src").filter(has=page.get_by_text(removed))
     stays(line, at)  # its line in its place
     assert state.model_servers() == [] and state.models() == []
     assert not model_settings.key_folder(id).exists()
-    expect(models.get_by_text(LEAD_NO_MODELS)).to_be_visible()
+    expect(models.get_by_role("heading", name=re.compile("^Your models"))).to_have_count(0)
 
 
 def test_the_form_checks_before_add_a_silent_server_and_change(page: Page, clis, server, lms, shot):
@@ -529,9 +562,11 @@ def test_the_form_checks_before_add_a_silent_server_and_change(page: Page, clis,
     toggle(page, "lab").click()  # closed
     lms.close()
     toggle(page, "lab").click()
-    expect(lm.get_by_role("alert")).to_contain_text("does not answer")
+    expect(lm.get_by_role("alert")).to_contain_text("⚠ Does not answer")
     expect(
-        lm.get_by_text(re.compile(r"^Its model stays saved: qwen3-8b · lab · OpenCode\."))
+        lm.get_by_text(
+            "Its model stays saved; agents on it stop at their first turn until it answers."
+        )
     ).to_be_visible()
     shot(page, "silent")
     assert [m.name for m in state.models()] == ["qwen3-8b · lab · OpenCode"]
@@ -648,75 +683,25 @@ def test_change_keeps_a_refused_new_key_in_its_field_and_save_off_until_it_is_ed
 
 
 def test_the_page_never_scrolls_by_itself(page: Page, clis, server, lms):
-    """Opened at /settings, no #models, nothing pressed: the sections above grow as their
-    rows come and Models renders as its rows come, and the page stays at its top."""
+    """Opened at /settings/model-servers, nothing pressed: Servers and Your models render as
+    their rows come, and the page stays at its top."""
     saved_server(lms)
-    state.add_model("Claude Sonnet", "opencode", "qwen3-8b", "s1")
-    page.set_viewport_size({"width": 1280, "height": 900})
+    for n in range(12):
+        state.add_model(f"Модель {n}", "opencode", "qwen3-8b", "s1")
+    page.set_viewport_size({"width": 1280, "height": 600})
     log_in(page, server)
-    page.goto(f"{server['url']}/settings")
-    expect(section(page).get_by_role("heading", name="Your agent CLIs")).to_be_visible()
+    page.goto(f"{server['url']}/settings/model-servers")
+    expect(yours(page)).to_be_visible()
     seen = []
     for _ in range(16):
         seen.append(page.evaluate("document.querySelector('.content').scrollTop"))
         page.wait_for_timeout(250)
-    expect(page.locator(".pv-refresh.spinning")).to_have_count(0, timeout=30_000)
-    seen.append(page.evaluate("document.querySelector('.content').scrollTop"))
     assert set(seen) == {0}, seen
 
 
-def models_top(page: Page) -> float:
-    """The top of Models less the top of the area that scrolls."""
-    return page.evaluate(
-        "() => document.querySelector('.setting.mx').getBoundingClientRect().top"
-        " - document.querySelector('.content').getBoundingClientRect().top"
-    )
-
-
-def test_opened_at_models_the_section_stays_at_the_top_while_the_sections_above_grow(
-    page: Page, clis, server, lms
-):
-    """Opened at /settings#models, nothing pressed: Agent CLIs and environment, above, grows
-    once its check ends, and Models stays at the top; a section above growing after the
-    human's own scroll no longer moves the page."""
-    saved_server(lms)
-    state.add_model("Claude Sonnet", "opencode", "qwen3-8b", "s1")
-    page.set_viewport_size({"width": 1280, "height": 900})
-    log_in(page, server)
-    page.goto(f"{server['url']}/settings#models")
-    expect(section(page).get_by_role("heading", name="Your agent CLIs")).to_be_visible()
-    page.wait_for_function(
-        "() => Math.abs(document.querySelector('.setting.mx').getBoundingClientRect().top"
-        " - document.querySelector('.content').getBoundingClientRect().top) < 1"
-    )  # scrolled to it once its entries came
-    seen = []
-    for _ in range(16):
-        seen.append(models_top(page))
-        page.wait_for_timeout(200)
-    expect(page.locator(".pv-refresh.spinning")).to_have_count(0, timeout=30_000)
-    page.wait_for_timeout(300)
-    seen.append(models_top(page))
-    assert all(abs(at) < 1 for at in seen), seen
-    grow = (
-        "() => { const d = document.createElement('div'); d.style.height = '300px';"
-        " document.querySelector('.pv-list').prepend(d); }"
-    )
-    page.evaluate(grow)
-    page.wait_for_timeout(300)
-    assert abs(models_top(page)) < 1, models_top(page)
-    page.add_style_tag(content=".content { overflow-anchor: none; }")  # as Safari, which has none
-    page.mouse.move(640, 450)
-    page.mouse.wheel(0, 100)  # the human scrolls: the page is theirs
-    page.wait_for_timeout(300)
-    before = page.evaluate("document.querySelector('.content').scrollTop")
-    page.evaluate(grow)
-    page.wait_for_timeout(300)
-    assert page.evaluate("document.querySelector('.content').scrollTop") == before
-
-
 def test_a_section_above_growing_is_no_change_to_undo(page: Page, clis, server, lms):
-    """The human acted in Models (opened a server, its list still reading); then a section
-    above grows by 300 px, the page not following it (Safari has no scroll anchoring): the
+    """The human acted on Model servers (opened a server, its list still reading); then what is
+    above it grows by 300 px, the page not following it (Safari has no scroll anchoring): the
     list's read ending scrolls nothing to make up for it."""
     saved_server(lms)
     held: list[Route] = []
@@ -728,7 +713,7 @@ def test_a_section_above_growing_is_no_change_to_undo(page: Page, clis, server, 
     expect(source(page, "LM Studio дома").get_by_text("reading the models…")).to_be_visible()
     page.evaluate(
         "() => { const d = document.createElement('div'); d.style.height = '300px';"
-        " document.querySelector('.pv-list').prepend(d); }"
+        " document.querySelector('.setting.mx .spage-head').after(d); }"
     )
     before = page.evaluate("document.querySelector('.content').scrollTop")
     assert len(held) == 1
@@ -739,32 +724,32 @@ def test_a_section_above_growing_is_no_change_to_undo(page: Page, clis, server, 
 
 
 def test_the_focus_out_of_view_holds_nothing(page: Page, clis, server, lms):
-    """The focus on Add server, the human scrolled up so that the last card shows and Add
+    """The focus on Add server, the human scrolled up so that the first server shows and Add
     server is below the view: 300 px growing between them moves nothing that shows."""
-    saved_server(lms)
+    for n in range(10):
+        state.add_model_server(f"s{n}", f"Сервер {n}", lms.url, "LM Studio", [CHAT])
     page.set_viewport_size({"width": 1280, "height": 500})
     open_settings(page, server)
     add = section(page).get_by_role("button", name="Add server", exact=True)
     add.focus()
     page.mouse.move(640, 250)
-    page.mouse.wheel(0, -1)  # the human's: #models no longer kept at the top
+    page.mouse.wheel(0, -1)  # the human's
+    first = section(page).locator("li.mx-src").first
     page.evaluate(
         "(at) => { const c = document.querySelector('.content');"
-        " c.scrollTop += at - c.getBoundingClientRect().bottom - 100; }",
-        top(add),
+        " c.scrollTop += at - c.getBoundingClientRect().top - 60; }",
+        top(first),
     )
     page.wait_for_timeout(300)
-    picked = section(page).locator(".model-pick").last
-    before = top(picked)
+    before = top(first)
     assert 0 < before < 500 and top(add) > 500, (before, top(add))
     assert page.evaluate("document.activeElement.textContent").endswith("Add server")
     page.evaluate(
-        "() => { const h = [...document.querySelectorAll('.setting.mx h3')]"
-        ".find((e) => e.textContent.startsWith('Model servers'));"
-        " const d = document.createElement('div'); d.style.height = '300px'; h.after(d); }"
+        "() => { const d = document.createElement('div'); d.style.height = '300px';"
+        " document.querySelector('.setting.mx li.mx-src').after(d); }"
     )
     page.wait_for_timeout(300)
-    stays(picked, before)
+    stays(first, before)
 
 
 def test_a_list_read_ending_above_the_focus_moves_nothing(page: Page, clis, server, lms):
@@ -773,6 +758,8 @@ def test_a_list_read_ending_above_the_focus_moves_nothing(page: Page, clis, serv
     page.route(re.compile(r".*/api/model-servers/.*/probe$"), lambda route: held.append(route))
     page.set_viewport_size({"width": 1280, "height": 900})
     open_settings(page, server)
+    # Room to scroll under the page, so the page can keep Add server in place.
+    page.add_style_tag(content=".setting.mx { margin-bottom: 900px; }")
     toggle(page, "LM Studio дома").click()
     expect(source(page, "LM Studio дома").get_by_text("reading the models…")).to_be_visible()
     add = section(page).get_by_role("button", name="Add server", exact=True)
@@ -792,7 +779,7 @@ def whole(locator: Locator) -> bool:
 
 def test_a_phones_rows_keep_the_whole_id_and_name(browser: Browser, clis, server, lms, shot):
     """At 390 px: a server model's marks go under its id, which keeps its width; a server's
-    name is not cut by its badges; a card shows a model's whole id and where it runs."""
+    name is not cut by its badges; Your models shows a model's whole id and where it runs."""
     gone = "qwen/qwen-gone-7b-instruct-q4"
     saved_server(lms)
     state.add_model("Gone", "opencode", gone, "s1")
@@ -820,9 +807,9 @@ def test_a_phones_rows_keep_the_whole_id_and_name(browser: Browser, clis, server
             assert top(mark) >= box["y"] + box["height"] - 1, (top(mark), box)
         row.scroll_into_view_if_needed()
         shot(page, "phone-marks", full_page=False)
-        your = card(page, "Claude Code")
+        your = model_row(page, "Opus")
         your.scroll_into_view_if_needed()
-        for cell in (your.locator(".mx-model"), your.locator(".mx-from")):
+        for cell in (your.locator(".mx-model"), your.locator(".mx-from"), your.locator(".mx-cli")):
             assert whole(cell), cell.text_content()
         shot(page, "phone-whole-ids", full_page=False)
         assert page.evaluate("document.documentElement.scrollWidth") <= 390
@@ -869,7 +856,7 @@ def test_the_section_at_a_phones_width(browser: Browser, clis, server, lms, shot
         expect(lm.get_by_role("button", name=long, exact=True)).to_contain_text("in OpenCode")
         assert page.evaluate("document.documentElement.scrollWidth") <= 390  # no sideways scroll
         shot(page, "phone", full_page=False)
-        opencode = card(page, "OpenCode")
+        opencode = yours(page)
         opencode.scroll_into_view_if_needed()
         expect(opencode).to_contain_text(long)
         x = opencode.get_by_role("button", name=re.compile("^Remove ")).bounding_box()
@@ -894,7 +881,7 @@ def test_the_picker_at_a_phones_width(browser: Browser, clis, server, lms, shot)
     )
     try:
         page = context.new_page()
-        open_settings(page, server)
+        open_clis(page, server)
         field = picker(page, "OpenCode")
         field.scroll_into_view_if_needed()
         box = field.bounding_box()
@@ -903,28 +890,17 @@ def test_the_picker_at_a_phones_width(browser: Browser, clis, server, lms, shot)
         assert label and label["y"] + label["height"] <= box["y"] + 1  # over its field
         expect(field.locator(".mp-id")).to_be_hidden()  # the id goes; the name and server stay
         expect(field.locator(".srv")).to_be_visible()
-        opencode = card(page, "OpenCode")
-        expect(opencode.get_by_text("Your models")).to_be_visible()  # the head's label alone
-        expect(opencode.locator(".mx-mhead").get_by_text("From")).to_be_hidden()
-        x = opencode.get_by_role("button", name=re.compile("^Remove "))
-        x.click()
-        ask = opencode.get_by_role("alertdialog")
-        for button in ("Remove model", "Cancel"):
-            shown = ask.get_by_role("button", name=button).bounding_box()
-            assert shown and shown["height"] >= 44, shown
-        ask.get_by_role("button", name="Cancel").click()
-        expect(x).to_be_focused()
         assert page.evaluate("document.documentElement.scrollWidth") <= 390
-        shot(page, "phone-card", full_page=False)
+        shot(page, "phone-row", full_page=False)
         field.click()
-        pop = section(page).locator(".mp-pop")
+        pop = agent_clis(page).locator(".mp-pop")
         expect(pop).to_be_visible()
         shown = pop.bounding_box()
         assert shown and shown["height"] <= 844 * 0.6 + 1, shown
         assert shown["x"] >= 0 and shown["x"] + shown["width"] <= 390, shown
-        row = section(page).get_by_role("option").first.bounding_box()
+        row = agent_clis(page).get_by_role("option").first.bounding_box()
         assert row and row["height"] >= 44
-        long = section(page).get_by_role("option", name=re.compile("Локальная Qwen"))
+        long = agent_clis(page).get_by_role("option", name=re.compile("Локальная Qwen"))
         names = long.locator(".mp-names").bounding_box()
         assert names and names["width"] >= 200, names  # not squeezed to letters by its marks
         mark = long.locator(".srv").bounding_box()
@@ -932,10 +908,26 @@ def test_the_picker_at_a_phones_width(browser: Browser, clis, server, lms, shot)
         assert page.evaluate("document.documentElement.scrollWidth") <= 390
         shot(page, "phone-picker", full_page=False)
         page.keyboard.press("Escape")
-        chip = opencode.get_by_role("button", name="Use OpenCode's settings")
+        chip = card(page, "OpenCode").get_by_role("button", name="Use OpenCode's settings")
         expect(chip).to_be_visible()  # the model is gone from the fake's list
         size = chip.bounding_box()
-        assert size and size["height"] >= 32, size
+        assert size and size["height"] >= 44, size
+
+        # Your models at a phone's width: no head row, two lines; ×'s question 44 px.
+        open_settings(page, server)
+        table = yours(page)
+        table.scroll_into_view_if_needed()
+        expect(table.locator(".mx-mhead")).to_be_hidden()
+        x = table.get_by_role("button", name=re.compile("^Remove "))
+        x.click()
+        ask = table.get_by_role("alertdialog")
+        for button in ("Remove model", "Cancel"):
+            shown = ask.get_by_role("button", name=button).bounding_box()
+            assert shown and shown["height"] >= 44, shown
+        ask.get_by_role("button", name="Cancel").click()
+        expect(x).to_be_focused()
+        assert page.evaluate("document.documentElement.scrollWidth") <= 390
+        shot(page, "phone-your-models", full_page=False)
     finally:
         context.close()
 

@@ -61,11 +61,12 @@ export function placeBeside(
 ): CSSProperties {
   const left = Math.min(anchor.right + MARGIN, viewport.width - MARGIN - size.width);
   const top = Math.min(anchor.bottom - size.height, viewport.height - MARGIN - size.height);
-  return { position: "fixed", left: Math.max(MARGIN, left), top: Math.max(MARGIN, top) };
+  return { position: "fixed", left: Math.max(MARGIN, left), top: Math.max(MARGIN, top), bottom: "auto" };
 }
 
-// Where the menu `floating` goes beside `anchor` (placeBeside), fixed, so the rail's own
-// scroll does not cut it; placed again after each render.
+// Where the menu `floating` goes beside `anchor` (placeBeside): past the right edge of the
+// rail that holds it, its bottom on the anchor's; fixed, so nothing around cuts it; placed
+// again after each render.
 export function useBeside(
   anchor: RefObject<HTMLElement | null>,
   floating: RefObject<HTMLElement | null>,
@@ -75,8 +76,9 @@ export function useBeside(
   useLayoutEffect(() => {
     const box = anchor.current?.getBoundingClientRect();
     if (!open || !box) return;
+    const right = (anchor.current?.closest(".rail") ?? anchor.current)!.getBoundingClientRect().right;
     const size = { width: floating.current?.offsetWidth ?? 0, height: floating.current?.offsetHeight ?? 0 };
-    const placed = placeBeside(box, size, { width: window.innerWidth, height: window.innerHeight });
+    const placed = placeBeside({ right, bottom: box.bottom }, size, { width: window.innerWidth, height: window.innerHeight });
     setStyle((now) => (JSON.stringify(now) === JSON.stringify(placed) ? now : placed));
   });
   return open ? style : undefined;

@@ -46,7 +46,7 @@ with its files, interfaces and tests).
 
 ## 8. Launch window
 
-- [ ] 8.1 The picker's foot and the Model notes name Settings → Agent CLIs and Model servers (AC-7).
+- [x] 8.1 The picker's foot and the Model notes name Settings → Agent CLIs and Model servers (AC-7).
   Checked: `make web` (`ModelPicker.test.tsx`, `Launch.test.tsx`).
 
 ## 9. Help

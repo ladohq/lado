@@ -1,4 +1,4 @@
-"""The UI server's API of Settings → Agent CLIs and environment (openspec change
+"""The UI server's API of Settings → Agent CLIs (openspec change
 provider-logins): each CLI's login, the login window, logout, and the login variables kept
 as LADO's secrets. In process, with FastAPI's test client; the CLIs' status commands
 answered by tests/conftest.py's cli_logins, tmux recorded for the windows."""

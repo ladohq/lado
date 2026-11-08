@@ -357,7 +357,7 @@ def test_the_system_says_where_on_a_mac_and_nothing_elsewhere(client, monkeypatc
     assert info["gui_session"] is None and "Graphical session" not in info["report"]
 
 
-# Usage statistics (lado.telemetry).
+# Statistics (lado.telemetry).
 
 
 def _raise(exc):

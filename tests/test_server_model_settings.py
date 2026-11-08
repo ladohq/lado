@@ -1,4 +1,4 @@
-"""The UI server's API of Settings → Models (openspec change model-settings-page): the
+"""The UI server's API of Settings → Model servers (openspec change model-settings-page): the
 configured models and model servers through lado.server.model_entries over
 lado.model_settings. In process, with FastAPI's test client and the fake model servers of
 tests/fake_model_server.py."""

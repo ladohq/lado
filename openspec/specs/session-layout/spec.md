@@ -358,7 +358,7 @@ page, the terminal it asks about too.
 ### Requirement: In a wide window the rail is as high as the app
 
 In a window wider than 900 px the rail SHALL be as high as the app, on every page, so that on a
-touch screen, where the app is as high as the part of the window the human sees, Report a bug
+touch screen, where the app is as high as the part of the window the human sees, Help
 and Settings stand within that part. A wider window with a fine pointer SHALL keep a rail as
 high as the window.
 

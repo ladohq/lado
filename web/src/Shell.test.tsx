@@ -8,6 +8,7 @@ import type { SessionInfo } from "./api";
 import { App } from "./App";
 import { FakeEventSource, FakeScreen, FakeSocket, stubDialogs } from "./fakes";
 import { Shell } from "./Shell";
+import styles from "./styles.css?raw";
 
 vi.mock("@xterm/xterm", async () => ({ Terminal: (await import("./fakes")).FakeXterm }));
 vi.mock("@xterm/addon-fit", async () => ({ FitAddon: (await import("./fakes")).FakeFit }));
@@ -143,6 +144,61 @@ test("choosing a section goes there and closes the menu", async () => {
   fireEvent.click(menu());
   fireEvent.click(screen.getByRole("link", { name: "Settings" }));
   await screen.findByRole("heading", { name: "Settings" });
+  expect(rail().hasAttribute("data-open")).toBe(false);
+});
+
+// A tablet's browser bars take some of 100vh: the rail as high as what shows (100dvh, after
+// 100vh for a browser without it), so Help and Settings at its bottom stay in sight. Chromium
+// on a computer has no such bars, so the rule is read here.
+test("the rail is as high as the visible window, not 100vh under a tablet's bars", () => {
+  const rail = styles.replace(/\/\*[\s\S]*?\*\//g, "").match(/\n\.rail \{([^}]*)\}/)![1];
+  expect(rail.match(/height:[^;]+;/g)).toEqual(["height: 100vh;", "height: 100dvh;"]);
+});
+
+test("on a phone a Settings page names its section in the top bar; the list and a computer say Settings", () => {
+  const title = () => screen.getByRole("banner").querySelector("h1")!.textContent;
+  FakeScreen.phone();
+  open("/settings/statistics");
+  expect(title()).toBe("Statistics");
+  cleanup();
+  open("/settings");
+  expect(title()).toBe("Settings");
+  cleanup();
+  FakeScreen.computer();
+  open("/settings/statistics");
+  expect(title()).toBe("Settings");
+});
+
+test("Help in the drawer opens its menu there; Esc closes only the menu, an item both", async () => {
+  FakeScreen.phone();
+  open("/kits");
+  fireEvent.click(menu());
+  const help = screen.getByRole("button", { name: "Help" });
+  fireEvent.click(help);
+  const helpMenu = screen.getByRole("menu", { name: "Help" });
+  expect(rail().contains(helpMenu)).toBe(true); // in the drawer, over Help
+  expect(helpMenu.style.position).toBe(""); // placed by the drawer's CSS, not beside the rail
+  fireEvent.keyDown(helpMenu, { key: "Escape" });
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(rail().hasAttribute("data-open")).toBe(true);
+  expect(document.activeElement).toBe(help);
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(rail().hasAttribute("data-open")).toBe(false);
+  fireEvent.click(menu());
+  fireEvent.click(screen.getByRole("button", { name: "Help" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Report a bug" }));
+  await screen.findByRole("heading", { name: "Report a bug" });
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(rail().hasAttribute("data-open")).toBe(false);
+});
+
+test("Documentation in the drawer's Help closes the menu and the drawer", () => {
+  FakeScreen.phone();
+  open("/kits");
+  fireEvent.click(menu());
+  fireEvent.click(screen.getByRole("button", { name: "Help" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Documentation" }));
+  expect(screen.queryByRole("menu")).toBeNull();
   expect(rail().hasAttribute("data-open")).toBe(false);
 });
 

@@ -44,7 +44,7 @@ const settle = async () => {
     await vi.advanceTimersByTimeAsync(MODEL_DEBOUNCE + 10);
   });
 };
-const card = (title: string) => screen.findByRole("group", { name: title });
+const yours = () => screen.findByRole("table", { name: "Your models" });
 
 // LM Studio дома open, the model `name` open under its row: its ticks show.
 async function openModel(name: string, probe: ProbeInfo = LMSTUDIO_PROBE) {
@@ -248,7 +248,9 @@ test("a server's model opens its installed CLIs under its row, each saying the n
   expect(screen.queryByRole("checkbox")).toBeNull();
   fireEvent.click(row);
   const pop = screen.getByRole("group", { name: "Agent CLIs for qwen3-8b" });
-  expect(within(pop).getByText("qwen3-8b", { selector: "b" })).toBeTruthy();
+  expect(within(pop).getByText("qwen3-8b", { selector: "b" }).parentElement?.textContent).toBe(
+    "Agent CLIs that run qwen3-8b:",
+  );
   expect(ticks(pop)).toEqual(["qwen3-8b on Codex CLI", "qwen3-8b on OpenCode"]);
   expect(await within(pop).findByText("would be qwen3-8b · LM Studio дома · OpenCode")).toBeTruthy();
   expect(await within(pop).findByText("would be qwen3-8b · LM Studio дома · Codex CLI")).toBeTruthy();
@@ -355,7 +357,7 @@ test("embeddings are hidden and counted; a model gone from the list first, ticke
   expect(screen.queryByText("text-embedding-nomic")).toBeNull();
   expect(screen.getByText("1 embeddings model hidden: agents cannot run on it.")).toBeTruthy();
   expect(screen.getByText("2 models")).toBeTruthy();
-  const mark = within(await card("OpenCode")).getByText("⚠ not in list");
+  const mark = within(await yours()).getByText("⚠ not in list");
   expect(mark.getAttribute("title")).toBe(
     "LM Studio дома no longer lists mistral-7b: agents on it stop at their first turn.",
   );
@@ -388,7 +390,7 @@ test("several models of one tick: on, disabled, titled with them", async () => {
   await openModel("qwen3-8b");
   const box = await tickOf("qwen3-8b on OpenCode");
   expect([box.checked, box.disabled]).toEqual([true, true]);
-  expect(box.title).toBe("Быстрая, Сильная: remove them on the card of OpenCode");
+  expect(box.title).toBe("Быстрая, Сильная: remove them in Your models");
 });
 
 test("a list longer than ten: search above it, its count under it", async () => {
@@ -429,12 +431,11 @@ test("a server that does not answer says why with its hint, and that its models 
   const lm = item(await source("LM Studio дома"));
   fireEvent.click(await source("LM Studio дома"));
   const warn = await within(lm).findByRole("alert");
-  expect(warn.textContent).toBe(
-    "⚠ http://localhost:1234 does not answer (connection refused)LADO runs in a container…",
-  );
-  expect(within(lm).getByText("Локальная Gemma", { selector: "b" }).parentElement?.textContent).toBe(
-    "Its model stays saved: Локальная Gemma. Agents on it stop at their first turn until the server answers.",
-  );
+  // Its address is in the row's head: the line says what it does.
+  expect(warn.textContent).toBe("⚠ Does not answer (connection refused)LADO runs in a container…");
+  expect(
+    within(lm).getByText("Its model stays saved; agents on it stop at their first turn until it answers."),
+  ).toBeTruthy();
 });
 
 const NO_LIST = { ...LMSTUDIO_PROBE, models: null, models_why: "GET /v1/models: 404" } as ProbeInfo;
@@ -760,7 +761,7 @@ test("the form checks once the typing settles, without a key: the found panel, t
   expect(within(found).getByText("Agent CLIs").nextElementSibling?.textContent).toBe("Codex CLI, Kilo CLI, OpenCode");
   expect(within(fieldOf("Name")).getByText("free").className).toBe("field-note ok");
   expect(keyLabel()).toBe("optional");
-  expect(within(fieldOf("Key")).getByText("Kept in a file only LADO reads; never shown again.")).toBeTruthy();
+  expect(within(fieldOf("Key")).getByText("Only LADO reads it; never shown again.")).toBeTruthy();
   await waitFor(() => expect(addButton().disabled).toBe(false));
   const checks = server.of("POST", "/api/model-servers/check");
   expect(checks.at(-1)?.body).toEqual({
@@ -786,7 +787,7 @@ test("a typo in the port shows under Address before any Add, and Add stays off",
 test("a taken name shows under Name, and Add stays off", async () => {
   server.entries = { models: [], servers: [LMSTUDIO] };
   await openForm("lm studio ДОМА", "localhost:1234");
-  expect(await within(fieldOf("Name")).findByText('a model server "LM Studio дома" is saved already')).toBeTruthy();
+  expect(await within(fieldOf("Name")).findByText('A model server "LM Studio дома" is saved already')).toBeTruthy();
   expect(await within(fieldOf("Address")).findByText('same address as model server "LM Studio дома"')).toBeTruthy();
   expect(within(fieldOf("Name")).queryByText("free")).toBeNull();
   expect(addButton().disabled).toBe(true);

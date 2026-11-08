@@ -464,7 +464,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     store keeps LADO's secrets in `<LADO_HOME>/secrets/` (`write_lado`, `remove_lado`,
     `read_lado`, `lado_names`, `lado_folder`; `_open_chain` over the folder's parts): the
     agent CLIs' login variables the human sets in Settings (lado.logins checks the names).
-  - `logins.py`: the agent CLIs' logins (docs/design/ui.md, Agent CLIs and environment):
+  - `logins.py`: the agent CLIs' logins (docs/design/ui.md, Agent CLIs):
     `refusal` is why a new session or worker (`SESSION`, `WORKER`) of a CLI that needs a
     login there (`Provider.needs_login(env)`) and has none is not started
     (lado.runtime.check_login raises it), `wait_reason` why a resumed agent waits;
@@ -880,7 +880,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     the key only in the requests' headers.
   - `model_settings.py`: the human's model servers, configured models under names and agent
     CLIs' default models (`lado model-server add|list|remove`, `lado model
-    add|list|remove|default`, and Settings → Models through `server/model_entries.py`):
+    add|list|remove|default`, and Settings → Model servers and Agent CLIs through
+    `server/model_entries.py`):
     `check_name` (one line of visible text, 1 to
     64 characters, no spaces at its ends), `add_server` (probe, then the key file, then the
     row; `--replace` probes with the new or the kept key and updates the row; a failed
@@ -1234,7 +1235,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `launch.provider_infos(project)` sets `login_missing` by `logins.refusal` in
     `runtime.agents_env` of the provider over `runtime.agent_layers(project)`, false when those cannot be had; `?project=`
     unknown is 404);
-    `provider_check.py`: Settings → Agent CLIs and environment's rows (LAD-163): the last
+    `provider_check.py`: Settings → Agent CLIs' rows (LAD-163): the last
     `ProviderLogins` of each provider (`launch.provider_logins`, which names the agents
     waiting for a login only while it is missing), kept for the server's lifetime, never on
     disk; `start()` runs one check at a time in a daemon thread, every provider at once
@@ -1247,7 +1248,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `GET /api/providers/logins` answers it, `POST /api/providers/check` starts a check, and
     the login actions put their row and start one; `GET /api/providers/{name}/model-choices`
     reads the CLI's list kept a minute (`launch.model_list`), with `fresh` read now and kept;
-    `model_entries.py`: Settings → Models' routes (docs/design/ui.md, Models) over
+    `model_entries.py`: the model settings' routes (docs/design/ui.md, Model servers) over
     `model_settings.py`, one per action of the commands: `listing` (asks no server; empty
     with no lado.db), `add_server` (the warnings and notes as lists), `check_server` (the
     form's check before an Add, saving nothing: the name's and the address's refusals, the
@@ -1292,7 +1293,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `POST /api/marketplaces/update` (`update_each`); a core refusal is 400 `Refused`
     (`kits_core`). Without lado.db the lists make none and clone nothing (the official
     marketplace as the table would make it, `marketplaces.UNMADE_OFFICIAL`);
-    usage statistics (docs/design/ui.md, Usage statistics): `GET /api/telemetry`
+    usage statistics (docs/design/ui.md, Statistics): `GET /api/telemetry`
     (`TelemetryInfo`, `models.telemetry_info`, also `SystemInfo.telemetry`), `POST
     /api/telemetry` (under `Guard.changes`; 409 while the server's environment switches it
     off) and `GET /api/telemetry/preview` (`TelemetryPreview`, `telemetry.preview`);

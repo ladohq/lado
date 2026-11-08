@@ -1,4 +1,4 @@
-// Nothing moves under the pointer (docs/design/ui.md, Models): when the human acts in a
+// Nothing moves under the pointer (docs/design/ui.md, Model servers): when the human acts in a
 // section whose blocks grow and shrink above the place acted on, that place stays on the
 // screen. The anchor is the focused element inside the section, else the one last pressed
 // there (a button a click does not focus, as Safari's) until a press elsewhere; with neither,
@@ -134,23 +134,4 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
       sized?.disconnect();
     };
   }, [section, note, settle]);
-}
-
-const ACTS = ["pointerdown", "wheel", "touchstart", "keydown"] as const;
-
-// The page opened at the section's anchor: the section at the top of what scrolls, put back
-// there whenever the page around it changes size (a section above growing once its check
-// ends), until the human presses, scrolls or types anywhere; what it returns stops it too.
-export function keepAtTop(section: HTMLElement): () => void {
-  const put = () => section.scrollIntoView({ block: "start" });
-  put();
-  const page = section.parentElement;
-  const sized = typeof ResizeObserver === "function" && page ? new ResizeObserver(put) : null;
-  if (page) sized?.observe(page);
-  const stop = () => {
-    sized?.disconnect();
-    for (const act of ACTS) document.removeEventListener(act, stop, true);
-  };
-  for (const act of ACTS) document.addEventListener(act, stop, { capture: true, passive: true });
-  return stop;
 }

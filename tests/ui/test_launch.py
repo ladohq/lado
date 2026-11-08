@@ -563,8 +563,13 @@ def test_a_cli_without_its_login_is_greyed_out_and_leads_to_settings(
 
     note.get_by_role("button", name="Log in first").click()
     expect(dialog).to_have_count(0)
-    expect(page).to_have_url(re.compile("/settings#providers-and-environment$"))
-    expect(page.get_by_role("heading", name="Agent CLIs and environment")).to_be_visible()
+    # Its row on Agent CLIs, in view, the focus on its login button (else its name).
+    expect(page).to_have_url(re.compile("/settings/agent-clis#fake-login$"))
+    expect(page.get_by_role("heading", name="Agent CLIs", exact=True)).to_be_visible()
+    row = page.locator("li#fake-login")
+    expect(row).to_be_in_viewport()
+    expect(row.locator(":focus")).to_have_count(1)
+    shot(page, "arrived")
 
     logins.write_text("logged in")
     launch.click()
@@ -600,7 +605,8 @@ def test_resume_without_the_login_is_disabled_and_leads_to_settings(
     shot(page, "window")
     note.get_by_role("button", name="Log in first").click()
     expect(dialog).to_have_count(0)
-    expect(page).to_have_url(re.compile("/settings#providers-and-environment$"))
+    expect(page).to_have_url(re.compile("/settings/agent-clis#fake-login$"))
+    expect(page.locator("li#fake-login").locator(":focus")).to_have_count(1)
     assert state.get_session(session).stopped_at
 
 

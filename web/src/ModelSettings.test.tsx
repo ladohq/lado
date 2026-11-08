@@ -2,9 +2,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { LMSTUDIO, model, ModelServer, refusal } from "./modelFakes";
-import { INTRO, ModelSettings, UNDO_MS } from "./ModelSettings";
-import { Settings } from "./Settings";
+import { externalDefault, LMSTUDIO, model, ModelServer, refusal } from "./modelFakes";
+import { ModelSettings, UNDO_MS } from "./ModelSettings";
 
 vi.mock("@xterm/xterm", async () => ({
   Terminal: (await import("./fakes")).FakeXterm,
@@ -35,7 +34,8 @@ function mount(path = "/settings") {
   );
 }
 
-const card = (title: string) => screen.findByRole("group", { name: title });
+// Your models, the one table of every CLI's models.
+const card = () => screen.findByRole("table", { name: "Your models" });
 const names = (group: HTMLElement) =>
   within(group)
     .queryAllByRole("button", { name: /^Rename / })
@@ -49,57 +49,95 @@ const FOUR = [
   model("beta", "opencode", "OpenCode", "devstral"),
 ];
 
-test("the section comes after Agent CLIs and environment, before Usage statistics", async () => {
-  vi.stubGlobal("WebSocket", class {});
-  render(
-    <MemoryRouter>
-      <Settings />
-    </MemoryRouter>,
-  );
-  await screen.findByRole("heading", { name: "Models" });
-  const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
-  const at = headings.indexOf("Models");
-  expect(headings[at - 1]).toBe("Agent CLIs and environment");
-  expect(headings[at + 1]).toBe("Usage statistics");
-});
-
-test("no tabs: the intro, then the two blocks; opening reads no source", async () => {
+test("Servers, then Your models; no intro, no card of a CLI; opening reads no source", async () => {
   server.entries = {
     models: FOUR,
     servers: [LMSTUDIO, { ...LMSTUDIO, name: "LiteLLM" }],
   };
   mount();
-  await card("Claude Code");
+  await card();
   expect(screen.queryByRole("tablist")).toBeNull();
-  expect(screen.getByText(INTRO)).toBeTruthy();
+  expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Model servers");
   const blocks = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
-  expect(blocks).toEqual(["Your agent CLIs", "Model servers 2"]);
+  expect(blocks).toEqual(["Servers 2", "Your models 4"]);
+  expect(screen.getByText("Any OpenAI-compatible server: LM Studio, Ollama, vLLM, LiteLLM.")).toBeTruthy();
+  const lead = screen.getByText(/^Pick one as a default in/);
+  expect(lead.textContent).toBe("Pick one as a default in Agent CLIs.");
+  expect(within(lead).getByRole("link", { name: "Agent CLIs" }).getAttribute("href")).toBe("/settings/agent-clis");
+  expect(screen.queryByRole("group", { name: "OpenCode" })).toBeNull();
+  expect(screen.queryByRole("combobox")).toBeNull();
   const reads = (c: { path: string }) =>
     c.path.includes("/models?") || c.path.includes("/model-choices?") || c.path.endsWith("/probe");
   expect(server.calls.filter(reads)).toEqual([]);
-  const count = async (title: string) => within(await card(title)).getByText(/^\d+$/, { selector: ".mx-count" }).textContent;
-  expect(await count("OpenCode")).toBe("2");
-  expect(await count("Claude Code")).toBe("1");
-  expect(server.of("POST", "/api/providers/check")).toEqual([]); // no check of its own
 });
 
-test("#models scrolls once, when the page opens, never after a change of the entries", async () => {
-  const scrolled = vi.fn();
-  Element.prototype.scrollIntoView = scrolled;
-  server.entries = { models: FOUR.slice(0, 2), servers: [] };
-  mount("/settings#models");
-  const claude = await card("Claude Code");
-  await waitFor(() => expect(scrolled).toHaveBeenCalledTimes(1));
-  fireEvent.click(within(claude).getByRole("button", { name: "Remove Claude Sonnet" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
-  await screen.findByRole("button", { name: "Rename Claude Sonnet" });
-  expect(scrolled).toHaveBeenCalledTimes(1);
+test("opening the page asks for a check of the CLIs, and reads their rows while it runs", async () => {
+  // A server just started: no check yet, every CLI's row not read.
+  server.logins = server.logins.map((row) => ({ ...row, ready: false }));
+  server.answers["POST /api/providers/check"] = () => {
+    server.logins = server.logins.map((row) => ({ ...row, ready: true }));
+    return new Response(JSON.stringify({ providers: server.logins, checking: true, environment: "" }));
+  };
+  mount();
+  await waitFor(() => expect(server.of("POST", "/api/providers/check")).toHaveLength(1));
+  // Read again while the check runs, and no more once it ended.
+  await waitFor(() => expect(server.of("GET", "/api/providers/logins").length).toBeGreaterThan(0), {
+    timeout: 3000,
+  });
+  const reads = server.of("GET", "/api/providers/logins").length;
+  await new Promise((done) => setTimeout(done, 1500));
+  expect(server.of("GET", "/api/providers/logins")).toHaveLength(reads);
 });
 
-test("a click on a name gives a field: Enter renames, the model takes its place in its card only", async () => {
+test("Your models: Name, Model, From, Agent CLI and ×, by CLI in LADO's order then by name", async () => {
+  const unknown = model("Старая", "gemini", "gemini", "g-1");
+  server.entries = { models: [unknown, ...FOUR], servers: [LMSTUDIO] };
+  mount();
+  const yours = await card();
+  expect(within(yours).getAllByRole("columnheader").map((h) => h.textContent)).toEqual([
+    "Name",
+    "Model",
+    "From",
+    "Agent CLI",
+    "",
+  ]);
+  expect(rowsOf(yours).map((row) => within(row).getAllByRole("cell").map((c) => c.textContent))).toEqual([
+    ["Claude Sonnet", "sonnet", FOUR[0].server, "Claude Code", ""],
+    ["gpt-5-codex", "gpt-5-codex", FOUR[1].server, "Codex CLI", ""],
+    ["beta", "devstral", FOUR[3].server, "OpenCode", ""],
+    ["qwen3-8b · LM Studio дома · OpenCode", "qwen3-8b", "LM Studio дома", "OpenCode", ""],
+    ["Старая", "g-1", unknown.server, "gemini", ""], // a CLI LADO does not know: last, as saved
+  ]);
+  expect(within(yours).getByRole("button", { name: "Remove Старая" })).toBeTruthy();
+});
+
+test("a CLI's default reads <CLI> · default in its row", async () => {
+  server.entries = { models: FOUR, servers: [LMSTUDIO], defaults: [externalDefault(FOUR[3])] };
+  mount();
+  const yours = await card();
+  const cli = (name: string) =>
+    within(within(yours).getByRole("button", { name: `Rename ${name}` }).closest("[role=row]") as HTMLElement)
+      .getAllByRole("cell")[3].textContent;
+  expect(cli("beta")).toBe("OpenCode · default");
+  expect(cli("Claude Sonnet")).toBe("Claude Code");
+});
+
+test("with servers and no model: None yet; with nothing saved: no Your models", async () => {
+  server.entries = { models: [], servers: [LMSTUDIO] };
+  mount();
+  expect(await screen.findByText("None yet: open a server and tick the agent CLIs that run a model.")).toBeTruthy();
+  expect(screen.queryByRole("table")).toBeNull();
+  cleanup();
+  server.entries = { models: [], servers: [] };
+  mount();
+  await screen.findByRole("heading", { name: "Servers" });
+  expect(screen.queryByRole("heading", { name: /Your models/ })).toBeNull();
+});
+
+test("a click on a name gives a field: Enter renames, the model takes its place by name", async () => {
   server.entries = { models: FOUR, servers: [LMSTUDIO] };
   mount();
-  const opencode = await card("OpenCode");
+  const opencode = await card();
   const name = within(opencode).getByRole("button", {
     name: "Rename qwen3-8b · LM Studio дома · OpenCode",
   });
@@ -111,15 +149,14 @@ test("a click on a name gives a field: Enter renames, the model takes its place 
   expect(screen.queryByRole("button", { name: "Save" })).toBeNull(); // no buttons
   fireEvent.change(field, { target: { value: "Alpha" } });
   fireEvent.keyDown(field, { key: "Enter" });
-  await waitFor(() => expect(names(opencode)).toEqual(["Alpha", "beta"]));
+  await waitFor(() => expect(names(opencode)).toEqual(["Claude Sonnet", "gpt-5-codex", "Alpha", "beta"]));
   expect(server.of("PATCH", "/api/models/")[0].body).toEqual({ name: "Alpha" });
-  expect(names(await card("Claude Code"))).toEqual(["Claude Sonnet"]);
 });
 
 test("Esc restores the name with no request and gives the focus back to it; leaving the field renames", async () => {
   server.entries = { models: FOUR.slice(0, 1), servers: [] };
   mount();
-  const claude = await card("Claude Code");
+  const claude = await card();
   fireEvent.click(within(claude).getByRole("button", { name: "Rename Claude Sonnet" }));
   let field = within(claude).getByRole("textbox", {
     name: "Name of Claude Sonnet",
@@ -143,16 +180,16 @@ test("Esc restores the name with no request and gives the focus back to it; leav
 test("a refused name stays under the field; leaving it then restores the name", async () => {
   server.entries = { models: FOUR.slice(0, 2), servers: [] };
   server.answers["PATCH /api/models/Claude%20Sonnet"] = () =>
-    refusal('the name is taken by the model "gpt-5-codex"', "name");
+    refusal('The name is taken by the model "gpt-5-codex"', "name");
   mount();
-  const claude = await card("Claude Code");
+  const claude = await card();
   fireEvent.click(within(claude).getByRole("button", { name: "Rename Claude Sonnet" }));
   const field = within(claude).getByRole("textbox", {
     name: "Name of Claude Sonnet",
   });
   fireEvent.change(field, { target: { value: "GPT-5-codex" } });
   fireEvent.keyDown(field, { key: "Enter" });
-  const note = await within(claude).findByText('the name is taken by the model "gpt-5-codex"');
+  const note = await within(claude).findByText('The name is taken by the model "gpt-5-codex"');
   expect(note.className).toContain("field-note bad");
   expect(field.getAttribute("aria-invalid")).toBe("true");
   expect(within(claude).getByRole("textbox")).toBe(field);
@@ -164,16 +201,16 @@ test("a refused name stays under the field; leaving it then restores the name", 
 test("a name refused on leaving the field stays under it too; leaving again restores the name", async () => {
   server.entries = { models: FOUR.slice(0, 2), servers: [] };
   server.answers["PATCH /api/models/Claude%20Sonnet"] = () =>
-    refusal('the name is taken by the model "gpt-5-codex"', "name");
+    refusal('The name is taken by the model "gpt-5-codex"', "name");
   mount();
-  const claude = await card("Claude Code");
+  const claude = await card();
   fireEvent.click(within(claude).getByRole("button", { name: "Rename Claude Sonnet" }));
   const field = within(claude).getByRole("textbox", {
     name: "Name of Claude Sonnet",
   });
   fireEvent.change(field, { target: { value: "GPT-5-codex" } });
   fireEvent.blur(field);
-  expect(await within(claude).findByText('the name is taken by the model "gpt-5-codex"')).toBeTruthy();
+  expect(await within(claude).findByText('The name is taken by the model "gpt-5-codex"')).toBeTruthy();
   expect(within(claude).getByRole("textbox")).toBe(field);
   fireEvent.blur(field);
   expect(within(claude).getByRole("button", { name: "Rename Claude Sonnet" })).toBeTruthy();
@@ -186,7 +223,7 @@ test("× leaves its row as Removed … Undo with the focus on Undo; Undo saves i
     servers: [LMSTUDIO],
   };
   mount();
-  const opencode = await card("OpenCode");
+  const opencode = await card();
   fireEvent.click(within(opencode).getByRole("button", { name: "Remove Сонет для ревью" }));
   const undo = await within(opencode).findByRole("button", { name: "Undo" });
   await waitFor(() => expect(document.activeElement).toBe(undo));
@@ -197,7 +234,7 @@ test("× leaves its row as Removed … Undo with the focus on Undo; Undo saves i
   expect(server.of("DELETE", "/api/models/")[0].path).toBe(
     "/api/models/%D0%A1%D0%BE%D0%BD%D0%B5%D1%82%20%D0%B4%D0%BB%D1%8F%20%D1%80%D0%B5%D0%B2%D1%8C%D1%8E",
   );
-  expect(within(opencode).getByText("1", { selector: ".mx-count" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: /^Your models/ }).textContent).toBe("Your models 1");
   fireEvent.click(undo);
   const name = await within(opencode).findByRole("button", {
     name: "Rename Сонет для ревью",
@@ -221,7 +258,7 @@ test("Undo is off while it runs: a second press sends nothing", async () => {
     });
   mount();
   fireEvent.click(
-    within(await card("Claude Code")).getByRole("button", {
+    within(await card()).getByRole("button", {
       name: "Remove Claude Sonnet",
     }),
   );
@@ -239,7 +276,7 @@ test("Undo is off while it runs: a second press sends nothing", async () => {
 test("after Undo its row stays until the reload brings the model back: nothing moves", async () => {
   server.entries = { models: FOUR.slice(0, 2), servers: [] };
   mount();
-  const claude = await card("Claude Code");
+  const claude = await card();
   fireEvent.click(within(claude).getByRole("button", { name: "Remove Claude Sonnet" }));
   const undo = await within(claude).findByRole("button", { name: "Undo" });
   let release: () => void = () => undefined;
@@ -249,28 +286,47 @@ test("after Undo its row stays until the reload brings the model back: nothing m
     });
   fireEvent.click(undo);
   await waitFor(() => expect(server.of("GET", "/api/model-settings").length).toBeGreaterThan(1));
-  expect(rowsOf(claude)).toHaveLength(1);
+  expect(rowsOf(claude)).toHaveLength(2);
   release();
   expect(await within(claude).findByRole("button", { name: "Rename Claude Sonnet" })).toBeTruthy();
-  expect(rowsOf(claude)).toHaveLength(1);
+  expect(rowsOf(claude)).toHaveLength(2);
 });
 
 test("after UNDO_MS only Undo goes: Removed … stays at its place until the next change", async () => {
   server.entries = { models: FOUR.slice(0, 2), servers: [] };
   mount();
   vi.useFakeTimers({ shouldAdvanceTime: true });
-  const claude = await card("Claude Code");
+  const claude = await card();
   fireEvent.click(within(claude).getByRole("button", { name: "Remove Claude Sonnet" }));
   expect(await screen.findByRole("button", { name: "Undo" })).toBeTruthy();
   await act(async () => {
     await vi.advanceTimersByTimeAsync(UNDO_MS + 10);
   });
   expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
-  expect(rowsOf(claude).map((r) => r.textContent)).toEqual(["Removed Claude Sonnet."]);
-  const codex = await card("Codex CLI");
-  fireEvent.click(within(codex).getByRole("button", { name: "Remove gpt-5-codex" }));
-  await within(codex).findByRole("button", { name: "Undo" });
+  expect(rowsOf(claude)[0].textContent).toBe("Removed Claude Sonnet.");
+  fireEvent.click(within(claude).getByRole("button", { name: "Remove gpt-5-codex" }));
+  await within(claude).findByRole("button", { name: "Undo" });
   expect(screen.queryByText("Removed Claude Sonnet.")).toBeNull(); // the next change took it
+});
+
+test("Undo runs out on time while the page renders again under it (the CLIs' rows still read)", async () => {
+  server.entries = { models: FOUR.slice(0, 2), servers: [] };
+  // The CLIs' last check not done: the page reads their rows every second meanwhile.
+  server.logins = server.logins.map((row) => ({ ...row, ready: false }));
+  mount();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const claude = await card();
+  fireEvent.click(within(claude).getByRole("button", { name: "Remove Claude Sonnet" }));
+  expect(await screen.findByRole("button", { name: "Undo" })).toBeTruthy();
+  const polls = server.of("GET", "/api/providers/logins").length;
+  for (let second = 0; second <= UNDO_MS / 1000; second++) {
+    // A second at a time: each read of the rows renders the page before the next.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+  }
+  expect(server.of("GET", "/api/providers/logins").length).toBeGreaterThan(polls + 5); // read meanwhile
+  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
 });
 
 test("a refused Undo says why in its row", async () => {
@@ -281,7 +337,7 @@ test("a refused Undo says why in its row", async () => {
   server.answers["POST /api/models"] = () => refusal('no model server "gone" is saved', "server");
   mount();
   fireEvent.click(
-    within(await card("Claude Code")).getByRole("button", {
+    within(await card()).getByRole("button", {
       name: "Remove Claude Opus",
     }),
   );

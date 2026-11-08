@@ -9,7 +9,7 @@ import { Home, NotFound } from "./pages";
 import { NoProject, ProjectPage, Projects } from "./Projects";
 import { ReportBug } from "./ReportBug";
 import { NoSession, Session, Sessions } from "./Sessions";
-import { Settings } from "./Settings";
+import { Settings, SettingsIndex, SettingsSection } from "./Settings";
 import { Shell } from "./Shell";
 
 export function App() {
@@ -33,7 +33,10 @@ export function App() {
         {/* The Marketplace page of earlier versions is the Kits page now. */}
         <Route path="marketplace" element={<Navigate to="/kits" replace />} />
         <Route path="report" element={<ReportBug />} />
-        <Route path="settings" element={<Settings />} />
+        <Route path="settings" element={<Settings />}>
+          <Route index element={<SettingsIndex />} />
+          <Route path=":section" element={<SettingsSection />} />
+        </Route>
         <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>

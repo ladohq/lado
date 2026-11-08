@@ -46,6 +46,9 @@
 
 ### Improved
 
+- **Model servers says why an agent CLI cannot be ticked.** A server's model lists every agent
+  CLI; one that cannot run it there is greyed out with why, e.g. Codex CLI on LM Studio, or
+  `not installed`.
 - **OpenCode and Kilo CLI know your local model's context.** LADO reads it from the server at
   each start, so agents compact in time; a model too small for an agent is warned about in `lado
   start` and the launch window. `docs/install.md` says what to expect of small models.

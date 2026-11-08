@@ -664,6 +664,29 @@ def test_a_cli_lm_studio_does_not_suit_is_off_with_why(
         context.close()
 
 
+def test_a_saved_model_on_a_cli_that_cannot_says_its_name_and_why_beside_the_tick(
+    page: Page, clis, server, lms, shot
+):
+    """Codex CLI's model saved on LM Studio: its tick on and disabled, and under its title both
+    `as <name>` and why, in the column of the title, not squeezed under the tick (LAD-241)."""
+    state.add_model("Codex qwen", "codex", "qwen3-8b", saved_server(lms))
+    page.set_viewport_size({"width": 1440, "height": 900})
+    open_settings(page, server)
+    sub = open_qwen(page)
+    codex = sub.locator("label.mx-cant").filter(has_text="Codex CLI")
+    expect(codex.get_by_role("checkbox")).to_be_checked()
+    expect(codex.get_by_role("checkbox")).to_be_disabled()
+    said = codex.locator(".mx-as")
+    expect(said).to_have_text(["as Codex qwen", CODEX_ON_LMSTUDIO])
+    title = codex.locator("> span").first.bounding_box()
+    for line in (said.nth(0), said.nth(1)):
+        box = line.bounding_box()
+        assert box and title, (box, title)
+        assert abs(box["x"] - title["x"]) < 1, (box, title)
+        assert box["width"] > 100, box
+    shot(page, "saved")
+
+
 def test_key_and_new_key_are_dots_as_a_projects_secret(page: Page, clis, server, lms):
     """Key and New key: text fields drawn in the font of dots, as a project's secret."""
     model_settings.add_server("lab", lms.url, None, warn=lambda _: None, note=lambda _: None)

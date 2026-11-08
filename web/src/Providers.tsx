@@ -172,7 +172,7 @@ function ProviderRow({ row, models, onOpen }: { row: ProviderLogins; models: Mod
       <li className="srow pv cli" id={cli.name} aria-labelledby={id}>
         <div className="srow-text">
           <p className="pv-head">{name}</p>
-          <p className="srow-desc pv-checking">checking…</p>
+          <p className="srow-desc">checking…</p>
         </div>
       </li>
     );

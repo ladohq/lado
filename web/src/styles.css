@@ -894,11 +894,6 @@ h3 {
   cursor: pointer;
 }
 
-.stats-tag {
-  font-size: 13px;
-  font-weight: 400;
-}
-
 .update-good {
   background: var(--done-ground);
 }

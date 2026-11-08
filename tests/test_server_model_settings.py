@@ -388,11 +388,10 @@ def test_check_model_says_the_name_a_save_would_take(client, serve):
     ok(add_server(client, "LM Studio дома", lms.url))
     on = {"model": "qwen3-8b", "server": "LM Studio дома"}
     assert check(client, cli="opencode", name="Своя", **on)["name"] == "Своя"
-    for cli, title in (("opencode", "OpenCode"), ("kilo", "Kilo CLI")):
-        assert check(client, cli=cli, **on)["name"] == f"qwen3-8b · LM Studio дома · {title}"
-    ok(client.post("/api/models", json={"name": "qwen3-8b · LM Studio дома · Kilo CLI",
-                                        "cli": "opencode", **on}))  # fmt: skip
-    assert check(client, cli="kilo", **on)["name"] == "qwen3-8b · LM Studio дома · Kilo CLI (2)"
+    for cli in ("opencode", "kilo"):
+        assert check(client, cli=cli, **on)["name"] == "qwen3-8b"
+    ok(client.post("/api/models", json={"name": "qwen3-8b", "cli": "opencode", **on}))
+    assert check(client, cli="kilo", **on)["name"] == "qwen3-8b · Kilo CLI"
     assert check(client, cli="gemini", **on)["name"] == ""  # refused: no name
 
 
@@ -470,7 +469,7 @@ def test_check_model_ok_warn_refused(client, serve):
         "kind": "ok",
         "text": "in lms's list of models",
         "field": "",
-        "name": "qwen3-8b · lms · Kilo CLI",
+        "name": "qwen3-8b",
     }
     assert check(client, cli="kilo", model="kilo/z", server="lms") == {
         "kind": "refused",
@@ -591,8 +590,8 @@ def test_add_model_default_name(client, serve):
                                                 "server": "LiteLLM"}))  # fmt: skip
     assert added == {
         "model": {
-            "id": state.model("qwen3-8b · LiteLLM · OpenCode").id,
-            "name": "qwen3-8b · LiteLLM · OpenCode",  # several CLIs suit it
+            "id": state.model("qwen3-8b").id,
+            "name": "qwen3-8b",  # its server and CLI show beside it
             "cli": "opencode",
             "cli_title": "OpenCode",
             "model": "qwen3-8b",

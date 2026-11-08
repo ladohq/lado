@@ -114,42 +114,54 @@ test("no banner when ask is false", async () => {
 const line = async (text: string) => (await screen.findByText(text, { exact: false })).closest(".srow-desc")!.textContent;
 const NAME = "Send anonymous statistics and errors to LADO's maintainers";
 
-test("Settings is one row: its name labels the choice, one line says the state", async () => {
+// The row's switch, named by the row's name.
+const toggle = async () => (await screen.findByRole("switch", { name: NAME })) as HTMLInputElement;
+
+test("Settings is one row: its name labels the switch, one line says the state", async () => {
   const sent = new Date();
   sent.setHours(9, 12);
   state = telemetry({ choice: "on", on: true, ask: false, last_sent: sent.toISOString() });
   serve();
   render(<StatisticsSetting />);
-  const send = await screen.findByRole("radio", { name: "Send" });
-  await waitFor(() => expect((send as HTMLInputElement).checked).toBe(true));
-  expect(screen.getByRole("group", { name: NAME })).toBeTruthy();
+  const sw = await toggle();
+  await waitFor(() => expect(sw.checked).toBe(true));
+  expect(screen.queryAllByRole("radio")).toHaveLength(0);
   expect(document.querySelectorAll(".srow")).toHaveLength(1);
+  expect(document.querySelector(".srow-wide")).toBeNull();
   expect(await line("Last sent")).toBe("Last sent today at 09:12. What LADO collects ↗");
+  expect(sw.getAttribute("aria-describedby")).toBe(screen.getByText("Last sent", { exact: false }).closest(".srow-desc")!.id);
   expect(screen.getByText("What the next report sends")).toBeTruthy();
   expect(screen.queryByText(/Anonymous: an ID/)).toBeNull(); // the about paragraph went to the docs
 });
 
 test.each([
-  [{ choice: "on" as const, on: true }, "Not sent yet. What LADO collects ↗", true],
-  [{ choice: "off" as const }, "Nothing is sent. What LADO collects ↗", false],
-  [{ choice: "on" as const, endpoint: false }, "No statistics endpoint: nothing is sent.", false],
-])("Settings with %o says %s", async (more, text, preview) => {
+  [{ choice: "on" as const, on: true }, "Not sent yet. What LADO collects ↗", true, true],
+  [{ choice: "off" as const }, "Nothing is sent. What LADO collects ↗", false, false],
+  [{ choice: "on" as const, endpoint: false }, "No statistics endpoint: nothing is sent.", false, false],
+])("Settings with %o says %s", async (more, text, preview, on) => {
   state = telemetry({ ask: false, ...more });
   serve();
   render(<StatisticsSetting />);
   expect(await line(text.split(".")[0].split(":")[0])).toBe(text);
   expect(screen.queryByText("What the next report sends") !== null).toBe(preview);
+  expect((await toggle()).checked).toBe(on);
 });
 
-test("Settings: not chosen yet", async () => {
-  serve();
+test("Settings: not chosen yet is off; turning it on posts on, off posts off", async () => {
+  const fetch = serve();
   render(<StatisticsSetting />);
   expect(await line("Nothing is sent until you choose.")).toBe("Nothing is sent until you choose. What LADO collects ↗");
   expect(screen.getByRole("heading").textContent).toBe("Statistics"); // no tag: the row says it
-  const radios = screen.getAllByRole("radio") as HTMLInputElement[];
-  expect(radios.map((radio) => radio.checked)).toEqual([false, false]);
-  fireEvent.click(screen.getByRole("radio", { name: "Don't send" }));
-  await waitFor(() => expect((screen.getByRole("radio", { name: "Don't send" }) as HTMLInputElement).checked).toBe(true));
+  const sw = await toggle();
+  expect(sw.checked).toBe(false);
+  expect(sw.disabled).toBe(false);
+  fireEvent.click(sw);
+  await waitFor(() => expect(sw.checked).toBe(true));
+  expect(fetch).toHaveBeenCalledWith("/api/telemetry", expect.objectContaining({ body: JSON.stringify({ choice: "on" }) }));
+  fireEvent.click(sw);
+  await waitFor(() => expect(sw.checked).toBe(false));
+  expect(fetch).toHaveBeenCalledWith("/api/telemetry", expect.objectContaining({ body: JSON.stringify({ choice: "off" }) }));
+  expect(await line("Nothing is sent.")).toBe("Nothing is sent. What LADO collects ↗");
 });
 
 test("Settings: disabled with the variable when off_by", async () => {
@@ -158,10 +170,34 @@ test("Settings: disabled with the variable when off_by", async () => {
   render(<StatisticsSetting />);
   expect(await screen.findByText("DO_NOT_TRACK=1")).toBeTruthy();
   expect(await line("is set in the server's environment.")).toBe("Off: DO_NOT_TRACK=1 is set in the server's environment.");
-  const off = screen.getByRole("radio", { name: "Don't send" }) as HTMLInputElement;
-  expect(off.checked).toBe(true);
-  expect(off.matches(":disabled")).toBe(true); // its fieldset is
+  const sw = await toggle();
+  expect(sw.checked).toBe(false);
+  expect(sw.disabled).toBe(true);
   expect(screen.getByRole("heading").textContent).toBe("Statistics");
+});
+
+test("Settings: no endpoint disables the switch", async () => {
+  state = telemetry({ ask: false, endpoint: false });
+  serve();
+  render(<StatisticsSetting />);
+  expect(await line("No statistics endpoint")).toBe("No statistics endpoint: nothing is sent.");
+  expect((await toggle()).disabled).toBe(true);
+});
+
+test("Settings: a refused choice shows the problem and the switch as read", async () => {
+  const fetch = serve();
+  fetch.mockImplementation(async (path: string, init?: RequestInit) => {
+    if (path === "/api/telemetry" && init?.method === "POST") {
+      return new Response(JSON.stringify({ detail: "LADO_HOME is read-only" }), { status: 500 });
+    }
+    return new Response(JSON.stringify(state), { status: 200 });
+  });
+  render(<StatisticsSetting />);
+  const sw = await toggle();
+  await waitFor(() => expect(sw.disabled).toBe(false));
+  fireEvent.click(sw);
+  expect((await screen.findByRole("alert")).textContent).toContain("LADO_HOME is read-only");
+  expect(sw.checked).toBe(false);
 });
 
 test("the panel's row texts", () => {

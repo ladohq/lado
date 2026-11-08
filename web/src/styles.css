@@ -2420,8 +2420,7 @@ h3 {
 }
 
 /* A setting is a row: its name and at most one grey line on the left, its control on the
-   right, thin lines between the rows; no cards. A control too wide to sit beside its name
-   (`.srow-wide`) goes under it at 900 px and narrower. */
+   right, thin lines between the rows; no cards. */
 .srows {
   display: flex;
   flex-direction: column;
@@ -2481,16 +2480,6 @@ h3 {
 .srow-problem .field-problem,
 .srow .choice {
   margin: 0;
-}
-
-@media (max-width: 900px) {
-  .srow-wide {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .srow-wide .srow-ctl {
-    justify-self: start;
-  }
 }
 
 /* A switch: a checkbox drawn as a track and a knob, for a setting that applies at once. */

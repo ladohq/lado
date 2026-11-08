@@ -145,19 +145,15 @@ export function StatisticsQuestion({ ready }: { ready: boolean }) {
   );
 }
 
-const CHOICES = [
-  { value: "on", label: "Send" },
-  { value: "off", label: "Don't send" },
-] as const;
-
-// Settings → Statistics: one row, its name labelling Send / Don't send, one line for the
-// state; under it a failed send and what the next report sends, while sending.
+// Settings → Statistics: one row, its name labelling a switch (on only while the choice is
+// on; not chosen yet is off, its line saying so, and the banner still asks), one line for
+// the state; under it a failed send and what the next report sends, while sending.
 export function StatisticsSetting() {
   const id = useId();
   const [info, setInfo, unread] = useTelemetry();
   const [problem, setProblem] = useState<string | null>(null);
   const locked = info === null || info.off_by !== null || !info.endpoint;
-  const checked = info?.off_by ? "off" : info?.choice;
+  const on = !locked && info.choice === "on";
   const choose = async (choice: "on" | "off") => {
     setProblem(null);
     try {
@@ -170,11 +166,11 @@ export function StatisticsSetting() {
   return (
     <SettingsPage slug="statistics">
       <div className="srows">
-        <div className="srow srow-wide">
+        <div className="srow">
           <div className="srow-text">
-            <span className="srow-name" id={`${id}-name`}>
+            <label className="srow-name" htmlFor={`${id}-switch`}>
               Send anonymous statistics and errors to LADO's maintainers
-            </span>
+            </label>
             {!unread && (
               <p className="srow-desc" id={`${id}-desc`}>
                 <StatisticsState info={info} />
@@ -182,27 +178,18 @@ export function StatisticsSetting() {
             )}
           </div>
           <div className="srow-ctl">
-            <fieldset
-              className="choice"
-              disabled={locked}
-              aria-labelledby={`${id}-name`}
-              aria-describedby={unread ? undefined : `${id}-desc`}
-            >
-              <div className="segments">
-                {CHOICES.map((option) => (
-                  <label key={option.value}>
-                    <input
-                      type="radio"
-                      name="statistics"
-                      value={option.value}
-                      checked={checked === option.value}
-                      onChange={() => void choose(option.value)}
-                    />
-                    {option.label}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
+            <span className="sw-hit">
+              <input
+                id={`${id}-switch`}
+                className="sw"
+                type="checkbox"
+                role="switch"
+                aria-describedby={unread ? undefined : `${id}-desc`}
+                checked={on}
+                disabled={locked}
+                onChange={(event) => void choose(event.target.checked ? "on" : "off")}
+              />
+            </span>
           </div>
           {(unread || problem || sending) && (
             <div className="srow-problem">

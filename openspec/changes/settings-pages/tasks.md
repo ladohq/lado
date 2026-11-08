@@ -71,5 +71,5 @@ with its files, interfaces and tests).
 - [ ] 11.2 At archive (integrator): the `## Purpose` of `openspec/specs/provider-logins/spec.md`
   and `openspec/specs/model-settings-page/spec.md` name Settings → Agent CLIs and Settings → Model
   servers (a delta cannot change a Purpose). Checked: `openspec validate --specs --strict`.
-- [ ] 11.3 `make lint`, `make test`, `make web`, `openspec validate settings-pages --strict` and the
+- [x] 11.3 `make lint`, `make test`, `make web`, `openspec validate settings-pages --strict` and the
   trial archive pass; CI's `ci-ok` green (AC-9).

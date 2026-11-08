@@ -1,4 +1,4 @@
-// The login window of Settings → Agent CLIs and environment (docs/design/ui.md), for a CLI that
+// The login window of Settings → Agent CLIs (docs/design/ui.md), for a CLI that
 // logs in by its own command (OpenCode, Kilo, Codex's sign-in code; LoginSheet.tsx opens it):
 // a sheet over the page (the whole screen on a phone) with the terminal of the CLI's own login
 // command, always in control, over the agents' terminal protocol (terminalLink.ts). A link in

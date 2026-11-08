@@ -39,9 +39,9 @@ with its files, interfaces and tests).
 
 ## 7. Agent CLIs
 
-- [ ] 7.1 Rows with the login and Default model, a CLI not installed, the no-servers line, the r4/r5
+- [x] 7.1 Rows with the login and Default model, a CLI not installed, the no-servers line, the r4/r5
   texts (AC-4, AC-7). Checked: `make web` (`Providers.test.tsx`).
-- [ ] 7.2 Arrival at `#<cli>` with focus on the login button; Needs you's and Launch's links pass the
+- [x] 7.2 Arrival at `#<cli>` with focus on the login button; Needs you's and Launch's links pass the
   CLI (AC-3). Checked: `make web` (`Providers.test.tsx`, `NeedsYou.test.tsx`, `Launch.test.tsx`).
 
 ## 8. Launch window

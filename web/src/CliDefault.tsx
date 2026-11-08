@@ -51,11 +51,17 @@ function useSave(cli: string, settings: ModelSettingsState) {
 
 function NotInstalled({ row, name, settings }: { row: ProviderLogins; name: string; settings: ModelSettingsState }) {
   const { problem, save } = useSave(row.cli.name, settings);
+  const self = useRef<HTMLDivElement>(null);
+  // The line goes with the default: the focus goes to the row's name (Providers.tsx).
+  const clear = async () => {
+    const rowName = self.current?.closest("li")?.querySelector<HTMLElement>(".pv-name");
+    if (await save(null)) rowName?.focus({ preventScroll: true });
+  };
   return (
-    <div className="cli-model cli-off">
+    <div className="cli-model cli-off" ref={self}>
       <p className="srow-desc">{`Default model: ${name} — cannot run: not installed`}</p>
       <span className="way-out">
-        <button type="button" className="chip-button" onClick={() => void save(null)}>
+        <button type="button" className="chip-button" onClick={() => void clear()}>
           {`Use ${row.cli.title}'s settings`}
         </button>
       </span>

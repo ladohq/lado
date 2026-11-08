@@ -2526,49 +2526,53 @@ h3 {
   border: 0;
 }
 
-/* Settings → Agent CLIs and environment (Providers.tsx): a row per agent CLI. */
+/* Settings → Agent CLIs (Providers.tsx): a row per agent CLI, its text on the left and its
+   login button on the right, its default model under them across the row (.cli-model); on a
+   phone the button goes under the text. */
 
-.pv-list {
-  display: flex;
-  flex-direction: column;
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
+.srow.pv.cli {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px 24px;
 }
 
-.pv {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 14px 0;
-  border-top: 1px solid var(--line);
-}
-
-.setting .pv p {
+.pv .srow-text p {
   margin: 0;
 }
 
 .pv-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
+  align-items: baseline;
+  gap: 2px 8px;
 }
 
-.pv-head strong {
-  font-size: 15px;
+.pv-name:focus {
+  outline: none;
+}
+
+.pv-name:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
 }
 
 .pv-head .ver {
   color: var(--muted);
-  font: 13px var(--mono);
+  font: 12.5px var(--mono);
 }
 
 .pv-state {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.pv-need .pv-state strong {
+  color: var(--human);
+  font-weight: 600;
 }
 
 .ok-dot {
@@ -2579,18 +2583,11 @@ h3 {
   border: 1.5px solid var(--muted);
 }
 
-.setting .pv-src {
-  color: var(--muted);
-  font-size: 13px;
-  overflow-wrap: anywhere;
+.pv .srow-desc code {
+  font: 12.5px var(--mono);
 }
 
-.pv-src code {
-  font-size: 12px;
-}
-
-.setting .pv-warn {
-  margin-top: 4px;
+.pv .pv-warn {
   font-size: 13px;
 }
 
@@ -2598,7 +2595,20 @@ h3 {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 4px;
+}
+
+.pv-env-row {
+  display: block;
+  min-height: 0;
+}
+
+.pv-env-row .pv-warn-line {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.spage .cli-more {
+  margin: 0;
 }
 
 .pv-confirm {
@@ -2610,18 +2620,8 @@ h3 {
   font-size: 13px;
 }
 
-/* The heading with its ↻, which turns while a check of the CLIs runs (still for those who
-   ask for less motion). */
-.pv-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.pv-title h2 {
-  margin: 0;
-}
-
+/* The heading's ↻, which turns while a check of the CLIs runs (still for those who ask for
+   less motion). */
 .pv-refresh {
   display: inline-flex;
   align-items: center;
@@ -2658,30 +2658,17 @@ h3 {
 }
 
 .pv-tested {
-  color: var(--muted);
+  color: var(--warn);
   font-size: 12px;
 }
 
-.pv-checking {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.pv-off strong {
+.pv-off .srow-name {
   color: var(--muted);
 }
 
-.setting .pv-none {
-  margin-top: 12px;
+.spage .pv-none {
+  margin: 0;
   font-size: 13px;
-}
-
-.setting .pv-env {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-  font-size: 13px;
-  overflow-wrap: anywhere;
 }
 
 /* The login sheet and window (LoginSheet.tsx, LoginWindow.tsx): a sheet over the page; the
@@ -12222,8 +12209,9 @@ button.quiet.danger-text {
 .artifact-missing,
 .share-warning,
 .update-warning,
-.setting .pv-warn,
-.setting .pv-none,
+.pv .pv-warn,
+.pv-none,
+.pv-warn-line,
 .kit-warning {
   position: relative;
   padding: 8px 12px 8px 34px;
@@ -12243,8 +12231,9 @@ button.quiet.danger-text {
 .artifact-missing::before,
 .share-warning::before,
 .update-warning::before,
-.setting .pv-warn::before,
-.setting .pv-none::before,
+.pv .pv-warn::before,
+.pv-none::before,
+.pv-warn-line::before,
 .kit-warning::before {
   --alert: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3l10 18H2z'/%3E%3Cpath d='M12 10v5'/%3E%3Cpath d='M12 18h.01'/%3E%3C/svg%3E");
   position: absolute;
@@ -12260,8 +12249,9 @@ button.quiet.danger-text {
 
 .share-warning,
 .update-warning,
-.setting .pv-warn,
-.setting .pv-none,
+.pv .pv-warn,
+.pv-none,
+.pv-warn-line,
 .kit-warning {
   background: var(--warn-ground);
   color: var(--warn);
@@ -12968,4 +12958,34 @@ button.quiet.danger-text {
 
 :root[data-phone] .sw:checked::after {
   transform: translateX(18px);
+}
+
+/* Agent CLIs: the login button under the CLI's text, 44 px; Default model over its picker
+   (styles.css, the picker's own rules), the picker the row's width and 44 px. */
+:root[data-phone] .srow.pv.cli {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+:root[data-phone] .srow.pv .srow-ctl {
+  justify-self: start;
+}
+
+:root[data-phone] .pv-actions button,
+:root[data-phone] .cli-model .chip-button {
+  min-height: 44px;
+}
+
+:root[data-phone] .pv-refresh {
+  width: 44px;
+  height: 44px;
+}
+
+:root[data-phone] .cli-model {
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 4px;
+}
+
+:root[data-phone] .cli-ml {
+  font-size: 14px;
+  line-height: 20px;
 }

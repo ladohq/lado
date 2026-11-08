@@ -116,6 +116,7 @@ def test_the_clone_target_by_default(home_workspace, client, tmp_path, monkeypat
         "branch": None,
         "suggestion": None,
         "default_name": "lado",
+        "free_name": "lado",
         "name_state": "free",
         "provider": None,
         "warning": None,
@@ -230,6 +231,7 @@ def test_the_clone_targets_other_states(client, tmp_path, repo, fake_tmux):
         "fresh",
         "taken_elsewhere",
     )
+    assert taken["free_name"] == "fresh-2"
     relative = client.get("/api/clone-target", params={"url": "https://h/a/b", "path": "x"})
     assert relative.status_code == 400
     assert relative.json()["detail"]["message"] == "x is not a full path: give one from / or ~"

@@ -223,6 +223,7 @@ def test_the_project_and_repository_last_used(client, shop, acme, fake_tmux):
     assert [r["name"] for r in shown["repos"]] == ["backend", "frontend"]
     assert shown["last"]["name"] == "shop-backend"
     assert shown["name_state"] == "stopped_here"
+    assert shown["free_name"] == "shop-backend-2"
     assert shown["provider"] == {"name": "kilo", "reason": "last_session"}
 
 
@@ -283,6 +284,7 @@ def test_no_project_without_a_database(client, lado_home):
         "repo": None,
         "root": None,
         "default_name": None,
+        "free_name": None,
         "name_state": None,
         "provider": None,
         "last": None,

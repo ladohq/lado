@@ -46,6 +46,7 @@ from lado import (
     runtime,
     scratch,
     self_update,
+    setup,
     state,
     telemetry,
     terminal,
@@ -196,13 +197,19 @@ def stored(name: str, file_name: str, data: bytes, has_db: bool) -> ArtifactInfo
 
 def _where(where: Where) -> Where:
     """`where` of a start, refused with 400 unless its kind is known and it has the fields
-    its kind takes, and no other: a path for "folder" and "scratch", a project and its
-    repository for "project"."""
-    if where.kind not in ("folder", "scratch", "project"):
+    its kind takes, and no other: a path for "folder" and "scratch", a path and the files
+    ticked in for "setup", a project and its repository for "project"."""
+    if where.kind not in ("folder", "scratch", "setup", "project"):
         raise HTTPException(400, f'where of kind "{where.kind}" is not supported yet')
-    in_project = where.kind == "project"
-    given = {"path": where.path, "project": where.project, "repo": where.repo}
-    wanted = {"project", "repo"} if in_project else {"path"}
+    given = {
+        "path": where.path,
+        "project": where.project,
+        "repo": where.repo,
+        "include": where.include,
+    }
+    wanted = {"project": {"project", "repo"}, "setup": {"path", "include"}}.get(
+        where.kind, {"path"}
+    )
     for field, value in given.items():
         if field in wanted and value is None:
             raise HTTPException(400, f'where of kind "{where.kind}" needs {field}')
@@ -1453,9 +1460,11 @@ def create_app(
     def start(given: Launch) -> Started:
         """Start a new session, as `lado start` does, without attaching to it; for `where`
         of kind "scratch" the folder is made a repository first, as `lado start --new`
-        does; of kind "project" the session is the project's repository's, as `lado start
-        --project <id> --repo <name>` starts it. A name a session has is 409 with that
-        session's status and folder; on an empty LADO_HOME the core makes lado.db."""
+        does; of kind "setup" a plain folder of files is set up first (lado.setup.make),
+        with the left-out files of `include` taken in; of kind "project" the session is the
+        project's repository's, as `lado start --project <id> --repo <name>` starts it. A
+        name a session has is 409 with that session's status and folder; on an empty
+        LADO_HOME the core makes lado.db."""
         where = _where(given.where)
         try:
             path = None
@@ -1464,6 +1473,10 @@ def create_app(
                 if where.kind == "scratch":
                     runtime.check_start_login(given.provider, None, given.model)
                     scratch.make(path, runtime.slug(given.name or Path(path).name))
+                elif where.kind == "setup":
+                    runtime.check_start_login(given.provider, None, given.model)
+                    runtime.check_name(runtime.slug(given.name or Path(path).name), path)
+                    setup.make(path, where.include or [])
             done = runtime.start_session(
                 path,
                 given.name,

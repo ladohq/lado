@@ -23,6 +23,7 @@ from lado import (
     providers,
     runtime,
     scratch,
+    setup,
     state,
 )
 from lado.server import models
@@ -60,6 +61,7 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
             hint = models.hint_info(refused.hint)
         root = _root_or_none(path)
     name = runtime.slug(Path(root).name) if root else None
+    fresh = kind in ("missing", "not_repo") and _can_start_from_scratch(path)
     return models.FolderInfo(
         path=path,
         ok=ok,
@@ -70,10 +72,43 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
         hint=hint,
         subfolders=_subfolders(Path(path)),
         default_name=name,
+        free_name=free_name(name, has_db) if name else None,
         name_state=name_state(name, root, has_db) if name and root else None,
         provider=provider_suggestion(root, has_db),
         warning=runtime.outside_workspace(root or path),  # a start judges the root
-        scratch=kind in ("missing", "not_repo") and _can_start_from_scratch(path),
+        scratch=fresh,
+        setup=setup_info(path) if kind == "not_repo" and not fresh else None,
+    )
+
+
+def free_name(name: str, has_db: bool) -> str:
+    """runtime.free_name; without lado.db every name is free, and none is made to look."""
+    return runtime.free_name(name) if has_db else name
+
+
+def setup_info(path: str) -> models.SetupInfo | None:
+    """What setting the plain folder `path` up would do (lado.setup.preview); None for a
+    folder that is no folder."""
+    if not Path(path).is_dir():
+        return None
+    found = setup.preview(path)
+    refusal = found.refusal
+    return models.SetupInfo(
+        files=found.files,
+        bytes=found.bytes,
+        left_out=[
+            models.LeftOutInfo(path=item.path, reason=item.reason, size=item.size)
+            for item in found.left_out
+        ],
+        refusal=(
+            models.SetupRefusal(
+                kind=refusal.kind, files=refusal.files, bytes=refusal.bytes, line=refusal.line
+            )
+            if refusal
+            else None
+        ),
+        author=_author(path),
+        command=found.command,
     )
 
 
@@ -193,19 +228,29 @@ def name_state(name: str, root: str, has_db: bool, project: str | None = None) -
 
 
 def recent_folders() -> list[models.RecentFolder]:
-    """The folders of past sessions, each with its latest started session, latest first;
-    none inside LADO's projects/, where a new session is refused (a session there is
-    resumed from its own page)."""
+    """The folders of past sessions that are still there, each with its latest started
+    session, latest first. Inside LADO's projects/, where a new session without a project
+    is refused, only a repository of the project of its session, with that project."""
     owned = projects.lados_folder()
-    found: dict[str, state.Session] = {}
+    found: dict[str, models.RecentFolder] = {}
+    seen: set[str] = set()
     for sess in state.sessions_by_start():
-        if owned and Path(os.path.realpath(sess.repo)).is_relative_to(owned):
+        if sess.repo in seen:
             continue
-        found.setdefault(sess.repo, sess)
-    return [
-        models.RecentFolder(path=repo, session=models.session_info(sess))
-        for repo, sess in list(found.items())[:RECENT]
-    ]
+        seen.add(sess.repo)
+        if not Path(sess.repo).is_dir():
+            continue
+        place = None
+        if owned and Path(os.path.realpath(sess.repo)).is_relative_to(owned):
+            place = project_place(sess.repo)
+            if place is None or place.repo is None or place.id != sess.project:
+                continue
+        found[sess.repo] = models.RecentFolder(
+            path=sess.repo, session=models.session_info(sess), project=place
+        )
+        if len(found) == RECENT:
+            break
+    return list(found.values())
 
 
 def kit_infos(has_db: bool) -> list[models.KitInfo]:
@@ -525,6 +570,7 @@ def project_launch(asked: str | None, asked_repo: str | None, has_db: bool) -> m
             "repo": repo.name,
             "root": root,
             "default_name": name,
+            "free_name": free_name(name, has_db),
             "name_state": name_state(name, root, has_db, project=project),
             "provider": provider_suggestion(root, has_db),
             "last": models.session_info(last) if last else None,

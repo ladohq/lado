@@ -3,6 +3,7 @@ kits, providers, and starting, resuming, stopping and forgetting a session. In p
 with FastAPI's test client."""
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -75,10 +76,12 @@ def test_a_repository_folder_is_ok_with_its_branch_name_and_subfolders(client, r
         "hint": None,
         "subfolders": ["docs", "src"],
         "default_name": "my-repo",
+        "free_name": "my-repo",
         "name_state": "free",
         "provider": None,
         "warning": None,
         "scratch": False,
+        "setup": None,
         "project": None,
     }
 
@@ -194,6 +197,7 @@ def test_the_default_name_says_whether_a_session_has_it(
         fake_tmux.append(("kill_session", "my-repo"))
     info = folder(client, repo)
     assert (info["default_name"], info["name_state"]) == ("my-repo", name_state)
+    assert info["free_name"] == "my-repo-2"
 
 
 def test_the_default_name_taken_by_a_session_of_another_folder(client, repo, tmp_path, fake_tmux):
@@ -201,6 +205,7 @@ def test_the_default_name_taken_by_a_session_of_another_folder(client, repo, tmp
     other = agent_helpers.init_repo(tmp_path / "x" / "My Repo")
     info = folder(client, other)
     assert (info["default_name"], info["name_state"]) == ("my-repo", "taken_elsewhere")
+    assert info["free_name"] == "my-repo-2"
 
 
 def test_the_folder_suggests_the_only_installed_provider(client, repo, installed, lado_home):
@@ -1027,6 +1032,79 @@ def test_a_folder_that_cannot_start_from_scratch(client, git_config, tmp_path, r
     assert folder(client, repo)["scratch"] is False
 
 
+# The set-up of a plain folder (capability folder-setup)
+
+
+def test_a_folder_of_files_has_its_setup(client, git_config, tmp_path):
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "a.txt").write_text("hello")
+    (tmp_path / "notes" / ".env").write_text("KEY=1")
+    info = folder(client, tmp_path / "notes")
+    assert (info["problem_kind"], info["scratch"]) == ("not_repo", False)
+    assert info["setup"] == {
+        "files": 1,
+        "bytes": 5,
+        "left_out": [{"path": ".env", "reason": "secret", "size": 5}],
+        "refusal": None,
+        "author": None,
+        "command": "printf '%s\\n' /.env >> .gitignore && "
+        "git init && git add -A && git commit -m 'First commit'",
+    }
+    assert not (tmp_path / "notes" / ".git").exists()
+
+
+def test_the_setup_says_when_git_has_no_author(client, git_config, tmp_path):
+    git_config.write_text("")
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "a.txt").write_text("hello")
+    author = folder(client, tmp_path / "notes")["setup"]["author"]
+    assert "user.name or user.email" in author["text"]
+    assert author["hint"]["command"].startswith("git config --global user.name")
+
+
+def test_an_empty_folder_and_a_repository_have_no_setup(client, git_config, tmp_path, repo):
+    (tmp_path / "empty").mkdir()
+    assert folder(client, tmp_path / "empty")["setup"] is None
+    assert folder(client, repo)["setup"] is None
+    assert folder(client, tmp_path / "missing")["setup"] is None
+
+
+def start_setup(client, path, **given):
+    where = {"kind": "setup", "path": str(path), "include": given.pop("include", [])}
+    return client.post("/api/sessions", json={"where": where, **given})
+
+
+def test_a_setup_and_start_from_the_api(client, git_config, tmp_path, fake_tmux):
+    notes = tmp_path / "notes"
+    notes.mkdir()
+    (notes / "a.txt").write_text("hello")
+    (notes / ".env").write_text("KEY=1")
+    answer = start_setup(client, notes, provider="kilo")
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["session"]["name"] == "notes"
+    assert runtime.check_repo(str(notes)) == os.path.realpath(notes)
+    assert (notes / ".gitignore").read_text() == "/.env\n"
+
+
+def test_a_setup_refused_is_400_and_leaves_the_folder(client, git_config, tmp_path, fake_tmux):
+    notes = tmp_path / "notes"
+    notes.mkdir()
+    (notes / "a.txt").write_text("hello")
+    (notes / "old").mkdir()
+    subprocess.run(["git", "-C", str(notes / "old"), "init", "-q"], check=True)
+    answer = start_setup(client, notes, provider="kilo", include=["old/"])
+    assert (answer.status_code, answer.json()["detail"]) == (
+        400,
+        "old/ is not a file the set-up can take in",
+    )
+    assert sorted(os.listdir(notes)) == ["a.txt", "old"]
+    wrong = client.post(
+        "/api/sessions", json={"where": {"kind": "folder", "path": str(notes), "include": []}}
+    )
+    assert wrong.status_code == 400
+    assert wrong.json()["detail"] == 'where of kind "folder" takes no include'
+
+
 # Projects (openspec change sessions-in-projects)
 
 
@@ -1060,10 +1138,12 @@ def test_a_folder_in_a_project_is_refused_before_git(client, shop):
         },
         "subfolders": [],
         "default_name": None,
+        "free_name": None,
         "name_state": None,
         "provider": None,
         "warning": None,
         "scratch": False,
+        "setup": None,
         "project": {"id": "shop", "title": "Shop", "repo": "frontend"},
     }
     notes = folder(client, shop / "notes")  # missing: no fresh start there either
@@ -1085,12 +1165,32 @@ def test_the_humans_own_projects_folder_is_hinted(client, tmp_path, monkeypatch,
     assert folder(client, tmp_path / "ws" / "projects" / "notes")["ok"] is True
 
 
-def test_recent_folders_leave_out_those_in_projects(client, shop, tmp_path, fake_tmux):
+def test_recent_folders_list_a_projects_repository_as_the_project(
+    client, shop, tmp_path, fake_tmux
+):
     runtime.start_session(None, None, None, provider="claude", project="shop", repo_name="frontend")
     runtime.start_session(str(tmp_path / "ws" / "app"), None, None, provider="claude")
-    assert [r["path"] for r in client.get("/api/folders/recent").json()] == [
-        str(tmp_path / "ws" / "app")
+    recent = client.get("/api/folders/recent").json()
+    assert [(r["path"], r["project"]) for r in recent] == [
+        (str(tmp_path / "ws" / "app"), None),
+        (str(shop / "frontend"), {"id": "shop", "title": "Shop", "repo": "frontend"}),
     ]
+
+
+def test_recent_folders_leave_out_a_projects_folder_that_is_no_repository_of_it(
+    client, shop, fake_tmux
+):
+    runtime.start_session(None, None, None, provider="claude", project="shop", repo_name="frontend")
+    # The repository's git is gone: the folder is no repository of the project any more.
+    shutil.rmtree(shop / "frontend" / ".git")
+    assert client.get("/api/folders/recent").json() == []
+
+
+def test_recent_folders_leave_out_a_folder_that_is_gone(client, tmp_path, fake_tmux):
+    gone = agent_helpers.init_repo(tmp_path / "gone")
+    runtime.start_session(str(gone), None, None, provider="claude")
+    shutil.rmtree(gone)
+    assert client.get("/api/folders/recent").json() == []
 
 
 def test_a_start_in_a_project_without_it_is_400_and_starts_nothing(client, shop, fake_tmux):

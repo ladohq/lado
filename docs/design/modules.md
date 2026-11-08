@@ -357,6 +357,23 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `LadoError` with `kind` and a `runtime.Hint`); git missing is LAD-5's `no_git`.
     `check_target` and `make` take a `project` as `clone`'s do (`projects.add_new`); `make`
     then asks no session's name, as it makes no session.
+  - `setup.py`: a plain folder of files set up for a session (openspec change
+    new-session-window, capability folder-setup), for the UI server's New session window.
+    `preview` changes nothing: first the `home` refusal by the path alone (the home folder,
+    `/`, the workspace or a folder holding it, by real path), then git itself lists what `git
+    add -A` would take (`ls-files --others --exclude-standard -z` against a temporary bare git
+    folder, read as a stream and stopped past `MAX_FILES` or `MAX_BYTES`: `too_big` with the
+    count so far; git's warning about a folder it cannot read is `unreadable` with its line),
+    so the preview and the commit cannot disagree; of the listed, a name of `SECRETS` is left
+    out as `secret`, a file over `MAX_FILE` as `large`, a nested repository (git's `dir/`) as
+    `repository`. `command` is the same by hand, the left-out paths as `.gitignore` lines
+    (`ignore_line`: anchored, git's pattern characters escaped) quoted by `shlex.quote`, then
+    `NOT_REPO_HINT`'s command. `make` checks again (git's author by `scratch.author_problem`,
+    a folder outside git, the preview's refusal, `include` naming only files left out), then
+    appends the left-out paths not included to `.gitignore`, `git init`, the branch as
+    `scratch.make`, `git add -A` and one commit `First commit` with no signing and no hooks;
+    a failed step removes the `.git` it made and puts `.gitignore` back byte for byte (or
+    removes it): a `SetupError` `git_failed` with git's line.
   - `projects.py`: the workspace and the projects in it (openspec change projects-in-core;
     the model: [projects.md](projects.md)), for `lado project` and `lado doctor`, which
     print only what it says. `workspace` is the one answer to where LADO keeps code:
@@ -1217,18 +1234,24 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     refusal 400; the server is the human's and asks no `LADO_AGENT`;
     `launch.py`: what the New session window asks (docs/design/ui.md, Launch and session
     control): `GET /api/folders` (`FolderInfo`: the core's `check_repo`, its `problem_kind` and `hint`, subfolders, the
-    default name and whether a session has it, and `provider`, the core's
-    `runtime.suggested_provider` with the server's `shutil.which`, a
-    `ProviderSuggestion` of name and reason or none; `scratch` for a missing or not-repo
-    folder a fresh start may take; `project`, a `ProjectPlace` from `projects.place`, for a
-    folder refused inside a project), `GET /api/project-launch?project=&repo=`
+    default name, whether a session has it and `free_name` (`runtime.free_name`, the name
+    itself without lado.db), and `provider`, the core's
+    `runtime.suggested_provider` with the server's `shutil.which` (no history read without
+    lado.db), a `ProviderSuggestion` of name and reason or none; `scratch` for a missing or
+    not-repo folder a fresh start may take; `setup` (`SetupInfo`, `lado.setup.preview` and
+    git's author) for a not-repo folder of files, whose default name is then its own;
+    `project`, a `ProjectPlace` from `projects.place`, for a folder refused inside a
+    project), `GET /api/project-launch?project=&repo=`
     (`ProjectLaunch`, `launch.project_launch`: what the Project way shows, the projects by
     title, the project and repository asked or last used, the default name by
     `runtime.project_session_name`, its state, where a session of the name in no or another
     project is `taken_elsewhere`, `root` (the repository's git root, links resolved, the
     folder its sessions have), the provider and the repository's last session in the
     project; it makes nothing), `GET /api/scratch-target` (`ScratchTarget`: `lado.scratch`'s
-    names, folder state and author, the name's state and a provider), `/api/folders/recent`,
+    names, folder state and author, the name's state and a provider), `/api/folders/recent`
+    (`launch.recent_folders`: the folders of past sessions still there, latest start first, at
+    most 10; inside LADO's `projects/` only a repository of the session's project, with
+    `RecentFolder.project`),
     `/api/repos-folder` (in `app.py`; `Workspace`, `projects.workspace` and whether it is
     made: where an empty Where starts once it exists),
     `/api/kits` (the kit of each name the lookup takes, the same for every folder; a
@@ -1343,6 +1366,12 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   `src/attempts.ts` is the store of actions without an answer, held by the live store;
   `src/closedRefusals.cases.json` is the one table of the core's refusals its Retry takes as
   closed, for vitest and `tests/test_closed_refusals.py` (docs/design/ui.md, A lost connection).
+  The New session window (docs/design/ui.md, Launch and session control) is `src/Launch.tsx`
+  (the dialog, its requests, the footer and the draft), `src/LaunchWhere.tsx` (Where's
+  combobox and each way's fields), `src/LaunchTeam.tsx` (Team's summary and fields),
+  `src/LaunchSetup.tsx` (a plain folder's set-up panel, the core's quoting ported),
+  `src/LaunchProject.tsx` (Project…), `src/LaunchModel.tsx` (the Model field);
+  `src/InfoTip.tsx` is the one info button.
 - `tests/`: pytest tests; `tests/integration/`: integration tests with a fake agent;
   `tests/ui/`: UI end-to-end tests in a browser; `tests/live/`: live tests with real agent
   CLIs; `tests/js/`: Node tests of the OpenCode-family plugin; `web/src/*.test.tsx`: the

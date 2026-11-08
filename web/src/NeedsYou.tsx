@@ -12,7 +12,7 @@ import { ArtifactPanel } from "./ArtifactPanel";
 import { FeedRow } from "./FeedRow";
 import { useLive, useLiveStore } from "./live";
 import { NotificationsOffer } from "./Notifications";
-import { chatPath, PROVIDERS_PATH, terminalPath, VIEW_PARAM, VIEW_SESSION_PARAM } from "./paths";
+import { agentClisPath, chatPath, terminalPath, VIEW_PARAM, VIEW_SESSION_PARAM } from "./paths";
 import { labelOf } from "./sessionLabel";
 import { useTitle } from "./Shell";
 import { agentWaits } from "./waiting";
@@ -105,7 +105,7 @@ function WaitingAgent({ session, agent, since }: { session: string; agent: Agent
               type="button"
               className="primary"
               aria-label={`Log in for ${agent.name}`}
-              onClick={() => navigate(PROVIDERS_PATH)}
+              onClick={() => navigate(agentClisPath(agent.login_wait ?? undefined))}
             >
               Log in…
             </button>

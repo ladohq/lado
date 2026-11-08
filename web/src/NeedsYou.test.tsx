@@ -297,9 +297,9 @@ test("Open terminal goes to the agent's terminal in its session, and the address
   await waitFor(() => expect(address()).toBe("/sessions/lado/activity"));
 });
 
-test("an agent that waits for its CLI's login offers Log in…, which leads to Settings' section", async () => {
+test("an agent that waits for its CLI's login offers Log in…, which leads to its CLI's row in Agent CLIs", async () => {
   const reason =
-    "Claude Code is not logged in: log in in Settings → Agent CLIs and environment, or set CLAUDE_CODE_OAUTH_TOKEN; the agent starts by itself once you do";
+    "Claude Code is not logged in: log in in Settings → Agent CLIs, or set CLAUDE_CODE_OAUTH_TOKEN; the agent starts by itself once you do";
   const waits_ = { ...agent("supervisor", reason), login_wait: "claude" };
   waiting = [waits.agent("lado", waits_)];
   open();
@@ -309,7 +309,7 @@ test("an agent that waits for its CLI's login offers Log in…, which leads to S
   expect(logIn.className).toBe("primary");
   expect(within(lado).getByRole("button", { name: "Open supervisor's terminal" }).className).toBe("quiet");
   fireEvent.click(logIn);
-  await waitFor(() => expect(address()).toBe("/settings#providers-and-environment"));
+  await waitFor(() => expect(address()).toBe("/settings/agent-clis#claude"));
 });
 
 test("an agent that waits for anything else offers no Log in…", async () => {

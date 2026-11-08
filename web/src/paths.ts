@@ -59,13 +59,6 @@ export const projectPath = (id: string) => `/projects/${encodeURIComponent(id)}`
 // The Needs you page (NeedsYou.tsx), whose rail link counts what waits.
 export const NEEDS_YOU_PATH = "/needs-you";
 
-// Settings' section of the agent CLIs' logins (Providers.tsx): the page scrolls to it.
-export const PROVIDERS_ANCHOR = "providers-and-environment";
-export const PROVIDERS_PATH = `/settings#${PROVIDERS_ANCHOR}`;
-
-// Settings' section of the configured models and model servers (ModelSettings.tsx).
-export const MODELS_ANCHOR = "models";
-
 // Settings' pages (Settings.tsx, settingsSections.ts). Agent CLIs scrolls to a CLI's row at
 // #<provider name> and focuses its login button (Providers.tsx).
 export const GENERAL_PATH = "/settings/general";

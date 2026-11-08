@@ -126,7 +126,7 @@ test("Settings: not chosen yet", async () => {
   serve();
   render(<StatisticsSetting />);
   expect(await screen.findByText(/Not chosen yet: nothing is sent\./)).toBeTruthy();
-  expect(screen.getByRole("heading").textContent).toBe("Usage statistics — not chosen yet");
+  expect(screen.getByRole("heading").textContent).toBe("Statistics"); // no tag: the row says it
   const radios = screen.getAllByRole("radio") as HTMLInputElement[];
   expect(radios.map((radio) => radio.checked)).toEqual([false, false]);
   fireEvent.click(screen.getByRole("radio", { name: "Don't send" }));
@@ -142,7 +142,7 @@ test("Settings: disabled with the variable when off_by", async () => {
   const off = screen.getByRole("radio", { name: "Don't send" }) as HTMLInputElement;
   expect(off.checked).toBe(true);
   expect(off.matches(":disabled")).toBe(true); // its fieldset is
-  expect(screen.getByRole("heading").textContent).toBe("Usage statistics — switched off by the environment");
+  expect(screen.getByRole("heading").textContent).toBe("Statistics");
 });
 
 test("the panel's row texts", () => {

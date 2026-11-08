@@ -10,25 +10,23 @@
 // sheet closes, and reads the rows every POLL_MS while it runs, ↻ turning; the latest answer
 // wins. The CLIs' files change outside LADO, so not from the change feed. The page scrolls
 // to it at #providers-and-environment.
-import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Link, useLocation } from "react-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router";
 
 import { checkProviders, getProviderLogins, type ProviderLogins, type ProvidersPage } from "./api";
 import { LoginSheet } from "./LoginSheet";
-import { PROVIDERS_ANCHOR, terminalPath } from "./paths";
+import { terminalPath } from "./paths";
 import { messageOf } from "./SessionControl";
+import { SettingsPage } from "./SettingsPage";
 
 export const POLL_MS = 1000; // how often the rows are read while a check runs
 
 export function Providers() {
-  const id = useId();
   const [page, setPage] = useState<ProvidersPage | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [sheet, setSheet] = useState<string | null>(null); // the provider whose sheet is open
-  const section = useRef<HTMLElement>(null);
   const latest = useRef(0); // the request whose answer counts
   const poll = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const { hash } = useLocation();
 
   const take = useCallback(async (ask: () => Promise<ProvidersPage>) => {
     const asked = ++latest.current;
@@ -56,10 +54,6 @@ export function Providers() {
       clearTimeout(poll.current);
     };
   }, [check]);
-  // A link to the section (Needs you's "Log in…") scrolls to it once it is there.
-  useEffect(() => {
-    if (page && hash === `#${PROVIDERS_ANCHOR}`) section.current?.scrollIntoView({ block: "start" });
-  }, [page, hash]);
 
   const changed = (row: ProviderLogins) =>
     setPage((now) =>
@@ -70,9 +64,9 @@ export function Providers() {
   const noneInstalled = page !== null && page.providers.every((p) => p.ready && !p.cli.installed);
 
   return (
-    <section className="setting" id={PROVIDERS_ANCHOR} ref={section} aria-labelledby={id}>
-      <div className="pv-title">
-        <h2 id={id}>Agent CLIs and environment</h2>
+    <SettingsPage
+      slug="agent-clis"
+      tools={
         <button
           type="button"
           className={`pv-refresh${checking ? " spinning" : ""}`}
@@ -84,8 +78,9 @@ export function Providers() {
         >
           <span aria-hidden="true">↻</span>
         </button>
-      </div>
-      <p className="muted">Sign-ins your agents use. Changes apply to agents started afterwards.</p>
+      }
+    >
+      <p className="lede">Sign-ins your agents use. Changes apply to agents started afterwards.</p>
       {problem && (
         <p className="problem" role="alert">
           {problem}
@@ -117,7 +112,7 @@ export function Providers() {
           }}
         />
       )}
-    </section>
+    </SettingsPage>
   );
 }
 

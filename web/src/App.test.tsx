@@ -638,15 +638,20 @@ test("a stream refused for the token shows how to get in and does not try again"
 
 // Settings and the theme
 
-test("Settings is one flat page: Appearance, Notifications, Agent CLIs and environment, Models, then Usage statistics", () => {
+test("Settings opens General beside the list of its sections; a section is a page of its own", () => {
   open("/settings");
-  const sections = screen
-    .getAllByRole("heading", { level: 2 })
-    .map((h) => h.textContent);
-  expect(sections).toEqual(["Appearance", "Notifications", "Agent CLIs and environment", "Models", "Usage statistics"]);
-  // The section itself: Providers.test.tsx.
-  const providers = screen.getByRole("region", { name: "Agent CLIs and environment" });
-  expect(providers.id).toBe("providers-and-environment");
+  expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["General"]);
+  const list = screen.getByRole("navigation", { name: "Settings sections" });
+  expect(within(list).getAllByRole("link").map((a) => a.textContent)).toEqual([
+    "General",
+    "Agent CLIs",
+    "Model servers",
+    "Statistics",
+  ]);
+  // The routes and redirects themselves: Settings.test.tsx.
+  fireEvent.click(within(list).getByRole("link", { name: "Statistics" }));
+  expect(screen.getByRole("region", { name: "Statistics" })).toBeTruthy();
+  expect(heading()).toBe("Settings");
 });
 
 test("the theme applies at once on the root and is remembered", () => {

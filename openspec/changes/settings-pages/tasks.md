@@ -3,20 +3,20 @@ with its files, interfaces and tests).
 
 ## 1. Server texts
 
-- [ ] 1.1 `logins.SETTINGS`, `model_settings.py`'s refusal, the Docker headers, docstrings and
+- [x] 1.1 `logins.SETTINGS`, `model_settings.py`'s refusal, the Docker headers, docstrings and
   comments name `Settings → Agent CLIs` and `Settings → Model servers`; `make web-types`; the unit
   tests and `tests/integration/test_provider_logins.py` quote the new texts (AC-7). Checked: `make
   test`, `uv run pytest -m integration -n auto tests/integration/test_provider_logins.py`.
 
 ## 2. Paths and icons
 
-- [ ] 2.1 `paths.ts`: `agentClisPath`, `GENERAL_PATH`, `MODEL_SERVERS_PATH`, `STATISTICS_PATH`,
+- [x] 2.1 `paths.ts`: `agentClisPath`, `GENERAL_PATH`, `MODEL_SERVERS_PATH`, `STATISTICS_PATH`,
   `DOCS_URL`, `GITHUB`; `SettingsIcon` a cogwheel, `HelpIcon` new (AC-6). Checked: `make web`
   (`paths.test.ts`).
 
 ## 3. Sections, routes, redirects
 
-- [ ] 3.1 `settingsSections.ts`, the layout route, the list (names and icons only), the phone's list
+- [x] 3.1 `settingsSections.ts`, the layout route, the list (names and icons only), the phone's list
   and `‹ Settings`, focus on the h2, the redirects (AC-1, AC-2). Checked: `make web`
   (`Settings.test.tsx`, `App.test.tsx`).
 

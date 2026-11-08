@@ -2255,13 +2255,130 @@ h3 {
   padding: 0 12px;
 }
 
-/* Settings: sections one under the other. */
+/* Settings (Settings.tsx): the list of sections beside the section's page, sticky under the
+   top bar; 196 px beside it at 601 to 900 px; on a phone the list alone, or the page alone. */
 
 .settings {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 680px);
+  gap: 32px;
+  align-items: start;
+}
+
+.settings-page {
+  min-width: 0;
+}
+
+.snav {
+  position: sticky;
+  top: calc(var(--head-h) + 28px);
+}
+
+.snav ul {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  max-width: 680px;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.snav-item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: center;
+  padding: 7px 10px 8px;
+  border-radius: 6px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.snav-item:hover {
+  background: var(--raised);
+}
+
+.snav-item[aria-current="page"] {
+  background: var(--raised);
+  box-shadow: inset 3px 0 0 var(--action);
+}
+
+.snav-ic {
+  display: flex;
+  color: var(--muted);
+}
+
+.snav-item[aria-current="page"] .snav-ic {
+  color: var(--ink);
+}
+
+.snav-name {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.snav-item[aria-current="page"] .snav-name {
+  font-weight: 600;
+}
+
+.snav-chev {
+  display: flex;
+  color: var(--muted);
+}
+
+.snav-chev svg {
+  transform: rotate(-90deg);
+}
+
+/* A section's page: its head, a lede at most, then rows or blocks without frames. */
+.spage {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.spage-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.spage-head h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.spage-head h2:focus {
+  outline: none;
+}
+
+.spage .lede {
+  margin: -8px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  min-height: 44px;
+  margin: -12px 0 -12px -6px;
+  padding: 0 8px 0 2px;
+  color: var(--action);
+  font-size: 15px;
+  text-decoration: none;
+}
+
+@media (max-width: 900px) {
+  .settings {
+    grid-template-columns: 196px minmax(0, 1fr);
+    gap: 20px;
+  }
 }
 
 .setting {
@@ -12541,4 +12658,51 @@ button.quiet.danger-text {
 
 :root[data-phone] .project-edit .project-in-name {
   width: 100%;
+}
+
+/* Settings on a phone (Settings.tsx): the list a panel of 52 px rows with a chevron, alone
+   at /settings; a section its own page under "‹ Settings". */
+:root[data-phone] .settings {
+  display: block;
+}
+
+:root[data-phone] .snav {
+  position: static;
+}
+
+:root[data-phone] .snav ul {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+:root[data-phone] .snav li + li {
+  border-top: 1px solid var(--line);
+}
+
+:root[data-phone] .snav-item {
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  column-gap: 12px;
+  min-height: 52px;
+  padding: 10px 12px 10px 16px;
+  border-radius: 0;
+}
+
+:root[data-phone] .snav-item[aria-current="page"] {
+  background: transparent;
+  box-shadow: none;
+}
+
+:root[data-phone] .snav-name {
+  font-size: 16px;
+}
+
+:root[data-phone] .spage {
+  gap: 14px;
+}
+
+:root[data-phone] .spage-head h2 {
+  font-size: 22px;
 }

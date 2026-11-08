@@ -4,7 +4,6 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { LMSTUDIO, model, ModelServer, refusal } from "./modelFakes";
 import { INTRO, ModelSettings, UNDO_MS } from "./ModelSettings";
-import { Settings } from "./Settings";
 
 vi.mock("@xterm/xterm", async () => ({
   Terminal: (await import("./fakes")).FakeXterm,
@@ -49,21 +48,7 @@ const FOUR = [
   model("beta", "opencode", "OpenCode", "devstral"),
 ];
 
-test("the section comes after Agent CLIs and environment, before Usage statistics", async () => {
-  vi.stubGlobal("WebSocket", class {});
-  render(
-    <MemoryRouter>
-      <Settings />
-    </MemoryRouter>,
-  );
-  await screen.findByRole("heading", { name: "Models" });
-  const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
-  const at = headings.indexOf("Models");
-  expect(headings[at - 1]).toBe("Agent CLIs and environment");
-  expect(headings[at + 1]).toBe("Usage statistics");
-});
-
-test("no tabs: the intro, then the two blocks; opening reads no source", async () => {
+test("no tabs: the page Model servers, then the two blocks; opening reads no source", async () => {
   server.entries = {
     models: FOUR,
     servers: [LMSTUDIO, { ...LMSTUDIO, name: "LiteLLM" }],
@@ -71,7 +56,8 @@ test("no tabs: the intro, then the two blocks; opening reads no source", async (
   mount();
   await card("Claude Code");
   expect(screen.queryByRole("tablist")).toBeNull();
-  expect(screen.getByText(INTRO)).toBeTruthy();
+  expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Model servers");
+  expect(screen.queryByText(INTRO)).toBeNull();
   const blocks = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
   expect(blocks).toEqual(["Your agent CLIs", "Model servers 2"]);
   const reads = (c: { path: string }) =>
@@ -81,19 +67,6 @@ test("no tabs: the intro, then the two blocks; opening reads no source", async (
   expect(await count("OpenCode")).toBe("2");
   expect(await count("Claude Code")).toBe("1");
   expect(server.of("POST", "/api/providers/check")).toEqual([]); // no check of its own
-});
-
-test("#models scrolls once, when the page opens, never after a change of the entries", async () => {
-  const scrolled = vi.fn();
-  Element.prototype.scrollIntoView = scrolled;
-  server.entries = { models: FOUR.slice(0, 2), servers: [] };
-  mount("/settings#models");
-  const claude = await card("Claude Code");
-  await waitFor(() => expect(scrolled).toHaveBeenCalledTimes(1));
-  fireEvent.click(within(claude).getByRole("button", { name: "Remove Claude Sonnet" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
-  await screen.findByRole("button", { name: "Rename Claude Sonnet" });
-  expect(scrolled).toHaveBeenCalledTimes(1);
 });
 
 test("a click on a name gives a field: Enter renames, the model takes its place in its card only", async () => {

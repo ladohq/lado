@@ -46,7 +46,7 @@ import { ClipboardIcon, FolderIcon, GitHubIcon, QrIcon } from "./icons";
 import { useLive } from "./live";
 import { useBelow, useDismiss } from "./Menu";
 import { useModal } from "./modal";
-import { GITHUB } from "./paths";
+import { GITHUB, STATISTICS_PATH } from "./paths";
 import { useMedia } from "./phone";
 import { storeUpdateSeen, updateSeen } from "./prefs";
 import { STATUS_WORDS } from "./Team";
@@ -387,7 +387,7 @@ function SystemPanel({
             <dd>{facts.git}</dd>
             <dt>Statistics</dt>
             <dd>
-              <Link to="/settings" onClick={onClose}>
+              <Link to={STATISTICS_PATH} onClick={onClose}>
                 {statisticsLine(facts.telemetry)}
               </Link>
             </dd>

@@ -2,7 +2,7 @@
 // the top bar on every page, Settings → Usage statistics, and the System panel's row. The
 // choice is the server's (LADO_HOME), the same as `lado telemetry on|off`; it is read once
 // per page and after the page's own choice, not from the change feed.
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   ApiError,
@@ -14,6 +14,7 @@ import {
 } from "./api";
 import { clock, day } from "./ChatText";
 import { useLive } from "./live";
+import { SettingsPage } from "./SettingsPage";
 
 export const TELEMETRY_DOCS = "https://github.com/ladohq/lado/blob/main/docs/telemetry.md";
 
@@ -150,20 +151,9 @@ const CHOICES = [
 ] as const;
 
 export function StatisticsSetting() {
-  const id = useId();
   const [info, setInfo, unread] = useTelemetry();
   const [problem, setProblem] = useState<string | null>(null);
   const locked = info === null || info.off_by !== null || !info.endpoint;
-  const tag =
-    info === null
-      ? null
-      : info.off_by
-        ? "switched off by the environment"
-        : !info.endpoint
-          ? "no statistics endpoint"
-          : info.choice === null
-            ? "not chosen yet"
-            : null;
   const checked = info?.off_by ? "off" : info?.choice;
   const choose = async (choice: "on" | "off") => {
     setProblem(null);
@@ -174,10 +164,7 @@ export function StatisticsSetting() {
     }
   };
   return (
-    <section className="setting" aria-labelledby={id}>
-      <h2 id={id}>
-        Usage statistics{tag && <span className="muted stats-tag"> — {tag}</span>}
-      </h2>
+    <SettingsPage slug="statistics">
       <fieldset className="choice" disabled={locked}>
         <legend>Send anonymous statistics and errors to LADO's maintainers</legend>
         <div className="segments">
@@ -201,7 +188,7 @@ export function StatisticsSetting() {
           {problem}
         </p>
       )}
-    </section>
+    </SettingsPage>
   );
 }
 

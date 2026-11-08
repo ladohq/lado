@@ -11,7 +11,6 @@
 // the human acts; a model removed by × leaves its row as Undo, then as a line, until the
 // human's next change here. The page says nothing of sessions using a default: none does yet.
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { useLocation } from "react-router";
 
 import {
   addModel,
@@ -35,9 +34,9 @@ import { CloseIcon } from "./icons";
 import { MODEL_DEBOUNCE, useDebounced } from "./Launch";
 import { type Health, ModelPicker, type Pick, serverWords, useModelChoices } from "./ModelPicker";
 import { listed, loginWord, ModelServers, type Read, type Saved, serverKey, type Sources } from "./ModelSources";
-import { MODELS_ANCHOR } from "./paths";
 import { POLL_MS } from "./Providers";
-import { keepAtTop, useScrollAnchor } from "./useScrollAnchor";
+import { SettingsPage } from "./SettingsPage";
+import { useScrollAnchor } from "./useScrollAnchor";
 
 export const INTRO = "Choose a default model for each agent CLI, and add the models of your own servers.";
 export const LEAD =
@@ -64,7 +63,6 @@ const fold = (text: string) => text.toLowerCase();
 const byName = (a: ConfiguredModelInfo, b: ConfiguredModelInfo) => fold(a.name).localeCompare(fold(b.name));
 
 export function ModelSettings() {
-  const id = useId();
   const [entries, setEntries] = useState<Entries | null>(null);
   const [logins, setLogins] = useState<ProviderLogins[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
@@ -85,8 +83,6 @@ export function ModelSettings() {
   const latest = useRef(0);
   const shown = useRef<Entries | null>(null); // the entries last taken
   const reading = useRef<Record<string, number>>({}); // each source's latest read (ModelSources)
-  const scrolled = useRef(false);
-  const { hash } = useLocation();
   useScrollAnchor(section);
 
   const reload = useCallback(async (given?: Entries) => {
@@ -143,15 +139,6 @@ export function ModelSettings() {
       clearTimeout(timer);
     };
   }, []);
-  // Once, when the page opens at #models, kept at the top until the human acts: never after
-  // a change of the entries.
-  const keeping = useRef<(() => void) | null>(null);
-  useEffect(() => {
-    if (!entries || scrolled.current) return;
-    scrolled.current = true;
-    if (hash === `#${MODELS_ANCHOR}` && section.current) keeping.current = keepAtTop(section.current);
-  }, [entries, hash]);
-  useEffect(() => () => keeping.current?.(), []);
 
   const onRead = useCallback((key: string, read: Read | null) => {
     setReads((now) => {
@@ -262,9 +249,7 @@ export function ModelSettings() {
       setLostDefaults((now) => ({ ...now, [cli]: `Its default model ${name} was removed.` })),
   };
   return (
-    <section className="setting mx" id={MODELS_ANCHOR} ref={section} aria-labelledby={id}>
-      <h2 id={id}>Models</h2>
-      <p className="mx-intro">{INTRO}</p>
+    <SettingsPage slug="model-servers" className="setting mx" ref={section}>
       {problem && (
         <p className="problem" role="alert">
           {problem}
@@ -305,7 +290,7 @@ export function ModelSettings() {
           <ModelServers {...sources} />
         </>
       )}
-    </section>
+    </SettingsPage>
   );
 }
 

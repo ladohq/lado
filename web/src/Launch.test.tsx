@@ -795,13 +795,13 @@ test("a CLI without its login is greyed out, not taken from the suggestion, and 
   expect(screen.queryByText(NO_LOGIN, { exact: false })).toBeNull();
 });
 
-test("Log in first closes the window and opens Settings' providers", async () => {
+test("Log in first closes the window and opens its CLI's row in Agent CLIs", async () => {
   providers = async () => [provider("claude", { login_missing: true }), provider("kilo")];
   await openLaunch();
   await ready("/src/app", { provider: { name: "claude", reason: "only_installed" } }, true);
   fireEvent.click(await screen.findByRole("button", { name: "Log in first" }));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "New session" })).toBeNull());
-  expect(await screen.findByRole("heading", { name: "Agent CLIs and environment" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Agent CLIs" })).toBeTruthy();
 });
 
 test("the Project way asks for the chosen project's providers, where its own login counts", async () => {

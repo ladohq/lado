@@ -68,7 +68,7 @@ with its files, interfaces and tests).
   System panel), `docs/cli.md`, `docs/install.md`, `docs/design/agents.md`, `docs/design/modules.md`,
   `docs/release.md`, CHANGELOG.md; the grep for the old names finds only the archive and
   `docs/epics/` (AC-7). Checked: the grep.
-- [ ] 11.2 At archive (integrator): the `## Purpose` of `openspec/specs/provider-logins/spec.md`
+- [x] 11.2 At archive (integrator): the `## Purpose` of `openspec/specs/provider-logins/spec.md`
   and `openspec/specs/model-settings-page/spec.md` name Settings → Agent CLIs and Settings → Model
   servers (a delta cannot change a Purpose). Checked: `openspec validate --specs --strict`.
 - [x] 11.3 `make lint`, `make test`, `make web`, `openspec validate settings-pages --strict` and the

@@ -1054,7 +1054,7 @@ def test_team_opens_with_permissions_in_words(page: Page, server, repo, shot):
         shot(page, f"d-{width}", full_page=False)
 
 
-def test_a_plain_folder_is_set_up_and_started(page: Page, server, tmp_path, git_config, shot):
+def test_a_plain_folder_is_set_up_and_started(page: Page, git_config, server, tmp_path, shot):
     """git_config before server: the server's set-up commits with the test's author."""
     notes = tmp_path / "notes"
     notes.mkdir()

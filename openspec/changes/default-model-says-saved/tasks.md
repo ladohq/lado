@@ -30,9 +30,9 @@
 
 ## 3. Docs
 
-- [ ] 3.1 `docs/design/ui.md`: Agent CLIs, Default model: the `✓ Saved` slot, when it shows and
+- [x] 3.1 `docs/design/ui.md`: Agent CLIs, Default model: the `✓ Saved` slot, when it shows and
   goes; Model servers' Looks: green (`--done`) for `✓ Saved` of a default too.
-- [ ] 3.2 `CHANGELOG.md` under `## 0.45.0 (unreleased)` (or the next heading by AGENTS.md's
+- [x] 3.2 `CHANGELOG.md` under `## 0.45.0 (unreleased)` (or the next heading by AGENTS.md's
   rule), `### Improved`: **A default model says it was saved.**
 
 ## 4. Checks

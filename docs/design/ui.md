@@ -1656,7 +1656,9 @@ connection, above).
   the footer has **Resume <name>** and **Start new session <free name>** (in a project
   **Start new session in <title>**), side by side, never swapped: the primary is Resume while
   Task is empty and Start new once it holds text. Resume posts `POST /api/sessions/{name}/
-  resume` with the Team fields changed and the task. A name a running session or one of
+  resume` with the task and only the Team fields the human changed (they came from the
+  place's last session and the suggestion, not from the stopped one: sent as they are they
+  would rewrite its settings). A name a running session or one of
   another folder has gives the free name and one button. A 409 `Taken` after the press (a
   race) opens Team, shows the core's text under Session name (`aria-invalid`, the focus
   there) and offers **Use <next>**.

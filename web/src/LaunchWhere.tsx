@@ -179,8 +179,8 @@ export function PlaceBox({
   const optionId = (i: number) => `${id}-option-${i}`;
 
   const row = (option: Option, i: number) => {
+    const key = `${option.kind}:${"path" in option ? option.path : option.kind === "recent" ? option.recent.path : option.way}`;
     const common = {
-      key: `${option.kind}:${"path" in option ? option.path : option.kind === "recent" ? option.recent.path : option.way}`,
       id: optionId(i),
       role: "option",
       "aria-selected": i === at,
@@ -193,7 +193,7 @@ export function PlaceBox({
     if (option.kind === "recent") {
       const one = option.recent;
       return (
-        <li {...common}>
+        <li key={key} {...common}>
           <PlaceIcon icon={one.project ? "project" : "folder"} />
           <span className="place-text">
             <span className="place-name">{recentName(one)}</span>
@@ -211,7 +211,7 @@ export function PlaceBox({
     }
     if (option.kind === "way") {
       return (
-        <li {...common}>
+        <li key={key} {...common}>
           <PlaceIcon icon={option.icon} />
           <span className="place-text">
             <span className="place-name">{option.label}</span>
@@ -220,7 +220,7 @@ export function PlaceBox({
       );
     }
     return (
-      <li {...common}>
+      <li key={key} {...common}>
         <PlaceIcon icon={option.kind === "use" ? "folder" : "open"} />
         <span className="place-text">
           <span className="place-name">{option.kind === "use" ? `Use folder ${option.path}` : `${option.name}/`}</span>

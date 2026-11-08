@@ -554,6 +554,56 @@ test("Resume <name> in New session resumes the stopped session with the task", a
   expect(calls.find((c) => c.method === "POST")).toMatchObject({ path: "/api/sessions/webapp/resume", body: { prompt: "Go on" } });
 });
 
+test("Resume beside a new start sends only what the human changed, not the window's other values", async () => {
+  // The stopped session has its own kits, agent CLI and Switch off; the folder's last session,
+  // which the window's Team comes from, is another one.
+  const stopped = session("webapp", {
+    status: "stopped",
+    repo: WEBAPP,
+    kits: ["team"],
+    provider: "kilo",
+    permission_mode: "plan",
+    without: ["agent:reviewer"],
+  });
+  sessions = [stopped];
+  recent = [recentFolder(WEBAPP, { name: "webapp-3", kits: ["default"], provider: "claude", permission_mode: null })];
+  folders[WEBAPP] = folder(WEBAPP, {
+    default_name: "webapp",
+    free_name: "webapp-2",
+    name_state: "stopped_here",
+    provider: { name: "claude", reason: "last_session" },
+  });
+  answers["POST /api/sessions/webapp/resume"] = () => json({ session: session("webapp"), ...STARTED, resumed: true });
+  await openLaunch(false);
+  const resume = (await screen.findByRole("button", { name: "Resume webapp" })) as HTMLButtonElement;
+  await waitFor(() => expect(providerSelect().value).toBe("claude"));
+  await waitFor(() => expect(resume.disabled).toBe(false));
+  fireEvent.click(resume);
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "New session" })).toBeNull());
+  expect(calls.find((c) => c.method === "POST")!.body).toEqual({});
+});
+
+test("Resume beside a new start sends the fields the human changed", async () => {
+  sessions = [session("webapp", { status: "stopped", repo: WEBAPP, without: ["agent:reviewer"] })];
+  recent = [recentFolder(WEBAPP)];
+  folders[WEBAPP] = folder(WEBAPP, {
+    default_name: "webapp",
+    free_name: "webapp-2",
+    name_state: "stopped_here",
+    provider: { name: "claude", reason: "last_session" },
+  });
+  answers["POST /api/sessions/webapp/resume"] = () => json({ session: session("webapp"), ...STARTED, resumed: true });
+  await openLaunch(false);
+  const resume = (await screen.findByRole("button", { name: "Resume webapp" })) as HTMLButtonElement;
+  openTeam();
+  fireEvent.change(screen.getByRole("textbox", { name: "Switch off" }), { target: { value: "skill:x" } });
+  chooseMode("plan");
+  await waitFor(() => expect(resume.disabled).toBe(false));
+  fireEvent.click(resume);
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "New session" })).toBeNull());
+  expect(calls.find((c) => c.method === "POST")!.body).toEqual({ without: ["skill:x"], permission_mode: "plan" });
+});
+
 test("a name a running session has gives the free name and one button", async () => {
   sessions = [session("webapp", { repo: WEBAPP })];
   recent = [recentFolder(WEBAPP, { status: "running", stopped_at: null })];
@@ -609,7 +659,7 @@ test("the kits list that does not load is a warning in Team, not a refusal: Star
 test("the folder is checked by the server and its reason shown; Start stays off until it will do", async () => {
   await openLaunch();
   expect(startButton().disabled).toBe(true);
-  expect(footerText()).toContain("To start: choose a place");
+  await waitFor(() => expect(footerText()).toContain("To start: choose a place"));
   folders["/tmp/x"] = folder("/tmp/x", { ok: false, problem: "/tmp/x is not inside a git repository", root: null });
   type("/tmp/x");
   expect(await screen.findByText("/tmp/x is not inside a git repository")).toBeTruthy();
@@ -875,7 +925,7 @@ test("without a kit Start stays off and the footer says why", async () => {
   fireEvent.click(within(kitsGroup()).getByRole("button", { name: "Remove default" }));
   expect(await screen.findByText("a session needs at least one kit")).toBeTruthy();
   expect(startButton().disabled).toBe(true);
-  expect(footerText()).toContain("To start: choose a team setup.");
+  await waitFor(() => expect(footerText()).toContain("To start: choose a team setup."));
 });
 
 test("providers show checking while their CLIs are asked, a missing one is off, a warning is shown", async () => {
@@ -917,7 +967,7 @@ test("without a suggestion no agent is chosen; the footer's link opens Team on A
   expect(providerSelect().value).toBe("");
   expect(teamSummary()).toContain("Agent choose…");
   expect(startButton().disabled).toBe(true);
-  expect(footerText()).toContain("To start: choose an agent.");
+  await waitFor(() => expect(footerText()).toContain("To start: choose an agent."));
   fireEvent.click(screen.getByRole("button", { name: "choose an agent" }));
   await waitFor(() => expect(teamIsOpen()).toBe(true));
   await waitFor(() => expect(document.activeElement).toBe(providerSelect()));
@@ -971,7 +1021,7 @@ test("a CLI without its login is greyed out, not taken from the suggestion, and 
   expect(within(note).getByRole("button", { name: "Log in first" })).toBeTruthy();
   await waitFor(() => expect(teamIsOpen()).toBe(true));
   expect(startButton().disabled).toBe(true);
-  expect(footerText()).toContain("To start: log in to Claude Code.");
+  await waitFor(() => expect(footerText()).toContain("To start: log in to Claude Code."));
   fireEvent.change(providerSelect(), { target: { value: "kilo" } });
   await waitFor(() => expect(startButton().disabled).toBe(false));
   expect(screen.queryByText(NO_LOGIN, { exact: false })).toBeNull();
@@ -1168,7 +1218,7 @@ test("a task over the limit keeps Start off, says so under it and in the footer"
   const note = await screen.findByText("21 characters, the limit is 20");
   expect(firstField().getAttribute("aria-describedby")).toBe(note.id);
   expect(startButton().disabled).toBe(true);
-  expect(footerText()).toContain("To start: shorten the task.");
+  await waitFor(() => expect(footerText()).toContain("To start: shorten the task."));
   fireEvent.click(screen.getByRole("button", { name: "shorten the task" }));
   expect(document.activeElement).toBe(firstField());
   writeFirst("x".repeat(20));
@@ -3187,7 +3237,7 @@ async function scratchReady(text = "Сайт кофейни") {
 test("the first window: New empty folder, the folder's name when it differs, and Team's Name", async () => {
   const dialog = await openLaunch(false);
   await waitFor(() => expect(placeBox().value).toBe("New empty folder"));
-  expect(footerText()).toContain("To start: name the folder");
+  await waitFor(() => expect(footerText()).toContain("To start: name the folder"));
   fireEvent.change(scratchName(), { target: { value: "Сайт кофейни" } });
   expect(await within(dialog).findByText("folder sait-kofeini")).toBeTruthy();
   await waitFor(() => expect(teamSummary()).toContain("Name sait-kofeini"));
@@ -3234,7 +3284,7 @@ test("no author: the text and the hint with Copy under Folder name, Create and s
   expect(within(dialog).getByText("git config --global user.name x")).toBeTruthy();
   expect(within(dialog).getByRole("button", { name: "Copy command" })).toBeTruthy();
   expect(createButton().disabled).toBe(true);
-  expect(footerText()).toContain("tell git who you are");
+  await waitFor(() => expect(footerText()).toContain("tell git who you are"));
 });
 
 test("a refused name shows under Folder name, marked invalid, and Create and start stays off", async () => {
@@ -3453,7 +3503,7 @@ test("a folder too big or the home folder is refused, with the footer's reason",
   const refusal = await within(dialog).findByText("Choose a smaller folder: this one holds over 20,000 files.");
   expect(refusal.getAttribute("role")).toBe("alert");
   expect(startButton().disabled).toBe(true);
-  expect(footerText()).toContain("To start: choose a smaller folder.");
+  await waitFor(() => expect(footerText()).toContain("To start: choose a smaller folder."));
   folders["/Users/ann"] = { ...plain({ refusal: { kind: "home", files: 0, bytes: 0, line: "" } }), path: "/Users/ann" };
   type("/Users/ann");
   expect(await within(dialog).findByText("Choose a smaller folder: this is your home folder.")).toBeTruthy();

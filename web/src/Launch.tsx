@@ -788,14 +788,21 @@ function LaunchDialog({
     }
   };
 
-  // The Team fields changed from those `session` has, and the task, for a resume.
-  const changedFrom = (session: SessionInfo): Resume => {
+  // The Team fields changed from those `session` has, and the task, for a resume. In New
+  // session the fields came from the place's last session and the suggestion, not from the
+  // stopped one beside it: only those the human touched count (`onlyTouched`).
+  const changedFrom = (session: SessionInfo, onlyTouched = false): Resume => {
     const off = splitWithout(without);
     const changed: Resume = {};
-    if (!sameList(kits, session.kits)) changed.kits = kits;
-    if (chosenProvider !== null && chosenProvider !== session.provider) changed.provider = chosenProvider;
-    if (permissionMode !== (session.permission_mode ?? DEFAULT_MODE)) changed.permission_mode = permissionMode;
-    if (!sameList(off, session.without)) changed.without = off;
+    const counts = (field: string) => !onlyTouched || touched.has(field);
+    if (counts("kits") && !sameList(kits, session.kits)) changed.kits = kits;
+    if (counts("provider") && chosenProvider !== null && chosenProvider !== session.provider) {
+      changed.provider = chosenProvider;
+    }
+    if (counts("mode") && permissionMode !== (session.permission_mode ?? DEFAULT_MODE)) {
+      changed.permission_mode = permissionMode;
+    }
+    if (counts("without") && !sameList(off, session.without)) changed.without = off;
     if (model.send !== undefined) changed.model = model.send;
     return { ...changed, ...withPrompt };
   };
@@ -833,7 +840,7 @@ function LaunchDialog({
     setBusyKind("resume");
     setRefused(null);
     try {
-      openSession(await resumeSession(stopped.name, changedFrom(stopped)));
+      openSession(await resumeSession(stopped.name, changedFrom(stopped, true)));
     } catch (error) {
       setBusy(false);
       refuse(error);
@@ -1383,7 +1390,10 @@ function LaunchDialog({
             modeNote={modeNote}
             modelField={model.field}
             without={without}
-            onWithout={setWithout}
+            onWithout={(next) => {
+              touch("without");
+              setWithout(next);
+            }}
             switchOff={switchOff}
             disabled={busyNow}
             refs={teamRefs}

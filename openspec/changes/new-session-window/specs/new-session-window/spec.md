@@ -140,7 +140,8 @@ while Task is empty and Start new while Task holds text.
 
 #### Scenario: Resume with a task
 - **WHEN** the human presses `Resume webapp` with a task typed
-- **THEN** the window resumes `webapp` with the task as `prompt` and the Team fields changed
+- **THEN** the window resumes `webapp` with the task as `prompt` and only the Team fields the
+  human changed, never the others' values (they came from the place's last session)
 
 ### Requirement: A name taken elsewhere gives the free name
 

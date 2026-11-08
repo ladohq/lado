@@ -83,9 +83,12 @@ tests/ui/test_stopped_session.py`. The existing UI and vitest tests that press t
 def test_free_name_is_the_name_when_no_session_has_it(home):
     assert runtime.free_name("webapp") == "webapp"
 
+
 def test_free_name_counts_past_taken_ones(home, make_session):
-    make_session("webapp"); make_session("webapp-2")
+    make_session("webapp")
+    make_session("webapp-2")
     assert runtime.free_name("webapp") == "webapp-3"
+
 
 def test_the_last_session_anywhere_is_the_third_step(home, make_session):
     make_session("old", repo="/w/a", provider="claude")
@@ -107,6 +110,7 @@ _REASONS = {
     ONLY_INSTALLED: "the only one installed",
 }
 
+
 def free_name(base: str) -> str:
     """`base` when no session has it, else the first `base-2`, `base-3`, … none has: the name
     the New session window offers beside a stopped session of `base`."""
@@ -116,9 +120,13 @@ def free_name(base: str) -> str:
         name = f"{base}-{n}"
     return name
 
-# in suggested_provider, after the folder's last session:
+    # in suggested_provider, after the folder's last session:
     latest = next(iter(state.sessions_by_start()), None)
-    if latest and latest.provider in providers.names() and installed(providers.get(latest.provider)):
+    if (
+        latest
+        and latest.provider in providers.names()
+        and installed(providers.get(latest.provider))
+    ):
         return Suggestion(latest.provider, LAST_ANY)
 ```
 
@@ -171,12 +179,13 @@ title, summary, description, risky}`.
 class ModeWords:
     """How the UI names a permission mode: its title, its few words in a summary, one line of
     what it does, and whether it risks the folder."""
+
     title: str
     summary: str
     description: str
     risky: bool = False
 
-# Provider:
+    # Provider:
     permission_mode_words: dict[str, ModeWords] = {}
 
     def mode_words(self) -> list[tuple[str, ModeWords]]:

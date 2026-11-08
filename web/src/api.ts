@@ -289,6 +289,9 @@ export const answerQuestions = (session: string, answers: Reply[]) =>
 // Launch and session control (docs/design/ui.md, Launch and session control).
 
 export type FolderInfo = components["schemas"]["FolderInfo"];
+export type SetupInfo = components["schemas"]["SetupInfo"];
+export type LeftOutInfo = components["schemas"]["LeftOutInfo"];
+export type ModeWordsInfo = components["schemas"]["ModeWordsInfo"];
 export type RecentFolder = components["schemas"]["RecentFolder"];
 export type Workspace = components["schemas"]["Workspace"];
 export type KitInfo = components["schemas"]["KitInfo"];

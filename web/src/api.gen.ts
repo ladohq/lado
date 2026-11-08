@@ -237,9 +237,11 @@ export interface paths {
          * Start
          * @description Start a new session, as `lado start` does, without attaching to it; for `where`
          *     of kind "scratch" the folder is made a repository first, as `lado start --new`
-         *     does; of kind "project" the session is the project's repository's, as `lado start
-         *     --project <id> --repo <name>` starts it. A name a session has is 409 with that
-         *     session's status and folder; on an empty LADO_HOME the core makes lado.db.
+         *     does; of kind "setup" a plain folder of files is set up first (lado.setup.make),
+         *     with the left-out files of `include` taken in; of kind "project" the session is the
+         *     project's repository's, as `lado start --project <id> --repo <name>` starts it. A
+         *     name a session has is 409 with that session's status and folder; on an empty
+         *     LADO_HOME the core makes lado.db.
          */
         post: operations["start_api_sessions_post"];
         delete?: never;
@@ -2103,6 +2105,8 @@ export interface components {
             suggestion: string | null;
             /** Default Name */
             default_name: string;
+            /** Free Name */
+            free_name?: string | null;
             /**
              * Name State
              * @enum {string}
@@ -2228,6 +2232,8 @@ export interface components {
             subfolders: string[];
             /** Default Name */
             default_name: string | null;
+            /** Free Name */
+            free_name?: string | null;
             /** Name State */
             name_state: ("free" | "running" | "stopped_here" | "taken_elsewhere") | null;
             provider: components["schemas"]["ProviderSuggestion"] | null;
@@ -2238,6 +2244,7 @@ export interface components {
              * @default false
              */
             scratch: boolean;
+            setup?: components["schemas"]["SetupInfo"] | null;
             project?: components["schemas"]["ProjectPlace"] | null;
         };
         /** ForgetPreview */
@@ -2521,6 +2528,23 @@ export interface components {
             model?: string | null;
         };
         /**
+         * LeftOutInfo
+         * @description A path the set-up's first commit leaves out (lado.setup.LeftOut).
+         */
+        LeftOutInfo: {
+            /** Path */
+            path: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "secret" | "large" | "repository";
+            /** Size */
+            size: number | null;
+            /** Line */
+            line: string;
+        };
+        /**
          * Limits
          * @description What the composer checks before an upload and how it marks a file, all the core's
          *     (lado.artifacts, lado.runtime): the UI keeps no copy.
@@ -2730,6 +2754,22 @@ export interface components {
              * @default []
              */
             artifacts: string[];
+        };
+        /**
+         * ModeWordsInfo
+         * @description A permission mode as the UI names it (providers.base.ModeWords).
+         */
+        ModeWordsInfo: {
+            /** Value */
+            value: string;
+            /** Title */
+            title: string;
+            /** Summary */
+            summary: string;
+            /** Description */
+            description: string;
+            /** Risky */
+            risky: boolean;
         };
         /**
          * ModelAdd
@@ -3254,6 +3294,8 @@ export interface components {
             root: string | null;
             /** Default Name */
             default_name: string | null;
+            /** Free Name */
+            free_name?: string | null;
             /** Name State */
             name_state: ("free" | "running" | "stopped_here" | "taken_elsewhere") | null;
             provider: components["schemas"]["ProviderSuggestion"] | null;
@@ -3354,6 +3396,8 @@ export interface components {
             title: string;
             /** Permission Modes */
             permission_modes: string[];
+            /** Mode Words */
+            mode_words: components["schemas"]["ModeWordsInfo"][];
             /** Install Hint */
             install_hint: string;
             /** Installed */
@@ -3412,7 +3456,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "last_session" | "only_installed";
+            reason: "last_session" | "last_any" | "only_installed";
         };
         /**
          * ProvidersPage
@@ -3432,6 +3476,7 @@ export interface components {
             /** Path */
             path: string;
             session: components["schemas"]["SessionInfo"];
+            project?: components["schemas"]["ProjectPlace"] | null;
         };
         /**
          * RecommendationInfo
@@ -3907,6 +3952,42 @@ export interface components {
             /** Project */
             project: string | null;
         };
+        /**
+         * SetupInfo
+         * @description What setting a plain folder up would do (lado.setup.preview), and whether git knows
+         *     the author of its commit.
+         */
+        SetupInfo: {
+            /** Files */
+            files: number;
+            /** Bytes */
+            bytes: number;
+            /** Left Out */
+            left_out: components["schemas"]["LeftOutInfo"][];
+            refusal: components["schemas"]["SetupRefusal"] | null;
+            author: components["schemas"]["ScratchProblem"] | null;
+            /** Make */
+            make: string;
+            /** Max Files */
+            max_files: number;
+        };
+        /**
+         * SetupRefusal
+         * @description Why a folder may not be set up (lado.setup.Refusal).
+         */
+        SetupRefusal: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "home" | "too_big" | "unreadable" | "odd_name";
+            /** Files */
+            files: number;
+            /** Bytes */
+            bytes: number;
+            /** Line */
+            line: string;
+        };
         /** Started */
         Started: {
             session: components["schemas"]["SessionInfo"];
@@ -4273,6 +4354,8 @@ export interface components {
             project?: string | null;
             /** Repo */
             repo?: string | null;
+            /** Include */
+            include?: string[] | null;
         };
         /**
          * WorkInfo

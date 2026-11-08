@@ -460,8 +460,9 @@ Decided with the human in task 2 (2026-10-03): a frame for all the sections to c
 them visible from the start; a section not built yet is a placeholder. The work is in
 Sessions for now. The UI's texts are in English.
 
-- **Rail** on the left, top to bottom: Home, **Launch** (a button that opens the New
-  session window: Launch and session control, below), Needs you, Sessions, Projects, Kits
+- **Rail** on the left, top to bottom: Home, **New session** (a button that opens the New
+  session window: Launch and session control, below; Launch until LAD-239), Needs you,
+  Sessions, Projects, Kits
   (one page for the kits and their marketplaces: Kits below); Help (a question mark: Help,
   below) and Settings (a cogwheel) apart at the bottom. A button collapses it to icons (each with its
   name as tooltip and accessible name; the button has `aria-expanded`). The browser
@@ -484,7 +485,7 @@ Sessions for now. The UI's texts are in English.
   later bare page follows this one.
 - **Sessions** (the Layout task, 2026-10-03): three columns under the top bar, each the
   window's height. The **list** on the left: "+" in its head (it opens the New session
-  window, as Launch), the
+  window, as the rail's New session), the
   search by name, and the sessions in groups: **Needs you** (something waits for the
   human: `SessionInfo.waiting`, counted by the server: open gates, open questions, agents
   in `waiting`), **Running**, and **Stopped** at the bottom. Nothing in a stopped session
@@ -1529,130 +1530,170 @@ the same core functions as the CLI (`runtime.start_session`, `stop_session`,
 Stop and Resume wait for the connection, and their errors show under their buttons (A lost
 connection, above).
 
-- **New session window** (`Launch.tsx`, a modal `<dialog>`; the rail's Launch and the
-  list's "+"): **Where** is a new folder made from scratch, a folder, a clone of a git
-  URL made first, or a project's repository (the switch **From scratch | Folder | Clone
-  from URL | Project** beside its label, below; on a screen of at most 760 px its four
-  buttons are a grid of two rows); the start's request is the same for a folder and a
-  clone (its `where` is `{kind: "folder", path}`), from scratch it is `{kind: "scratch",
-  path}`, in a project `{kind: "project", project, repo}`; another kind, or a field the
-  kind does not take, is refused (400). The path
-  is typed (`~` allowed, a relative path refused), and checked by `GET /api/folders`:
-  under the field "✓ git repository · branch X", or the core's reason from
-  `runtime.check_repo` (`FolderInfo.problem_kind`: does not exist, a file, git not
-  installed, git does not run, not inside a git repository, git cannot read it, no commits
-  yet), and Start stays off until it will do. When the human can fix it (`FolderInfo.hint`:
-  no git, a git that does not run, no repository, no commits) the core's sentence follows
-  in muted text and its one command in a code field with **Copy** (`useCopy`; "Command
-  copied", or, when no copy works, the command selected with "Press ⌘C / Ctrl+C to copy";
-  LAD-5's mockup `mockup-folder-check.html`, variant 2). The window makes no repository of
-  a folder that holds files: the human runs the command. A new or empty folder outside git
-  (`FolderInfo.scratch`) shows instead `The folder is empty: LADO can start it from
-  scratch.` (for one that does not exist, under its text: `LADO can make this folder and
-  start it from scratch.`) and the button **Start from scratch here**, which switches to
-  From scratch with that folder in Create in and its last segment in Name (below).
-  Subfolders are suggested from the folder up to the last
-  `/` (the arrow keys and Enter pick one), with chips of the **recent** folders
-  (`/api/folders/recent`: the folders of past sessions, latest start first, at most 10).
-  The workspace (`projects.workspace`: `LADO_REPOS`, which LADO's image sets to the
-  workspace mounted at the host's path, else `~/workspace`; [projects.md](projects.md);
-  `GET /api/repos-folder`, `Workspace{path, made}`, read once per window; decided
-  2026-10-14, LAD-63, mockup `task/lad-63/mockup-where-start.html` variant 2; renamed
-  LAD-117; the default and `made` LAD-123, mockup `task/lad-123/mockup-workspace-where.html`)
-  gives the empty field's placeholder `<folder>/…`. Once the folder exists (`made`), the
-  field's focus while empty lists its subfolders (a pick sets `<folder>/<name>`; never
-  LADO's `projects/`, nor a folder inside it, which has none: LAD-125), and a row
-  **Workspace:** with the folder as a chip, before Recent and hidden in Resume as Recent is, sets
-  `<folder>/`, gives the field the focus (its keys and its blur work the list) and opens
-  the list. The folder is the parent with one `/` at its end (`/` stays `/`). The folder
-  check runs only on what is typed or picked, never on the empty field nor on the
-  workspace itself (with or without its last `/`): it holds the repositories, and its
-  "not inside a git repository" would offer a `git init` over them all.
-  In LADO's container only (`LADO_CONTAINER`), a folder whose real path is outside the
-  workspace gets a warning after the check mark, `⚠ Outside the workspace (<folder>):
-  this folder is only in the container, your computer does not see it
-  or the agents' work in it` (a `field-note warn` line; `FolderInfo.warning`, the core's
-  `runtime.outside_workspace`, which a start also gives among its warnings); the check mark and
-  Start stay. **Clone into** shows the same under the target's note (`CloneTarget.warning`).
-  Decided 2026-10-16, LAD-83, mockup `task/lad-83/mockup-outside-repos.html` variant 2;
-  renamed LAD-117.
-  **Name** is the folder's default (`default_name`, the core's `slug`) with what the server
-  says of it (`name_state`): taken by a running session, by a session of another folder,
-  or a stopped session of this folder with **Resume it**, which turns the window to Resume.
-  **Kits** (chips, "+ Add kit" from `/api/kits`: the kit of each name the lookup takes,
-  the installed and the built-in kits, the same for every folder; the window still sends
-  its folder as `where`, which the server ignores; one that does not load is listed off
-  with `lado kits check <name>`),
-  **Agent CLI** (`/api/providers`: each provider of the registry with
-  `doctor.provider_status`; "checking…" while the CLIs answer, one not installed is off,
-  a version warning shows under it; a chosen name the list lacks, a resumed session's, is
-  an option of its own, `<name> · unknown`, off, so the select shows it: LAD-122; a CLI
-  whose agents need a login and have none, `ProviderInfo.login_missing`, is off as `<name> ·
-  not logged in`, asked with `?project=` for the Project way's project, whose secrets may
-  log it in: LAD-161) and **Permission mode** (the provider's modes; a mode
-  the new provider lacks goes back to `default`, and the window says so). Kits and mode
-  of a new session come from the folder's last session ("from the last session of this
-  folder"), else LADO's defaults; only the UI does this, `lado start` is unchanged. No
-  provider is the default (task feature/no-default-provider, 2026-10-05): the provider is
-  the folder's suggestion (`FolderInfo.provider`, the core's rule that `lado start` uses
-  too: the folder's last session's if installed, else the only one installed) with its
-  reason in `lado start`'s words under it ("from the folder's last session", "the only
-  one installed"); without a suggestion none is chosen ("choose…", "choose the agent CLI
-  for this session") and Start stays off until the human picks one; a suggested one that
-  is not installed stays off too, with its install hint. A suggested one without its login
-  is not taken: the field stays at "choose…" with the red note `<CLI> is not logged in: its
-  agents cannot start.` and **Log in first**, which closes the window and opens that CLI's row on Settings → Agent
-  CLIs (`/settings/agent-clis#<cli>`, its login button focused); Start stays off, as the start would be refused (lado.logins).
-  The human's own pick is kept
-  when the folder changes. **Advanced** (folded; its row `Advanced: model, switch off
-  agents, skills, MCP servers or flows`, folded with a model `Advanced: model <name> on
-  <server>` or `Advanced: model <model>`, the name in `.launch-first-peek`, then `⚠ key over
-  http` or `! <few words>`): **Model** first, the session's model (`lado start --model`), in a
-  `.launch-grid` of its own, taking its whole row, as a name, an id and a server do not fit a
-  column: the one picker (`ModelPicker.tsx`, `where: "launch"`, driven by `LaunchModel.tsx`) of
-  the chosen agent CLI, of Agent CLI's height, with no address or key. It holds that CLI's
-  default when the window opens, marked `default` there and in the list. What the start sends: a
-  field left on the default, or on the settings with no default, sends nothing, so the session
-  follows the default as it is at each launch; `<CLI>'s settings` with a default sends `''`; a pick
-  sends its name. The list's foot reads `The default comes from Settings → Agent CLIs.`, its link in a
-  new tab, so nothing typed is lost; the window reads the models again when it gets the focus
-  back. Notes stand under the field, inside its `.field` (6 px below, out of the focus ring's
-  reach): `<CLI>'s default model, from Settings → Agent CLIs.`; under another pick `For this session
-  only. <CLI>'s default model is <name>.`, no such line without a default; under the settings
-  with a default `For this session only: the agent CLI chooses, not <name>.`; a pick lost to
-  another agent CLI `<name> belongs to <CLI>, so the model is back to <new CLI>'s default.` A value
-  in the field is checked as the start checks it (`POST /api/session-model/check`, a stale answer
-  dropped), Start staying on meanwhile. A refusal (`.bad`, `role="alert"`, `aria-invalid`) opens
-  Advanced, brings the field and the refusal into the window's view, turns Start off and offers
-  `Use <CLI>'s settings`, and `Check again` where a new try can help: until its answer all stays,
-  the button off as `Checking…` with the focus on it, Start off; a good answer gives the focus to
-  the field. A silent server also marks `.srv.down`. Folded, the mark is whole on any width: the
-  name and the server give way; on `<CLI>'s settings` past a default the row reads `Advanced:
-  model <CLI>'s settings`. A warning (`.warn`) leaves Start on: no list to
-  check against, `⚠ The key of <server> goes unencrypted (http) to an address outside your
-  machine and network.`, for the chosen model's server only, or `⚠ <model> on <server> has a
-  context of 16,000 tokens; <CLI> needs about 49,152 for its instructions and tools: load the model
-  with a larger context; see "What to expect of a small model" in docs/install.md ↗`, with the
-  setting of LM Studio or Ollama in its words, when the server reports a context below the CLI's
-  need, under `✓ <server> lists <model> among its models.` The file's name is a link to that
-  section on GitHub in a new tab, as a wheel holds no such file; the core's text, which `lado
-  start` prints, has neither link nor arrow, and a warning that names no file stays plain. Folded, the row names them after a `⚠`
-  in the check's `peek`: `key over http`, `context too small` or `context unknown` (a public server that lists no context), or both. A start refused after a good check is a 409 `ModelRefusal`: above the
-  buttons `Not started: <short reason>. See Model above.`, the refusal under the field, the focus
-  on it. Then the `--without` items, `kind:name` or `kind:name@kit`
-  (placeholder `agent:reviewer@kit-b, skill:style`). Start shows "Starting…" with
-  the fields off; a refusal is shown whole (`role="alert"`) and the window stays; a name
-  taken (409, `Taken`: its status and folder) offers Resume it for a session of this
-  folder. A start or resume the kits refuse is 400 `Refused` (`message`, `switch_off`):
-  for a name in two kits, one button per item ("Switch off reviewer of kit-a", "… of
-  kit-b") adds it to the Switch off field and opens Advanced; Start starts again. The
-  window does not yet show who will lead the session (BACKLOG). On success the window closes and the session's Activity opens; the `Started`
-  answer's `problems` (open runs that cannot go on), its `warnings` (what `lado start`
-  prints on stderr: kit supervisors not used, what the supervisor's CLI asks the human
-  before its first hook, such as Claude Code's "trust this folder?") and a resume's
-  `changes` show above the session's tabs until closed (`.started-notice`: 12 px under
-  the top bar, 10 px above the tabs, which move down while it is open; LAD-42,
-  2026-10-14). No tmux attach.
+- **New session window** (decided 2026-11-08, LAD-239, openspec change `new-session-window`;
+  mockup `task/lad-239/mockup-new-session.html`, variant A; it replaces the switch of four
+  sources of LAD-5, LAD-6, LAD-98 and LAD-137). `Launch.tsx`, a modal `<dialog>` opened by the
+  rail's **New session** and the list's "+", holds the dialog, the requests and the footer;
+  `LaunchWhere.tsx` the place, `LaunchTeam.tsx` the team, `LaunchSetup.tsx` a plain folder's
+  set-up, `InfoTip.tsx` the info buttons. Top to bottom: **Where**, **Task**, **Team**, then a
+  footer that never scrolls. The frame stands 40 px from the top and grows down
+  (`max-height: calc(100dvh - 64px)`, width `min(640px, 100vw - 32px)`), only its body
+  scrolls; at 760 px or less it is a full-screen sheet (a 56 px head, the footer above
+  `env(safe-area-inset-bottom)`, targets of 44 px). The window decides nothing the core
+  decides: every check and text comes from the server.
+- **Where** is one combobox (an input `role="combobox"` with a listbox `Places`). Closed, it
+  shows the place's icon, name (a folder's last segment, a project repository's name) and its
+  path muted, or a project's badge `Project <title>`. ↓, Alt+↓, a click or a typed letter open
+  it; the arrows and Enter pick; the first Esc closes only the list (it is taken, so the window
+  stays); Tab or a blur closes it. Its groups: **Recent**, the places of the latest started
+  sessions (`GET /api/folders/recent`, at most 10, latest first; `RecentFolder.project` set
+  for a repository of the session's project, which shows with its badge; a folder gone is
+  left out, and inside LADO's `projects/` everything else is), each with the time of its last
+  start or stop; then **Somewhere else**: **Other folder…**, **Clone from URL…**, **New empty
+  folder…** and **Project…**. A typed letter filters Recent by name; a typed path (`/` or
+  `~`) lists `Use folder <path>` and its parent's subfolders (`GET /api/folders`). The list
+  is fixed under the field above 760 px, so the body's scroll does not cut it, and in the flow
+  below. The window **opens on the last place**, the first recent one, with the focus in
+  Task; with none on New empty folder, the focus in Folder name, with no message above Where;
+  the project's page's New session… and a repository's Start session open it on that project
+  (`useLaunch()({kind: "new", project, repo})`), Resume's Start a new session instead on the
+  session's folder (`{kind: "new", path}`). A place picked or typed by the human is kept.
+  Under Where stand the way's own fields and the place's notes, which are its input's
+  `aria-describedby`.
+- **A folder** (picked from Recent, typed, or by Other folder…, whose **Folder** path field is
+  today's: the workspace's placeholder `<workspace>/…`, its subfolders on focus once it is
+  `made`, never LADO's `projects/`; the workspace itself is not checked) is checked by `GET
+  /api/folders`: one line `✓ Ready · branch X`, then ` · Session <name> stopped here <when>`
+  for a stopped session of the default name; the container's warning (`⚠ Outside the
+  workspace…`, `FolderInfo.warning`); or the core's refusal with its hint and Copy (`runtime.
+  check_repo`; LAD-5's command field), a folder inside a project with **Start in the project
+  <title>** (turns Where to that repository) or **Open the project <title>** above the hint.
+  A new or empty folder (`FolderInfo.scratch`) shows a neutral offer, `There is no such folder
+  — LADO will create it.` or `The folder is empty: LADO can start it from scratch.`, and
+  **Start from scratch here**, which turns Where to New empty folder with that folder as its
+  target and its last segment in Folder name. A folder of files outside git
+  (`FolderInfo.setup`) shows the set-up panel (below). The workspace (`projects.workspace`,
+  `GET /api/repos-folder`) is Other folder's placeholder and the list of its empty field.
+- **A plain folder of files** (capability `folder-setup`; `lado.setup`): a neutral panel
+  `Not yet set up for LADO. Starting saves <n> files (<size>) as the starting point.` with an
+  info button, `<k> left out · Review` and `Do it yourself`, one open at a time. Review lists
+  the left-out paths, `Tick to include:` (a whole row is a label; `Include <path>`, its
+  reason `looks like a secret`, `<size>, larger than 50 MB`, `a separate git repository`,
+  that one off; a ticked secret's row reads `Will be saved in the history.`), and the count
+  follows the ticks. Do it yourself shows `Run in this folder, then choose it again:` and the
+  command, put together from the ticks with the core's line of each path left out
+  (`LeftOutInfo.line`) and its rest (`SetupInfo.make`): the window quotes nothing itself
+  (`setupCommand`), with Copy. Refusals: `Choose a smaller folder: this is your home
+  folder.`, `… this one holds over 20,000 files.` or `… over 2 GB.` (the limit is
+  `SetupInfo.max_files`), `Choose another folder: git cannot read all of it (<git's line>).`,
+  `Choose another folder, or rename <name>: LADO cannot leave out a name with a line break or
+  bytes that are no text.` (`odd_name`); git's missing author: `Git doesn't know who you are
+  yet. Tell it once for this computer:` with the command, Copy and **Check again** (in LADO's
+  container the `.env` text and no Check again). The window cannot know a folder is plain
+  before its check answers (`checking…`, `wait for the check`); checked again (Check again, a
+  refused set-up), the last answer stays in place: the author's text with `Checking…` (off,
+  the focus kept), else `Counting files…`, and a failed ask shows its error. The
+  button **Set up and start in <folder>** sends `where: {kind: "setup", path, include}`;
+  the server sets the folder up (`setup.make`: one commit, the left-out paths not ticked
+  appended to `.gitignore`, rolled back on a failure) and starts as for a folder.
+- **Clone from URL…** shows **Repository URL** (`lado.clone.is_url`; `✓ Found` once listed),
+  **Branch** and **Clone into** (`✓ New folder`, `✓ Empty folder`, the core's text, its
+  warning); what is kept from LAD-6 (mockup `task/lad-6/mockup-clone.html`): the branches by
+  themselves from `POST /api/remote-branches` half a second after the URL stops changing, each
+  URL once, `fetching branches…` meanwhile, the default branch chosen and marked
+  `(default)`, above 30 a field that filters; a listing failure under the URL with its hint
+  and Copy; **Use this clone** for a clone of the same repository there ("LADO will use it as
+  it is: no clone, no pull, no branch switch"), which turns Where to that folder; the clone a
+  job of the server (`server/clones.py`, `cloneJob.ts`), polled every 500 ms with a progress
+  block, **Cancel clone**, a beacon on `pagehide`, the window not closable meanwhile; a start
+  refused after the clone turns Where to the cloned folder with the refusal. Its button:
+  **Clone and start in <folder>**.
+- **New empty folder…** shows **Folder name** (placeholder `Coffee shop site`, info `LADO
+  creates it in <folder>.`), a quiet `folder <slug>` when the slug differs from the words
+  (`lado.scratch.names`), the name's or the folder's refusal (`GET /api/scratch-target`) and
+  git's missing author with its hint and Copy. Team's Name is the slug, fixed. **Create and
+  start** sends `where: {kind: "scratch", path}` with the name and the title; a start refused
+  after the repository was made turns Where to it.
+- **Project…** shows `LaunchProject.tsx`: **Project** (by title, one whose folder is not
+  found off, its line of repositories, sessions running and folder) and **Repository** (a
+  `radiogroup`, `✓ Ready · branch X`), from `GET /api/project-launch?project=&repo=` (the last
+  answer kept while a new choice is asked; `gone` said over the server's choice; `No
+  repositories yet` with **Open <title>**, `No projects yet` with **Make one in Projects**).
+  A project repository picked from Recent shows no such fields, only its badge, its line and
+  an info button `<repo> is a repository of the project <title>: the team works with
+  <title>'s keys and settings.` The button names the project, **Start in <title>** (a quick
+  click in another project would give the session another client's keys); it sends `where:
+  {kind: "project", project, repo}`.
+- **Task**: a visible field of three lines, `What should the team do?`, Enter a new line,
+  with the info `The team gets this as its first message and answers in the chat. You can
+  leave it empty.` Its trimmed text goes as `prompt` of the start (after a clone or a set-up
+  too) or the resume; white space sends none. Over `Limits.max_message` it reads `<n>
+  characters, the limit is <limit>` (`aria-describedby`, `aria-invalid`) and the start is off.
+- **Team** is one line, `Setup <kits> · Agent <CLI title> · Permissions <mode's summary> ·
+  Name <name>` and, off the CLI's default model or with a warning, `Model <name> on <server>`
+  with `⚠ <few words>` or `! <few words>` (`LaunchModel.tsx`'s peek, never cut: the name and
+  the server give way), with **Change**, which opens (and reads **Hide**): **Session name**,
+  **Agent** (each CLI by its title and version; `<title> · not installed`, `<title> · not
+  logged in` off; `<name> · unknown` for a resumed session's CLI the list lacks), **Team
+  setup** (the kit chips, `+ Add setup`, the kits' descriptions under its info button),
+  **Permissions** (radio rows titled by the provider's words, `ProviderInfo.mode_words`, the
+  description under the chosen one and always under a risky one; a mode without words by its
+  value; `No permission modes.` for a CLI without), **Model** (the one picker of LAD-207, its
+  notes and refusals as before) and **Switch off** (the `--without` text field, its format
+  under its info button; a refusal's `Switch off <name> of <kit>` buttons stand under it).
+  Team's info says where its values come from: `As in the last session in this folder.`, else
+  `Agent as in your last session; setup and permissions are LADO's defaults.` (the
+  suggestion `last_any`), else `Setup and permissions are LADO's defaults.`; a name taken by
+  another session adds `"<name>" is taken by another session.` Kits and mode come from the
+  place's last session (the folder's, a project repository's in the project), else LADO's
+  defaults; the agent from the server's suggestion (`FolderInfo.provider`, the core's
+  `suggested_provider`: the folder's last session's, else the latest session's anywhere,
+  else the only one installed); a suggestion without its login is not taken: Agent stays at
+  `choose…` with the red note `<CLI> is not logged in: its agents cannot start.` and **Log in
+  first**, which closes the window and opens that CLI's row on Settings → Agent CLIs
+  (`/settings/agent-clis#<cli>`, its login button focused). The Model list's foot reads `The
+  default comes from Settings → Agent CLIs.` (LAD-238). A refusal of one of these fields opens
+  Team and puts the focus there; an agent that cannot run opens it too.
+- **The name and Resume beside a new start**: every place's check gives `default_name`,
+  `free_name` (`runtime.free_name`: `<name>-2`, `-3`, … none has) and `name_state`. The
+  window names a new session by the free name unless the human typed one. With a stopped
+  session of the default name here (`stopped_here`; in a project only one of this project)
+  the footer has **Resume <name>** and **Start new session <free name>** (in a project
+  **Start new session in <title>**), side by side, never swapped: the primary is Resume while
+  Task is empty and Start new once it holds text. Resume posts `POST /api/sessions/{name}/
+  resume` with the task and only the Team fields the human changed (they came from the
+  place's last session and the suggestion, not from the stopped one: sent as they are they
+  would rewrite its settings). A name a running session or one of
+  another folder has gives the free name and one button. A 409 `Taken` after the press (a
+  race) opens Team, shows the core's text under Session name (`aria-invalid`, the focus
+  there) and offers **Use <next>**.
+- **The footer**: while the main button is off, `To start: ` and what is missing as links
+  that focus their field, opening Team when needed (choose a place, wait for the check, name
+  the folder, wait for the agent CLIs, choose an agent (also when their list failed), choose
+  a team setup, choose a smaller folder, choose another folder, tell git who you are, wait
+  for the count, fix the model, shorten the task, log in to `<CLI>`); Enter in a field does
+  what the blue button does (beside a stopped session with no task, Resume); **Cancel** a
+  text button (Cancel clone while a clone runs); the start button naming the place: **Start
+  in <folder>**, **Start in <title>**, **Clone and start in <folder>**, **Create and start**,
+  **Set up and start in <folder>**. While it works the button keeps the focus (`aria-disabled`,
+  not `disabled`) and reads `Starting…`, `Setting up…`, `Resuming…` or `Cloning…`. A refusal
+  puts the focus on the field to fix, else on the refusal (`role="alert"`), never on the
+  page's body. On a phone two actions are a column, Resume on top, and × closes. The window
+  does not yet show who will lead the session (BACKLOG). On success the window closes and the
+  session's Activity opens; the `Started` answer's `problems` (open runs that cannot go on), its
+  `warnings` (what `lado start` prints on stderr: kit supervisors not used, what the
+  supervisor's CLI asks the human before its first hook, such as Claude Code's "trust this
+  folder?") and a resume's `changes` show above the session's tabs until closed
+  (`.started-notice`: 12 px under the top bar, 10 px above the tabs, which move down while it
+  is open; LAD-42, 2026-10-14). No tmux attach.
+- **The draft**: Esc, ×, Cancel keep Where's choice, Task and Team's fields in
+  `LaunchProvider`'s state for the next opening (the Model field's choice too, for the agent
+  CLI it was made for); a start
+  clears them, a reload of the page loses them.
+- **Info buttons** (`InfoTip.tsx`): a 16 px (i) in a 24 px target (44 px on a phone) beside a
+  label, `About <field>`, `aria-expanded`; a press, Enter or Space opens and closes it, its
+  text put in a `role="status"` region placed under it (`Menu.tsx`'s `useBelow`); Esc closes
+  it alone, a press outside, another (i) or Tab away closes it; hover opens nothing.
 - **The window's notes in three levels** (decided 2026-10-21, LAD-120, mockup
   `task/lad-120/mockup-launch-notes.html` variant A): each note under a field is one of
   three by its class. A hint (`field-note`) and a success (`field-note ok`) are quiet 12 px
@@ -1665,179 +1706,38 @@ connection, above).
   core's text naming the project, `Start a session in the project:` and `lado start
   --project <id> --repo <name>` with Copy; above the hint, Folder's box has a button from
   `FolderInfo.project` (`ProjectPlace{id, title, repo}`, the core's `projects.place`):
-  **Start in the project <title>** for a folder in a project's repository, which switches
-  the window to Project with that project and repository, else **Open the project
-  <title>**, which closes the window and opens the project's page (LAD-137). A clone's
-  target (Clone into) and a fresh start's (Create in) there show the same box with the same
-  hint and **Open the project <title>** (`CloneTarget.project`, `ScratchTarget.project`;
-  LAD-138): the window adds no repository to a project, the project's page does. The box shows also for a folder
-  there that already has a session, a session in the project too: the window starts no
-  session there and offers no Resume it; such a session is resumed from its own page
-  (Resume…), as its resume is never refused. Recent folders leave out folders inside
-  `projects/` for the same reason. Start
-  (Clone and start, Create and start, and Resume session in the Resume mode: LAD-122,
-  2026-10-21) is off while a refusal shows, and a note that does
-  not keep the session from starting is not a refusal: the kits list that does not load
-  (`/api/kits` failed) is a warning, since the start itself refuses a kit that does not
-  load. Notes outside this window (`.field-problem`, the start's own `.problem`) are other
+  **Start in the project <title>** for a folder in a project's repository, which turns
+  Where to that project and repository, else **Open the project <title>**, which closes the
+  window and opens the project's page (LAD-137). A clone's target (Clone into) and a fresh
+  start's folder there show the same box with the same hint and **Open the project
+  <title>** (`CloneTarget.project`, `ScratchTarget.project`; LAD-138): the window adds no
+  repository to a project, the project's page does. Recent places leave out folders inside
+  `projects/` but a repository of the session's project, listed as the project's item. The
+  start button (Clone and start, Create and start, Set up and start, and Resume `<name>`:
+  LAD-122, 2026-10-21) is off while a refusal shows, and a note that does not keep the
+  session from starting is not a refusal: the kits list that does not load (`/api/kits`
+  failed) is a warning in Team, and the set-up panel and a fresh start's offer are neutral
+  panels. Notes outside this window (`.field-problem`, the start's own `.problem`) are other
   classes.
-- **First message** (decided 2026-10-12, LAD-19; mockup `task/lad-19/mockup-first-message.html`
-  v2, variant C): a row **First message to the supervisor (optional)** just above
-  Advanced, in the New and the Resume mode, for a folder and a clone alike, folded each
-  time the window opens (a `<details>` styled as Advanced; the two rows share one line).
-  Opened: a text field (`aria-label` "First message", 4 lines, dragged taller; Enter is a
-  new line, never a submit) and the note "sent to the supervisor as your message once it
-  starts; its answer comes in the chat". Folded with text, the row reads `First message to
-  the supervisor: <the text's first line>`, cut to one line. Over `Limits.max_message`
-  (the composer's `GET /api/limits`, `runtime.MAX_MESSAGE`) the note is `<n> characters,
-  the limit is <limit>` and Start (Clone and start, Resume) stays off, also folded. The
-  trimmed text goes as `prompt` of `POST /api/sessions` (also the start after a clone) or
-  `POST /api/sessions/{name}/resume`; a field of white space sends none. The core queues it
-  as the human's message to the supervisor (`runtime.start_session(prompt=)`), after LADO's
-  `session resumed` on a resume, and the Activity chat shows it as the human's.
-- **From scratch** (decided 2026-10-18, LAD-98; mockup `task/lad-98/mockup-from-scratch.html`):
-  for a human with no repository yet. The window opens in From scratch while LADO has no
-  sessions (`/api/folders/recent` answers none), else in Folder as before; a source the
-  human picks, or a folder or URL typed, before that answer is kept. The first field is
-  **Name**, in the human's words, with the note `folder and session: <name>` and, when the
-  text is not the name itself, ` · title: <text>` (Cyrillic transliterated, Latin letters
-  without accents: `lado.scratch.names`), or the name's refusal; a name a session has
-  shows under it as in Folder. **Create in** is the name's folder in where clones go
-  (`<workspace>/<name>`, its placeholder too) until the human edits it, with its state:
-  `✓ a new folder`, `✓ an empty folder` (nothing but `.DS_Store`), or the core's refusal
-  (a folder with files, a file, a folder inside a git repository). Both come from `GET
-  /api/scratch-target` (`ScratchTarget`, 200 ms after typing; only the latest answer).
-  When git has no `user.name` or `user.email` (`ScratchTarget.author`), its text and hint
-  show under Name with Copy: in LADO's container `Set LADO_GIT_NAME and LADO_GIT_EMAIL in
-  the .env file next to compose.yaml, then restart LADO there:` `docker compose up -d`,
-  else `Tell git who you are, once for this computer:` and the `git config --global`
-  command; the window has no fields for them and LADO sets no author of its own. There is
-  no separate session Name; Kits, Agent CLI (`ScratchTarget.provider`), Permission mode, the
-  first message and Advanced are as for a clone's folder. **Create and start** is on with
-  a name, a folder new or empty, the author known and the name free; it sends `where:
-  {kind: "scratch", path}` with the name and the title (`Launch.title`): the server makes
-  the folder a repository with one empty commit (`scratch.make`), then starts as for a
-  folder. A start refused after the repository was made switches the window to Folder
-  with it and keeps the refusal shown, as after a clone.
-- **Clone from URL** (decided 2026-10-12, LAD-6; mockup `task/lad-6/mockup-clone.html`
-  v3): the Where field takes a git URL (`lado.clone.is_url`: `https://`, `http://`,
-  `ssh://`, `git://`, `file://`, or `user@host:path`). **Clone into** is the default folder
-  (`<workspace>/<repo>`: the server's `CloneTarget.path`; its placeholder names the same
-  parent) until the human edits it, with the
-  folder's state from `GET /api/clone-target` (200 ms after typing, like the folder): "✓ a
-  new folder", "✓ an empty folder", or the core's text for a folder that holds something.
-  **Branch** lists the remote's branches by itself, from `POST /api/remote-branches` (one
-  `git ls-remote`, half a second after the URL stops changing, each URL asked once in the
-  window's life; "fetching branches…" meanwhile, "✓ repository found · N branches" under
-  the URL once listed); the remote's default branch is chosen and marked `(default)`
-  (with no default said, main, else master, else the first); above 30 branches it is a
-  field that lists the branches holding what is typed (Enter takes a branch typed in full
-  or highlighted; other text is never sent). A listing that fails shows under
-  the URL with the core's text (`CloneRefused`: `message`, `kind`, `hint`) and, where the
-  human can act (an ssh key refused, an unknown host key, a GitHub login, a GitHub
-  repository not shown), the hint's sentence and command with Copy, before anything is
-  pressed. Name, Kits, Agent CLI (the server's suggestion for a folder with no sessions,
-  `CloneTarget.provider`) and Permission mode are the folder's. The one button **Clone and
-  start** is on once the branches are listed and the folder is new or empty. A folder
-  that holds a clone of the same repository (same host and path; scheme, user and port
-  aside) shows "✓ <the core's text>. LADO will use it as it is: no clone, no pull, no
-  branch switch." and the button **Use this clone**, which switches the window to Folder
-  with that folder and changes nothing on disk; a clone of another repository shows its
-  origin and a free folder beside it (`<parent>/<owner>-<repo>`), and the button stays off.
-  LADO never clones over, fetches into or switches the branch of a folder that exists.
-  The clone is a job of the server (`server/clones.py`): `POST /api/clones` (`{url, path,
-  branch}`, or `{url, project, name, branch}` for a repository added to a project, which the
-  project's page's Add repository sends (Projects, below); 400 `CloneRefused`, 404 for an
-  unknown project, 409 while another job clones into that folder) starts it,
-  and the window asks `GET /api/clones/{id}` every 500 ms (the one client of a clone job,
-  `cloneJob.ts`'s `useCloneJob`, both screens use): a progress block with git's
-  phase, its percent with a bar (`role="progressbar"`), the rest of git's line and the
-  time it runs; a poll that fails is asked again (the clone goes on), and one the server
-  answers 404 ends the clone: when the folder now holds the clone (it ended while the
-  window did not ask, and the server dropped it after `clone.KEPT`), the window switches
-  to Folder with it ("the clone ended while this window was away; it is in <folder>"),
-  else it shows the server's text (it restarted). Meanwhile the fields are off,
-  Resume it too, and ×, Esc and Cancel do not close the window;
-  **Cancel clone** sends `DELETE /api/clones/{id}`: git's process group ends, its
-  temporary folder goes, the folder is not made, and the window says "the clone was
-  cancelled" (a Cancel clone that came after git ended starts no session: the window
-  switches to Folder with the clone). A page that goes away during the clone (`pagehide`: its tab
-  closed or reloaded) cancels it at once with `navigator.sendBeacon` to `POST
-  /api/clones/{id}/cancel` (a beacon can only POST, with the cookie and the page's Origin,
-  so `Guard.changes` takes it), and a window that goes away inside the app while its clone
-  runs (`useCloneJob`'s unmount) sends `DELETE /api/clones/{id}` at once; a job no
-  request asked about for `clone.ABANDONED` seconds
-  (150: Chrome runs the timers of a tab in the background for five minutes once a minute;
-  a lost connection, a sleeping laptop) is cancelled the same way, a finished one is kept `clone.KEPT`
-  seconds (60), and a server that stops cancels its running clones; jobs live in the
-  server's memory only. A failed clone shows its text and hint, and the form stays. A
-  finished clone starts the session as Start does for a folder; a start refused then
-  switches the window to Folder with the cloned folder and shows the refusal there (the
-  clone stays). The server's git runs with no terminal and no prompt, with the access the
-  server's machine has (ssh keys, `gh auth`, a credential helper) and the outside folder's
-  variables (`LADO_ENV_DIR`: in the image a `GH_TOKEN` in `/run/secrets`), read at each
-  call; on a project's page also the project's variables and secrets: a server started where
-  the human's ssh-agent is not reachable cannot use its keys, and the hints point at the
-  command to check that.
-- **Project** (decided 2026-10-23, LAD-137, [projects.md](projects.md); mockup
-  `task/lad-137/mockup-project-way.html` v2; `LaunchProject.tsx`): a session in a
-  project's repository, as `lado start --project <id> --repo <name>` starts it. The window
-  only chooses: it adds, clones or makes no repository (the human's answer #1282); a
-  project's repositories are added on its page (Projects, below). Its fields come from `GET
-  /api/project-launch?project=&repo=` (`ProjectLaunch`, asked again on each choice; it makes
-  nothing): **Project**, a select of the projects by title (the id without one, case
-  aside), each `<title> · <id>`, one whose folder is not found off and marked `folder not
-  found`, with the chosen one's line `<N> repositories · <N> sessions running · folder
-  <folder>`; then **Repository**, the project's repositories as a list always shown, even
-  with one (`.repo-pick`, a `radiogroup`: name, branch, remote; the arrow keys move the
-  choice), and `✓ git repository · branch X` under it. While a new choice is asked, the
-  field shows the last answer with the choice in it (`aria-busy` on the list), so the select
-  and the list keep their focus, and the start stays off until the answer to what is asked
-  now has come (LAD-137, review X1). The server chooses what the window
-  opens on: the project asked, else that of the latest started session in a project whose
-  folder is found, else the first found; the repository asked, else that of the project's
-  latest started session still there, else the first. What was asked and is not there any
-  more (`ProjectLaunch.gone`: `project` or `repo`; LAD-138, E1) is said under its field
-  over the server's choice, `⚠ No project <id> any more: choose one.` or `⚠ No repository
-  <name> in <title> any more: choose one.`, not while a new choice is asked. **Name** is `<project>-<repo>`
-  (`runtime.project_session_name`) until edited, with the folder check's notes
-  (`name_state`, where a session of the name in another project or in none is
-  `taken_elsewhere`); Kits and Permission mode come from the repository's last session in
-  the project (`ProjectLaunch.last`), Agent CLI from `ProjectLaunch.provider`, as Folder
-  takes them. The start button reads **Start in <title>** (the id without one): the window
-  opens on the last project used, and a quick click in another project would give the
-  session another client's keys (the supervisor's condition at gate #107). It sends
-  `where: {kind: "project", project, repo}`; the
-  server calls `runtime.start_session(None, …, resume=False, project=, repo_name=)`, the
-  CLI's call: an unknown project or repository is 404 with the core's text, a taken name
-  409 `Taken` with Resume it or Open it as in Folder, only for a session of this project
-  (the feed's `SessionInfo.project`: the core resumes none of another project or none;
-  its folder compared with
-  `ProjectLaunch.root`, the repository's git root with links resolved, as a session's folder
-  is kept, not the listed path, which may go through a link), any other refusal 400. A project
-  without repositories shows in the list's place `No repositories yet. Add one on the
-  project's page:` with **Open <title>**, and Start stays off; without projects the field
-  says `No projects yet. A project keeps its repositories and the variables its sessions
-  get.` with **Make one in Projects**; each link closes the window. The window still opens
-  in Folder (#1283); `useLaunch()({kind: "new", project, repo})` opens it in Project with
-  that project (and repository: the project's page's New session… and Start session).
-- **Resume** is the same window in its Resume mode: Where and Name fixed, kits, provider,
-  mode and Advanced filled from the session (`SessionInfo` carries its settings, its model
-  too) and changeable; it sends only what changed (`POST /api/sessions/{name}/resume`; the
-  CLI's settings send `model: ""`). Where is the
-  folder as text that wraps, whole at any width, not a disabled input, which clips a long path
-  and takes no finger's scroll (LAD-226: the human's choice over an ellipsis, as the end of a
-  path says the most). Another agent CLI takes Model to that CLI's default, and
-  back to the session's model with its CLI. The kept model is checked as
-  `lado start <session>` checks it: a refusal adds `The session ran on it before. Pick another
-  model, or resume on <CLI>'s settings.` and the chip button **Use `<CLI>`'s settings**; a saved
+- **Resume** is the same window in its Resume mode, titled `Resume session`: a line `<name> ·
+  stopped <when>` with the info `The team continues where it stopped: its chat, tasks and work
+  stay.` and **Start a new session instead** (it turns the window to New session on the same
+  place, with the free name); Where fixed, the folder's name then its whole path as text that
+  wraps, whole at any width (LAD-226); **Message** (`What should the team do next?`) sent as
+  `prompt`; Team's summary without Name, its fields filled from the session (`SessionInfo`
+  carries its settings, its model too) and changeable, its info `As when it stopped. A change
+  takes effect from now on.`; the button **Resume <name>**. It sends only what changed (`POST
+  /api/sessions/{name}/resume`; the CLI's settings send `model: ""`). Another agent CLI takes
+  Model to that CLI's default, and back to the session's model with its CLI. The kept model is
+  checked as `lado start <session>` checks it: a refusal adds `The session ran on it before.
+  Pick another model, or resume on <CLI>'s settings.` and **Use `<CLI>`'s settings**; a saved
   model since removed (`SessionInfo.model_missing`) reads `The session ran on the model <name>,
-  which is no longer in Settings → Model servers. Pick a model or use <CLI>'s settings.`, with `not in
-  Settings` in the field; Advanced opens to show it, and Resume is off until then. A provider
-  without its login is off here as in New session (LAD-163): its option "`<name>` · not
-  logged in" disabled, the red note with **Log in first**, and Resume off, as the resume
-  would be refused (lado.logins); another CLI with its login can be chosen. LADO's own
-  resume (the container's start, `lado update`) still waits for the login.
+  which is no longer in Settings → Model servers. Pick a model or use <CLI>'s settings.`, with
+  `not in Settings` in the field; Team opens to show it, and Resume is off until then. A
+  provider that cannot run (not installed, unknown, without its login: its option "`<title>` ·
+  not logged in" disabled, the red note with **Log in first**, LAD-163) opens Team with its
+  refusal under Agent, and Resume is off until another is chosen; LADO's own resume (the
+  container's start, `lado update`) still waits for the login.
 - **Actions by status** (`SessionControl.tsx`; task feature/session-controls, 2026-10-05:
   a Stop in the list row was too easy to hit), only in the session's head, as icons with a
   tooltip and the same accessible name (Stop a square filled with the text's colour, dark

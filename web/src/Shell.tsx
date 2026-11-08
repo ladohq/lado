@@ -1,4 +1,4 @@
-// The frame around every page: the rail of sections on the left (with Launch after Home),
+// The frame around every page: the rail of sections on the left (with New session after Home),
 // the top bar with the page's title, or a head the page draws there (useTopBar), and the
 // change feed's link, and the page itself. The one place that handles a 401: it shows the server's own message
 // instead of the page. It holds the tab's one change feed (live.ts) for every page, and the
@@ -405,19 +405,19 @@ function NeedsYouLink(props: { to: string; name: string; icon: ReactNode; collap
   return <RailLink {...props} count={useWaitingCount()} />;
 }
 
-// Launch on the rail: it opens the New session window, as the session list's "+" does.
+// New session on the rail: it opens the New session window, as the session list's "+" does.
 function LaunchLink({ collapsed }: { collapsed: boolean }) {
   const launch = useLaunch();
   return (
     <button
       type="button"
       className="rail-link"
-      aria-label="Launch"
-      title={collapsed ? "Launch" : undefined}
+      aria-label="New session"
+      title={collapsed ? "New session" : undefined}
       onClick={() => launch()}
     >
       <LaunchIcon />
-      <span className="rail-name">Launch</span>
+      <span className="rail-name">New session</span>
     </button>
   );
 }

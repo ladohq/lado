@@ -1653,11 +1653,11 @@ SHALL send the `DELETE`.
 ### Requirement: The project's page opens New session on its project
 
 The button `New session…` in the head of the project's page SHALL open the New session
-window in Project with this project chosen.
+window with Where on this project (the Project way) and this project chosen.
 
 #### Scenario: A new session from the page
 - **WHEN** the human clicks `New session…` on `/projects/shop`
-- **THEN** the New session window opens in Project with `Shop` chosen
+- **THEN** the New session window opens with Where on Project and `Shop` chosen
 
 ### Requirement: The server starts a session in a project's repository
 
@@ -1698,17 +1698,16 @@ text for any other refusal of the core. `where` of kind `project` with a `path` 
 ### Requirement: The server tells the New session window what a start in a project takes
 
 `GET /api/project-launch` with the optional `project` and `repo` SHALL answer, making
-nothing, `projects` (as `GET /api/projects` gives them, sorted by title, the id without
-one, case aside; none without `lado.db`), the chosen `project`, its `repos`, the chosen
-`repo`, and for that repository `default_name` (`<project>-<repo>` as the core makes it),
-`name_state`, `provider` (as the folder check gives it) and `last`, the repository's latest
-started session of this project or null.
+nothing, `projects` (as `GET /api/projects`, sorted by title, the id without one, case
+aside; none without `lado.db`), the chosen `project`, its `repos`, the chosen `repo`, and
+for that repository `default_name` (`<project>-<repo>`), `name_state`, `free_name`,
+`provider` (as the folder check gives it) and `last`, its latest session of this project.
 
 #### Scenario: The window opens on Project
 - **WHEN** the latest started session in a project is `shop-backend` of `shop`, and the UI
   asks `GET /api/project-launch`
-- **THEN** `project` is `shop`, `repo` is `backend`, `default_name` is `shop-backend` and
-  `last` is that session
+- **THEN** `project` is `shop`, `repo` is `backend`, `default_name` is `shop-backend`,
+  `free_name` is `shop-backend-2` when that session is stopped, and `last` is that session
 
 ### Requirement: The Project way chooses the project and repository last used
 
@@ -1754,23 +1753,28 @@ included, `project` SHALL be null. The refusal's text and hint SHALL stay the co
 
 ### Requirement: The New session window starts a session in a project
 
-The New session window SHALL have the source **Project** last in its switch. Project SHALL
-show a select of the projects (one whose folder is not found off, marked `folder not
-found`), the chosen project's line `<N> repositories · <N> sessions running · folder
-<folder>`, and its repositories, each with its name, branch and remote, one chosen. Its
-start button SHALL start with `where: {kind: "project", project, repo}` and open the
-session's page. The window's first source SHALL stay as before.
+The New session window SHALL offer a project's repository as a Recent item with its project's
+badge and as **Project…** in Where's group Somewhere else. Project… SHALL show a select of the
+projects (one whose folder is not found off, marked `folder not found`) and its repositories,
+each with its name, branch and remote, one chosen; the start SHALL send `where: {kind:
+"project", project, repo}` and open the session's page.
 
 #### Scenario: Start in a project's repository
-- **WHEN** the human picks Project, `Shop`, then `frontend`, and clicks `Start in Shop`
+- **WHEN** the human picks Project…, `Shop`, then `frontend`, and clicks `Start in Shop`
 - **THEN** the session `shop-frontend` starts in the project and its page opens, its head
   showing `Shop` before its title
 
+#### Scenario: A project's repository from Recent
+- **WHEN** the human picks `backend` with the badge `Project Shop` in Where's Recent
+- **THEN** the start button reads `Start in Shop`, and the session starts in that repository
+  of the project
+
 ### Requirement: The Project way's start names the project
 
-In Project the start button SHALL read `Start in <title>` (the id without one) of the
-project chosen, so the human sees which project's keys the session gets before it starts;
-the other ways keep `Start session`.
+For a project's repository the start button SHALL read `Start in <title>` (the id without
+one), and `Start new session in <title>` beside `Resume <name>` when the repository has a
+stopped session of the default name, so the human sees which project's keys the session
+gets; another place's button names the place.
 
 #### Scenario: Another project than the one last used
 - **WHEN** the window opens on `Shop`, the project last used, and the human picks `ACME CRM`
@@ -1790,18 +1794,15 @@ one of the project's repositories: it SHALL NOT add, clone or make one.
 
 ### Requirement: The Project way takes the session's settings as Folder does
 
-In Project, Name SHALL be the default name until the human edits it, with the folder
-check's notes for a taken name; Kits and Permission mode SHALL come from the repository's
-last session, as Folder takes them from a folder's, and Agent CLI from the server's
-suggestion. A refused start SHALL show the core's text, with `Resume it` or `Open it` as
-for a folder, only when the session that has the name is of this project.
+For a project's repository, Team's Name SHALL be the default name, else the free name, until
+the human edits it; Team setup and Permissions SHALL come from the repository's last session,
+as for a folder, and Agent from the server's suggestion. Resume SHALL be offered only for a
+stopped session of the name that is of this project.
 
 #### Scenario: A taken name
-- **WHEN** a stopped `shop-frontend` of this repository exists and the human clicks `Start
-  in Shop`
-- **THEN** the window shows `session "shop-frontend" exists already (stopped, in
-  <workspace>/projects/shop/frontend); resume it, or give the new session another name`
-  and `Resume it`, also when the workspace's path goes through a link
+- **WHEN** a stopped `shop-frontend` of this repository exists and the window opens on it
+- **THEN** Team reads `Name shop-frontend-2`, and the footer shows `Resume shop-frontend` and
+  `Start new session in Shop`, also when the workspace's path goes through a link
 
 ### Requirement: The Project way sends the human to the project when nothing can be chosen
 
@@ -1821,17 +1822,16 @@ Projects` to `/projects`. Each link SHALL close the window.
 
 ### Requirement: Folder's refusal inside a project leads to the project
 
-When Folder's check refuses a folder with `project` set, the refusal SHALL show, above the
-core's hint and its command, the button `Start in the project <title>` when `project.repo`
-is set, which switches the window to Project with that project and repository chosen, else
-the button `Open the project <title>`, which closes the window and opens `/projects/<id>`.
-The refusals of Clone into and Create in inside a project SHALL show `Open the project
-<title>` the same way.
+When the folder check refuses a folder with `project` set, the refusal SHALL show, above the
+core's hint and command, `Start in the project <title>` when `project.repo` is set, which
+turns Where to that project and repository, else `Open the project <title>`, which closes the
+window and opens `/projects/<id>`. Clone into and a new empty folder inside a project SHALL
+show `Open the project <title>` the same way.
 
 #### Scenario: A project's repository in Folder
-- **WHEN** the human types `<workspace>/projects/shop/frontend` in Folder and clicks `Start
-  in the project Shop`
-- **THEN** the window shows Project with `Shop` and `frontend` chosen and the name
+- **WHEN** the human types `<workspace>/projects/shop/frontend` in Other folder… and clicks
+  `Start in the project Shop`
+- **THEN** Where shows `frontend` with the badge `Project Shop`, and Team's name is
   `shop-frontend`
 
 #### Scenario: A folder of a project that is no repository
@@ -1846,18 +1846,8 @@ The refusals of Clone into and Create in inside a project SHALL show `Open the p
   `/projects/shop`
 
 #### Scenario: Create in a new folder of a project
-- **WHEN** the human chooses From scratch with Create in `<workspace>/projects/shop`
+- **WHEN** the human chooses New empty folder… with the target `<workspace>/projects/shop`
 - **THEN** the refusal offers `Open the project Shop`
-
-### Requirement: The switch of the New session window fits a phone
-
-On a screen of at most 760 px the switch of the New session window SHALL show its four
-buttons as a grid of two columns within the window, none cut off.
-
-#### Scenario: A phone
-- **WHEN** the human opens New session on a 390 px screen
-- **THEN** From scratch and Folder are on the first row, Clone from URL and Project on the
-  second, all inside the window
 
 ### Requirement: The unpushed check names commits on a detached HEAD and stashes
 
@@ -1969,8 +1959,8 @@ yet. …` with a primary `+ Add repository`. On a phone a row's buttons go under
 
 ### Requirement: Start session opens New session on the repository
 
-`Start session` on a repository's row SHALL open the New session window in Project with the
-project and that repository chosen (`GET /api/project-launch?project=<id>&repo=<name>`).
+`Start session` on a repository's row SHALL open the New session window with Where on that
+project and repository (`GET /api/project-launch?project=<id>&repo=<name>`).
 
 #### Scenario: Started from the row
 - **WHEN** the human clicks `Start session` on `backend` of `shop` and then `Start in Shop`

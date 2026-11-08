@@ -1,7 +1,7 @@
 // New session's Project way (docs/design/ui.md, Launch and session control): a project, then
 // one of its repositories, as GET /api/project-launch gives them. The window only chooses:
 // a project's repositories are added on the project's page.
-import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useId, useRef, type KeyboardEvent } from "react";
 
 import type { ProjectLaunch, ProjectRepo, ProjectSummary } from "./api";
 import { projectPath } from "./paths";
@@ -15,7 +15,6 @@ export function ProjectField({
   asked,
   asking = false,
   problem,
-  head,
   disabled,
   onProject,
   onRepo,
@@ -28,7 +27,6 @@ export function ProjectField({
   // is (the select and the list keep their focus) and marked busy
   asking?: boolean;
   problem: string | null; // why the server did not answer
-  head: ReactNode; // the switch of the window's ways, beside the label
   disabled: boolean;
   onProject: (id: string) => void;
   onRepo: (name: string) => void;
@@ -42,10 +40,6 @@ export function ProjectField({
   return (
     <>
       <div className="field launch-where">
-        <div className="where-head">
-          <span className="field-label">Where</span>
-          {head}
-        </div>
         {problem ? (
           <span className="field-note bad">{problem}</span>
         ) : launch === null ? (
@@ -179,7 +173,7 @@ function RepoPick({
       </ul>
       {gone && <span className="field-note warn">{`⚠ No repository ${gone} in ${label} any more: choose one.`}</span>}
       {chosen && (
-        <span className="field-note ok">✓ git repository{chosen.branch ? ` · branch ${chosen.branch}` : ""}</span>
+        <span className="field-note ok">✓ Ready{chosen.branch ? ` · branch ${chosen.branch}` : ""}</span>
       )}
     </div>
   );

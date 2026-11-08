@@ -649,7 +649,7 @@ def test_the_session_list_and_session_windows_give_the_focus_back(page: Page, se
     )
     gives_the_focus_back(
         page,
-        page.get_by_role("button", name="New session"),
+        page.get_by_role("main").get_by_role("button", name="New session"),
         page.get_by_role("dialog", name="New session"),
         "Cancel",
     )

@@ -15,7 +15,7 @@ const sources = import.meta.glob<string>(["./**/*.tsx", "!./**/*.test.tsx"], {
 const OWNERS: Record<string, string[]> = {
   "team-chip": ["./Team.tsx"],
   "team-chip-name": ["./Team.tsx"],
-  "kits-box-chip": ["./Launch.tsx"],
+  "kits-box-chip": ["./LaunchTeam.tsx"],
   "source-chip": ["./Kits.tsx"],
   chip: ["./Attachments.tsx", "./GateCard.tsx"],
   "chip-name": ["./Attachments.tsx", "./GateCard.tsx"],

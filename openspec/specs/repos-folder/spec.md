@@ -84,53 +84,34 @@ of Docker Desktop shows wrong.
 
 ### Requirement: The New session window starts Where in the workspace
 
-The server SHALL answer `GET /api/repos-folder` with `{path, made}`: the workspace and
-whether it exists as a folder. The New session window's **Where** placeholder SHALL be
-`<path>/…`, **Clone into**'s `<path>/<repo>` and **Create in**'s `<path>/<name>`. With
-`made`, Where, while empty, SHALL suggest that folder's subfolders when it has the focus,
-and picking one SHALL put its full path (`<folder>/<name>`) in the field. Without `made`
-the window SHALL suggest nothing for an empty field.
+The server SHALL answer `GET /api/repos-folder` with `{path, made}`. Other folder…'s path
+field SHALL have the placeholder `<path>/…`, Clone into `<path>/<repo>`, and New empty
+folder's info button name `<path>`. With `made`, the empty path field SHALL suggest that
+folder's subfolders on focus, a pick putting `<folder>/<name>` in it; without `made` it
+SHALL suggest nothing.
 
 #### Scenario: A first session in the container
-- **WHEN** `LADO_REPOS=/Users/me/repos` holds `app`, `api` and `site`, and the human opens
-  New session and clicks into Where
+- **WHEN** `LADO_REPOS=/Users/me/repos` holds `app`, `api` and `site`, and the human picks
+  Other folder… and clicks into its empty path field
 - **THEN** the list shows `api/`, `app/`, `site/`, and picking `app/` puts
-  `/Users/me/repos/app` into Where, which is checked as any folder
+  `/Users/me/repos/app` into the field, which is checked as any folder
 
 #### Scenario: Without the variable
 - **WHEN** the server runs without `LADO_REPOS`, the home folder is `/Users/ann` and
   `/Users/ann/workspace` does not exist
 - **THEN** `GET /api/repos-folder` gives `{"path": "/Users/ann/workspace", "made": false}`,
-  and the window has the placeholder `/Users/ann/workspace/…`, no Workspace row, and
-  suggests nothing for an empty field
+  and the path field has the placeholder `/Users/ann/workspace/…` and suggests nothing
+  while empty
 
 #### Scenario: The default workspace made
-- **WHEN** `/Users/ann/workspace` holds `app` and the human clicks into an empty Where
-- **THEN** the list shows `app/`, and the Workspace row shows `/Users/ann/workspace`
+- **WHEN** `/Users/ann/workspace` holds `app` and the human clicks into the empty path field
+- **THEN** the list shows `app/`
 
 #### Scenario: The focus before the server's answer
 - **WHEN** `LADO_REPOS=/Users/me/repos` holds `app` and `api`, and the human clicks into
-  Where before `GET /api/repos-folder` has answered
-- **THEN** the list shows `api/` and `app/` as soon as the answer comes, while Where keeps
-  the focus; a Where left before the answer shows no list
-
-### Requirement: The Workspace row puts the folder into Where
-
-When the workspace exists (`made`), under the **Where** field a row
-`Workspace:` SHALL show the folder as a button that puts `<folder>/` into the
-field and gives the field the focus, before the recent folders and hidden in Resume, as
-they are. The field SHALL stay empty when the window opens, with no folder check until the
-human types or picks; the workspace itself (with or without its last `/`) is not
-checked either, as it is no session's folder.
-
-#### Scenario: The button
-- **WHEN** the human clicks `/Users/me/repos` in the Workspace row
-- **THEN** Where reads `/Users/me/repos/`, has the focus and lists its subfolders, with no
-  folder check under it; leaving the field closes the list
-
-#### Scenario: Not made yet
-- **WHEN** the workspace does not exist
-- **THEN** the window has no Workspace row
+  the empty path field before `GET /api/repos-folder` has answered
+- **THEN** the list shows `api/` and `app/` as soon as the answer comes, while the field
+  keeps the focus; a field left before the answer shows no list
 
 ### Requirement: One function gives the warning about a folder outside LADO_REPOS
 
@@ -157,9 +138,9 @@ does not see it or the agents' work in it`. Outside a container there SHALL be n
 #### Scenario: A folder on the home volume
 - **WHEN** in a container with `LADO_REPOS=/Users/ann/projects` the human types
   `/home/lado/app`, a git repository, into Where
-- **THEN** the window shows `✓ git repository · branch main`, then `⚠ Outside the
+- **THEN** the window shows `✓ Ready · branch main`, then `⚠ Outside the
   workspace (/Users/ann/projects): this folder is only in the container, your
-  computer does not see it or the agents' work in it`, and Start is available
+  computer does not see it or the agents' work in it`, and the start button is on
 
 #### Scenario: A folder in the workspace
 - **WHEN** in that container the human types `/Users/ann/projects/app`
@@ -178,14 +159,20 @@ does not see it or the agents' work in it`. Outside a container there SHALL be n
 
 The subfolders the server gives for the workspace SHALL leave out `projects` when it is
 LADO's (capability `projects`), a folder inside LADO's `projects/` SHALL have none, and the
-recent folders SHALL leave out the folders inside it.
+recent places SHALL leave out the folders inside it, but a project's repository whose
+session ran in that project, listed as a project item (capability new-session-window).
 
 #### Scenario: The workspace with projects
 - **WHEN** `/Users/ann/workspace` holds `app` and `projects`, which holds the folder of the
-  project `shop`, and the human clicks into an empty Where
+  project `shop`, and the human clicks into an empty path field
 - **THEN** the list shows `app/` only
 
 #### Scenario: The human's own projects folder
 - **WHEN** `/Users/ann/workspace/projects` holds only the human's `notes` and LADO has no
   project
 - **THEN** the list shows `projects/` as any folder
+
+#### Scenario: A project's session in the recent places
+- **WHEN** the latest session ran in the repository `backend` of the project `shop`
+- **THEN** `/api/folders/recent` lists it with `project: {id: "shop", title, repo:
+  "backend"}`, and Where's Recent shows `backend` with the badge `Project <title>`

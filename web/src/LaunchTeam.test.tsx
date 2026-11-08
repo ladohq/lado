@@ -1,0 +1,108 @@
+// Team on its own (LaunchTeam.tsx): the one-line summary, Change and Hide, and Permissions in
+// the agent CLI's words.
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { createRef, useState, type ReactNode } from "react";
+import { afterEach, expect, test } from "vitest";
+
+import type { ProviderInfo } from "./api";
+import { LaunchTeam } from "./LaunchTeam";
+
+afterEach(cleanup);
+
+const CODEX: ProviderInfo = {
+  name: "codex",
+  title: "Codex CLI",
+  permission_modes: ["default", "bypassPermissions"],
+  mode_words: [
+    {
+      value: "default",
+      title: "Work inside this folder (recommended)",
+      summary: "Works inside the folder",
+      description: "Asks before going outside it.",
+      risky: false,
+    },
+    {
+      value: "bypassPermissions",
+      title: "Full access, never ask ⚠",
+      summary: "Full access ⚠",
+      description: "No limits, outside this folder too.",
+      risky: true,
+    },
+  ],
+  install_hint: "",
+  installed: true,
+  version: "0.162.0",
+  detail: "",
+  tested_version: "",
+  warning: "",
+  login_missing: false,
+};
+
+function Team({ info = CODEX, peek = null }: { info?: ProviderInfo; peek?: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState("default");
+  return (
+    <LaunchTeam
+      open={open}
+      onOpen={setOpen}
+      about="As in the last session in this folder."
+      modelPeek={peek}
+      name="webapp-2"
+      onName={() => {}}
+      nameFixed={false}
+      nameNote={null}
+      kits={["default"]}
+      onKits={() => {}}
+      known={[]}
+      kitsError={null}
+      providers={[info]}
+      providersNote={null}
+      chosen={info.name}
+      info={info}
+      onProvider={() => {}}
+      agentNote={null}
+      mode={mode}
+      onMode={setMode}
+      modeNote={null}
+      modelField={null}
+      without=""
+      onWithout={() => {}}
+      switchOff={[]}
+      disabled={false}
+      refs={{ name: createRef(), agent: createRef(), kits: createRef() }}
+    />
+  );
+}
+
+const summary = () => document.querySelector(".team-sum")?.textContent;
+
+test("the summary reads Setup, Agent, Permissions in the CLI's words and Name, and a model off the default", () => {
+  render(<Team peek={<span>Model kilo/large</span>} />);
+  expect(summary()).toBe("Setup defaultAgent Codex CLIPermissions Works inside the folderName webapp-2Model kilo/large");
+});
+
+test("Change opens the fields and reads Hide; Hide folds them", () => {
+  render(<Team />);
+  fireEvent.click(screen.getByRole("button", { name: "Change" }));
+  expect(screen.getByRole("textbox", { name: "Session name" })).toBeTruthy();
+  expect(summary()).toBeUndefined();
+  fireEvent.click(screen.getByRole("button", { name: "Hide" }));
+  expect(screen.queryByRole("textbox", { name: "Session name" })).toBeNull();
+});
+
+test("the chosen mode and the risky one show their description; a pick changes the summary", () => {
+  render(<Team />);
+  fireEvent.click(screen.getByRole("button", { name: "Change" }));
+  expect(screen.getByText("Asks before going outside it.")).toBeTruthy();
+  expect(screen.getByText("No limits, outside this folder too.")).toBeTruthy();
+  fireEvent.click(screen.getByRole("radio", { name: /^Full access/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Hide" }));
+  expect(summary()).toContain("Permissions Full access ⚠");
+});
+
+test("an agent with no modes: No permission modes., and no Permissions in the summary", () => {
+  render(<Team info={{ ...CODEX, permission_modes: [], mode_words: [] }} />);
+  expect(summary()).not.toContain("Permissions");
+  fireEvent.click(screen.getByRole("button", { name: "Change" }));
+  expect(screen.getByText("No permission modes.")).toBeTruthy();
+});

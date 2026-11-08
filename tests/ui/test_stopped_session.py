@@ -6,6 +6,7 @@ import json
 import re
 
 import pytest
+from launch_window import agent
 from playwright.sync_api import Browser, Page, expect
 from test_gates import gated_session, waiting_card
 from test_launch import idle, log_in, stopped_session
@@ -33,8 +34,8 @@ def resume(page: Page) -> None:
     session = page.url.split("/sessions/")[1].split("/")[0].split("?")[0]
     bar(page).get_by_role("button", name="Resume session").click()
     dialog = page.get_by_role("dialog", name="Resume session")
-    expect(dialog.get_by_label("Agent CLI")).to_have_value("fake", timeout=30_000)  # CLIs checked
-    dialog.get_by_role("button", name="Resume session").click()
+    expect(agent(dialog)).to_have_value("fake", timeout=30_000)  # CLIs checked
+    dialog.get_by_role("button", name=f"Resume {session}").click()
     expect(dialog).to_have_count(0)
     idle(session)
     expect(bar(page)).to_have_count(0)

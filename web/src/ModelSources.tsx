@@ -600,9 +600,12 @@ function SourceBody({
     );
   }
   const has = listed(read);
-  const configured = new Set(own.map((m) => m.model));
-  // The order of the read; a model it no longer lists shows while it is configured, and one
-  // configured since (by Model id) comes last.
+  // A model unticked here keeps its row while its line is under the tick: the line, its Undo
+  // and the focus on the tick stay, also for a model the list no longer has.
+  const unticked = sources.removed.list.filter((g) => g.at !== null && fold(g.model.server) === fold(server));
+  const configured = new Set([...own, ...unticked.map((g) => g.model)].map((m) => m.model));
+  // The order of the read; a model it no longer lists shows while it is configured (or its
+  // untick's line shows), and one configured since (by Model id) comes last.
   const rows = [
     ...read.order.filter((m) => configured.has(m) || has === null || has.has(m)),
     ...[...configured].filter((m) => !read.order.includes(m)),
@@ -655,6 +658,10 @@ function SourceBody({
   const box = (on: Column, model: string) => {
     const state = tickState(models, on.name, model, server);
     const gone = missing(model) && !state.on; // a model gone from the list is unticked only
+    const key = tickKey(on.name, model, server);
+    // Unticked here with its line under it: off by aria only, so the focus stays; Undo brings
+    // it back.
+    const held = gone && unticked.some((g) => g.at === key);
     const [one] = ticked(models, on.name, model, server);
     return (
       <input
@@ -662,11 +669,11 @@ function SourceBody({
         aria-label={`${model} on ${on.title}`}
         checked={state.on}
         ref={(el) => {
-          boxes.current[tickKey(on.name, model, server)] = el;
+          boxes.current[key] = el;
         }}
         // Off while a save runs, by aria only: a box truly disabled would drop the focus.
-        aria-disabled={busy ? true : undefined}
-        disabled={state.several.length > 0 || gone}
+        aria-disabled={busy || held ? true : undefined}
+        disabled={state.several.length > 0 || (gone && !held)}
         title={
           state.several.length
             ? `${state.several.join(", ")}: remove them in Your models`
@@ -676,7 +683,7 @@ function SourceBody({
                 ? `Unticking removes ${one.name}.`
                 : undefined
         }
-        onChange={(event) => !busy && void change(on.name, model, event.target.checked)}
+        onChange={(event) => !busy && !held && void change(on.name, model, event.target.checked)}
       />
     );
   };

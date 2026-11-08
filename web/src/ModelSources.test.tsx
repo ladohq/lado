@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { ProbeInfo } from "./api";
 import { MODEL_DEBOUNCE } from "./Launch";
-import { LMSTUDIO, LMSTUDIO_PROBE, model, ModelServer, refusal } from "./modelFakes";
+import { externalDefault, LMSTUDIO, LMSTUDIO_PROBE, model, ModelServer, refusal } from "./modelFakes";
 import { ModelSettings } from "./ModelSettings";
 import { Found, orderOf, SERVERS_LEAD, tickState } from "./ModelSources";
 import { UNDO_MS } from "./removedModels";
@@ -444,7 +444,37 @@ test("embeddings are hidden and counted; a model gone from the list first, ticke
     ).disabled,
   ).toBe(true);
   fireEvent.click(within(pop).getByRole("checkbox", { name: "mistral-7b on OpenCode" }));
-  await waitFor(() => expect(screen.queryByRole("button", { name: "mistral-7b" })).toBeNull()); // unticked: gone
+  await waitFor(() => expect(within(pop).getByRole("button", { name: "Undo" })).toBeTruthy()); // kept for its Undo
+  fireEvent.click(gone); // closed: its line goes, and the model with it
+  await waitFor(() => expect(screen.queryByRole("button", { name: "mistral-7b" })).toBeNull());
+});
+
+test("a default the list no longer has, unticked: its row stays with the line and Undo, which brings both back", async () => {
+  const mistral = model("Мистраль", "opencode", "OpenCode", "mistral-7b", "LM Studio дома");
+  server.entries = { models: [mistral], servers: [LMSTUDIO], defaults: [externalDefault(mistral)] };
+  await mount();
+  await openModel("mistral-7b");
+  const pop = await screen.findByRole("group", { name: "Agent CLIs for mistral-7b" });
+  const box = await tickOf("mistral-7b on OpenCode");
+  box.focus();
+  fireEvent.click(box);
+  await waitFor(() => expect(server.entries.models).toEqual([]));
+  const undo = await within(pop).findByRole("button", { name: "Undo" });
+  expect(undo.closest(".mx-sub-undo")?.textContent).toBe("Removed Мистраль. OpenCode is back on its settings.Undo");
+  expect(pop.isConnected).toBe(true);
+  expect(box.isConnected).toBe(true);
+  expect(box.disabled).toBe(false); // a disabled box would drop the focus
+  expect(box.getAttribute("aria-disabled")).toBe("true"); // not listed: only Undo brings it back
+  expect(document.activeElement).toBe(box);
+  fireEvent.click(box);
+  expect(box.checked).toBe(false);
+  expect(server.of("POST", "/api/models").filter((c) => c.path === "/api/models")).toEqual([]);
+  fireEvent.click(undo);
+  await waitFor(() => expect(box.checked).toBe(true));
+  const back = server.entries.models.find((m) => m.name === "Мистраль");
+  expect(back).toBeTruthy();
+  expect(server.entries.defaults).toEqual([externalDefault(back!)]);
+  await waitFor(() => expect(document.activeElement).toBe(box));
 });
 
 test("several models of one tick: on, disabled, titled with them", async () => {

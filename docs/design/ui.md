@@ -2965,7 +2965,9 @@ LM Studio. That CLI has no column in the server's list, which comes from `ProbeI
   stop); Your models shows no Undo for it, as Undo shows only where the human acted. That Undo
   saves the model again under its name, sets the default again, and gives the focus back to
   the tick; a refused default shows in the line. A tick again takes the line away and sets no
-  default; closing the list drops it. One state, one line and one `UNDO_MS` serve both places
+  default; closing the list drops it. A model its server no longer lists keeps its row while
+  that line shows, its tick then off by `aria-disabled` only (the focus stays; Undo is the
+  way back). One state, one line and one `UNDO_MS` serve both places
   (`removedModels.tsx`: `useRemovedModels`, `UndoLine`). After `UNDO_MS` (10 s) only Undo
   goes: `Removed <name>.` stays until the human's next change in the section (a tick, ×, Undo,
   a rename, a model id added, a server added, changed or removed) or the page's next opening.

@@ -2895,9 +2895,10 @@ LM Studio. That CLI has no column in the server's list, which comes from `ProbeI
 - **The picker** (`ModelPicker.tsx`, the one component any place that picks a model uses): a
   combobox `Default model of <CLI>`, its value `<CLI>'s settings`, a built-in id, or a name,
   id and server's mark; a model whose id is its name ignoring case shows no id, in the field
-  (`mp-id`) or its row (`mp-sub`), the field's title and the row's label keeping it. Its list lies over the page, `position: fixed` by the field's box and
-  the visual viewport, opening upward with fewer than 240 px below and more above, at most
-  420 px high (60% of the window under 600 px); a press outside or a scroll the human starts
+  (`mp-id`) or its row (`mp-sub`), the field's title and the row's label keeping it. Its list
+  lies over the page, `position: fixed` by the field's box and the visual viewport, opening
+  upward with fewer than 240 px below and more above, at most 420 px high (60% of the window
+  under 600 px); a press outside or a scroll the human starts
   outside the list closes it. Rows in one order, an empty group not shown: `<CLI>'s settings`,
   YOUR MODELS, BUILT-IN (`BUILT-IN · aliases` for aliases only), `Other name…` kept at the
   bottom, only with no full list. Above ten models a search by name, id and server. The footer
@@ -3160,8 +3161,7 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
   from `state.source_words`: `CLI default`, `your Codex config, profile work`), or only
   the muted words while there is no name; a configured model's Model reads `<name> · <model> ·
   server <server>, <address> · <words>`, without `<model> · ` when it is the name ignoring
-  case; the feed updates them when the CLI names its
-  model (docs/design/agents.md); Branch,
+  case; the feed updates them when the CLI names its model (docs/design/agents.md); Branch,
   Work (asked when the page opens, when the agent leaves busy, to any status, the moment a
   turn's commits exist, and with Refresh; no comparison with `idle` alone, which would miss
   `background`, `web/src/status.test.ts`; feature/background-status; "as of"

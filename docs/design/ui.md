@@ -466,7 +466,8 @@ Sessions for now. The UI's texts are in English.
   below) and Settings (a cogwheel) apart at the bottom. A button collapses it to icons (each with its
   name as tooltip and accessible name; the button has `aria-expanded`). The browser
   remembers the choice and it wins; with none the rail follows the window, collapsed below
-  1600 px (LAD-193). On a phone the rail
+  1600 px (LAD-193). It is as high as the visible window (`100dvh`: a tablet's browser bars take
+  some of `100vh`, which hid Help and Settings at its bottom). On a phone the rail
   is a drawer that Menu opens (Phone layout, below).
 - **Top bar**: the page's title on the left, or on a session's page the session's head
   (Session head, below); on the right the change feed's link (`live`, or `reconnecting…`
@@ -2351,8 +2352,8 @@ redirects read; a section's page is `Settings.tsx`'s `PAGES` by its slug.
 
 - **The pages**, in this order: General `/settings/general` (`SettingsIcon`, the cogwheel),
   Agent CLIs `/settings/agent-clis` (`AgentCliIcon`), Model servers `/settings/model-servers`
-  (`ServerIcon`) and Statistics `/settings/statistics` (`ShieldIcon`). The tab's title stays
-  `Settings`.
+  (`ServerIcon`) and Statistics `/settings/statistics` (`ShieldIcon`). On a phone the top bar
+  names the section of a page (`Statistics`), on a computer and at the list `Settings`.
 - **The list** (`nav.snav`, "Settings sections"): an icon and a name per section and nothing
   else, no state line, mark or count; the current one `aria-current="page"` with the rail's
   look (`--raised`, the 3 px `--action` stripe). 232 px beside the page (at most 680 px),
@@ -2512,6 +2513,8 @@ is; there is no sound and no notification outside the browser.
   the site settings (icon left of the address), then switch on again.`, `Not allowed: switch
   on again and allow them.`, `The browser asks again: switch on and allow them.`, `Not
   supported by this browser.`, `Needs a secure page: open LADO at 127.0.0.1 or localhost.`
+  In Settings → General a browser with no notifications (Safari on an iPhone) leaves nothing
+  to fix: its line is grey under the row's description, the switch off, no red notice.
 - **The notifier** lives in the shell, so it works on every page. While notifications are
   on it watches the live store's `waiting` and keeps, for the tab's life, the keys it has
   seen (across the feed's resets): the items of its first list are only remembered; each
@@ -2720,7 +2723,8 @@ provider-login-layers, providers-section-and-start-screens and settings-pages; b
   rest stays in `lado doctor` and the System panel.
 - **A row per CLI** (`li#<provider name>`, a setting row: its text on the left, its button on
   the right, under them its default model; on a phone the button under the text): its name
-  and version (or how to install it); a dot and one state line
+  and version (or how to install it); a dot and one state line (the dot on its first line when
+  it wraps)
   as the CLI's own status command says it, read by the server in the environment the agents
   of that CLI in a session without a project get, its login taken whole from one layer
   (lado.logins): "Logged in · <how> · <where from>", "Not logged in" (bold, orange, for a
@@ -2842,7 +2846,7 @@ pages read the entries when they open and after each change of their own; no sta
 page. It does what `lado
 model-server` and `lado model` do, with their rules: every refusal is the command's, in the
 page's words (`Refused.page`, `ProbeError.page`: no command to run, but what to do here,
-e.g. `asks for a key (401): enter it in Key`, `the name is taken by the model "<name>"`; the
+e.g. `asks for a key (401): enter it in Key`, `The name is taken by the model "<name>"`; the
 commands print their lines as before). It says "agent CLI", or "CLI" where room is short.
 Using it changes nothing of how sessions start, and it says nothing of sessions using a
 default: none does yet.
@@ -3065,7 +3069,7 @@ LM Studio. That CLI has no column in the server's list, which comes from `ProbeI
   head row; a question's buttons, Add server and a model's name 44 px high; on Agent CLIs
   `Default model` over its field, the field without the id; a source's model the whole width, its marks (`no longer listed`, `in
   <CLI>`, `as`/`would be`) on lines of their own under it; a
-  source's icons on a line of their own under its name and a server's address wrapped
+  source's icons at the right of its name's line and a server's address wrapped
   whole (no tooltip); ✎, 🗑, ↻, × and Undo at least 44 by 44 px and a list's row 44 px; a
   server's list of up to 20 models not bounded (no scroll within a scroll on touch); the
   CLIs under a server's model without indent. No page scrolls sideways. At every width a

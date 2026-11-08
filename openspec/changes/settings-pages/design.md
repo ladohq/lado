@@ -20,7 +20,7 @@ index route and `:section`. `Settings` renders the list and `<Outlet />`; above 
 replaces itself by `/settings/general` unless the hash is an old one; on a phone the index is the
 list alone and a section page has `‹ Settings`. `:section` unknown → `/settings`; an old slug →
 its page. All with `<Navigate replace>`. The hash is read once on mount of the index.
-`useTitle("Settings")` stays (r5).
+The top bar and the tab say `Settings`, on a phone the section's name (the human's answer at the merge gate, LAD-238).
 
 **D3. Focus on a section change.** A page's `h2` has `tabIndex={-1}` and takes the focus when the
 section changes while Settings is mounted, and on arrival, except when an arrival at

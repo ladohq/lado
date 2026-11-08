@@ -71,7 +71,13 @@ test("a browser without notifications, or a page not secure, says so and the swi
   cleanup();
   vi.stubGlobal("Notification", undefined);
   mount();
-  expect(screen.getByText("Not supported by this browser.")).toBeTruthy();
+  // Nothing to fix (an iPhone's Safari has none): a neutral line under the name, no red notice.
+  const line = screen.getByText("Not supported by this browser.");
+  expect(line.className).toBe("srow-desc");
+  expect(line.closest(".srow-text")).toBeTruthy();
+  expect(document.querySelector("#notifications .field-problem")).toBeNull();
+  const toggle = screen.getByRole("switch") as HTMLInputElement;
+  expect([toggle.checked, toggle.disabled]).toEqual([false, true]);
 });
 
 test("#notifications scrolls its row into view", () => {

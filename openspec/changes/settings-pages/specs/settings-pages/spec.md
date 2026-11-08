@@ -37,12 +37,12 @@ current page.
 
 In the phone layout `/settings` SHALL show the list alone, each item at least 52 px high with a
 chevron, and a section's address SHALL show its page alone with a link `‹ Settings` back to the
-list.
+list, the top bar naming the section.
 
 #### Scenario: A section on a phone
 - **WHEN** the human taps Statistics in the list on a phone
-- **THEN** the Statistics page shows alone with `‹ Settings`, and `‹ Settings` leads back to the
-  list
+- **THEN** the Statistics page shows alone with `‹ Settings` under the top bar's `Statistics`,
+  and `‹ Settings` leads back to the list
 
 ### Requirement: Old addresses of Settings lead to the new pages
 
@@ -98,11 +98,16 @@ Needs you SHALL show the same words.
   settings (icon left of the address), then switch on again.`
 
 #### Scenario: The other refusals
-- **WHEN** the page is not secure, the browser has no notifications, the human dismissed the
-  browser's question, or the browser will ask again
+- **WHEN** the page is not secure, the human dismissed the browser's question, or the browser
+  will ask again
 - **THEN** the row says `Needs a secure page: open LADO at 127.0.0.1 or localhost.`, `Not
-  supported by this browser.`, `Not allowed: switch on again and allow them.` or `The browser
-  asks again: switch on and allow them.`
+  allowed: switch on again and allow them.` or `The browser asks again: switch on and allow
+  them.`
+
+#### Scenario: A browser with no notifications
+- **WHEN** the browser has no notifications (Safari on an iPhone)
+- **THEN** the switch is off and disabled, and under the row's description a grey line says
+  `Not supported by this browser.`, with no red notice
 
 #### Scenario: From the message on Needs you
 - **WHEN** the human follows `Settings` in Needs you's line that notifications are on

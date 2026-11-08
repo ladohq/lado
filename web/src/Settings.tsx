@@ -23,9 +23,10 @@ const PAGES: Record<SectionSlug, () => JSX.Element> = {
 };
 
 export function Settings() {
-  useTitle("Settings");
   const phone = usePhone() !== null;
   const { section } = useParams();
+  // On a phone, where the page stands alone, the top bar names its section.
+  useTitle((phone && sectionOf(section)?.name) || "Settings");
   const { hash } = useLocation();
   const page = useRef<HTMLDivElement>(null);
   // The focus goes to the page's h2 when the human moves from one section, or from the

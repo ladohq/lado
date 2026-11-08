@@ -144,7 +144,7 @@ def _server_taken(name: str) -> Refused:
         f'a model server "{name}" is saved already; to change its address or key: '
         f'lado model-server add "{name}" <address> [--key] --replace',
         field=NAME,
-        page=f'a model server "{name}" is saved already; its Change sets another address or key',
+        page=f'A model server "{name}" is saved already; its Change sets another address or key',
     )
 
 
@@ -1248,7 +1248,7 @@ def _model_taken(name: str) -> Refused:
     return Refused(
         f'a model "{name}" is saved already; remove it first: lado model remove "{name}"',
         field=NAME,
-        page=f'the name is taken by the model "{name}"',
+        page=f'The name is taken by the model "{name}"',
     )
 
 

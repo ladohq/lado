@@ -180,7 +180,7 @@ test("Esc restores the name with no request and gives the focus back to it; leav
 test("a refused name stays under the field; leaving it then restores the name", async () => {
   server.entries = { models: FOUR.slice(0, 2), servers: [] };
   server.answers["PATCH /api/models/Claude%20Sonnet"] = () =>
-    refusal('the name is taken by the model "gpt-5-codex"', "name");
+    refusal('The name is taken by the model "gpt-5-codex"', "name");
   mount();
   const claude = await card();
   fireEvent.click(within(claude).getByRole("button", { name: "Rename Claude Sonnet" }));
@@ -189,7 +189,7 @@ test("a refused name stays under the field; leaving it then restores the name", 
   });
   fireEvent.change(field, { target: { value: "GPT-5-codex" } });
   fireEvent.keyDown(field, { key: "Enter" });
-  const note = await within(claude).findByText('the name is taken by the model "gpt-5-codex"');
+  const note = await within(claude).findByText('The name is taken by the model "gpt-5-codex"');
   expect(note.className).toContain("field-note bad");
   expect(field.getAttribute("aria-invalid")).toBe("true");
   expect(within(claude).getByRole("textbox")).toBe(field);
@@ -201,7 +201,7 @@ test("a refused name stays under the field; leaving it then restores the name", 
 test("a name refused on leaving the field stays under it too; leaving again restores the name", async () => {
   server.entries = { models: FOUR.slice(0, 2), servers: [] };
   server.answers["PATCH /api/models/Claude%20Sonnet"] = () =>
-    refusal('the name is taken by the model "gpt-5-codex"', "name");
+    refusal('The name is taken by the model "gpt-5-codex"', "name");
   mount();
   const claude = await card();
   fireEvent.click(within(claude).getByRole("button", { name: "Rename Claude Sonnet" }));
@@ -210,7 +210,7 @@ test("a name refused on leaving the field stays under it too; leaving again rest
   });
   fireEvent.change(field, { target: { value: "GPT-5-codex" } });
   fireEvent.blur(field);
-  expect(await within(claude).findByText('the name is taken by the model "gpt-5-codex"')).toBeTruthy();
+  expect(await within(claude).findByText('The name is taken by the model "gpt-5-codex"')).toBeTruthy();
   expect(within(claude).getByRole("textbox")).toBe(field);
   fireEvent.blur(field);
   expect(within(claude).getByRole("button", { name: "Rename Claude Sonnet" })).toBeTruthy();

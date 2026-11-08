@@ -107,6 +107,9 @@ export function NotificationsOffer() {
 // Settings) scrolls to it and focuses the switch.
 export function NotificationsSetting() {
   const { on, problem, possible } = useNotifications();
+  // A browser with no notifications (an iPhone's Safari) leaves nothing to fix: a grey line
+  // under the description, not a refusal.
+  const none = problem === UNSUPPORTED;
   const id = useId();
   const row = useRef<HTMLDivElement>(null);
   const toggle = useRef<HTMLInputElement>(null);
@@ -125,6 +128,7 @@ export function NotificationsSetting() {
         <p className="srow-desc" id={`${id}-desc`}>
           When something waits for you and this tab is hidden.
         </p>
+        {none && <p className="srow-desc">{UNSUPPORTED}</p>}
       </div>
       <div className="srow-ctl">
         <span className="sw-hit">
@@ -141,7 +145,7 @@ export function NotificationsSetting() {
           />
         </span>
       </div>
-      {problem && (
+      {problem && !none && (
         <div className="srow-problem">
           <p className="field-problem">{problem}</p>
         </div>

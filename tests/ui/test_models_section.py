@@ -444,6 +444,14 @@ def test_a_server_added_ticked_renamed_unticked_refreshed_and_removed(
     expect(found).to_contain_text("1 embeddings model hidden: agents cannot run on it.")
     expect(found).to_contain_text("Agent CLIsKilo CLI, OpenCode")
     expect(models.locator("label", has_text="Key")).to_contain_text("optional")
+    # Name, Address and Key alike: one height, one size of text.
+    looks = [
+        models.get_by_label(label, exact=True).evaluate(
+            "f => [f.getBoundingClientRect().height, getComputedStyle(f).fontSize]"
+        )
+        for label in ("Name", "Address", "Key")
+    ]
+    assert looks[0] == looks[1] == looks[2], looks
     shot(page, "form-checked")
     add = models.get_by_role("button", name="Add server", exact=True)
     # Room under the page and above it: with the form at its very end, the page getting
@@ -839,10 +847,12 @@ def test_the_section_at_a_phones_width(browser: Browser, clis, server, lms, shot
         expect(change).to_be_visible()
         box = change.bounding_box()
         assert box and box["width"] >= 44 and box["height"] >= 44
-        # The icons under the name, measured at one moment.
+        # The icons at the right of the name's line, not on a line of their own; measured at
+        # one moment.
         assert gw.evaluate(
-            "li => li.querySelector('.mx-acts').getBoundingClientRect().top >= "
-            "li.querySelector('.mx-src-name').getBoundingClientRect().bottom"
+            "li => { const a = li.querySelector('.mx-acts').getBoundingClientRect();"
+            " const n = li.querySelector('.mx-src-name').getBoundingClientRect();"
+            " return a.top < n.bottom && a.left >= n.right; }"
         )
         lm = add_server(page, "LM Studio дома", lms.url)
         listing = lm.locator(".mx-list")

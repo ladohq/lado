@@ -49,6 +49,31 @@ def no_name_cut(page: Page) -> None:
     assert cut == [], cut
 
 
+def dot_on_first_line(page: Page) -> None:
+    """A CLI's login dot stands on the first line of its state, also when the state wraps (a
+    long one, as Codex's `Logged in · ChatGPT plan · Codex's login file` at 768)."""
+    states = page.evaluate(
+        """() => [...document.querySelectorAll('.pv-state')].map((state) => {
+          const nodes = [...state.childNodes];
+          const text = nodes.find((n) => n.nodeType === 3 || n.tagName === 'STRONG');
+          state.append(' · a state long enough to wrap onto a second line at 768 px wide');
+          const range = document.createRange();
+          range.selectNodeContents(text);
+          const first = range.getClientRects()[0];
+          const dot = state.querySelector('.dot').getBoundingClientRect();
+          const middle = dot.top + dot.height / 2;
+          const wraps = state.getBoundingClientRect().height > first.height * 1.5;
+          const on = middle >= first.top && middle <= first.bottom;
+          return { text: state.textContent, on, wraps };
+        })"""
+    )
+    assert [one for one in states if not one["on"]] == [], states
+    if page.viewport_size["width"] <= 900:
+        assert any(one["wraps"] for one in states), states  # the case was there to see
+    page.reload()  # the rows as the page draws them
+    expect(page.locator(".pv-refresh.spinning")).to_have_count(0, timeout=30_000)
+
+
 # A phone's controls, 44 px high; inline text links are exempt.
 TARGETS = (
     ".settings button, .settings .snav-item, .settings .back-link, .settings .sw-hit,"
@@ -94,6 +119,7 @@ def test_each_page_beside_the_list(browser: Browser, clis, saved, server, shot, 
                     page.get_by_role("combobox", name="Default model of OpenCode")
                 ).to_contain_text("qwen3-8b · lmstudio")
                 no_name_cut(page)
+                dot_on_first_line(page)
             if slug == "model-servers":
                 expect(page.get_by_role("table", name="Your models")).to_contain_text(
                     "OpenCode · default"

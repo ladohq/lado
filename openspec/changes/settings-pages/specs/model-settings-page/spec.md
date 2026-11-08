@@ -78,6 +78,35 @@ and × on one line, then `<model> · <server> · <agent CLI>` on the next, wrapp
 
 ## MODIFIED Requirements
 
+### Requirement: A refusal is the command's rule in the page's words under its field
+
+Every refusal and warning SHALL be the one the matching command makes, its hint under it,
+under the field it concerns: Name, Address or Key of a server; Model id; a rename's field;
+a refusal of no field under the buttons or in the tick's row. Its line and hint SHALL name
+no command to run, but what to do on the page; the commands SHALL print their lines as
+before. A name taken SHALL read from a capital letter. The form SHALL keep its values but the
+key's.
+
+#### Scenario: A key refused
+- **WHEN** the human adds `work` at `https://gw.corp/llm` with a key it answers 401 to
+- **THEN** under Key it shows the refusal, and `lado model-server add work
+  https://gw.corp/llm --key` prints its own line as before
+
+#### Scenario: A name taken
+- **WHEN** the human renames a model to `claude sonnet` and `Claude Sonnet` is saved
+- **THEN** under the field it shows `The name is taken by the model "Claude Sonnet"`
+
+#### Scenario: A server's name taken
+- **WHEN** the human adds a server named `LMS` and `lms` is saved
+- **THEN** under Name it shows `A model server "lms" is saved already; its Change sets another
+  address or key`
+
+#### Scenario: A model gone from the server's list
+- **WHEN** the human ticks a model its server no longer lists
+- **THEN** the row shows `<model> is not in <server>'s list of models`, and the tick is
+  off
+
+
 ### Requirement: Nothing moves under the pointer
 
 No change in the section SHALL scroll the page or move the element the human acts on or
@@ -288,15 +317,14 @@ every line pointing to that page `Settings → Agent CLIs`; Model servers SHALL 
 On a window narrower than 600 px the forms of Model servers SHALL show their fields one under the
 other; their icon buttons, ×, Undo, Agent CLIs' pickers and the picker's search SHALL be at
 least 44 px high and a list's row 44 px high; `Default model` SHALL show over the field; the
-field SHALL hide the id and keep the name and the server's mark; a server's list of up to 20
-models SHALL not scroll within itself; and no part of either page SHALL make the page scroll
-sideways.
+field SHALL hide the id, not the name or the server's mark; a server's ✎ and 🗑 SHALL stay on its name's line; a list of up to
+20 models SHALL not scroll within itself; and neither page SHALL scroll sideways.
 
 #### Scenario: A server's list on a phone
 - **WHEN** the human opens a server with a long address and 12 models in a window 390 px
   wide
-- **THEN** the page does not scroll sideways, the address wraps whole, ✎ and 🗑 show under
-  its name, and all 12 models show without a scroll inside the list
+- **THEN** the page does not scroll sideways, the address wraps whole, ✎ and 🗑 show at
+  the right of its name's line, and all 12 models show without a scroll inside the list
 
 #### Scenario: A model with marks on a phone
 - **WHEN** a server's model `qwen/qwen-gone-7b-instruct-q4` is no longer listed and saved

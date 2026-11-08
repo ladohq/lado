@@ -787,7 +787,7 @@ test("a typo in the port shows under Address before any Add, and Add stays off",
 test("a taken name shows under Name, and Add stays off", async () => {
   server.entries = { models: [], servers: [LMSTUDIO] };
   await openForm("lm studio ДОМА", "localhost:1234");
-  expect(await within(fieldOf("Name")).findByText('a model server "LM Studio дома" is saved already')).toBeTruthy();
+  expect(await within(fieldOf("Name")).findByText('A model server "LM Studio дома" is saved already')).toBeTruthy();
   expect(await within(fieldOf("Address")).findByText('same address as model server "LM Studio дома"')).toBeTruthy();
   expect(within(fieldOf("Name")).queryByText("free")).toBeNull();
   expect(addButton().disabled).toBe(true);

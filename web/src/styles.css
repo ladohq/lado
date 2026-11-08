@@ -168,6 +168,9 @@ button {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  /* As high as what shows: a tablet's browser bars take some of 100vh (Help, Settings at its
+     bottom would go under them). */
+  height: 100dvh;
   padding: 10px 10px 14px;
   background: var(--panel);
   border-right: 1px solid var(--line);
@@ -2596,13 +2599,18 @@ h3 {
   font: 12.5px var(--mono);
 }
 
+/* The dot on the state's first line, also when a long state wraps. */
 .pv-state {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   color: var(--muted);
   font-size: 13px;
   line-height: 18px;
+}
+
+.pv-state .dot {
+  margin-top: 4.5px;
 }
 
 .pv-need .pv-state strong {
@@ -11699,8 +11707,9 @@ section.artifact-group + section.artifact-group {
   font: 13px var(--mono);
 }
 
+/* A name in words, at the size of the address and the key beside it. */
 .mx-form .field input.words {
-  font: inherit;
+  font: 13px var(--sans);
 }
 
 .mx-form .project-in-secret {
@@ -11895,12 +11904,9 @@ section.artifact-group + section.artifact-group {
     height: 44px;
   }
 
-  .mx-head {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
+  /* ✎ and 🗑 stay at the right of the name's line; the second line wraps under the name. */
   .mx-acts {
-    padding: 0 0 4px 30px;
+    align-self: start;
   }
 
   .mx-l2 {

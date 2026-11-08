@@ -37,6 +37,6 @@
 
 ## 4. Checks
 
-- [ ] 4.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui tests/ui/test_models_section.py`
+- [x] 4.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui tests/ui/test_models_section.py`
   pass (AC-7).
-- [ ] 4.2 `openspec validate default-model-says-saved --strict` and the trial archive pass.
+- [x] 4.2 `openspec validate default-model-says-saved --strict` and the trial archive pass.

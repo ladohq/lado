@@ -16,8 +16,7 @@
   endpoint; a refused post shows the problem and the switch shows the state as read. Check:
   AC-1.
 - [ ] 1.2 `web/src/Telemetry.tsx`, `StatisticsSetting`: the control is the switch of
-  `NotificationsSetting` (`.sw-hit` > `input.sw[role=switch]`, the row's name a `label` for
-  it, `aria-describedby` the state line); the row is a plain `.srow` (no `.srow-wide`); `CHOICES`
+  `NotificationsSetting` (design.md D1); the row is a plain `.srow` (no `.srow-wide`); `CHOICES`
   goes. The banner (`StatisticsQuestion`) is unchanged. Check: the tests of 1.1 green.
 - [ ] 1.3 `tests/ui/test_statistics.py` (`-m ui`): the tests that pick Send / Don't send turn the
   switch instead; one asserts not chosen shows the switch off and the banner still asking, then

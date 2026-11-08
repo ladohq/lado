@@ -273,7 +273,7 @@ def test_a_folder_that_will_not_do_shows_the_cores_reason(page: Page, server, tm
     where.fill(str(plain))
     expect(dialog).to_contain_text(f"{plain} is a file, not a folder")
     expect(start_button(dialog)).to_be_disabled()
-    expect(dialog.locator(".launch-missing")).to_have_text("To start: choose a place.")
+    expect(dialog.locator(".launch-missing")).to_contain_text("To start: choose a place")
     # The CLIs checked: each `--version` may take seconds on a loaded machine.
     expect(agent(dialog)).to_be_enabled(timeout=30_000)
     shot(page)

@@ -51,8 +51,8 @@
 
 ## 4. Checks
 
-- [ ] 4.1 `make lint`, `make test` (unit, `-n auto`), `make web`, `uv run pytest -m ui -n auto
+- [x] 4.1 `make lint`, `make test` (unit, `-n auto`), `make web`, `uv run pytest -m ui -n auto
   <the changed files of tests/ui/>` pass; counts in the build report.
-- [ ] 4.2 `openspec validate short-model-names --strict`, `openspec validate --specs --strict` and
+- [x] 4.2 `openspec validate short-model-names --strict`, `openspec validate --specs --strict` and
   the trial archive pass; `grep -rn "<model> · <server>" openspec/specs docs` finds none of the old
   rule.

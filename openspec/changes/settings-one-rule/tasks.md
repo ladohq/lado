@@ -38,9 +38,9 @@
   default shown in the line; after `UNDO_MS` only Undo goes and the line stays until the next
   change; ticking again takes the line away and sets no default. Check: AC-3.
 - [ ] 2.4 `web/src/ModelSources.tsx`: the question on a default and `asking` go; an untick
-  records what was removed and shows the line under that CLI's tick, by design D3-D5 of this
-  change (the proposal's "Decisions for the record" in the design artifact): one Undo
-  component and one `UNDO_MS`, shared with Your models, not a copy. The module's head comment
+  records what was removed and shows the line under that CLI's tick, by
+  design.md D3-D5: one Undo state and component and one `UNDO_MS`, shared with Your models,
+  not a copy. The module's head comment
   says the new rule. Check: 2.3 green; `make web`.
 - [ ] 2.5 `tests/ui/test_models_section.py` (`-m ui`):
   `test_an_external_default_removed_with_a_question_and_undo` becomes one without a question;

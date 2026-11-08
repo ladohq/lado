@@ -43,6 +43,8 @@ export type ModelRead = {
 };
 
 const fold = (text: string) => text.toLowerCase();
+// A model named by its id shows the id once: as its name.
+const idBeside = (name: string, model: string) => (fold(model) === fold(name) ? undefined : model);
 
 export const sameModel = (a: CliDefault, b: CliDefault | null) =>
   b !== null && a.external === b.external && a.builtin === b.builtin;
@@ -229,7 +231,7 @@ export function ModelPicker({
         label: `${m.name}, ${m.model}, on the model server ${m.server}`,
         selected: value?.external === m.id,
         title: m.name,
-        id: m.model,
+        id: idBeside(m.name, m.model),
         server: m.server,
         down: state !== undefined && "down" in state,
         mark: serverWords(state, m.model),
@@ -552,7 +554,7 @@ export function ModelPicker({
           {value?.external != null && (
             <>
               <span className="mp-title">{value.name}</span>
-              <span className="mp-id mono">{value.model}</span>
+              {idBeside(value.name, value.model) && <span className="mp-id mono">{value.model}</span>}
             </>
           )}
         </span>

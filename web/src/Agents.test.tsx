@@ -411,6 +411,24 @@ test.each([
   ]);
 });
 
+test("an agent on a server's model named by its id says the id once", async () => {
+  const model = {
+    name: "qwen3.8-27b",
+    source: "default",
+    detail: null,
+    words: "Kilo CLI's default model",
+    configured: "Qwen3.8-27B",
+    server: "LM Studio",
+    address: "http://localhost:1234",
+  };
+  serve({ agents: [SUPERVISOR, agent("developer", { provider: "kilo", model })] });
+  open("/sessions/lado/agents/developer");
+  const region = await page("developer");
+  expect(region.querySelector("dl dd")!.textContent).toBe(
+    "Qwen3.8-27B · server LM Studio, http://localhost:1234 · Kilo CLI's default model",
+  );
+});
+
 test("an agent whose CLI has named no model says CLI default, with no name", async () => {
   serve({ agents: [SUPERVISOR, agent("developer", { provider: "kilo" })] });
   open("/sessions/lado/agents/developer");

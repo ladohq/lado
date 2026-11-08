@@ -11245,6 +11245,15 @@ section.artifact-group + section.artifact-group {
     color: var(--muted);
   }
 
+  /* A model named by its id: the line starts at its server. */
+  .mx-mrow.yours .mx-model.mx-model-named {
+    display: none;
+  }
+
+  .mx-mrow.yours .mx-model-named + .mx-from::before {
+    content: none;
+  }
+
   .mx-mrow.yours.mx-undo {
     grid-template-areas: none;
     grid-template-columns: minmax(0, 1fr) auto;

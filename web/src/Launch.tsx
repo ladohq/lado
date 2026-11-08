@@ -73,6 +73,7 @@ const DEFAULT_MODE = "default"; // also "no mode given": the provider's own defa
 // Why the folder's provider was chosen, in the words `lado start` prints (runtime.Suggestion).
 const SUGGESTED: Record<ProviderSuggestion["reason"], string> = {
   last_session: "from the folder's last session",
+  last_any: "from your last session",
   only_installed: "the only one installed",
 };
 

@@ -285,6 +285,14 @@ after `Variables from outside` only when one takes the place of the outside fold
 LADO secrets: <NAME>[, …] overrides LADO_ENV_DIR`) or a file there is not used (a warning, by
 name with why, never a value).
 
+A new session without `--provider` takes, in order: the provider of its folder's last
+session if installed on the agents' PATH, else that of the latest started session of any
+folder if installed, else the only one installed; it prints the choice with its reason
+(`provider: claude (the folder's last session)`, `(your last session)`, `(the only one
+installed)`). With none of these it is refused: `which agent CLI should the session run?
+Installed on the agents' PATH: …; give one with --provider NAME`. The UI's New session
+window suggests its agent by the same rule.
+
 A new session of a CLI that needs a login and has none, read in the environment its agents
 would get (with the project's secrets for `--project`), is refused with exit 1 before
 anything is stored: `lado: Claude Code is not logged in, so the session was not started: log

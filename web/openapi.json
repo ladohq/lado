@@ -9075,6 +9075,7 @@
             "type": "string",
             "enum": [
               "last_session",
+              "last_any",
               "only_installed"
             ],
             "title": "Reason"

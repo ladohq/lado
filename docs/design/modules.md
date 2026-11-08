@@ -280,9 +280,11 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     (docs/design/agents.md). `start_approved_session` is the supervisor's
     `start_session` tool (docs/cli.md, Supervisor-started sessions). No provider is the default: a new session
     without one takes `suggested_provider(repo, installed)`, a `Suggestion` (provider and
-    reason, `LAST_SESSION` or `ONLY_INSTALLED`; `line()` is what `lado start` prints as
-    `provider: ...`): the provider of the folder's last session (`state.last_session`) if
-    `installed`, else the only one installed, else none, and the start refuses with the
+    reason, `LAST_SESSION`, `LAST_ANY` or `ONLY_INSTALLED`; `line()` is what `lado start`
+    prints as `provider: ...`): the provider of the folder's last session
+    (`state.last_session`) if `installed`, else that of the latest started session of any
+    folder (`state.sessions_by_start`) if installed, else the only one installed, else
+    none, and the start refuses with the
     installed ones and `--provider NAME`, or every install hint when none is. `installed`
     is the caller's `shutil.which` (never `--version`): for that choice `start_session`
     resolves the agents' environment first and looks on its PATH (a provider given or

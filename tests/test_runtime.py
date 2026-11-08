@@ -87,10 +87,43 @@ def test_the_last_sessions_provider_not_installed_falls_back_to_the_only_one(rep
     assert suggestion.line() == "opencode (the only one installed)"
 
 
-def test_another_folders_session_does_not_count(repo, tmp_path, fake_tmux):
+def test_the_last_session_anywhere_is_the_second_step(repo, tmp_path, fake_tmux):
     other = agent_helpers.init_repo(tmp_path / "other")
     runtime.start_session(str(other), "o", None, "kilo")
-    assert runtime.suggested_provider(str(repo), _installed("claude", "kilo")) is None
+    runtime.start_session(str(other), "p", None, "opencode")
+    suggestion = runtime.suggested_provider(str(repo), _installed("claude", "kilo", "opencode"))
+    assert suggestion == runtime.Suggestion("opencode", runtime.LAST_ANY)
+    assert suggestion.line() == "opencode (your last session)"
+    assert runtime.suggested_provider(None, _installed("claude", "opencode")) == suggestion
+
+
+def test_the_last_session_anywhere_not_installed_falls_back_to_the_only_one(
+    repo, tmp_path, fake_tmux
+):
+    other = agent_helpers.init_repo(tmp_path / "other")
+    runtime.start_session(str(other), "o", None, "kilo")
+    suggestion = runtime.suggested_provider(str(repo), _installed("opencode"))
+    assert suggestion == runtime.Suggestion("opencode", runtime.ONLY_INSTALLED)
+    assert runtime.suggested_provider(str(repo), _installed("claude", "opencode")) is None
+
+
+def test_a_new_folder_takes_the_provider_of_the_last_session_anywhere(repo, tmp_path, fake_tmux):
+    other = agent_helpers.init_repo(tmp_path / "other")
+    runtime.start_session(str(other), "o", None, "opencode")
+    started = runtime.start_session(str(repo), "s", None)
+    assert started.session.provider == "opencode"
+    assert started.chosen == runtime.Suggestion("opencode", runtime.LAST_ANY)
+
+
+def test_free_name_is_the_name_when_no_session_has_it(repo, fake_tmux):
+    assert runtime.free_name("webapp") == "webapp"
+
+
+def test_free_name_counts_past_the_taken_ones(repo, fake_tmux):
+    runtime.start_session(str(repo), "webapp", None, "kilo")
+    assert runtime.free_name("webapp") == "webapp-2"
+    runtime.start_session(str(repo), "webapp-2", None, "kilo")
+    assert runtime.free_name("webapp") == "webapp-3"
 
 
 @pytest.mark.parametrize(

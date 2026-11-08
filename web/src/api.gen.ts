@@ -3397,7 +3397,7 @@ export interface components {
              * Reason
              * @enum {string}
              */
-            reason: "last_session" | "only_installed";
+            reason: "last_session" | "last_any" | "only_installed";
         };
         /**
          * ProvidersPage

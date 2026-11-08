@@ -246,8 +246,9 @@ class CloneJob(BaseModel):
 
 class ProviderSuggestion(BaseModel):
     name: str
-    # last_session: the folder's last session's; only_installed: the one CLI installed
-    reason: Literal["last_session", "only_installed"]
+    # last_session: the folder's last session's; last_any: the latest started session's of
+    # any folder; only_installed: the one CLI installed
+    reason: Literal["last_session", "last_any", "only_installed"]
 
 
 class RecentFolder(BaseModel):

@@ -544,9 +544,14 @@ def _git_refused(path: str, result: subprocess.CompletedProcess) -> FolderProble
 
 
 LAST_SESSION = "last_session"  # the provider of the folder's last session
+LAST_ANY = "last_any"  # the provider of the latest started session of any folder
 ONLY_INSTALLED = "only_installed"  # the one provider installed
 
-_REASONS = {LAST_SESSION: "the folder's last session", ONLY_INSTALLED: "the only one installed"}
+_REASONS = {
+    LAST_SESSION: "the folder's last session",
+    LAST_ANY: "your last session",
+    ONLY_INSTALLED: "the only one installed",
+}
 
 
 @dataclass(frozen=True)
@@ -554,23 +559,44 @@ class Suggestion:
     """The provider a new session of a folder takes when none is given, and why."""
 
     provider: str
-    reason: str  # LAST_SESSION or ONLY_INSTALLED
+    reason: str  # LAST_SESSION, LAST_ANY or ONLY_INSTALLED
 
     def line(self) -> str:
         return f"{self.provider} ({_REASONS[self.reason]})"
+
+
+def free_name(base: str) -> str:
+    """`base` when no session has it, else the first of `base-2`, `base-3`, … that none has:
+    the name the New session window offers beside a stopped session of `base`."""
+    n, name = 1, base
+    while state.get_session(name) is not None:
+        n += 1
+        name = f"{base}-{n}"
+    return name
 
 
 def suggested_provider(
     repo: str | None, installed: Callable[[providers.Provider], bool]
 ) -> Suggestion | None:
     """No provider is the default: a new session takes the provider of the folder's last
-    session (`repo` None: a folder with no sessions known) if it is `installed`, else the
-    only one installed; None when that leaves a choice to the human, or none to make.
-    `installed` is the caller's look for the CLI (`shutil.which` on some PATH), never
-    `<cli> --version`."""
+    session (`repo` None: a folder with no sessions known) if it is `installed`, else that
+    of the latest started session of any folder if installed, else the only one installed;
+    None when that leaves a choice to the human, or none to make. `installed` is the
+    caller's look for the CLI (`shutil.which` on some PATH), never `<cli> --version`."""
+
+    def usable(session: "state.Session | None") -> bool:
+        return bool(
+            session
+            and session.provider in providers.names()
+            and installed(providers.get(session.provider))
+        )
+
     last = state.last_session(repo) if repo else None
-    if last and last.provider in providers.names() and installed(providers.get(last.provider)):
+    if usable(last):
         return Suggestion(last.provider, LAST_SESSION)
+    latest = next(iter(state.sessions_by_start()), None)
+    if usable(latest):
+        return Suggestion(latest.provider, LAST_ANY)
     found = [name for name in providers.names() if installed(providers.get(name))]
     return Suggestion(found[0], ONLY_INSTALLED) if len(found) == 1 else None
 

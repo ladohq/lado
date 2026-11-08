@@ -12383,8 +12383,22 @@ section.artifact-group + section.artifact-group {
 }
 
 .mx-sub-item .mx-as {
+  grid-column: 2; /* each line in the title's column, however many (`as`, then why) */
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+/* A CLI that cannot use the server: its tick off and disabled, its title muted, why under it. */
+.mx-sub-item.mx-cant {
+  cursor: default;
+}
+
+.mx-cant > span:first-of-type {
+  color: var(--muted);
+}
+
+.mx-cant input[type="checkbox"] {
+  opacity: 0.45;
 }
 
 .mx-row-note {

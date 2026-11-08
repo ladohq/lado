@@ -609,6 +609,84 @@ def test_the_form_names_the_cli_a_server_s_type_does_not_suit(page: Page, clis, 
     shot(page, "note")
 
 
+CODEX_ON_LMSTUDIO = (
+    "cannot use this server: its Responses API loses Codex CLI's MCP tools, so the agent could "
+    "not talk to LADO"
+)
+
+
+def open_qwen(page: Page) -> Locator:
+    """LM Studio дома open, qwen3-8b open under its row: its agent CLIs."""
+    toggle(page, "LM Studio дома").click()
+    lm = source(page, "LM Studio дома")
+    lm.get_by_role("button", name="qwen3-8b", exact=True).click()
+    return lm.get_by_role("group", name="Agent CLIs for qwen3-8b")
+
+
+def test_a_cli_lm_studio_does_not_suit_is_off_with_why(
+    browser: Browser, page: Page, clis, server, lms, shot
+):
+    """Every agent CLI under a model, in LADO's order; Codex CLI's tick off with the core's
+    why (LAD-241). At 1440 light, and at 390 dark."""
+    saved_server(lms)
+    page.set_viewport_size({"width": 1440, "height": 900})
+    open_settings(page, server)
+    sub = open_qwen(page)
+    items = sub.locator("label.mx-sub-item")
+    expect(items.nth(3)).to_be_visible()
+    titles = items.locator("> span:first-of-type").all_text_contents()
+    # The four agent CLIs first; the test server's stand-in providers after them.
+    assert titles[:4] == ["Claude Code", "Codex CLI", "Kilo CLI", "OpenCode"], titles
+    codex = sub.get_by_role("checkbox", name="qwen3-8b on Codex CLI", exact=True)
+    expect(codex).to_be_disabled()
+    expect(codex).not_to_be_checked()
+    expect(items.nth(1).locator(".mx-as")).to_have_text(CODEX_ON_LMSTUDIO)
+    expect(items.nth(0).locator(".mx-as")).to_have_text(
+        "cannot use this server: it has no Anthropic Messages API"
+    )
+    expect(sub.get_by_text("would be qwen3-8b · LM Studio дома · Kilo CLI")).to_be_visible()
+    expect(sub.get_by_role("checkbox", name="qwen3-8b on Kilo CLI", exact=True)).to_be_enabled()
+    shot(page, "1440-light")
+
+    context = browser.new_context(
+        viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True, color_scheme="dark"
+    )
+    try:
+        phone = context.new_page()
+        open_settings(phone, server)
+        sub = open_qwen(phone)
+        expect(sub.locator("label.mx-cant .mx-as").first).to_be_visible()
+        expect(sub.locator("label.mx-cant").nth(1)).to_contain_text(CODEX_ON_LMSTUDIO)
+        sub.scroll_into_view_if_needed()
+        assert phone.evaluate("document.documentElement.scrollWidth") <= 390
+        shot(phone, "390-dark", full_page=False)
+    finally:
+        context.close()
+
+
+def test_a_saved_model_on_a_cli_that_cannot_says_its_name_and_why_beside_the_tick(
+    page: Page, clis, server, lms, shot
+):
+    """Codex CLI's model saved on LM Studio: its tick on and disabled, and under its title both
+    `as <name>` and why, in the column of the title, not squeezed under the tick (LAD-241)."""
+    state.add_model("Codex qwen", "codex", "qwen3-8b", saved_server(lms))
+    page.set_viewport_size({"width": 1440, "height": 900})
+    open_settings(page, server)
+    sub = open_qwen(page)
+    codex = sub.locator("label.mx-cant").filter(has_text="Codex CLI")
+    expect(codex.get_by_role("checkbox")).to_be_checked()
+    expect(codex.get_by_role("checkbox")).to_be_disabled()
+    said = codex.locator(".mx-as")
+    expect(said).to_have_text(["as Codex qwen", CODEX_ON_LMSTUDIO])
+    title = codex.locator("> span").first.bounding_box()
+    for line in (said.nth(0), said.nth(1)):
+        box = line.bounding_box()
+        assert box and title, (box, title)
+        assert abs(box["x"] - title["x"]) < 1, (box, title)
+        assert box["width"] > 100, box
+    shot(page, "saved")
+
+
 def test_key_and_new_key_are_dots_as_a_projects_secret(page: Page, clis, server, lms):
     """Key and New key: text fields drawn in the font of dots, as a project's secret."""
     model_settings.add_server("lab", lms.url, None, warn=lambda _: None, note=lambda _: None)

@@ -3,8 +3,9 @@
 // opening it reads its models now by a probe with its kept key, ↻ reads them again; nothing is
 // read before and no list outlives the page. A list's order is set when it is read (the
 // source's configured models first) and no tick changes it; it is bounded and scrolls within
-// itself. A server's model opens under its row the installed CLIs that can run it, a tick each,
-// with the name a tick would save (the core's). A tick is on exactly when a configured model
+// itself. A server's model opens under its row every agent CLI in LADO's order: one installed
+// that can run it a tick with the name a tick would save (the core's), another a disabled tick
+// saying why not (the core's reason, or not installed). A tick is on exactly when a configured model
 // has that CLI, model and server: ticking saves one, unticking removes it with no Undo (a tick
 // again brings it back under its name while the page stays open), after a question when it is
 // its CLI's default. A server shows its list, its Change form or its Remove question, one at a
@@ -206,6 +207,11 @@ export function ModelServers(props: Sources) {
     const row = props.logins.find((r) => r.cli.name === cli);
     return !row?.ready || row.cli.installed;
   };
+  // LADO's order of the agent CLIs, as Agent CLIs lists them; one it does not, after them.
+  const place = (cli: string) => {
+    const at = props.logins.findIndex((r) => r.cli.name === cli);
+    return at < 0 ? props.logins.length : at;
+  };
   return (
     <section className="mx-block" aria-labelledby={id}>
       <h3 id={id}>
@@ -228,6 +234,7 @@ export function ModelServers(props: Sources) {
                   saved={props.saved[key]}
                   focus={fresh !== null && fold(fresh) === fold(server.name)}
                   installed={installed}
+                  place={place}
                   onToggle={() => reads.toggle(key, () => reads.readServer(server.name))}
                   onClose={() => props.open.has(key) && reads.close(key)}
                   onRefresh={() => reads.readServer(server.name)}
@@ -332,6 +339,8 @@ function SourceHead({
 }
 
 type Column = { name: string; title: string };
+// An agent CLI under a server's model: why it cannot be ticked, "" when it can.
+type Cli = Column & { why: string };
 
 function ServerSource({
   server,
@@ -340,6 +349,7 @@ function ServerSource({
   saved,
   focus,
   installed,
+  place,
   onToggle,
   onClose,
   onRefresh,
@@ -352,6 +362,7 @@ function ServerSource({
   saved: Saved | undefined;
   focus: boolean;
   installed: (cli: string) => boolean;
+  place: (cli: string) => number;
   onToggle: () => void;
   onClose: () => void;
   onRefresh: () => void;
@@ -363,7 +374,13 @@ function ServerSource({
   const open = sources.open.has(serverKey(server.name));
   const own = fromSource(sources.settings.models, server.name);
   const probe = read && "probe" in read ? read.probe : null;
-  const columns: Column[] = (probe?.clis ?? []).filter((c) => installed(c.name));
+  // Every agent CLI the probe names, in LADO's order: the core says why one cannot use the
+  // server, this machine why one it suits cannot run here; the others are the columns.
+  const clis: Cli[] = [
+    ...(probe?.clis ?? []).map((c) => ({ name: c.name, title: c.title, why: installed(c.name) ? "" : "not installed" })),
+    ...(probe?.cannot ?? []).map((c) => ({ name: c.name, title: c.title, why: `cannot use this server: ${c.why}` })),
+  ].sort((a, b) => place(a.name) - place(b.name));
+  const columns: Column[] = clis.filter((c) => !c.why);
   // One of the list, Change and Remove at a time.
   const show = (next: "change" | "remove") => {
     const to = mode === next ? null : next;
@@ -472,6 +489,7 @@ function ServerSource({
             sources={sources}
             server={server.name}
             columns={columns}
+            clis={clis}
             own={own}
             hint={saved?.added === true}
             onRefresh={onRefresh}
@@ -490,6 +508,7 @@ function SourceBody({
   sources,
   server,
   columns,
+  clis,
   own,
   hint,
   onRefresh,
@@ -497,7 +516,8 @@ function SourceBody({
   read: Read | undefined;
   sources: Sources;
   server: string;
-  columns: Column[];
+  columns: Column[]; // the CLIs a tick can save a model of
+  clis: Cli[]; // every CLI under a model, those that cannot saying why
   own: ConfiguredModelInfo[];
   hint: boolean; // say how to go on: the server was just added
   onRefresh: () => void;
@@ -690,12 +710,12 @@ function SourceBody({
     const entries = models.filter((m) => m.model === model && fold(m.server) === fold(server));
     // In LADO's order of the agent CLIs, as the probe names them; one it does not, after them.
     const place = (cli: string) => {
-      const at = columns.findIndex((c) => c.name === cli);
-      return at < 0 ? columns.length : at;
+      const at = clis.findIndex((c) => c.name === cli);
+      return at < 0 ? clis.length : at;
     };
     const titles = [...new Set([...entries].sort((a, b) => place(a.cli) - place(b.cli)).map((m) => m.cli_title))];
     const opened = pop === model;
-    if (columns.length === 0)
+    if (clis.length === 0)
       return (
         <div key={model} className="mx-pick">
           <div className="mx-row mx-row-plain">
@@ -740,13 +760,30 @@ function SourceBody({
             <p>
               Agent CLIs that run <b className="mono">{model}</b>:
             </p>
-            {columns.map((on) => (
-              <label key={on.name} className="mx-sub-item">
-                {box(on, model)}
-                <span>{on.title}</span>
-                {named(on, model, would?.model === model ? would.by[on.name] : undefined)}
-              </label>
-            ))}
+            {clis.map((on) =>
+              on.why ? (
+                // On when a model of it is saved, as any tick; removed in Your models.
+                <label key={on.name} className="mx-sub-item mx-cant">
+                  <input
+                    type="checkbox"
+                    aria-label={`${model} on ${on.title}`}
+                    aria-description={on.why}
+                    checked={tickState(models, on.name, model, server).on}
+                    readOnly
+                    disabled
+                  />
+                  <span>{on.title}</span>
+                  {ticked(models, on.name, model, server).length > 0 && named(on, model, undefined)}
+                  <span className="mx-as">{on.why}</span>
+                </label>
+              ) : (
+                <label key={on.name} className="mx-sub-item">
+                  {box(on, model)}
+                  <span>{on.title}</span>
+                  {named(on, model, would?.model === model ? would.by[on.name] : undefined)}
+                </label>
+              ),
+            )}
             {asking?.model === model && (
               <div
                 className="mx-confirm"

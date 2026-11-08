@@ -1993,6 +1993,18 @@ export interface components {
             api: string;
         };
         /**
+         * CliCannot
+         * @description An agent CLI that cannot use a model server, and why, as the end of a sentence.
+         */
+        CliCannot: {
+            /** Name */
+            name: string;
+            /** Title */
+            title: string;
+            /** Why */
+            why: string;
+        };
+        /**
          * CliDefault
          * @description An agent CLI's default model: `external` the configured model's id or `builtin` the
          *     CLI's name for it, its name as shown, the model as the CLI names it, the server's name
@@ -3173,8 +3185,9 @@ export interface components {
          * @description What a probe found on a model server (lado.model_servers.Probe): its type, the
          *     address that answered (the typed one with its scheme and path filled in), its models
          *     (None for no list, why in `models_why`), those it types as embeddings, why its APIs
-         *     could not be told ("" when they could), the CLIs that can use it, and for each CLI that has
-         *     its API and refuses its type a line of why.
+         *     could not be told ("" when they could), the CLIs that can use it, for each CLI that has
+         *     its API and refuses its type a line of why, and each CLI that cannot use it with why
+         *     (`Probe.cannot`), both lists of CLIs in LADO's order.
          */
         ProbeInfo: {
             /** Kind */
@@ -3193,6 +3206,8 @@ export interface components {
             clis: components["schemas"]["CliApi"][];
             /** Cli Notes */
             cli_notes: string[];
+            /** Cannot */
+            cannot: components["schemas"]["CliCannot"][];
         };
         /**
          * ProjectDeletion

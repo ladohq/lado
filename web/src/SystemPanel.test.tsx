@@ -265,7 +265,7 @@ test("the Statistics row leads to Settings and closes the panel", async () => {
   const row = await within(shown).findByRole("link", { name: "sending · not sent yet" });
   fireEvent.click(row);
   expect(screen.queryByRole("dialog", { name: "System" })).toBeNull();
-  expect(await screen.findByRole("heading", { name: /^Usage statistics/ })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Statistics" })).toBeTruthy();
 });
 
 test("on a Mac the panel says where the server and LADO's tmux server run", async () => {

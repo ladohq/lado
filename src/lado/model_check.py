@@ -15,7 +15,7 @@ DEFAULT, OK, WARN, REFUSED = "default", "ok", "warn", "refused"
 class Verdict:
     kind: str  # DEFAULT (no model), OK, WARN or REFUSED
     text: str  # for the human, one line
-    page: str = ""  # a refusal's line naming no command, for Settings → Models ("": text)
+    page: str = ""  # a refusal's line naming no command, for Settings' pages ("": text)
 
 
 def verdict(

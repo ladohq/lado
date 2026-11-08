@@ -1,4 +1,4 @@
-// The one picker of a model (docs/design/ui.md, Models): a field and a list that lies over the
+// The one picker of a model (docs/design/ui.md, Agent CLIs; New session): a field and a list that lies over the
 // page, placed by the field so no card or dialog cuts it. Its rows, one order for every place:
 // the CLI's settings, YOUR MODELS, BUILT-IN, `Other name…` only for a CLI with no full list.
 // The list is what the core computes for the CLI (GET /api/providers/{name}/model-choices),
@@ -18,6 +18,7 @@ import {
 
 import { type CliDefault, type ConfiguredModelInfo, getModelChoices, type ModelChoices, unreachable } from "./api";
 import { ChevronIcon, ServerIcon } from "./icons";
+import { agentClisPath } from "./paths";
 import { messageOf } from "./SessionControl";
 
 const SEARCH_ABOVE = 10; // a list longer than this has a search field
@@ -625,8 +626,8 @@ export function ModelPicker({
               {launching && !typed ? (
                 <span>
                   The default comes from{" "}
-                  <a href="/settings#models" target="_blank" rel="noopener">
-                    Settings → Models
+                  <a href={agentClisPath()} target="_blank" rel="noopener">
+                    Settings → Agent CLIs
                   </a>
                   .
                 </span>

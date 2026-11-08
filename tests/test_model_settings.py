@@ -1187,7 +1187,7 @@ def test_one_name_of_two_models_is_refused(installed, monkeypatch):
         model_settings.set_default("opencode", "QWEN3-8B", installed("opencode"))
     assert str(refused.value) == (
         '"qwen3-8b" is both a saved model of OpenCode and one of its own; rename the saved one: '
-        "Settings → Models"
+        "Settings → Model servers"
     )
     assert state.cli_defaults() == []
 

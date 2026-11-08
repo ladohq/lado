@@ -1,8 +1,9 @@
-"""Settings → Agent CLIs and environment in a browser (openspec changes provider-logins,
-provider-login-layers): an agent of the fake provider "fake-login" (fake_provider.py), which
-logs in like Claude Code by a pasted token or key, waits for its CLI's login; Needs you leads
-there with "Log in…"; the row's one button opens the sheet that asks how to log in, the
-token pasted there reaches the waiting agent, and Log out asks first, naming it. "fake-window"
+"""Settings → Agent CLIs in a browser (openspec changes provider-logins,
+provider-login-layers, settings-pages): an agent of the fake provider "fake-login"
+(fake_provider.py), which logs in like Claude Code by a pasted token or key, waits for its
+CLI's login; Needs you's "Log in…" leads to its row, the focus on its login button; the row's
+one button opens the sheet that asks how to log in, the token pasted there reaches the
+waiting agent, and Log out asks first, naming it. "fake-window"
 logs in by its own command, like OpenCode: its sheet is the login window, which runs the
 fake CLI's login command, prints a link and reads a code sent with "Text to send". On a
 computer and at a phone's width."""
@@ -63,15 +64,18 @@ def test_a_waiting_agent_leads_to_the_sheet_and_starts_with_the_pasted_token(
     expect(group.get_by_text(re.compile("is not logged in: log in in Settings"))).to_be_visible()
     shot(page, "needs-you")
     group.get_by_role("button", name="Log in for supervisor").click()
-    expect(page).to_have_url(re.compile("/settings#providers-and-environment$"))
+    expect(page).to_have_url(re.compile("/settings/agent-clis#fake-login$"))
     fake = row(page)
+    expect(fake.get_by_role("button", name="Log in…")).to_be_focused()
+    expect(fake).to_be_in_viewport()
     expect(fake.get_by_text("Not logged in")).to_be_visible()
     expect(fake.get_by_role("link", name=f"supervisor of {session}")).to_be_visible()
     expect(fake.get_by_role("button")).to_have_count(1)  # one button, no field
     expect(fake.get_by_role("textbox")).to_have_count(0)
-    section = page.get_by_role("region", name="Agent CLIs and environment")
+    section = page.get_by_role("region", name="Agent CLIs")
+    expect(section.get_by_text("Changes apply to agents started afterwards.")).to_be_visible()
     expect(
-        section.get_by_text("Sign-ins your agents use. Changes apply to agents started afterwards.")
+        fake.get_by_text(f"supervisor of {session} waits; it starts once you log in.")
     ).to_be_visible()
     expect(section.get_by_role("button", name="Check the CLIs again")).to_be_visible()
     for gone in ("lado doctor", "Check again", "[ok]", "[warn]"):
@@ -95,7 +99,7 @@ def test_a_waiting_agent_leads_to_the_sheet_and_starts_with_the_pasted_token(
     deadline = time.monotonic() + 3
     while time.monotonic() < deadline:
         text = row(page).inner_text()
-        assert "Logged in" in text and "waits for this login" not in text, text
+        assert "Logged in" in text and "it starts once you log in" not in text, text
         time.sleep(0.1)
     idle(session)
     assert "canary-ui-token" not in page.content()
@@ -131,8 +135,8 @@ def test_the_section_shows_the_last_rows_at_once(page: Page, logins, held, serve
     page.set_viewport_size({"width": 1280, "height": 900})
     held.write_text("")
     log_in(page, server)
-    page.goto(f"{server['url']}/settings#providers-and-environment")
-    section = page.get_by_role("region", name="Agent CLIs and environment")
+    page.goto(f"{server['url']}/settings/agent-clis")
+    section = page.get_by_role("region", name="Agent CLIs")
     refresh = section.get_by_role("button", name="Check the CLIs again")
     # The first visit: each row as soon as its CLI answered; the held one says checking….
     fake = section.get_by_role("listitem", name=TITLE)
@@ -147,7 +151,7 @@ def test_the_section_shows_the_last_rows_at_once(page: Page, logins, held, serve
     # The next visit shows the last rows at once, while a fresh check runs.
     page.goto(f"{server['url']}/sessions")
     held.write_text("")
-    page.goto(f"{server['url']}/settings#providers-and-environment")
+    page.goto(f"{server['url']}/settings/agent-clis")
     expect(refresh).to_have_class(re.compile("spinning"))
     expect(row(page).get_by_text("Not logged in")).to_be_visible()
     expect(fake.filter(has_text="checking…")).to_have_count(0)
@@ -164,7 +168,7 @@ def test_the_sheet_at_a_phones_width(browser: Browser, logins, server, repo, sho
         page = context.new_page()
         session = waiting_session(repo, logins)
         log_in(page, server)
-        page.goto(f"{server['url']}/settings#providers-and-environment")
+        page.goto(f"{server['url']}/settings/agent-clis")
         fake = row(page)
         expect(fake.get_by_text("Not logged in")).to_be_visible()
         assert page.evaluate("document.documentElement.scrollWidth") <= 390  # no sideways scroll
@@ -256,7 +260,7 @@ def test_a_choice_signs_in_by_a_code_and_logs_out_of_the_file(
     page.context.grant_permissions(["clipboard-read", "clipboard-write"])
     session = waiting_session(repo, logins)
     log_in(page, server)
-    page.goto(f"{server['url']}/settings#providers-and-environment")
+    page.goto(f"{server['url']}/settings/agent-clis")
     row(page).get_by_role("button", name="Log in…").click()
     sign_in_by_code(page, logins, shot)
     expect(
@@ -281,7 +285,7 @@ def test_the_sign_in_by_a_code_at_a_phones_width(browser: Browser, logins, serve
         page = context.new_page()
         session = waiting_session(repo, logins)
         log_in(page, server)
-        page.goto(f"{server['url']}/settings#providers-and-environment")
+        page.goto(f"{server['url']}/settings/agent-clis")
         row(page).get_by_role("button", name="Log in…").click()
         sign_in_by_code(page, logins, shot, full_page=False, phone=True)
         expect(row(page).get_by_text(re.compile("Logged in · fake login"))).to_be_visible()
@@ -305,7 +309,7 @@ def test_a_sign_in_code_that_fails_keeps_the_clis_words(
 ):
     page.set_viewport_size({"width": 1280, "height": 900})
     log_in(page, server)
-    page.goto(f"{server['url']}/settings#providers-and-environment")
+    page.goto(f"{server['url']}/settings/agent-clis")
     row(page).get_by_role("button", name="Log in…").click()
     window = open_code_window(page, shot)
     said = "Error: device code login is not enabled for this fake server."
@@ -342,7 +346,7 @@ def log_in_from_the_window(page: Page, marker, shot, full_page: bool = True) -> 
 def test_a_cli_with_its_own_login_command_opens_its_window(page: Page, logins, server, shot):
     page.set_viewport_size({"width": 1280, "height": 900})
     log_in(page, server)
-    page.goto(f"{server['url']}/settings#providers-and-environment")
+    page.goto(f"{server['url']}/settings/agent-clis")
     expect(window_row(page).get_by_text("No login")).to_be_visible()
     window_row(page).get_by_role("button", name="Log in…").click()
     log_in_from_the_window(page, logins, shot)
@@ -361,7 +365,7 @@ def test_the_login_window_at_a_phones_width(browser: Browser, logins, server, sh
     try:
         page = context.new_page()
         log_in(page, server)
-        page.goto(f"{server['url']}/settings#providers-and-environment")
+        page.goto(f"{server['url']}/settings/agent-clis")
         window_row(page).get_by_role("button", name="Log in…").click()
         sheet = page.get_by_role("dialog", name="Log in: Fake window agent")
         expect(sheet.get_by_label("Text to send")).to_be_visible()

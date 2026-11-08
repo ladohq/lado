@@ -795,13 +795,13 @@ test("a CLI without its login is greyed out, not taken from the suggestion, and 
   expect(screen.queryByText(NO_LOGIN, { exact: false })).toBeNull();
 });
 
-test("Log in first closes the window and opens Settings' providers", async () => {
+test("Log in first closes the window and opens its CLI's row in Agent CLIs", async () => {
   providers = async () => [provider("claude", { login_missing: true }), provider("kilo")];
   await openLaunch();
   await ready("/src/app", { provider: { name: "claude", reason: "only_installed" } }, true);
   fireEvent.click(await screen.findByRole("button", { name: "Log in first" }));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "New session" })).toBeNull());
-  expect(await screen.findByRole("heading", { name: "Agent CLIs and environment" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Agent CLIs" })).toBeTruthy();
 });
 
 test("the Project way asks for the chosen project's providers, where its own login counts", async () => {
@@ -1146,7 +1146,7 @@ test("the default is chosen in advance, marked, checked, and sends nothing", asy
   await kiloWindow();
   await waitFor(() => expect(modelField().textContent).toContain(QWEN));
   expect(modelField().textContent).toContain("default");
-  await screen.findByText("Kilo CLI's default model, from Settings → Models.");
+  await screen.findByText("Kilo CLI's default model, from Settings → Agent CLIs.");
   await waitFor(() => expect(checked().length).toBe(1));
   expect(checked()[0].body).toEqual({ cli: "kilo", model: QWEN, project: null });
   expect("model" in (await startedWith())).toBe(false);
@@ -1510,10 +1510,10 @@ test("the list's foot opens Settings in a new tab, and the window reads the mode
   await kiloWindow();
   writeFirst("Look at the tests");
   fireEvent.click(modelField());
-  const link = (await screen.findByRole("link", { name: "Settings → Models" })) as HTMLAnchorElement;
-  expect(link.closest(".mp-foot")!.textContent).toContain("The default comes from Settings → Models.");
+  const link = (await screen.findByRole("link", { name: "Settings → Agent CLIs" })) as HTMLAnchorElement;
+  expect(link.closest(".mp-foot")!.textContent).toContain("The default comes from Settings → Agent CLIs.");
   expect(link.target).toBe("_blank");
-  expect(link.getAttribute("href")).toBe("/settings#models");
+  expect(link.getAttribute("href")).toBe("/settings/agent-clis");
   fireEvent.keyDown(modelField(), { key: "Escape" });
   const qwen = saved(QWEN, "qwen3-8b");
   modelEntries = { models: [qwen], servers: [], defaults: [defaultOf(qwen)] };
@@ -1597,7 +1597,7 @@ test("Resume of a model no longer saved says so, in the field too", async () => 
   ];
   const button = await resumeWindow();
   await screen.findByText(
-    "The session ran on the model Рабочая Qwen, which is no longer in Settings → Models. Pick a model or use Kilo CLI's settings.",
+    "The session ran on the model Рабочая Qwen, which is no longer in Settings → Model servers. Pick a model or use Kilo CLI's settings.",
   );
   expect(modelField().textContent).toContain("not in Settings");
   expect(button.disabled).toBe(true);

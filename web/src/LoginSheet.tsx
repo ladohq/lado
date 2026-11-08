@@ -1,4 +1,4 @@
-// The login sheet of Settings → Agent CLIs and environment (docs/design/ui.md), opened by a
+// The login sheet of Settings → Agent CLIs (docs/design/ui.md), opened by a
 // CLI's one button. For a CLI whose provider names choices (Claude Code: "How do you pay for
 // Claude?", Codex: "How do you pay for Codex?") it asks its question, the current choice
 // marked, and keeps the value pasted under the chosen one as LADO's secret in place of the

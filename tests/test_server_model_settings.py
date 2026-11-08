@@ -1,4 +1,4 @@
-"""The UI server's API of Settings → Models (openspec change model-settings-page): the
+"""The UI server's API of Settings → Model servers (openspec change model-settings-page): the
 configured models and model servers through lado.server.model_entries over
 lado.model_settings. In process, with FastAPI's test client and the fake model servers of
 tests/fake_model_server.py."""
@@ -212,7 +212,7 @@ def test_add_server_refusals_carry_fields(client, serve):
     lms.requests.clear()
     detail = refused(add_server(client, "LMS", lms.url))
     assert detail["field"] == "name"
-    assert detail["message"].startswith('a model server "lms" is saved already')
+    assert detail["message"].startswith('A model server "lms" is saved already')
     assert lms.requests == []
 
 
@@ -419,7 +419,7 @@ def test_check_server_refusals_carry_their_fields(client, serve):
     ok(add_server(client, "lms", lms.url))
     taken = check_server(client, "LMS", lms.url)
     assert [r["field"] for r in taken["refusals"]] == ["name"]
-    assert taken["refusals"][0]["message"].startswith('a model server "lms" is saved already')
+    assert taken["refusals"][0]["message"].startswith('A model server "lms" is saved already')
     assert taken["probe"]["kind"] == "LM Studio"  # the address is checked all the same
     assert taken["notes"] == ['same address as model server "lms"']
     port = closed_port()
@@ -509,7 +509,7 @@ def test_the_pages_refusals_name_no_command(client, serve, monkeypatch):
     )
     ok(add_server(client, "gw", gateway.url, key="k-1"))
     assert page(add_server(client, "GW", gateway.url))[0] == (
-        'a model server "gw" is saved already; its Change sets another address or key'
+        'A model server "gw" is saved already; its Change sets another address or key'
     )
     model_settings._write_key(state.model_server("gw").id, "k-2")  # the server takes no more
     assert page(client.post("/api/model-servers/gw/probe")) == (
@@ -632,7 +632,7 @@ def test_rename_model_route(client):
     detail = refused(client.patch("/api/models/Сильная", json={"name": "OTHER"}))
     assert (detail["field"], detail["message"]) == (
         "name",
-        'the name is taken by the model "Other"',
+        'The name is taken by the model "Other"',
     )
     assert refused(client.patch("/api/models/nope", json={"name": "x"}))["field"] == ""
 

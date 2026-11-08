@@ -357,6 +357,34 @@ test("every agent CLI under a server's model in LADO's order; one that cannot us
   expect(server.of("POST", "/api/models").filter((c) => c.path === "/api/models")).toEqual([]);
 });
 
+test("a CLI that cannot use the server with a model of it saved: its tick on and disabled, its name and why", async () => {
+  server.entries = {
+    models: [
+      model("Codex qwen", "codex", "Codex CLI", "qwen3-8b"),
+      model("Kilo qwen", "kilo", "Kilo CLI", "qwen3-8b"), // Kilo CLI is not installed here
+    ],
+    servers: [LMSTUDIO],
+  };
+  await mount();
+  await openModel("qwen3-8b", LMSTUDIO_REAL);
+  const pop = screen.getByRole("group", { name: "Agent CLIs for qwen3-8b" });
+  const said = (title: string) =>
+    [...pop.querySelectorAll("label")]
+      .find((label) => label.querySelector("span")?.textContent === title)
+      ?.querySelectorAll(".mx-as");
+  for (const [title, why] of [
+    ["Codex CLI", `cannot use this server: ${CODEX_REFUSES}`],
+    ["Kilo CLI", "not installed"],
+  ]) {
+    const box = await tickOf(`qwen3-8b on ${title}`);
+    expect([box.checked, box.disabled]).toEqual([true, true]);
+    const name = title === "Codex CLI" ? "Codex qwen" : "Kilo qwen";
+    expect([...(said(title) ?? [])].map((s) => s.textContent)).toEqual([`as ${name}`, why]);
+  }
+  const claude = await tickOf("qwen3-8b on Claude Code");
+  expect([claude.checked, claude.disabled]).toEqual([false, true]);
+});
+
 test("an API that did not answer in time says so under its CLI", async () => {
   server.entries = { models: [], servers: [LMSTUDIO] };
   await mount();

@@ -2853,7 +2853,7 @@ default: none does yet.
 
 What answered a server's check (`Found`) names under its Agent CLIs each CLI that has the server's
 API and cannot use its type (`ProbeInfo.cli_notes`), as a `field-note warn` with why: Codex CLI on
-LM Studio. Under a model of the server's list that CLI's tick is off and disabled with the
+LM Studio. Under a model of the server's list that CLI's tick is disabled with the
 core's why (`ProbeInfo.cannot`); the CLIs a tick can save a model of are `ProbeInfo.clis`.
 
 - **Two blocks**, no tabs, no intro, no frames: **Servers `<n>`** (its count once a server is
@@ -2983,7 +2983,8 @@ core's why (`ProbeInfo.cannot`); the CLIs a tick can save a model of are `ProbeI
 - **The ticks**: a server's model is a row that opens, on a click or Enter, under it `Agent CLIs
   that run <model>:` and every agent CLI the probe names, in LADO's order (that of Agent
   CLIs), one under the other whatever their number. One that cannot run it here has its tick
-  off and disabled, its title muted, and under it why: `cannot use this server: <why>`, the
+  disabled (on only when a model of it is saved, with `as <name>`: Your models removes it),
+  its title muted, and under it why: `cannot use this server: <why>`, the
   core's (`ProbeInfo.cannot`: its provider refuses the server's type, the server has no API of
   the CLI, or that API did not answer in time), or `not installed` for one the server suits
   that is not installed here. Each other one, installed and among `ProbeInfo.clis`, has its

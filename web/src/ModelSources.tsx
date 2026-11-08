@@ -762,9 +762,18 @@ function SourceBody({
             </p>
             {clis.map((on) =>
               on.why ? (
+                // On when a model of it is saved, as any tick; removed in Your models.
                 <label key={on.name} className="mx-sub-item mx-cant">
-                  <input type="checkbox" aria-label={`${model} on ${on.title}`} aria-description={on.why} disabled />
+                  <input
+                    type="checkbox"
+                    aria-label={`${model} on ${on.title}`}
+                    aria-description={on.why}
+                    checked={tickState(models, on.name, model, server).on}
+                    readOnly
+                    disabled
+                  />
                   <span>{on.title}</span>
+                  {ticked(models, on.name, model, server).length > 0 && named(on, model, undefined)}
                   <span className="mx-as">{on.why}</span>
                 </label>
               ) : (

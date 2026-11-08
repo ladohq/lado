@@ -2,10 +2,11 @@
 
 ### Requirement: A CLI that cannot use the server says why
 
-Under a server's model, an agent CLI that cannot use the server SHALL have its tick off and
-disabled and under its title `cannot use this server: <why>`, the core's why: its provider
-refuses the server's type, the server has no API of the CLI, or that API did not answer in
-time. One the server suits but not installed here SHALL say `not installed`.
+Under a server's model, an agent CLI that cannot use the server SHALL have its tick disabled,
+on only when a model of it is saved (then with `as <name>`), and under its title `cannot use
+this server: <why>`, the core's why: its provider refuses the server's type, the server has no
+API of the CLI, or that API did not answer in time. One the server suits but not installed
+here SHALL say `not installed`.
 
 #### Scenario: Codex CLI on LM Studio
 - **WHEN** LM Studio answers chat completions and the Responses API, all four agent CLIs are
@@ -13,6 +14,11 @@ time. One the server suits but not installed here SHALL say `not installed`.
 - **THEN** the list shows Claude Code, Codex CLI, Kilo CLI and OpenCode in that order, and
   Codex CLI's tick is off and disabled with `cannot use this server: its Responses API loses
   Codex CLI's MCP tools, so the agent could not talk to LADO`
+
+#### Scenario: A model saved on a CLI that cannot use the server now
+- **WHEN** `qwen3-8b` on `LM Studio` is saved for Kilo CLI as `Kilo qwen`, and Kilo CLI is no
+  longer installed
+- **THEN** Kilo CLI's tick is on and disabled, with `as Kilo qwen` and `not installed`
 
 #### Scenario: A server without the Anthropic Messages API
 - **WHEN** a server answers chat completions and the Responses API only

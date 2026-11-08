@@ -16,8 +16,9 @@ of its API, or one not installed, has no line anywhere on the page.
 Options weighed:
 
 - A (taken): every agent CLI LADO knows stays in the list under a model, in LADO's order; one
-  that cannot use the server has its tick off and disabled and, in place of `as <name>` /
-  `would be <name>`, `cannot use this server: <why>` or `not installed`. The reason sits where
+  that cannot use the server has its tick disabled (on only when a model of it is saved,
+  with `as <name>`) and, in place of `would be <name>`, `cannot use this server: <why>` or
+  `not installed`. The reason sits where
   the human looks for the tick. Long-term cost: one more field of `ProbeInfo`, one branch of
   the list.
 - B: one line per CLI once per server, above its models. Fewer repeated lines, but far from

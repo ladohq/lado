@@ -3,16 +3,16 @@ branch first. If it is not merged yet, tell the supervisor and wait.
 
 ## 1. The core and the API
 
-- [ ] 1.1 `src/lado/model_servers.py`: `Probe.cannot()` by D1, with its docstring; the module
+- [x] 1.1 `src/lado/model_servers.py`: `Probe.cannot()` by D1, with its docstring; the module
   docstring names it beside `refuses_server`. Unit tests: LM Studio with chat completions and
   the Responses API gives Claude Code (`it has no Anthropic Messages API`) and Codex CLI (its
   refusal), in the registry's order; a late Anthropic Messages API gives `its Anthropic
   Messages API did not answer in time` (AC-1, AC-2).
-- [ ] 1.2 `src/lado/server/models.py`: `CliCannot` and `ProbeInfo.cannot` (D2), docstring
+- [x] 1.2 `src/lado/server/models.py`: `CliCannot` and `ProbeInfo.cannot` (D2), docstring
   updated; `server/model_entries.probe_info` fills it. `tests/test_server_model_settings.py`:
   the probe of an open server and the Add form's check answer `cannot` (AC-1).
-- [ ] 1.3 `make web-types`; commit `web/openapi.json` and `web/src/api.gen.ts`.
-- [ ] 1.4 `lado model-server probe` and `add` print as before: the existing tests of their
+- [x] 1.3 `make web-types`; commit `web/openapi.json` and `web/src/api.gen.ts`.
+- [x] 1.4 `lado model-server probe` and `add` print as before: the existing tests of their
   `not:` line pass unchanged (AC-6).
 
 ## 2. The page

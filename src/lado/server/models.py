@@ -618,12 +618,21 @@ class CliApi(BaseModel):
     api: str
 
 
+class CliCannot(BaseModel):
+    """An agent CLI that cannot use a model server, and why, as the end of a sentence."""
+
+    name: str
+    title: str
+    why: str
+
+
 class ProbeInfo(BaseModel):
     """What a probe found on a model server (lado.model_servers.Probe): its type, the
     address that answered (the typed one with its scheme and path filled in), its models
     (None for no list, why in `models_why`), those it types as embeddings, why its APIs
-    could not be told ("" when they could), the CLIs that can use it, and for each CLI that has
-    its API and refuses its type a line of why."""
+    could not be told ("" when they could), the CLIs that can use it, for each CLI that has
+    its API and refuses its type a line of why, and each CLI that cannot use it with why
+    (`Probe.cannot`), both lists of CLIs in LADO's order."""
 
     kind: str
     address: str
@@ -633,6 +642,7 @@ class ProbeInfo(BaseModel):
     apis_why: str
     clis: list[CliApi]
     cli_notes: list[str]
+    cannot: list[CliCannot]
 
 
 class ModelServerAdd(BaseModel):

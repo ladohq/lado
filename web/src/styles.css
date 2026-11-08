@@ -873,7 +873,7 @@ h3 {
   margin-top: 8px;
 }
 
-/* Usage statistics: the banner that asks once, and Settings' section (Telemetry.tsx). */
+/* Statistics: the banner that asks once (Telemetry.tsx); Settings → Statistics is a row. */
 .stats-buttons {
   display: flex;
   flex-wrap: wrap;
@@ -10541,14 +10541,13 @@ section.artifact-group + section.artifact-group {
   margin-top: 10px;
 }
 
-/* Settings → Models (ModelSettings.tsx, ModelSources.tsx): one section, three blocks one
-   under the other. Your models a card per agent CLI with models, headed on --raised, rows of
-   fixed columns that keep their height (a removed model's Undo row too), a name wrapped,
-   never cut; Model servers and Models of your agent CLIs framed rows, the whole of which
-   opens a source (a framed arrow that turns), its icons at the right on its line, its models
-   in a list of at most --list-rows rows that scrolls within itself. Forms and notes are the
-   launch window's (.launch-grid, .field, .field-note); green (--done) only for what answered
-   and what was saved. */
+/* Settings → Model servers (ModelSettings.tsx, ModelSources.tsx) and a CLI's default model
+   on Agent CLIs (CliDefault.tsx): Servers, then Your models, rows of fixed columns that keep
+   their height (a removed model's Undo row too), a name wrapped, never cut; a server a row,
+   the whole of which opens a source (a framed arrow that turns), its icons at the right on its
+   line, its models in a list of at most --list-rows rows that scrolls within itself. Forms and
+   notes are the launch window's (.launch-grid, .field, .field-note); green (--done) only for
+   what answered and what was saved. */
 /* The browser's own scroll anchoring would move the page a second time after useScrollAnchor
    (Safari has none): off in the section and the ones after it, so the page acts alike in all. */
 .setting.mx,

@@ -64,7 +64,7 @@ with its files, interfaces and tests).
 
 ## 11. Documents and the regression run
 
-- [ ] 11.1 `docs/design/ui.md` (Settings, Agent CLIs, Model servers, Statistics, Help, Report a bug,
+- [x] 11.1 `docs/design/ui.md` (Settings, Agent CLIs, Model servers, Statistics, Help, Report a bug,
   System panel), `docs/cli.md`, `docs/install.md`, `docs/design/agents.md`, `docs/design/modules.md`,
   `docs/release.md`, CHANGELOG.md; the grep for the old names finds only the archive and
   `docs/epics/` (AC-7). Checked: the grep.

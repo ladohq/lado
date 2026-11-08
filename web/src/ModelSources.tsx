@@ -661,7 +661,7 @@ function SourceBody({
         disabled={state.several.length > 0 || gone}
         title={
           state.several.length
-            ? `${state.several.join(", ")}: remove them on the card of ${on.title}`
+            ? `${state.several.join(", ")}: remove them in Your models`
             : gone
               ? `${model} is no longer listed: ↻ reads the list again`
               : one

@@ -1,5 +1,5 @@
-// The server of Settings → Models in the component tests (ModelSettings.test.tsx,
-// ModelSources.test.tsx): the entries, the CLIs' rows and lists, and the servers' probes,
+// The server of Settings → Model servers and Agent CLIs' defaults in the component tests
+// (ModelSettings.test.tsx, ModelCards.test.tsx, ModelSources.test.tsx): the entries, the CLIs' rows and lists, and the servers' probes,
 // each request recorded; a test sets an answer of its own by "METHOD path".
 import { vi } from "vitest";
 

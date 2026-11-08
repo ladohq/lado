@@ -390,7 +390,7 @@ test("several models of one tick: on, disabled, titled with them", async () => {
   await openModel("qwen3-8b");
   const box = await tickOf("qwen3-8b on OpenCode");
   expect([box.checked, box.disabled]).toEqual([true, true]);
-  expect(box.title).toBe("Быстрая, Сильная: remove them on the card of OpenCode");
+  expect(box.title).toBe("Быстрая, Сильная: remove them in Your models");
 });
 
 test("a list longer than ten: search above it, its count under it", async () => {

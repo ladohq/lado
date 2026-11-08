@@ -213,7 +213,7 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   a detail: `cli`, the CLI's own choice (its default or its own settings), `cli-config`,
   the user's config of the CLI that LADO carries into the agent, with the detail
   `profile <name>` when a profile gave it, `session`, the session's model ("chosen for
-  the session"), `default`, its CLI's default of Settings → Models ("default in Settings"), or
+  the session"), `default`, its CLI's default of Settings → Agent CLIs ("default in Settings"), or
   `cli-changed`, another model its CLI named after the launch ("changed in the agent CLI").
   Later ways of choosing a model add tokens, not
   columns; `state.source_words` holds the words the API and the UI show for each, and an
@@ -226,7 +226,7 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   removal, or `""` for the CLI's own settings; a stored text that is no table reads as
   `PowerTable.unreadable()`, which lists as any session and refuses a resume that keeps it).
   `model_settings.start_model`, read at each launch, says what an agent starts on: its CLI's row,
-  else its CLI's default of Settings → Models (`cli_defaults`), else nothing; a session that chose
+  else its CLI's default of Settings → Agent CLIs (`cli_defaults`), else nothing; a session that chose
   nothing keeps nothing, so a default changed later reaches the next resume and worker. Its name
   goes in `AgentSpec.model`, with `model_source`, which the provider applies its own way (Claude
   Code `--model`, Codex `model` at the top level and in the carried profile of its
@@ -462,7 +462,7 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   it may give the agent its login, Codex's link), LADO asks the provider (`needs_login`,
   `login_status`) with the agent's launch environment (`runtime._held_for_login`); at `no`
   the agent is `waiting` with `logins.wait_reason` (`<CLI> is not
-  logged in: log in in Settings → Agent CLIs and environment, or set <variable>; the agent
+  logged in: log in in Settings → Agent CLIs, or set <variable>; the agent
   starts by itself once you do`), told and logged as a blocker's reason is; what needs no
   login is settled at once (`first_hook_blocker`: Claude Code's trust, its note in
   `loop.log` only; a question it would still ask waits for the window), and its window

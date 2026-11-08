@@ -267,7 +267,7 @@ LADO's own git uses it as well, read at each call: a kit, skill pack or marketpl
 private repository, and a clone by URL from the UI (New session → Clone).
 
 **Local models.** A model server you run yourself (LM Studio, Ollama, LiteLLM) is added in
-Settings → Models or with `lado model-server add`. OpenCode and Kilo CLI agents then have its
+Settings → Model servers or with `lado model-server add`. OpenCode and Kilo CLI agents then have its
 models beside their own, in `/model` under `LADO · <server>`, and a session can start on one: pick
 it in the launch window, or `lado start --model "<name>"`. Its key stays out of every config: it
 reaches the agents only in their environment. Claude Code runs on a server that speaks Anthropic's
@@ -294,7 +294,7 @@ it in the launch window, or `lado start --provider claude --model "<name>"`. Wha
   `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`, not a key, token, `apiKeyHelper` or address in
   your `~/.claude/settings.json`. The server gets its own key, or the word `no-key` if it has none.
   A built-in worker of the same session needs the login as usual. Without a login the launch
-  window offers Claude Code only when its default model in Settings → Models is on a server; any
+  window offers Claude Code only when its default model in Settings → Agent CLIs is on a server; any
   other start or resume goes through `lado start --provider claude --model "<name>"`.
 - The agent's page, `lado ls` and `list_agents` name the saved model, its server and who chose it,
   while the agent runs. A stopped agent shows the model's id.
@@ -432,7 +432,7 @@ secrets. For clients that must not mix, run a separate LADO.
 
 Logins made inside the container stay on its home volume, through updates.
 
-The easiest way is the UI, also from a phone: **Settings → Agent CLIs and environment**
+The easiest way is the UI, also from a phone: **Settings → Agent CLIs**
 shows for each CLI whether it is logged in, how and from where ("Logged in · Subscription
 (token) · LADO's secret"). For Claude Code, **Log in…** asks how you pay for Claude:
 **Subscription** (Claude Pro or Max): run `claude setup-token` on any computer where

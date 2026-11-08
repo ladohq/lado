@@ -36,10 +36,9 @@ another CLI and ` · <server>` when it is of the same CLI, then ` · <server> ·
 
 The field Default model SHALL be a picker over the list the core computes for the CLI, read when
 it opens, in this order, an empty group not shown: `<CLI>'s settings` with `no model set: the
-agent CLI chooses`; YOUR MODELS, with their id and server; BUILT-IN, the CLI's list or its
-aliases (`BUILT-IN · aliases`); `Other name…`, kept at the bottom, only when the CLI gives no
-full list. Any later place that picks a model SHALL use this component. A model of YOUR MODELS
-whose id is its name ignoring case SHALL show no id, in the list and in the field.
+agent CLI chooses`; YOUR MODELS, with their server and their id unless it is the name ignoring
+case; BUILT-IN, the CLI's list or its aliases (`BUILT-IN · aliases`); `Other name…`, at the
+bottom, only when the CLI gives no full list. Any later place that picks a model SHALL use it.
 
 #### Scenario: OpenCode with a server
 - **WHEN** the human opens the picker of OpenCode with two of its models saved

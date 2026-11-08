@@ -1,11 +1,11 @@
 ## 0. The base
 
-- [ ] 0.1 PR #256 (LAD-238, `feature/lad-238-settings-pages`) is merged into main: `gh pr view 256
+- [x] 0.1 PR #256 (LAD-238, `feature/lad-238-settings-pages`) is merged into main: `gh pr view 256
   --json state` says `MERGED`. Until then build nothing and tell the supervisor. Then `git fetch
   origin` and merge `origin/main` into the run's branch; `openspec/changes/archive/*-settings-pages/`
   is there and `openspec/specs/model-settings-page/spec.md` holds `Requirement: Your models fits a
   narrow window`.
-- [ ] 0.2 The trial archive of the settings' Checks passes for this change (it reports `not found`
+- [x] 0.2 The trial archive of the settings' Checks passes for this change (it reports `not found`
   until 0.1 is done).
 
 ## 1. The default name (core)

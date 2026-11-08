@@ -17,7 +17,7 @@
   session window's Team start the session's agents on a model, checked first against the
   CLI's own list; a resume keeps it and checks it again.
 - **Run a session on your own model.** A session starts on a saved model or its CLI's default
-  from Settings → Models, checked on its server first. OpenCode and Kilo CLI keep every saved
+  from Settings → Agent CLIs, checked on its server first. OpenCode and Kilo CLI keep every saved
   model in `/model` beside their own; `--model ''` is the CLI's own settings.
 - **Run agents on a cloud provider.** A provider's address and key are enough on OpenCode, Kilo CLI,
   Claude Code and Codex: agents know its limits and compact in time, and a refusal reads in plain words
@@ -37,15 +37,18 @@
 - **Save model servers and models under names.** `lado model-server add|list|remove` keeps
   a server, its key in a private file; `lado model add|list|remove` a model on a saved
   server, checked against its list (no embeddings model). `lado doctor` checks them.
-- **A default model for each agent CLI.** `lado model default` and Settings → Models keep one
+- **A default model for each agent CLI.** `lado model default` and Settings → Agent CLIs keep one
   per agent CLI: one of its own or of your servers, picked from one searchable list. It is
   kept and shown only: no session uses it yet.
-- **Set models in Settings.** Settings → Models: a card per agent CLI with its default model
-  and models, then your model servers: add, change or remove one (checked as you type), tick
-  a model to save it, rename it, undo a removal (`lado model-server remove --with-models`).
+- **Set models in Settings.** Settings → Model servers: add, change or remove a server (checked
+  as you type), tick a model to save it, rename it, undo a removal (`lado model-server remove
+  --with-models`), all your models in one table; a CLI's default sits in its Agent CLIs row.
 - **One word for what runs an agent: agent CLI.** The New session window's field is Agent,
-  Settings' section Agent CLIs and environment, the system panel's Agent CLIs; old links to
-  the section and `lado start --provider` keep working.
+  Settings' page Agent CLIs, the system panel's Agent CLIs; `lado start --provider` keeps
+  working.
+- **Settings in pages.** General, Agent CLIs, Model servers and Statistics each have a page
+  beside a short list; old links still land on them. Help on the rail opens the documentation,
+  GitHub and Report a bug; "Log in…" takes you straight to the CLI's login button.
 
 ### Improved
 

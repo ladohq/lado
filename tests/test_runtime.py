@@ -1682,7 +1682,7 @@ def _logged(line):
 # An agent whose CLI needs a login (Claude Code) and has none waits for it in its window
 # (lado.login_wait), with lado.logins.wait_reason.
 LOGIN_REASON = (
-    "Claude Code is not logged in: log in in Settings → Agent CLIs and environment, or set "
+    "Claude Code is not logged in: log in in Settings → Agent CLIs, or set "
     "CLAUDE_CODE_OAUTH_TOKEN; the agent starts by itself once you do"
 )
 
@@ -1701,12 +1701,12 @@ def _stopped_claude_session(repo, fake_tmux):
 
 SESSION_REFUSED = (
     "Claude Code is not logged in, so the session was not started: log in in LADO's UI "
-    "(Settings → Agent CLIs and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN as "
+    "(Settings → Agent CLIs, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN as "
     "LADO's secret or a project secret"
 )
 WORKER_REFUSED = (
     "Claude Code is not logged in, so the worker was not started: ask the human to log in in "
-    "Settings → Agent CLIs and environment, or start the worker with another provider"
+    "Settings → Agent CLIs, or start the worker with another provider"
 )
 
 
@@ -1744,7 +1744,7 @@ def test_a_new_session_is_refused_by_the_suggested_provider(
 
 RESUME_REFUSED = (
     "Claude Code is not logged in, so the session was not resumed: log in in LADO's UI "
-    "(Settings → Agent CLIs and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN as "
+    "(Settings → Agent CLIs, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN as "
     "LADO's secret or a project secret"
 )
 
@@ -1936,7 +1936,7 @@ def test_codex_on_openais_model_is_refused_without_a_login(repo, fake_tmux, cli_
         runtime.start_session(str(repo), "s", None, provider="codex")
     assert str(refused.value) == (
         "Codex CLI is not logged in, so the session was not started: log in in LADO's UI "
-        "(Settings → Agent CLIs and environment, `lado ui`), or set OPENAI_API_KEY as LADO's "
+        "(Settings → Agent CLIs, `lado ui`), or set OPENAI_API_KEY as LADO's "
         "secret or a project secret"
     )
     assert state.get_session("s") is None

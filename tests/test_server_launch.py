@@ -983,7 +983,7 @@ def test_a_fresh_start_without_the_login_is_400_and_makes_no_folder(
     assert (answer.status_code, answer.json()["detail"]) == (
         400,
         "Claude Code is not logged in, so the session was not started: log in in LADO's UI "
-        "(Settings → Agent CLIs and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN as "
+        "(Settings → Agent CLIs, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN as "
         "LADO's secret or a project secret",
     )
     assert not (tmp_path / "shop").exists()

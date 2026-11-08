@@ -342,7 +342,7 @@ def model_list(
 ) -> providers.base.ModelList:
     """The CLI's aliases and list of models in the environment of the agents of `project`
     (or of none), kept MODEL_LIST_KEPT seconds once read (`fresh`: read now, and kept);
-    LadoError for an environment that cannot be read. Settings → Models' picker takes it too
+    LadoError for an environment that cannot be read. Settings → Agent CLIs' picker takes it too
     (lado.server.model_entries)."""
     key, now = (provider.name, project), time.monotonic()
     with _model_lists_lock:
@@ -392,7 +392,7 @@ def provider_info(
 
 
 def provider_logins(found: logins.Login, cli: models.ProviderInfo) -> models.ProviderLogins:
-    """Settings → Agent CLIs and environment's row of a provider (lado.server
+    """Settings → Agent CLIs' row of a provider (lado.server
     .provider_check keeps them). The agents that wait for its login are named only while
     it has none: one that waits still when the login is there starts within its window's
     next look (lado.login_wait), so a logged-in row never names one."""

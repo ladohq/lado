@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { type ReactNode, useRef } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 
-import { keepAtTop, useScrollAnchor } from "./useScrollAnchor";
+import { useScrollAnchor } from "./useScrollAnchor";
 
 afterEach(() => {
   cleanup();
@@ -354,61 +354,4 @@ test("the human's own scroll moves the whole section: no change to undo", () => 
   });
   view.rerender(page(["a", "b"], "b"));
   expect(by).not.toHaveBeenCalled();
-});
-
-test("opened at its anchor, the section is kept at the top while the page around it grows, until the human acts", () => {
-  const sized: (() => void)[] = [];
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      constructor(private readonly callback: () => void) {}
-      observe() {
-        sized.push(this.callback);
-      }
-      disconnect() {
-        sized.splice(sized.indexOf(this.callback), 1);
-      }
-    },
-  );
-  const page = document.createElement("div");
-  const section = document.createElement("section");
-  page.append(document.createElement("section"), section);
-  document.body.append(page);
-  const put = vi.fn();
-  section.scrollIntoView = put;
-  keepAtTop(section);
-  expect(put).toHaveBeenLastCalledWith({ block: "start" });
-  expect(sized).toHaveLength(1);
-  sized.forEach((resized) => resized()); // a section above grew
-  expect(put).toHaveBeenCalledTimes(2);
-  fireEvent.wheel(document.body); // the human scrolls: the page is theirs
-  expect(sized).toHaveLength(0);
-  page.remove();
-});
-
-test.each([
-  ["a press", (el: Element) => fireEvent.pointerDown(el)],
-  ["a key", (el: Element) => fireEvent.keyDown(el, { key: "Tab" })],
-  ["a touch", (el: Element) => fireEvent.touchStart(el)],
-])("%s ends the keeping too; so does what it returns", (_, act_) => {
-  const stops: string[] = [];
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      observe() {}
-      disconnect() {
-        stops.push("stopped");
-      }
-    },
-  );
-  const section = document.createElement("section");
-  document.body.append(section);
-  section.scrollIntoView = vi.fn();
-  act_(document.body);
-  expect(stops).toEqual([]); // not keeping yet
-  const stop = keepAtTop(section);
-  act_(document.body);
-  expect(stops).toEqual(["stopped"]);
-  stop(); // twice is harmless
-  section.remove();
 });

@@ -87,8 +87,10 @@ def test_a_session_starts_on_a_model_picked_and_its_page_says_so(
     listed = dialog.get_by_role("listbox", name=f"Models of {TITLE}")
     expect(listed.get_by_role("option", name=re.compile(f"^{QWEN}"))).to_be_visible()
     foot = dialog.locator(".mp-foot")
-    expect(foot).to_contain_text("The default comes from Settings → Models.")
-    expect(foot.get_by_role("link", name="Settings → Models")).to_have_attribute("target", "_blank")
+    expect(foot).to_contain_text("The default comes from Settings → Agent CLIs.")
+    expect(foot.get_by_role("link", name="Settings → Agent CLIs")).to_have_attribute(
+        "target", "_blank"
+    )
     shot(page, "list")
     listed.get_by_role("option", name=re.compile(f"^{QWEN}")).click()
     expect(model).to_contain_text(QWEN)
@@ -122,7 +124,9 @@ def test_the_default_is_chosen_in_advance_and_the_session_follows_it(
     model = open_advanced(dialog)
     expect(model).to_contain_text(QWEN)
     expect(model.locator(".mc-default")).to_have_text("default")
-    expect(dialog.get_by_text(f"{TITLE}'s default model, from Settings → Models.")).to_be_visible()
+    expect(
+        dialog.get_by_text(f"{TITLE}'s default model, from Settings → Agent CLIs.")
+    ).to_be_visible()
     shot(page, "default")
     start_button(dialog).click()
     expect(page).to_have_url(f"{server['url']}/sessions/my-repo/activity")
@@ -268,7 +272,7 @@ def test_tab_walks_the_list_s_foot_with_the_keyboard(
     model = open_advanced(dialog)
     model.focus()
     page.keyboard.press("Enter")
-    link = dialog.get_by_role("link", name="Settings → Models")
+    link = dialog.get_by_role("link", name="Settings → Agent CLIs")
     expect(link).to_be_visible()
     page.keyboard.press("Tab")
     expect(link).to_be_focused()
@@ -294,7 +298,7 @@ def test_the_focus_in_the_foot_outlives_a_new_read_of_the_list(
     model = open_advanced(dialog)
     model.focus()
     page.keyboard.press("Enter")
-    link = dialog.get_by_role("link", name="Settings → Models")
+    link = dialog.get_by_role("link", name="Settings → Agent CLIs")
     expect(link).to_be_visible()
     page.keyboard.press("Tab")
     expect(link).to_be_focused()
@@ -379,7 +383,7 @@ def test_resume_of_a_model_no_longer_saved_says_so(
     page.locator(".stopped-bar").get_by_role("button", name="Resume session").click()
     dialog = page.get_by_role("dialog", name="Resume session")
     expect(advanced(dialog).locator(".field-note.bad")).to_contain_text(
-        f"The session ran on the model {QWEN}, which is no longer in Settings → Models.",
+        f"The session ran on the model {QWEN}, which is no longer in Settings → Model servers.",
         timeout=30_000,
     )
     expect(dialog.get_by_role("combobox", name="Model")).to_contain_text("not in Settings")

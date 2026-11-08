@@ -285,7 +285,7 @@ installed.
 #### Scenario: One name, two models
 - **WHEN** OpenCode lists `qwen3-8b` and a configured model of OpenCode is named `qwen3-8b`
 - **THEN** `lado model default opencode qwen3-8b` exits 1 with `"qwen3-8b" is both a saved
-  model of OpenCode and one of its own; rename the saved one: Settings → Models`, and the
+  model of OpenCode and one of its own; rename the saved one: Settings → Model servers`, and the
   default is unchanged
 
 #### Scenario: Another CLI's model

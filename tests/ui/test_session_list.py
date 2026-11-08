@@ -23,8 +23,8 @@ ERRORS = [
     "term-notice",
     "artifact-missing",
 ]
-WARNINGS = ["problem share-warning", "update-warning", "kit-warning"]
-SETTING_WARNINGS = ["pv-warn", "pv-none"]
+WARNINGS = ["problem share-warning", "update-warning", "kit-warning", "pv-none", "pv-warn-line"]
+ROW_WARNINGS = ["pv-warn"]  # in a CLI's row on Agent CLIs
 
 
 @pytest.mark.parametrize("theme", ["light", "dark"])
@@ -42,10 +42,10 @@ def test_a_notice_is_a_ground_and_an_icon_and_the_selected_session_keeps_its_str
     assert selected.evaluate("row => getComputedStyle(row).boxShadow") != "none"
     # Each notice as the stylesheet draws it, beside the token it must wear.
     looks = page.evaluate(
-        """([errors, warnings, inSetting]) => {
+        """([errors, warnings, inRow]) => {
           const box = document.body.appendChild(document.createElement("div"));
-          const setting = box.appendChild(document.createElement("div"));
-          setting.className = "setting";
+          const row = box.appendChild(document.createElement("li"));
+          row.className = "srow pv cli";
           const colour = (token) => {
             const probe = box.appendChild(document.createElement("i"));
             probe.style.background = `var(${token})`;
@@ -68,12 +68,12 @@ def test_a_notice_is_a_ground_and_an_icon_and_the_selected_session_keeps_its_str
           return [
             ...errors.map((one) => look(one, box, "--danger-ground", "--danger")),
             ...warnings.map((one) => look(one, box, "--warn-ground", "--warn")),
-            ...inSetting.map((one) => look(one, setting, "--warn-ground", "--warn")),
+            ...inRow.map((one) => look(one, row, "--warn-ground", "--warn")),
           ];
         }""",
-        [ERRORS, WARNINGS, SETTING_WARNINGS],
+        [ERRORS, WARNINGS, ROW_WARNINGS],
     )
-    assert len(looks) == len(ERRORS) + len(WARNINGS) + len(SETTING_WARNINGS)
+    assert len(looks) == len(ERRORS) + len(WARNINGS) + len(ROW_WARNINGS)
     for look in looks:
         wanted = {"ground": True, "ink": True, "stripe": "0px", "icon": True}
         assert {key: look[key] for key in wanted} == wanted, look

@@ -1,4 +1,4 @@
-"""Settings → Agent CLIs and environment's data (docs/design/ui.md): the last row of each
+"""Settings → Agent CLIs' data (docs/design/ui.md): the last row of each
 agent CLI (lado.server.launch.provider_logins), kept for the server's lifetime and
 refreshed by one background check at a time, every CLI at once and the login shell once;
 a row is kept as soon as its CLI is read, so the section answers at once and its rows

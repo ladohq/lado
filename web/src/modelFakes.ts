@@ -1,5 +1,5 @@
-// The server of Settings → Models in the component tests (ModelSettings.test.tsx,
-// ModelSources.test.tsx): the entries, the CLIs' rows and lists, and the servers' probes,
+// The server of Settings → Model servers and Agent CLIs' defaults in the component tests
+// (ModelSettings.test.tsx, ModelCards.test.tsx, ModelSources.test.tsx): the entries, the CLIs' rows and lists, and the servers' probes,
 // each request recorded; a test sets an answer of its own by "METHOD path".
 import { vi } from "vitest";
 
@@ -101,7 +101,8 @@ export class ModelServer {
     const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
     const [where] = path.split("?");
     if (where === "/api/model-settings") return json(this.entries);
-    if (where === "/api/providers/logins") return json({ providers: this.logins, checking: false, environment: "" });
+    if (where === "/api/providers/logins" || where === "/api/providers/check")
+      return json({ providers: this.logins, checking: false, environment: "" });
     const listOf = where.match(/^\/api\/providers\/(.+)\/model-choices$/);
     if (listOf) return json(this.choices(listOf[1], new URLSearchParams(path.split("?")[1] ?? "").get("model") ?? ""));
     const checked = where.match(/^\/api\/model-defaults\/(.+)\/check$/);
@@ -135,7 +136,7 @@ export class ModelServer {
     }
     if (where === "/api/models" && method === "POST") {
       const given = body as Added;
-      if (given.name && this.taken(given.name)) return refusal(`the name is taken by the model "${given.name}"`, "name");
+      if (given.name && this.taken(given.name)) return refusal(`The name is taken by the model "${given.name}"`, "name");
       const added = model(given.name ?? this.named(given), given.cli, this.title(given.cli), given.model, given.server);
       this.entries = { ...this.entries, models: [...this.entries.models, added] };
       return json({ model: added, check: { kind: "ok", text: "fine", field: "", name: "" } });
@@ -170,7 +171,7 @@ export class ModelServer {
       const given = body as { name: string; address: string; key: string | null; key_typed: boolean; replace: boolean };
       const refusals = [];
       const taken = this.entries.servers.find((s) => s.name.toLowerCase() === given.name.toLowerCase());
-      if (taken && !given.replace) refusals.push(detail(`a model server "${taken.name}" is saved already`, "name"));
+      if (taken && !given.replace) refusals.push(detail(`A model server "${taken.name}" is saved already`, "name"));
       const address = given.address.trim();
       const url = /^https?:\/\//.test(address) ? address : `http://${address}`;
       const host = url.replace(/^https?:\/\//, "").split(/[:/]/)[0];

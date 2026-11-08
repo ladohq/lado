@@ -15,11 +15,11 @@ CLAUDE = providers.get("claude")
 
 def test_the_wait_reason_names_settings_and_the_first_login_variable():
     assert logins.wait_reason(CLAUDE) == (
-        "Claude Code is not logged in: log in in Settings → Agent CLIs and environment, or set "
+        "Claude Code is not logged in: log in in Settings → Agent CLIs, or set "
         "CLAUDE_CODE_OAUTH_TOKEN; the agent starts by itself once you do"
     )
     assert logins.wait_reason(providers.get("kilo")) == (
-        "Kilo CLI is not logged in: log in in Settings → Agent CLIs and environment; the agent "
+        "Kilo CLI is not logged in: log in in Settings → Agent CLIs; the agent "
         "starts by itself once you do"
     )
 
@@ -28,16 +28,16 @@ def test_a_cli_that_needs_a_login_and_has_none_is_refused(cli_logins):
     cli_logins.logged_out()
     assert logins.refusal(CLAUDE, {}, logins.SESSION) == (
         "Claude Code is not logged in, so the session was not started: log in in LADO's UI "
-        "(Settings → Agent CLIs and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN "
+        "(Settings → Agent CLIs, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN "
         "as LADO's secret or a project secret"
     )
     assert logins.refusal(CLAUDE, {}, logins.WORKER) == (
         "Claude Code is not logged in, so the worker was not started: ask the human to log "
-        "in in Settings → Agent CLIs and environment, or start the worker with another provider"
+        "in in Settings → Agent CLIs, or start the worker with another provider"
     )
     assert logins.refusal(CLAUDE, {}, logins.RESUME) == (
         "Claude Code is not logged in, so the session was not resumed: log in in LADO's UI "
-        "(Settings → Agent CLIs and environment, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN "
+        "(Settings → Agent CLIs, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN "
         "as LADO's secret or a project secret"
     )
     # Read in the environment given, the one the agent would start from.

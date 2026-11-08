@@ -13,9 +13,9 @@ import {
   type SessionInfo,
   type SessionModelCheck,
 } from "./api";
+import { OtherName } from "./CliDefault";
 import { useAsked } from "./Launch";
 import { type Health, ModelPicker, type Pick, sameModel, useModelChoices } from "./ModelPicker";
-import { OtherName } from "./ModelSettings";
 
 export type Choice =
   | { kind: "default" } // follows the CLI's default, as it is at each launch
@@ -247,7 +247,7 @@ export function useLaunchModel({
   if (missing) {
     notes.push(
       <span key="gone" className="field-note bad" role="alert">
-        <span>{`The session ran on the model ${resuming?.model}, which is no longer in Settings → Models. Pick a model or use ${title}'s settings.`}</span>
+        <span>{`The session ran on the model ${resuming?.model}, which is no longer in Settings → Model servers. Pick a model or use ${title}'s settings.`}</span>
         <span className="way-out">
           <button type="button" className="chip-button" onClick={useSettings}>
             {`Use ${title}'s settings`}
@@ -284,7 +284,7 @@ export function useLaunchModel({
     if (lostNote === null && choice.kind === "default" && defaultValue !== null) {
       notes.push(
         <span key="note" className="field-note">
-          {`${title}'s default model, from Settings → Models.`}
+          {`${title}'s default model, from Settings → Agent CLIs.`}
         </span>,
       );
     } else if (lostNote === null && choice.kind === "pick" && defaultValue !== null) {

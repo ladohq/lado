@@ -296,7 +296,7 @@ window suggests its agent by the same rule.
 A new session of a CLI that needs a login and has none, read in the environment its agents
 would get (with the project's secrets for `--project`), is refused with exit 1 before
 anything is stored: `lado: Claude Code is not logged in, so the session was not started: log
-in in LADO's UI (Settings → Agent CLIs and environment, `lado ui`), or set
+in in LADO's UI (Settings → Agent CLIs, `lado ui`), or set
 CLAUDE_CODE_OAUTH_TOKEN as LADO's secret or a project secret` (Codex: `lado: Codex CLI is
 not logged in, so the session was not started: … or set OPENAI_API_KEY as LADO's secret or
 a project secret`). `lado start <git-url>` and
@@ -311,7 +311,7 @@ supervisor it starts: `lado: Claude Code is not logged in, so the session was no
 own resume is not refused (at the container's start, and `lado update`'s, which runs
 `lado start --wait-for-login`, a flag for LADO, not listed in `--help`): its Claude agent
 waits, and `lado ls` prints under it `waiting: Claude Code is not
-logged in: log in in Settings → Agent CLIs and environment, or set CLAUDE_CODE_OAUTH_TOKEN;
+logged in: log in in Settings → Agent CLIs, or set CLAUDE_CODE_OAUTH_TOKEN;
 the agent starts by itself once you do`; it starts by itself once there is one. A login
 that cannot be read refuses nothing and holds no agent: `lado start` warns `cannot tell
 whether Claude Code is logged in: <why>; the agent starts all the same`.
@@ -647,7 +647,7 @@ was proven, after `APIs: cannot be told: <address> answers <status> to any POST`
 control was refused like an API; no `not:` line when every CLI suits. A POST with no answer in
 5 s goes once more, for 15 s; an API still silent reads `Claude Code (Anthropic Messages API did
 not answer in time)` on that line, is neither proven nor missing, `model-server add` saves the
-server with a warning, Settings → Models says it under `APIs: cannot be told`, and `lado model add`
+server with a warning, Settings → Model servers says it under `APIs: cannot be told`, and `lado model add`
 and a start on that API refuse with `the <API> of <server> did not answer in time: try again`. What the server
 says (its model ids, a redirect's location) is shown as one line of visible text
 (`text.one_line`). Each failure is one
@@ -718,7 +718,7 @@ naming every model on it, and the hint `or remove them with it: lado model-serve
 "<name>" --with-models` (exit 1). With `--with-models` it removes the models on the server
 and the server in one transaction, with the defaults on those models, `Removed model
 "<model>".` a line for each, `<CLI>'s default model is cleared.` a line for each default
-that went, then the key folder and `Removed model server "<name>".` (Settings → Models
+that went, then the key folder and `Removed model server "<name>".` (Settings → Model servers
 removes a server so after its confirmation). The three
 commands migrate lado.db as `lado ls` does; `probe` alone does not.
 
@@ -766,7 +766,7 @@ lacks is refused; with no list it is set after `lado: warning: <why>: LADO canno
 <model>; …` on stderr. Refused, exit 1, nothing changed: a CLI LADO does not know, a CLI not
 installed (`<CLI> is not installed`), a name both a configured and a built-in model of the
 CLI (`"<name>" is both a saved model of <CLI> and one of its own; rename the saved one:
-Settings → Models`), a name only another CLI's configured model has (`"<name>" is a model of
+Settings → Model servers`), a name only another CLI's configured model has (`"<name>" is a model of
 <other CLI>, not of <CLI>`). `lado model default <cli> --clear` clears it, the CLI installed
 or not: `<CLI>'s default model is cleared.`, or `<CLI> has no default model.`; a model with
 `--clear`, or `--clear` with no CLI, exits 2.

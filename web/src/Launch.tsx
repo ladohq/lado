@@ -64,7 +64,7 @@ import {
 } from "./LaunchWhere";
 import { useLive, useLiveStore, useLocked } from "./live";
 import { useModal } from "./modal";
-import { projectPath, PROVIDERS_PATH, sessionPath } from "./paths";
+import { agentClisPath, projectPath, sessionPath } from "./paths";
 import { ActionProblem, Waits } from "./waitingParts";
 
 export { FolderHint };
@@ -1016,7 +1016,7 @@ function LaunchDialog({
     // A new session or a resume of it is refused (lado.logins).
     <span className="field-note bad">
       {noLogin.title} is not logged in: its agents cannot start.{" "}
-      <button type="button" className="link-button" onClick={() => leave(PROVIDERS_PATH)}>
+      <button type="button" className="link-button" onClick={() => leave(agentClisPath(noLogin.name))}>
         Log in first
       </button>
     </span>

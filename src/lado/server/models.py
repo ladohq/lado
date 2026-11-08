@@ -534,7 +534,7 @@ class ModelCheck(BaseModel):
     text: str
     field: str = ""
     # The name a save would take: the one given, else its default ("" for a refusal); said
-    # by the check of a model only (Settings → Models' `would be <name>`).
+    # by the check of a model only (Settings → Model servers' `would be <name>`).
     name: str = ""
 
 
@@ -572,7 +572,8 @@ class ModelRefusal(BaseModel):
     retry: bool
 
 
-# Settings → Models (lado.server.model_entries over lado.model_settings).
+# Settings → Model servers and Agent CLIs' default models (lado.server.model_entries over
+# lado.model_settings).
 
 
 class ConfiguredModelInfo(BaseModel):
@@ -752,7 +753,7 @@ class ModelRename(BaseModel):
 
 
 class EntryRefused(BaseModel):
-    """The detail of a 400 that Settings → Models' API answers for a refusal: the line the
+    """The detail of a 400 that the model settings' API answers for a refusal: the line the
     matching command prints, its hint ("" for none), the field of the form it concerns (""
     for none), and the warnings given before it (a key over plain http://)."""
 
@@ -814,7 +815,7 @@ class AgentRefInfo(BaseModel):
 
 
 class ProviderLogins(BaseModel):
-    """One agent CLI in Settings → Agent CLIs and environment (lado.logins)."""
+    """One agent CLI in Settings → Agent CLIs (lado.logins)."""
 
     cli: ProviderInfo
     login: LoginInfo

@@ -1,4 +1,4 @@
-"""The agent CLIs' logins: what Settings → Agent CLIs and environment and `lado doctor` show,
+"""The agent CLIs' logins: what Settings → Agent CLIs and `lado doctor` show,
 the agents that wait for one, and the login windows.
 
 Each provider reads its own CLI's login (Provider.login_status) and names its login
@@ -38,7 +38,7 @@ from pathlib import Path
 from lado import agent_env, gui_session, interpreter, project_secrets, providers, state, tmux
 from lado.providers import base
 
-SETTINGS = "Settings → Agent CLIs and environment"
+SETTINGS = "Settings → Agent CLIs"
 POLL = 3.0  # seconds between two looks of an agent that waits for a login (lado.login_wait)
 
 # The layers a login variable comes from, as the page and `lado doctor` name them.

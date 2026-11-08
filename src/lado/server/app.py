@@ -874,7 +874,7 @@ def create_app(
         except projects.NoSuchProject as unknown:
             raise HTTPException(404, str(unknown)) from unknown
 
-    # Settings → Agent CLIs and environment (docs/design/ui.md): each agent CLI's login, read
+    # Settings → Agent CLIs (docs/design/ui.md): each agent CLI's login, read
     # by its own command (lado.logins), its login window, and the login variables kept as
     # LADO's secrets, written and removed, never read back.
 
@@ -889,10 +889,10 @@ def create_app(
         except ValueError as error:
             raise HTTPException(404, str(error)) from None
 
-    # Settings → Models: one route per action of `lado model-server` and `lado model`
-    # (lado.server.model_entries). Reading the entries asks no server; a refusal is a 400
-    # with EntryRefused. A server's key comes in only in the body of POST
-    # /api/model-servers (SECRET_ROUTE) and is in no answer.
+    # Settings → Model servers and Agent CLIs' default models: one route per action of
+    # `lado model-server` and `lado model` (lado.server.model_entries). Reading the entries
+    # asks no server; a refusal is a 400 with EntryRefused. A server's key comes in only in
+    # the body of POST /api/model-servers (SECRET_ROUTE) and is in no answer.
     entry_refused = {400: {"model": models.EntryRefused, "description": "refused"}}
 
     def entries(action: Callable[..., T], *args) -> T:

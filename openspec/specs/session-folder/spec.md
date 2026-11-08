@@ -111,14 +111,14 @@ SHALL be removed.
 #### Scenario: A folder that will do
 - **WHEN** the folder is a repository with a commit
 - **THEN** `ok` is true, `problem_kind` and `hint` are null, and the window shows
-  "✓ git repository · branch X" as before
+  `✓ Ready · branch X` under Where
 
 ### Requirement: The New session window shows the folder check's hint
 
-The New session window SHALL show the folder check's text under the Where field and,
-with a hint, its sentence and its command in a code field with a Copy button, and keep
-Start off; for a folder with `FolderInfo.scratch` it SHALL show Start from scratch here
-in place of the command (capability session-scratch).
+The New session window SHALL show the folder check's text under Where and, with a hint, its
+sentence and its command in a code field with Copy, and keep the start button off; a folder
+with `FolderInfo.scratch` SHALL show Start from scratch here instead of the command, and a
+folder with `FolderInfo.setup` the set-up panel (capability folder-setup).
 
 #### Scenario: No git on the server's machine
 - **WHEN** the server's process finds no git and the window checks a folder
@@ -129,6 +129,12 @@ in place of the command (capability session-scratch).
 - **WHEN** the window checks an empty folder outside git
 - **THEN** the answer keeps `problem_kind: "not_repo"` and its hint, and the window shows
   Start from scratch here instead of the `git init` command
+
+#### Scenario: A folder of files outside git offers the set-up
+- **WHEN** the window checks a folder of files outside git
+- **THEN** the answer keeps `problem_kind: "not_repo"` and its hint, has `setup`, and the
+  window shows the set-up panel with `Set up and start in <folder>`, the command only under
+  Do it yourself
 
 ### Requirement: LADO's git calls never crash for a missing git
 

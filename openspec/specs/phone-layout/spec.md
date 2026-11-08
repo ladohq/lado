@@ -44,7 +44,7 @@ There SHALL be no setting or switch for it.
 
 In the phone layout the rail SHALL not be shown. Menu SHALL open
 the rail over the page from the left, with each section's icon and name, the Needs you
-count, Launch, Help and Settings, and dim the rest of the page. Choosing an item,
+count, New session, Help and Settings, and dim the rest of the page. Choosing an item,
 a tap on the dimmed page, or Esc SHALL close it; on closing the focus SHALL go back to
 Menu. Help SHALL open its menu within the drawer, and choosing one of its items SHALL close
 both.

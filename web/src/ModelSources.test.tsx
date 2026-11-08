@@ -135,7 +135,7 @@ test("a tick saves the model with no name; unticking removes it with no Undo row
     model: "qwen3-8b",
     server: LMSTUDIO.name,
   });
-  const name = "qwen3-8b · LM Studio дома · OpenCode";
+  const name = "qwen3-8b";
   expect(within(box.closest("label") as HTMLElement).getByText(`as ${name}`)).toBeTruthy();
   expect(box.title).toBe(`Unticking removes ${name}.`);
   fireEvent.click(box);
@@ -252,8 +252,8 @@ test("a server's model opens its installed CLIs under its row, each saying the n
     "Agent CLIs that run qwen3-8b:",
   );
   expect(ticks(pop)).toEqual(["qwen3-8b on Codex CLI", "qwen3-8b on OpenCode"]);
-  expect(await within(pop).findByText("would be qwen3-8b · LM Studio дома · OpenCode")).toBeTruthy();
-  expect(await within(pop).findByText("would be qwen3-8b · LM Studio дома · Codex CLI")).toBeTruthy();
+  // Each CLI's would-be name is the model's id: no model holds it yet.
+  await waitFor(() => expect(within(pop).getAllByText("would be qwen3-8b").length).toBe(2));
   expect(server.of("POST", "/api/models/check").map((c) => c.body)).toEqual([
     { name: null, cli: "codex", model: "qwen3-8b", server: "LM Studio дома" },
     {
@@ -265,7 +265,9 @@ test("a server's model opens its installed CLIs under its row, each saying the n
   ]);
   fireEvent.click(within(pop).getByRole("checkbox", { name: "qwen3-8b on OpenCode" }));
   await waitFor(() => expect(row.textContent).toContain("in OpenCode"));
-  expect(within(pop).getByText("as qwen3-8b · LM Studio дома · OpenCode")).toBeTruthy();
+  expect(within(pop).getByText("as qwen3-8b")).toBeTruthy();
+  // The id is taken now: the other CLI's would-be name says its CLI.
+  expect(await within(pop).findByText("would be qwen3-8b · Codex CLI")).toBeTruthy();
   fireEvent.click(within(pop).getByRole("checkbox", { name: "qwen3-8b on Codex CLI" }));
   await waitFor(() => expect(row.textContent).toContain("in Codex CLI, OpenCode"));
   expect(
@@ -295,12 +297,12 @@ test("after a tick the other CLIs keep their would-be names while the core is as
   fireEvent.click(await source("LM Studio дома"));
   fireEvent.click(await screen.findByRole("button", { name: "qwen3-8b" }));
   const pop = screen.getByRole("group", { name: "Agent CLIs for qwen3-8b" });
-  expect(await within(pop).findByText("would be qwen3-8b · LM Studio дома · Codex CLI")).toBeTruthy();
+  await waitFor(() => expect(within(pop).getAllByText("would be qwen3-8b").length).toBe(2));
   server.answers["POST /api/models/check"] = () => new Promise(() => undefined); // asked again: no answer yet
   fireEvent.click(within(pop).getByRole("checkbox", { name: "qwen3-8b on OpenCode" }));
-  await waitFor(() => expect(within(pop).getByText("as qwen3-8b · LM Studio дома · OpenCode")).toBeTruthy());
+  await waitFor(() => expect(within(pop).getByText("as qwen3-8b")).toBeTruthy());
   await waitFor(() => expect(server.of("POST", "/api/models/check").length).toBeGreaterThan(2));
-  expect(within(pop).getByText("would be qwen3-8b · LM Studio дома · Codex CLI")).toBeTruthy();
+  expect(within(pop).getByText("would be qwen3-8b")).toBeTruthy();
 });
 
 test("the name a tick would save of a list closed meanwhile is dropped", async () => {

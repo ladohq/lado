@@ -25,6 +25,16 @@ import { type ModelSettingsState, useModelSettings } from "./useModelSettings";
 
 export const POLL_MS = 1000; // how often the rows are read while a check runs
 
+// The CLI a hash names (agentClisPath); "" for none, and for one that is no name (a broken
+// %-code), which leaves the page at its top as an unknown one does.
+function cliOf(hash: string): string {
+  try {
+    return decodeURIComponent(hash.slice(1));
+  } catch {
+    return "";
+  }
+}
+
 export function Providers() {
   const [page, setPage] = useState<ProvidersPage | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -64,7 +74,7 @@ export function Providers() {
   const { hash } = useLocation();
   const handled = useRef<string | null>(null);
   useEffect(() => {
-    const cli = decodeURIComponent(hash.slice(1));
+    const cli = cliOf(hash);
     if (!page || !cli || handled.current === hash) return;
     if (!page.providers.some((p) => p.cli.name === cli && p.ready)) return;
     const row = document.getElementById(cli);

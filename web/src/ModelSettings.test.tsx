@@ -69,7 +69,24 @@ test("Servers, then Your models; no intro, no card of a CLI; opening reads no so
   const reads = (c: { path: string }) =>
     c.path.includes("/models?") || c.path.includes("/model-choices?") || c.path.endsWith("/probe");
   expect(server.calls.filter(reads)).toEqual([]);
-  expect(server.of("POST", "/api/providers/check")).toEqual([]); // no check of its own
+});
+
+test("opening the page asks for a check of the CLIs, and reads their rows while it runs", async () => {
+  // A server just started: no check yet, every CLI's row not read.
+  server.logins = server.logins.map((row) => ({ ...row, ready: false }));
+  server.answers["POST /api/providers/check"] = () => {
+    server.logins = server.logins.map((row) => ({ ...row, ready: true }));
+    return new Response(JSON.stringify({ providers: server.logins, checking: true, environment: "" }));
+  };
+  mount();
+  await waitFor(() => expect(server.of("POST", "/api/providers/check")).toHaveLength(1));
+  // Read again while the check runs, and no more once it ended.
+  await waitFor(() => expect(server.of("GET", "/api/providers/logins").length).toBeGreaterThan(0), {
+    timeout: 3000,
+  });
+  const reads = server.of("GET", "/api/providers/logins").length;
+  await new Promise((done) => setTimeout(done, 1500));
+  expect(server.of("GET", "/api/providers/logins")).toHaveLength(reads);
 });
 
 test("Your models: Name, Model, From, Agent CLI and ×, by CLI in LADO's order then by name", async () => {

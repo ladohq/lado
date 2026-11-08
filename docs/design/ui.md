@@ -2753,8 +2753,8 @@ provider-login-layers, providers-section-and-start-screens and settings-pages; b
 - **Arrival at a row**: `/settings/agent-clis#<provider name>` (Needs you's "Log in…", New
   session's "Log in first") scrolls that row to the middle once it is read (smoothly unless
   the human asks for less motion) and focuses its login button, else its name; once per
-  hash, so a later read of the rows never takes the focus the human moved. An unknown name
-  leaves the page at its top.
+  hash, so a later read of the rows never takes the focus the human moved. An unknown name,
+  or a hash that is no name (a broken %-code), leaves the page at its top.
 - **The login sheet** (the button): a sheet over the page, the whole screen on a phone,
   with Close. For a CLI whose provider names choices (Claude Code, Codex), its question
   ("How do you pay for Claude?", "How do you pay for Codex?") and a box per choice with a
@@ -2879,7 +2879,10 @@ LM Studio. That CLI has no column in the server's list, which comes from `ProbeI
 - **A CLI's default** (Agent CLIs' rows, `CliDefault.tsx`): the picker's notes stand under it,
   tied to the field by `aria-describedby`: a refusal as an alert, a warning from a background
   read as a status.
-- **What is read when**: opening Model servers asks no server and reads no list; opening Agent
+- **What is read when**: opening Model servers asks no model server and reads no list; it asks
+  LADO's server for a check of the CLIs, as Agent CLIs does (a server just started has read
+  none, and a server's model names only the CLIs found installed), and reads their rows while
+  it runs; opening Agent
   CLIs reads, in the background, only the lists of CLIs whose default is built-in (a list
   that lost it shows in the row); opening
   a picker reads its CLI's list `fresh` and probes each server of that CLI's models once. So a

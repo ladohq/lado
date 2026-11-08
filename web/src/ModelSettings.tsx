@@ -12,11 +12,13 @@ import { Link } from "react-router";
 
 import {
   addModel,
+  checkProviders,
   type ConfiguredModelInfo,
   type EntryRefused,
   getProviderLogins,
   type ModelSettings as Entries,
   type ProviderLogins,
+  type ProvidersPage,
   refusalOf,
   removeModel,
   renameModel,
@@ -64,22 +66,24 @@ export function ModelSettings() {
   const reading = useRef<Record<string, number>>({}); // each source's latest read (ModelSources)
   useScrollAnchor(section);
 
-  // The CLIs' install and login as Agent CLIs' last check read them; read again while that
-  // check runs, never a check of its own.
+  // The CLIs' install and login: the page asks for a check when it opens, as Agent CLIs does
+  // (a server just started has read none; one that runs goes on), then reads the rows while
+  // it runs. The columns of a server's model name only the CLIs found installed.
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let left = LOGIN_POLLS;
     let current = true;
-    const take = () =>
-      getProviderLogins().then(
+    const take = (ask: () => Promise<ProvidersPage> = getProviderLogins) =>
+      ask().then(
         (page) => {
           if (!current || !Array.isArray(page?.providers)) return;
           setLogins(page.providers);
-          if ((page.checking || page.providers.some((p) => !p.ready)) && --left > 0) timer = setTimeout(take, POLL_MS);
+          if ((page.checking || page.providers.some((p) => !p.ready)) && --left > 0)
+            timer = setTimeout(() => void take(), POLL_MS);
         },
         () => undefined, // Agent CLIs says why
       );
-    void take();
+    void take(checkProviders);
     return () => {
       current = false;
       clearTimeout(timer);

@@ -369,3 +369,12 @@ test("#<cli> of a CLI with no login button focuses its name; an unknown one move
   expect(scrolled).not.toHaveBeenCalled();
   expect(document.activeElement).toBe(document.body);
 });
+
+test("a hash that is no name (a broken %-code) is an unknown one: the page stays at its top", async () => {
+  const scrolled = vi.fn();
+  Element.prototype.scrollIntoView = scrolled;
+  mount("/settings/agent-clis#%E0%A4%A");
+  expect(await screen.findByRole("listitem", { name: "Claude Code" })).toBeTruthy();
+  expect(scrolled).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(document.body);
+});

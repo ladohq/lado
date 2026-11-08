@@ -129,7 +129,7 @@ def preview(path: str) -> Preview:
             size += os.lstat(os.path.join(path, name)).st_size
             if files > MAX_FILES or size > MAX_BYTES:
                 return Preview(files, size, left_out, Refusal("too_big", files, size))
-    except _Unreadable as unreadable:
+    except (_Unreadable, scratch._GitFailed) as unreadable:  # git cannot list it: its line
         return Preview(files, size, left_out, Refusal("unreadable", files, size, str(unreadable)))
     finally:
         listing.close()

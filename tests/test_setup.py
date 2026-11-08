@@ -116,6 +116,27 @@ def test_a_folder_git_cannot_read_is_refused_with_gits_line(workspace, git_confi
     assert "could not open directory 'locked/'" in refusal.line
 
 
+def test_a_git_that_fails_to_list_is_a_refusal_with_its_line(
+    workspace, git_config, tmp_path, monkeypatch
+):
+    folder = workspace / "notes"
+    folder.mkdir()
+    (folder / "a.txt").write_text("a")
+    real = shutil.which("git")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "git").write_text(
+        "#!/bin/sh\n"
+        'for arg in "$@"; do\n'
+        '  if [ "$arg" = --bare ]; then echo "fatal: no room" >&2; exit 128; fi\n'
+        "done\n"
+        f'exec {real} "$@"\n'
+    )
+    (bin_dir / "git").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    assert setup.preview(str(folder)).refusal == setup.Refusal("unreadable", 0, 0, "fatal: no room")
+
+
 def test_the_command_leaves_out_what_the_preview_does(workspace, git_config):
     folder = workspace / "q"
     folder.mkdir()

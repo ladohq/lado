@@ -1,8 +1,8 @@
-// Usage statistics (docs/design/ui.md, Usage statistics): the banner that asks once, under
-// the top bar on every page, Settings → Usage statistics, and the System panel's row. The
+// Statistics (docs/design/ui.md, Statistics): the banner that asks once, under the top bar
+// on every page, Settings → Statistics, and the System panel's row. The
 // choice is the server's (LADO_HOME), the same as `lado telemetry on|off`; it is read once
 // per page and after the page's own choice, not from the change feed.
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import {
   ApiError,
@@ -150,7 +150,10 @@ const CHOICES = [
   { value: "off", label: "Don't send" },
 ] as const;
 
+// Settings → Statistics: one row, its name labelling Send / Don't send, one line for the
+// state; under it a failed send and what the next report sends, while sending.
 export function StatisticsSetting() {
+  const id = useId();
   const [info, setInfo, unread] = useTelemetry();
   const [problem, setProblem] = useState<string | null>(null);
   const locked = info === null || info.off_by !== null || !info.endpoint;
@@ -163,74 +166,84 @@ export function StatisticsSetting() {
       setProblem(messageOf(error));
     }
   };
+  const sending = !unread && info !== null && !info.off_by && info.endpoint && info.choice === "on";
   return (
     <SettingsPage slug="statistics">
-      <fieldset className="choice" disabled={locked}>
-        <legend>Send anonymous statistics and errors to LADO's maintainers</legend>
-        <div className="segments">
-          {CHOICES.map((option) => (
-            <label key={option.value}>
-              <input
-                type="radio"
-                name="statistics"
-                value={option.value}
-                checked={checked === option.value}
-                onChange={() => void choose(option.value)}
-              />
-              {option.label}
-            </label>
-          ))}
+      <div className="srows">
+        <div className="srow srow-wide">
+          <div className="srow-text">
+            <span className="srow-name" id={`${id}-name`}>
+              Send anonymous statistics and errors to LADO's maintainers
+            </span>
+            {!unread && (
+              <p className="srow-desc" id={`${id}-desc`}>
+                <StatisticsState info={info} />
+              </p>
+            )}
+          </div>
+          <div className="srow-ctl">
+            <fieldset
+              className="choice"
+              disabled={locked}
+              aria-labelledby={`${id}-name`}
+              aria-describedby={unread ? undefined : `${id}-desc`}
+            >
+              <div className="segments">
+                {CHOICES.map((option) => (
+                  <label key={option.value}>
+                    <input
+                      type="radio"
+                      name="statistics"
+                      value={option.value}
+                      checked={checked === option.value}
+                      onChange={() => void choose(option.value)}
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          </div>
+          {(unread || problem || sending) && (
+            <div className="srow-problem">
+              {unread && <p className="problem">{unread}</p>}
+              {problem && (
+                <p className="problem" role="alert">
+                  {problem}
+                </p>
+              )}
+              {sending && info.last_error && <p className="srow-desc">Last try failed: {info.last_error}</p>}
+              {sending && <WhatIsSent label="What the next report sends" />}
+            </div>
+          )}
         </div>
-      </fieldset>
-      {unread ? <p className="problem">{unread}</p> : <StatisticsState info={info} />}
-      {problem && (
-        <p className="problem" role="alert">
-          {problem}
-        </p>
-      )}
+      </div>
     </SettingsPage>
   );
 }
 
+// The row's line for each state.
 function StatisticsState({ info }: { info: TelemetryInfo | null }) {
   const docs = (
     <a href={TELEMETRY_DOCS} target="_blank" rel="noreferrer">
       What LADO collects ↗
     </a>
   );
-  if (info === null) return <p className="muted">Loading…</p>;
+  if (info === null) return <>Loading…</>;
   if (info.off_by) {
     return (
-      <p className="muted">
-        Off: <code>{info.off_by}</code> is set in the LADO server's environment.
-      </p>
-    );
-  }
-  if (!info.endpoint) return <p className="muted">This LADO has no statistics endpoint: nothing is sent.</p>;
-  if (info.choice === null) return <p className="muted">Not chosen yet: nothing is sent. {docs}</p>;
-  const about = (
-    <p className="muted">
-      Anonymous: an ID made at random on this machine, never linked to you. Sent once a day and when LADO itself
-      fails, to PostHog in the EU. <code>DO_NOT_TRACK=1</code> or <code>LADO_TELEMETRY=0</code> switch it off.
-    </p>
-  );
-  if (info.choice === "off") {
-    return (
       <>
-        {about}
-        <p>Nothing is sent · {docs}</p>
+        Off: <code>{info.off_by}</code> is set in the server's environment.
       </>
     );
   }
+  if (!info.endpoint) return <>No statistics endpoint: nothing is sent.</>;
+  if (info.choice === null) return <>Nothing is sent until you choose. {docs}</>;
+  if (info.choice === "off") return <>Nothing is sent. {docs}</>;
   const sent = info.last_sent ? sentWhen(info.last_sent) : null;
   return (
     <>
-      {about}
-      <p>
-        {sent ? `Last sent ${sent.replace(/^(today|yesterday) /, "$1 at ")}` : "Not sent yet"} · {docs}
-      </p>
-      {info.last_error && <p className="muted">Last try failed: {info.last_error}</p>}
-      <WhatIsSent label="What the next report sends" />
+      {sent ? `Last sent ${sent.replace(/^(today|yesterday) /, "$1 at ")}.` : "Not sent yet."} {docs}
     </>
   );
 }

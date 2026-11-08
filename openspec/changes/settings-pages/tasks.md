@@ -28,7 +28,7 @@ with its files, interfaces and tests).
 
 ## 5. Statistics
 
-- [ ] 5.1 One row with its state's line; the system panel's row links to `/settings/statistics`
+- [x] 5.1 One row with its state's line; the system panel's row links to `/settings/statistics`
   (AC-1, AC-7). Checked: `make web` (`Telemetry.test.tsx`, `SystemPanel.test.tsx`).
 
 ## 6. Model servers

@@ -110,7 +110,11 @@ test("no banner when ask is false", async () => {
   expect(screen.queryByRole("region", { name: "Usage statistics" })).toBeNull();
 });
 
-test("Settings shows Send checked and the last-sent line", async () => {
+// The row's one grey line, with its link when it has one.
+const line = async (text: string) => (await screen.findByText(text, { exact: false })).closest(".srow-desc")!.textContent;
+const NAME = "Send anonymous statistics and errors to LADO's maintainers";
+
+test("Settings is one row: its name labels the choice, one line says the state", async () => {
   const sent = new Date();
   sent.setHours(9, 12);
   state = telemetry({ choice: "on", on: true, ask: false, last_sent: sent.toISOString() });
@@ -118,14 +122,29 @@ test("Settings shows Send checked and the last-sent line", async () => {
   render(<StatisticsSetting />);
   const send = await screen.findByRole("radio", { name: "Send" });
   await waitFor(() => expect((send as HTMLInputElement).checked).toBe(true));
-  expect(screen.getByText(/Last sent today at 09:12/)).toBeTruthy();
+  expect(screen.getByRole("group", { name: NAME })).toBeTruthy();
+  expect(document.querySelectorAll(".srow")).toHaveLength(1);
+  expect(await line("Last sent")).toBe("Last sent today at 09:12. What LADO collects ↗");
   expect(screen.getByText("What the next report sends")).toBeTruthy();
+  expect(screen.queryByText(/Anonymous: an ID/)).toBeNull(); // the about paragraph went to the docs
+});
+
+test.each([
+  [{ choice: "on" as const, on: true }, "Not sent yet. What LADO collects ↗", true],
+  [{ choice: "off" as const }, "Nothing is sent. What LADO collects ↗", false],
+  [{ choice: "on" as const, endpoint: false }, "No statistics endpoint: nothing is sent.", false],
+])("Settings with %o says %s", async (more, text, preview) => {
+  state = telemetry({ ask: false, ...more });
+  serve();
+  render(<StatisticsSetting />);
+  expect(await line(text.split(".")[0].split(":")[0])).toBe(text);
+  expect(screen.queryByText("What the next report sends") !== null).toBe(preview);
 });
 
 test("Settings: not chosen yet", async () => {
   serve();
   render(<StatisticsSetting />);
-  expect(await screen.findByText(/Not chosen yet: nothing is sent\./)).toBeTruthy();
+  expect(await line("Nothing is sent until you choose.")).toBe("Nothing is sent until you choose. What LADO collects ↗");
   expect(screen.getByRole("heading").textContent).toBe("Statistics"); // no tag: the row says it
   const radios = screen.getAllByRole("radio") as HTMLInputElement[];
   expect(radios.map((radio) => radio.checked)).toEqual([false, false]);
@@ -138,7 +157,7 @@ test("Settings: disabled with the variable when off_by", async () => {
   serve();
   render(<StatisticsSetting />);
   expect(await screen.findByText("DO_NOT_TRACK=1")).toBeTruthy();
-  expect(screen.getByText(/is set in the LADO server's environment\./)).toBeTruthy();
+  expect(await line("is set in the server's environment.")).toBe("Off: DO_NOT_TRACK=1 is set in the server's environment.");
   const off = screen.getByRole("radio", { name: "Don't send" }) as HTMLInputElement;
   expect(off.checked).toBe(true);
   expect(off.matches(":disabled")).toBe(true); // its fieldset is

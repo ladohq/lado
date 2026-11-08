@@ -7021,10 +7021,12 @@ button.locked:disabled,
   background: var(--action-ground);
 }
 
-.mode-list input {
+/* Inside a .field, whose inputs are 38 px text fields. */
+.field .mode-list input {
   width: 16px;
   height: 16px;
   margin: 2px 0 0;
+  padding: 0;
   accent-color: var(--action);
 }
 
@@ -7143,11 +7145,12 @@ button.locked:disabled,
   background: var(--warn-ground);
 }
 
-.setup-left input {
+.field .setup-left input {
   flex: none;
   width: 16px;
   height: 16px;
   margin: 0;
+  padding: 0;
   accent-color: var(--action);
 }
 

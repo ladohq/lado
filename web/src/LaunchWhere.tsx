@@ -203,8 +203,8 @@ export function PlaceBox({
               <span className="place-path">{one.path}</span>
             )}
           </span>
-          {one.session.running_since === null && one.session.stopped_at && (
-            <span className="place-meta">{`${since(one.session.stopped_at)} ago`}</span>
+          {(one.session.running_since ?? one.session.stopped_at) && (
+            <span className="place-meta">{`${since((one.session.running_since ?? one.session.stopped_at)!)} ago`}</span>
           )}
         </li>
       );

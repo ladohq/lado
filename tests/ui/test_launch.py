@@ -1071,7 +1071,11 @@ def test_a_plain_folder_is_set_up_and_started(page: Page, server, tmp_path, git_
     agent(dialog).select_option("fake")
     dialog.get_by_role("button", name="Hide").click()
     dialog.get_by_role("button", name="1 left out · Review").click()
-    expect(dialog.get_by_role("checkbox", name="Include .env")).not_to_be_checked()
+    tick = dialog.get_by_role("checkbox", name="Include .env")
+    expect(tick).not_to_be_checked()
+    ticked, row = tick.bounding_box(), tick.locator("xpath=ancestor::li[1]").bounding_box()
+    assert ticked["width"] <= 20 and ticked["height"] <= 20, ticked  # a box, not a text field
+    assert 40 <= row["height"] <= 60, row  # one row of the list
     shot(page, "g")
     for width in (1440, 390):
         page.set_viewport_size({"width": width, "height": 900 if width > 760 else 844})

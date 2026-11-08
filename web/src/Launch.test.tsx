@@ -573,7 +573,7 @@ test("a 409 after the press opens Team, puts the focus on Session name and offer
   await ready("/src/app");
   fireEvent.click(startButton());
   await screen.findByText('session "app" exists already (stopped, in /src/app)');
-  expect(teamIsOpen()).toBe(true);
+  await waitFor(() => expect(teamIsOpen()).toBe(true));
   await waitFor(() => expect(document.activeElement).toBe(nameField()));
   expect(nameField().getAttribute("aria-invalid")).toBe("true");
   expect(nameField().getAttribute("aria-describedby")).toBeTruthy();
@@ -919,7 +919,7 @@ test("without a suggestion no agent is chosen; the footer's link opens Team on A
   expect(startButton().disabled).toBe(true);
   expect(footerText()).toContain("To start: choose an agent.");
   fireEvent.click(screen.getByRole("button", { name: "choose an agent" }));
-  expect(teamIsOpen()).toBe(true);
+  await waitFor(() => expect(teamIsOpen()).toBe(true));
   await waitFor(() => expect(document.activeElement).toBe(providerSelect()));
   fireEvent.change(providerSelect(), { target: { value: "kilo" } });
   await waitFor(() => expect(startButton().disabled).toBe(false));
@@ -933,7 +933,7 @@ test("a provider not installed cannot be chosen, even when suggested", async () 
   const kilo = within(providerSelect()).getByRole("option", { name: /Kilo CLI/ }) as HTMLOptionElement;
   expect(kilo.disabled).toBe(true);
   expect(startButton().disabled).toBe(true);
-  expect(teamIsOpen()).toBe(true); // its refusal in sight
+  await waitFor(() => expect(teamIsOpen()).toBe(true)); // its refusal in sight
 });
 
 test("the human's own choice of agent is kept when the folder changes", async () => {
@@ -969,7 +969,7 @@ test("a CLI without its login is greyed out, not taken from the suggestion, and 
   const note = (await screen.findByText(NO_LOGIN, { exact: false })).closest(".field-note") as HTMLElement;
   expect(note.classList).toContain("bad");
   expect(within(note).getByRole("button", { name: "Log in first" })).toBeTruthy();
-  expect(teamIsOpen()).toBe(true);
+  await waitFor(() => expect(teamIsOpen()).toBe(true));
   expect(startButton().disabled).toBe(true);
   expect(footerText()).toContain("To start: log in to Claude Code.");
   fireEvent.change(providerSelect(), { target: { value: "kilo" } });
@@ -1099,7 +1099,7 @@ test("a name in two kits offers to switch off either one, into the Switch off fi
   fireEvent.click(startButton());
   const dialog = screen.getByRole("dialog", { name: "New session" });
   expect((await within(dialog).findByRole("alert")).textContent).toContain('agent "reviewer" is defined by two kits');
-  expect(teamIsOpen()).toBe(true);
+  await waitFor(() => expect(teamIsOpen()).toBe(true));
   expect(within(dialog).getByRole("button", { name: "Switch off reviewer of kit-a" })).toBeTruthy();
   fireEvent.click(within(dialog).getByRole("button", { name: "Switch off reviewer of kit-b" }));
   expect(field.value).toBe("skill:x, agent:reviewer@kit-b");
@@ -1348,7 +1348,7 @@ test("a server that does not answer opens Advanced, turns Start off and names th
   await ready("/src/app", { provider: { name: "kilo", reason: "only_installed" } });
   const note = await screen.findByText(SILENT);
   expect(note.closest("[role=alert]")!.className).toContain("field-note bad");
-  expect(teamIsOpen()).toBe(true);
+  await waitFor(() => expect(teamIsOpen()).toBe(true));
   expect(modelField().getAttribute("aria-invalid")).toBe("true");
   expect(modelField().querySelector(".srv.down")).toBeTruthy();
   await waitFor(() => expect(startButton().disabled).toBe(true));
@@ -1644,7 +1644,7 @@ test("a start refused for its model points at the field", async () => {
   fireEvent.click(startButton());
   await screen.findByText(`Not started: ${HOME} does not answer. See Model above.`);
   expect(screen.getByText(SILENT)).toBeTruthy();
-  expect(teamIsOpen()).toBe(true);
+  await waitFor(() => expect(teamIsOpen()).toBe(true));
   expect(document.activeElement).toBe(modelField());
   expect(startButton().disabled).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "Use Kilo CLI's settings" }));
@@ -1841,7 +1841,7 @@ test("Resume is off while the session's provider is not installed, on once an in
   const dialog = await screen.findByRole("dialog", { name: "Resume session" });
   const refusal = await within(dialog).findByText("kilo not found; install kilo");
   expect(refusal.classList).toContain("bad");
-  expect(teamIsOpen()).toBe(true);
+  await waitFor(() => expect(teamIsOpen()).toBe(true));
   const resume = within(dialog).getByRole("button", { name: "Resume lado" }) as HTMLButtonElement;
   expect(resume.disabled).toBe(true);
   fireEvent.change(providerSelect(), { target: { value: "claude" } });
@@ -1864,7 +1864,7 @@ test("Resume is off while the session's provider is not among the providers", as
   const select = providerSelect();
   expect(select.value).toBe("gone");
   const gone = within(select).getByRole("option", { name: "gone · unknown", hidden: true }) as HTMLOptionElement;
-  expect(teamIsOpen()).toBe(true); // the refusal in sight
+  await waitFor(() => expect(teamIsOpen()).toBe(true)); // the refusal in sight
   expect(gone.disabled).toBe(true);
 });
 
@@ -2900,7 +2900,7 @@ test("a name taken after the clone switches the window to Folder with the clone 
   expect((await within(dialog).findByRole("alert")).textContent).toContain('session "marketplace" exists already');
   expect(placeBox().value).toBe("marketplace");
   expect(screen.getByText(INTO, { selector: ".place-path" })).toBeTruthy();
-  expect(teamIsOpen()).toBe(true);
+  await waitFor(() => expect(teamIsOpen()).toBe(true));
 });
 
 test("a poll that fails is asked again: the clone goes on, Cancel clone stays (F3)", async () => {

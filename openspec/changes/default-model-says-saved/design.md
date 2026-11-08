@@ -26,14 +26,16 @@ stay free right of the field. This change is built on main only after PR #256 is
    fixed by the grid (38 px line on a computer, 20 px on a phone), so filling it moves nothing,
    and a status region present before the change is announced reliably; the ✓ is hidden, so a
    screen reader says `Saved`.
-4. **Its place in the grid.** On a computer `.cli-model` gets a third column `auto`; the slot
-   sits in row 1, column 3, `line-height: 38px`, `white-space: nowrap`, `min-width: 4.5em` (the
-   room of `✓ Saved` kept while empty: between 601 and about 900 px the field is narrower than
-   360 px, and a slot that grew when filled would narrow it). At 600 px and narrower
-   (and under `:root[data-phone]`) the grid is `minmax(0, 1fr) auto`: the label row 1 column 1,
-   the slot row 1 column 2 (`line-height: 20px`, right-aligned), the field and its notes from
-   row 2 across both columns, so the field keeps its full width. Colour `--done`, 13 px, no
-   colour of its own (docs/design/ui.md, Looks).
+4. **Its place in the grid.** In a row with room for a 360 px field and `✓ Saved` beside it
+   (543 px and wider) `.cli-model` gets a third column `auto`; the slot sits in row 1,
+   column 3, `line-height: 38px`, `white-space: nowrap`, `min-width: 4.5em` (the room of
+   `✓ Saved` kept while empty, so filling it moves nothing). A narrower row (a container query
+   on the CLI's row, `cli-row`: a phone, a tablet, a window up to about 915 px beside Settings'
+   list; and under `:root[data-phone]`) has no room for both on one line: the grid is
+   `minmax(0, 1fr) auto`, the label row 1 column 1, the slot row 1 column 2 (`line-height:
+   20px`, right-aligned), the field and its notes from row 2 across both columns, so the field
+   takes the row's width and never narrows (a reserved slot beside it cut a model's name at
+   768 px). Colour `--done`, 13 px, no colour of its own (docs/design/ui.md, Looks).
 5. **Same value again saves again.** Picking the row the field already holds calls `onPick` as
    any row does (only the "stay" row keeps the value without a save), so it saves and says
    `Saved`; the human then knows the value is the saved one.

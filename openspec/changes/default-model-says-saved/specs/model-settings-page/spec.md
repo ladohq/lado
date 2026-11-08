@@ -3,8 +3,8 @@
 ### Requirement: A default saved says so
 
 Each save of a CLI's default that succeeds from its row on Agent CLIs SHALL show `✓ Saved` in
-the done colour beside the field (at the right of the `Default model` line on a phone), in a
-place the row keeps for it, so nothing moves; it SHALL stay until the human's next save on the
+the done colour beside the field (at the right of the `Default model` line in a row too narrow
+for both), in a place the row keeps for it, so nothing moves or narrows; it SHALL stay until the human's next save on the
 page, a login sheet opened, ↻ or leaving the page, never on a timer. A refused save SHALL show
 no `✓ Saved`.
 

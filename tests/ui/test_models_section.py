@@ -228,28 +228,28 @@ def test_a_default_saved_says_so_right_of_its_field_and_nothing_moves(
     box, at = field.bounding_box(), slot.bounding_box()
     assert box and at and at["x"] >= box["x"] + box["width"], (at, box)  # right of the field
     assert box["y"] <= at["y"] + at["height"] / 2 <= box["y"] + box["height"], (at, box)
+    assert box["width"] == 360, box  # the slot's room takes nothing from the field
     shot(page, "1440-light", full_page=False)
-    page.set_viewport_size({"width": 768, "height": 900})
-    page.emulate_media(color_scheme="dark")
-    field.scroll_into_view_if_needed()
-    expect(slot).to_have_text("✓ Saved")
-    assert slot.evaluate("s => getComputedStyle(s).color") == page.evaluate(DONE)
-    # Narrower than 360 px + `✓ Saved`: the slot's room is kept, so the field is no narrower
-    # than one whose row says nothing.
-    width = field.bounding_box()
-    other = picker(page, "OpenCode").bounding_box()
-    assert width and other and width["width"] < 360 and width["width"] == other["width"], (
-        width,
-        other,
-    )
-    shot(page, "768-dark", full_page=False)
 
 
-def test_a_default_saved_at_a_phones_width_says_so_on_its_label_s_line(
-    browser: Browser, clis, server, shot
+@pytest.mark.parametrize(
+    "width, scheme",
+    [(390, "light"), (768, "dark"), (901, "light")],
+    ids=["phone-light", "tablet-dark", "901-light"],
+)
+def test_a_default_saved_in_a_narrow_row_says_so_on_its_label_s_line(
+    browser: Browser, clis, server, shot, width, scheme
 ):
+    """A row too narrow for a 360 px field and `✓ Saved` beside it (a phone, a tablet, a
+    window just over 900 px beside Settings' list): `✓ Saved` stands at the right of the
+    `Default model` line over the field, which takes the row's width (no room is lost to the
+    slot) and keeps it."""
+    phone = width <= 600
     context = browser.new_context(
-        viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True
+        viewport={"width": width, "height": 844},
+        is_mobile=phone,
+        has_touch=phone,
+        color_scheme=scheme,
     )
     try:
         page = context.new_page()
@@ -258,10 +258,12 @@ def test_a_default_saved_at_a_phones_width_says_so_on_its_label_s_line(
         field = picker(page, "Kilo CLI")
         field.scroll_into_view_if_needed()
         box = field.bounding_box()
-        assert box
+        row = kilo.locator(".cli-model").bounding_box()
+        assert box and row and box["width"] == row["width"], (box, row)  # the row's width
         pick_kilo_model(page, "vendor/model-7")
         slot = kilo.locator(".cli-saved")
         expect(slot).to_have_text("✓ Saved")
+        assert slot.evaluate("s => getComputedStyle(s).color") == page.evaluate(DONE)
         stays(field, box["y"])
         now = field.bounding_box()
         assert now and now["width"] == box["width"], (now, box)  # the field keeps its width
@@ -270,8 +272,8 @@ def test_a_default_saved_at_a_phones_width_says_so_on_its_label_s_line(
         assert label and at and abs(at["y"] - label["y"]) < 1, (at, label)  # on its line
         assert at["y"] + at["height"] <= now["y"] + 1  # over the field
         assert abs(at["x"] + at["width"] - (now["x"] + now["width"])) < 1, (at, now)  # its right
-        assert page.evaluate("document.documentElement.scrollWidth") <= 390
-        shot(page, "390-light", full_page=False)
+        assert page.evaluate("document.documentElement.scrollWidth") <= width
+        shot(page, f"{width}-{scheme}", full_page=False)
     finally:
         context.close()
 

@@ -1,45 +1,12 @@
 # model-settings-page Specification
 
 ## Purpose
-Settings → Models: the page where the human sees what each agent CLI and saved model
-server offers and ticks the models to keep under names, renames them, and adds, changes
-and removes servers, with the rules of `lado model-server` and `lado model`; and the API it
-uses, which a server's key enters and never leaves.
+Settings → Model servers: the page where the human sees what each agent CLI and saved model
+server offers and ticks the models to keep under names in one Your models table, renames
+them, and adds, changes and removes servers, with the rules of `lado model-server` and `lado
+model`; and the API it uses, which a server's key enters and never leaves.
 
 ## Requirements
-
-### Requirement: Settings has a section Models
-
-The Settings page SHALL show a section **Models** after Agent CLIs and environment and
-before Usage statistics, at the anchor `#models`, with no tabs: an intro line, `Choose a default model for each
-agent CLI, and add the models of your own servers.`, then two blocks one under the other,
-each headed by its name and its count where it has one: **Your agent CLIs**, a card per agent
-CLI; **Model servers**, the saved servers and `Add server`.
-
-#### Scenario: The anchor
-- **WHEN** the human opens `/settings#models`
-- **THEN** the page scrolls to the section Models once, its two blocks one under the
-  other
-
-#### Scenario: Four models
-- **WHEN** four models and two servers are saved, three of OpenCode, one of Kilo CLI
-- **THEN** OpenCode's card reads `Your models 3`, Kilo CLI's `Your models 1`, and the block
-  reads `Model servers 2`
-
-### Requirement: Opened at its anchor, Models stays at the top
-
-When the page opens at `#models`, the page SHALL keep the top of Models at the top of the
-view while the page around it grows, until the human first presses, scrolls, touches or
-types; from then on the page is the human's.
-
-#### Scenario: The anchor while the sections above grow
-- **WHEN** the human opened `/settings#models` and Agent CLIs and environment, above, grows
-  once its check ends, nothing pressed, scrolled or typed yet
-- **THEN** the top of Models stays at the top of the view
-
-#### Scenario: After the human's scroll
-- **WHEN** the human scrolled the page opened at `#models` and a section above grows
-- **THEN** the page scrolls nothing
 
 ### Requirement: Nothing moves under the pointer
 
@@ -47,12 +14,11 @@ No change in the section SHALL scroll the page or move the element the human act
 holds the focus on, whatever it changes above it: a tick, a rename, × and Undo, a default
 picked, a server added, changed or removed, the reload after any of them, and a list's read
 ending. The page SHALL keep that element at its place on the screen by scrolling by the height
-changed above it, and SHALL scroll to `#models` only when it opens with that anchor. No row
+changed above it, No row
 SHALL leave the section on a timer.
 
 #### Scenario: A tick adds a card above
-- **WHEN** the human ticks an agent CLI under a model in the middle of a server's open list
-  and the model adds a row to that CLI's card above
+- **WHEN** the human ticks an agent CLI under a model in the middle of a server's open list and the model adds a row to Your models below
 - **THEN** the tick stays where it was on the screen, to the pixel
 
 #### Scenario: A server added
@@ -67,38 +33,31 @@ SHALL leave the section on a timer.
   element still moves nothing
 
 #### Scenario: Nothing acted on
-- **WHEN** the human opens `/settings` and presses nothing in Models while the sections above
-  grow and Models renders its rows
-- **THEN** the page stays where it is: only what the human acts on in Models is held in place
+- **WHEN** the human opens `/settings` and presses nothing on Model servers while Servers and Your models render their rows
+- **THEN** the page stays where it is: only what the human acts on is held in place
 
 #### Scenario: A section above grows
-- **WHEN** the human opened a source in Models and a section above grows while its list is
-  read
-- **THEN** the list's read ending scrolls nothing to make up for the section above
+- **WHEN** the human opened a source and a server above it grows while its list is read
+- **THEN** the list's read ending scrolls nothing to make up for the server above
 
 #### Scenario: The focus out of view
-- **WHEN** the focus is on a server's row, the human scrolled up so that the first card shows
-  and the server is below the view, and the blocks between them grow
+- **WHEN** the focus is on a server's row, the human scrolled up so that the first server shows and that server is below the view, and the servers between them grow
 - **THEN** the page scrolls nothing: what shows stays where it is
 
 #### Scenario: Undo runs out while the human is below
-- **WHEN** the human pressed × on a model, then works in Model servers, and ten
-  seconds pass
+- **WHEN** the human pressed × on a model, then works in Servers, and ten seconds pass
 - **THEN** nothing under the pointer moves: only the Undo of that row goes
 
 ### Requirement: Opening the section reads no list
 
-Opening the section Models SHALL send no request to any model server and SHALL read the list
-of models only of an agent CLI whose default is built-in, in the background, the page not
-waiting for it, as the launch window's Model field reads it; every source SHALL show closed.
+Opening the page Model servers or Agent CLIs SHALL send no request to any model server, and Agent CLIs SHALL read the list of models only of an agent CLI whose default is built-in, in the background, the page not waiting for it, as the launch window's Model field reads it; every source SHALL show closed.
 
 #### Scenario: Two servers saved
-- **WHEN** `LM Studio дома` and `LiteLLM` are saved and the human opens Settings → Models
+- **WHEN** `LM Studio дома` and `LiteLLM` are saved and the human opens Settings → Model servers
 - **THEN** no request reaches either server, and every source is closed
 
 #### Scenario: A built-in default
-- **WHEN** Kilo CLI's default is built-in, OpenCode's is `Локальная Qwen` and Claude Code has
-  none, and the human opens Settings → Models
+- **WHEN** Kilo CLI's default is built-in, OpenCode's is `Локальная Qwen` and Claude Code has none, and the human opens Settings → Agent CLIs
 - **THEN** only Kilo CLI's list is read, and no request reaches `LM Studio дома`
 
 ### Requirement: The sources
@@ -185,7 +144,7 @@ would save, as the core gives it, never made by the page.
 ### Requirement: A tick of several models
 
 When several configured models have the same CLI, model and server, their tick SHALL be on
-and disabled, its title naming them; they SHALL be removed on its card.
+and disabled, its title naming them; they SHALL be removed in Your models.
 
 #### Scenario: Two names for one model
 - **WHEN** `Быстрая` and `Сильная` are both OpenCode's `qwen3-8b` on `LM Studio дома`
@@ -206,8 +165,7 @@ A model the server types embeddings SHALL NOT be listed; under the list a line S
 ### Requirement: A model its source no longer lists
 
 When a source's list was read and lacks the model of a configured model of that source,
-the model SHALL show first in the list, ticked, marked `no longer listed`, and on its CLI's card
-with `⚠ not in list`, its title saying agents on it stop at their first turn.
+the model SHALL show first in the list, ticked, marked `no longer listed`, and in Your models with `⚠ not in list`, its title saying agents on it stop at their first turn.
 Nothing SHALL remove it but the human; unticking it SHALL remove it from the list too.
 
 #### Scenario: A model gone from the server
@@ -345,7 +303,8 @@ Every refusal and warning SHALL be the one the matching command makes, its hint 
 under the field it concerns: Name, Address or Key of a server; Model id; a rename's field;
 a refusal of no field under the buttons or in the tick's row. Its line and hint SHALL name
 no command to run, but what to do on the page; the commands SHALL print their lines as
-before. The form SHALL keep its values but the key's.
+before. A name taken SHALL read from a capital letter. The form SHALL keep its values but the
+key's.
 
 #### Scenario: A key refused
 - **WHEN** the human adds `work` at `https://gw.corp/llm` with a key it answers 401 to
@@ -354,7 +313,12 @@ before. The form SHALL keep its values but the key's.
 
 #### Scenario: A name taken
 - **WHEN** the human renames a model to `claude sonnet` and `Claude Sonnet` is saved
-- **THEN** under the field it shows `the name is taken by the model "Claude Sonnet"`
+- **THEN** under the field it shows `The name is taken by the model "Claude Sonnet"`
+
+#### Scenario: A server's name taken
+- **WHEN** the human adds a server named `LMS` and `lms` is saved
+- **THEN** under Name it shows `A model server "lms" is saved already; its Change sets another
+  address or key`
 
 #### Scenario: A model gone from the server's list
 - **WHEN** the human ticks a model its server no longer lists
@@ -481,18 +445,17 @@ key, SHALL leave the key in its field.
 
 ### Requirement: The section fits a phone
 
-On a window narrower than 600 px the section's forms SHALL show their fields one under the
-other; its icon buttons, ×, Undo, the Default model field and the picker's search SHALL be at
-least 44 px high and a list's row 44 px high; a card's label SHALL show over its field; the
-field SHALL hide the id and keep the name and the server's mark; a server's list of up to 20
-models SHALL not scroll within itself; and no part of the section SHALL make the page scroll
-sideways.
+On a window narrower than 600 px the forms of Model servers SHALL show their fields one under the
+other; their icon buttons, ×, Undo, Agent CLIs' pickers and the picker's search SHALL be at
+least 44 px high and a list's row 44 px high; `Default model` SHALL show over the field; the
+field SHALL hide the id, not the name or the server's mark; a server's ✎ and 🗑 SHALL stay on its name's line; a list of up to
+20 models SHALL not scroll within itself; and neither page SHALL scroll sideways.
 
 #### Scenario: A server's list on a phone
 - **WHEN** the human opens a server with a long address and 12 models in a window 390 px
   wide
-- **THEN** the page does not scroll sideways, the address wraps whole, ✎ and 🗑 show under
-  its name, and all 12 models show without a scroll inside the list
+- **THEN** the page does not scroll sideways, the address wraps whole, ✎ and 🗑 show at
+  the right of its name's line, and all 12 models show without a scroll inside the list
 
 #### Scenario: A model with marks on a phone
 - **WHEN** a server's model `qwen/qwen-gone-7b-instruct-q4` is no longer listed and saved
@@ -501,26 +464,22 @@ sideways.
   it
 
 #### Scenario: Names and ids whole on a phone
-- **WHEN** a server `LiteLLM на работе` has the badges `OpenAI-compatible` and `key`, and
-  a card holds `claude-opus-4-1-20250805` on it, in a window 390 px wide
+- **WHEN** a server `LiteLLM на работе` has the badges `OpenAI-compatible` and `key`, and Claude Code's row holds `claude-opus-4-1-20250805` on it, in a window 390 px wide
 - **THEN** the server's name and the model's id show whole, wrapped, never cut with `…`
 
 ### Requirement: The UI calls Claude Code, Codex CLI, OpenCode and Kilo CLI agent CLIs
 
 The UI SHALL name what runs an agent "agent CLI": the New session window's field `Agent
-CLI`, Settings' section `Agent CLIs and environment`, the system panel's `Agent CLIs`, and
-every line pointing to that section `Settings → Agent CLIs and environment`; the section
-Models SHALL say `agent CLI`, or `CLI` where room is short. The section's anchor and the
-commands' options (`--provider`, `--cli`) SHALL stay as they are.
+CLI`, Settings' page `Agent CLIs`, the system panel's `Agent CLIs`, and
+every line pointing to that page `Settings → Agent CLIs`; Model servers SHALL say `agent CLI`, or `CLI` where room is short. The commands' options (`--provider`, `--cli`) SHALL stay as they are.
 
 #### Scenario: A worker refused for a CLI not logged in
 - **WHEN** a session starts with Claude Code not logged in
-- **THEN** the refusal says `log in in Settings → Agent CLIs and environment`, and that
-  heading shows in Settings
+- **THEN** the refusal says `log in in Settings → Agent CLIs`, and that heading shows in Settings
 
 #### Scenario: An old link
 - **WHEN** the human opens `/settings#providers-and-environment`
-- **THEN** the page scrolls to Agent CLIs and environment
+- **THEN** the address becomes `/settings/agent-clis`
 
 ### Requirement: Without the page everything is as before
 
@@ -594,72 +553,6 @@ settles; Add SHALL save the model with its default name, off while refused.
 - **WHEN** the human types `qwen3-8b` in Model id of a server that gives no list
 - **THEN** the note is a warning that LADO cannot check it, and Add saves it
 
-### Requirement: A card per agent CLI
-
-Your agent CLIs SHALL show a card per agent CLI LADO knows, the installed ones in LADO's order,
-then the ones not installed, then one for a model of a CLI LADO does not know, its field off.
-A card's head SHALL give the title and the login state. Its row **Default model** SHALL hold the
-picker.
-
-#### Scenario: First open
-- **WHEN** Claude Code, Codex CLI and OpenCode are installed and logged in, Kilo CLI is not
-  installed, and nothing is saved
-- **THEN** the cards are Claude Code, Codex CLI, OpenCode, then Kilo CLI, each with its Default
-  model on its settings and no list of models
-
-### Requirement: The lead of Your agent CLIs
-
-The block's lead SHALL say `New sessions and workers of each agent CLI start on its default model.
-Left on its settings, the agent CLI chooses. Your models come from the model servers below.`, and
-with no configured model at all `New sessions and workers of each agent CLI start on its default
-model. To add models of your own, add a model server below and tick the agent CLIs that run them.`
-
-#### Scenario: Nothing saved
-- **WHEN** no model is saved and the human opens Settings
-- **THEN** the lead says how to add models and no card has a list of models
-
-### Requirement: An agent CLI's models on its card
-
-A card with configured models SHALL list them under its Default model, the card's default first,
-the others by name ignoring case, under the head `Your models <n>`, Model, From: the name (wrapped,
-never cut), the model, its server (the address on hover) and ×.
-
-#### Scenario: Removing a model
-- **WHEN** the human presses × on `Рабочая Qwen`, no agent CLI's default
-- **THEN** its row says `Removed Рабочая Qwen. Undo`, and OpenCode's tick under its model is off
-
-### Requirement: A long table of models folds
-
-A card with more than five models SHALL show five, with `Show all <n> models` under them, and
-`Show fewer` when unfolded; the state SHALL last while the page stays open, and no new model,
-removal or Undo SHALL fold it. The focus SHALL stay on the button.
-
-#### Scenario: Nine models of OpenCode
-- **WHEN** OpenCode has nine models, `Локальная Qwen` its default
-- **THEN** the card shows `Локальная Qwen` and the first four others by name, and `Show all 9
-  models`
-
-### Requirement: Renaming a model on its card
-
-A click on a name, or Enter on it, SHALL turn it into a field no wider
-than its cell, the name selected; Enter or leaving it SHALL rename the model under the rules of a
-model's name, Esc SHALL restore it; there SHALL be no Save or Cancel button. A refused name
-SHALL keep the field with the refusal under it; leaving it then restores the name. On hover the
-name SHALL show a frame and the title `Click to rename`.
-
-#### Scenario: A renamed model
-- **WHEN** the human renames `qwen3-8b · LM Studio · OpenCode` to `Alpha`
-- **THEN** `Alpha` shows first on OpenCode's card, no other card moves, `lado model list` shows
-  it, and a default on it stays
-
-#### Scenario: A name taken
-- **WHEN** the human renames a model to the name of another, in another case, and presses Enter
-- **THEN** under the field it shows the name-taken line, and nothing changes
-
-#### Scenario: Esc
-- **WHEN** the human types a new name and presses Esc
-- **THEN** the old name shows and nothing is saved
-
 ### Requirement: One picker of a model
 
 The field Default model SHALL be a picker over the list the core computes for the CLI, read when
@@ -684,7 +577,7 @@ focus on the field and show the value. A refusal SHALL show under the field and 
 as it was. `<CLI>'s settings` SHALL clear the default.
 
 #### Scenario: A model of the list
-- **WHEN** the human picks `anthropic/claude-sonnet-4-5` on Kilo CLI's card
+- **WHEN** the human picks `anthropic/claude-sonnet-4-5` in Kilo CLI's row
 - **THEN** `lado model default` shows it as Kilo CLI's default
 
 #### Scenario: Back to the settings
@@ -699,7 +592,7 @@ narrower than 600 px), scrolling within itself, kept above a phone's keyboard. O
 human starts outside the list SHALL close it.
 
 #### Scenario: The last card
-- **WHEN** the human opens the picker of the last card at the bottom of the window
+- **WHEN** the human opens the picker of the last CLI's row at the bottom of the window
 - **THEN** the list opens upward, whole, and the page does not grow
 
 ### Requirement: Search in the picker
@@ -723,7 +616,7 @@ warning staying under the field. A name saved so SHALL show first in BUILT-IN, m
 name`.
 
 #### Scenario: A full id of Claude Code
-- **WHEN** the human types `claude-opus-4-1-20250805` and presses Use on Claude Code's card
+- **WHEN** the human types `claude-opus-4-1-20250805` and presses Use in Claude Code's row
 - **THEN** it is Claude Code's default and the warning that LADO cannot check it stays under the
   field
 
@@ -731,8 +624,7 @@ name`.
 
 While a list is read the picker SHALL show the CLI's configured models and `reading the
 models…`. When it cannot be read the picker SHALL say why above the configured models, with
-`Read again` when reading may help, and offer `Other name…`. With a built-in default the card
-SHALL show the same warning under the field with `Check again`.
+`Read again` when reading may help, and offer `Other name…`. With a built-in default the CLI's row SHALL show the same warning under the field with `Check again`.
 
 #### Scenario: kilo models times out
 - **WHEN** `kilo models` does not end in time and the human opens Kilo CLI's picker
@@ -743,19 +635,6 @@ SHALL show the same warning under the field with `Check again`.
 - **THEN** the picker says Codex CLI gives no list for that provider, with no `Read again`, and
   offers `Other name…`
 
-### Requirement: A CLI not installed on its card
-
-A card of an agent CLI not installed SHALL say in its head `⚠ not installed`, `⚠ not installed:
-its default model cannot run` when it has a default, or `⚠ not installed: its models cannot run`
-when it has models and no default; its field SHALL be off and show
-the value, and SHALL NOT open. Its default SHALL be cleared by `Use <CLI>'s settings` under the
-field. Its models SHALL still be renamed and removed.
-
-#### Scenario: Kilo CLI removed with a default
-- **WHEN** Kilo CLI is not installed and its default is `Локальная Qwen`
-- **THEN** the card shows the value, the field does not open, and `Use Kilo CLI's settings`
-  clears it
-
 ### Requirement: A built-in default the list lost
 
 When a CLI's list was read and lacks its built-in default, the field SHALL show it with `⚠ no
@@ -765,7 +644,7 @@ turn.` with `Use <CLI>'s settings`. Nothing but the human SHALL change the defau
 
 #### Scenario: A model gone from Kilo CLI
 - **WHEN** Kilo CLI's default is `old/model`, and the list read when the page opened lacks it
-- **THEN** the card shows it with the warning, and it stays Kilo CLI's default
+- **THEN** the row shows it with the warning, and it stays Kilo CLI's default
 
 ### Requirement: An external default's server
 
@@ -783,13 +662,12 @@ default.
 ### Requirement: An external model on Claude Code or Codex CLI
 
 The picker of Claude Code or Codex CLI with external models SHALL say above them `On <CLI> a
-server's model takes the whole process: the agent runs only on that server.`, and with an
-external default the card SHALL say `On <CLI> this model takes the whole process: an agent on it runs only on
+server's model takes the whole process: the agent runs only on that server.`, and with an external default the CLI's row SHALL say `On <CLI> this model takes the whole process: an agent on it runs only on
 <server>.` under the field. Which CLIs say so SHALL come from the provider, not from the page.
 
 #### Scenario: Claude Code on a gateway
 - **WHEN** Claude Code's default is `Шлюз Opus` on `work`
-- **THEN** the card says `On Claude Code this model takes the whole process: an agent on it runs
+- **THEN** the row says `On Claude Code this model takes the whole process: an agent on it runs
   only on work.`
 
 ### Requirement: Undo of a default removed
@@ -810,9 +688,7 @@ them, and its confirmation SHALL clear those defaults.
 #### Scenario: A default on the server
 - **WHEN** `Локальная Qwen` on `LM Studio дома` is OpenCode's default and the human removes the
   server
-- **THEN** the question names it, and once confirmed OpenCode's card shows `OpenCode's settings`
-  and `Its default model Локальная Qwen was removed with LM Studio дома.` until the human's next
-  change in the section
+- **THEN** the question names it, and once confirmed OpenCode's row on Agent CLIs shows `OpenCode's settings`
 
 ### Requirement: Removing a default model asks first
 
@@ -835,8 +711,7 @@ A model removed by its tick SHALL leave no Undo; ticked again it SHALL NOT be a 
 - **WHEN** this page shows no default, another window made `Локальная Qwen` OpenCode's, and the
   human presses × on it
 - **THEN** it goes unasked, but the row says `OpenCode is back on its settings.` and Undo sets the
-  default again; removed by its tick, the card says `Its default model Локальная Qwen was
-  removed.`
+  default again; removed by its tick, it leaves no Undo and OpenCode's row on Agent CLIs shows `OpenCode's settings`
 
 ### Requirement: The picker works from the keyboard
 
@@ -882,10 +757,10 @@ hand the focus to the field. Another agent CLI's rows SHALL NOT stand in a list 
 
 ### Requirement: A request LADO's server did not answer promises nothing
 
-A failed request of Settings → Models that got no answer from LADO's server SHALL read `LADO's server does not answer: your request may or may not have reached it.`, and SHALL NOT say that nothing was done.
+A failed request of Settings → Agent CLIs or Model servers that got no answer from LADO's server SHALL read `LADO's server does not answer: your request may or may not have reached it.`, and SHALL NOT say that nothing was done.
 
 #### Scenario: The server stops during a save
-- **WHEN** a request of Settings → Models gets no answer from LADO's server
+- **WHEN** a request of Settings → Agent CLIs or Model servers gets no answer from LADO's server
 - **THEN** the page shows that line
 
 ### Requirement: The form names a CLI the server's type does not suit
@@ -899,3 +774,79 @@ What answered a server's check SHALL name, under its Agent CLIs, each CLI that h
 #### Scenario: Another server
 - **WHEN** the human checks OpenRouter
 - **THEN** Agent CLIs names Codex CLI, and no such warning shows
+
+### Requirement: Settings has a page Model servers
+
+The Settings page Model servers (`/settings/model-servers`) SHALL show, with no intro, two blocks
+one under the other, each headed by its name and its count: **Servers**, with the lead `Any
+OpenAI-compatible server: LM Studio, Ollama, vLLM, LiteLLM.`, the saved servers and `Add server`;
+then **Your models**, shown once a model is saved. No card per agent CLI SHALL be on the page.
+
+#### Scenario: Nothing saved
+- **WHEN** no server and no model is saved and the human opens Model servers
+- **THEN** the page shows Servers with its lead and `+ Add server`, and no Your models
+
+#### Scenario: Four models
+- **WHEN** four models and two servers are saved, three of OpenCode, one of Kilo CLI
+- **THEN** the page reads `Servers 2` and `Your models 4`
+
+### Requirement: Your models is one table of the human's models
+
+Your models SHALL list every configured model in one table with the lead `Pick one as a default
+in Agent CLIs.`, its last words a link to that page, and the columns Name, Model, From, Agent CLI
+and ×, sorted by agent CLI in LADO's order, then by name ignoring case; From SHALL read `⚠
+<server>` for a server found not answering. With servers and no model it SHALL say `None yet: open
+a server and tick the agent CLIs that run a model.`
+
+#### Scenario: Removing a model
+- **WHEN** the human presses × on `Рабочая Qwen`, no agent CLI's default
+- **THEN** its row says `Removed Рабочая Qwen. Undo`, and OpenCode's tick under its model is off
+
+#### Scenario: A server that does not answer
+- **WHEN** `qwen3-8b · lmstudio` is Kilo CLI's model and `lmstudio` does not answer
+- **THEN** its From reads `⚠ lmstudio`, the server named in its title
+
+#### Scenario: A model of an agent CLI LADO does not know
+- **WHEN** a configured model's CLI is not one LADO knows
+- **THEN** it is listed last, its Agent CLI the CLI's name as saved, and it can be renamed and
+  removed
+
+### Requirement: Your models marks a CLI's default
+
+A model that is an agent CLI's default SHALL read `<CLI> · default` in its Agent CLI cell, so the
+human sees that × clears that default too.
+
+#### Scenario: Kilo CLI's default
+- **WHEN** `qwen3-8b · lmstudio` is Kilo CLI's default
+- **THEN** its row's Agent CLI reads `Kilo CLI · default`
+
+### Requirement: Renaming a model in Your models
+
+A click on a name, or Enter on it, SHALL turn it into a field no wider than its cell, the name
+selected; Enter or leaving it SHALL rename the model under the rules of a model's name, Esc SHALL
+restore it; there SHALL be no Save or Cancel button. A refused name SHALL keep the field with the
+refusal under it; leaving it then restores the name. On hover the name SHALL show a frame and the
+title `Click to rename`.
+
+#### Scenario: A renamed model
+- **WHEN** the human renames `qwen3-8b · LM Studio · OpenCode` to `Alpha`
+- **THEN** `Alpha` shows in OpenCode's place of the table by name, `lado model list` shows it, and
+  a default on it stays
+
+#### Scenario: A name taken
+- **WHEN** the human renames a model to the name of another, in another case, and presses Enter
+- **THEN** under the field it shows the name-taken line, and nothing changes
+
+#### Scenario: Esc
+- **WHEN** the human types a new name and presses Esc
+- **THEN** the old name shows and nothing is saved
+
+### Requirement: Your models fits a narrow window
+
+At 900 px and narrower Your models SHALL have no header row, and each model SHALL show its name
+and × on one line, then `<model> · <server> · <agent CLI>` on the next, wrapped whole; × SHALL be
+32 px, and 44 px on a phone.
+
+#### Scenario: Tablet
+- **WHEN** the human opens Model servers in a window 768 px wide with four models
+- **THEN** each model takes two lines, no name or id is cut, and the page does not scroll sideways

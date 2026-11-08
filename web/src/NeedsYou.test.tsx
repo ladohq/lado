@@ -297,9 +297,9 @@ test("Open terminal goes to the agent's terminal in its session, and the address
   await waitFor(() => expect(address()).toBe("/sessions/lado/activity"));
 });
 
-test("an agent that waits for its CLI's login offers Log in…, which leads to Settings' section", async () => {
+test("an agent that waits for its CLI's login offers Log in…, which leads to its CLI's row in Agent CLIs", async () => {
   const reason =
-    "Claude Code is not logged in: log in in Settings → Agent CLIs and environment, or set CLAUDE_CODE_OAUTH_TOKEN; the agent starts by itself once you do";
+    "Claude Code is not logged in: log in in Settings → Agent CLIs, or set CLAUDE_CODE_OAUTH_TOKEN; the agent starts by itself once you do";
   const waits_ = { ...agent("supervisor", reason), login_wait: "claude" };
   waiting = [waits.agent("lado", waits_)];
   open();
@@ -309,7 +309,7 @@ test("an agent that waits for its CLI's login offers Log in…, which leads to S
   expect(logIn.className).toBe("primary");
   expect(within(lado).getByRole("button", { name: "Open supervisor's terminal" }).className).toBe("quiet");
   fireEvent.click(logIn);
-  await waitFor(() => expect(address()).toBe("/settings#providers-and-environment"));
+  await waitFor(() => expect(address()).toBe("/settings/agent-clis#claude"));
 });
 
 test("an agent that waits for anything else offers no Log in…", async () => {
@@ -414,7 +414,9 @@ describe("notifications", () => {
   test("Enable notifications on Needs you asks the browser and turns them on when allowed", async () => {
     open();
     fireEvent.click(await screen.findByRole("button", { name: "Enable notifications" }));
-    expect(await screen.findByText(/Browser notifications are on/)).toBeTruthy();
+    const on = await screen.findByText(/Browser notifications are on/);
+    const settings = within(on).getByRole("link", { name: "Settings" });
+    expect(settings.getAttribute("href")).toBe("/settings/general#notifications");
     expect(FakeNotification.asked).toBe(1);
     expect(localStorage.getItem("lado.notifications")).toBe("on");
   });
@@ -423,16 +425,16 @@ describe("notifications", () => {
     FakeNotification.answer = "denied";
     open();
     fireEvent.click(await screen.findByRole("button", { name: "Enable notifications" }));
-    expect(await screen.findByText(/The browser blocks notifications for this page/)).toBeTruthy();
+    expect(await screen.findByText("Blocked by the browser: allow them in the site settings (icon left of the address), then switch on again.")).toBeTruthy();
     expect(localStorage.getItem("lado.notifications")).toBeNull();
     cleanup();
     vi.stubGlobal("isSecureContext", false);
     open();
-    expect(await screen.findByText(/only on a secure page/)).toBeTruthy();
+    expect(await screen.findByText("Needs a secure page: open LADO at 127.0.0.1 or localhost.")).toBeTruthy();
     cleanup();
     vi.stubGlobal("Notification", undefined);
     open();
-    expect(await screen.findByText("This browser cannot show notifications.")).toBeTruthy();
+    expect(await screen.findByText("Not supported by this browser.")).toBeTruthy();
     expect((screen.getByRole("button", { name: "Enable notifications" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -440,12 +442,12 @@ describe("notifications", () => {
     localStorage.setItem("lado.notifications", "on");
     FakeNotification.permission = "default";
     open();
-    expect(await screen.findByText(/The browser asks again before it shows notifications/)).toBeTruthy();
-    expect(screen.queryByText(/blocks notifications/)).toBeNull();
+    expect(await screen.findByText("The browser asks again: switch on and allow them.")).toBeTruthy();
+    expect(screen.queryByText(/Blocked by the browser/)).toBeNull();
     FakeNotification.permission = "denied";
     cleanup();
     open();
-    expect(await screen.findByText(/The browser blocks notifications for this page/)).toBeTruthy();
+    expect(await screen.findByText("Blocked by the browser: allow them in the site settings (icon left of the address), then switch on again.")).toBeTruthy();
   });
 
   test("each new item shows one silent notification, tagged by its key; what waited at the start does not", async () => {
@@ -511,7 +513,7 @@ describe("notifications", () => {
 
   test("Settings turns them on, asking the browser first, and off", async () => {
     open("/settings");
-    const toggle = (await screen.findByRole("checkbox", { name: "Browser notifications" })) as HTMLInputElement;
+    const toggle = (await screen.findByRole("switch", { name: "Browser notifications" })) as HTMLInputElement;
     expect(toggle.checked).toBe(false);
     fireEvent.click(toggle);
     await waitFor(() => expect(toggle.checked).toBe(true));
@@ -524,7 +526,7 @@ describe("notifications", () => {
     FakeNotification.answer = "denied";
     FakeNotification.permission = "default";
     fireEvent.click(toggle);
-    expect(await screen.findByText(/The browser blocks notifications for this page/)).toBeTruthy();
+    expect(await screen.findByText("Blocked by the browser: allow them in the site settings (icon left of the address), then switch on again.")).toBeTruthy();
     expect(toggle.checked).toBe(false);
   });
 });

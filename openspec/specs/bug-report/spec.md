@@ -140,15 +140,15 @@ decides who reaches it).
 
 ### Requirement: The UI shows Report a bug on every page
 
-The rail SHALL have a **Report a bug** item with a bug icon above Settings, on every page,
-with only its icon (its name as tooltip and accessible name) when the rail is collapsed.
-It SHALL open the page `/report` (title "Report a bug"). A failed load SHALL show its reason.
-The page SHALL load the report anew on each visit; the change feed does not carry it.
+The rail's Help menu SHALL have a **Report a bug** item with a bug icon, on every page (the
+capability `rail-help`), and the rail SHALL have no item of its own for it. It SHALL open the
+page `/report` (title "Report a bug"). A failed load SHALL show its reason. The page SHALL load
+the report anew on each visit; the change feed does not carry it.
 
 #### Scenario: The collapsed rail
-- **WHEN** the rail is collapsed
-- **THEN** Report a bug shows only its bug icon, above Settings, with "Report a bug" as
-  its tooltip and accessible name
+- **WHEN** the rail is collapsed and the human opens Help
+- **THEN** its menu shows Report a bug with its bug icon and name, and the rail itself has no
+  bug icon
 
 ### Requirement: The Report a bug page shows the report, its link and Copy text
 
@@ -158,5 +158,5 @@ report, **Open a new issue on GitHub ↗** (the report's link, opened in a new t
 **Copy text** (copies the report; "Report copied").
 
 #### Scenario: From a session's page
-- **WHEN** the human is on a session's page and clicks Report a bug on the rail
+- **WHEN** the human is on a session's page and chooses Report a bug in the rail's Help menu
 - **THEN** the Report a bug page shows the report with a `- Browser:` line, and Open a new issue on GitHub links to `https://github.com/ladohq/lado/issues/new?…`

@@ -1,6 +1,5 @@
-"""Usage statistics in the browser (docs/design/ui.md, Usage statistics): the banner that
-asks once, its What is sent, Settings' section, and the section switched off by the
-server's environment."""
+"""Statistics in the browser (docs/design/ui.md, Statistics): the banner that asks once, its
+What is sent, Settings → Statistics, and the page switched off by the server's environment."""
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -30,13 +29,15 @@ def test_the_banner_asks_once_and_settings_shows_the_choice(page: Page, not_chos
     expect(banner).to_have_count(0)
     assert telemetry.state().on
     page.get_by_role("link", name="Settings").click()
-    section = page.get_by_role("region", name="Usage statistics")
+    page.get_by_role("navigation", name="Settings sections").get_by_role(
+        "link", name="Statistics"
+    ).click()
+    section = page.get_by_role("region", name="Statistics")
     expect(section.get_by_role("radio", name="Send", exact=True)).to_be_checked()
-    expect(section).to_contain_text("Not sent yet")
-    section.scroll_into_view_if_needed()  # only the content scrolls: the shot shows it
+    expect(section).to_contain_text("Not sent yet. What LADO collects ↗")
     shot(page, "settings")
     page.reload()
-    expect(page.get_by_role("heading", name="Usage statistics")).to_be_visible()
+    expect(page.get_by_role("heading", name="Statistics")).to_be_visible()
     expect(page.locator(".stats-banner")).to_have_count(0)  # asked once
 
 
@@ -51,13 +52,11 @@ def test_settings_is_disabled_when_the_environment_switches_it_off(
     log_in(page, server)
     expect(page.get_by_role("button", name="System")).to_be_visible()
     expect(page.locator(".stats-banner")).to_have_count(0)
-    page.get_by_role("link", name="Settings").click()
-    section = page.get_by_role("region", name="Usage statistics")
-    expect(section).to_contain_text("switched off by the environment")
-    expect(section).to_contain_text("DO_NOT_TRACK=1 is set in the LADO server's environment.")
+    page.goto(f"{server['url']}/settings/statistics")
+    section = page.get_by_role("region", name="Statistics")
+    expect(section).to_contain_text("Off: DO_NOT_TRACK=1 is set in the server's environment.")
     expect(section.get_by_role("radio", name="Don't send")).to_be_checked()
     expect(section.get_by_role("radio", name="Don't send")).to_be_disabled()
-    section.scroll_into_view_if_needed()
     shot(page, "settings-off")
     page.get_by_role("button", name="System").click()
     panel = page.get_by_role("dialog", name="System")

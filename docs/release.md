@@ -179,9 +179,9 @@ back, the UI back.
   - Qwen through Alibaba Model Studio, its address ending in `/compatible-mode/v1`, and a
     model of a provider the CLI logged in to itself (`openrouter/<model>` from its list): a
     real session answers, uses its tools and LADO's MCP tools.
-  - Settings → Models in Safari and Firefox, and on a real phone: the page does not scroll by
-    itself, a key shows as dots, the page keeps to the phone's width (Settings at 390 px is a
-    known limit, LAD-213), the model picker stays above the keyboard.
+  - Settings → Model servers and Agent CLIs in Safari and Firefox, and on a real phone: the
+    pages do not scroll by themselves, a key shows as dots, the pages keep to the phone's width,
+    the model picker stays above the keyboard.
 
 There is no fixed soak time: the final follows your "ok".
 

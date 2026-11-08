@@ -46,6 +46,7 @@ import { ClipboardIcon, FolderIcon, GitHubIcon, QrIcon } from "./icons";
 import { useLive } from "./live";
 import { useBelow, useDismiss } from "./Menu";
 import { useModal } from "./modal";
+import { GITHUB, STATISTICS_PATH } from "./paths";
 import { useMedia } from "./phone";
 import { storeUpdateSeen, updateSeen } from "./prefs";
 import { STATUS_WORDS } from "./Team";
@@ -56,7 +57,6 @@ import { BUNDLE_VERSION } from "./version";
 // shows as it is.
 const planStatus = (status: string): string => STATUS_WORDS[status as AgentInfo["status"]] ?? status;
 
-export const GITHUB = "https://github.com/ladohq/lado";
 export const POLL_MS = 2000; // between two looks at the server while it restarts
 export const GIVE_UP_MS = 5 * 60_000; // then the page says where the log is, and goes on looking
 const RESULT_DAYS = 1; // an update's result older than this is not shown
@@ -387,7 +387,7 @@ function SystemPanel({
             <dd>{facts.git}</dd>
             <dt>Statistics</dt>
             <dd>
-              <Link to="/settings" onClick={onClose}>
+              <Link to={STATISTICS_PATH} onClick={onClose}>
                 {statisticsLine(facts.telemetry)}
               </Link>
             </dd>

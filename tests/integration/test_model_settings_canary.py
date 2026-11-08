@@ -1,4 +1,4 @@
-"""The canary of a model server's key through Settings → Models' API (openspec change
+"""The canary of a model server's key through Settings → Model servers' API (openspec change
 model-settings-page, "A server's key enters the API and never leaves it"): unique keys sent
 through a real `lado server` to check a server, to add one, to change it and check a change
 with its kept key, in requests it cannot read and in one whose probe is refused, reach the

@@ -1,7 +1,8 @@
-"""What Settings → Models' routes do (openspec capability model-settings-page): the human's
-configured models, model servers and agent CLIs' default models through lado.model_settings,
-with its rules and its lines; each refusal a Refusal holding the line, its hint and the
-field of the form it concerns, which lado.server.app answers as a 400.
+"""What the routes of Settings → Model servers and of Agent CLIs' default models do (openspec
+capability model-settings-page): the human's configured models, model servers and agent
+CLIs' default models through lado.model_settings, with its rules and its lines; each refusal
+a Refusal holding the line, its hint and the field of the form it concerns, which
+lado.server.app answers as a 400.
 
 Nothing here asks a server but a probe the human asked for: opening a server's source, its
 check, a save. The probe of `probe_server` and of a model's live check is kept KEPT seconds

@@ -1922,6 +1922,16 @@ Found: 2026-11-07, review of branch hotfix/lad-227-stopped-session-delivery (LAD
 
 # P3: maybe never
 
+## A session's chat address with a broken %-code blanks the app
+
+Size: S. Why here: only a hand-made or damaged link hits it, but then the whole page goes white.
+
+`web/src/Chat.tsx` reads its anchor with `decodeURIComponent(hash.slice(1))` unguarded:
+`/sessions/<name>/activity#%E0%A4%A` throws `URIError` during render's effect, and with no
+error boundary the app goes blank. Agent CLIs' `#<cli>` met the same (LAD-238, review F2) and
+now treats such a hash as an unknown anchor. Wanted: the same in the chat, with a vitest case.
+Found: 2026-11-08, branch lado/lad-238/task-lad-238 (LAD-238 review, round 1).
+
 ## Three 404s in the browser's console of the UI tests have no known cause
 
 Size: S. Why here: nothing shows they harm anyone, but one of them is on a window's request.

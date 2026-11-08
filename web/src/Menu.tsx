@@ -1,9 +1,19 @@
 // A menu of the UI's own (role=menu): the first item gets the focus, the arrow keys move
 // it, Esc closes; `useDismiss` closes it, or a popover, on a press outside. An item is a
-// button or a link, which opens in a new tab; both are menuitems.
-import { useEffect, useLayoutEffect, useState, type CSSProperties, type RefObject } from "react";
+// button or a link, which opens in a new tab; both are menuitems. An item may have an icon
+// (a link with one then shows ↗) and a line above it (`divided`).
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
-export type MenuItem = { label: string; onSelect: () => void } | { label: string; href: string };
+type ItemLook = { label: string; icon?: ReactNode; divided?: boolean };
+export type MenuItem = (ItemLook & { onSelect: () => void }) | (ItemLook & { href: string });
 
 const MARGIN = 8; // between a popover and the window's edges
 
@@ -42,6 +52,38 @@ export function useBelow(
   return style;
 }
 
+// Where a menu `size` big goes beside a rail item `anchor`: right of it, its bottom on the
+// anchor's bottom, kept MARGIN inside the window (Help on the rail).
+export function placeBeside(
+  anchor: { right: number; bottom: number },
+  size: { width: number; height: number },
+  viewport: { width: number; height: number },
+): CSSProperties {
+  const left = Math.min(anchor.right + MARGIN, viewport.width - MARGIN - size.width);
+  const top = Math.min(anchor.bottom - size.height, viewport.height - MARGIN - size.height);
+  return { position: "fixed", left: Math.max(MARGIN, left), top: Math.max(MARGIN, top), bottom: "auto" };
+}
+
+// Where the menu `floating` goes beside `anchor` (placeBeside): past the right edge of the
+// rail that holds it, its bottom on the anchor's; fixed, so nothing around cuts it; placed
+// again after each render.
+export function useBeside(
+  anchor: RefObject<HTMLElement | null>,
+  floating: RefObject<HTMLElement | null>,
+  open: boolean,
+): CSSProperties | undefined {
+  const [style, setStyle] = useState<CSSProperties | undefined>(undefined);
+  useLayoutEffect(() => {
+    const box = anchor.current?.getBoundingClientRect();
+    if (!open || !box) return;
+    const right = (anchor.current?.closest(".rail") ?? anchor.current)!.getBoundingClientRect().right;
+    const size = { width: floating.current?.offsetWidth ?? 0, height: floating.current?.offsetHeight ?? 0 };
+    const placed = placeBeside({ right, bottom: box.bottom }, size, { width: window.innerWidth, height: window.innerHeight });
+    setStyle((now) => (JSON.stringify(now) === JSON.stringify(placed) ? now : placed));
+  });
+  return open ? style : undefined;
+}
+
 // Whether Esc belongs to a layer over the page, not to an expanded card or panel under it: a
 // dialog, a menu or the title's field the focus is in, or Details or the team's list, the
 // popovers that hear Esc with the focus outside them.
@@ -66,12 +108,14 @@ export function Menu({
   label,
   ref: menu,
   style,
+  className,
   items,
   onClose,
 }: {
   label: string;
   ref: RefObject<HTMLDivElement | null>; // the menu, for useBelow
   style?: CSSProperties;
+  className?: string;
   items: MenuItem[];
   onClose: () => void;
 }) {
@@ -84,7 +128,7 @@ export function Menu({
       ref={menu}
       role="menu"
       aria-label={label}
-      className="action-menu"
+      className={`action-menu${className ? ` ${className}` : ""}`}
       style={style}
       onKeyDown={(event) => {
         const all = entries();
@@ -99,17 +143,27 @@ export function Menu({
         }
       }}
     >
-      {items.map((item) =>
-        "href" in item ? (
-          <a key={item.label} role="menuitem" href={item.href} target="_blank" rel="noopener" onClick={onClose}>
-            {item.label}
-          </a>
-        ) : (
-          <button key={item.label} type="button" role="menuitem" onClick={item.onSelect}>
-            {item.label}
-          </button>
-        ),
-      )}
+      {items.map((item) => (
+        <Fragment key={item.label}>
+          {item.divided && <hr />}
+          {"href" in item ? (
+            <a role="menuitem" href={item.href} target="_blank" rel="noopener" onClick={onClose}>
+              {item.icon}
+              {item.icon ? <span>{item.label}</span> : item.label}
+              {item.icon && (
+                <span className="menu-out" aria-hidden="true">
+                  ↗
+                </span>
+              )}
+            </a>
+          ) : (
+            <button type="button" role="menuitem" onClick={item.onSelect}>
+              {item.icon}
+              {item.icon ? <span>{item.label}</span> : item.label}
+            </button>
+          )}
+        </Fragment>
+      ))}
     </div>
   );
 }

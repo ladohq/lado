@@ -358,8 +358,9 @@ export const getKits = (where: string | null) =>
 export const getProviders = (project: string | null = null) =>
   get<ProviderInfo[]>(project ? `/api/providers?${query({ project })}` : "/api/providers");
 
-// Settings → Models (docs/design/ui.md): the configured models and model servers, read
-// anew, no feed. A refusal is a 400 whose `detail` is an EntryRefused.
+// Settings → Model servers and Agent CLIs' default models (docs/design/ui.md): the configured
+// models and model servers, read anew, no feed. A refusal is a 400 whose `detail` is an
+// EntryRefused.
 export type ModelSettings = components["schemas"]["ModelSettings"];
 export type ConfiguredModelInfo = components["schemas"]["ConfiguredModelInfo"];
 export type ModelServerInfo = components["schemas"]["ModelServerInfo"];
@@ -448,7 +449,7 @@ export const clearModelDefault = (cli: string) => post<ModelSettings>(modelDefau
 export const unreachable = (error: unknown) => error instanceof Unreached;
 export const LADO_DOWN = "LADO's server does not answer: your request may or may not have reached it.";
 
-// A failed request of Settings → Models as a refusal: the API's EntryRefused, or any other
+// A failed request of the model settings as a refusal: the API's EntryRefused, or any other
 // error's message with no field.
 export function refusalOf(error: unknown): EntryRefused {
   if (unreachable(error)) return { message: LADO_DOWN, hint: "", field: "", warnings: [] };
@@ -530,7 +531,7 @@ export const putSecret = (id: string, name: string, value: string) =>
 export const deleteSecret = (id: string, name: string) =>
   post<VariableChange>(variablePath(id, "secrets", name), undefined, "DELETE");
 
-// Settings → Agent CLIs and environment: each agent CLI's login (docs/design/ui.md).
+// Settings → Agent CLIs: each agent CLI's login (docs/design/ui.md).
 export type ProvidersPage = components["schemas"]["ProvidersPage"];
 export type ProviderLogins = components["schemas"]["ProviderLogins"];
 const providerPath = (name: string) => `/api/providers/${encodeURIComponent(name)}`;

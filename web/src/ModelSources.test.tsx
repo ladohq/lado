@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { ProbeInfo } from "./api";
 import { MODEL_DEBOUNCE } from "./Launch";
-import { LMSTUDIO, LMSTUDIO_PROBE, model, ModelServer, refusal } from "./modelFakes";
+import { CODEX_REFUSES, LMSTUDIO, LMSTUDIO_PROBE, LMSTUDIO_REAL, model, ModelServer, refusal } from "./modelFakes";
 import { ModelSettings } from "./ModelSettings";
 import { Found, orderOf, SERVERS_LEAD, tickState } from "./ModelSources";
 
@@ -238,7 +238,7 @@ test("the latest read wins and none fills a closed source", async () => {
   expect(screen.queryByText("older")).toBeNull();
 });
 
-test("a server's model opens its installed CLIs under its row, each saying the name a tick would save; Esc closes it", async () => {
+test("a server's model opens its CLIs under its row, each it can tick saying the name a tick would save; Esc closes it", async () => {
   server.probes["LM Studio дома"] = LMSTUDIO_PROBE; // Kilo CLI is not installed here
   server.entries = { models: [], servers: [LMSTUDIO] };
   await mount();
@@ -251,7 +251,12 @@ test("a server's model opens its installed CLIs under its row, each saying the n
   expect(within(pop).getByText("qwen3-8b", { selector: "b" }).parentElement?.textContent).toBe(
     "Agent CLIs that run qwen3-8b:",
   );
-  expect(ticks(pop)).toEqual(["qwen3-8b on Codex CLI", "qwen3-8b on OpenCode"]);
+  expect(ticks(pop)).toEqual([
+    "qwen3-8b on Claude Code",
+    "qwen3-8b on Codex CLI",
+    "qwen3-8b on OpenCode",
+    "qwen3-8b on Kilo CLI",
+  ]);
   expect(await within(pop).findByText("would be qwen3-8b · LM Studio дома · OpenCode")).toBeTruthy();
   expect(await within(pop).findByText("would be qwen3-8b · LM Studio дома · Codex CLI")).toBeTruthy();
   expect(server.of("POST", "/api/models/check").map((c) => c.body)).toEqual([
@@ -323,18 +328,63 @@ test("the name a tick would save of a list closed meanwhile is dropped", async (
   expect(within(pop).getByText("would be new name")).toBeTruthy();
 });
 
-test("a server no installed CLI can use says so and has no ticks", async () => {
-  server.probes["LM Studio дома"] = {
-    ...LMSTUDIO_PROBE,
-    clis: [{ name: "kilo", title: "Kilo CLI", api: "chat" }],
-  };
+// Each CLI under an open model: its title, whether it can be ticked, and what its row says.
+const clisOf = (pop: HTMLElement) =>
+  [...pop.querySelectorAll("label")].map((label) => [
+    label.querySelector("span")?.textContent,
+    (label.querySelector("input") as HTMLInputElement).disabled ? "off" : "tick",
+    label.querySelector(".mx-as")?.textContent ?? "",
+  ]);
+
+test("every agent CLI under a server's model in LADO's order; one that cannot use the server says why", async () => {
   server.entries = { models: [], servers: [LMSTUDIO] };
   await mount();
-  fireEvent.click(await source("LM Studio дома"));
-  expect(await screen.findByText("No installed CLI can use this server.")).toBeTruthy();
-  expect(screen.getByText("qwen3-8b")).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "qwen3-8b" })).toBeNull();
-  expect(screen.queryByRole("checkbox")).toBeNull();
+  await openModel("qwen3-8b", LMSTUDIO_REAL); // Kilo CLI is not installed here
+  const pop = screen.getByRole("group", { name: "Agent CLIs for qwen3-8b" });
+  await within(pop).findByText("would be qwen3-8b · LM Studio дома · OpenCode");
+  expect(clisOf(pop)).toEqual([
+    ["Claude Code", "off", "cannot use this server: it has no Anthropic Messages API"],
+    ["Codex CLI", "off", `cannot use this server: ${CODEX_REFUSES}`],
+    ["OpenCode", "tick", "would be qwen3-8b · LM Studio дома · OpenCode"],
+    ["Kilo CLI", "off", "not installed"],
+  ]);
+  const codex = await tickOf("qwen3-8b on Codex CLI");
+  expect(codex.checked).toBe(false);
+  expect(codex.getAttribute("aria-description")).toBe(`cannot use this server: ${CODEX_REFUSES}`);
+  // The name a tick would save is asked only of the CLI that can be ticked.
+  expect(server.of("POST", "/api/models/check").map((c) => (c.body as { cli: string }).cli)).toEqual(["opencode"]);
+  fireEvent.click(codex);
+  expect(server.of("POST", "/api/models").filter((c) => c.path === "/api/models")).toEqual([]);
+});
+
+test("an API that did not answer in time says so under its CLI", async () => {
+  server.entries = { models: [], servers: [LMSTUDIO] };
+  await mount();
+  const late = "its Anthropic Messages API did not answer in time";
+  await openModel("qwen3-8b", { ...LMSTUDIO_PROBE, cannot: [{ name: "claude", title: "Claude Code", why: late }] });
+  const pop = screen.getByRole("group", { name: "Agent CLIs for qwen3-8b" });
+  expect(clisOf(pop)[0]).toEqual(["Claude Code", "off", `cannot use this server: ${late}`]);
+});
+
+test("a server no installed CLI can use says so; its models open to the CLIs, none tickable, each saying why", async () => {
+  server.entries = { models: [], servers: [LMSTUDIO] };
+  await mount();
+  const why = (title: string, api: string) => ({ name: title.split(" ")[0].toLowerCase(), title, why: `it has no ${api}` });
+  await openModel("qwen3-8b", {
+    ...LMSTUDIO_PROBE,
+    clis: [{ name: "kilo", title: "Kilo CLI", api: "chat completions" }],
+    cannot: [why("Claude Code", "Anthropic Messages API"), why("Codex CLI", "Responses API"), why("OpenCode", "chat")],
+  });
+  expect(screen.getByText("No installed CLI can use this server.")).toBeTruthy();
+  const pop = screen.getByRole("group", { name: "Agent CLIs for qwen3-8b" });
+  expect(clisOf(pop)).toEqual([
+    ["Claude Code", "off", "cannot use this server: it has no Anthropic Messages API"],
+    ["Codex CLI", "off", "cannot use this server: it has no Responses API"],
+    ["OpenCode", "off", "cannot use this server: it has no chat"],
+    ["Kilo CLI", "off", "not installed"],
+  ]);
+  expect(screen.queryByText("Open a model to tick the agent CLIs that run it.")).toBeNull();
+  expect(server.of("POST", "/api/models/check")).toEqual([]);
 });
 
 test("embeddings are hidden and counted; a model gone from the list first, ticked, marked", async () => {

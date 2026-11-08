@@ -2853,7 +2853,8 @@ default: none does yet.
 
 What answered a server's check (`Found`) names under its Agent CLIs each CLI that has the server's
 API and cannot use its type (`ProbeInfo.cli_notes`), as a `field-note warn` with why: Codex CLI on
-LM Studio. That CLI has no column in the server's list, which comes from `ProbeInfo.clis`.
+LM Studio. Under a model of the server's list that CLI's tick is off and disabled with the
+core's why (`ProbeInfo.cannot`); the CLIs a tick can save a model of are `ProbeInfo.clis`.
 
 - **Two blocks**, no tabs, no intro, no frames: **Servers `<n>`** (its count once a server is
   saved; the lead `Any OpenAI-compatible server: LM Studio, Ollama, vLLM, LiteLLM.`), then
@@ -2980,14 +2981,20 @@ LM Studio. That CLI has no column in the server's list, which comes from `ProbeI
   `--list-rows` (9) rows of `--row` (36 px) and scrolls within itself; under it `<n> models`;
   above more than ten a search, `Search <n> models`, and then `<shown> of <n> models`.
 - **The ticks**: a server's model is a row that opens, on a click or Enter, under it `Agent CLIs
-  that run <model>:` and the installed CLIs whose API the server proves,
-  one under the other whatever their number, each with its tick and under its title `as
+  that run <model>:` and every agent CLI the probe names, in LADO's order (that of Agent
+  CLIs), one under the other whatever their number. One that cannot run it here has its tick
+  off and disabled, its title muted, and under it why: `cannot use this server: <why>`, the
+  core's (`ProbeInfo.cannot`: its provider refuses the server's type, the server has no API of
+  the CLI, or that API did not answer in time), or `not installed` for one the server suits
+  that is not installed here. Each other one, installed and among `ProbeInfo.clis`, has its
+  tick and under its title `as
   <name>` when on, `would be <name>` when off: the name a tick would save, which the core
   gives (`POST /api/models/check` without a name answers `ModelCheck.name`, one request per
   CLI when the model opens; the answers of a list closed meanwhile are dropped, and a line
   stays while the core is asked again). Esc closes it. The row says `in <CLI>, …` in green
   and ends in a framed chevron; a server no installed CLI can use says `No installed CLI
-  can use this server.` and its rows have no ticks. A tick is on exactly when a configured
+  can use this server.`, and its models still open to the list, none tickable, each saying
+  why. A tick is on exactly when a configured
   model has that CLI, model and server; ticking saves one, unticking removes it with no
   Undo row (the tick is its own undo), and a refusal shows in the tick's row. While the page
   stays open it remembers the name of each model it unticked: its row says `would be

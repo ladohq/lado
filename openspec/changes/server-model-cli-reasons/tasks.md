@@ -17,28 +17,28 @@ branch first. If it is not merged yet, tell the supervisor and wait.
 
 ## 2. The page
 
-- [ ] 2.1 `web/src/ModelSources.tsx`: the list under a server's model by D3-D6 and the mock-up
+- [x] 2.1 `web/src/ModelSources.tsx`: the list under a server's model by D3-D6 and the mock-up
   `mockup-cli-reasons.html` (variant 1); `would be` asked only for the tickable CLIs; the
   Model id form keeps its columns. `web/src/styles.css`: the muted title of a disabled CLI.
   `web/src/modelFakes.ts`: the LM Studio fixture gets Codex CLI under `cannot`.
-- [ ] 2.2 `web/src/ModelSources.test.tsx`: the order, Codex CLI's reason on LM Studio, a
+- [x] 2.2 `web/src/ModelSources.test.tsx`: the order, Codex CLI's reason on LM Studio, a
   missing API, `not installed`, the server no installed CLI can use opening its models, and a
   tick and untick of a tickable CLI as before (AC-1 - AC-5). `make web` passes.
-- [ ] 2.3 `tests/ui/test_models_section.py` (marker `ui`): an LM Studio fake server, a model
+- [x] 2.3 `tests/ui/test_models_section.py` (marker `ui`): an LM Studio fake server, a model
   opened, Codex CLI disabled with its reason (AC-1); screenshots of the open list at 1440
   light and 390 dark attached as run artifacts.
 
 ## 3. Docs
 
-- [ ] 3.1 `docs/design/ui.md`: the Model servers ticks paragraph (every CLI in LADO's order,
+- [x] 3.1 `docs/design/ui.md`: the Model servers ticks paragraph (every CLI in LADO's order,
   disabled with `cannot use this server: <why>` or `not installed`; a server no installed CLI
   can use opens its models) and the `Found` paragraph's last sentence ("That CLI has no
   column…") brought in line.
-- [ ] 3.2 CHANGELOG.md, under the unreleased heading: a line that Model servers says why an
+- [x] 3.2 CHANGELOG.md, under the unreleased heading: a line that Model servers says why an
   agent CLI cannot be ticked for a server's model.
 
 ## 4. Checks
 
-- [ ] 4.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui tests/ui/test_models_section.py`.
-- [ ] 4.2 `openspec validate server-model-cli-reasons --strict`, and the trial archive in a copy
+- [x] 4.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui tests/ui/test_models_section.py`.
+- [x] 4.2 `openspec validate server-model-cli-reasons --strict`, and the trial archive in a copy
   with `openspec validate --specs --strict`.

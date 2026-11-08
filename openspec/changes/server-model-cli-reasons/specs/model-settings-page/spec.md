@@ -10,7 +10,7 @@ time. One the server suits but not installed here SHALL say `not installed`.
 #### Scenario: Codex CLI on LM Studio
 - **WHEN** LM Studio answers chat completions and the Responses API, all four agent CLIs are
   installed, and the human opens `qwen3-8b`
-- **THEN** the list shows Claude Code, Codex CLI, OpenCode and Kilo CLI in that order, and
+- **THEN** the list shows Claude Code, Codex CLI, Kilo CLI and OpenCode in that order, and
   Codex CLI's tick is off and disabled with `cannot use this server: its Responses API loses
   Codex CLI's MCP tools, so the agent could not talk to LADO`
 

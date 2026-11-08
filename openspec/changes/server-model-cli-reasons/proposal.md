@@ -58,7 +58,7 @@ Options weighed:
 ## Acceptance
 
 - AC-1: On LM Studio (chat completions and the Responses API), with all four CLIs installed,
-  the list under a model shows Claude Code, Codex CLI, OpenCode, Kilo CLI in LADO's order;
+  the list under a model shows Claude Code, Codex CLI, Kilo CLI, OpenCode in LADO's order;
   Codex CLI's tick is off and disabled, and under it `cannot use this server: its Responses
   API loses Codex CLI's MCP tools, so the agent could not talk to LADO`.
 - AC-2: On a server without the Anthropic Messages API, Claude Code's tick is off and

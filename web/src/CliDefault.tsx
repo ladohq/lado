@@ -3,7 +3,8 @@
 // its warnings and their ways out under it. Opening the row reads the CLI's list only for a
 // built-in default, in the background; opening the picker reads its list now and asks each
 // server of the CLI's models once. A CLI not installed has no picker: with a default, one line
-// that it cannot run and `Use <CLI>'s settings`.
+// that it cannot run and `Use <CLI>'s settings`. A save that succeeds says `✓ Saved` beside the
+// field until the human's next change on the page; which row says it is the page's (Providers.tsx).
 import { useEffect, useId, useRef, useState } from "react";
 
 import {
@@ -22,22 +23,33 @@ import type { ModelSettingsState } from "./useModelSettings";
 
 const fold = (text: string) => text.toLowerCase();
 
-export function CliDefault({ row, settings }: { row: ProviderLogins; settings: ModelSettingsState }) {
+// The page's `✓ Saved`: the CLI whose row says it, cleared when a save starts, taken by the row
+// whose save succeeded.
+export type SavedProps = { saved: string | null; onSaving: () => void; onSaved: () => void };
+
+export function CliDefault({
+  row,
+  settings,
+  ...mark
+}: { row: ProviderLogins; settings: ModelSettingsState } & SavedProps) {
   const { entries } = settings;
   const cli = row.cli.name;
   const value = entries?.defaults.find((d) => d.cli === cli) ?? null;
   if (entries === null) return null;
-  if (!row.cli.installed) return value === null ? null : <NotInstalled row={row} name={value.name} settings={settings} />;
-  return <Picker row={row} settings={settings} />;
+  if (!row.cli.installed)
+    return value === null ? null : <NotInstalled row={row} name={value.name} settings={settings} mark={mark} />;
+  return <Picker row={row} settings={settings} mark={mark} />;
 }
 
-function useSave(cli: string, settings: ModelSettingsState) {
+function useSave(cli: string, settings: ModelSettingsState, mark: SavedProps) {
   const [problem, setProblem] = useState<string | null>(null);
   const save = async (pick: Pick | { typed: string }): Promise<boolean> => {
     setProblem(null);
+    mark.onSaving();
     try {
       if (pick === null) await settings.reload(await clearModelDefault(cli));
       else await settings.reload((await setModelDefault(cli, pick)).settings);
+      mark.onSaved();
       return true;
     } catch (error) {
       setProblem(
@@ -49,8 +61,19 @@ function useSave(cli: string, settings: ModelSettingsState) {
   return { problem, save };
 }
 
-function NotInstalled({ row, name, settings }: { row: ProviderLogins; name: string; settings: ModelSettingsState }) {
-  const { problem, save } = useSave(row.cli.name, settings);
+// No `✓ Saved` here: the line goes with the default, and that is the answer.
+function NotInstalled({
+  row,
+  name,
+  settings,
+  mark,
+}: {
+  row: ProviderLogins;
+  name: string;
+  settings: ModelSettingsState;
+  mark: SavedProps;
+}) {
+  const { problem, save } = useSave(row.cli.name, settings, { ...mark, onSaved: () => undefined });
   const self = useRef<HTMLDivElement>(null);
   // The line goes with the default: the focus goes to the row's name (Providers.tsx).
   const clear = async () => {
@@ -74,7 +97,7 @@ function NotInstalled({ row, name, settings }: { row: ProviderLogins; name: stri
   );
 }
 
-function Picker({ row, settings }: { row: ProviderLogins; settings: ModelSettingsState }) {
+function Picker({ row, settings, mark }: { row: ProviderLogins; settings: ModelSettingsState; mark: SavedProps }) {
   const id = useId();
   const entries = settings.entries!;
   const { name: cli, title } = row.cli;
@@ -83,7 +106,7 @@ function Picker({ row, settings }: { row: ProviderLogins; settings: ModelSetting
   const list = useModelChoices(cli);
   const { read } = list;
   const field = useRef<HTMLButtonElement>(null);
-  const { problem, save } = useSave(cli, settings);
+  const { problem, save } = useSave(cli, settings, mark);
   const [other, setOther] = useState<string | null>(null); // Other name's field, with its text
   const [health, setHealth] = useState<Record<string, Health>>({});
   const [checking, setChecking] = useState(false);
@@ -253,6 +276,14 @@ function Picker({ row, settings }: { row: ProviderLogins; settings: ModelSetting
           </div>
         )}
       </div>
+      {/* Always there, so filling it moves nothing and a screen reader hears `Saved` once. */}
+      <span className="cli-saved" role="status">
+        {mark.saved === cli && (
+          <>
+            <span aria-hidden="true">✓</span> Saved
+          </>
+        )}
+      </span>
     </div>
   );
 }

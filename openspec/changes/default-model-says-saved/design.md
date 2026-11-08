@@ -27,7 +27,9 @@ stay free right of the field. This change is built on main only after PR #256 is
    and a status region present before the change is announced reliably; the ✓ is hidden, so a
    screen reader says `Saved`.
 4. **Its place in the grid.** On a computer `.cli-model` gets a third column `auto`; the slot
-   sits in row 1, column 3, `line-height: 38px`, `white-space: nowrap`. At 600 px and narrower
+   sits in row 1, column 3, `line-height: 38px`, `white-space: nowrap`, `min-width: 4.5em` (the
+   room of `✓ Saved` kept while empty: between 601 and about 900 px the field is narrower than
+   360 px, and a slot that grew when filled would narrow it). At 600 px and narrower
    (and under `:root[data-phone]`) the grid is `minmax(0, 1fr) auto`: the label row 1 column 1,
    the slot row 1 column 2 (`line-height: 20px`, right-aligned), the field and its notes from
    row 2 across both columns, so the field keeps its full width. Colour `--done`, 13 px, no

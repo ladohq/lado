@@ -194,6 +194,88 @@ def test_a_built_in_default_from_a_long_list_searched_and_cleared(page: Page, cl
     assert state.cli_defaults() == []
 
 
+DONE = (
+    "() => { const p = document.createElement('span'); p.style.color = 'var(--done)';"
+    " document.body.append(p); const c = getComputedStyle(p).color; p.remove(); return c; }"
+)
+
+
+def pick_kilo_model(page: Page, model: str) -> None:
+    picker(page, "Kilo CLI").click()
+    agent_clis(page).get_by_role("option", name=model, exact=True).click()
+
+
+def test_a_default_saved_says_so_right_of_its_field_and_nothing_moves(
+    page: Page, clis, server, shot
+):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    open_clis(page, server)
+    kilo = card(page, "Kilo CLI")
+    field = picker(page, "Kilo CLI")
+    field.scroll_into_view_if_needed()
+    after = kilo.locator("xpath=following-sibling::li[1]")
+    slot = kilo.locator(".cli-saved")
+    expect(slot).to_have_attribute("role", "status")
+    expect(slot).to_have_text("")
+    before, below = top(field), top(after)
+    pick_kilo_model(page, "vendor/model-7")
+    expect(slot).to_have_text("✓ Saved")
+    expect(field).to_be_focused()
+    stays(field, before)
+    stays(after, below)
+    assert state.cli_defaults() == [state.ModelRef("kilo", None, "vendor/model-7")]
+    assert slot.evaluate("s => getComputedStyle(s).color") == page.evaluate(DONE)
+    box, at = field.bounding_box(), slot.bounding_box()
+    assert box and at and at["x"] >= box["x"] + box["width"], (at, box)  # right of the field
+    assert box["y"] <= at["y"] + at["height"] / 2 <= box["y"] + box["height"], (at, box)
+    shot(page, "1440-light", full_page=False)
+    page.set_viewport_size({"width": 768, "height": 900})
+    page.emulate_media(color_scheme="dark")
+    field.scroll_into_view_if_needed()
+    expect(slot).to_have_text("✓ Saved")
+    assert slot.evaluate("s => getComputedStyle(s).color") == page.evaluate(DONE)
+    # Narrower than 360 px + `✓ Saved`: the slot's room is kept, so the field is no narrower
+    # than one whose row says nothing.
+    width = field.bounding_box()
+    other = picker(page, "OpenCode").bounding_box()
+    assert width and other and width["width"] < 360 and width["width"] == other["width"], (
+        width,
+        other,
+    )
+    shot(page, "768-dark", full_page=False)
+
+
+def test_a_default_saved_at_a_phones_width_says_so_on_its_label_s_line(
+    browser: Browser, clis, server, shot
+):
+    context = browser.new_context(
+        viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True
+    )
+    try:
+        page = context.new_page()
+        open_clis(page, server)
+        kilo = card(page, "Kilo CLI")
+        field = picker(page, "Kilo CLI")
+        field.scroll_into_view_if_needed()
+        box = field.bounding_box()
+        assert box
+        pick_kilo_model(page, "vendor/model-7")
+        slot = kilo.locator(".cli-saved")
+        expect(slot).to_have_text("✓ Saved")
+        stays(field, box["y"])
+        now = field.bounding_box()
+        assert now and now["width"] == box["width"], (now, box)  # the field keeps its width
+        label = kilo.locator(".cli-ml").bounding_box()
+        at = slot.bounding_box()
+        assert label and at and abs(at["y"] - label["y"]) < 1, (at, label)  # on its line
+        assert at["y"] + at["height"] <= now["y"] + 1  # over the field
+        assert abs(at["x"] + at["width"] - (now["x"] + now["width"])) < 1, (at, now)  # its right
+        assert page.evaluate("document.documentElement.scrollWidth") <= 390
+        shot(page, "390-light", full_page=False)
+    finally:
+        context.close()
+
+
 def test_a_list_lost_default_shows_in_its_row_after_opening(page: Page, clis, server, shot):
     state.set_cli_default(state.ModelRef("kilo", None, "old/gone"))
     page.set_viewport_size({"width": 1280, "height": 900})

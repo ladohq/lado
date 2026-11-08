@@ -241,7 +241,8 @@ def test_the_project_and_repository_asked(client, shop, acme, fake_tmux):
         "shop-frontend",
         None,
     )
-    assert shown["provider"] is None  # no session in frontend: the human picks
+    # no session in frontend: the provider of the latest session anywhere
+    assert shown["provider"] == {"name": "kilo", "reason": "last_any"}
     assert shown["gone"] is None
     shown = project_launch(client, project="nope", repo="docs")  # unknown: as not asked
     assert (shown["project"], shown["repo"], shown["name_state"]) == ("shop", "backend", "running")

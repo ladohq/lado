@@ -450,12 +450,23 @@ class MarketplaceUpdate(BaseModel):
     error: str | None
 
 
+class ModeWordsInfo(BaseModel):
+    """A permission mode as the UI names it (providers.base.ModeWords)."""
+
+    value: str  # the CLI's own value, as permission_modes has it
+    title: str
+    summary: str  # its few words in Team's summary
+    description: str  # "" for a mode named by its value
+    risky: bool  # its description shows even when another mode is chosen
+
+
 class ProviderInfo(BaseModel):
     """A provider of LADO's registry and whether its CLI can run here."""
 
     name: str
     title: str
     permission_modes: list[str]
+    mode_words: list[ModeWordsInfo]  # permission_modes in their order, each with its words
     install_hint: str
     installed: bool
     version: str

@@ -151,6 +151,28 @@ class OpenCodeFamily(base.Provider):
         deny_edit_tools=True,  # see deny_edits
     )
     permission_modes = ("default", "acceptEdits", "bypassPermissions", "plan")
+    # As `permission` and `argv` make them: default asks before edits and commands,
+    # acceptEdits before commands only, plan runs the CLI's plan agent with edits denied,
+    # bypassPermissions approves every request at once.
+    permission_mode_words = {
+        "default": base.ModeWords(
+            "Ask before changes (recommended)",
+            "Asks before changes",
+            "Asks before it edits files or runs commands.",
+        ),
+        "acceptEdits": base.ModeWords(
+            "Edit files without asking", "Edits without asking", "Still asks before commands."
+        ),
+        "bypassPermissions": base.ModeWords(
+            "Full access, never ask ⚠",
+            "Full access ⚠",
+            "Does anything, deleting files too. Only for a folder you can afford to lose.",
+            risky=True,
+        ),
+        "plan": base.ModeWords(
+            "Plan only, no changes", "Plan only", "Reads and proposes a plan; changes nothing."
+        ),
+    }
 
     def login_status(self, env: dict[str, str]) -> base.LoginStatus:
         # `<cli> auth list` (OpenCode 1.18.35, Kilo 7.8.8): `Credentials <file>`, a line

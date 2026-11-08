@@ -2720,6 +2720,22 @@ export interface components {
             artifacts: string[];
         };
         /**
+         * ModeWordsInfo
+         * @description A permission mode as the UI names it (providers.base.ModeWords).
+         */
+        ModeWordsInfo: {
+            /** Value */
+            value: string;
+            /** Title */
+            title: string;
+            /** Summary */
+            summary: string;
+            /** Description */
+            description: string;
+            /** Risky */
+            risky: boolean;
+        };
+        /**
          * ModelAdd
          * @description A configured model to check or save: `name` None for its default name.
          */
@@ -3339,6 +3355,8 @@ export interface components {
             title: string;
             /** Permission Modes */
             permission_modes: string[];
+            /** Mode Words */
+            mode_words: components["schemas"]["ModeWordsInfo"][];
             /** Install Hint */
             install_hint: string;
             /** Installed */

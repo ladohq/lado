@@ -217,6 +217,16 @@ def test_the_folder_suggests_its_last_sessions_provider(client, repo, installed,
     assert folder(client, repo)["provider"] is None
 
 
+def test_a_folder_without_sessions_suggests_your_last_sessions_provider(
+    client, repo, tmp_path, installed, fake_tmux
+):
+    other = agent_helpers.init_repo(tmp_path / "other")
+    runtime.start_session(str(other), "s", None, "opencode")
+    assert folder(client, repo)["provider"] == {"name": "opencode", "reason": "last_any"}
+    fresh = client.get("/api/scratch-target", params={"text": "Coffee"}).json()
+    assert fresh["provider"] == {"name": "opencode", "reason": "last_any"}
+
+
 def test_a_subfolder_takes_its_repositorys_last_session(client, repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, "kilo")
     (repo / "src").mkdir()
@@ -368,6 +378,16 @@ def test_providers_are_lados_registry_with_their_status(client, monkeypatch):
         "name": "claude",
         "title": "Claude Code",
         "permission_modes": list(providers.get("claude").permission_modes),
+        "mode_words": [
+            {
+                "value": mode,
+                "title": words.title,
+                "summary": words.summary,
+                "description": words.description,
+                "risky": words.risky,
+            }
+            for mode, words in providers.get("claude").mode_words()
+        ],
         "install_hint": providers.get("claude").install_hint,
         "installed": True,
         "version": "2.1.287",
@@ -377,6 +397,8 @@ def test_providers_are_lados_registry_with_their_status(client, monkeypatch):
         "login_missing": False,
     }
     assert "default" not in kilo
+    risky = [w["title"] for w in claude["mode_words"] if w["risky"]]
+    assert risky == ["Full access, never ask ⚠"]
     assert (kilo["installed"], kilo["detail"]) == (
         False,
         "`kilo` not found on PATH",

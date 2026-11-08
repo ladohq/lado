@@ -71,7 +71,7 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
         subfolders=_subfolders(Path(path)),
         default_name=name,
         name_state=name_state(name, root, has_db) if name and root else None,
-        provider=provider_suggestion(root if has_db else None),
+        provider=provider_suggestion(root, has_db),
         warning=runtime.outside_workspace(root or path),  # a start judges the root
         scratch=kind in ("missing", "not_repo") and _can_start_from_scratch(path),
     )
@@ -123,7 +123,7 @@ def scratch_target(text: str, path: str | None, has_db: bool) -> models.ScratchT
         name_state=(
             name_state(names.name, os.path.realpath(folder), has_db) if names and folder else None
         ),
-        provider=provider_suggestion(None),  # a new folder has no last session
+        provider=provider_suggestion(None, has_db),  # a new folder has no last session
         warning=runtime.outside_workspace(folder) if folder else None,
         hint=hint,
         project=project_place(folder) if folder and state == "in_project" else None,
@@ -144,10 +144,11 @@ def _author(path: str) -> models.ScratchProblem | None:
     )
 
 
-def provider_suggestion(root: str | None) -> models.ProviderSuggestion | None:
+def provider_suggestion(root: str | None, has_db: bool) -> models.ProviderSuggestion | None:
     """The provider a new session in `root` takes (runtime.suggested_provider; None: a
-    folder with no sessions known), its CLI looked for on the server's PATH."""
-    suggestion = runtime.suggested_provider(root, _installed)
+    folder with no sessions known), its CLI looked for on the server's PATH; without
+    lado.db, by what is installed alone."""
+    suggestion = runtime.suggested_provider(root, _installed, history=has_db)
     if suggestion is None:
         return None
     return models.ProviderSuggestion(name=suggestion.provider, reason=suggestion.reason)
@@ -304,6 +305,20 @@ def model_list(
     return listed
 
 
+def mode_words(provider: providers.Provider) -> list[models.ModeWordsInfo]:
+    """The provider's permission modes in its own words (Provider.mode_words)."""
+    return [
+        models.ModeWordsInfo(
+            value=mode,
+            title=words.title,
+            summary=words.summary,
+            description=words.description,
+            risky=words.risky,
+        )
+        for mode, words in provider.mode_words()
+    ]
+
+
 def provider_info(
     provider: providers.Provider, status: doctor.ProviderStatus | None = None
 ) -> models.ProviderInfo:
@@ -314,6 +329,7 @@ def provider_info(
         name=provider.name,
         title=provider.title,
         permission_modes=list(provider.permission_modes),
+        mode_words=mode_words(provider),
         install_hint=provider.install_hint,
         installed=status.installed,
         version=status.version,
@@ -510,7 +526,7 @@ def project_launch(asked: str | None, asked_repo: str | None, has_db: bool) -> m
             "root": root,
             "default_name": name,
             "name_state": name_state(name, root, has_db, project=project),
-            "provider": provider_suggestion(root),
+            "provider": provider_suggestion(root, has_db),
             "last": models.session_info(last) if last else None,
         }
     )

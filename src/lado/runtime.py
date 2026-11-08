@@ -576,13 +576,14 @@ def free_name(base: str) -> str:
 
 
 def suggested_provider(
-    repo: str | None, installed: Callable[[providers.Provider], bool]
+    repo: str | None, installed: Callable[[providers.Provider], bool], history: bool = True
 ) -> Suggestion | None:
     """No provider is the default: a new session takes the provider of the folder's last
     session (`repo` None: a folder with no sessions known) if it is `installed`, else that
     of the latest started session of any folder if installed, else the only one installed;
     None when that leaves a choice to the human, or none to make. `installed` is the
-    caller's look for the CLI (`shutil.which` on some PATH), never `<cli> --version`."""
+    caller's look for the CLI (`shutil.which` on some PATH), never `<cli> --version`.
+    `history` False: there is no lado.db, and none is made to look."""
 
     def usable(session: "state.Session | None") -> bool:
         return bool(
@@ -591,10 +592,10 @@ def suggested_provider(
             and installed(providers.get(session.provider))
         )
 
-    last = state.last_session(repo) if repo else None
+    last = state.last_session(repo) if repo and history else None
     if usable(last):
         return Suggestion(last.provider, LAST_SESSION)
-    latest = next(iter(state.sessions_by_start()), None)
+    latest = next(iter(state.sessions_by_start()), None) if history else None
     if usable(latest):
         return Suggestion(latest.provider, LAST_ANY)
     found = [name for name in providers.names() if installed(providers.get(name))]

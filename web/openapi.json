@@ -7247,6 +7247,40 @@
         "title": "MessageText",
         "description": "The human's text from the composer, with the full names of the files uploaded for\nit (POST \u2026/artifacts); the text may be empty when there are some."
       },
+      "ModeWordsInfo": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "risky": {
+            "type": "boolean",
+            "title": "Risky"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "title",
+          "summary",
+          "description",
+          "risky"
+        ],
+        "title": "ModeWordsInfo",
+        "description": "A permission mode as the UI names it (providers.base.ModeWords)."
+      },
       "ModelAdd": {
         "properties": {
           "name": {
@@ -8928,6 +8962,13 @@
             "type": "array",
             "title": "Permission Modes"
           },
+          "mode_words": {
+            "items": {
+              "$ref": "#/components/schemas/ModeWordsInfo"
+            },
+            "type": "array",
+            "title": "Mode Words"
+          },
           "install_hint": {
             "type": "string",
             "title": "Install Hint"
@@ -8963,6 +9004,7 @@
           "name",
           "title",
           "permission_modes",
+          "mode_words",
           "install_hint",
           "installed",
           "version",

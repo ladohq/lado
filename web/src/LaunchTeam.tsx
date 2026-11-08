@@ -10,10 +10,8 @@ import { InfoTip } from "./InfoTip";
 
 export const DEFAULT_MODE = "default"; // also "no mode given": the provider's own default
 
-// A provider's modes in its words; a list without them (an older server) by their values.
-export const modeWords = (info: ProviderInfo | null): ModeWordsInfo[] =>
-  info?.mode_words ??
-  (info?.permission_modes ?? []).map((value) => ({ value, title: value, summary: value, description: "", risky: false }));
+// A provider's modes in its own words (Provider.mode_words), none without a provider.
+export const modeWords = (info: ProviderInfo | null): ModeWordsInfo[] => info?.mode_words ?? [];
 
 const SWITCH_OFF_ABOUT = "kind:name or kind:name@kit, separated by commas; kinds: agent, skill, mcp, flow.";
 

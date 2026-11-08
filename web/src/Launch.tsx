@@ -29,7 +29,6 @@ import {
   type ModelRefusal,
   type ProjectLaunch,
   type ProjectPlace,
-  type ProviderInfo,
   type ProviderSuggestion,
   type RecentFolder,
   type Refused,
@@ -48,7 +47,6 @@ import { ProjectField } from "./LaunchProject";
 import { LaunchSetup } from "./LaunchSetup";
 import { DEFAULT_MODE, LaunchTeam, modeWords } from "./LaunchTeam";
 import {
-  Badge,
   BranchField,
   FolderHint,
   FolderNotes,
@@ -1437,8 +1435,6 @@ const isModelRefusal = (detail: unknown): detail is ModelRefusal =>
 const MaybeWaits = ({ resuming, children }: { resuming: boolean; children: React.ReactElement<object> }) =>
   resuming ? <Waits>{children}</Waits> : children;
 
-export { Badge };
-
 export function CloneProgress({ job }: { job: CloneJob }) {
   const progress = job.progress;
   const percent = progress?.percent ?? 0;
@@ -1468,5 +1464,3 @@ export function CloneProgress({ job }: { job: CloneJob }) {
     </div>
   );
 }
-
-export type { ProviderInfo };

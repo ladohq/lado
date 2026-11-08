@@ -157,7 +157,7 @@ def _listed(path: str) -> Iterator[str]:
     folder as the work tree, its `.gitignore` respected, a nested repository as one `dir/`.
     Read as a stream; closing the iterator stops git."""
     with tempfile.TemporaryDirectory() as gitdir, tempfile.TemporaryFile() as errors:
-        _run(["git", "init", "--quiet", "--bare", gitdir], path)
+        scratch._git(path, "init", "--quiet", "--bare", gitdir)
         proc = subprocess.Popen(
             ["git", f"--git-dir={gitdir}", f"--work-tree={path}", "ls-files", "--others"]
             + ["--exclude-standard", "-z"],
@@ -183,28 +183,6 @@ def _listed(path: str) -> Iterator[str]:
                 proc.kill()
             proc.wait()
             proc.stdout.close()
-
-
-def _run(argv: list[str], cwd: str, missing_ok: bool = False) -> str:
-    """A git command with no terminal, no prompt and git's words in English; its output."""
-    result = subprocess.run(
-        argv,
-        cwd=cwd,
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-        check=False,
-        env={**scratch._english(), "GIT_TERMINAL_PROMPT": "0"},
-    )
-    if missing_ok and result.returncode == 1:
-        return ""
-    if result.returncode != 0:
-        raise _GitFailed(runtime._first_line(result.stderr) or f"git exited {result.returncode}")
-    return result.stdout.strip()
-
-
-class _GitFailed(Exception):
-    """A git command that failed, with git's first line."""
 
 
 def refusal_text(path: str, refusal: Refusal) -> str:
@@ -245,17 +223,18 @@ def make(path: str, include: list[str]) -> str:
             lead = b"\n" if before and not before.endswith(b"\n") else b""
             lines = "".join(f"{ignore_line(item.path)}\n" for item in ignored)
             gitignore.write_bytes((before or b"") + lead + os.fsencode(lines))
-        _git(path, "init", "--quiet")
-        branch = _git(path, "config", "--get", "init.defaultBranch", missing_ok=True)
-        _git(path, "symbolic-ref", "HEAD", f"refs/heads/{branch or 'main'}")
-        _git(path, "add", "-A")
-        _git(
+        git = scratch._git
+        git(path, "init", "--quiet")
+        branch = git(path, "config", "--get", "init.defaultBranch", missing_ok=True)
+        git(path, "symbolic-ref", "HEAD", f"refs/heads/{branch or 'main'}")
+        git(path, "add", "-A")
+        git(
             path,
             *("-c", "commit.gpgsign=false", "-c", f"core.hooksPath={os.devnull}"),
             *("commit", "--no-verify", "--quiet", "-m", FIRST_COMMIT),
         )
-        return _git(path, "rev-parse", "--show-toplevel")
-    except (OSError, _GitFailed) as error:
+        return git(path, "rev-parse", "--show-toplevel")
+    except (OSError, scratch._GitFailed) as error:
         shutil.rmtree(Path(path) / ".git", ignore_errors=True)
         if before is None:
             gitignore.unlink(missing_ok=True)
@@ -263,8 +242,3 @@ def make(path: str, include: list[str]) -> str:
             gitignore.write_bytes(before)
         line = (isinstance(error, OSError) and error.strerror) or str(error)
         raise SetupError("git_failed", f"git could not set up {path}: {line}") from None
-
-
-def _git(path: str, *args: str, missing_ok: bool = False) -> str:
-    """git in `path`; its output. `missing_ok`: exit 1 (a config key not set) is ""."""
-    return _run(["git", "-C", path, *args], path, missing_ok)

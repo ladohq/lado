@@ -89,11 +89,9 @@ def free_name(name: str, has_db: bool) -> str:
     return runtime.free_name(name) if has_db else name
 
 
-def setup_info(path: str) -> models.SetupInfo | None:
-    """What setting the plain folder `path` up would do (lado.setup.preview); None for a
-    folder that is no folder."""
-    if not Path(path).is_dir():
-        return None
+def setup_info(path: str) -> models.SetupInfo:
+    """What setting the plain folder `path` up would do (lado.setup.preview), for a folder
+    `runtime.check_repo` found outside git."""
     found = setup.preview(path)
     refusal = found.refusal
     return models.SetupInfo(

@@ -138,11 +138,15 @@ test("the rail lists every section in order, Settings at the bottom", () => {
     "Sessions",
     "Projects",
     "Kits",
-    "Report a bug",
     "Settings",
   ]);
   const settings = within(rail()).getByRole("link", { name: "Settings" });
   expect(settings.closest(".rail-bottom")).toBeTruthy();
+  // Help above it, a button with a menu; Settings a cogwheel, not the circle with rays.
+  const help = within(rail()).getByRole("button", { name: "Help" });
+  expect(help.closest(".rail-bottom")).toBe(settings.closest(".rail-bottom"));
+  expect(help.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(settings.querySelector("path")!.getAttribute("d")).toMatch(/^M21\.02 10\.17/);
 });
 
 test.each([
@@ -154,7 +158,6 @@ test.each([
   ["/kits/updates", "Kits", "Kits"],
   ["/marketplace", "Kits", "Kits"], // the Marketplace page of earlier versions
   ["/settings", "Settings", "Settings"],
-  ["/report", "Report a bug", "Report a bug"],
 ])("%s shows %s, marked in the rail", (path, title, item) => {
   open(path);
   expect(heading()).toBe(title);
@@ -212,14 +215,62 @@ test("the rail collapses to icons with names and remembers it", () => {
   );
 });
 
-test("Report a bug sits on the rail above Settings, by its icon alone when collapsed", () => {
+// Help on the rail: Documentation, GitHub and Report a bug.
+
+const help = () => within(rail()).getByRole("button", { name: "Help" });
+
+test("Help opens its menu, the first item focused: Documentation and GitHub in a new tab, Report a bug", () => {
   open("/sessions/lado");
-  const report = within(rail()).getByRole("link", { name: "Report a bug" });
-  expect(report.getAttribute("href")).toBe("/report");
-  expect(report.getAttribute("title")).toBeNull();
+  expect(help().getAttribute("aria-haspopup")).toBe("menu");
+  expect(help().getAttribute("aria-expanded")).toBe("false");
+  expect(within(rail()).queryByRole("link", { name: "Report a bug" })).toBeNull(); // no item of its own
+  fireEvent.click(help());
+  expect(help().getAttribute("aria-expanded")).toBe("true");
+  const menu = screen.getByRole("menu", { name: "Help" });
+  const items = within(menu).getAllByRole("menuitem");
+  expect(items.map((item) => item.textContent)).toEqual(["Documentation↗", "GitHub↗", "Report a bug"]);
+  expect(items.map((item) => item.getAttribute("href"))).toEqual([
+    "https://github.com/ladohq/lado#readme",
+    "https://github.com/ladohq/lado",
+    null,
+  ]);
+  expect(items.slice(0, 2).map((item) => item.getAttribute("target"))).toEqual(["_blank", "_blank"]);
+  expect(items[2].previousElementSibling?.tagName).toBe("HR");
+  expect(document.activeElement).toBe(items[0]);
+  fireEvent.keyDown(items[0], { key: "ArrowDown" });
+  expect(document.activeElement).toBe(items[1]);
+  fireEvent.click(items[2]);
+  expect(heading()).toBe("Report a bug");
+  expect(screen.queryByRole("menu")).toBeNull();
+});
+
+test("Esc closes Help's menu, the focus back on Help; a press outside closes it too", () => {
+  open("/sessions/lado");
+  fireEvent.click(help());
+  fireEvent.keyDown(screen.getByRole("menu", { name: "Help" }), { key: "Escape" });
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(document.activeElement).toBe(help());
+  fireEvent.click(help());
+  fireEvent.mouseDown(screen.getByRole("main"));
+  expect(screen.queryByRole("menu")).toBeNull();
+});
+
+test("on the Report a bug page Help is marked as the rail's current item, and nothing else", () => {
+  open("/report");
+  expect(heading()).toBe("Report a bug");
+  expect(help().classList.contains("is-current")).toBe(true);
+  expect(within(rail()).getAllByRole("link").filter((l) => l.hasAttribute("aria-current"))).toEqual([]);
+  cleanup();
+  open("/kits");
+  expect(help().classList.contains("is-current")).toBe(false);
+});
+
+test("folded, Help is its icon with its name as the tooltip", () => {
+  open("/sessions/lado");
+  expect(help().getAttribute("title")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Collapse menu" }));
-  expect(report.getAttribute("title")).toBe("Report a bug");
-  expect(report.querySelector("svg")).toBeTruthy();
+  expect(help().getAttribute("title")).toBe("Help");
+  expect(help().querySelector("svg")).toBeTruthy();
 });
 
 test("on a narrow window the rail starts collapsed", () => {

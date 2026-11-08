@@ -17,12 +17,15 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
-import { NavLink, Outlet, useLocation } from "react-router";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 
 import { getHealth, onDenied } from "./api";
 import {
   BugIcon,
   CollapseIcon,
+  DocumentIcon,
+  GitHubIcon,
+  HelpIcon,
   HomeIcon,
   KitsIcon,
   LaunchIcon,
@@ -35,9 +38,9 @@ import {
 } from "./icons";
 import { LaunchProvider, useLaunch } from "./Launch";
 import { isLive, Live, LiveContext, useLive } from "./live";
-import { escapeIsTaken } from "./Menu";
+import { escapeIsTaken, Menu, useBeside, useDismiss } from "./Menu";
 import { Notifier } from "./Notifications";
-import { NEEDS_YOU_PATH } from "./paths";
+import { DOCS_URL, GITHUB, NEEDS_YOU_PATH } from "./paths";
 import { useMedia, usePhone, usePhoneViewport } from "./phone";
 import { reloadedFor, storeRailCollapsed, storeReloadedFor, storedRailCollapsed } from "./prefs";
 import { SelectionBar } from "./SelectionBar";
@@ -172,7 +175,9 @@ export function Shell() {
         aria-label="Sections"
         data-open={drawer || undefined}
         onClick={(event) => {
-          if (drawer && (event.target as Element).closest(".rail-link")) closeDrawer();
+          // An item chosen: a section, Launch, or an item of Help's menu (Help itself opens it).
+          const chosen = (event.target as Element).closest(".rail-link:not([aria-haspopup]), [role=menuitem]");
+          if (drawer && chosen) closeDrawer();
         }}
       >
         <div className="rail-head">
@@ -209,7 +214,7 @@ export function Shell() {
           ))}
         </ul>
         <div className="rail-bottom">
-          <RailLink to="/report" name="Report a bug" icon={<BugIcon />} collapsed={folded} />
+          <HelpButton collapsed={folded} phone={phone !== null} />
           <RailLink to="/settings" name="Settings" icon={<SettingsIcon />} collapsed={folded} />
         </div>
       </nav>
@@ -413,5 +418,64 @@ function LaunchLink({ collapsed }: { collapsed: boolean }) {
       <LaunchIcon />
       <span className="rail-name">Launch</span>
     </button>
+  );
+}
+
+// Help on the rail: a menu of Documentation and GitHub, in a new tab, and Report a bug. It
+// opens beside the rail (useBeside), or above Help across the drawer on a phone (styles.css);
+// Esc gives the focus back to Help. On /report Help wears the rail's current look: Report a
+// bug lives in it. It is no link, so the look is a class, not aria-current.
+function HelpButton({ collapsed, phone }: { collapsed: boolean; phone: boolean }) {
+  const [open, setOpen] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const wrap = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const beside = useBeside(button, menu, open && !phone);
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(open, wrap, close);
+  const current = pathname === "/report";
+  return (
+    <div className="help-wrap" ref={wrap}>
+      <button
+        ref={button}
+        type="button"
+        className={`rail-link${current ? " is-current" : ""}`}
+        aria-label="Help"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title={collapsed && !open ? "Help" : undefined}
+        onClick={() => setOpen(!open)}
+      >
+        <HelpIcon />
+        <span className="rail-name">Help</span>
+      </button>
+      {open && (
+        <Menu
+          label="Help"
+          ref={menu}
+          className="help-menu"
+          style={phone ? undefined : beside}
+          items={[
+            { label: "Documentation", href: DOCS_URL, icon: <DocumentIcon /> },
+            { label: "GitHub", href: GITHUB, icon: <GitHubIcon /> },
+            {
+              label: "Report a bug",
+              icon: <BugIcon />,
+              divided: true,
+              onSelect: () => {
+                setOpen(false);
+                navigate("/report");
+              },
+            },
+          ]}
+          onClose={() => {
+            setOpen(false);
+            button.current?.focus();
+          }}
+        />
+      )}
+    </div>
   );
 }

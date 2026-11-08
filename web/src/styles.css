@@ -227,10 +227,52 @@ button.rail-link {
   text-align: left;
 }
 
-.rail-link[aria-current="page"] {
+.rail-link[aria-current="page"],
+.rail-link.is-current,
+.rail-link[aria-expanded="true"] {
   background: var(--raised);
   color: var(--ink);
+}
+
+.rail-link[aria-current="page"],
+.rail-link.is-current {
   box-shadow: inset 3px 0 0 var(--action);
+}
+
+/* Help's menu (Shell.tsx): beside the rail, placed fixed by useBeside; until it is placed,
+   right of Help. On a phone, over Help across the drawer, its items 44 px. */
+.help-wrap {
+  position: relative;
+}
+
+.action-menu.help-menu {
+  top: auto;
+  right: auto;
+  bottom: 0;
+  left: calc(100% + 8px);
+  z-index: 47;
+  min-width: 210px;
+}
+
+.help-menu [role="menuitem"] {
+  gap: 10px;
+}
+
+.help-menu [role="menuitem"] .icon {
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+}
+
+.help-menu .menu-out {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.action-menu hr {
+  margin: 4px 6px;
+  border: 0;
+  border-top: 1px solid var(--line);
 }
 
 .icon {
@@ -12326,6 +12368,17 @@ button.quiet.danger-text {
   height: 100%;
   overflow-y: auto;
   box-shadow: 0 0 40px var(--shadow);
+}
+
+:root[data-phone] .rail[data-open] .help-menu {
+  right: 0;
+  bottom: calc(100% + 6px);
+  left: 0;
+  min-width: 0;
+}
+
+:root[data-phone] .rail[data-open] .help-menu [role="menuitem"] {
+  height: 44px;
 }
 
 :root[data-phone] .menu-scrim {

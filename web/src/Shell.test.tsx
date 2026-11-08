@@ -146,6 +146,39 @@ test("choosing a section goes there and closes the menu", async () => {
   expect(rail().hasAttribute("data-open")).toBe(false);
 });
 
+test("Help in the drawer opens its menu there; Esc closes only the menu, an item both", async () => {
+  FakeScreen.phone();
+  open("/kits");
+  fireEvent.click(menu());
+  const help = screen.getByRole("button", { name: "Help" });
+  fireEvent.click(help);
+  const helpMenu = screen.getByRole("menu", { name: "Help" });
+  expect(rail().contains(helpMenu)).toBe(true); // in the drawer, over Help
+  expect(helpMenu.style.position).toBe(""); // placed by the drawer's CSS, not beside the rail
+  fireEvent.keyDown(helpMenu, { key: "Escape" });
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(rail().hasAttribute("data-open")).toBe(true);
+  expect(document.activeElement).toBe(help);
+  fireEvent.keyDown(document, { key: "Escape" });
+  expect(rail().hasAttribute("data-open")).toBe(false);
+  fireEvent.click(menu());
+  fireEvent.click(screen.getByRole("button", { name: "Help" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Report a bug" }));
+  await screen.findByRole("heading", { name: "Report a bug" });
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(rail().hasAttribute("data-open")).toBe(false);
+});
+
+test("Documentation in the drawer's Help closes the menu and the drawer", () => {
+  FakeScreen.phone();
+  open("/kits");
+  fireEvent.click(menu());
+  fireEvent.click(screen.getByRole("button", { name: "Help" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Documentation" }));
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(rail().hasAttribute("data-open")).toBe(false);
+});
+
 test("Launch in the menu opens the New session window and closes the menu", () => {
   FakeScreen.phone();
   open();

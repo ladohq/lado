@@ -51,7 +51,7 @@ with its files, interfaces and tests).
 
 ## 9. Help
 
-- [ ] 9.1 `Menu` with icons, a divider and `useBeside`; Help on the rail in place of Report a bug,
+- [x] 9.1 `Menu` with icons, a divider and `useBeside`; Help on the rail in place of Report a bug,
   current on `/report`, in the phone drawer (AC-6). Checked: `make web` (`Shell.test.tsx`,
   `Menu.test.tsx`, `Layout.test.tsx`, `ReportBug.test.tsx`).
 

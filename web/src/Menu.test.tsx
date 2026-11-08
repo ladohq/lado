@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { placeBelow, useDismiss } from "./Menu";
+import { placeBelow, placeBeside, useDismiss } from "./Menu";
 
 afterEach(cleanup);
 
@@ -69,5 +69,29 @@ describe("placeBelow", () => {
       right: 8,
       left: "auto",
     });
+  });
+});
+
+// Help on the rail: an item whose right edge is at 60 and bottom at 700, in a window 1000 × 800.
+describe("placeBeside", () => {
+  const help = { right: 60, bottom: 700 };
+  const size = { width: 220, height: 130 };
+
+  it("puts a menu right of its item, its bottom on the item's bottom", () => {
+    expect(placeBeside(help, size, { width: 1000, height: 800 })).toEqual({ position: "fixed", left: 68, top: 570 });
+  });
+
+  it("keeps a menu 8px inside the window's bottom on a short window", () => {
+    expect(placeBeside({ right: 60, bottom: 556 }, size, { width: 1000, height: 560 })).toEqual({
+      position: "fixed",
+      left: 68,
+      top: 422,
+    });
+    expect(placeBeside({ right: 60, bottom: 600 }, size, { width: 1000, height: 560 }).top).toBe(422);
+  });
+
+  it("keeps a menu 8px inside the window's top and right edges", () => {
+    expect(placeBeside({ right: 60, bottom: 40 }, size, { width: 1000, height: 800 }).top).toBe(8);
+    expect(placeBeside({ right: 900, bottom: 700 }, size, { width: 1000, height: 800 }).left).toBe(772);
   });
 });

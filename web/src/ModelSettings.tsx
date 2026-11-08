@@ -356,16 +356,20 @@ function UndoRow({
   const left = useRef(onLeft);
   left.current = onLeft;
   // Undo goes after UNDO_MS, kept while it runs or was refused (to say why); the row stays.
+  // The callbacks are the latest ones: the page renders again under it (a read of the CLIs'
+  // rows each second), which must not start the time over.
   const latest = useRef(gone);
   latest.current = gone;
+  const expire = useRef(onExpired);
+  expire.current = onExpired;
   useEffect(() => {
     if (problem || busy || expired) return;
     const timer = setTimeout(() => {
       if (document.activeElement === undo.current) left.current();
-      onExpired(latest.current);
+      expire.current(latest.current);
     }, UNDO_MS);
     return () => clearTimeout(timer);
-  }, [problem, busy, expired, onExpired]);
+  }, [problem, busy, expired]);
   return (
     <div className="mx-mrow mx-undo" role="row">
       <span role="cell">

@@ -292,6 +292,26 @@ test("after UNDO_MS only Undo goes: Removed … stays at its place until the nex
   expect(screen.queryByText("Removed Claude Sonnet.")).toBeNull(); // the next change took it
 });
 
+test("Undo runs out on time while the page renders again under it (the CLIs' rows still read)", async () => {
+  server.entries = { models: FOUR.slice(0, 2), servers: [] };
+  // The CLIs' last check not done: the page reads their rows every second meanwhile.
+  server.logins = server.logins.map((row) => ({ ...row, ready: false }));
+  mount();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const claude = await card();
+  fireEvent.click(within(claude).getByRole("button", { name: "Remove Claude Sonnet" }));
+  expect(await screen.findByRole("button", { name: "Undo" })).toBeTruthy();
+  const polls = server.of("GET", "/api/providers/logins").length;
+  for (let second = 0; second <= UNDO_MS / 1000; second++) {
+    // A second at a time: each read of the rows renders the page before the next.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+  }
+  expect(server.of("GET", "/api/providers/logins").length).toBeGreaterThan(polls + 5); // read meanwhile
+  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+});
+
 test("a refused Undo says why in its row", async () => {
   server.entries = {
     models: [model("Claude Opus", "claude", "Claude Code", "opus")],

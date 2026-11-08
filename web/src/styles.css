@@ -2262,9 +2262,10 @@ h3 {
   min-width: 0;
 }
 
+/* Above 900 px `.content` scrolls, under the top bar; at or under it the window does. */
 .snav {
   position: sticky;
-  top: calc(var(--head-h) + 28px);
+  top: 28px;
 }
 
 .snav ul {
@@ -2371,6 +2372,10 @@ h3 {
   .settings {
     grid-template-columns: 196px minmax(0, 1fr);
     gap: 20px;
+  }
+
+  .snav {
+    top: calc(var(--head-h) + 20px);
   }
 }
 
@@ -10530,12 +10535,23 @@ section.artifact-group + section.artifact-group {
   --gap-block: 24px; /* between the section's blocks */
 }
 
-.setting p.mx-intro {
-  margin: 6px 0 0;
-}
-
 .mx-block {
   margin-top: var(--gap-block);
+}
+
+/* Model servers is a page, not a card: its blocks without frames, the servers split by lines. */
+.spage.setting {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.spage .mx-block {
+  margin-top: 8px;
+}
+
+.spage .mx-block:first-of-type {
+  margin-top: 0;
 }
 
 .mx-block h3 {
@@ -10562,66 +10578,36 @@ section.artifact-group + section.artifact-group {
   font-size: 13px;
 }
 
-/* Your agent CLIs: a card per agent CLI. No `overflow: hidden`: the picker's list leaves it. */
-.mx-cards {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.mc-cli {
-  padding: 10px 12px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-}
-
-.mc-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.mc-name {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.mc-off .mc-name {
-  color: var(--muted);
-}
-
-.mc-state {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.mx-card-warn {
-  color: var(--warn);
-  font-size: 12px;
-  font-weight: 400;
-}
-
-.mc-row {
+/* A CLI's default model in its row on Agent CLIs (CliDefault.tsx): `Default model` beside its
+   picker, up to 360 px, the notes under the picker; above it at 600 px and narrower. No
+   `overflow: hidden`: the picker's list leaves it. */
+.cli-model {
   display: grid;
-  grid-template-columns: 104px minmax(0, 1fr);
+  grid-column: 1 / -1;
+  grid-template-columns: 104px minmax(0, 360px);
   align-items: start;
-  gap: 10px;
+  gap: 6px 10px;
+  min-width: 0;
 }
 
-.mc-label {
+.cli-ml {
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 38px;
 }
 
-.mc-field {
+.cli-pick {
   display: flex;
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+}
+
+.cli-model.cli-off {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
 }
 
 .mc-notes {
@@ -10664,22 +10650,6 @@ section.artifact-group + section.artifact-group {
   background: var(--panel);
   color: var(--ink);
   font: 13px var(--mono);
-}
-
-/* A card's models, flush with its edges. */
-.mc-models {
-  margin: 10px -12px -12px;
-  overflow: hidden;
-  border-radius: 0 0 7px 7px;
-}
-
-.mc-more {
-  padding: 8px 12px;
-  border-top: 1px solid var(--line);
-}
-
-.mc-more .link-button {
-  min-height: 26px;
 }
 
 .mx-mrow.mc-ask {
@@ -10739,12 +10709,18 @@ section.artifact-group + section.artifact-group {
   white-space: nowrap;
 }
 
+/* A picked model's name stays whole and its id gives way first; only a name longer than the
+   whole field is cut, whole in the field's title. */
 .mp-value .mp-title {
+  flex-shrink: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .mp-id {
+  flex-shrink: 1;
+  min-width: 0;
   overflow: hidden;
   color: var(--muted);
   font-size: 12px;
@@ -10989,12 +10965,13 @@ section.artifact-group + section.artifact-group {
 }
 
 @media (max-width: 600px) {
-  .mc-row {
+  .cli-model {
     grid-template-columns: minmax(0, 1fr);
-    gap: 2px;
+    row-gap: 4px;
   }
 
-  .mc-label {
+  .cli-ml {
+    font-size: 14px;
     line-height: 20px;
   }
 
@@ -11027,10 +11004,6 @@ section.artifact-group + section.artifact-group {
 
   .mc-other-row button {
     flex: 1;
-    min-height: 44px;
-  }
-
-  .mc-more .link-button {
     min-height: 44px;
   }
 }
@@ -11156,6 +11129,113 @@ section.artifact-group + section.artifact-group {
 
 .mx-undo .link-button {
   margin: 0;
+}
+
+/* Your models: one table of every CLI's models, a fifth column for the CLI each runs in, its
+   default marked there; a server found not answering in --warn with ⚠. At 900 px and narrower
+   no head row: the name and ×, then `model · server · CLI` wrapped whole. */
+.yours-table {
+  border-bottom: 1px solid var(--line);
+}
+
+.yours-table:focus {
+  outline: none;
+}
+
+.mx-mrow.yours {
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 0.8fr) 28px;
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.mx-mrow.yours.mx-mhead {
+  padding-left: 6px;
+}
+
+.mx-mrow.yours.mx-undo {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-left: 6px;
+}
+
+.mx-cli {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mx-from-down {
+  color: var(--warn);
+}
+
+.mx-lead a {
+  color: var(--action);
+}
+
+@media (max-width: 900px) {
+  .mx-mrow.yours {
+    grid-template-areas: "name x" "meta x";
+    grid-template-columns: minmax(0, 1fr) 32px;
+    row-gap: 0;
+  }
+
+  .mx-mrow.yours.mx-mhead {
+    display: none;
+  }
+
+  .mx-mrow.yours .mx-nm {
+    grid-area: name;
+  }
+
+  .mx-mrow.yours .mx-x-cell {
+    grid-area: x;
+  }
+
+  .mx-mrow.yours .mx-meta {
+    display: block;
+    grid-area: meta;
+    min-width: 0;
+    padding-left: 7px;
+    color: var(--muted);
+  }
+
+  .mx-mrow.yours .mx-model,
+  .mx-mrow.yours .mx-from,
+  .mx-mrow.yours .mx-cli {
+    display: inline;
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .mx-mrow.yours .mx-from::before,
+  .mx-mrow.yours .mx-cli::before {
+    content: " · ";
+    color: var(--muted);
+  }
+
+  .mx-mrow.yours.mx-undo {
+    grid-template-areas: none;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+/* Servers on the page: rows split by lines, without frames. */
+.spage .mx-srcs {
+  gap: 0;
+  border-top: 1px solid var(--line);
+}
+
+.spage .mx-src {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: none;
+}
+
+.spage .mx-add-slot {
+  padding-top: 8px;
+  border-bottom: 0;
 }
 
 /* An icon button: ✎, 🗑, ↻ and ×. */
@@ -11738,7 +11818,8 @@ section.artifact-group + section.artifact-group {
     justify-self: start;
   }
 
-  .mx-mrow {
+  .mx-mrow,
+  .mx-mrow.yours {
     grid-template-areas: "name x" "meta x";
     grid-template-columns: minmax(0, 1fr) 44px;
     row-gap: 0;

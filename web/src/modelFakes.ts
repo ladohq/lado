@@ -101,7 +101,8 @@ export class ModelServer {
     const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
     const [where] = path.split("?");
     if (where === "/api/model-settings") return json(this.entries);
-    if (where === "/api/providers/logins") return json({ providers: this.logins, checking: false, environment: "" });
+    if (where === "/api/providers/logins" || where === "/api/providers/check")
+      return json({ providers: this.logins, checking: false, environment: "" });
     const listOf = where.match(/^\/api\/providers\/(.+)\/model-choices$/);
     if (listOf) return json(this.choices(listOf[1], new URLSearchParams(path.split("?")[1] ?? "").get("model") ?? ""));
     const checked = where.match(/^\/api\/model-defaults\/(.+)\/check$/);

@@ -1,53 +1,39 @@
-// Settings → Models (docs/design/ui.md, Models): one section, no tabs, an intro and two blocks:
-// Your agent CLIs, a card per agent CLI with its default model and the configured models it
-// runs; Model servers, where those models come from (ModelSources.tsx). What the commands
-// `lado model-server` and `lado model` do, with their rules and lines: every refusal is the
-// core's line under the field it names. The entries are read when the section opens and after
-// each change of its own (GET /api/model-settings asks no server); opening it reads no source
-// and only the lists of CLIs whose default is built-in, in the background. Opening a picker
-// reads its CLI's list now and asks each server of that CLI's models once. Nothing under the
-// pointer moves (useScrollAnchor) and no row leaves on a timer: the page scrolls to the section
-// once, when it opens at #models, and keeps it at the top while the sections above grow, until
-// the human acts; a model removed by × leaves its row as Undo, then as a line, until the
-// human's next change here. The page says nothing of sessions using a default: none does yet.
+// Settings → Model servers (docs/design/ui.md, Model servers): two blocks, Servers, where the
+// human's models come from (ModelSources.tsx), then Your models, one table of them all with the
+// agent CLI each runs in, its default marked. What the commands `lado model-server` and `lado
+// model` do, with their rules and lines: every refusal is the core's line under the field it
+// names. The entries are read when the page opens and after each change of its own
+// (useModelSettings; GET /api/model-settings asks no server); opening it reads no source.
+// Nothing under the pointer moves (useScrollAnchor) and no row leaves on a timer: a model
+// removed by × leaves its row as Undo, then as a line, until the human's next change here.
+// Each CLI's default is picked on Agent CLIs (CliDefault.tsx).
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Link } from "react-router";
 
 import {
   addModel,
-  checkModelDefault,
-  clearModelDefault,
   type ConfiguredModelInfo,
   type EntryRefused,
-  getModelSettings,
   getProviderLogins,
-  type ModelCheck,
   type ModelSettings as Entries,
-  probeModelServer,
   type ProviderLogins,
   refusalOf,
   removeModel,
   renameModel,
   setModelDefault,
-  unreachable,
 } from "./api";
 import { CloseIcon } from "./icons";
-import { MODEL_DEBOUNCE, useDebounced } from "./Launch";
-import { type Health, ModelPicker, type Pick, serverWords, useModelChoices } from "./ModelPicker";
-import { listed, loginWord, ModelServers, type Read, type Saved, serverKey, type Sources } from "./ModelSources";
+import { listed, ModelServers, type Read, type Saved, serverKey, type Sources } from "./ModelSources";
+import { agentClisPath } from "./paths";
 import { POLL_MS } from "./Providers";
 import { SettingsPage } from "./SettingsPage";
+import { useModelSettings } from "./useModelSettings";
 import { useScrollAnchor } from "./useScrollAnchor";
 
-export const INTRO = "Choose a default model for each agent CLI, and add the models of your own servers.";
-export const LEAD =
-  "New sessions and workers of each agent CLI start on its default model. Left on its settings, the agent CLI chooses. Your models come from the model servers below.";
-export const LEAD_NO_MODELS =
-  "New sessions and workers of each agent CLI start on its default model. To add models of your own, add a model server below and tick the agent CLIs that run them.";
 // Reads of the CLIs' rows at most while they are not read yet.
 const LOGIN_POLLS = 30;
 // How long a model removed by × offers Undo; its row then stays as a line.
 export const UNDO_MS = 10000;
-const FOLD_ABOVE = 5; // a card with more models shows this many until unfolded
 
 // A model removed by ×: its row offers Undo (`expired`: no more), saying why Undo was refused;
 // `wasDefault`: it was its CLI's default, which Undo sets again.
@@ -60,12 +46,10 @@ type Removed = {
 };
 
 const fold = (text: string) => text.toLowerCase();
-const byName = (a: ConfiguredModelInfo, b: ConfiguredModelInfo) => fold(a.name).localeCompare(fold(b.name));
 
 export function ModelSettings() {
-  const [entries, setEntries] = useState<Entries | null>(null);
+  const { entries, problem, reload } = useModelSettings();
   const [logins, setLogins] = useState<ProviderLogins[]>([]);
-  const [problem, setProblem] = useState<string | null>(null);
   const [reads, setReads] = useState<Record<string, Read>>({});
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [saved, setSaved] = useState<Record<string, Saved>>({});
@@ -74,52 +58,14 @@ export function ModelSettings() {
   // tick again saves the model under its name (a mis-click loses no name).
   const [names, setNames] = useState<Record<string, string>>({});
   const [focusName, setFocusName] = useState<string | null>(null); // after Undo
-  // By CLI: a default that went with its server, until the human's next change here.
-  const [lostDefaults, setLostDefaults] = useState<Record<string, string>>({});
   // By a model's folded name: why Undo could not set its default again.
   const [rowNotes, setRowNotes] = useState<Record<string, string>>({});
-  const [unfolded, setUnfolded] = useState<Set<string>>(new Set()); // the CLIs, while the page stays
   const section = useRef<HTMLElement>(null);
-  const latest = useRef(0);
-  const shown = useRef<Entries | null>(null); // the entries last taken
   const reading = useRef<Record<string, number>>({}); // each source's latest read (ModelSources)
   useScrollAnchor(section);
 
-  const reload = useCallback(async (given?: Entries) => {
-    const asked = ++latest.current;
-    try {
-      const found = given ?? (await getModelSettings());
-      if (asked !== latest.current) return;
-      // A server of another version may answer otherwise (the banner says it is one).
-      if (!Array.isArray(found?.models) || !Array.isArray(found?.servers) || !Array.isArray(found?.defaults))
-        throw new Error("the server gave no models: reload the page");
-      const servers = new Set(found.servers.map((s) => fold(s.name)));
-      const gone = (shown.current?.defaults ?? []).filter(
-        (d) =>
-          d.server !== null &&
-          !servers.has(fold(d.server)) &&
-          !found.defaults.some((now) => now.cli === d.cli && now.external === d.external),
-      );
-      if (gone.length)
-        setLostDefaults((now) => ({
-          ...now,
-          ...Object.fromEntries(gone.map((d) => [d.cli, `Its default model ${d.name} was removed with ${d.server}.`])),
-        }));
-      shown.current = found;
-      setEntries(found);
-      setProblem(null);
-    } catch (error) {
-      if (asked === latest.current) setProblem(refusalOf(error).message);
-    }
-  }, []);
-  useEffect(() => {
-    void reload();
-    return () => {
-      latest.current++;
-    };
-  }, [reload]);
-  // The CLIs' install and login as Agent CLIs and environment's last check read them; read
-  // again while that check runs (it starts with the page), never a check of its own.
+  // The CLIs' install and login as Agent CLIs' last check read them; read again while that
+  // check runs, never a check of its own.
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let left = LOGIN_POLLS;
@@ -131,7 +77,7 @@ export function ModelSettings() {
           setLogins(page.providers);
           if ((page.checking || page.providers.some((p) => !p.ready)) && --left > 0) timer = setTimeout(take, POLL_MS);
         },
-        () => undefined, // Agent CLIs and environment says why
+        () => undefined, // Agent CLIs says why
       );
     void take();
     return () => {
@@ -165,12 +111,11 @@ export function ModelSettings() {
       return next;
     });
   }, []);
-  // The human's next change in the section: the lines of models removed by × whose Undo ran
-  // out go, the lines of the last server added or changed, and of defaults lost with a server.
+  // The human's next change on the page: the lines of models removed by × whose Undo ran out
+  // go, and the lines of the last server added or changed.
   const onTouch = useCallback(() => {
     setRemoved((now) => Object.fromEntries(Object.entries(now).filter(([, gone]) => !gone.expired)));
     setSaved((now) => (Object.keys(now).length ? {} : now));
-    setLostDefaults((now) => (Object.keys(now).length ? {} : now));
     setRowNotes((now) => (Object.keys(now).length ? {} : now));
   }, []);
   const onName = useCallback(
@@ -245,8 +190,6 @@ export function ModelSettings() {
     onTouch,
     names,
     onName,
-    onDefaultGone: (cli, name) =>
-      setLostDefaults((now) => ({ ...now, [cli]: `Its default model ${name} was removed.` })),
   };
   return (
     <SettingsPage slug="model-servers" className="setting mx" ref={section}>
@@ -257,37 +200,22 @@ export function ModelSettings() {
       )}
       {entries && (
         <>
-          <div className="mx-block">
-            <h3>Your agent CLIs</h3>
-            <p className="mx-lead">
-              {entries.models.length + Object.keys(removed).length > 0 ? LEAD : LEAD_NO_MODELS}
-            </p>
-            <AgentClis
-              entries={entries}
-              logins={logins}
-              reads={reads}
-              removed={removed}
-              lostDefaults={lostDefaults}
-              rowNotes={rowNotes}
-              unfolded={unfolded}
-              focusName={focusName}
-              onFocusName={setFocusName}
-              onFocused={() => setFocusName(null)}
-              onChanged={reload}
-              onTouch={onTouch}
-              onRemoved={onRemoved}
-              onUndo={(gone) => void undo(gone)}
-              onExpired={(gone) => set(gone.model.name, { ...gone, expired: true })}
-              onFold={(cli) =>
-                setUnfolded((now) => {
-                  const next = new Set(now);
-                  if (!next.delete(cli)) next.add(cli);
-                  return next;
-                })
-              }
-            />
-          </div>
           <ModelServers {...sources} />
+          <YourModels
+            entries={entries}
+            logins={logins}
+            reads={reads}
+            removed={removed}
+            rowNotes={rowNotes}
+            focusName={focusName}
+            onFocusName={setFocusName}
+            onFocused={() => setFocusName(null)}
+            onChanged={reload}
+            onTouch={onTouch}
+            onRemoved={onRemoved}
+            onUndo={(gone) => void undo(gone)}
+            onExpired={(gone) => set(gone.model.name, { ...gone, expired: true })}
+          />
         </>
       )}
     </SettingsPage>
@@ -301,65 +229,20 @@ function goneOf(model: ConfiguredModelInfo, reads: Record<string, Read>): string
   return `${model.server} no longer lists ${model.model}: agents on it stop at their first turn.`;
 }
 
-type Card = {
-  cli: string;
-  title: string;
-  off: boolean; // its field shows its value and does not open
-  word: string; // its login, as Agent CLIs and environment read it
-  known: boolean; // LADO knows the CLI: a model of one it does not know still has a card
-};
-
-type CardsProps = {
-  entries: Entries;
-  reads: Record<string, Read>;
-  removed: Record<string, Removed>;
-  lostDefaults: Record<string, string>;
-  rowNotes: Record<string, string>;
-  unfolded: Set<string>;
-  focusName: string | null;
-  onFocusName: (name: string) => void;
-  onFocused: () => void;
-  onChanged: (given?: Entries) => Promise<void>;
-  onTouch: () => void;
-  onRemoved: (model: ConfiguredModelInfo, wasDefault: boolean) => void;
-  onUndo: (gone: Removed) => void;
-  onExpired: (gone: Removed) => void;
-  onFold: (cli: string) => void;
-};
-
-// Your agent CLIs: a card per agent CLI LADO knows, the installed ones in LADO's order, then the
-// ones not installed, then one for a model of a CLI it does not know.
-function AgentClis({ logins, ...props }: CardsProps & { logins: ProviderLogins[] }) {
-  const { entries, removed } = props;
-  const notInstalled = (row: ProviderLogins) => row.ready && !row.cli.installed;
-  const rows = [...logins.filter((r) => !notInstalled(r)), ...logins.filter(notInstalled)];
-  const cards: Card[] = rows.map((row) => ({
-    cli: row.cli.name,
-    title: row.cli.title,
-    off: notInstalled(row),
-    word: loginWord(row),
-    known: true,
-  }));
-  for (const m of [...entries.models, ...Object.values(removed).map((g) => g.model)])
-    if (!cards.some((c) => c.cli === m.cli))
-      cards.push({ cli: m.cli, title: m.cli_title, off: true, word: "", known: false });
-  return (
-    <div className="mx-cards">
-      {cards.map((card) => (
-        <CliCard key={card.cli} card={card} {...props} />
-      ))}
-    </div>
-  );
+// Why a server, as last read here, does not answer; null when it answered or was not read.
+function downOf(server: string, reads: Record<string, Read>): string | null {
+  const read = reads[serverKey(server)];
+  return read && "refused" in read ? read.refused.message : null;
 }
 
-function CliCard({
-  card,
+// Your models: every configured model in one table, by agent CLI in LADO's order (a CLI LADO
+// does not know last), then by name; a model removed by × keeps its place as Undo.
+function YourModels({
   entries,
+  logins,
   reads,
   removed,
-  lostDefaults,
   rowNotes,
-  unfolded,
   focusName,
   onFocusName,
   onFocused,
@@ -368,289 +251,82 @@ function CliCard({
   onRemoved,
   onUndo,
   onExpired,
-  onFold,
-}: CardsProps & { card: Card }) {
+}: {
+  entries: Entries;
+  logins: ProviderLogins[];
+  reads: Record<string, Read>;
+  removed: Record<string, Removed>;
+  rowNotes: Record<string, string>;
+  focusName: string | null;
+  onFocusName: (name: string) => void;
+  onFocused: () => void;
+  onChanged: (given?: Entries) => Promise<void>;
+  onTouch: () => void;
+  onRemoved: (model: ConfiguredModelInfo, wasDefault: boolean) => void;
+  onUndo: (gone: Removed) => void;
+  onExpired: (gone: Removed) => void;
+}) {
   const id = useId();
-  const { cli, title, off } = card;
-  const value = entries.defaults.find((d) => d.cli === cli) ?? null;
-  const live = entries.models.filter((m) => m.cli === cli).sort(byName);
-  const list = useModelChoices(cli);
-  const { read } = list;
-  const field = useRef<HTMLButtonElement>(null);
-  const self = useRef<HTMLDivElement>(null);
-  const [problem, setProblem] = useState<string | null>(null);
-  const [other, setOther] = useState<string | null>(null); // Other name's field, with its text
-  const [health, setHealth] = useState<Record<string, Health>>({});
-  const [checking, setChecking] = useState(false);
-  // What the human pressed goes away (a chip): the focus moves on once the page has changed.
-  const [handOn, setHandOn] = useState(false);
-  const [renamed, setRenamed] = useState<string | null>(null); // kept in view past the fold
-  const checkedList = useRef(false); // Check again of the list is running
-  const probes = useRef<Record<string, number>>({}); // each server's latest question
-
-  useEffect(() => {
-    if (!handOn) return;
-    setHandOn(false);
-    const next = off ? (self.current?.querySelector<HTMLElement>(".mc-models button") ?? self.current) : field.current;
-    next?.focus({ preventScroll: true });
-  }, [handOn, off]);
-
-  // A built-in default is read in the background, so a list that lost it shows on the card.
-  const builtin = value?.builtin ?? null;
-  useEffect(() => {
-    if (builtin !== null && !off) read(false, builtin);
-  }, [builtin, off, read]);
-
-  // The server's state as a probe found it; null when the probe never reached LADO, which says
-  // nothing of the model server.
-  const probe = async (server: string): Promise<Health | null> => {
-    const key = fold(server);
-    const asked = (probes.current[key] = (probes.current[key] ?? 0) + 1);
-    let found: Health;
-    try {
-      found = { models: (await probeModelServer(server)).models };
-    } catch (error) {
-      if (unreachable(error)) return null;
-      found = { down: refusalOf(error).message };
-    }
-    if (probes.current[key] === asked) setHealth((now) => ({ ...now, [key]: found }));
-    return found;
+  const table = useRef<HTMLDivElement>(null);
+  const live = entries.models;
+  const gone = Object.values(removed).filter((g) => !live.some((m) => fold(m.name) === fold(g.model.name)));
+  if (live.length + gone.length === 0 && entries.servers.length === 0) return null;
+  const order = (cli: string) => {
+    const at = logins.findIndex((row) => row.cli.name === cli);
+    return at < 0 ? logins.length : at;
   };
-
-  const save = async (pick: Pick | { typed: string }): Promise<boolean> => {
-    onTouch();
-    setProblem(null);
-    try {
-      if (pick === null) await onChanged(await clearModelDefault(cli));
-      else await onChanged((await setModelDefault(cli, pick)).settings);
-      return true;
-    } catch (error) {
-      setProblem(
-        unreachable(error) ? "LADO's server does not answer: the value was not saved." : refusalOf(error).message,
-      );
-      return false;
-    }
-  };
-  const useSettings = async () => {
-    if (await save(null)) setHandOn(true);
-  };
-  const useSettingsChip = (
-    <button type="button" className="chip-button" onClick={() => void useSettings()}>
-      {`Use ${title}'s settings`}
-    </button>
-  );
-
-  // On a CLI not installed the head says all: no list can be checked, and no check helps.
-  const check = !off && builtin !== null && list.checked === builtin ? list.choices?.check : undefined;
-  const lost = check?.kind === "refused";
-  useEffect(() => {
-    if (!checkedList.current || list.reading) return;
-    checkedList.current = false;
-    if (check?.kind !== "warn") setHandOn(true); // its chip went
-  }, [list.reading, check?.kind]);
-  const server = value?.server ?? null;
-  const state = server !== null ? health[fold(server)] : undefined;
-  const words = value !== null ? serverWords(state, value.model) : null;
-  const address = entries.servers.find((s) => fold(s.name) === fold(server ?? ""))?.address ?? "";
-  const checkAgain = (onCheck: () => void, busy: boolean) => (
-    <button
-      type="button"
-      className="chip-button"
-      aria-disabled={busy ? true : undefined}
-      onClick={() => !busy && onCheck()}
-    >
-      Check again
-    </button>
-  );
-  const askServer = async () => {
-    if (server === null || value === null) return;
-    setChecking(true);
-    const found = await probe(server);
-    setChecking(false);
-    if (found !== null && serverWords(found, value.model) === null) setHandOn(true); // its chip went
-  };
-  const askList = () => {
-    checkedList.current = true;
-    read(true, builtin ?? "");
-  };
-
-  const notes = [
-    problem !== null && (
-      <span key="problem" className="field-note bad" role="alert">
-        {problem}
-      </span>
-    ),
-    value?.external != null && value.whole_process && (
-      <span key="whole" className="field-note">
-        {`On ${title} this model takes the whole process: an agent on it runs only on ${server}.`}
-      </span>
-    ),
-    lost && (
-      <span key="lost" className="field-note warn" role="status">
-        <span>{`⚠ ${title} no longer lists ${builtin}: agents on it stop at their first turn.`}</span>
-        <span className="way-out">{useSettingsChip}</span>
-      </span>
-    ),
-    check?.kind === "warn" && other === null && (
-      <span key="warn" className="field-note warn" role="status">
-        <span>{`⚠ ${check.text}`}</span>
-        {list.choices?.read_again && <span className="way-out">{checkAgain(askList, list.reading)}</span>}
-      </span>
-    ),
-    words !== null && value !== null && server !== null && state !== undefined && (
-      <span key="server" className="field-note warn" role="status">
-        <span>
-          {"down" in state
-            ? `⚠ ${state.down.replace(address, server)}; ${value.name} is on it. Start the server or pick another model.`
-            : `⚠ ${value.model} is no longer in ${server}'s list of models. Load it there or pick another model.`}
-        </span>
-        <span className="way-out">
-          {checkAgain(() => void askServer(), checking)}
-          {useSettingsChip}
-        </span>
-      </span>
-    ),
-    checking && server !== null && (
-      <span key="checking" className="field-note" role="status">
-        <span className="mx-spin" aria-hidden="true" /> {`checking ${server} …`}
-      </span>
-    ),
-    off && card.known && value !== null && (
-      <span key="off" className="way-out">
-        {useSettingsChip}
-      </span>
-    ),
-    lostDefaults[cli] && (
-      <span key="gone" className="field-note">
-        {lostDefaults[cli]}
-      </span>
-    ),
-  ].filter(Boolean);
-
-  const gone = Object.values(removed).filter(
-    (g) => g.model.cli === cli && !live.some((m) => fold(m.name) === fold(g.model.name)),
-  );
   const rows = [
     ...live.map((model) => ({ model, gone: null as Removed | null })),
     ...gone.map((g) => ({ model: g.model, gone: g as Removed | null })),
-  ].sort((a, b) => {
-    // A default removed keeps the first row while it offers Undo: under the field it left.
-    const first = (row: (typeof rows)[number]) => (row.model.id === value?.external || row.gone?.wasDefault ? 0 : 1);
-    return first(a) - first(b) || byName(a.model, b.model);
-  });
-  const open = unfolded.has(cli);
-  const folds = live.length > FOLD_ABOVE; // models, not rows: a removed row folds nothing away
-  // What the human just acted on stays in view: a removed row, a model renamed past the fold.
-  const shown =
-    open || !folds
-      ? rows
-      : rows.filter((row, at) => at < FOLD_ABOVE || row.gone || fold(row.model.name) === renamed);
+  ].sort(
+    (a, b) =>
+      order(a.model.cli) - order(b.model.cli) ||
+      a.model.cli.localeCompare(b.model.cli) ||
+      fold(a.model.name).localeCompare(fold(b.model.name)),
+  );
+  const defaults = new Set(entries.defaults.map((d) => d.external).filter(Boolean));
   const servers = new Map(entries.servers.map((s) => [fold(s.name), s.address]));
-  const warning =
-    card.off && card.known
-      ? value !== null
-        ? "⚠ not installed: its default model cannot run"
-        : live.length > 0
-          ? "⚠ not installed: its models cannot run"
-          : "⚠ not installed"
-      : null;
-
   return (
-    <div
-      ref={self}
-      className={`mc-cli${off ? " mc-off" : ""}`}
-      role="group"
-      aria-label={title}
-      tabIndex={-1}
-      data-anchor=""
-    >
-      <div className="mc-head">
-        <span className="mc-name">{title}</span>
-        {warning ? <span className="mx-card-warn">{warning}</span> : <span className="mc-state">{card.word}</span>}
-      </div>
-      <div className="mc-row">
-        <span className="mc-label">Default model</span>
-        <div className="mc-field">
-          <ModelPicker
-            cli={{ name: cli, title }}
-            value={value}
-            where="settings"
-            own={live}
-            list={list}
-            off={off}
-            lost={lost}
-            health={health}
-            describedBy={notes.length > 0 ? `${id}-notes` : undefined}
-            fieldRef={field}
-            onOpen={() => {
-              for (const name of new Set(live.map((m) => m.server))) void probe(name);
-            }}
-            onPick={(pick) => {
-              setOther(null);
-              void save(pick);
-            }}
-            onOther={setOther}
-          />
-          {other !== null && (
-            <OtherName
-              cli={cli}
-              start={other}
-              onUse={async (name) => {
-                if (await save({ typed: name })) {
-                  setOther(null);
-                  field.current?.focus();
-                }
-              }}
-              onCancel={() => {
-                setOther(null);
-                field.current?.focus();
-              }}
-            />
-          )}
-          {notes.length > 0 && (
-            <div className="mc-notes" id={`${id}-notes`}>
-              {notes}
-            </div>
-          )}
-        </div>
-      </div>
-      {rows.length > 0 && (
-        <div className="mc-models">
-          <div className="mx-table" role="table" aria-label={`Your models on ${title}`}>
-            <div className="mx-mrow mx-mhead" role="row">
-              <span role="columnheader" aria-label="Name">
-                <span aria-hidden="true">Your models</span>{" "}
-                <span className="mx-count" aria-hidden="true">
-                  {live.length}
-                </span>
-              </span>
+    <section className="mx-block" aria-labelledby={id}>
+      <h3 id={id}>
+        Your models {live.length > 0 && <span className="mx-count">{live.length}</span>}
+      </h3>
+      {rows.length === 0 ? (
+        <p className="mx-lead">None yet: open a server and tick the agent CLIs that run a model.</p>
+      ) : (
+        <>
+          <p className="mx-lead">
+            Pick one as a default in <Link to={agentClisPath()}>Agent CLIs</Link>.
+          </p>
+          <div className="mx-table yours-table" role="table" aria-label="Your models" ref={table} tabIndex={-1}>
+            <div className="mx-mrow yours mx-mhead" role="row">
+              <span role="columnheader">Name</span>
               <span role="columnheader">Model</span>
               <span role="columnheader">From</span>
+              <span role="columnheader">Agent CLI</span>
               <span role="columnheader" aria-label="Remove" />
             </div>
-            {shown.map(({ model, gone }) =>
+            {rows.map(({ model, gone }) =>
               gone ? (
                 <UndoRow
                   key={`removed:${model.name}`}
                   gone={gone}
                   onUndo={onUndo}
                   onExpired={onExpired}
-                  onLeft={() => setHandOn(true)}
+                  onLeft={() => table.current?.focus({ preventScroll: true })}
                 />
               ) : (
                 <ModelRow
                   key={model.id}
                   model={model}
-                  isDefault={model.id === value?.external}
+                  isDefault={defaults.has(model.id)}
                   address={servers.get(fold(model.server))}
                   gone={goneOf(model, reads)}
+                  down={downOf(model.server, reads)}
                   note={rowNotes[fold(model.name)] ?? null}
                   focus={focusName !== null && fold(focusName) === fold(model.name)}
                   onFocused={onFocused}
-                  onRenamed={(name, back) => {
-                    setRenamed(fold(name));
-                    if (back) onFocusName(name);
-                  }}
+                  onRenamed={(name, back) => back && onFocusName(name)}
                   onChanged={onChanged}
                   onTouch={onTouch}
                   onRemoved={onRemoved}
@@ -658,106 +334,9 @@ function CliCard({
               ),
             )}
           </div>
-          {folds && (
-            <div className="mc-more">
-              <button
-                type="button"
-                className="link-button"
-                aria-expanded={open}
-                onClick={() => {
-                  setRenamed(null);
-                  onFold(cli);
-                }}
-              >
-                {open ? "Show fewer" : `Show all ${live.length} models`}
-              </button>
-            </div>
-          )}
-        </div>
+        </>
       )}
-    </div>
-  );
-}
-
-// `Other name…`'s field: the check `lado model default` would make once the typing settles,
-// and Use, off while refused; the warning of a name set so then stands on the card.
-export function OtherName({
-  cli,
-  start,
-  onUse,
-  onCancel,
-}: {
-  cli: string;
-  start: string;
-  onUse: (name: string) => Promise<void>;
-  onCancel: () => void;
-}) {
-  const id = useId();
-  const [text, setText] = useState(start);
-  const [check, setCheck] = useState<{ of: string; note: ModelCheck } | null>(null);
-  const name = text.trim();
-  const settled = useDebounced(name, MODEL_DEBOUNCE);
-  useEffect(() => {
-    if (!settled) return;
-    let current = true;
-    checkModelDefault(cli, settled).then(
-      (note) => current && setCheck({ of: settled, note }),
-      () => undefined, // Use says what is wrong
-    );
-    return () => {
-      current = false;
-    };
-  }, [cli, settled]);
-  const note = check?.of === name ? check.note : null;
-  const shown = note !== null && note.kind !== "default";
-  const refused = note?.kind === "refused";
-  const use = () => {
-    if (name && !refused) void onUse(name);
-  };
-  // No <form>: the launch window's own form holds it there.
-  return (
-    <div className="mc-other">
-      <label className="mc-other-l" htmlFor={id}>
-        Other name
-      </label>
-      <div className="mc-other-row">
-        <input
-          id={id}
-          className="mono"
-          aria-describedby={shown ? `${id}-note` : undefined}
-          value={text}
-          autoFocus
-          autoComplete="off"
-          autoCapitalize="off"
-          spellCheck={false}
-          onChange={(event) => setText(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              onCancel();
-            } else if (event.key === "Enter") {
-              event.preventDefault();
-              use();
-            }
-          }}
-        />
-        <button type="button" className="quiet" disabled={!name || refused} onClick={use}>
-          Use
-        </button>
-        <button type="button" className="quiet" onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
-      {shown && (
-        <span
-          id={`${id}-note`}
-          className={`field-note${refused ? " bad" : note.kind === "warn" ? " warn" : ""}`}
-          role={refused ? "alert" : "status"}
-        >
-          {note.kind === "warn" ? `⚠ ${note.text}` : note.text}
-        </span>
-      )}
-    </div>
+    </section>
   );
 }
 
@@ -818,6 +397,7 @@ function ModelRow({
   isDefault,
   address,
   gone,
+  down,
   note,
   focus,
   onFocused,
@@ -830,6 +410,7 @@ function ModelRow({
   isDefault: boolean;
   address: string | undefined;
   gone: string | null;
+  down: string | null; // why its server does not answer, as last read here
   note: string | null;
   focus: boolean;
   onFocused: () => void;
@@ -878,7 +459,7 @@ function ModelRow({
   if (asking)
     return (
       <div
-        className="mx-mrow mc-ask mx-confirm"
+        className="mx-mrow yours mc-ask mx-confirm"
         role="alertdialog"
         aria-label={`Remove ${model.name}?`}
         onKeyDown={(event) => {
@@ -904,7 +485,7 @@ function ModelRow({
       </div>
     );
   return (
-    <div className="mx-mrow" role="row">
+    <div className="mx-mrow yours" role="row">
       <span className="mx-nm" role="cell">
         {renaming ? (
           <Rename
@@ -943,8 +524,15 @@ function ModelRow({
         <span className="mx-model mono" role="cell" title={model.model}>
           {model.model}
         </span>
-        <span className="mx-from" role="cell" title={[model.server, address].filter(Boolean).join(" · ")}>
-          {model.server}
+        <span
+          className={`mx-from${down ? " mx-from-down" : ""}`}
+          role="cell"
+          title={[model.server, address, down].filter(Boolean).join(" · ")}
+        >
+          {down ? `⚠ ${model.server}` : model.server}
+        </span>
+        <span className="mx-cli" role="cell">
+          {isDefault ? `${model.cli_title} · default` : model.cli_title}
         </span>
       </span>
       <span className="mx-x-cell" role="cell">

@@ -33,7 +33,7 @@ with its files, interfaces and tests).
 
 ## 6. Model servers
 
-- [ ] 6.1 `useModelSettings`, `CliDefault`; Model servers with Servers and one Your models table, the
+- [x] 6.1 `useModelSettings`, `CliDefault`; Model servers with Servers and one Your models table, the
   default marked, the cards and their code removed (AC-5, AC-7). Checked: `make web`
   (`ModelSettings.test.tsx`, `ModelCards.test.tsx`, `ModelSources.test.tsx`).
 

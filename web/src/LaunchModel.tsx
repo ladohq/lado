@@ -13,9 +13,9 @@ import {
   type SessionInfo,
   type SessionModelCheck,
 } from "./api";
+import { OtherName } from "./CliDefault";
 import { useAsked } from "./Launch";
 import { type Health, ModelPicker, type Pick, sameModel, useModelChoices } from "./ModelPicker";
-import { OtherName } from "./ModelSettings";
 
 type Choice =
   | { kind: "default" } // follows the CLI's default, as it is at each launch

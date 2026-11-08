@@ -1,5 +1,5 @@
-// Settings → Models, where models come from (docs/design/ui.md, Models): the block Model
-// servers, every saved server by name then Add server. A source opens from its whole row;
+// Settings → Model servers, where models come from (docs/design/ui.md, Model servers): the
+// block Servers, every saved server by name then Add server. A source opens from its whole row;
 // opening it reads its models now by a probe with its kept key, ↻ reads them again; nothing is
 // read before and no list outlives the page. A list's order is set when it is read (the
 // source's configured models first) and no tick changes it; it is bounded and scrolls within
@@ -48,8 +48,7 @@ import { SecretField } from "./ProjectVariables";
 const SEARCH_ABOVE = 10; // a list longer than this has a search field
 const SHORT = 20; // a server's list this long shows whole on a phone
 
-export const SERVERS_LEAD =
-  "LM Studio, Ollama, vLLM, LiteLLM or another OpenAI-compatible server. Type its address: LADO finds its type, its models and the agent CLIs that can use it.";
+export const SERVERS_LEAD = "Any OpenAI-compatible server: LM Studio, Ollama, vLLM, LiteLLM.";
 
 // A source's models as last read: reading, a server's probe with the order set at that read,
 // or why not.
@@ -81,7 +80,6 @@ export type Sources = {
   onTouch: () => void; // the human changes something here
   names: Record<string, string>; // the names of models unticked here, by tickKey
   onName: (key: string, name: string | null) => void;
-  onDefaultGone: (cli: string, name: string) => void; // a tick removed a default not asked about
 };
 
 export const serverKey = (name: string) => `server:${name.toLowerCase()}`;
@@ -184,6 +182,7 @@ function useReads(props: Sources) {
 }
 
 export function ModelServers(props: Sources) {
+  const id = useId();
   const { settings } = props;
   const reads = useReads(props);
   // The servers by name at the first render, then each one added here at the end, where its
@@ -208,9 +207,9 @@ export function ModelServers(props: Sources) {
     return !row?.ready || row.cli.installed;
   };
   return (
-    <div className="mx-block">
-      <h3>
-        Model servers {settings.servers.length > 0 && <span className="mx-count">{settings.servers.length}</span>}
+    <section className="mx-block" aria-labelledby={id}>
+      <h3 id={id}>
+        Servers {settings.servers.length > 0 && <span className="mx-count">{settings.servers.length}</span>}
       </h3>
       <p className="mx-lead">{SERVERS_LEAD}</p>
       <ul className="mx-srcs">
@@ -267,16 +266,8 @@ export function ModelServers(props: Sources) {
           )}
         </li>
       </ul>
-    </div>
+    </section>
   );
-}
-
-export function loginWord(row: ProviderLogins): string {
-  if (!row.ready) return "";
-  if (!row.cli.installed) return "not installed";
-  if (row.login.state === "no") return "not logged in";
-  if (row.login.state === "yes") return "logged in";
-  return "";
 }
 
 // A source's row: the whole row opens and closes it (its framed arrow turns), its name and
@@ -581,18 +572,22 @@ function SourceBody({
       </p>
     );
   if ("refused" in read) {
-    const stay = own.map((m) => m.name);
+    // The row's head shows the address: the line says what it does, from a capital.
+    const { message } = read.refused;
+    const address = sources.settings.servers.find((s) => fold(s.name) === fold(server))?.address;
+    const said = address && message.startsWith(`${address} `) ? message.slice(address.length + 1) : message;
     return (
       <>
         <div className="mx-tools">{refresh}</div>
         <span className="field-note warn" role="alert">
-          {`⚠ ${read.refused.message}`}
+          {`⚠ ${said.charAt(0).toUpperCase()}${said.slice(1)}`}
           {read.refused.hint && <span className="mx-hint">{read.refused.hint}</span>}
         </span>
-        {stay.length > 0 && read.refused.message !== LADO_DOWN && (
+        {own.length > 0 && message !== LADO_DOWN && (
           <p className="mx-note">
-            {stay.length === 1 ? "Its model stays saved: " : "Its models stay saved: "}
-            <b>{stay.join(", ")}</b>. Agents on it stop at their first turn until the server answers.
+            {own.length === 1
+              ? "Its model stays saved; agents on it stop at their first turn until it answers."
+              : "Its models stay saved; agents on them stop at their first turn until it answers."}
           </p>
         )}
       </>
@@ -638,9 +633,7 @@ function SourceBody({
       } else {
         const [one] = ticked(models, on, model, server);
         if (one) {
-          const { cleared } = await removeModel(one.name);
-          const asked = sources.settings.defaults.some((d) => d.external === one.id);
-          if (cleared.includes(on) && !asked) sources.onDefaultGone(on, one.name);
+          await removeModel(one.name);
           sources.onName(key, one.name);
         }
       }
@@ -745,7 +738,7 @@ function SourceBody({
             onKeyDown={(event) => event.key === "Escape" && setPop(null)}
           >
             <p>
-              Agent CLIs that can run <b className="mono">{model}</b> on {server}:
+              Agent CLIs that run <b className="mono">{model}</b>:
             </p>
             {columns.map((on) => (
               <label key={on.name} className="mx-sub-item">
@@ -979,7 +972,7 @@ export function Found({ probe }: { probe: ProbeInfo }) {
   );
 }
 
-const KEY_NOTE = "Kept in a file only LADO reads; never shown again.";
+const KEY_NOTE = "Only LADO reads it; never shown again.";
 
 // Add server: Name, Address and Key. Once the typing settles the form checks the name and
 // probes the address without the key; Check key probes it with the key; Add server probes and

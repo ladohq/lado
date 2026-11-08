@@ -7,6 +7,7 @@ import { MODEL_DEBOUNCE } from "./Launch";
 import { LMSTUDIO, LMSTUDIO_PROBE, model, ModelServer, refusal } from "./modelFakes";
 import { ModelSettings } from "./ModelSettings";
 import { Found, orderOf, SERVERS_LEAD, tickState } from "./ModelSources";
+import { UNDO_MS } from "./removedModels";
 
 let server: ModelServer;
 
@@ -122,7 +123,7 @@ test("a click on the row's name opens the source; ↻ is above its list and read
   expect(lm.getAttribute("aria-expanded")).toBe("false");
 });
 
-test("a tick saves the model with no name; unticking removes it with no Undo row", async () => {
+test("a tick saves the model with no name; unticking removes it, its line and Undo under the tick", async () => {
   server.entries = { models: [], servers: [LMSTUDIO] };
   await mount();
   await openModel("qwen3-8b");
@@ -141,7 +142,72 @@ test("a tick saves the model with no name; unticking removes it with no Undo row
   fireEvent.click(box);
   await waitFor(() => expect(box.checked).toBe(false));
   expect(server.of("DELETE", "/api/models/")).toHaveLength(1);
-  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  const line = (await screen.findByRole("button", { name: "Undo" })).closest(".mx-sub-undo");
+  expect(line?.textContent).toBe(`Removed ${name}.Undo`); // no CLI's sentence: it was no default
+  expect(box.closest("label")?.nextElementSibling).toBe(line);
+  expect(screen.getAllByRole("button", { name: "Undo" })).toHaveLength(1); // none in Your models
+});
+
+// Сильная, OpenCode's qwen3-8b on LM Studio дома, unticked in its open list.
+async function untickStrong() {
+  server.entries = {
+    models: [model("Сильная", "opencode", "OpenCode", "qwen3-8b")],
+    servers: [LMSTUDIO],
+  };
+  await mount();
+  await openModel("qwen3-8b");
+  const box = await tickOf("qwen3-8b on OpenCode");
+  box.focus();
+  fireEvent.click(box);
+  await waitFor(() => expect(box.checked).toBe(false));
+  const list = screen.getByRole("group", { name: "Agent CLIs for qwen3-8b" });
+  return { box, list, undo: await within(list).findByRole("button", { name: "Undo" }) };
+}
+
+test("Undo of an untick saves the model again under its name, the focus back on the tick", async () => {
+  const { box, list, undo } = await untickStrong();
+  expect(document.activeElement).toBe(box);
+  fireEvent.click(undo);
+  await waitFor(() => expect(box.checked).toBe(true));
+  expect(server.of("POST", "/api/models").filter((c) => c.path === "/api/models")[0].body).toEqual({
+    name: "Сильная",
+    cli: "opencode",
+    model: "qwen3-8b",
+    server: LMSTUDIO.name,
+  });
+  await waitFor(() => expect(list.querySelector(".mx-sub-undo")).toBeNull());
+  expect(server.of("PUT", "/api/model-defaults/opencode")).toEqual([]); // it was no default
+  await waitFor(() => expect(document.activeElement).toBe(box));
+});
+
+test("after UNDO_MS only the untick's Undo goes; its line stays until the next change", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const { list } = await untickStrong();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(UNDO_MS + 10);
+  });
+  expect(within(list).queryByRole("button", { name: "Undo" })).toBeNull();
+  expect(list.querySelector(".mx-sub-undo")?.textContent).toBe("Removed Сильная.");
+  fireEvent.click(await tickOf("qwen3-8b on Codex CLI")); // the next change
+  await waitFor(() => expect(list.querySelector(".mx-sub-undo")).toBeNull());
+});
+
+test("ticking again takes the untick's line away and sets no default", async () => {
+  const { box, list } = await untickStrong();
+  fireEvent.click(box);
+  await waitFor(() => expect(box.checked).toBe(true));
+  expect(list.querySelector(".mx-sub-undo")).toBeNull();
+  expect(server.of("PUT", "/api/model-defaults/opencode")).toEqual([]);
+});
+
+test("closing the list drops the untick's line", async () => {
+  const { list } = await untickStrong();
+  expect(list.querySelector(".mx-sub-undo")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "qwen3-8b" }));
+  await waitFor(() => expect(screen.queryByRole("group", { name: "Agent CLIs for qwen3-8b" })).toBeNull());
+  fireEvent.click(screen.getByRole("button", { name: "qwen3-8b" }));
+  const again = await screen.findByRole("group", { name: "Agent CLIs for qwen3-8b" });
+  expect(again.querySelector(".mx-sub-undo")).toBeNull();
 });
 
 test("a renamed model unticked by mistake: its row says would be <name>, a tick saves it under that name", async () => {

@@ -10672,12 +10672,6 @@ section.artifact-group + section.artifact-group {
   font: 13px var(--mono);
 }
 
-.mx-mrow.mc-ask {
-  display: block;
-  margin: 0;
-  border-radius: 0;
-}
-
 /* The picker: a field, and a list that lies over the page (position: fixed, set by the field's
    box in ModelPicker). */
 .mp-box {
@@ -11646,6 +11640,18 @@ section.artifact-group + section.artifact-group {
 
 .mx-sub-item .mx-as {
   white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* An untick's line under its tick, in line with the CLI's name: Removed …, then Undo. */
+.mx-sub-undo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  padding: 0 0 4px 26px;
+  color: var(--muted);
+  font-size: 13px;
   overflow-wrap: anywhere;
 }
 

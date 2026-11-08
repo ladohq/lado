@@ -3,7 +3,8 @@ import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { externalDefault, LMSTUDIO, model, ModelServer, refusal } from "./modelFakes";
-import { ModelSettings, UNDO_MS } from "./ModelSettings";
+import { ModelSettings } from "./ModelSettings";
+import { UNDO_MS } from "./removedModels";
 
 vi.mock("@xterm/xterm", async () => ({
   Terminal: (await import("./fakes")).FakeXterm,

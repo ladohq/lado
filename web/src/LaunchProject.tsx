@@ -173,7 +173,7 @@ function RepoPick({
       </ul>
       {gone && <span className="field-note warn">{`⚠ No repository ${gone} in ${label} any more: choose one.`}</span>}
       {chosen && (
-        <span className="field-note ok">✓ git repository{chosen.branch ? ` · branch ${chosen.branch}` : ""}</span>
+        <span className="field-note ok">✓ Ready{chosen.branch ? ` · branch ${chosen.branch}` : ""}</span>
       )}
     </div>
   );

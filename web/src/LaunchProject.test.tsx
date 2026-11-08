@@ -87,7 +87,7 @@ test("the repositories are listed with their branch and remote, one chosen", () 
     "frontendmain · https://github.com/shop/frontend",
   ]);
   expect(repos().map((one) => one.getAttribute("aria-checked"))).toEqual(["false", "true"]);
-  expect(screen.getByText("✓ git repository · branch main")).toBeTruthy();
+  expect(screen.getByText("✓ Ready · branch main")).toBeTruthy();
   fireEvent.click(repos()[0]);
   expect(calls.repo).toHaveBeenCalledWith("backend");
   fireEvent.keyDown(repos()[1], { key: "ArrowUp" });

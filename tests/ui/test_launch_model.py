@@ -7,6 +7,7 @@ import re
 
 import fake_model_server as fake
 import pytest
+from launch_window import agent, open_team, other_folder, start_button
 from playwright.sync_api import Browser, Locator, Page, expect
 from test_launch import idle, log_in, stopped_session
 
@@ -44,26 +45,27 @@ def set_default(name: str = QWEN) -> None:
 
 def new_window(page: Page, server, repo, cli: str = CLI) -> Locator:
     log_in(page, server)
-    if page.viewport_size["width"] <= 600:  # a phone: the rail is a drawer
-        page.get_by_role("banner").get_by_role("button", name="Menu").click()
-    page.get_by_role("navigation", name="Sections").get_by_role("button", name="Launch").click()
-    dialog = page.get_by_role("dialog", name="New session")
-    dialog.get_by_role("button", name="Folder", exact=True).click()  # no sessions: From scratch
-    dialog.get_by_role("combobox", name=re.compile("Where")).fill(str(repo))
-    expect(dialog).to_contain_text("✓ git repository · branch main")
-    dialog.get_by_label("Agent CLI").select_option(cli)
+    dialog, where = other_folder(page)  # no sessions: New empty folder
+    where.fill(str(repo))
+    expect(dialog).to_contain_text("✓ Ready · branch main")
+    agent(dialog).select_option(cli)
     return dialog
 
 
 def advanced(dialog: Locator) -> Locator:
-    return dialog.locator("details.launch-advanced").last  # after the first message's
+    """Team, which holds the Model field."""
+    return dialog.locator(".launch-team")
 
 
 def open_advanced(dialog: Locator) -> Locator:
-    row = advanced(dialog)
-    if row.get_attribute("open") is None:
-        row.locator("summary").click()
+    open_team(dialog)
     return dialog.get_by_role("combobox", name="Model")
+
+
+def fold(dialog: Locator) -> Locator:
+    """Team folded: its summary's model part."""
+    dialog.get_by_role("button", name="Hide").click()
+    return dialog.locator(".team-sum .launch-first-line")
 
 
 def test_a_session_starts_on_a_model_picked_and_its_page_says_so(
@@ -74,9 +76,9 @@ def test_a_session_starts_on_a_model_picked_and_its_page_says_so(
     model = open_advanced(dialog)
     expect(model).to_contain_text(f"{TITLE}'s settings")
     shot(page, "settings")
-    # The whole row of Advanced, of Agent CLI's height, with a chevron of its own.
-    agent_cli = dialog.get_by_label("Agent CLI").bounding_box()
-    row = advanced(dialog).locator(".launch-grid").bounding_box()
+    # The whole row of Team, of Agent's height, with a chevron of its own.
+    agent_cli = dialog.get_by_label("Agent", exact=True).bounding_box()
+    row = model.locator("xpath=ancestor::div[contains(@class, 'field')][1]").bounding_box()
     box = model.bounding_box()
     assert box["height"] == agent_cli["height"]
     assert box["width"] == pytest.approx(row["width"], abs=1)
@@ -93,12 +95,10 @@ def test_a_session_starts_on_a_model_picked_and_its_page_says_so(
     expect(model).to_contain_text("m1")
     expect(model.locator(".srv")).to_contain_text(HOME)
     shot(page, "picked")
-    summary = advanced(dialog).locator("summary")
-    summary.click()
-    expect(summary).to_have_text(f"Advanced: model {QWEN} on {HOME}")
+    expect(fold(dialog)).to_have_text(f"Model {QWEN} on {HOME}")
     shot(page, "folded")
 
-    dialog.get_by_role("button", name="Start session").click()
+    start_button(dialog).click()
     expect(page).to_have_url(f"{server['url']}/sessions/my-repo/activity")
     idle("my-repo")
     saved = state.model(QWEN)
@@ -124,7 +124,7 @@ def test_the_default_is_chosen_in_advance_and_the_session_follows_it(
     expect(model.locator(".mc-default")).to_have_text("default")
     expect(dialog.get_by_text(f"{TITLE}'s default model, from Settings → Models.")).to_be_visible()
     shot(page, "default")
-    dialog.get_by_role("button", name="Start session").click()
+    start_button(dialog).click()
     expect(page).to_have_url(f"{server['url']}/sessions/my-repo/activity")
     idle("my-repo")
     assert state.get_session("my-repo").power is None
@@ -151,12 +151,10 @@ def test_a_context_too_small_warns_in_the_field_and_start_stays_on(
         "https://github.com/ladohq/lado/blob/main/docs/install.md#what-to-expect-of-a-small-model",
     )
     expect(link).to_have_attribute("target", "_blank")
-    start = dialog.get_by_role("button", name="Start session")
+    start = start_button(dialog)
     expect(start).to_be_enabled()
     shot(page, "warning")
-    summary = advanced(dialog).locator("summary")
-    summary.click()
-    expect(summary).to_have_text(f"Advanced: model {QWEN} on {HOME} ⚠ context too small")
+    expect(fold(dialog)).to_have_text(f"Model {QWEN} on {HOME} ⚠ context too small")
     shot(page, "folded")
     start.click()
     expect(page).to_have_url(f"{server['url']}/sessions/my-repo/activity")
@@ -183,12 +181,10 @@ def test_a_public_server_s_unknown_context_warns_and_links_its_section(
     expect(dialog.get_by_role("link", name="docs/install.md ↗")).to_have_attribute(
         "href", "https://github.com/ladohq/lado/blob/main/docs/install.md#a-cloud-provider"
     )
-    start = dialog.get_by_role("button", name="Start session")
+    start = start_button(dialog)
     expect(start).to_be_enabled()
     shot(page, "warning")
-    summary = advanced(dialog).locator("summary")
-    summary.click()
-    expect(summary).to_have_text(f"Advanced: model {QWEN} on {HOME} ⚠ context unknown")
+    expect(fold(dialog)).to_have_text(f"Model {QWEN} on {HOME} ⚠ context unknown")
     shot(page, "folded")
     public.close()
 
@@ -203,8 +199,9 @@ def test_a_silent_server_turns_start_off_and_names_the_ways_out(
     note = advanced(dialog).locator(".field-note.bad")
     expect(note).to_contain_text(f"{HOME} does not answer (", timeout=15_000)
     expect(note).to_contain_text("m1 is on it. Start the server or pick another model.")
-    expect(advanced(dialog)).to_have_attribute("open", "")
-    start = dialog.get_by_role("button", name="Start session")
+    expect(dialog.get_by_role("button", name="Hide")).to_be_visible()  # Team open
+    expect(dialog.locator(".launch-missing")).to_have_text("To start: fix the model.")
+    start = start_button(dialog)
     expect(start).to_be_disabled()
     model = dialog.get_by_role("combobox", name="Model")
     expect(model).to_have_attribute("aria-invalid", "true")
@@ -221,22 +218,15 @@ def test_a_silent_server_turns_start_off_and_names_the_ways_out(
         }"""
     )
     assert border == danger
-    # The note under the focused field, as far below it as Permission mode's note: the focus
-    # ring (2 px at a 2 px offset) does not reach it.
+    # The note under the focused field: the focus ring (2 px at a 2 px offset) does not
+    # reach it.
     model.focus()
     box, below = model.bounding_box(), note.bounding_box()
     assert below["y"] >= box["y"] + box["height"] + 6
-    mode_note = dialog.get_by_text(f"{CLI} takes no permission mode")
-    mode = dialog.get_by_label("Permission mode").bounding_box()
-    assert below["y"] - (box["y"] + box["height"]) == pytest.approx(
-        mode_note.bounding_box()["y"] - (mode["y"] + mode["height"]), abs=0.5
-    )
     shot(page, "silent")
-    summary = advanced(dialog).locator("summary")
-    summary.click()
-    expect(summary).to_have_text(f"Advanced: model {QWEN} on {HOME} ! not answering")
+    expect(fold(dialog)).to_have_text(f"Model {QWEN} on {HOME} ! not answering")
     shot(page, "folded")
-    summary.click()
+    open_team(dialog)
     dialog.get_by_role("button", name=f"Use {TITLE}'s settings").click()
     expect(start).to_be_enabled()
     expect(
@@ -248,17 +238,17 @@ def test_a_silent_server_turns_start_off_and_names_the_ways_out(
 def test_a_start_refused_at_a_phone_s_width_comes_into_sight(
     browser: Browser, fake_models, home_server, server, repo, shot
 ):
-    """The first message open and long: the field is far below the window's edge when Start is
+    """A long task and Team folded: the field is far below the window's edge when Start is
     pressed."""
     set_default()
     context = browser.new_context(viewport={"width": 390, "height": 844})
     page = context.new_page()
     dialog = new_window(page, server, repo)
-    dialog.get_by_text("First message to the supervisor").click()
-    dialog.get_by_role("textbox", name="First message").fill("line\n" * 30)
-    start = dialog.get_by_role("button", name="Start session")
+    expect(dialog.get_by_role("combobox", name="Model")).to_contain_text(QWEN, timeout=15_000)
+    dialog.get_by_role("button", name="Hide").click()
+    dialog.get_by_role("textbox", name="Task").fill("line\n" * 30)
+    start = start_button(dialog)
     expect(start).to_be_enabled()
-    expect(advanced(dialog).locator("summary")).to_contain_text(QWEN, timeout=15_000)
     home_server.close()
     start.click()
     expect(dialog.get_by_text("Not started:")).to_contain_text(f"{HOME} does not answer")
@@ -338,7 +328,7 @@ def test_a_model_the_list_lacks_is_refused_in_the_window(
     dialog = new_window(page, server, repo, "fake")
     note = advanced(dialog).locator(".field-note.bad")
     expect(note).to_contain_text("fake-old is not in Fake agent's list of models", timeout=15_000)
-    expect(dialog.get_by_role("button", name="Start session")).to_be_disabled()
+    expect(start_button(dialog)).to_be_disabled()
     expect(dialog.get_by_role("button", name="Use Fake agent's settings")).to_be_visible()
     shot(page, "refused")
 
@@ -361,7 +351,7 @@ def test_resume_of_a_kept_model_the_cli_lacks_says_the_way_out(
         "The session ran on it before. Pick another model, or resume on Fake agent's settings.",
         timeout=30_000,  # the CLIs checked
     )
-    resume = dialog.get_by_role("button", name="Resume session")
+    resume = dialog.get_by_role("button", name=f"Resume {session}")
     expect(resume).to_be_disabled()
     shot(page, "refused")
     dialog.get_by_role("button", name="Use Fake agent's settings").click()
@@ -393,7 +383,7 @@ def test_resume_of_a_model_no_longer_saved_says_so(
         timeout=30_000,
     )
     expect(dialog.get_by_role("combobox", name="Model")).to_contain_text("not in Settings")
-    expect(dialog.get_by_role("button", name="Resume session")).to_be_disabled()
+    expect(dialog.get_by_role("button", name=f"Resume {session}")).to_be_disabled()
     shot(page, "gone")
 
 
@@ -418,15 +408,14 @@ def test_the_field_and_its_refusal_at_a_phone_s_width(
     expect(model).to_be_in_viewport()
     expect(note).to_be_in_viewport()
     shot(page, "refused")
-    summary = advanced(dialog).locator("summary")
-    summary.click()
+    summary = fold(dialog)
     mark = summary.locator(".launch-first-mark")
     expect(mark).to_have_text(" ! not answering")
-    line = summary.bounding_box()
+    line = dialog.locator(".team-sum").bounding_box()
     shown = mark.bounding_box()
     assert shown["x"] + shown["width"] <= line["x"] + line["width"] + 0.5  # not cut
     shot(page, "folded")
-    summary.click()
+    open_team(dialog)
     model.click()
     popup = dialog.locator(".mp-pop")
     expect(popup).to_be_visible()

@@ -516,6 +516,14 @@ function LaunchDialog({
 
   const touch = (field: string) => setTouched((before) => new Set(before).add(field));
 
+  // The focus a pick or a refusal moves, once the render that shows its field is done: not
+  // a frame later, when the human may type in another field already.
+  const [toFocus, setToFocus] = useState<{ run: () => void } | null>(null);
+  const focusNext = (run: () => void) => setToFocus({ run });
+  useEffect(() => {
+    toFocus?.run();
+  }, [toFocus]);
+
   const named = cloning ? target : projecting ? shownProject : current;
   // The session's name: the human's, else the place's free one (its default when free).
   const shownName = scratching ? (fresh?.name ?? "") : (name ?? named?.free_name ?? named?.default_name ?? "");
@@ -662,7 +670,7 @@ function LaunchDialog({
     const taken = given.status === 409 && !isModelRefusal(given.detail);
     const switchOff = given.status === 400 && hasSwitchOff(given.detail);
     if (taken || switchOff || isModelRefusal(given.detail)) setTeamOpen(true);
-    requestAnimationFrame(() => {
+    focusNext(() => {
       if (taken) teamRefs.name.current?.focus();
       else if (isModelRefusal(given.detail)) model.focus();
       else refusedRef.current?.focus();
@@ -899,7 +907,7 @@ function LaunchDialog({
   // What keeps the start off, in the footer's words, each leading to its field.
   const openTeam = (field: RefObject<HTMLElement | null>) => () => {
     setTeamOpen(true);
-    requestAnimationFrame(() => field.current?.focus());
+    focusNext(() => field.current?.focus());
   };
   const missing: Missing[] = [];
   if (!resuming) {
@@ -927,7 +935,15 @@ function LaunchDialog({
   if (providers !== null && chosenProvider === null && !noLogin) missing.push({ text: "choose an agent", focus: openTeam(teamRefs.agent) });
   if (noLogin?.installed) missing.push({ text: `log in to ${noLogin.title}`, focus: openTeam(teamRefs.agent) });
   if (kits.length === 0) missing.push({ text: "choose a team setup", focus: openTeam(teamRefs.kits) });
-  if (model.blocked) missing.push({ text: "fix the model", focus: () => { setTeamOpen(true); requestAnimationFrame(model.focus); } });
+  if (model.blocked) {
+    missing.push({
+      text: "fix the model",
+      focus: () => {
+        setTeamOpen(true);
+        focusNext(model.focus);
+      },
+    });
+  }
   if (promptOver) missing.push({ text: "shorten the task", focus: () => taskRef.current?.focus() });
   const startOff = !ready && busy === null;
   const toStart = startOff && missing.length > 0 ? missing : [];
@@ -1097,7 +1113,7 @@ function LaunchDialog({
                   } else {
                     toFolder(place.path);
                   }
-                  requestAnimationFrame(() => taskRef.current?.focus());
+                  focusNext(() => taskRef.current?.focus());
                 }}
                 onPath={(where) => {
                   setRefused(null);
@@ -1111,12 +1127,12 @@ function LaunchDialog({
                   if (way === "folder") {
                     setOtherFolder(true);
                     setPath("");
-                    requestAnimationFrame(() => pathRef.current?.focus());
+                    focusNext(() => pathRef.current?.focus());
                   } else if (way === "project") {
                     setProjectPick(true);
                     setProjectAsk({ project: null, repo: null });
-                  } else if (way === "url") requestAnimationFrame(() => urlRef.current?.focus());
-                  else if (way === "scratch") requestAnimationFrame(() => scratchRef.current?.focus());
+                  } else if (way === "url") focusNext(() => urlRef.current?.focus());
+                  else if (way === "scratch") focusNext(() => scratchRef.current?.focus());
                 }}
               />
             )}

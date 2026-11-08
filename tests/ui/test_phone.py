@@ -332,8 +332,8 @@ def test_the_resume_window_shows_a_long_folder_whole(device, server, tmp_path, s
     page = opened(device((402, 874)), server, f"/sessions/{session}")
     page.locator(".stopped-bar").get_by_role("button", name="Resume session").click()
     dialog = page.get_by_role("dialog", name="Resume session")
-    where = dialog.get_by_role("group", name="Where")
-    expect(where).to_have_text(str(repo))
+    where = dialog.get_by_role("group", name="Where").locator(".where-fixed")
+    expect(where).to_have_text(f"{repo.name} {repo}")  # the folder's name, then its path
     assert box(where)["height"] > 38
     assert box(where)["x"] + box(where)["width"] <= 402
     assert where.evaluate("w => w.scrollWidth === w.clientWidth")

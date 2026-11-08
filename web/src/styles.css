@@ -168,6 +168,9 @@ button {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  /* As high as what shows: a tablet's browser bars take some of 100vh (Help, Settings at its
+     bottom would go under them). */
+  height: 100dvh;
   padding: 10px 10px 14px;
   background: var(--panel);
   border-right: 1px solid var(--line);
@@ -227,10 +230,50 @@ button.rail-link {
   text-align: left;
 }
 
-.rail-link[aria-current="page"] {
+.rail-link[aria-current="page"],
+.rail-link.is-current,
+.rail-link[aria-expanded="true"] {
   background: var(--raised);
   color: var(--ink);
+}
+
+.rail-link[aria-current="page"],
+.rail-link.is-current {
   box-shadow: inset 3px 0 0 var(--action);
+}
+
+/* Help's menu (Shell.tsx): beside the rail, placed fixed in the body by useBeside; on a
+   phone, over Help across the drawer, its items 44 px. */
+.help-wrap {
+  position: relative;
+}
+
+.action-menu.help-menu {
+  top: auto;
+  right: auto;
+  z-index: 47;
+  min-width: 210px;
+}
+
+.help-menu [role="menuitem"] {
+  gap: 10px;
+}
+
+.help-menu [role="menuitem"] .icon {
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+}
+
+.help-menu .menu-out {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.action-menu hr {
+  margin: 4px 6px;
+  border: 0;
+  border-top: 1px solid var(--line);
 }
 
 .icon {
@@ -833,7 +876,7 @@ h3 {
   margin-top: 8px;
 }
 
-/* Usage statistics: the banner that asks once, and Settings' section (Telemetry.tsx). */
+/* Statistics: the banner that asks once (Telemetry.tsx); Settings → Statistics is a row. */
 .stats-buttons {
   display: flex;
   flex-wrap: wrap;
@@ -852,11 +895,6 @@ h3 {
   color: var(--action);
   font-size: 13px;
   cursor: pointer;
-}
-
-.stats-tag {
-  font-size: 13px;
-  font-weight: 400;
 }
 
 .update-good {
@@ -2213,13 +2251,6 @@ h3 {
   margin: 0;
 }
 
-.setting-switch {
-  justify-content: flex-start;
-  margin: 10px 0 0;
-  color: var(--ink);
-  font-size: 14px;
-}
-
 /* Report a bug: the warning, the report as GitHub gets it, then its two actions. */
 
 .report-bug {
@@ -2255,13 +2286,266 @@ h3 {
   padding: 0 12px;
 }
 
-/* Settings: sections one under the other. */
+/* Settings (Settings.tsx): the list of sections beside the section's page, sticky under the
+   top bar; 196 px beside it at 601 to 900 px; on a phone the list alone, or the page alone. */
 
 .settings {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 680px);
+  gap: 32px;
+  align-items: start;
+}
+
+.settings-page {
+  min-width: 0;
+}
+
+/* Above 900 px `.content` scrolls, under the top bar, and its own padding is above the list: at
+   0 it sticks where it stands, on a short page too (LAD-244). At or under 900 px the window
+   scrolls. */
+.snav {
+  position: sticky;
+  top: 0;
+}
+
+.snav ul {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  max-width: 680px;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.snav-item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: center;
+  padding: 7px 10px 8px;
+  border-radius: 6px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.snav-item:hover {
+  background: var(--raised);
+}
+
+.snav-item[aria-current="page"] {
+  background: var(--raised);
+  box-shadow: inset 3px 0 0 var(--action);
+}
+
+.snav-ic {
+  display: flex;
+  color: var(--muted);
+}
+
+.snav-item[aria-current="page"] .snav-ic {
+  color: var(--ink);
+}
+
+.snav-name {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.snav-item[aria-current="page"] .snav-name {
+  font-weight: 600;
+}
+
+.snav-chev {
+  display: flex;
+  color: var(--muted);
+}
+
+.snav-chev svg {
+  transform: rotate(-90deg);
+}
+
+/* A section's page: its head, a lede at most, then rows or blocks without frames. */
+.spage {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.spage-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.spage-head h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.spage-head h2:focus {
+  outline: none;
+}
+
+.spage .lede {
+  margin: -8px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  min-height: 44px;
+  margin: -12px 0 -12px -6px;
+  padding: 0 8px 0 2px;
+  color: var(--action);
+  font-size: 15px;
+  text-decoration: none;
+}
+
+@media (max-width: 900px) {
+  .settings {
+    grid-template-columns: 196px minmax(0, 1fr);
+    gap: 20px;
+  }
+
+  .snav {
+    top: calc(var(--head-h) + 20px);
+  }
+}
+
+/* A setting is a row: its name and at most one grey line on the left, its control on the
+   right, thin lines between the rows; no cards. A control too wide to sit beside its name
+   (`.srow-wide`) goes under it at 900 px and narrower. */
+.srows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.srow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 24px;
+  min-height: 56px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.srow-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.srow-name {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.srow .srow-desc {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.srow-desc code {
+  font: 12.5px var(--mono);
+}
+
+.srow-ctl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: end;
+}
+
+.srow-problem {
+  grid-column: 1 / -1;
+}
+
+.srow-problem .field-problem,
+.srow .choice {
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .srow-wide {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .srow-wide .srow-ctl {
+    justify-self: start;
+  }
+}
+
+/* A switch: a checkbox drawn as a track and a knob, for a setting that applies at once. */
+.sw {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  border-radius: 10px;
+  background: var(--line);
+  box-shadow: inset 0 0 0 1.5px var(--muted);
+  cursor: pointer;
+  appearance: none;
+  transition: background 0.15s;
+}
+
+.sw::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform 0.15s;
+}
+
+.sw:checked {
+  background: var(--action);
+  box-shadow: none;
+}
+
+.sw:checked::after {
+  background: var(--on-action);
+  transform: translateX(16px);
+}
+
+.sw:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sw,
+  .sw::after {
+    transition: none;
+  }
+}
+
+.sw-hit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .setting {
@@ -2282,49 +2566,58 @@ h3 {
   border: 0;
 }
 
-/* Settings → Agent CLIs and environment (Providers.tsx): a row per agent CLI. */
+/* Settings → Agent CLIs (Providers.tsx): a row per agent CLI, its text on the left and its
+   login button on the right, its default model under them across the row (.cli-model); on a
+   phone the button goes under the text. */
 
-.pv-list {
-  display: flex;
-  flex-direction: column;
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
+.srow.pv.cli {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px 24px;
 }
 
-.pv {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 14px 0;
-  border-top: 1px solid var(--line);
-}
-
-.setting .pv p {
+.pv .srow-text p {
   margin: 0;
 }
 
 .pv-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
+  align-items: baseline;
+  gap: 2px 8px;
 }
 
-.pv-head strong {
-  font-size: 15px;
+.pv-name:focus {
+  outline: none;
+}
+
+.pv-name:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
 }
 
 .pv-head .ver {
   color: var(--muted);
-  font: 13px var(--mono);
+  font: 12.5px var(--mono);
 }
 
+/* The dot on the state's first line, also when a long state wraps. */
 .pv-state {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
-  font-size: 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.pv-state .dot {
+  margin-top: 4.5px;
+}
+
+.pv-need .pv-state strong {
+  color: var(--human);
+  font-weight: 600;
 }
 
 .ok-dot {
@@ -2335,18 +2628,11 @@ h3 {
   border: 1.5px solid var(--muted);
 }
 
-.setting .pv-src {
-  color: var(--muted);
-  font-size: 13px;
-  overflow-wrap: anywhere;
+.pv .srow-desc code {
+  font: 12.5px var(--mono);
 }
 
-.pv-src code {
-  font-size: 12px;
-}
-
-.setting .pv-warn {
-  margin-top: 4px;
+.pv .pv-warn {
   font-size: 13px;
 }
 
@@ -2354,7 +2640,20 @@ h3 {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 4px;
+}
+
+.pv-env-row {
+  display: block;
+  min-height: 0;
+}
+
+.pv-env-row .pv-warn-line {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.spage .cli-more {
+  margin: 0;
 }
 
 .pv-confirm {
@@ -2366,18 +2665,8 @@ h3 {
   font-size: 13px;
 }
 
-/* The heading with its ↻, which turns while a check of the CLIs runs (still for those who
-   ask for less motion). */
-.pv-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.pv-title h2 {
-  margin: 0;
-}
-
+/* The heading's ↻, which turns while a check of the CLIs runs (still for those who ask for
+   less motion). */
 .pv-refresh {
   display: inline-flex;
   align-items: center;
@@ -2414,30 +2703,17 @@ h3 {
 }
 
 .pv-tested {
-  color: var(--muted);
+  color: var(--warn);
   font-size: 12px;
 }
 
-.pv-checking {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.pv-off strong {
+.pv-off .srow-name {
   color: var(--muted);
 }
 
-.setting .pv-none {
-  margin-top: 12px;
+.spage .pv-none {
+  margin: 0;
   font-size: 13px;
-}
-
-.setting .pv-env {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-  font-size: 13px;
-  overflow-wrap: anywhere;
 }
 
 /* The login sheet and window (LoginSheet.tsx, LoginWindow.tsx): a sheet over the page; the
@@ -10270,14 +10546,13 @@ section.artifact-group + section.artifact-group {
   margin-top: 10px;
 }
 
-/* Settings → Models (ModelSettings.tsx, ModelSources.tsx): one section, three blocks one
-   under the other. Your models a card per agent CLI with models, headed on --raised, rows of
-   fixed columns that keep their height (a removed model's Undo row too), a name wrapped,
-   never cut; Model servers and Models of your agent CLIs framed rows, the whole of which
-   opens a source (a framed arrow that turns), its icons at the right on its line, its models
-   in a list of at most --list-rows rows that scrolls within itself. Forms and notes are the
-   launch window's (.launch-grid, .field, .field-note); green (--done) only for what answered
-   and what was saved. */
+/* Settings → Model servers (ModelSettings.tsx, ModelSources.tsx) and a CLI's default model
+   on Agent CLIs (CliDefault.tsx): Servers, then Your models, rows of fixed columns that keep
+   their height (a removed model's Undo row too), a name wrapped, never cut; a server a row,
+   the whole of which opens a source (a framed arrow that turns), its icons at the right on its
+   line, its models in a list of at most --list-rows rows that scrolls within itself. Forms and
+   notes are the launch window's (.launch-grid, .field, .field-note); green (--done) only for
+   what answered and what was saved. */
 /* The browser's own scroll anchoring would move the page a second time after useScrollAnchor
    (Safari has none): off in the section and the ones after it, so the page acts alike in all. */
 .setting.mx,
@@ -10291,12 +10566,23 @@ section.artifact-group + section.artifact-group {
   --gap-block: 24px; /* between the section's blocks */
 }
 
-.setting p.mx-intro {
-  margin: 6px 0 0;
-}
-
 .mx-block {
   margin-top: var(--gap-block);
+}
+
+/* Model servers is a page, not a card: its blocks without frames, the servers split by lines. */
+.spage.setting {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.spage .mx-block {
+  margin-top: 8px;
+}
+
+.spage .mx-block:first-of-type {
+  margin-top: 0;
 }
 
 .mx-block h3 {
@@ -10323,66 +10609,36 @@ section.artifact-group + section.artifact-group {
   font-size: 13px;
 }
 
-/* Your agent CLIs: a card per agent CLI. No `overflow: hidden`: the picker's list leaves it. */
-.mx-cards {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.mc-cli {
-  padding: 10px 12px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-}
-
-.mc-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.mc-name {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.mc-off .mc-name {
-  color: var(--muted);
-}
-
-.mc-state {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.mx-card-warn {
-  color: var(--warn);
-  font-size: 12px;
-  font-weight: 400;
-}
-
-.mc-row {
+/* A CLI's default model in its row on Agent CLIs (CliDefault.tsx): `Default model` beside its
+   picker, up to 360 px, the notes under the picker; above it at 600 px and narrower. No
+   `overflow: hidden`: the picker's list leaves it. */
+.cli-model {
   display: grid;
-  grid-template-columns: 104px minmax(0, 1fr);
+  grid-column: 1 / -1;
+  grid-template-columns: 104px minmax(0, 360px);
   align-items: start;
-  gap: 10px;
+  gap: 6px 10px;
+  min-width: 0;
 }
 
-.mc-label {
+.cli-ml {
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 38px;
 }
 
-.mc-field {
+.cli-pick {
   display: flex;
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+}
+
+.cli-model.cli-off {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
 }
 
 .mc-notes {
@@ -10425,22 +10681,6 @@ section.artifact-group + section.artifact-group {
   background: var(--panel);
   color: var(--ink);
   font: 13px var(--mono);
-}
-
-/* A card's models, flush with its edges. */
-.mc-models {
-  margin: 10px -12px -12px;
-  overflow: hidden;
-  border-radius: 0 0 7px 7px;
-}
-
-.mc-more {
-  padding: 8px 12px;
-  border-top: 1px solid var(--line);
-}
-
-.mc-more .link-button {
-  min-height: 26px;
 }
 
 .mx-mrow.mc-ask {
@@ -10500,12 +10740,18 @@ section.artifact-group + section.artifact-group {
   white-space: nowrap;
 }
 
+/* A picked model's name stays whole and its id gives way first; only a name longer than the
+   whole field is cut, whole in the field's title. */
 .mp-value .mp-title {
+  flex-shrink: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .mp-id {
+  flex-shrink: 1;
+  min-width: 0;
   overflow: hidden;
   color: var(--muted);
   font-size: 12px;
@@ -10750,12 +10996,13 @@ section.artifact-group + section.artifact-group {
 }
 
 @media (max-width: 600px) {
-  .mc-row {
+  .cli-model {
     grid-template-columns: minmax(0, 1fr);
-    gap: 2px;
+    row-gap: 4px;
   }
 
-  .mc-label {
+  .cli-ml {
+    font-size: 14px;
     line-height: 20px;
   }
 
@@ -10788,10 +11035,6 @@ section.artifact-group + section.artifact-group {
 
   .mc-other-row button {
     flex: 1;
-    min-height: 44px;
-  }
-
-  .mc-more .link-button {
     min-height: 44px;
   }
 }
@@ -10917,6 +11160,117 @@ section.artifact-group + section.artifact-group {
 
 .mx-undo .link-button {
   margin: 0;
+}
+
+/* Your models: one table of every CLI's models, a fifth column for the CLI each runs in, its
+   default marked there; a server found not answering in --warn with ⚠. At 900 px and narrower
+   no head row: the name and ×, then `model · server · CLI` wrapped whole. */
+.yours-table {
+  border-bottom: 1px solid var(--line);
+}
+
+.yours-table:focus {
+  outline: none;
+}
+
+.mx-mrow.yours {
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 0.8fr) 28px;
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.mx-mrow.yours.mx-mhead {
+  padding-left: 6px;
+}
+
+.mx-mrow.yours.mx-undo {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-left: 6px;
+}
+
+.mx-cli {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mx-from-down {
+  color: var(--warn);
+}
+
+.mx-lead a {
+  color: var(--action);
+}
+
+@media (max-width: 900px) {
+  .mx-mrow.yours {
+    grid-template-areas: "name x" "meta x";
+    grid-template-columns: minmax(0, 1fr) 32px;
+    row-gap: 0;
+  }
+
+  .mx-mrow.yours.mx-mhead {
+    display: none;
+  }
+
+  .mx-mrow.yours .mx-nm {
+    grid-area: name;
+  }
+
+  .mx-mrow.yours .mx-x-cell {
+    grid-area: x;
+  }
+
+  .mx-mrow.yours .mx-meta {
+    display: block;
+    grid-area: meta;
+    min-width: 0;
+    padding-left: 7px;
+    color: var(--muted);
+  }
+
+  .mx-mrow.yours .mx-model,
+  .mx-mrow.yours .mx-from,
+  .mx-mrow.yours .mx-cli {
+    display: inline;
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .mx-mrow.yours .mx-from::before,
+  .mx-mrow.yours .mx-cli::before {
+    content: " · ";
+    color: var(--muted);
+  }
+
+  .mx-mrow.yours.mx-undo {
+    grid-template-areas: none;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+/* Servers on the page: rows split by lines, without frames. */
+.spage .mx-srcs {
+  gap: 0;
+  border-top: 1px solid var(--line);
+}
+
+.spage .mx-src {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: none;
+}
+
+/* The gap above Add server is the button's, so a server added takes the form's very place. */
+.spage .mx-add-slot {
+  border-bottom: 0;
+}
+
+.spage .mx-add-slot > .mx-add {
+  margin-top: 8px;
 }
 
 /* An icon button: ✎, 🗑, ↻ and ×. */
@@ -11355,8 +11709,9 @@ section.artifact-group + section.artifact-group {
   font: 13px var(--mono);
 }
 
+/* A name in words, at the size of the address and the key beside it. */
 .mx-form .field input.words {
-  font: inherit;
+  font: 13px var(--sans);
 }
 
 .mx-form .project-in-secret {
@@ -11499,7 +11854,8 @@ section.artifact-group + section.artifact-group {
     justify-self: start;
   }
 
-  .mx-mrow {
+  .mx-mrow,
+  .mx-mrow.yours {
     grid-template-areas: "name x" "meta x";
     grid-template-columns: minmax(0, 1fr) 44px;
     row-gap: 0;
@@ -11550,12 +11906,9 @@ section.artifact-group + section.artifact-group {
     height: 44px;
   }
 
-  .mx-head {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
+  /* ✎ and 🗑 stay at the right of the name's line; the second line wraps under the name. */
   .mx-acts {
-    padding: 0 0 4px 30px;
+    align-self: start;
   }
 
   .mx-l2 {
@@ -11902,8 +12255,9 @@ button.quiet.danger-text {
 .artifact-missing,
 .share-warning,
 .update-warning,
-.setting .pv-warn,
-.setting .pv-none,
+.pv .pv-warn,
+.pv-none,
+.pv-warn-line,
 .kit-warning {
   position: relative;
   padding: 8px 12px 8px 34px;
@@ -11923,8 +12277,9 @@ button.quiet.danger-text {
 .artifact-missing::before,
 .share-warning::before,
 .update-warning::before,
-.setting .pv-warn::before,
-.setting .pv-none::before,
+.pv .pv-warn::before,
+.pv-none::before,
+.pv-warn-line::before,
 .kit-warning::before {
   --alert: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3l10 18H2z'/%3E%3Cpath d='M12 10v5'/%3E%3Cpath d='M12 18h.01'/%3E%3C/svg%3E");
   position: absolute;
@@ -11940,8 +12295,9 @@ button.quiet.danger-text {
 
 .share-warning,
 .update-warning,
-.setting .pv-warn,
-.setting .pv-none,
+.pv .pv-warn,
+.pv-none,
+.pv-warn-line,
 .kit-warning {
   background: var(--warn-ground);
   color: var(--warn);
@@ -12016,6 +12372,17 @@ button.quiet.danger-text {
   height: 100%;
   overflow-y: auto;
   box-shadow: 0 0 40px var(--shadow);
+}
+
+:root[data-phone] .rail[data-open] .help-menu {
+  right: 0;
+  bottom: calc(100% + 6px);
+  left: 0;
+  min-width: 0;
+}
+
+:root[data-phone] .rail[data-open] .help-menu [role="menuitem"] {
+  height: 44px;
 }
 
 :root[data-phone] .menu-scrim {
@@ -12541,4 +12908,147 @@ button.quiet.danger-text {
 
 :root[data-phone] .project-edit .project-in-name {
   width: 100%;
+}
+
+/* Settings on a phone (Settings.tsx): the list a panel of 52 px rows with a chevron, alone
+   at /settings; a section its own page under "‹ Settings". */
+:root[data-phone] .settings {
+  display: block;
+}
+
+:root[data-phone] .snav {
+  position: static;
+}
+
+:root[data-phone] .snav ul {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+:root[data-phone] .snav li + li {
+  border-top: 1px solid var(--line);
+}
+
+:root[data-phone] .snav-item {
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  column-gap: 12px;
+  min-height: 52px;
+  padding: 10px 12px 10px 16px;
+  border-radius: 0;
+}
+
+:root[data-phone] .snav-item[aria-current="page"] {
+  background: transparent;
+  box-shadow: none;
+}
+
+:root[data-phone] .snav-name {
+  font-size: 16px;
+}
+
+:root[data-phone] .spage {
+  gap: 14px;
+}
+
+:root[data-phone] .spage-head h2 {
+  font-size: 22px;
+}
+
+/* Rows keep 44 px targets: the switch through its 52 × 44 hit, segments 44 high; a wide
+   control (Statistics) the row's width. */
+:root[data-phone] .srow {
+  min-height: 60px;
+  column-gap: 16px;
+}
+
+:root[data-phone] .srow-name {
+  font-size: 15px;
+}
+
+:root[data-phone] .srow .srow-desc {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+:root[data-phone] .srow .choice label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+:root[data-phone] .srow-wide .srow-ctl,
+:root[data-phone] .srow-wide .choice {
+  justify-self: stretch;
+  width: 100%;
+}
+
+:root[data-phone] .srow-wide .segments {
+  display: flex;
+}
+
+:root[data-phone] .srow-wide .choice label {
+  flex: 1;
+  justify-content: center;
+}
+
+:root[data-phone] .sw-hit {
+  min-width: 52px;
+  min-height: 44px;
+  margin: -8px -4px;
+}
+
+:root[data-phone] .sw {
+  width: 44px;
+  height: 26px;
+  border-radius: 13px;
+}
+
+:root[data-phone] .sw::after {
+  width: 20px;
+  height: 20px;
+}
+
+:root[data-phone] .sw:checked::after {
+  transform: translateX(18px);
+}
+
+/* Agent CLIs: the login button under the CLI's text, 44 px; Default model over its picker
+   (styles.css, the picker's own rules), the picker the row's width and 44 px. */
+:root[data-phone] .srow.pv.cli {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+:root[data-phone] .srow.pv .srow-ctl {
+  justify-self: start;
+}
+
+:root[data-phone] .pv-actions button,
+:root[data-phone] .cli-model .chip-button {
+  min-height: 44px;
+}
+
+:root[data-phone] .pv-refresh {
+  width: 44px;
+  height: 44px;
+}
+
+:root[data-phone] .cli-model {
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 4px;
+}
+
+/* Model servers: Add server and a model's name (a click renames it) 44 px high too. */
+:root[data-phone] .spage .mx-add,
+:root[data-phone] .spage .mx-name {
+  min-height: 44px;
+}
+
+:root[data-phone] .cli-ml {
+  font-size: 14px;
+  line-height: 20px;
 }

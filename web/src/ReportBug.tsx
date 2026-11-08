@@ -6,8 +6,9 @@ import { useEffect, useState } from "react";
 
 import { ApiError, getBugReport, type BugReport } from "./api";
 import { useCopy } from "./Copy";
+import { GITHUB } from "./paths";
 import { useTitle } from "./Shell";
-import { browserLine, GITHUB } from "./SystemPanel";
+import { browserLine } from "./SystemPanel";
 
 const PRIVATE_REPORT = `${GITHUB}/security/advisories/new`;
 

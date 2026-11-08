@@ -160,7 +160,7 @@ limit SHALL count as no list, with why.
 ### Requirement: An agent of another CLI runs its own default, loudly
 
 An agent whose provider is not the CLI of the session's `normal` row (a worker spawned
-with another provider and no `model`) SHALL start on its CLI's default model from Settings → Models, else as
+with another provider and no `model`) SHALL start on its CLI's default model from Settings → Agent CLIs, else as
 its CLI chooses; with no such default `spawn_worker` SHALL warn that the session's model is for the
 other CLI, and the agent's model SHALL have the source `cli` with the detail `the session's model
 <model> is for <CLI title>`, kept when its CLI first names a model.
@@ -202,7 +202,7 @@ agent CLI SHALL set the field to that CLI's default.
 #### Scenario: The default chosen in advance
 - **WHEN** OpenCode's default is `Локальная Qwen` and the human picks OpenCode
 - **THEN** the field holds it, marked `default`, the note reads `OpenCode's default model, from
-  Settings → Models.`, and starting sends no model
+  Settings → Agent CLIs.`, and starting sends no model
 
 #### Scenario: A server that does not answer
 - **WHEN** the field holds `Локальная Qwen` and its server does not answer
@@ -269,7 +269,7 @@ the refusal.
 In the launch window's Resume, a refusal of the session's kept model SHALL add `The
 session ran on it before. Pick another model, or resume on <CLI>'s settings.` and a button `Use
 <CLI>'s settings`; an external model no longer saved SHALL read `The session ran on the model
-<name>, which is no longer in Settings → Models. Pick a model or use <CLI>'s settings.` with `not in
+<name>, which is no longer in Settings → Model servers. Pick a model or use <CLI>'s settings.` with `not in
 Settings` in the field, and in its list a row of its own above the groups with the same mark.
 
 #### Scenario: The way out of a kept model in Resume
@@ -307,7 +307,7 @@ was read; a list it could not read SHALL be read again at the next check.
 ### Requirement: An agent starts on the session's model, else its CLI's default
 
 A worker spawned with a `model` SHALL start on it. Any other agent SHALL start on the session's
-model when the table has a row of its CLI; else on its CLI's default model from Settings → Models;
+model when the table has a row of its CLI; else on its CLI's default model from Settings → Agent CLIs;
 else as before any model existed. This SHALL be read at each launch: a default changed later SHALL
 reach the next resume and the next worker, not a running agent. The agent's model SHALL have the
 source `supervisor`, `session`, `default` or `cli`.
@@ -464,14 +464,12 @@ inherit the variables LADO or the provider set for the launch of the agent that 
 
 ### Requirement: The window's Model field takes Settings in a new tab
 
-The Model list's foot SHALL read `The default comes from Settings → Models.`, its link opening
-Settings → Models in a new tab; what was entered in the window SHALL stay, and the window SHALL
+The Model list's foot SHALL read `The default comes from Settings → Agent CLIs.`, its link opening `/settings/agent-clis` in a new tab; what was entered in the window SHALL stay, and the window SHALL
 read the list again when it gets the focus back, an open list too.
 
 #### Scenario: Back from Settings
-- **WHEN** the human has typed a first message, opens Settings → Models from the foot, ticks a model
-  and comes back
-- **THEN** the message is there and the list has the new model
+- **WHEN** the human has typed a first message, opens Settings → Agent CLIs from the foot, picks OpenCode's default model and comes back
+- **THEN** the message is there and the field shows the new default
 
 ### Requirement: A refused default names its way out
 
@@ -486,7 +484,7 @@ start with --model '' for its settings, or change it with lado model default <cl
 
 ### Requirement: The Model field's notes
 
-Under the default the note SHALL read `<CLI>'s default model, from Settings → Models.`; under
+Under the default the note SHALL read `<CLI>'s default model, from Settings → Agent CLIs.`; under
 another pick `For this session only. <CLI>'s default model is <name>.`, no such line without a
 default; under `<CLI>'s settings` with a default `For this session only: the agent CLI chooses, not
 <name>.`

@@ -108,6 +108,9 @@
 
 ### Fixed
 
+- **A model ticked on Model servers is named by its id.** It was `<model> · <server> · <CLI>`,
+  which the columns beside it repeated and narrow fields cut; a taken name adds only what tells
+  the models apart. Models saved before keep their names.
 - **A silent OpenCode or Kilo start asks you nothing.** "Open its terminal" no longer shows for
   a few seconds before such an agent is ready.
 - **A message right after an OpenCode or Kilo start arrives at once.** It reaches the agent as

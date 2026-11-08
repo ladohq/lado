@@ -22,7 +22,7 @@ with its files, interfaces and tests).
 
 ## 4. General
 
-- [ ] 4.1 Theme and Browser notifications as setting rows, the switch, the refusal texts shared with
+- [x] 4.1 Theme and Browser notifications as setting rows, the switch, the refusal texts shared with
   Needs you, Needs you's link to `/settings/general#notifications` (AC-1, AC-7). Checked: `make web`
   (`Notifications.test.tsx`, `NeedsYou.test.tsx`).
 

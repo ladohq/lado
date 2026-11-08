@@ -56,7 +56,6 @@ function field(
       launch={shown}
       asked={asked}
       problem={problem}
-      head={null}
       disabled={false}
       onProject={calls.project}
       onRepo={calls.repo}

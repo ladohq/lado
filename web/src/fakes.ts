@@ -438,6 +438,7 @@ export function cli(name: string, title: string) {
     name,
     title,
     permission_modes: [],
+    mode_words: [],
     install_hint: `install ${name}`,
     installed: true,
     version: "1.0.0",

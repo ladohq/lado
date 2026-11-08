@@ -1,6 +1,6 @@
 // The Shell on a phone (docs/design/ui.md, Phone layout): <html data-phone>, the Menu button
 // and the rail as a drawer.
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
@@ -146,11 +146,11 @@ test("choosing a section goes there and closes the menu", async () => {
   expect(rail().hasAttribute("data-open")).toBe(false);
 });
 
-test("Launch in the menu opens the New session window and closes the menu", () => {
+test("New session in the menu opens the New session window and closes the menu", () => {
   FakeScreen.phone();
   open();
   fireEvent.click(menu());
-  act(() => fireEvent.click(screen.getByRole("button", { name: "Launch" })));
+  act(() => fireEvent.click(within(rail()).getByRole("button", { name: "New session" })));
   expect(rail().hasAttribute("data-open")).toBe(false);
 });
 

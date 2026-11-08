@@ -186,10 +186,11 @@ test.each(["/nowhere/at/all", "/gates/12"])("%s is Not found with a link to Home
   expect(within(main).getByRole("link", { name: "Home" }).getAttribute("href")).toBe("/");
 });
 
-test("Launch is on the rail and Escape closes its window", async () => {
+test("New session is on the rail and Escape closes its window", async () => {
   stubDialogs();
   open("/");
-  fireEvent.click(screen.getByRole("button", { name: "Launch" }));
+  const item = within(rail()).getByRole("button", { name: "New session" });
+  fireEvent.click(item);
   const dialog = await screen.findByRole("dialog", { name: "New session" });
   fireEvent.keyDown(dialog, { key: "Escape" });
   expect(screen.queryByRole("dialog")).toBeNull();
@@ -331,7 +332,7 @@ test("/sessions lists the sessions and asks to select one", async () => {
 test("with no sessions, /sessions says how to start one", async () => {
   serve(200, []);
   open("/sessions");
-  expect((await screen.findByText(/No sessions yet/)).textContent).toBe("No sessions yet. Start one with Launch.");
+  expect((await screen.findByText(/No sessions yet/)).textContent).toBe("No sessions yet. Start one with New session.");
 });
 
 test("another error of the API is shown in the list", async () => {

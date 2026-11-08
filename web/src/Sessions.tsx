@@ -798,7 +798,7 @@ export function NoSession() {
   const { loaded } = useOutletContext<SessionsOutlet>();
   const phone = usePhone(); // the list is the page: nothing to select beside it
   if (loaded && "sessions" in loaded && loaded.sessions.length === 0) {
-    return <p className="empty">No sessions yet. Start one with Launch.</p>;
+    return <p className="empty">No sessions yet. Start one with New session.</p>;
   }
   return phone ? null : <p className="empty">Select a session</p>;
 }

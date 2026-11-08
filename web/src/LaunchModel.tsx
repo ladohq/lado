@@ -370,12 +370,14 @@ export function useLaunchModel({
 
   // The mark is why Start may be off: only the name and the server give way on a narrow window.
   const pastDefault = choice.kind === "settings" && defaultValue !== null;
-  const named = value !== null ? nameOf(value) : pastDefault ? `${title}'s settings` : null;
+  // Team's summary names the model only off the CLI's default, or when its check warns.
+  const told = choice.kind !== "default" || wrong || Boolean(checked?.peek);
+  const named = !told ? null : value !== null ? nameOf(value) : pastDefault ? `${title}'s settings` : null;
   const peek =
     named === null ? null : (
       <span className="launch-first-line">
         <span className="launch-first-name">
-          Advanced: model <span className="launch-first-peek">{named}</span>
+          <span className="k">Model</span> <span className="launch-first-peek">{named}</span>
           {server !== null && ` on ${server}`}
         </span>
         {!wrong && checked?.peek && <span className="launch-first-mark">{` ⚠ ${checked.peek}`}</span>}
@@ -385,5 +387,5 @@ export function useLaunchModel({
       </span>
     );
 
-  return { field: fieldNode, peek, blocked: wrong, send };
+  return { field: fieldNode, peek, blocked: wrong, send, focus: () => field.current?.focus() };
 }

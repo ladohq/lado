@@ -16,6 +16,7 @@ const NOW = new Date();
 
 const PROVIDER = {
   permission_modes: [],
+  mode_words: [],
   install_hint: "",
   detail: "",
   login_missing: false,

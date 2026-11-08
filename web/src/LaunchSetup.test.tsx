@@ -1,49 +1,43 @@
-// The set-up panel's own words (LaunchSetup.tsx): sizes, and the by-hand command quoted as the
-// core quotes it (lado.setup.command, Python's shlex.quote), so a tick rebuilds the same line.
+// The set-up panel's own words (LaunchSetup.tsx): sizes, and the by-hand command put together
+// from the core's lines (lado.setup.shell_line, setup.MAKE), so a tick rebuilds the same line
+// the core would write.
 import { expect, test } from "vitest";
 
-import type { SetupInfo } from "./api";
-import { ignoreLine, setupCommand, shellQuote, size } from "./LaunchSetup";
+import type { LeftOutInfo, SetupInfo } from "./api";
+import { refusalText, setupCommand, size } from "./LaunchSetup";
 
 const MAKE = "git init && git add -A && git commit -m 'First commit'";
 
-const setup = (command: string): SetupInfo => ({
+const setup = (more: Partial<SetupInfo> = {}): SetupInfo => ({
   files: 1,
   bytes: 1,
   left_out: [],
   refusal: null,
   author: null,
-  command,
+  make: MAKE,
+  max_files: 20000,
+  ...more,
 });
 
-test.each([
-  ["notes.txt", "notes.txt"],
-  ["my notes.txt", "'my notes.txt'"],
-  ["it's", `'it'"'"'s'`],
-  ["", "''"],
-  ["/a/b-c_d.e@f%g+h=i:j,k", "/a/b-c_d.e@f%g+h=i:j,k"],
-  ["$HOME", "'$HOME'"],
-])("%j is quoted as shlex.quote quotes it", (word, quoted) => {
-  expect(shellQuote(word)).toBe(quoted);
-});
+const left = (path: string, line: string): LeftOutInfo => ({ path, reason: "secret", size: 1, line });
 
-test("a left-out path's .gitignore line is anchored and takes git's pattern characters as they are", () => {
-  expect(ignoreLine(".env")).toBe("/.env");
-  expect(ignoreLine("old/")).toBe("/old/");
-  expect(ignoreLine("a*b?[c]\\d")).toBe("/a\\*b\\?\\[c]\\\\d");
-  expect(ignoreLine("trailing ")).toBe("/trailing\\ ");
-});
-
-test("the command is rebuilt from what stays left out, as the core writes it", () => {
-  const core = setup(`printf '%s\\n' /.env /talk.mp4 >> .gitignore && ${MAKE}`);
-  expect(setupCommand(core, [{ path: ".env", reason: "secret", size: 1 }, { path: "talk.mp4", reason: "large", size: 2 }])).toBe(
-    core.command,
+test("the command is the core's lines of what stays left out, then its make", () => {
+  expect(setupCommand(setup(), [left(".env", "/.env"), left("it's.key", `'/it'"'"'s.key'`)])).toBe(
+    `printf '%s\\n' /.env '/it'"'"'s.key' >> .gitignore && ${MAKE}`,
   );
-  expect(setupCommand(core, [{ path: "my notes.txt", reason: "large", size: 2 }])).toBe(
-    `printf '%s\\n' '/my notes.txt' >> .gitignore && ${MAKE}`,
+  expect(setupCommand(setup(), [])).toBe(MAKE);
+});
+
+test("each refusal in the window's words, the limit the core's", () => {
+  const refused = (kind: NonNullable<SetupInfo["refusal"]>["kind"], files = 0, line = "") =>
+    refusalText(setup({ refusal: { kind, files, bytes: 0, line }, max_files: 3 }));
+  expect(refused("home")).toBe("Choose a smaller folder: this is your home folder.");
+  expect(refused("too_big", 4)).toBe("Choose a smaller folder: this one holds over 3 files.");
+  expect(refused("too_big", 2)).toBe("Choose a smaller folder: this one holds over 2 GB.");
+  expect(refused("unreadable", 0, "warning: x")).toBe("Choose another folder: git cannot read all of it (warning: x).");
+  expect(refused("odd_name", 0, ".env\\nok")).toBe(
+    "Choose another folder, or rename .env\\nok: LADO cannot leave out a name with a line break or bytes that are no text.",
   );
-  expect(setupCommand(core, [])).toBe(MAKE);
-  expect(setupCommand(setup(MAKE), [])).toBe(MAKE);
 });
 
 test("sizes in a few characters", () => {

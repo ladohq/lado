@@ -1,7 +1,8 @@
 // The set-up panel of a plain folder of files (docs/design/ui.md, Launch and session control;
 // lado.setup): what "Set up and start" will save and leave out, the left-out files the human
 // may tick in, and the same by hand under "Do it yourself". The counts and the command come
-// from the core's preview; the window only adds what is ticked and quotes as the core does.
+// from the core's preview, each left-out path with its line of the by-hand command; the
+// window only adds what is ticked and puts the lines together.
 import { useState } from "react";
 
 import type { LeftOutInfo, SetupInfo } from "./api";
@@ -24,39 +25,23 @@ export function size(bytes: number): string {
   return `${shown} ${units[unit]}`;
 }
 
-// A word for a POSIX shell, as Python's shlex.quote makes it (lado.setup.command).
-export function shellQuote(word: string): string {
-  if (word === "") return "''";
-  if (/^[\w@%+=:,./-]+$/.test(word)) return word;
-  return `'${word.replaceAll("'", `'"'"'`)}'`;
-}
-
-// A left-out path's line in .gitignore, as lado.setup.ignore_line makes it.
-export function ignoreLine(path: string): string {
-  let escaped = path.replace(/([\\*?[])/g, "\\$1");
-  if (escaped.endsWith(" ")) escaped = `${escaped.slice(0, -1)}\\ `;
-  return `/${escaped}`;
-}
-
-// The by-hand commands leaving out `left`; the core's `command` gives the commands after the
-// .gitignore lines.
+// The by-hand commands leaving out `left`: the core's line of each, then its `make`, as
+// lado.setup.command puts them.
 export function setupCommand(setup: SetupInfo, left: LeftOutInfo[]): string {
-  const marker = ".gitignore && ";
-  const at = setup.command.indexOf(marker);
-  const make = at < 0 ? setup.command : setup.command.slice(at + marker.length);
-  if (left.length === 0) return make;
-  return `printf '%s\\n' ${left.map((one) => shellQuote(ignoreLine(one.path))).join(" ")} >> .gitignore && ${make}`;
+  if (left.length === 0) return setup.make;
+  return `printf '%s\\n' ${left.map((one) => one.line).join(" ")} >> .gitignore && ${setup.make}`;
 }
-
-const MAX_FILES = 20000; // lado.setup.MAX_FILES, as the refusal says it
 
 // Why a folder may not be set up, in the window's words.
 export function refusalText(setup: SetupInfo): string {
   const refusal = setup.refusal!;
   if (refusal.kind === "home") return "Choose a smaller folder: this is your home folder.";
   if (refusal.kind === "unreadable") return `Choose another folder: git cannot read all of it (${refusal.line}).`;
-  return refusal.files > MAX_FILES
-    ? `Choose a smaller folder: this one holds over ${MAX_FILES.toLocaleString("en")} files.`
+  if (refusal.kind === "odd_name") {
+    return `Choose another folder, or rename ${refusal.line}: LADO cannot leave out a name with a line break or bytes that are no text.`;
+  }
+  return refusal.files > setup.max_files
+    ? `Choose a smaller folder: this one holds over ${setup.max_files.toLocaleString("en")} files.`
     : "Choose a smaller folder: this one holds over 2 GB.";
 }
 
@@ -76,14 +61,14 @@ export function LaunchSetup({
   checkingAgain,
 }: {
   id: string; // the panel's, Where's aria-describedby
-  setup: SetupInfo | null; // null: counting
+  setup: SetupInfo; // the last answer, while `checkingAgain` the one before the new
   include: string[];
   onInclude: (include: string[]) => void;
   onCheckAgain: () => void;
-  checkingAgain: boolean;
+  checkingAgain: boolean; // the folder is checked again: the author's Check again waits, the rest counts
 }) {
   const [shown, setShown] = useState<"review" | "diy" | null>(null); // one disclosure at a time
-  if (setup === null) {
+  if (checkingAgain && !setup.author) {
     return (
       <div id={id} className="setup-panel">
         <p>

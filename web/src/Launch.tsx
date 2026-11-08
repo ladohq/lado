@@ -24,6 +24,7 @@ import {
   type CloneJob,
   type CloneRefused,
   type CloneTarget,
+  type FolderInfo,
   type Launch,
   type Limits,
   type ModelRefusal,
@@ -42,7 +43,7 @@ import { closedBy, looks, resumeAttempt } from "./attempts";
 import { since } from "./ChatText";
 import { useCloneJob } from "./cloneJob";
 import { InfoTip } from "./InfoTip";
-import { useLaunchModel } from "./LaunchModel";
+import { useLaunchModel, type Choice } from "./LaunchModel";
 import { ProjectField } from "./LaunchProject";
 import { LaunchSetup } from "./LaunchSetup";
 import { DEFAULT_MODE, LaunchTeam, modeWords } from "./LaunchTeam";
@@ -124,6 +125,7 @@ type Draft = {
   without: string;
   touched: string[];
   teamOpen: boolean;
+  model: { cli: string; choice: Choice } | null; // the Model field's choice, for its agent CLI
 };
 
 export function LaunchProvider({ children }: { children: ReactNode }) {
@@ -398,14 +400,30 @@ function LaunchDialog({
     getFolder((JSON.parse(key) as [string, number])[0]),
   );
   const folder = valueOf(checked);
-  const current = folder !== null && folder.path === settled && settled === path.trim() ? folder : null;
-  // A plain folder checked again (Check again, a refused set-up): its panel counts until the
-  // answer comes.
-  const [lastPlain, setLastPlain] = useState<string | null>(null);
+  // The answer to what the field holds now: useAsked gives only the answer of the key asked,
+  // and the answer's own path is no match for the text (the server expands `~`).
+  const current = folder !== null && settled === path.trim() ? folder : null;
+  // A plain folder checked again (Check again, a refused set-up): its last answer stays in
+  // sight, the panel counting or its Check again "Checking…", until the new one comes; a
+  // failed ask shows its error instead.
+  const [lastPlain, setLastPlain] = useState<{ key: string; info: FolderInfo } | null>(null);
   useEffect(() => {
-    if (current) setLastPlain(current.setup ? current.path : null);
-  }, [current]);
-  const counting = !resuming && source === "folder" && current === null && lastPlain !== null && lastPlain === path.trim();
+    if (current && checkKey !== null) setLastPlain(current.setup ? { key: checkKey, info: current } : null);
+  }, [current, checkKey]);
+  const rechecking =
+    !resuming &&
+    source === "folder" &&
+    checked === null &&
+    checkKey !== null &&
+    settled === path.trim() &&
+    lastPlain?.key === checkKey;
+  const shownFolder = current ?? (rechecking ? lastPlain!.info : null);
+  // Check again answered with the author known: its button went, the focus goes on to Task.
+  const wasRechecking = useRef(false);
+  useEffect(() => {
+    if (wasRechecking.current && !rechecking && document.activeElement === document.body) taskRef.current?.focus();
+    wasRechecking.current = rechecking;
+  }, [rechecking]);
   const recentAsked = valueOf(useOnce(getRecentFolders, resuming !== null));
   const recent = recentAsked ?? [];
   // The first answer of the recent places sets the window on the last place, or on New empty
@@ -479,6 +497,7 @@ function LaunchDialog({
     refusal: modelRefusal,
     onClearRefusal: () => setRefused((now) => (now?.status === 409 && isModelRefusal(now.detail) ? null : now)),
     onShow: () => setTeamOpen(true),
+    draft: draft?.model ?? null,
   });
   const modelReady = !model.blocked;
 
@@ -616,6 +635,7 @@ function LaunchDialog({
         without,
         touched: [...touched],
         teamOpen,
+        model: model.kept,
       });
     }
     onClose();
@@ -703,7 +723,9 @@ function LaunchDialog({
     setBusyKind("setup");
     setRefused(null);
     try {
-      openSession(await startIn({ kind: "setup", path: where, include }));
+      // Only what this preview leaves out: a tick of an earlier one may name a file gone.
+      const left = new Set(current.setup?.left_out.map((one) => one.path) ?? []);
+      openSession(await startIn({ kind: "setup", path: where, include: include.filter((one) => left.has(one)) }));
     } catch (error) {
       setCheckTurn((turn) => turn + 1); // the folder may be a repository now
       setBusy(false);
@@ -840,7 +862,7 @@ function LaunchDialog({
   };
 
   // The way's main action.
-  const act = () => {
+  const start = () => {
     if (busy !== null || waiting || !ready) return;
     if (cloning) {
       if (target?.state === "same_repo") toFolder(target.path);
@@ -848,6 +870,13 @@ function LaunchDialog({
     } else if (scratching) void createAndStart();
     else if (settingUp) void setUpAndStart();
     else void submit();
+  };
+
+  // Enter in a field does what the blue button does: beside a stopped session with no task,
+  // Resume.
+  const act = () => {
+    if (!(stopped && !promptText)) start();
+    else if (busy === null && teamReady) void resumeStopped();
   };
 
   const title = resuming ? "Resume session" : "New session";
@@ -919,18 +948,25 @@ function LaunchDialog({
         missing.push({ text: "choose a place", focus: () => urlRef.current?.focus() });
     } else if (projecting) {
       if (projectRepo === null) missing.push({ text: "choose a place", focus: toWhere });
-    } else if (counting) {
+    } else if (rechecking) {
       missing.push({ text: "wait for the count", focus: toWhere });
     } else if (current?.setup) {
       const panel = () => document.getElementById(notesId)?.querySelector<HTMLElement>("button")?.focus();
-      if (current.setup.refusal) missing.push({ text: "choose a smaller folder", focus: toWhere });
-      else if (current.setup.author) missing.push({ text: "tell git who you are", focus: panel });
+      const refusal = current.setup.refusal;
+      if (refusal) {
+        const smaller = refusal.kind === "home" || refusal.kind === "too_big";
+        missing.push({ text: smaller ? "choose a smaller folder" : "choose another folder", focus: toWhere });
+      } else if (current.setup.author) missing.push({ text: "tell git who you are", focus: panel });
     } else if (!(current?.ok ?? false)) {
       const asking = path.trim() !== "" && current === null && toCheck(path.trim()) !== null;
       missing.push({ text: asking ? "wait for the check" : "choose a place", focus: toWhere });
     }
   }
-  if (providers !== null && chosenProvider === null && !noLogin) missing.push({ text: "choose an agent", focus: openTeam(teamRefs.agent) });
+  if (providerList === null) missing.push({ text: "wait for the agent CLIs", focus: openTeam(teamRefs.agent) });
+  else if (providers === null || (chosenProvider === null && !noLogin)) {
+    // none chosen, or the list did not load: its error stands under Agent
+    missing.push({ text: "choose an agent", focus: openTeam(teamRefs.agent) });
+  }
   if (noLogin?.installed) missing.push({ text: `log in to ${noLogin.title}`, focus: openTeam(teamRefs.agent) });
   if (kits.length === 0) missing.push({ text: "choose a team setup", focus: openTeam(teamRefs.kits) });
   if (model.blocked) {
@@ -1018,7 +1054,7 @@ function LaunchDialog({
         aria-describedby={toStart.length ? `${ids}-missing` : undefined}
         onClick={(event) => {
           event.preventDefault();
-          act();
+          start();
         }}
       >
         {busy !== null && (busy !== "resume" || resuming) ? busyLabel[busy] : startLabel}
@@ -1149,36 +1185,24 @@ function LaunchDialog({
                 describedBy={notesId}
               />
             )}
-            {counting && (
-              <div id={notesId} className="place-notes">
-                <LaunchSetup
-                  id={`${ids}-setup`}
-                  setup={null}
-                  include={include}
-                  onInclude={setInclude}
-                  checkingAgain
-                  onCheckAgain={() => undefined}
-                />
-              </div>
-            )}
-            {!resuming && source === "folder" && !counting && (
+            {!resuming && source === "folder" && (
               <FolderNotes
                 id={notesId}
-                folder={current}
-                checking={toCheck(path.trim()) !== null && current === null}
+                folder={shownFolder}
+                checking={toCheck(path.trim()) !== null && shownFolder === null}
                 problem={checked !== null && "error" in checked ? checked.error : null}
                 stopped={stopped ? { name: stopped.name, at: stopped.stopped_at } : null}
                 disabled={busyNow}
                 onScratch={toScratch}
                 onProject={toProject}
                 setup={
-                  current?.setup ? (
+                  shownFolder?.setup ? (
                     <LaunchSetup
                       id={`${ids}-setup`}
-                      setup={current.setup}
+                      setup={shownFolder.setup}
                       include={include}
                       onInclude={setInclude}
-                      checkingAgain={checked === null}
+                      checkingAgain={rechecking}
                       onCheckAgain={() => setCheckTurn((turn) => turn + 1)}
                     />
                   ) : null

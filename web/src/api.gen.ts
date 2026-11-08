@@ -2529,6 +2529,8 @@ export interface components {
             reason: "secret" | "large" | "repository";
             /** Size */
             size: number | null;
+            /** Line */
+            line: string;
         };
         /**
          * Limits
@@ -3949,8 +3951,10 @@ export interface components {
             left_out: components["schemas"]["LeftOutInfo"][];
             refusal: components["schemas"]["SetupRefusal"] | null;
             author: components["schemas"]["ScratchProblem"] | null;
-            /** Command */
-            command: string;
+            /** Make */
+            make: string;
+            /** Max Files */
+            max_files: number;
         };
         /**
          * SetupRefusal
@@ -3961,7 +3965,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "home" | "too_big" | "unreadable";
+            kind: "home" | "too_big" | "unreadable" | "odd_name";
             /** Files */
             files: number;
             /** Bytes */

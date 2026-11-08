@@ -1049,13 +1049,47 @@ def test_a_folder_of_files_has_its_setup(client, git_config, tmp_path):
     assert info["setup"] == {
         "files": 1,
         "bytes": 5,
-        "left_out": [{"path": ".env", "reason": "secret", "size": 5}],
+        "left_out": [{"path": ".env", "reason": "secret", "size": 5, "line": "/.env"}],
         "refusal": None,
         "author": None,
-        "command": "printf '%s\\n' /.env >> .gitignore && "
-        "git init && git add -A && git commit -m 'First commit'",
+        "make": "git init && git add -A && git commit -m 'First commit'",
+        "max_files": 20_000,
     }
     assert not (tmp_path / "notes" / ".git").exists()
+
+
+def test_a_name_text_cannot_carry_is_a_refusal_not_a_server_error(client, git_config, tmp_path):
+    notes = tmp_path / "notes"
+    notes.mkdir()
+    (notes / "a.txt").write_text("hello")
+    (notes / os.fsdecode(b".env\xff")).write_text("s")
+    setup = folder(client, notes)["setup"]
+    assert (setup["refusal"]["kind"], setup["refusal"]["line"]) == ("odd_name", ".env\\udcff")
+    assert setup["left_out"] == []
+
+
+def test_a_start_refused_after_the_setup_keeps_the_repository(
+    client, git_config, tmp_path, fake_tmux
+):
+    notes = tmp_path / "notes"
+    notes.mkdir()
+    (notes / "a.txt").write_text("hello")
+    answer = start_setup(client, notes, provider="kilo", kits=["no-such-kit"])
+    assert answer.status_code == 400, answer.text
+    assert runtime.check_repo(str(notes)) == os.path.realpath(notes)
+
+
+def test_a_name_of_another_folders_session_is_refused_before_the_setup(
+    client, git_config, tmp_path, repo, fake_tmux
+):
+    runtime.start_session(str(repo), "notes", None, provider="kilo")
+    notes = tmp_path / "notes"
+    notes.mkdir()
+    (notes / "a.txt").write_text("hello")
+    answer = start_setup(client, notes, provider="kilo")
+    assert answer.status_code == 400
+    assert 'session "notes" was started in' in answer.json()["detail"]
+    assert sorted(os.listdir(notes)) == ["a.txt"]
 
 
 def test_the_setup_says_when_git_has_no_author(client, git_config, tmp_path):

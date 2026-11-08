@@ -136,17 +136,19 @@ class LeftOutInfo(BaseModel):
     path: str  # relative to the folder; a repository's ends in "/"
     reason: Literal["secret", "large", "repository"]
     size: int | None  # in bytes; None for a repository
+    line: str  # its .gitignore line as one word of the by-hand command (setup.shell_line)
 
 
 class SetupRefusal(BaseModel):
     """Why a folder may not be set up (lado.setup.Refusal)."""
 
     # home: the home folder or one holding the workspace; too_big: past the limits;
-    # unreadable: git cannot read all of it
-    kind: Literal["home", "too_big", "unreadable"]
+    # unreadable: git cannot read all of it; odd_name: a path to leave out with a line
+    # break or bytes that are no UTF-8
+    kind: Literal["home", "too_big", "unreadable", "odd_name"]
     files: int  # counted until the refusal
     bytes: int
-    line: str  # git's line, for unreadable
+    line: str  # git's line for unreadable, the name escaped for odd_name
 
 
 class SetupInfo(BaseModel):
@@ -158,7 +160,10 @@ class SetupInfo(BaseModel):
     left_out: list[LeftOutInfo]
     refusal: SetupRefusal | None
     author: "ScratchProblem | None"  # None when git knows the author
-    command: str  # the same by hand, leaving out all that is left out
+    # the by-hand command after the .gitignore lines: the window rebuilds the whole from
+    # the lines of what stays left out (`printf '%s\n' <lines> >> .gitignore && <make>`)
+    make: str
+    max_files: int  # setup.MAX_FILES, for too_big's words
 
 
 class ProjectPlace(BaseModel):

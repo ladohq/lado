@@ -1199,6 +1199,68 @@ test("Esc keeps Where, Task and Team for the next opening; a start clears them",
   expect(firstField().value).toBe("");
 });
 
+test("the footer says why while the agent CLIs are asked, and when their list fails", async () => {
+  let release: (found: ProviderInfo[]) => void = () => {};
+  providers = () => new Promise((resolve) => (release = resolve));
+  await openLaunch();
+  await ready("/src/app").catch(() => undefined); // the Agent field stays checking…
+  await screen.findByText(/✓ Ready/);
+  expect(startButton().disabled).toBe(true);
+  expect(footerText()).toContain("To start: wait for the agent CLIs.");
+  await act(async () => release([provider("claude")]));
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  expect(footerText()).not.toContain("To start");
+});
+
+test("a list of agent CLIs that fails: the footer says choose an agent, Team shows why", async () => {
+  answers["GET /api/providers"] = () => json({ detail: "the CLIs cannot be read" }, 500);
+  await openLaunch();
+  folders["/src/app"] = folder("/src/app");
+  type("/src/app");
+  await screen.findByText(/✓ Ready/);
+  await waitFor(() => expect(footerText()).toContain("To start: choose an agent."));
+  fireEvent.click(screen.getByRole("button", { name: "choose an agent" }));
+  expect(await screen.findByText("the CLIs cannot be read")).toBeTruthy();
+});
+
+test("Enter in a field beside a stopped session with no task resumes it, as its blue button does", async () => {
+  sessions = [session("webapp", { status: "stopped", repo: WEBAPP })];
+  recent = [recentFolder(WEBAPP)];
+  folders[WEBAPP] = folder(WEBAPP, {
+    default_name: "webapp",
+    free_name: "webapp-2",
+    name_state: "stopped_here",
+    provider: { name: "claude", reason: "last_session" },
+  });
+  answers["POST /api/sessions/webapp/resume"] = () => json({ session: session("webapp"), ...STARTED, resumed: true });
+  await openLaunch(false);
+  const resume = (await screen.findByRole("button", { name: "Resume webapp" })) as HTMLButtonElement;
+  await waitFor(() => expect(resume.disabled).toBe(false));
+  openTeam();
+  fireEvent.submit(nameField().closest("form")!);
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "New session" })).toBeNull());
+  expect(calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual(["/api/sessions/webapp/resume"]);
+});
+
+test("the draft keeps the model picked, for its agent CLI", async () => {
+  const dialog = await openLaunch();
+  await ready("/src/app", { provider: { name: "kilo", reason: "only_installed" } });
+  openTeam();
+  await waitFor(() => expect(modelField().disabled).toBe(false));
+  fireEvent.click(modelField());
+  fireEvent.click(await screen.findByRole("option", { name: "kilo/large" }));
+  await waitFor(() => expect(modelField().textContent).toContain("kilo/large"));
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  fireEvent.click(within(rail()).getByRole("button", { name: "New session" }));
+  await screen.findByRole("dialog", { name: "New session" });
+  await waitFor(() => expect(modelField().textContent).toContain("kilo/large"));
+  answers["POST /api/sessions"] = () => json({ session: session("app", { repo: "/src/app" }), ...STARTED });
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  fireEvent.click(startButton());
+  await screen.findByRole("region", { name: "Session app" });
+  expect(calls.find((c) => c.method === "POST")!.body).toMatchObject({ model: "kilo/large" });
+});
+
 test("an info button's Esc closes only it; the window stays", async () => {
   const dialog = await openLaunch();
   const about = screen.getByRole("button", { name: "About Task" });
@@ -3322,14 +3384,14 @@ function plain(more: Partial<NonNullable<FolderInfo["setup"]>> = {}): FolderInfo
       files: 128,
       bytes: 4404019,
       left_out: [
-        { path: ".env", reason: "secret", size: 120 },
-        { path: "talk.mp4", reason: "large", size: 251658240 },
-        { path: "old-site/", reason: "repository", size: null },
+        { path: ".env", reason: "secret", size: 120, line: "/.env" },
+        { path: "talk.mp4", reason: "large", size: 251658240, line: "/talk.mp4" },
+        { path: "old-site/", reason: "repository", size: null, line: "/old-site/" },
       ],
       refusal: null,
       author: null,
-      command:
-        "printf '%s\\n' /.env /talk.mp4 /old-site/ >> .gitignore && git init && git add -A && git commit -m 'First commit'",
+      make: "git init && git add -A && git commit -m 'First commit'",
+      max_files: 20000,
       ...more,
     },
   });
@@ -3418,6 +3480,109 @@ test("git's missing author keeps the set-up off; Check again checks the folder a
   fireEvent.click(within(dialog).getByRole("button", { name: "Check again" }));
   await waitFor(() => expect(asked()).toBe(before + 1));
   await waitFor(() => expect(startButton().disabled).toBe(false));
+});
+
+// The folder check held back until the test lets it go.
+function holdFolders() {
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  answers["GET /api/folders"] = async () => {
+    const asked = new URL(calls[calls.length - 1].path, "http://lado.test").searchParams.get("path") ?? "";
+    await held;
+    return json(folders[asked]);
+  };
+  return release;
+}
+
+test("Check again keeps the author's text with Checking… and the focus, then the panel follows the answer", async () => {
+  const author = { text: "no author", hint: { text: "Tell git who you are, once for this computer:", command: "git config x" } };
+  folders[NOTES] = plain({ author });
+  const dialog = await openLaunch();
+  type(NOTES);
+  const again = await within(dialog).findByRole("button", { name: "Check again" });
+  const release = holdFolders();
+  folders[NOTES] = plain();
+  again.focus();
+  fireEvent.click(again);
+  await waitFor(() => expect(again.textContent).toBe("Checking…"));
+  expect(again.getAttribute("aria-disabled")).toBe("true");
+  expect(document.activeElement).toBe(again);
+  expect(footerText()).toContain("To start: wait for the count.");
+  await act(async () => release());
+  await within(dialog).findByText("128 files (4.2 MB)");
+  await waitFor(() => expect(document.activeElement).toBe(firstField()));
+});
+
+test("while a plain folder without its author's problem is checked again, the panel reads Counting files…", async () => {
+  folders[NOTES] = plain();
+  answers["POST /api/sessions"] = () => json({ detail: "kit nope not found" }, 400);
+  const dialog = await openLaunch();
+  type(NOTES);
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  const release = holdFolders();
+  fireEvent.click(startButton()); // refused: the folder is checked again
+  expect(await within(dialog).findByText("Counting files…")).toBeTruthy();
+  expect(footerText()).toContain("To start: wait for the count.");
+  expect(startButton().disabled).toBe(true);
+  await act(async () => release());
+  await within(dialog).findByText("128 files (4.2 MB)");
+});
+
+test("a check again that fails shows its error, not a count that never ends", async () => {
+  folders[NOTES] = plain();
+  answers["POST /api/sessions"] = () => json({ detail: "kit nope not found" }, 400);
+  const dialog = await openLaunch();
+  type(NOTES);
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  answers["GET /api/folders"] = () => json({ detail: "the server cannot look at it" }, 500);
+  fireEvent.click(startButton());
+  expect(await within(dialog).findByText("the server cannot look at it")).toBeTruthy();
+  expect(within(dialog).queryByText("Counting files…")).toBeNull();
+  expect(footerText()).not.toContain("wait for the count");
+});
+
+test.each([
+  [{ kind: "unreadable", files: 0, bytes: 0, line: "warning: could not open directory 'x/'" }, "Choose another folder: git cannot read all of it"],
+  [{ kind: "odd_name", files: 0, bytes: 0, line: ".env\\nok" }, "Choose another folder, or rename .env\\nok"],
+] as const)("a %s refusal says choose another folder, here and in the footer", async (refusal, text) => {
+  folders[NOTES] = plain({ refusal });
+  const dialog = await openLaunch();
+  type(NOTES);
+  expect(await within(dialog).findByText(new RegExp(`^${text.replaceAll("\\", "\\\\")}`))).toBeTruthy();
+  await waitFor(() => expect(footerText()).toContain("To start: choose another folder."));
+});
+
+test("a tick of a file the new preview no longer leaves out is not sent", async () => {
+  folders[NOTES] = plain();
+  answers["POST /api/sessions"] = () => json({ detail: "kit nope not found" }, 400);
+  const dialog = await openLaunch();
+  type(NOTES);
+  fireEvent.click(await within(dialog).findByRole("button", { name: "3 left out · Review" }));
+  fireEvent.click(within(dialog).getByRole("checkbox", { name: "Include .env" }));
+  fireEvent.click(within(dialog).getByRole("checkbox", { name: "Include talk.mp4" }));
+  folders[NOTES] = plain({ left_out: [{ path: "talk.mp4", reason: "large", size: 251658240, line: "/talk.mp4" }] });
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  fireEvent.click(startButton()); // refused: checked again, .env is no longer left out
+  await within(dialog).findByRole("button", { name: /left out · Review/ });
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  answers["POST /api/sessions"] = () => json({ session: session("notes", { repo: NOTES }), ...STARTED });
+  fireEvent.click(startButton());
+  await screen.findByRole("region", { name: "Session notes" });
+  const sent = calls.filter((c) => c.method === "POST").pop()!;
+  expect(sent.body).toMatchObject({ where: { kind: "setup", include: ["talk.mp4"] } });
+});
+
+test("a path typed with ~ is checked, though the server answers it expanded", async () => {
+  folders["~/w/app"] = folder("/home/ann/w/app", { provider: { name: "claude", reason: "only_installed" } });
+  folders["~/w/"] = folder("/home/ann/w/", { ok: false, problem: "no", subfolders: ["app", "api"] });
+  await openLaunch();
+  type("~/w/a");
+  const list = await screen.findByRole("listbox", { name: "Folders" });
+  expect(within(list).getAllByRole("option").map((o) => o.textContent)).toEqual(["app/", "api/"]);
+  type("~/w/app");
+  expect(await screen.findByText("✓ Ready · branch main")).toBeTruthy();
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  expect(screen.queryByText("checking…")).toBeNull();
 });
 
 test("a set-up refused at the start shows the core's line and leaves Where on the folder", async () => {

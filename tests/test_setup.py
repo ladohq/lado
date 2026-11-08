@@ -237,3 +237,72 @@ def test_make_refuses_a_repository(notes):
     with pytest.raises(setup.SetupError) as refused:
         setup.make(str(notes), [])
     assert refused.value.kind == "not_plain"
+
+
+def sparse(path, size=BIG):
+    with open(path, "wb") as big:
+        big.truncate(size)
+
+
+def test_a_left_out_name_with_patterns_of_gitignore_leaves_out_that_file_alone(
+    workspace, git_config
+):
+    """`[`, `*`, `?`, `\\` and a trailing space are git's pattern characters: escaped, the
+    `.gitignore` line names one file, not its neighbours."""
+    folder = workspace / "media"
+    folder.mkdir()
+    for name in ("big[1].bin", "*.bin", "q?.bin", "b\\c.bin", "big "):
+        sparse(folder / name)
+    for name in ("big1.bin", "a.bin", "qx.bin", "bc.bin", "big"):
+        (folder / name).write_text("small")
+    setup.make(str(folder), [])
+    saved = [name for name in git(folder, "ls-files", "-z").split("\0") if name]
+    assert sorted(saved) == sorted([".gitignore", "big1.bin", "a.bin", "qx.bin", "bc.bin", "big"])
+
+
+@pytest.mark.parametrize("name", [".env\nok.txt", ".env\rok"])
+def test_a_left_out_name_with_a_line_break_is_refused(workspace, git_config, name):
+    folder = workspace / "odd"
+    folder.mkdir()
+    (folder / "a.txt").write_text("a")
+    (folder / name).write_text("s")
+    refusal = setup.preview(str(folder)).refusal
+    assert (refusal.kind, refusal.line) == ("odd_name", repr(name)[1:-1])
+    with pytest.raises(setup.SetupError) as refused:
+        setup.make(str(folder), [])
+    assert refused.value.kind == "odd_name"
+    assert not (folder / ".git").exists()
+
+
+def test_a_left_out_name_that_is_not_utf8_is_refused_with_a_name_that_can_be_shown(
+    workspace, git_config
+):
+    folder = workspace / "bytes"
+    folder.mkdir()
+    (folder / "a.txt").write_text("a")
+    (folder / os.fsdecode(b".env\xff")).write_text("s")
+    refusal = setup.preview(str(folder)).refusal
+    assert (refusal.kind, refusal.line) == ("odd_name", ".env\\udcff")
+    refusal.line.encode()  # shown as text: it encodes
+
+
+def test_each_left_out_line_is_quoted_for_the_command(workspace, git_config):
+    assert setup.shell_line("it's.key") == "'/it'\"'\"'s.key'"
+    assert setup.shell_line(".env") == "/.env"
+
+
+def test_no_signing_no_hooks_and_gits_default_branch(notes, git_config, tmp_path):
+    hooks = tmp_path / "template" / "hooks"
+    hooks.mkdir(parents=True)
+    for hook in ("pre-commit", "commit-msg", "post-commit"):
+        (hooks / hook).write_text(f"#!/bin/sh\ntouch {tmp_path}/{hook}-ran\nexit 1\n")
+        (hooks / hook).chmod(0o755)
+    git_config.write_text(
+        git_config.read_text()
+        + "[commit]\n\tgpgsign = true\n[gpg]\n\tprogram = false\n"
+        + f"[init]\n\ttemplateDir = {tmp_path / 'template'}\n\tdefaultBranch = trunk\n"
+    )
+    setup.make(str(notes), [])
+    assert git(notes, "log", "--format=%s") == "First commit"
+    assert git(notes, "symbolic-ref", "--short", "HEAD") == "trunk"
+    assert not list(tmp_path.glob("*-ran"))

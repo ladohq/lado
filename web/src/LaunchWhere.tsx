@@ -360,8 +360,9 @@ export function FolderPathField({
   const parent = useDebounced(split?.parent ?? null);
   const listed = valueOf(useAsked(open && parent ? parent : null, getFolder));
   const prefix = (split?.prefix ?? "").toLowerCase();
+  // The answer of the parent asked now (the server gives its path with `~` expanded).
   const options =
-    open && listed && split && listed.path === split.parent
+    open && listed && split && parent === split.parent
       ? listed.subfolders.filter((one) => one.toLowerCase().startsWith(prefix) && one !== split.prefix)
       : []; // a folder typed in full is not suggested again: its check shows under the field
 

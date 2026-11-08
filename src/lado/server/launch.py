@@ -98,7 +98,12 @@ def setup_info(path: str) -> models.SetupInfo:
         files=found.files,
         bytes=found.bytes,
         left_out=[
-            models.LeftOutInfo(path=item.path, reason=item.reason, size=item.size)
+            models.LeftOutInfo(
+                path=item.path,
+                reason=item.reason,
+                size=item.size,
+                line=setup.shell_line(item.path),
+            )
             for item in found.left_out
         ],
         refusal=(
@@ -109,7 +114,8 @@ def setup_info(path: str) -> models.SetupInfo:
             else None
         ),
         author=_author(path),
-        command=found.command,
+        make=setup.MAKE,
+        max_files=setup.MAX_FILES,
     )
 
 

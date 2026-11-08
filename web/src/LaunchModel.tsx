@@ -17,7 +17,7 @@ import { useAsked } from "./Launch";
 import { type Health, ModelPicker, type Pick, sameModel, useModelChoices } from "./ModelPicker";
 import { OtherName } from "./ModelSettings";
 
-type Choice =
+export type Choice =
   | { kind: "default" } // follows the CLI's default, as it is at each launch
   | { kind: "kept" } // the model a resumed session has
   | { kind: "settings"; chosen: boolean } // `chosen`: by a way out, whatever the session had
@@ -71,7 +71,10 @@ export function useLaunchModel({
   refusal,
   onClearRefusal,
   onShow,
+  draft = null,
 }: {
+  // the choice the window's draft kept, for its agent CLI: taken only with that CLI
+  draft?: { cli: string; choice: Choice } | null;
   cli: { name: string; title: string } | null;
   project: string | null; // null: not known yet, so nothing is checked
   resuming: SessionInfo | null;
@@ -83,7 +86,7 @@ export function useLaunchModel({
   const id = useId();
   const field = useRef<HTMLButtonElement>(null);
   const [entries, setEntries] = useState<ModelSettings | null>(null);
-  const [choice, setChoice] = useState<Choice>(() => cameWith(resuming));
+  const [choice, setChoice] = useState<Choice>(() => draft?.choice ?? cameWith(resuming));
   const [lostNote, setLostNote] = useState<string | null>(null);
   const [other, setOther] = useState<string | null>(null); // Other name's field, with its text
   const [tries, setTries] = useState(0); // Check again asks anew
@@ -149,6 +152,8 @@ export function useLaunchModel({
     if (cli === null) return;
     const before = shownCli.current;
     shownCli.current = cli;
+    // The first CLI known: a draft's choice holds only for the CLI it was made for.
+    if (before === null && draft && draft.cli !== cli.name) setChoice(cameWith(resuming));
     if (before === null || before.name === cli.name) return;
     const lost = value !== null && choice.kind !== "default";
     setLostNote(
@@ -387,5 +392,12 @@ export function useLaunchModel({
       </span>
     );
 
-  return { field: fieldNode, peek, blocked: wrong, send, focus: () => field.current?.focus() };
+  return {
+    field: fieldNode,
+    peek,
+    blocked: wrong,
+    send,
+    focus: () => field.current?.focus(),
+    kept: cli ? { cli: cli.name, choice } : null, // for the window's draft
+  };
 }

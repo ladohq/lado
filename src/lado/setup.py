@@ -63,10 +63,12 @@ class LeftOut:
 @dataclass(frozen=True)
 class Refusal:
     """Why the folder may not be set up: the home folder or one holding the workspace
-    (`home`), past the limits (`too_big`, with what was counted until then), or a folder
-    git cannot read all of (`unreadable`, with git's line)."""
+    (`home`), past the limits (`too_big`, with what was counted until then), a folder git
+    cannot read all of (`unreadable`, with git's line), or a path to leave out whose name a
+    `.gitignore` line cannot hold or the window cannot show, a line break or bytes that are
+    no UTF-8 (`odd_name`, with the name escaped as Python writes it)."""
 
-    kind: Literal["home", "too_big", "unreadable"]
+    kind: Literal["home", "too_big", "unreadable", "odd_name"]
     files: int
     bytes: int
     line: str = ""
@@ -93,13 +95,32 @@ def ignore_line(path: str) -> str:
     return f"/{escaped}"
 
 
+def shell_line(path: str) -> str:
+    """A left-out path's `.gitignore` line as one word of the by-hand command."""
+    return quote(ignore_line(path))
+
+
+MAKE = runtime.NOT_REPO_HINT.command  # the by-hand command after the .gitignore lines
+
+
 def command(left_out: list[LeftOut]) -> str:
     """The commands that set the folder up by hand, leaving out `left_out`."""
-    make = runtime.NOT_REPO_HINT.command
     if not left_out:
-        return make
-    lines = " ".join(quote(ignore_line(item.path)) for item in left_out)
-    return f"printf '%s\\n' {lines} >> .gitignore && {make}"
+        return MAKE
+    lines = " ".join(shell_line(item.path) for item in left_out)
+    return f"printf '%s\\n' {lines} >> .gitignore && {MAKE}"
+
+
+def _odd(name: str) -> bool:
+    """A name a `.gitignore` line cannot hold (a line break) or text cannot carry (bytes
+    that are no UTF-8, decoded by `os.fsdecode` as surrogates)."""
+    if "\n" in name or "\r" in name:
+        return True
+    try:
+        name.encode()
+    except UnicodeEncodeError:
+        return True
+    return False
 
 
 def _is_home(path: str) -> bool:
@@ -113,7 +134,8 @@ def _is_home(path: str) -> bool:
 def preview(path: str) -> Preview:
     """What setting the folder `path` (a full path, outside git) up would commit and leave
     out; it changes nothing on disk. Refused first by the path alone (`home`), then while
-    counting, past MAX_FILES files or MAX_BYTES bytes (`too_big`)."""
+    counting, past MAX_FILES files or MAX_BYTES bytes (`too_big`). A refused preview lists
+    nothing left out."""
     if _is_home(path):
         return Preview(0, 0, refusal=Refusal("home", 0, 0))
     files = size = 0
@@ -123,14 +145,18 @@ def preview(path: str) -> Preview:
         for name in listing:
             item = _left_out(path, name)
             if item is not None:
+                if _odd(item.path):
+                    return Preview(
+                        files, size, refusal=Refusal("odd_name", files, size, repr(item.path)[1:-1])
+                    )
                 left_out.append(item)
                 continue
             files += 1
             size += os.lstat(os.path.join(path, name)).st_size
             if files > MAX_FILES or size > MAX_BYTES:
-                return Preview(files, size, left_out, Refusal("too_big", files, size))
+                return Preview(files, size, refusal=Refusal("too_big", files, size))
     except (_Unreadable, scratch._GitFailed) as unreadable:  # git cannot list it: its line
-        return Preview(files, size, left_out, Refusal("unreadable", files, size, str(unreadable)))
+        return Preview(files, size, refusal=Refusal("unreadable", files, size, str(unreadable)))
     finally:
         listing.close()
     return Preview(files, size, left_out, command=command(left_out))
@@ -191,6 +217,8 @@ def refusal_text(path: str, refusal: Refusal) -> str:
         return f"{path} is your home folder or holds the workspace: choose a smaller folder"
     if refusal.kind == "unreadable":
         return f"git cannot read all of {path}: {refusal.line}"
+    if refusal.kind == "odd_name":
+        return f"{path} holds {refusal.line}, a name LADO cannot leave out: rename it first"
     return (
         f"{path} is too big to set up, over {MAX_FILES:,} files or {MAX_BYTES:,} bytes: "
         "choose a smaller folder"

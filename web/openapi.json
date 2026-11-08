@@ -6750,13 +6750,18 @@
               }
             ],
             "title": "Size"
+          },
+          "line": {
+            "type": "string",
+            "title": "Line"
           }
         },
         "type": "object",
         "required": [
           "path",
           "reason",
-          "size"
+          "size",
+          "line"
         ],
         "title": "LeftOutInfo",
         "description": "A path the set-up's first commit leaves out (lado.setup.LeftOut)."
@@ -10660,9 +10665,13 @@
               }
             ]
           },
-          "command": {
+          "make": {
             "type": "string",
-            "title": "Command"
+            "title": "Make"
+          },
+          "max_files": {
+            "type": "integer",
+            "title": "Max Files"
           }
         },
         "type": "object",
@@ -10672,7 +10681,8 @@
           "left_out",
           "refusal",
           "author",
-          "command"
+          "make",
+          "max_files"
         ],
         "title": "SetupInfo",
         "description": "What setting a plain folder up would do (lado.setup.preview), and whether git knows\nthe author of its commit."
@@ -10684,7 +10694,8 @@
             "enum": [
               "home",
               "too_big",
-              "unreadable"
+              "unreadable",
+              "odd_name"
             ],
             "title": "Kind"
           },

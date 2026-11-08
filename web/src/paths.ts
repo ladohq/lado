@@ -66,6 +66,17 @@ export const PROVIDERS_PATH = `/settings#${PROVIDERS_ANCHOR}`;
 // Settings' section of the configured models and model servers (ModelSettings.tsx).
 export const MODELS_ANCHOR = "models";
 
+// Settings' pages (Settings.tsx, settingsSections.ts). Agent CLIs scrolls to a CLI's row at
+// #<provider name> and focuses its login button (Providers.tsx).
+export const GENERAL_PATH = "/settings/general";
+export const MODEL_SERVERS_PATH = "/settings/model-servers";
+export const STATISTICS_PATH = "/settings/statistics";
+export const agentClisPath = (cli?: string) => `/settings/agent-clis${cli ? `#${encodeURIComponent(cli)}` : ""}`;
+
+// Help's links on the rail (Shell.tsx); GITHUB also in the system panel and Report a bug.
+export const DOCS_URL = "https://github.com/ladohq/lado#readme";
+export const GITHUB = "https://github.com/ladohq/lado";
+
 // A card in the session's chat: the chat scrolls to the element of that id.
 export const chatPath = (session: string, anchor?: string) =>
   `${sessionPath(session, "activity")}${anchor ? `#${anchor}` : ""}`;

@@ -1041,6 +1041,11 @@ def test_a_folder_of_files_has_its_setup(client, git_config, tmp_path):
     (tmp_path / "notes" / ".env").write_text("KEY=1")
     info = folder(client, tmp_path / "notes")
     assert (info["problem_kind"], info["scratch"]) == ("not_repo", False)
+    assert (info["default_name"], info["free_name"], info["name_state"]) == (
+        "notes",
+        "notes",
+        "free",
+    )
     assert info["setup"] == {
         "files": 1,
         "bytes": 5,

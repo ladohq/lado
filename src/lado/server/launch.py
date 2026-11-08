@@ -60,8 +60,11 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
             kind = refused.kind
             hint = models.hint_info(refused.hint)
         root = _root_or_none(path)
-    name = runtime.slug(Path(root).name) if root else None
     fresh = kind in ("missing", "not_repo") and _can_start_from_scratch(path)
+    setup = setup_info(path) if kind == "not_repo" and not fresh else None
+    # A plain folder becomes its own repository's root once set up: its session's name too.
+    named = root or (os.path.realpath(path) if setup else None)
+    name = runtime.slug(Path(named).name) if named else None
     return models.FolderInfo(
         path=path,
         ok=ok,
@@ -73,11 +76,11 @@ def folder_info(path: str, has_db: bool) -> models.FolderInfo:
         subfolders=_subfolders(Path(path)),
         default_name=name,
         free_name=free_name(name, has_db) if name else None,
-        name_state=name_state(name, root, has_db) if name and root else None,
+        name_state=name_state(name, named, has_db) if name and named else None,
         provider=provider_suggestion(root, has_db),
         warning=runtime.outside_workspace(root or path),  # a start judges the root
         scratch=fresh,
-        setup=setup_info(path) if kind == "not_repo" and not fresh else None,
+        setup=setup,
     )
 
 

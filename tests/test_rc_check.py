@@ -222,16 +222,22 @@ def test_checklist_warns_about_another_checkout():
     )
 
 
-def test_the_repositorys_own_checklist_of_045_has_no_warning():
+@pytest.mark.parametrize("version", ["0.45.0rc1", "0.45.0rc2"])
+def test_the_repositorys_own_checklist_of_045_has_no_warning(version):
     lines = rc.checklist(
-        rc.parse("0.45.0rc1"),
+        rc.parse(version),
         (ROOT / "docs" / "release.md").read_text(),
         (ROOT / "docs" / "releases" / "0.45.0.md").read_text(),
-        'version = "0.45.0rc1"\n',
+        f'version = "{version}"\n',
     )
     assert not [line for line in lines if not line.startswith("[ ] ")]
     every_rc = [line for line in lines if line.startswith("[ ] 4.")]
     assert len(every_rc) >= 6 and len(lines) > len(every_rc)
+    assert lines[: len(every_rc)] == every_rc
+    assert (
+        "[ ] 4.3 A session of the built-in supervisor: the chat, a question card answered in "
+        "the UI, pre-release."
+    ) in every_rc
 
 
 def test_the_real_run_passes_output_and_exit_code():

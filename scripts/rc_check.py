@@ -68,7 +68,8 @@ DROPPED = ("LADO_SESSION", "LADO_AGENT", "LADO_INSTANCE", "VIRTUAL_ENV", "TMUX",
 IDENTITY = "rc-check"  # the scratch repository's commit, with no git identity of the human's
 # The checklist: docs/release.md's list under this heading, then the RC's own section of
 # docs/releases/X.Y.Z.md; of each, the first line of each top-level open item.
-EVERY_RC = "### The checks of every RC"
+EVERY_RC = "The checks of every RC"  # a `### ` heading
+RELEASE_CHECKLIST = "docs/releases/{}.{}.{}.md"  # X.Y.Z's
 OPEN_ITEM = "- [ ] "
 
 
@@ -206,10 +207,10 @@ def checklist(
     the RC's own section of its release's checklist, then what makes that list doubtful."""
     if release_md is None:
         return ["warning: no docs/release.md here: run the script from the repository's root"]
-    lines = _items(release_md, EVERY_RC, lambda line: line.startswith("#"))
+    lines = _items(release_md, f"### {EVERY_RC}", lambda line: line.startswith("#"))
     if not lines:
-        lines = [f'warning: docs/release.md has no list "{EVERY_RC[4:]}"']
-    path = "docs/releases/{}.{}.{}.md".format(*version.release)
+        lines = [f'warning: docs/release.md has no list "{EVERY_RC}"']
+    path = RELEASE_CHECKLIST.format(*version.release)
     advice = "write the RC's checklist before its commit (docs/release.md, section 2)"
     if checklist_md is None:
         lines.append(f"warning: no {path}: {advice}")
@@ -239,7 +240,7 @@ def _read(path: Path) -> str | None:
 
 def print_checklist(version: Version) -> None:
     print(f"\nLeft to check by hand on LADO {version}:")
-    release = Path("docs/releases/{}.{}.{}.md".format(*version.release))
+    release = Path(RELEASE_CHECKLIST.format(*version.release))
     texts = (_read(Path("docs/release.md")), _read(release), _read(Path("pyproject.toml")))
     for line in checklist(version, *texts):
         print(f"  {line}")

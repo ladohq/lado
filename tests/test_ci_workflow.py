@@ -301,16 +301,20 @@ def container(workflow) -> dict:
     return workflow["jobs"]["container"]
 
 
-def test_the_image_is_built_and_tested_on_each_architectures_own_runner(container):
-    assert container["name"] == "container (${{ matrix.arch }})"
+def test_the_image_is_built_and_tested_in_two_shards_on_each_architectures_own_runner(
+    container,
+):
+    assert container["name"] == "container (${{ matrix.arch }}, ${{ matrix.shard }})"
     assert container["runs-on"] == "${{ matrix.runner }}"
     assert container["strategy"] == {
         "fail-fast": False,
         "matrix": {
+            "arch": ["amd64", "arm64"],
+            "shard": [1, 2],
             "include": [
                 {"arch": "amd64", "runner": "ubuntu-24.04"},
                 {"arch": "arm64", "runner": "ubuntu-24.04-arm"},
-            ]
+            ],
         },
     }
     assert container["timeout-minutes"] == 30
@@ -325,12 +329,15 @@ def test_the_container_job_builds_then_tests_and_keeps_its_out(container):
     # The layers' sizes in the log: a new layer's is the image's growth.
     assert step_named(steps, "Image")["run"] == "make docker\ndocker history lado:local\n"
     run = step_named(steps, "Container tests")["run"]
-    assert run == 'uv run python scripts/smoke_ci.py container "$RUNNER_TEMP/container"'
+    assert run == (
+        'uv run python scripts/smoke_ci.py container "$RUNNER_TEMP/container" '
+        "${{ matrix.shard }}/2"
+    )
     names = [s.get("name") for s in steps]
     assert names.index("Image") < names.index("Container tests")
     upload = step_using(steps, "actions/upload-artifact")
     assert upload["if"] == "always()"
-    assert upload["with"]["name"] == "container-${{ matrix.arch }}"
+    assert upload["with"]["name"] == "container-${{ matrix.arch }}-${{ matrix.shard }}"
     # With test_browser.py's screenshot (its SHOTS: the runner's temp dir is /tmp).
     assert upload["with"]["path"] == "${{ runner.temp }}/container\n/tmp/lado-container-shots\n"
 

@@ -1651,9 +1651,23 @@ connection, above).
   else the only one installed); a suggestion without its login is not taken: Agent stays at
   `choose…` with the red note `<CLI> is not logged in: its agents cannot start.` and **Log in
   first**, which closes the window and opens that CLI's row on Settings → Agent CLIs
-  (`/settings/agent-clis#<cli>`, its login button focused). The Model list's foot reads `The
-  default comes from Settings → Agent CLIs.` (LAD-238). A refusal of one of these fields opens
-  Team and puts the focus there; an agent that cannot run opens it too.
+  (`/settings/agent-clis#<cli>`, its login button focused). A CLI without its login that can
+  still start on a saved model of a server (`ProviderInfo.starts_on_server`: Claude Code and
+  Codex, which take the server's whole process; LAD-255) is offered as `<title> <version> ·
+  not logged in: your server's models only` and taken when suggested, with the plain note
+  `<CLI> is not logged in: its agents run on your server's models only.` and a **Log in** link
+  ` for its own models.`; its Model list marks `<CLI>'s settings` and the built-in models
+  `needs login`, and the field refuses them as the start would (`SessionModelCheck.login`:
+  `<CLI> is not logged in, so it cannot run <model>: pick a model of your server, or log in
+  first.`, the CLI's settings `… so it runs on your server's models only: pick one.`) with
+  **Use `<server model>`** (its default on a server, else its first saved model) and **Log in
+  first** instead of **Use `<CLI>`'s settings**, and `needs login` in Team's summary. A new
+  session whose field would open on such a value takes the CLI's one saved model by itself,
+  once, with `For this session only: <CLI> is not logged in, so it runs on your server's
+  model.`; with several it takes none, and a move of the field by the human is never undone.
+  The Model list's foot reads `The default comes from Settings → Agent CLIs.` (LAD-238). A
+  refusal of one of these fields opens Team and puts the focus there; an agent that cannot
+  run opens it too.
 - **The name and Resume beside a new start**: every place's check gives `default_name`,
   `free_name` (`runtime.free_name`: `<name>-2`, `-3`, … none has) and `name_state`. The
   window names a new session by the free name unless the human typed one. With a stopped
@@ -1737,7 +1751,10 @@ connection, above).
   provider that cannot run (not installed, unknown, without its login: its option "`<title>` ·
   not logged in" disabled, the red note with **Log in first**, LAD-163) opens Team with its
   refusal under Agent, and Resume is off until another is chosen; LADO's own resume (the
-  container's start, `lado update`) still waits for the login.
+  container's start, `lado update`) still waits for the login. A CLI without its login that
+  starts on a saved model of a server (LAD-255) stays chosen with the plain note, as in New
+  session: a session that ran on a server's model resumes on it, and a built-in model is
+  refused in the field.
 - **Actions by status** (`SessionControl.tsx`; task feature/session-controls, 2026-10-05:
   a Stop in the list row was too easy to hit), only in the session's head, as icons with a
   tooltip and the same accessible name (Stop a square filled with the text's colour, dark
@@ -2744,8 +2761,10 @@ provider-login-layers, providers-section-and-start-screens and settings-pages; b
   repeats none of its input) and `DELETE …/login-secrets` (Log out). Each action answers
   the provider's row read now, kept for the page (a check's older read does not replace
   it), and all but opening a window start a check. No answer holds a value. `GET /api/providers` stays the System panel's and New session's list; it
-  runs the status command of the CLIs whose agents need a login (`login_missing`), in the
-  environment the agents of that CLI in `?project=` (404 for an unknown one) or in none get.
+  runs the status command of the CLIs whose agents need a login (`login_missing`, whatever
+  the CLI's default model; `starts_on_server` when such a CLI still starts on a saved model
+  of a server, LAD-255), in the environment the agents of that CLI in `?project=` (404 for an
+  unknown one) or in none get.
 
 ### Model servers
 

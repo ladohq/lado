@@ -1261,8 +1261,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `/api/kits` (the kit of each name the lookup takes, the same for every folder; a
     `where` the page still sends is ignored; an invalid one `valid: false`) and `/api/providers` (no provider is marked the default;
     `launch.provider_infos(project)` sets `login_missing` by `logins.refusal` in
-    `runtime.agents_env` of the provider over `runtime.agent_layers(project)`, false when those cannot be had; `?project=`
-    unknown is 404);
+    `runtime.agents_env` of the provider over `runtime.agent_layers(project)`, false when those cannot be had, and
+    `starts_on_server` for such a CLI that takes a server's whole process and has a saved
+    model (LAD-255); `?project=` unknown is 404);
     `provider_check.py`: Settings → Agent CLIs' rows (LAD-163): the last
     `ProviderLogins` of each provider (`launch.provider_logins`, which names the agents
     waiting for a login only while it is missing), kept for the server's lifetime, never on

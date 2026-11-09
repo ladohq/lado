@@ -11,7 +11,7 @@ from launch_window import agent, open_team, other_folder, start_button
 from playwright.sync_api import Browser, Locator, Page, expect
 from test_launch import idle, log_in, stopped_session
 
-from lado import model_settings, state
+from lado import model_settings, runtime, state
 
 pytestmark = pytest.mark.ui
 
@@ -133,6 +133,71 @@ def test_the_default_is_chosen_in_advance_and_the_session_follows_it(
     idle("my-repo")
     assert state.get_session("my-repo").power is None
     assert state.get_agent("my-repo", "supervisor").model_source == state.DEFAULT_MODEL
+
+
+def test_a_cli_without_its_login_starts_on_its_one_server_model(
+    page: Page, fake_models, logins, server, repo, shot
+):
+    """openspec change window-server-model-without-login: "fake-claude" takes a server's whole
+    process, as Claude Code does, and is not logged in (`logins` holds no file)."""
+    cloud = fake.Server("all")
+    model_settings.add_server("OpenRouter", cloud.url, None, warn=print, note=print)
+    state.add_model("CloudClaude", "fake-claude", "m1", state.model_server("OpenRouter").id)
+    page.set_viewport_size({"width": 1280, "height": 900})
+    log_in(page, server)
+    dialog, where = other_folder(page)
+    where.fill(str(repo))
+    expect(dialog).to_contain_text("✓ Ready · branch main")
+    select = agent(dialog)
+    option = select.locator('option[value="fake-claude"]')
+    expect(option).to_have_text(
+        re.compile(r"^Fake Claude \S+ · not logged in: your server's models only$"),
+        timeout=30_000,  # CLIs checked
+    )
+    expect(option).to_be_enabled()
+    select.select_option("fake-claude")
+    model = open_advanced(dialog)
+    note = dialog.locator(".field-note", has_text="its agents run on your server's models only")
+    expect(note).to_have_text(
+        "Fake Claude is not logged in: its agents run on your server's models only. Log in for "
+        "its own models."
+    )
+    expect(note).not_to_have_class(re.compile(r"\bbad\b"))
+    expect(model).to_contain_text("CloudClaude")
+    took = "For this session only: Fake Claude is not logged in, so it runs on your server's model."
+    expect(dialog.get_by_text(took)).to_be_visible()
+    start = start_button(dialog)
+    expect(start).to_be_enabled()
+    model.scroll_into_view_if_needed()
+    shot(page, "server-model")
+
+    model.click()
+    listed = dialog.get_by_role("listbox", name="Models of Fake Claude")
+    expect(listed.get_by_role("option", name="fake-small")).to_contain_text("needs login")
+    expect(listed.get_by_role("option", name=re.compile("^CloudClaude"))).not_to_contain_text(
+        "needs login"
+    )
+    listed.get_by_role("option", name="fake-small").click()
+    refusal = dialog.locator(".field-note.bad")
+    expect(refusal).to_contain_text(
+        "Fake Claude is not logged in, so it cannot run fake-small: pick a model of your server, "
+        "or log in first."
+    )
+    expect(refusal.get_by_role("button", name="Use CloudClaude")).to_be_visible()
+    expect(refusal.get_by_role("button", name="Log in first")).to_be_visible()
+    expect(start).to_be_disabled()
+    expect(dialog.locator(".launch-missing")).to_contain_text("fix the model")
+    shot(page, "built-in-refused")
+
+    refusal.get_by_role("button", name="Use CloudClaude").click()
+    expect(start).to_be_enabled()
+    start.click()
+    expect(page).to_have_url(f"{server['url']}/sessions/my-repo/activity")
+    idle("my-repo")
+    saved = state.model("CloudClaude")
+    assert state.get_session("my-repo").power.row().model_id == saved.id
+    runtime.stop_session("my-repo")
+    cloud.close()
 
 
 def test_a_context_too_small_warns_in_the_field_and_start_stays_on(

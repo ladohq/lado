@@ -42,21 +42,21 @@
 
 ## 4. End to end (UI)
 
-- [ ] 4.1 `tests/ui/test_launch.py` (marker `ui`): the fake agent `fake-login` not logged in with one
+- [x] 4.1 `tests/ui/test_launch.py` (marker `ui`): the fake agent `fake-login` not logged in with one
   saved model on the fake model server: New session offers it with `not logged in: your server's
   models only`, the field holds the model, Start is on and the session starts on it; picking a
   built-in model shows the refusal and `To start: fix the model`. When the fake agent cannot run on
   a server in this layer, the test ends at Start on and the build report says so (the start itself
   is covered by `tests/integration/test_claude_model_server.py`). Screenshots of both states at
   1280 px as run artifacts (AC-1, AC-3, AC-5).
-- [ ] 4.2 `test_a_cli_without_its_login_is_greyed_out_and_leads_to_settings` and
+- [x] 4.2 `test_a_cli_without_its_login_is_greyed_out_and_leads_to_settings` and
   `test_resume_without_the_login_is_disabled_and_leads_to_settings` still pass unchanged (AC-6).
 
 ## 5. Docs and the regression run
 
-- [ ] 5.1 `docs/design/ui.md`, Launch and session control: the Agent option and note for a CLI that
+- [x] 5.1 `docs/design/ui.md`, Launch and session control: the Agent option and note for a CLI that
   starts on a server without its login, the Model field's refusal, marks and one-model pick, and the
   Resume paragraph's `not logged in` case (LAD-255).
-- [ ] 5.2 The settings' Checks: `make lint`, `make test`, `make web`, `uv run pytest -m ui
+- [x] 5.2 The settings' Checks: `make lint`, `make test`, `make web`, `uv run pytest -m ui
   tests/ui/test_launch.py`, `openspec validate window-server-model-without-login --strict` and the
   trial archive; no CHANGELOG line (design D7).

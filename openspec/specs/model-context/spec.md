@@ -113,8 +113,8 @@ start on, SHALL give no such warning.
 
 The warning about a context SHALL say where to change it: the setting of a server of a known type, and
 the section of `docs/install.md`. In the launch window the name `docs/install.md` SHALL be a link to that
-section on GitHub, opening in a new tab; `lado start` SHALL print the same text with no link. The folded
-Advanced SHALL name each warning of the chosen model in a few words of its own.
+section on GitHub, opening in a new tab; `lado start` SHALL print the same text with no link. Team's
+summary SHALL name each warning of the chosen model in a few words of its own.
 
 #### Scenario: A server of a known type
 
@@ -130,8 +130,8 @@ Advanced SHALL name each warning of the chosen model in a few words of its own.
 #### Scenario: The folded Advanced
 
 - **WHEN** the chosen model is too small and its key goes over plain http
-- **THEN** the folded Advanced reads `⚠ key over http, context too small`; with the context alone,
-  `⚠ context too small`
+- **THEN** Team's summary, hidden, ends with `⚠ key over http, context too small`; with the
+  context alone, `⚠ context too small`
 
 ### Requirement: Overflows in a row stop the turn
 
@@ -211,7 +211,7 @@ A Claude agent on a server's model with a known context SHALL have that context 
 
 ### Requirement: A start on a public server with no known context is warned about
 
-When the model an agent starts on is on a server outside the human's machine and network, by the hosts of the rule on a key over plain http and by a name with no dot or ending in `.local`, `.lan`, `.internal` or `.home.arpa`, and its context is not known, `lado start`, the start's warnings and the launch window SHALL warn, naming the model and the server and saying that compaction comes late and the output has no limit; the agent SHALL start. The folded Advanced SHALL name it `context unknown`.
+When the model an agent starts on is on a server outside the human's machine and network, by the hosts of the rule on a key over plain http and by a name with no dot or ending in `.local`, `.lan`, `.internal` or `.home.arpa`, and its context is not known, `lado start`, the start's warnings and the launch window SHALL warn, naming the model and the server and saying that compaction comes late and the output has no limit; the agent SHALL start. Team's summary SHALL name it `context unknown`.
 
 #### Scenario: A provider that lists no context
 
@@ -231,7 +231,7 @@ When the model an agent starts on is on a server outside the human's machine and
 #### Scenario: The folded Advanced
 
 - **WHEN** the chosen model is on such a server
-- **THEN** the folded Advanced reads `⚠ context unknown`
+- **THEN** Team's summary, hidden, ends with `⚠ context unknown`
 
 #### Scenario: A known context
 

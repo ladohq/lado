@@ -927,7 +927,9 @@ def test_check_model_refuses_as_add_model_does_and_saves_nothing(serve):
 
 def test_check_model_without_a_name_checks_no_name(serve):
     add("lms", serve("lmstudio").url)
-    add_model("qwen3-8b · lms · OpenCode", "opencode", "qwen3-8b", "lms")
+    add_model("qwen3-8b · lms · OpenCode", "kilo", "qwen3-8b", "lms")
+    add_model("qwen3-8b", "kilo", "qwen3-8b", "lms")
+    add_model("qwen3-8b · OpenCode", "kilo", "qwen3-8b", "lms")
     checked = check_model(None, "opencode", "qwen3-8b", "lms")
     assert (checked.verdict.kind, checked.name) == (
         model_check.OK,
@@ -952,60 +954,84 @@ def test_check_model_uses_the_probe_given(serve):
 # A model's default name.
 
 
-def litellm_server(apis=(RESPONSES,)):
+def litellm_server(apis=(RESPONSES,), name="LiteLLM"):
     """A server one CLI suits (Codex CLI, by the Responses API), unless `apis` say more."""
-    return state.add_model_server("s1", "LiteLLM", "http://gw", "OpenAI-compatible", apis)
+    return state.add_model_server(f"s-{name}", name, "http://gw", "OpenAI-compatible", apis)
 
 
 def default_name(cli, model, server):
     return model_settings.default_name(providers.get(cli), model, server)
 
 
-def test_the_default_name_of_a_model_on_a_server():
-    assert default_name("codex", "qwen3-8b", litellm_server()) == "qwen3-8b · LiteLLM"
+def test_the_default_name_is_the_model():
+    assert default_name("codex", "qwen3-8b", litellm_server()) == "qwen3-8b"
 
 
-def test_the_default_name_on_a_server_several_clis_suit_names_its_cli():
-    """Ticked for OpenCode and then Kilo CLI, each name says its CLI, the first too."""
+def test_the_default_name_on_a_server_several_clis_suit_is_the_model():
     server = litellm_server((CHAT, RESPONSES))
-    assert default_name("opencode", "qwen3-8b", server) == "qwen3-8b · LiteLLM · OpenCode"
-    state.add_model("qwen3-8b · LiteLLM · OpenCode", "opencode", "qwen3-8b", server.id)
-    assert default_name("kilo", "qwen3-8b", server) == "qwen3-8b · LiteLLM · Kilo CLI"
-    state.add_model("qwen3-8b · LiteLLM · kilo cli", "kilo", "qwen3-8b", server.id)
-    assert default_name("kilo", "qwen3-8b", server) == "qwen3-8b · LiteLLM · Kilo CLI (2)"
+    assert default_name("opencode", "qwen3-8b", server) == "qwen3-8b"
 
 
-def test_a_taken_default_name_gets_the_cli_then_a_number():
-    server = litellm_server()
-    state.add_model("QWEN3-8B · litellm", "opencode", "qwen3-8b", server.id)
-    assert default_name("codex", "qwen3-8b", server) == "qwen3-8b · LiteLLM · Codex CLI"
-    state.add_model("qwen3-8b · LiteLLM · Codex CLI", "codex", "qwen3-8b", server.id)
-    assert default_name("codex", "qwen3-8b", server) == "qwen3-8b · LiteLLM · Codex CLI (2)"
-    state.add_model("qwen3-8b · LiteLLM · Codex CLI (2)", "codex", "qwen3-8b", server.id)
-    assert default_name("codex", "qwen3-8b", server) == "qwen3-8b · LiteLLM · Codex CLI (3)"
+def test_the_default_name_keeps_the_vendor_of_the_model():
+    server = litellm_server((CHAT, RESPONSES))
+    assert default_name("opencode", "qwen/qwen3-coder", server) == "qwen/qwen3-coder"
+
+
+def test_a_name_another_cli_holds_gets_the_cli():
+    """The OpenCode model keeps `qwen3-8b`; Kilo CLI's is told apart by its CLI."""
+    server = litellm_server((CHAT, RESPONSES))
+    state.add_model("qwen3-8b", "opencode", "qwen3-8b", server.id)
+    assert default_name("kilo", "qwen3-8b", server) == "qwen3-8b · Kilo CLI"
+
+
+def test_a_name_the_same_cli_holds_gets_the_server():
+    lms = litellm_server((CHAT,), "lms")
+    ollama = litellm_server((CHAT,), "Ollama")
+    state.add_model("qwen3-8b", "kilo", "qwen3-8b", lms.id)
+    assert default_name("kilo", "qwen3-8b", ollama) == "qwen3-8b · Ollama"
+
+
+def test_a_taken_name_is_matched_ignoring_case():
+    server = litellm_server((CHAT, RESPONSES))
+    state.add_model("Qwen3-8B", "opencode", "qwen3-8b", server.id)
+    assert default_name("kilo", "qwen3-8b", server) == "qwen3-8b · Kilo CLI"
+
+
+def test_both_suffixes_taken_then_a_number():
+    lms = litellm_server((CHAT,), "lms")
+    ollama = litellm_server((CHAT,), "Ollama")
+    state.add_model("qwen3-8b", "kilo", "qwen3-8b", lms.id)
+    state.add_model("qwen3-8b · Ollama", "opencode", "a", ollama.id)
+    assert default_name("kilo", "qwen3-8b", ollama) == "qwen3-8b · Ollama · Kilo CLI"
+    state.add_model("qwen3-8b · Ollama · Kilo CLI", "opencode", "b", ollama.id)
+    assert default_name("kilo", "qwen3-8b", ollama) == "qwen3-8b · Ollama · Kilo CLI (2)"
+    state.add_model("qwen3-8b · Ollama · Kilo CLI (2)", "opencode", "c", ollama.id)
+    assert default_name("kilo", "qwen3-8b", ollama) == "qwen3-8b · Ollama · Kilo CLI (3)"
 
 
 def test_a_long_default_name_is_cut_before_its_suffix():
-    server = litellm_server()
+    server = litellm_server((CHAT, RESPONSES))
     model = "m" * 70
     first = default_name("opencode", model, server)
-    assert (len(first), first) == (64, "m" * 64)  # cut: no room for " · LiteLLM"
+    assert first == "m" * 64
     state.add_model(first, "opencode", model, server.id)
     second = default_name("codex", model, server)
-    assert len(second) == 64
-    assert second.endswith(" · Codex CLI")
-    state.add_model(second, "codex", model, server.id)
+    assert second == "m" * (64 - len(" · Codex CLI")) + " · Codex CLI"
+    state.add_model(second, "opencode", "x", server.id)
     third = default_name("codex", model, server)
-    assert (len(third), third.endswith(" · Codex CLI (2)")) == (64, True)
-    model_settings.check_name(third, model_settings.MODEL)
+    assert third == "m" * (64 - len(" · LiteLLM · Codex CLI")) + " · LiteLLM · Codex CLI"
+    state.add_model(third, "opencode", "y", server.id)
+    fourth = default_name("codex", model, server)
+    assert (len(fourth), fourth.endswith(" · LiteLLM · Codex CLI (2)")) == (64, True)
+    model_settings.check_name(fourth, model_settings.MODEL)
 
 
 def test_add_model_without_a_name_names_it(serve):
     add("resp", serve("responses-only").url)
     saved, _ = add_model(None, "codex", "gpt-x", "resp")
-    assert saved.name == "gpt-x · resp"
+    assert saved.name == "gpt-x"
     saved, _ = add_model(None, "codex", "gpt-x", "resp")
-    assert saved.name == "gpt-x · resp · Codex CLI"
+    assert saved.name == "gpt-x · resp"
 
 
 def test_a_model_whose_default_name_is_no_name_is_refused_under_the_model(serve):
@@ -1021,7 +1047,7 @@ def test_a_model_whose_default_name_is_no_name_is_refused_under_the_model(serve)
     for refused in (checked.value, added.value):
         assert (str(refused), refused.field) == (says, "model")
     assert state.models() == []
-    assert check_model(None, "codex", "gpt-x", "resp").name == "gpt-x · resp"
+    assert check_model(None, "codex", "gpt-x", "resp").name == "gpt-x"
 
 
 # Renaming a model.

@@ -37,16 +37,24 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// Each CLI's default as Agent CLIs' rows hold it, a group per CLI (Providers.test.tsx: the rows).
+// Each CLI's default as Agent CLIs' rows hold it, a group per CLI, with the page's one `✓ Saved`
+// (Providers.test.tsx: the rows, and what else takes `✓ Saved` away).
 function Defaults() {
   const settings = useModelSettings();
   const [rows, setRows] = useState<ProviderLogins[]>([]);
+  const [saved, setSaved] = useState<string | null>(null);
   useEffect(() => {
     void getProviderLogins().then((page) => setRows(page.providers));
   }, []);
   return rows.map((row) => (
     <div key={row.cli.name} role="group" aria-label={row.cli.title}>
-      <CliDefault row={row} settings={settings} />
+      <CliDefault
+        row={row}
+        settings={settings}
+        saved={saved}
+        onSaving={() => setSaved(null)}
+        onSaved={() => setSaved(row.cli.name)}
+      />
     </div>
   ));
 }
@@ -67,6 +75,8 @@ const card = (title: string) => screen.findByRole("group", { name: title });
 const table = () => screen.findByRole("table", { name: "Your models" });
 const field = (title: string) => screen.findByRole("combobox", { name: `Default model of ${title}` });
 const reads = () => server.calls.filter((c) => c.path.includes("/model-choices"));
+// The row's `✓ Saved` slot: a status region the row always has, empty until a save succeeds.
+const savedSlot = (row: HTMLElement) => row.querySelector<HTMLElement>(".cli-saved");
 const probes = () => server.calls.filter((c) => c.path.endsWith("/probe"));
 
 const QWEN = model("Локальная Qwen", "opencode", "OpenCode", "qwen3-8b");
@@ -150,6 +160,101 @@ test("a refused pick shows under the field as an alert, the value as it was", as
   fireEvent.click(opening);
   fireEvent.click(await screen.findByRole("option", { name: "a/one" }));
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+});
+
+test("a save says ✓ Saved in the row's status region, there and empty before it; the same value again too", async () => {
+  server.entries = { ...server.entries, models: [QWEN], servers: [LMSTUDIO] };
+  mount();
+  const opencode = await card("OpenCode");
+  const opening = await field("OpenCode");
+  const slot = savedSlot(opencode)!;
+  expect(slot.getAttribute("role")).toBe("status");
+  expect(slot.textContent).toBe("");
+  fireEvent.click(opening);
+  fireEvent.click(await screen.findByRole("option", { name: /Локальная Qwen/ }));
+  await waitFor(() => expect(slot.textContent).toBe("✓ Saved"));
+  expect(savedSlot(opencode)).toBe(slot); // the same region, filled
+  expect(slot.querySelector("[aria-hidden=true]")?.textContent).toBe("✓");
+  fireEvent.click(opening);
+  fireEvent.click(await screen.findByRole("option", { name: /Локальная Qwen/ }));
+  await waitFor(() => expect(server.of("PUT", "/api/model-defaults/opencode")).toHaveLength(2));
+  await waitFor(() => expect(slot.textContent).toBe("✓ Saved"));
+  fireEvent.click(opening);
+  fireEvent.click(await screen.findByRole("option", { name: /OpenCode's settings/ }));
+  await waitFor(() => expect(server.of("DELETE", "/api/model-defaults/opencode")).toHaveLength(1));
+  await waitFor(() => expect(slot.textContent).toBe("✓ Saved"));
+});
+
+test("Other name → Use and Use <CLI>'s settings under a warning each say ✓ Saved", async () => {
+  server.lists.opencode = { models: null, why: "no list", other_name: true };
+  mount();
+  const opencode = await card("OpenCode");
+  fireEvent.click(await field("OpenCode"));
+  fireEvent.click(await screen.findByRole("option", { name: /Other name…/ }));
+  const name = within(opencode).getByRole("textbox", { name: "Other name" });
+  fireEvent.change(name, { target: { value: "a/typed" } });
+  expect(savedSlot(opencode)!.textContent).toBe("");
+  fireEvent.click(within(opencode).getByRole("button", { name: "Use" }));
+  await waitFor(() => expect(savedSlot(opencode)!.textContent).toBe("✓ Saved"));
+
+  cleanup();
+  server = new ModelServer();
+  server.install();
+  server.entries = { ...server.entries, defaults: [builtinDefault("opencode", "old/model")] };
+  mount();
+  const again = await card("OpenCode");
+  fireEvent.click(await within(again).findByRole("button", { name: "Use OpenCode's settings" }));
+  await waitFor(() => expect(savedSlot(again)!.textContent).toBe("✓ Saved"));
+});
+
+test("a refused or unanswered save shows no ✓ Saved, and takes away the one shown before", async () => {
+  mount();
+  const opencode = await card("OpenCode");
+  const opening = await field("OpenCode");
+  fireEvent.click(opening);
+  fireEvent.click(await screen.findByRole("option", { name: "a/one" }));
+  await waitFor(() => expect(savedSlot(opencode)!.textContent).toBe("✓ Saved"));
+  server.answers["PUT /api/model-defaults/opencode"] = () => refusal("OpenCode is not installed", "cli");
+  fireEvent.click(opening);
+  fireEvent.click(await screen.findByRole("option", { name: "b/two" }));
+  expect((await within(opencode).findByRole("alert")).textContent).toBe("OpenCode is not installed");
+  expect(savedSlot(opencode)!.textContent).toBe("");
+  delete server.answers["PUT /api/model-defaults/opencode"];
+  fireEvent.click(opening);
+  fireEvent.click(await screen.findByRole("option", { name: "b/two" }));
+  await waitFor(() => expect(savedSlot(opencode)!.textContent).toBe("✓ Saved"));
+  offline("PUT /api/model-defaults/opencode");
+  fireEvent.click(opening);
+  fireEvent.click(await screen.findByRole("option", { name: "a/one" }));
+  expect((await within(opencode).findByRole("alert")).textContent).toBe(
+    "LADO's server does not answer: the value was not saved.",
+  );
+  expect(savedSlot(opencode)!.textContent).toBe("");
+});
+
+test("a save in another row moves ✓ Saved there", async () => {
+  mount();
+  const opencode = await card("OpenCode");
+  const codex = await card("Codex CLI");
+  fireEvent.click(await field("OpenCode"));
+  fireEvent.click(await screen.findByRole("option", { name: "a/one" }));
+  await waitFor(() => expect(savedSlot(opencode)!.textContent).toBe("✓ Saved"));
+  fireEvent.click(await field("Codex CLI"));
+  fireEvent.click(await screen.findByRole("option", { name: "a/one" }));
+  await waitFor(() => expect(savedSlot(codex)!.textContent).toBe("✓ Saved"));
+  expect(savedSlot(opencode)!.textContent).toBe("");
+});
+
+test("a CLI not installed has no ✓ Saved slot: its line going is the answer", async () => {
+  server.logins = [...server.logins.slice(0, 3), kiloRow(false)];
+  const saved = model("Qwen в Kilo", "kilo", "Kilo CLI", "qwen3-8b");
+  server.entries = { models: [saved], servers: [LMSTUDIO], defaults: [externalDefault(saved)] };
+  mount();
+  const kilo = await card("Kilo CLI");
+  await within(kilo).findByText(/cannot run: not installed/);
+  expect(savedSlot(kilo)).toBeNull();
+  fireEvent.click(within(kilo).getByRole("button", { name: "Use Kilo CLI's settings" }));
+  await waitFor(() => expect(kilo.textContent).toBe(""));
 });
 
 test("a built-in default the list lost stays in the row with its warning and a way out", async () => {

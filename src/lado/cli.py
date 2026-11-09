@@ -1973,8 +1973,8 @@ def main(argv: list[str] | None = None) -> int:
     start.add_argument(
         "--provider",
         help=f"agent CLI for the session's agents: {', '.join(providers.names())}; without "
-        "it, a new session takes its folder's last session's provider if installed, else the "
-        "only one installed (a resume keeps its own)",
+        "it, a new session takes its folder's last session's provider if installed, else your "
+        "last session's if installed, else the only one installed (a resume keeps its own)",
     )
     start.add_argument(
         "--permission-mode",

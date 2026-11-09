@@ -112,6 +112,19 @@ test("Your models: Name, Model, From, Agent CLI and ×, by CLI in LADO's order t
   expect(within(yours).getByRole("button", { name: "Remove Старая" })).toBeTruthy();
 });
 
+test("a model named by its id marks its Model cell, which the narrow line leaves out", async () => {
+  server.entries = { models: FOUR, servers: [LMSTUDIO] };
+  mount();
+  const yours = await card();
+  const modelCell = (name: string) =>
+    within(within(yours).getByRole("button", { name: `Rename ${name}` }).closest("[role=row]") as HTMLElement)
+      .getAllByRole("cell")[1];
+  // The wide table keeps the column; the class hides it at 900 px and narrower (styles.css).
+  expect(modelCell("gpt-5-codex").textContent).toBe("gpt-5-codex");
+  expect(modelCell("gpt-5-codex").className).toContain("mx-model-named");
+  expect(modelCell("beta").className).not.toContain("mx-model-named");
+});
+
 test("a CLI's default reads <CLI> · default in its row", async () => {
   server.entries = { models: FOUR, servers: [LMSTUDIO], defaults: [externalDefault(FOUR[3])] };
   mount();

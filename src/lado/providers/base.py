@@ -75,6 +75,17 @@ class Capabilities:
 
 
 @dataclass(frozen=True)
+class ModeWords:
+    """How the UI names a permission mode: its title, its few words in a summary, one line
+    of what it does, and whether it puts the folder at risk."""
+
+    title: str
+    summary: str
+    description: str
+    risky: bool = False
+
+
+@dataclass(frozen=True)
 class Event:
     kind: str  # one of the neutral events above
     prompt: str = ""  # the input the agent received, for PROMPT_SUBMIT
@@ -457,6 +468,9 @@ class Provider(ABC):
     capabilities: Capabilities
     # The values of `lado start --permission-mode` this provider honours.
     permission_modes: tuple[str, ...]
+    # The words of each mode the CLI's own behaviour confirms (mode_words); a mode without
+    # them is named by its value.
+    permission_mode_words: Mapping[str, ModeWords] = {}
     # The model server API its CLI speaks (one of SERVER_APIS); "" for none.
     server_api: str = ""
     # Whether a model on a server takes the CLI's whole process (its one endpoint), rather
@@ -467,6 +481,14 @@ class Provider(ABC):
     # Seconds from an agent's launch to its first hook before LADO shows it as held by a
     # question it does not know (lado.runtime.check_starts).
     start_silence: float = 30.0
+
+    def mode_words(self) -> list[tuple[str, ModeWords]]:
+        """Each permission mode with its words, in `permission_modes`' order; a mode without
+        words is named by its value, never dropped."""
+        return [
+            (mode, self.permission_mode_words.get(mode) or ModeWords(mode, mode, ""))
+            for mode in self.permission_modes
+        ]
 
     def check_permission_mode(self, mode: str | None) -> None:
         """Raise ValueError for a permission mode this provider cannot honour."""

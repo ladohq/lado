@@ -117,10 +117,10 @@ the models…`. LADO SHALL keep no source's list between reads.
 ### Requirement: A server's model opens its CLIs
 
 A click on a model of an open server, or Enter on it, SHALL open under its row a list of
-the installed agent CLIs whose API the server proves, one under the other, each with its
-tick and under its title `as <name>` when ticked; Esc SHALL close it. The row SHALL say `in <CLI title>, …`
-for the agent CLIs it is configured in. A server no installed agent CLI can use SHALL say
-`No installed CLI can use this server.` and have no ticks.
+every agent CLI LADO knows, in LADO's order, one under the other; Esc SHALL close it. An
+installed agent CLI that can use the server SHALL have its tick and under its title `as
+<name>` when ticked. The row SHALL say `in <CLI title>, …` for the agent CLIs it is configured
+in. A server no installed agent CLI can use SHALL say `No installed CLI can use this server.`.
 
 #### Scenario: qwen3-8b in OpenCode and Kilo CLI
 - **WHEN** the human opens `LM Studio`, clicks `qwen3-8b` and ticks OpenCode and Kilo CLI
@@ -469,17 +469,20 @@ field SHALL hide the id, not the name or the server's mark; a server's ✎ and �
 
 ### Requirement: The UI calls Claude Code, Codex CLI, OpenCode and Kilo CLI agent CLIs
 
-The UI SHALL name what runs an agent "agent CLI": the New session window's field `Agent
-CLI`, Settings' page `Agent CLIs`, the system panel's `Agent CLIs`, and
-every line pointing to that page `Settings → Agent CLIs`; Model servers SHALL say `agent CLI`, or `CLI` where room is short. The commands' options (`--provider`, `--cli`) SHALL stay as they are.
+The UI SHALL name what runs an agent "agent CLI": Settings' section `Agent CLIs and environment`,
+the system panel's `Agent CLIs`, and every line pointing to that section `Settings → Agent CLIs and
+environment`; the New session window's field SHALL read `Agent`, its notes `agent CLI` or the CLI's
+title. The section Models SHALL say `agent CLI`, or `CLI` where room is short. The section's anchor
+and the commands' options (`--provider`, `--cli`) SHALL stay as they are.
 
 #### Scenario: A worker refused for a CLI not logged in
 - **WHEN** a session starts with Claude Code not logged in
-- **THEN** the refusal says `log in in Settings → Agent CLIs`, and that heading shows in Settings
+- **THEN** the refusal says `log in in Settings → Agent CLIs and environment`, and that
+  heading shows in Settings
 
 #### Scenario: An old link
 - **WHEN** the human opens `/settings#providers-and-environment`
-- **THEN** the address becomes `/settings/agent-clis`
+- **THEN** the page scrolls to Agent CLIs and environment
 
 ### Requirement: Without the page everything is as before
 
@@ -519,19 +522,35 @@ Refresh, which no tick SHALL change; under the list a line SHALL say how many mo
 
 ### Requirement: A default name of a server's model
 
-A model ticked or added SHALL be named `<model> · <server>`, and `<model> · <server> · <CLI
-title>` when the server suits more than one CLI. A name taken SHALL get ` · <CLI title>` added,
-and then ` (2)`, ` (3)` until free.
+A model ticked or added SHALL be named by its model as the server gives it, whole, cut to 64
+characters. A name taken ignoring case SHALL get ` · <CLI title>` when the model holding it is of
+another CLI and ` · <server>` when it is of the same CLI, then ` · <server> · <CLI title>`, and then
+` (2)`, ` (3)` until free. No saved model SHALL be renamed by it.
 
 #### Scenario: A server several CLIs suit
-- **WHEN** `LM Studio дома` suits OpenCode and Kilo CLI and the human ticks OpenCode for
-  `qwen3-8b`
-- **THEN** the model is named `qwen3-8b · LM Studio дома · OpenCode`
+- **WHEN** `LM Studio дома` suits OpenCode and Kilo CLI, no model is saved, and the human ticks
+  OpenCode for `qwen3-8b`
+- **THEN** the model is named `qwen3-8b`
 
 #### Scenario: A taken name
-- **WHEN** `qwen3-8b · lms` is saved as a name of another model and the human ticks Codex CLI
-  under `qwen3-8b` on `lms`, which suits Codex CLI alone
-- **THEN** the new model is named `qwen3-8b · lms · Codex CLI`
+- **WHEN** `qwen3-8b` is saved as a name of an OpenCode model and the human ticks Kilo CLI under
+  `qwen3-8b` on `lms`
+- **THEN** the new model is named `qwen3-8b · Kilo CLI`, and the OpenCode one keeps `qwen3-8b`
+
+#### Scenario: The same model on another server
+- **WHEN** `qwen3-8b` is saved as a name of Kilo CLI's model on `lms` and the human ticks Kilo CLI
+  under `qwen3-8b` on `Ollama`
+- **THEN** the new model is named `qwen3-8b · Ollama`
+
+#### Scenario: Both suffixes taken
+- **WHEN** Kilo CLI's `qwen3-8b` on `lms` is saved, and the names `qwen3-8b · Ollama` and
+  `qwen3-8b · Ollama · Kilo CLI` are taken, and the human ticks Kilo CLI under `qwen3-8b` on
+  `Ollama`
+- **THEN** the new model is named `qwen3-8b · Ollama · Kilo CLI (2)`
+
+#### Scenario: An id with its vendor
+- **WHEN** the human ticks OpenCode under `qwen/qwen3-coder` on a gateway
+- **THEN** the model is named `qwen/qwen3-coder`
 
 ### Requirement: Search in a server's long list
 
@@ -557,9 +576,9 @@ settles; Add SHALL save the model with its default name, off while refused.
 
 The field Default model SHALL be a picker over the list the core computes for the CLI, read when
 it opens, in this order, an empty group not shown: `<CLI>'s settings` with `no model set: the
-agent CLI chooses`; YOUR MODELS, with their id and server; BUILT-IN, the CLI's list or its
-aliases (`BUILT-IN · aliases`); `Other name…`, kept at the bottom, only when the CLI gives no
-full list. Any later place that picks a model SHALL use this component.
+agent CLI chooses`; YOUR MODELS, with their server and their id unless it is the name ignoring
+case; BUILT-IN, the CLI's list or its aliases (`BUILT-IN · aliases`); `Other name…`, at the
+bottom, only when the CLI gives no full list. Any later place that picks a model SHALL use it.
 
 #### Scenario: OpenCode with a server
 - **WHEN** the human opens the picker of OpenCode with two of its models saved
@@ -569,6 +588,12 @@ full list. Any later place that picks a model SHALL use this component.
 #### Scenario: Codex CLI on OpenAI
 - **WHEN** the human opens the picker of Codex CLI logged in to OpenAI
 - **THEN** it shows the full list and no `Other name…`
+
+#### Scenario: A model named by its id
+- **WHEN** Kilo CLI's default is its model `qwen3.8-27b`, of the model `qwen3.8-27b` on
+  `LM Studio`, and the human opens its picker in a window 768 px wide
+- **THEN** the field shows `qwen3.8-27b` once, whole, and the badge `LM Studio`, and its row in
+  the list shows no id under the name
 
 ### Requirement: Picking saves at once
 
@@ -821,12 +846,17 @@ title `Click to rename`.
 ### Requirement: Your models fits a narrow window
 
 At 900 px and narrower Your models SHALL have no header row, and each model SHALL show its name
-and × on one line, then `<model> · <server> · <agent CLI>` on the next, wrapped whole; × SHALL be
-32 px, and 44 px on a phone.
+and × on one line, then `<model> · <server> · <agent CLI>` on the next, wrapped whole, the model
+left out when it is the name ignoring case; × SHALL be 32 px, and 44 px on a phone.
 
 #### Scenario: Tablet
 - **WHEN** the human opens Model servers in a window 768 px wide with four models
 - **THEN** each model takes two lines, no name or id is cut, and the page does not scroll sideways
+
+#### Scenario: A model named by its id on a phone
+- **WHEN** the human opens Model servers on a phone with Kilo CLI's default `qwen3.8-27b`, the
+  model `qwen3.8-27b` on `LM Studio`
+- **THEN** its second line reads `LM Studio · Kilo CLI · default`
 
 ### Requirement: Removing a model never asks
 
@@ -871,3 +901,75 @@ page. Ticking it again SHALL save the model as before, take the line away, and s
 #### Scenario: Ten seconds
 - **WHEN** ten seconds pass after the untick
 - **THEN** the line says `Removed Qwen в Kilo.` without Undo until the human's next change
+
+### Requirement: A default saved says so
+
+Each save of a CLI's default that succeeds from its row on Agent CLIs SHALL show `✓ Saved` in
+the done colour beside the field (at the right of the `Default model` line in a row too narrow
+for both), in a place the row keeps for it, so nothing moves or narrows; it SHALL stay until the human's next save on the
+page, a login sheet opened, ↻ or leaving the page, never on a timer. A refused save SHALL show
+no `✓ Saved`.
+
+#### Scenario: A model of the list
+- **WHEN** the human picks `Рабочая Qwen` in OpenCode's field and the save succeeds
+- **THEN** `✓ Saved` shows beside the field, and neither the field nor the row below it moves
+
+#### Scenario: Every way of saving
+- **WHEN** the human picks `Kilo CLI's settings`, uses `Other name…`, presses `Use Kilo CLI's
+  settings` under a warning, or picks the value the field already holds
+- **THEN** each save that succeeds shows `✓ Saved` in Kilo CLI's row
+
+#### Scenario: A refusal
+- **WHEN** the server refuses a pick
+- **THEN** the refusal shows under the field, and the row shows no `✓ Saved`
+
+#### Scenario: The next change
+- **WHEN** `✓ Saved` shows in OpenCode's row and the human then saves Kilo CLI's default
+- **THEN** `✓ Saved` shows in Kilo CLI's row only
+
+#### Scenario: No timer
+- **WHEN** `✓ Saved` shows and the human does nothing for a minute
+- **THEN** it still shows; opening a login sheet, ↻ or leaving the page removes it
+
+#### Scenario: A screen reader
+- **WHEN** a save succeeds
+- **THEN** a screen reader hears `Saved` once from the row's status region
+
+### Requirement: A CLI that cannot use the server says why
+
+Under a server's model, an agent CLI that cannot use the server SHALL have its tick disabled,
+on only when a model of it is saved (then with `as <name>`), and under its title `cannot use
+this server: <why>`, the core's why: its provider refuses the server's type, the server has no
+API of the CLI, or that API did not answer in time. One the server suits but not installed
+here SHALL say `not installed`.
+
+#### Scenario: Codex CLI on LM Studio
+- **WHEN** LM Studio answers chat completions and the Responses API, all four agent CLIs are
+  installed, and the human opens `qwen3-8b`
+- **THEN** the list shows Claude Code, Codex CLI, Kilo CLI and OpenCode in that order, and
+  Codex CLI's tick is off and disabled with `cannot use this server: its Responses API loses
+  Codex CLI's MCP tools, so the agent could not talk to LADO`
+
+#### Scenario: A model saved on a CLI that cannot use the server now
+- **WHEN** `qwen3-8b` on `LM Studio` is saved for Kilo CLI as `Kilo qwen`, and Kilo CLI is no
+  longer installed
+- **THEN** Kilo CLI's tick is on and disabled, with `as Kilo qwen` and `not installed`
+
+#### Scenario: A server without the Anthropic Messages API
+- **WHEN** a server answers chat completions and the Responses API only
+- **THEN** Claude Code's tick is off and disabled with `cannot use this server: it has no
+  Anthropic Messages API`
+
+#### Scenario: An API that did not answer in time
+- **WHEN** the server's Anthropic Messages API did not answer either time
+- **THEN** Claude Code's tick is off and disabled with `cannot use this server: its Anthropic
+  Messages API did not answer in time`
+
+#### Scenario: A CLI not installed
+- **WHEN** the server suits Kilo CLI and Kilo CLI is not installed here
+- **THEN** Kilo CLI's tick is off and disabled with `not installed`
+
+#### Scenario: No installed CLI can use the server
+- **WHEN** the server suits only Claude Code and Claude Code is not installed
+- **THEN** the server says `No installed CLI can use this server.`, and a model still opens to
+  the list of CLIs, none of them tickable, each with its reason

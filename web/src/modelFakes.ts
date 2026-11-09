@@ -38,7 +38,8 @@ export const externalDefault = (saved: ConfiguredModelInfo, wholeProcess = false
   whole_process: wholeProcess,
 });
 
-// The columns' fixture: three CLIs on one server. The real LM Studio does not suit Codex CLI.
+// The columns' fixture: three CLIs on one server. The real LM Studio does not suit Codex CLI
+// (LMSTUDIO_REAL).
 export const LMSTUDIO_PROBE: ProbeInfo = {
   kind: "LM Studio",
   address: "http://localhost:1234",
@@ -52,6 +53,17 @@ export const LMSTUDIO_PROBE: ProbeInfo = {
     { name: "kilo", title: "Kilo CLI", api: "chat completions" },
     { name: "opencode", title: "OpenCode", api: "chat completions" },
   ],
+  cannot: [{ name: "claude", title: "Claude Code", why: "it has no Anthropic Messages API" }],
+};
+
+export const CODEX_REFUSES = "its Responses API loses Codex CLI's MCP tools, so the agent could not talk to LADO";
+
+// LM Studio as the core sees it: Codex CLI refuses its type.
+export const LMSTUDIO_REAL: ProbeInfo = {
+  ...LMSTUDIO_PROBE,
+  cli_notes: [`Codex CLI: ${CODEX_REFUSES}`],
+  clis: LMSTUDIO_PROBE.clis.filter((c) => c.name !== "codex"),
+  cannot: [...LMSTUDIO_PROBE.cannot, { name: "codex", title: "Codex CLI", why: CODEX_REFUSES }],
 };
 
 export const LMSTUDIO: ModelServerInfo = {
@@ -242,12 +254,16 @@ export class ModelServer {
   }
 
   title = (cli: string) => this.logins.find((r) => r.cli.name === cli)?.cli.title ?? cli;
-  taken = (name: string) => this.entries.models.some((m) => m.name.toLowerCase() === name.toLowerCase());
+  taken = (name: string) => this.holder(name) !== undefined;
+  holder = (name: string) => this.entries.models.find((m) => m.name.toLowerCase() === name.toLowerCase());
 
-  // The core's default name in short: `<model> · <server> · <CLI title>`; ` (2)` when taken.
+  // The core's default name in short: the model; when taken ` · <CLI title>` (another CLI's)
+  // or ` · <server>` (the same CLI's), then ` · <server> · <CLI title>`.
   named(given: Added): string {
-    const base = `${given.model} · ${given.server} · ${this.title(given.cli)}`;
-    return this.taken(base) ? `${base} (2)` : base;
+    const holder = this.holder(given.model);
+    if (!holder) return given.model;
+    const next = `${given.model} · ${holder.cli !== given.cli ? this.title(given.cli) : given.server}`;
+    return this.holder(next) ? `${given.model} · ${given.server} · ${this.title(given.cli)}` : next;
   }
 
   of(method: string, start: string): Call[] {

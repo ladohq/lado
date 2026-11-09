@@ -88,8 +88,8 @@ test("Start session opens New session in Project with the project and the reposi
   const page = await open();
   fireEvent.click(within(rowOf(page, "frontend")).getByRole("button", { name: "Start session" }));
   const dialog = await screen.findByRole("dialog", { name: "New session" });
-  expect(within(dialog).getByRole("button", { name: "Project" }).getAttribute("aria-pressed")).toBe("true");
   await waitFor(() => expect(server.calls("GET", "/api/project-launch?project=shop&repo=frontend")).toHaveLength(1));
+  await waitFor(() => expect((within(dialog).getByRole("combobox", { name: "Where" }) as HTMLInputElement).value).toBe("Project"));
 });
 
 // Sessions

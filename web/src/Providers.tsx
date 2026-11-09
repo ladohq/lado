@@ -16,7 +16,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
 
 import { checkProviders, getProviderLogins, type ProviderLogins, type ProvidersPage } from "./api";
-import { CliDefault } from "./CliDefault";
+import { CliDefault, type SavedProps } from "./CliDefault";
 import { LoginSheet } from "./LoginSheet";
 import { MODEL_SERVERS_PATH, terminalPath } from "./paths";
 import { messageOf } from "./SessionControl";
@@ -88,6 +88,9 @@ export function Providers() {
   }, [page, hash]);
 
   const models = useModelSettings();
+  // The CLI whose row says `✓ Saved` (CliDefault.tsx): one for the page, so the next save anywhere
+  // takes it; a login sheet opened and ↻ take it too, never a timer.
+  const [saved, setSaved] = useState<string | null>(null);
   const changed = (row: ProviderLogins) =>
     setPage((now) =>
       now ? { ...now, providers: now.providers.map((p) => (p.cli.name === row.cli.name ? row : p)) } : now,
@@ -107,7 +110,9 @@ export function Providers() {
           aria-label="Check the CLIs again"
           title={checking ? "Checking the CLIs…" : "Check the CLIs again"}
           onClick={() => {
-            if (!checking) check();
+            if (checking) return;
+            setSaved(null);
+            check();
           }}
         >
           <span aria-hidden="true">↻</span>
@@ -127,7 +132,18 @@ export function Providers() {
           {noneInstalled && <p className="pv-none">No agent CLI installed. Install one to start a session.</p>}
           <ul className="srows pv-list">
             {page.providers.map((row) => (
-              <ProviderRow key={row.cli.name} row={row} models={models} onOpen={() => setSheet(row.cli.name)} />
+              <ProviderRow
+                key={row.cli.name}
+                row={row}
+                models={models}
+                saved={saved}
+                onSaving={() => setSaved(null)}
+                onSaved={() => setSaved(row.cli.name)}
+                onOpen={() => {
+                  setSaved(null);
+                  setSheet(row.cli.name);
+                }}
+              />
             ))}
             {page.environment && (
               <li className="srow pv-env-row">
@@ -169,7 +185,16 @@ export function stateText(row: ProviderLogins): string {
 // A CLI's row (`li#<provider name>`): its text on the left, its login button on the right,
 // its default model under them across the row; a row not read yet or a CLI not installed
 // has its name and one line.
-function ProviderRow({ row, models, onOpen }: { row: ProviderLogins; models: ModelSettingsState; onOpen: () => void }) {
+function ProviderRow({
+  row,
+  models,
+  onOpen,
+  ...mark
+}: {
+  row: ProviderLogins;
+  models: ModelSettingsState;
+  onOpen: () => void;
+} & SavedProps) {
   const id = useId();
   const { cli, login } = row;
   const name = (
@@ -197,7 +222,7 @@ function ProviderRow({ row, models, onOpen }: { row: ProviderLogins; models: Mod
           </p>
           <p className="srow-desc">{cli.install_hint}</p>
         </div>
-        <CliDefault row={row} settings={models} />
+        <CliDefault row={row} settings={models} {...mark} />
       </li>
     );
   }
@@ -245,7 +270,7 @@ function ProviderRow({ row, models, onOpen }: { row: ProviderLogins; models: Mod
           </button>
         </div>
       )}
-      <CliDefault row={row} settings={models} />
+      <CliDefault row={row} settings={models} {...mark} />
     </li>
   );
 }

@@ -332,6 +332,21 @@ test("the field shows its value: settings, a built-in id, a name with its id and
   for (const part of ["Локальная Qwen", "qwen3-8b", "LM Studio дома"]) expect(shown).toContain(part);
 });
 
+test("a model named by its id shows it once, in the field and its row; the title and label keep it", () => {
+  const byId = model("Qwen3.8-27B", "opencode", "OpenCode", "qwen3.8-27b", "LM Studio");
+  const { field } = mount({ value: external(byId), own: [byId, QWEN] });
+  expect(field.querySelector(".mp-title")?.textContent).toBe("Qwen3.8-27B");
+  expect(field.querySelector(".mp-id")).toBeNull();
+  expect(field.title).toBe("Qwen3.8-27B · qwen3.8-27b · LM Studio");
+  fireEvent.click(field);
+  const row = screen.getByRole("option", { name: "Qwen3.8-27B, qwen3.8-27b, on the model server LM Studio" });
+  expect(row.querySelector(".mp-sub")).toBeNull();
+  const other = screen.getByRole("option", { name: /Локальная Qwen/ });
+  expect(other.querySelector(".mp-sub")?.textContent).toBe("qwen3-8b");
+  cleanup();
+  expect(mount({ value: external(QWEN), own: [QWEN] }).field.querySelector(".mp-id")?.textContent).toBe("qwen3-8b");
+});
+
 test("the selected row is marked, and an other name heads the built-in models", () => {
   const read = list({ choices: choices({ aliases: ["opus"], models: null, other_name: true, read_again: false }) });
   fireEvent.click(mount({ cli: CLAUDE, read, value: builtin("claude-x") }).field);

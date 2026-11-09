@@ -328,7 +328,7 @@
       },
       "post": {
         "summary": "Start",
-        "description": "Start a new session, as `lado start` does, without attaching to it; for `where`\nof kind \"scratch\" the folder is made a repository first, as `lado start --new`\ndoes; of kind \"project\" the session is the project's repository's, as `lado start\n--project <id> --repo <name>` starts it. A name a session has is 409 with that\nsession's status and folder; on an empty LADO_HOME the core makes lado.db.",
+        "description": "Start a new session, as `lado start` does, without attaching to it; for `where`\nof kind \"scratch\" the folder is made a repository first, as `lado start --new`\ndoes; of kind \"setup\" a plain folder of files is set up first (lado.setup.make),\nwith the left-out files of `include` taken in; of kind \"project\" the session is the\nproject's repository's, as `lado start --project <id> --repo <name>` starts it. A\nname a session has is 409 with that session's status and folder; on an empty\nLADO_HOME the core makes lado.db.",
         "operationId": "start_api_sessions_post",
         "requestBody": {
           "content": {
@@ -4991,6 +4991,30 @@
         "title": "CliApi",
         "description": "An agent CLI (a provider's name and title) and the model server API it speaks."
       },
+      "CliCannot": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "why": {
+            "type": "string",
+            "title": "Why"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "title",
+          "why"
+        ],
+        "title": "CliCannot",
+        "description": "An agent CLI that cannot use a model server, and why, as the end of a sentence."
+      },
       "CliDefault": {
         "properties": {
           "cli": {
@@ -5299,6 +5323,17 @@
           "default_name": {
             "type": "string",
             "title": "Default Name"
+          },
+          "free_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Name"
           },
           "name_state": {
             "type": "string",
@@ -5701,6 +5736,17 @@
             ],
             "title": "Default Name"
           },
+          "free_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Name"
+          },
           "name_state": {
             "anyOf": [
               {
@@ -5743,6 +5789,16 @@
             "type": "boolean",
             "title": "Scratch",
             "default": false
+          },
+          "setup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SetupInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "project": {
             "anyOf": [
@@ -6693,6 +6749,47 @@
         "title": "Launch",
         "description": "A new session, as `lado start` takes it."
       },
+      "LeftOutInfo": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "secret",
+              "large",
+              "repository"
+            ],
+            "title": "Reason"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "line": {
+            "type": "string",
+            "title": "Line"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "reason",
+          "size",
+          "line"
+        ],
+        "title": "LeftOutInfo",
+        "description": "A path the set-up's first commit leaves out (lado.setup.LeftOut)."
+      },
       "Limits": {
         "properties": {
           "extensions": {
@@ -7246,6 +7343,40 @@
         ],
         "title": "MessageText",
         "description": "The human's text from the composer, with the full names of the files uploaded for\nit (POST \u2026/artifacts); the text may be empty when there are some."
+      },
+      "ModeWordsInfo": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "risky": {
+            "type": "boolean",
+            "title": "Risky"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "title",
+          "summary",
+          "description",
+          "risky"
+        ],
+        "title": "ModeWordsInfo",
+        "description": "A permission mode as the UI names it (providers.base.ModeWords)."
       },
       "ModelAdd": {
         "properties": {
@@ -8347,6 +8478,13 @@
             },
             "type": "array",
             "title": "Cli Notes"
+          },
+          "cannot": {
+            "items": {
+              "$ref": "#/components/schemas/CliCannot"
+            },
+            "type": "array",
+            "title": "Cannot"
           }
         },
         "type": "object",
@@ -8358,10 +8496,11 @@
           "embeddings",
           "apis_why",
           "clis",
-          "cli_notes"
+          "cli_notes",
+          "cannot"
         ],
         "title": "ProbeInfo",
-        "description": "What a probe found on a model server (lado.model_servers.Probe): its type, the\naddress that answered (the typed one with its scheme and path filled in), its models\n(None for no list, why in `models_why`), those it types as embeddings, why its APIs\ncould not be told (\"\" when they could), the CLIs that can use it, and for each CLI that has\nits API and refuses its type a line of why."
+        "description": "What a probe found on a model server (lado.model_servers.Probe): its type, the\naddress that answered (the typed one with its scheme and path filled in), its models\n(None for no list, why in `models_why`), those it types as embeddings, why its APIs\ncould not be told (\"\" when they could), the CLIs that can use it, for each CLI that has\nits API and refuses its type a line of why, and each CLI that cannot use it with why\n(`Probe.cannot`), both lists of CLIs in LADO's order."
       },
       "ProjectDeletion": {
         "properties": {
@@ -8624,6 +8763,17 @@
               }
             ],
             "title": "Default Name"
+          },
+          "free_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Free Name"
           },
           "name_state": {
             "anyOf": [
@@ -8928,6 +9078,13 @@
             "type": "array",
             "title": "Permission Modes"
           },
+          "mode_words": {
+            "items": {
+              "$ref": "#/components/schemas/ModeWordsInfo"
+            },
+            "type": "array",
+            "title": "Mode Words"
+          },
           "install_hint": {
             "type": "string",
             "title": "Install Hint"
@@ -8963,6 +9120,7 @@
           "name",
           "title",
           "permission_modes",
+          "mode_words",
           "install_hint",
           "installed",
           "version",
@@ -9075,6 +9233,7 @@
             "type": "string",
             "enum": [
               "last_session",
+              "last_any",
               "only_installed"
             ],
             "title": "Reason"
@@ -9122,6 +9281,16 @@
           },
           "session": {
             "$ref": "#/components/schemas/SessionInfo"
+          },
+          "project": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProjectPlace"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -10491,6 +10660,100 @@
         ],
         "title": "SessionToForget"
       },
+      "SetupInfo": {
+        "properties": {
+          "files": {
+            "type": "integer",
+            "title": "Files"
+          },
+          "bytes": {
+            "type": "integer",
+            "title": "Bytes"
+          },
+          "left_out": {
+            "items": {
+              "$ref": "#/components/schemas/LeftOutInfo"
+            },
+            "type": "array",
+            "title": "Left Out"
+          },
+          "refusal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SetupRefusal"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScratchProblem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "make": {
+            "type": "string",
+            "title": "Make"
+          },
+          "max_files": {
+            "type": "integer",
+            "title": "Max Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files",
+          "bytes",
+          "left_out",
+          "refusal",
+          "author",
+          "make",
+          "max_files"
+        ],
+        "title": "SetupInfo",
+        "description": "What setting a plain folder up would do (lado.setup.preview), and whether git knows\nthe author of its commit."
+      },
+      "SetupRefusal": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "home",
+              "too_big",
+              "unreadable",
+              "odd_name"
+            ],
+            "title": "Kind"
+          },
+          "files": {
+            "type": "integer",
+            "title": "Files"
+          },
+          "bytes": {
+            "type": "integer",
+            "title": "Bytes"
+          },
+          "line": {
+            "type": "string",
+            "title": "Line"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "files",
+          "bytes",
+          "line"
+        ],
+        "title": "SetupRefusal",
+        "description": "Why a folder may not be set up (lado.setup.Refusal)."
+      },
       "Started": {
         "properties": {
           "session": {
@@ -11583,6 +11846,20 @@
               }
             ],
             "title": "Repo"
+          },
+          "include": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include"
           }
         },
         "type": "object",

@@ -1049,6 +1049,39 @@ def test_kilo_plan_agent_may_use_lado_tools(repo):
     assert "agent" not in config
 
 
+@pytest.mark.parametrize("name", providers.names())
+def test_every_mode_has_its_words_or_its_value(name):
+    provider = providers.get(name)
+    listed = provider.mode_words()
+    assert [mode for mode, _ in listed] == list(provider.permission_modes)
+    for mode, words in listed:
+        assert words.title and words.summary
+        if mode not in provider.permission_mode_words:
+            assert words == base.ModeWords(mode, mode, "", False)
+    assert set(provider.permission_mode_words) <= set(provider.permission_modes)
+
+
+def test_the_modes_words():
+    claude = dict(providers.get("claude").mode_words())
+    assert claude["default"] == base.ModeWords(
+        "Ask before changes (recommended)",
+        "Asks before changes",
+        "Asks before it edits files or runs commands.",
+    )
+    assert claude["bypassPermissions"].title == "Full access, never ask ⚠"
+    assert claude["bypassPermissions"].risky
+    # Claude Code 2.1.295's --help lists auto and manual with no words of what they do.
+    assert claude["auto"] == base.ModeWords("auto", "auto", "")
+    assert claude["manual"] == base.ModeWords("manual", "manual", "")
+    codex = dict(providers.get("codex").mode_words())
+    assert codex["default"].title == "Work inside this folder (recommended)"
+    assert codex["bypassPermissions"].risky
+    for name in ("kilo", "opencode"):
+        words = dict(providers.get(name).mode_words())
+        assert [m for m, w in words.items() if w.risky] == ["bypassPermissions"]
+        assert words["plan"].title == "Plan only, no changes"
+
+
 def test_providers_declare_their_permission_modes():
     assert providers.get("kilo").permission_modes == (
         "default",

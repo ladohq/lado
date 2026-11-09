@@ -106,6 +106,15 @@ def test_start_without_provider_says_which_it_took_and_why(repo, fake_tmux, caps
     assert "provider: opencode (the folder's last session)" in capsys.readouterr().out
 
 
+def test_start_in_a_new_folder_takes_your_last_sessions_provider(repo, tmp_path, fake_tmux, capsys):
+    other = agent_helpers.init_repo(tmp_path / "other")
+    assert main(["start", str(repo), "--name", "a", "--provider", "kilo", "--no-attach"]) == 0
+    capsys.readouterr()
+    assert main(["start", str(other), "--name", "b", "--no-attach"]) == 0
+    assert "provider: kilo (your last session)" in capsys.readouterr().out
+    assert state.get_session("b").provider == "kilo"
+
+
 def test_start_without_provider_refuses_a_choice_it_cannot_make(repo, fake_tmux, capsys):
     assert main(["start", str(repo), "--no-attach"]) == 1
     assert "give one with --provider NAME" in capsys.readouterr().err

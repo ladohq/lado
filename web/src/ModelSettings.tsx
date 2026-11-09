@@ -384,7 +384,12 @@ function ModelRow({
         {(problem ?? note) && <span className="field-note bad">{problem ?? note}</span>}
       </span>
       <span className="mx-meta">
-        <span className="mx-model mono" role="cell" title={model.model}>
+        {/* A model named by its id: the narrow line says it once, as the name (styles.css). */}
+        <span
+          className={`mx-model mono${fold(model.model) === fold(model.name) ? " mx-model-named" : ""}`}
+          role="cell"
+          title={model.model}
+        >
           {model.model}
         </span>
         <span

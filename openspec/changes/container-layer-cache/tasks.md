@@ -23,10 +23,13 @@
 
 - [x] 3.1 `docs/testing.md`, CI paragraph: the container cells' cache (who reads, who writes,
   the daily build from nothing, the release without one). Check: read against ci.yml.
-- [ ] 3.2 The layering, locally (AC-1): `make docker DOCKER_BUILD_FLAGS="--builder <b> --load
+- [x] 3.2 The layering, locally (AC-1): `make docker DOCKER_BUILD_FLAGS="--builder <b> --load
   --cache-to type=local,dest=<dir> "` once, then a change of the version and again with
   `--cache-from type=local,src=<dir>`; quote the `CACHED` lines and both times in the
   build report. When Docker does not run locally, say so; the pull request's own CI then
-  shows the build with the new flags (no cache to read yet) and its time.
+  shows the build with the new flags (no cache to read yet) and its time. Done in CI, as
+  the build had no Docker: a temporary commit let the pull request write its own scope,
+  the warm reruns showed the 26 layers before the wheel `CACHED`, and a revert followed.
 - [ ] 3.3 After the merge (not blocking the pull request): the step `Image` times of the
-  first pull request runs that read `main`'s cache, against 76 s / 66 s (AC-1).
+  first pull request runs that read `main`'s cache, against 76 s / 66 s (AC-1). Open until
+  then: no pull request can read main's cache before the merge.

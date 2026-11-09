@@ -1,10 +1,10 @@
 ## 1. release_check.py frees the final's own checklist (D5)
 
-- [ ] 1.1 `tests/test_release_check.py` (unit, a git repository in a temp folder as its
+- [x] 1.1 `tests/test_release_check.py` (unit, a git repository in a temp folder as its
   other tests): a final whose commit also changes `docs/releases/0.37.0.md` against
   `v0.37.0rc2` passes; one that changes `docs/releases/0.36.0.md` fails with
   `v0.37.0 differs from v0.37.0rc2 in docs/releases/0.36.0.md`. Red before 1.2.
-- [ ] 1.2 `scripts/release_check.py`: the final's `docs/releases/X.Y.Z.md` is free beside
+- [x] 1.2 `scripts/release_check.py`: the final's `docs/releases/X.Y.Z.md` is free beside
   `FREE`; its docstring names it. 1.1 passes.
 
 ## 2. rc_check.py prints docs/release.md's list and the RC's section (D1-D4)

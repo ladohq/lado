@@ -6,7 +6,8 @@ Run by the Release workflow before it builds, in a checkout with every tag and t
 (docs/release.md). A tag `vX.Y.Z` is a final release; any other tag (a release candidate
 `vX.Y.ZrcN`, a tag that is no version) passes untouched. A final's last release candidate
 is its tag `vX.Y.ZrcN` with the highest N. Without one, a minor release (Z = 0) fails and
-a patch passes. With one, the final may differ from it only in CHANGELOG.md, the
+a patch passes. With one, the final may differ from it only in CHANGELOG.md, its own
+release's checklist `docs/releases/X.Y.Z.md` (the human's notes, read by no user), the
 `version = "..."` line of pyproject.toml and that of the `lado` package in uv.lock (a
 dependency's version there is no release's change): each other file, and each other
 changed line of those two, is one line on stderr, and the exit is 1.
@@ -22,6 +23,7 @@ import sys
 
 FINAL = re.compile(r"v(\d+)\.(\d+)\.(\d+)")
 FREE = {"CHANGELOG.md"}  # free text: the final's commit dates it
+CHECKLIST = "docs/releases/{}.md"  # the final's own checklist, free too; another's is not
 LOCK = "uv.lock"
 VERSIONED = ("pyproject.toml", LOCK)  # only their version lines may change
 VERSION_LINE = re.compile(r'[+-]version = "[^"]*"')
@@ -93,10 +95,11 @@ def problems(tag: str) -> tuple[list[str], str]:
         if found[3] == "0":
             return [f"{tag} needs a release candidate: tag {tag}rc1 first"], ""
         return [], f"{tag} is a patch without a release candidate"
+    free = FREE | {CHECKLIST.format(tag[1:])}
     wrong = [
         f"{tag} differs from {candidate} in {path}"
         for path in git("diff", "--name-only", candidate, tag).splitlines()
-        if path not in FREE and path not in VERSIONED
+        if path not in free and path not in VERSIONED
     ]
     wrong += [
         f"{tag} changes a line of {path} that is not its version: {line}"

@@ -481,7 +481,7 @@ function LaunchDialog({
   const chosenProvider = held ? null : provider;
   const providerInfo = held ? null : inList;
   const noLogin = inList && cannotStart(inList) ? inList : null;
-  const serverOnly = providerInfo?.installed && providerInfo.login_missing && !noLogin ? providerInfo : null;
+  const serverOnly = providerInfo?.installed && providerInfo.starts_on_server ? providerInfo : null;
   const canStart = providerInfo?.installed === true && !cannotStart(providerInfo);
   // A provider the session cannot run: Team opens on its refusal.
   const providerRefused =

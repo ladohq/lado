@@ -269,7 +269,7 @@ export function useLaunchModel({
     field.current?.focus({ preventScroll: true });
   };
   const useServer = (next: CliDefault) => {
-    changed(sameModel(next, defaultValue) && !resuming ? { kind: "default" } : { kind: "pick", value: next });
+    picked({ external: next.external ?? "" });
     field.current?.focus({ preventScroll: true });
   };
   const checkAgain = () => {

@@ -3,7 +3,7 @@ live tests, on a real model.
 
     python scripts/smoke_ci.py run <provider> <out>
     python scripts/smoke_ci.py live <provider> <out>
-    python scripts/smoke_ci.py container <out>
+    python scripts/smoke_ci.py container <out> [K/N]
     python scripts/smoke_ci.py needed <event> [<base> <head>]
 
 `run` does one (system, provider) cell of ci.yml's job `smoke` or of the Windows probe's WSL
@@ -29,7 +29,8 @@ tests before it kept.
 `container` is a cell of ci.yml's job `container`: it installs nothing (LADO's image, which
 `make docker` built before, has its own CLI) and runs `uv run pytest -m container -n0 -v`
 into `<out>/container.log`, with `run`'s pass rule (the container tests skip without Docker
-or the image) and evidence.
+or the image) and evidence. With `K/N` it adds `--shard K/N` (tests/shard.py): one of the
+job's cells per architecture; a shard with no test has no pass and is red.
 
 `needed` answers ci.yml's job `changes`: whether this run needs the smoke. It prints
 `smoke=true` or `smoke=false` (a line for `$GITHUB_OUTPUT`) and, on stderr, the files it
@@ -67,8 +68,8 @@ LIVE_LIMIT = "1500"
 # pytest's last line, e.g. `===== 1 failed, 2 passed in 10.00s (0:00:10) =====`.
 SUMMARY = re.compile(r"^=+ .* in [0-9.]+s\b.*=+$")
 USAGE = (
-    "usage: smoke_ci.py run <provider> <out> | live <provider> <out> | container <out> | "
-    "needed <event> [<base> <head>]"
+    "usage: smoke_ci.py run <provider> <out> | live <provider> <out> | container <out> [K/N] "
+    "| needed <event> [<base> <head>]"
 )
 
 
@@ -162,11 +163,19 @@ def live(provider: str, out: Path) -> int:
     return code
 
 
-def container(out: Path) -> int:
+def container(out: Path, shard: str | None = None) -> int:
     """The container tests against the image `make docker` built (ci.yml's job
-    `container`): no CLI to install, the image has its own."""
+    `container`), or their shard `K/N`: no CLI to install, the image has its own."""
     tests = ["uv", "run", "pytest", "-m", "container", "-n0", "-v"]
+    if shard:
+        tests += ["--shard", shard]
     return cell(tests, out / "container.log", out, "container")
+
+
+def good_shard(value: str) -> bool:
+    """`K/N` with 1 <= K <= N, as tests/shard.py takes it."""
+    match = re.fullmatch(r"(\d+)/(\d+)", value)
+    return bool(match) and 1 <= int(match[1]) <= int(match[2])
 
 
 def cell(
@@ -267,8 +276,11 @@ def main(argv: list[str]) -> int:
             print(f"{argv[1]}: no provider (one of {', '.join(PINS)})", file=sys.stderr)
             return 2
         return (run if argv[0] == "run" else live)(argv[1], Path(argv[2]))
-    if len(argv) == 2 and argv[0] == "container":
-        return container(Path(argv[1]))
+    if len(argv) in (2, 3) and argv[0] == "container":
+        if len(argv) == 3 and not good_shard(argv[2]):
+            print(USAGE, file=sys.stderr)
+            return 2
+        return container(Path(argv[1]), *argv[2:])
     if len(argv) >= 2 and argv[0] == "needed":
         return main_needed(argv[1:])
     print(USAGE, file=sys.stderr)

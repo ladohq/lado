@@ -494,8 +494,9 @@ def test_an_unknown_provider_is_refused(tmp_path):
 # The container cell (ci.yml's job `container`): the image's own CLI, nothing installed.
 
 
-def run_container(tmp_path, *args, **env):
-    """Run `smoke_ci.py container <out>` with the uv stub: its process, out and what it ran."""
+def run_container(tmp_path, *args, shard=None, **env):
+    """Run `smoke_ci.py container <out> [<shard>]` with the uv stub: its process, out and what
+    it ran."""
     stubs = tmp_path / "stubs"
     stubs.mkdir(exist_ok=True)
     (stubs / "uv").write_text(UV)
@@ -511,8 +512,9 @@ def run_container(tmp_path, *args, **env):
         "SUMMARY": PASSED,
         **env,
     }
+    args = args or (str(out), *([shard] if shard else []))
     done = subprocess.run(
-        [sys.executable, str(SCRIPT), "container", *(args or (str(out),))],
+        [sys.executable, str(SCRIPT), "container", *args],
         env=full,
         capture_output=True,
         text=True,
@@ -546,6 +548,25 @@ def test_a_failing_container_cell_keeps_its_evidence(tmp_path):
     assert done.returncode != 0
     kept = out / "evidence" / "20261010-test_w" / "lado-log.txt"
     assert kept.read_text() == "w1 never reported\n"
+
+
+def test_a_container_shard_runs_only_its_shard_with_the_pass_rule(tmp_path):
+    done, out, ran = run_container(tmp_path, shard="2/2")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert ran.splitlines()[0] == "uv run pytest -m container -n0 -v --shard 2/2"
+    # An empty shard has no pass: red.
+    done, _, _ = run_container(
+        tmp_path, shard="1/2", SUMMARY="=== 3 deselected in 0.10s ===", CODE="5"
+    )
+    assert done.returncode != 0
+
+
+@pytest.mark.parametrize("shard", ["0/2", "3/2", "1", "a/b", "1/2/3"])
+def test_a_bad_container_shard_is_a_usage_error_and_runs_nothing(tmp_path, shard):
+    done, _, ran = run_container(tmp_path, shard=shard)
+    assert done.returncode == 2
+    assert "container <out> [K/N]" in done.stderr
+    assert ran == ""
 
 
 @pytest.mark.parametrize("args", [[], ["a", "b"]])

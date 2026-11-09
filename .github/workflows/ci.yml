@@ -270,8 +270,9 @@ jobs:
       # and the runtime's token and URLs go to the build's environment. A pull request reads
       # main's cache and writes none; a push to main reads and writes it; the daily and a
       # manual run build from nothing and write it anew, so a broken source (Debian, gh's
-      # repository, npm) shows within a day. The wheel is the Dockerfile's last layer, so a
-      # pull request rebuilds only that. The release builds without any cache.
+      # repository, npm) shows within a day. Only shard 1 writes, so two cells never write one
+      # scope at once. The wheel is the Dockerfile's last layer, so a pull request rebuilds
+      # only that. The release builds without any cache.
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         id: buildx
       - uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4.0.0
@@ -281,11 +282,14 @@ jobs:
           EVENT: ${{ github.event_name }}
           BUILDER: ${{ steps.buildx.outputs.name }}
           SCOPE: container-${{ matrix.arch }}
+          SHARD: ${{ matrix.shard }}
         run: |
+          write="--cache-to type=gha,mode=min,scope=$SCOPE"
+          if [ "$SHARD" != 1 ]; then write=""; fi
           case "$EVENT" in
             pull_request) cache="--cache-from type=gha,scope=$SCOPE" ;;
-            push) cache="--cache-from type=gha,scope=$SCOPE --cache-to type=gha,mode=min,scope=$SCOPE" ;;
-            schedule | workflow_dispatch) cache="--no-cache --cache-to type=gha,mode=min,scope=$SCOPE" ;;
+            push) cache="--cache-from type=gha,scope=$SCOPE $write" ;;
+            schedule | workflow_dispatch) cache="--no-cache $write" ;;
             *) echo "Image: no cache rule for the event $EVENT" >&2; exit 1 ;;
           esac
           make docker DOCKER_BUILD_FLAGS="--builder $BUILDER --load $cache"

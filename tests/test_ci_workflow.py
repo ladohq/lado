@@ -360,13 +360,16 @@ def test_the_builder_and_the_caches_token_come_before_the_image(container):
     assert order == sorted(order)
 
 
-def image_build(container, event: str, arch: str, tmp_path) -> subprocess.CompletedProcess:
-    """The step Image's script run for `event` on `arch`, with make and docker stubs that
-    write their arguments, one call a line, to tmp_path/calls."""
+def image_build(
+    container, event: str, arch: str, tmp_path, shard: int = 1
+) -> subprocess.CompletedProcess:
+    """The step Image's script run for `event` in the cell (`arch`, `shard`), with make and
+    docker stubs that write their arguments, one call a line, to tmp_path/calls."""
     step = step_named(container["steps"], "Image")
     values = {
         "${{ github.event_name }}": event,
         "${{ matrix.arch }}": arch,
+        "${{ matrix.shard }}": str(shard),
         "${{ steps.buildx.outputs.name }}": "builder-1",
     }
     env = {}
@@ -388,9 +391,9 @@ def image_build(container, event: str, arch: str, tmp_path) -> subprocess.Comple
     )
 
 
-def build_flags(container, event: str, arch: str, tmp_path) -> list[str]:
+def build_flags(container, event: str, arch: str, tmp_path, shard: int = 1) -> list[str]:
     """The flags the step Image gives `docker build` through make docker."""
-    done = image_build(container, event, arch, tmp_path)
+    done = image_build(container, event, arch, tmp_path, shard)
     assert done.returncode == 0, done.stderr
     calls = (tmp_path / "calls").read_text().splitlines()
     [make] = [c.split("|")[:-1] for c in calls if c.startswith("make|")]
@@ -426,6 +429,20 @@ def test_the_daily_and_a_manual_run_build_anew_and_write_the_cache(container, ev
     flags = build_flags(container, event, "amd64", tmp_path)
     assert flags == cache_flags("container-amd64", read=False, write=True)
     assert "--cache-from" not in flags
+
+
+@pytest.mark.parametrize("event", ["push", "schedule", "workflow_dispatch"])
+def test_only_shard_1_writes_its_architectures_cache(container, event, tmp_path):
+    """Two cells never write one scope at once (D4): shard 2 builds as shard 1 does, and
+    writes nothing."""
+    flags = build_flags(container, event, "arm64", tmp_path, shard=2)
+    read = event == "push"
+    assert flags == cache_flags("container-arm64", read=read, write=False)
+
+
+def test_a_pull_requests_shard_2_writes_none_either(container, tmp_path):
+    flags = build_flags(container, "pull_request", "amd64", tmp_path, shard=2)
+    assert flags == cache_flags("container-amd64", read=True, write=False)
 
 
 def test_an_event_the_image_does_not_know_fails_the_step(container, tmp_path):

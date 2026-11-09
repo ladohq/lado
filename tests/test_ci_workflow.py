@@ -94,6 +94,12 @@ def test_ui_tests_in_two_shards_on_two_workers_and_make_dist_once(workflow):
     assert bundle["run"] == "cd web && npm ci --no-audit --no-fund && npm run build"
 
 
+def test_every_job_has_a_time_limit(workflow):
+    """Without one a hung job runs GitHub's six hours (ui (1) on an apt mirror, 2026-10-31)."""
+    unlimited = [name for name, job in workflow["jobs"].items() if "timeout-minutes" not in job]
+    assert unlimited == []
+
+
 def test_ci_runs_on_pull_requests_pushes_to_main_daily_and_by_hand(workflow):
     # PyYAML reads the key `on` as True.
     assert workflow[True] == {

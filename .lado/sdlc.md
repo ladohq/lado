@@ -90,7 +90,8 @@ the base does above.
   - `make test-smoke`: needs the real CLIs; CI runs it.
 - What CI proves: on every pull request and push to main, `ruff format --check`,
   `ruff check`, the unit tests and the integration tests (three shards per Python) on
-  Python 3.10 and 3.13, the Node tests, `make dist` and the UI e2e tests (two shards). The
+  Python 3.10 and 3.13, the Node tests and `make dist` (job `web`), the UI e2e tests (four
+  shards) and the container tests on amd64 and arm64 (two shards each). The
   smoke tests on Linux and macOS per provider run on every push to main, daily on main,
   and on each pull request that changes a file off ci.yml's skip list (`web/`, `docs/`,
   `openspec/`, `tests/ui/`, `tests/js/`, the top-level Markdown documents,

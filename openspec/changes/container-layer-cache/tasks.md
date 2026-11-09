@@ -21,7 +21,7 @@
 
 ## 3. Docs and the measurement
 
-- [ ] 3.1 `docs/testing.md`, CI paragraph: the container cells' cache (who reads, who writes,
+- [x] 3.1 `docs/testing.md`, CI paragraph: the container cells' cache (who reads, who writes,
   the daily build from nothing, the release without one). Check: read against ci.yml.
 - [ ] 3.2 The layering, locally (AC-1): `make docker DOCKER_BUILD_FLAGS="--builder <b> --load
   --cache-to type=local,dest=<dir> "` once, then a change of the version and again with

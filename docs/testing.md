@@ -317,8 +317,15 @@ once, with a throwaway HOME, so a CLI npm left without its native binary fails i
 retry) and `docker history lado:local` (each layer's
 size, so a new layer's is the image's growth), then `scripts/smoke_ci.py container <out>` (the
 container tests with the smoke cell's pass rule, so a skip is red; the artifact
-`container-<arch>`), on every run whatever it changes, pushing nothing anywhere; and
-`ci-ok`, the one check the ruleset of main requires. `--shard K/N` (`tests/shard.py`, also
+`container-<arch>`), on every run whatever it changes, pushing nothing anywhere. Its build
+takes the layers from GitHub's Actions cache, scope `container-<arch>`, through a BuildKit
+builder of its own (`docker/setup-buildx-action`; `--load` puts the image into the runner's
+Docker) and `make docker DOCKER_BUILD_FLAGS=...`: a pull request reads main's cache and
+writes none; a push to main reads and writes it (`mode=min`); the schedule and a dispatch
+build from nothing (`--no-cache`) and write it anew, so a broken outside source (Debian,
+gh's repository, npm) shows within a day. LADO's wheel is the Dockerfile's last layer, so a
+pull request rebuilds only that one; the release (`release.yml`) builds without any cache.
+And `ci-ok`, the one check the ruleset of main requires. `--shard K/N` (`tests/shard.py`, also
 locally) keeps the tests whose node id's CRC-32 modulo N is K - 1, so each test is in
 exactly one shard, always the same, and deselects the rest. The worker counts are for
 GitHub's 4-vCPU runners, where `-n auto` is four workers: four integration tests at once

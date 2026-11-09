@@ -5,7 +5,7 @@
   `tests/test_docker.py` that the wheel's lines come after every CLI's and openspec's
   install; `make test`; `make docker` and `make test-container` locally when Docker runs
   (else say so in the build report).
-- [ ] 1.2 `Makefile`: `docker` passes `$(DOCKER_BUILD_FLAGS)` (empty by default) to `docker
+- [x] 1.2 `Makefile`: `docker` passes `$(DOCKER_BUILD_FLAGS)` (empty by default) to `docker
   build` (D3). Check: `make -n docker` without and with the variable.
 
 ## 2. CI

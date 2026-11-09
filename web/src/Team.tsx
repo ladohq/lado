@@ -13,6 +13,7 @@
 // head): its level is one for all agents, chosen by trial (teamFit.ts), and from level 1 a
 // button opens the team's list, with every agent by its whole name.
 import {
+  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -26,7 +27,7 @@ import {
 import { flushSync } from "react-dom";
 import { Link } from "react-router";
 
-import type { AgentInfo, RunInfo } from "./api";
+import type { AgentInfo, ModelInfo, RunInfo } from "./api";
 import { since } from "./ChatText";
 import { avatar } from "./FeedRow";
 import { AgentsIcon, ChevronIcon, FlowsIcon } from "./icons";
@@ -76,13 +77,15 @@ export function StatusDot({ status, small = false }: { status: AgentInfo["status
   return <span className={`dot${small ? " dot-small" : ""} dot-${status}`} aria-hidden="true" />;
 }
 
+// An agent's model as its tooltips name it: a configured model's saved name, else the name its
+// CLI reported; null while it has named none (the agent's page says more: ModelFact).
+export const modelName = (model: ModelInfo): string | null => model.configured ?? model.name;
+
 // What a tooltip says about an agent, compactly: name · role · provider · model (the role
 // left out when it is the name, the model while its CLI has named none), and the flow run it
 // works for. `info` null: an agent not listed.
 export function AgentTip({ name, info }: { name: string; info: AgentInfo | null }) {
-  const about = info
-    ? [name, info.role !== name && info.role, info.provider, info.model.configured ?? info.model.name].filter(Boolean)
-    : [name];
+  const about = info ? [name, info.role !== name && info.role, info.provider, modelName(info.model)].filter(Boolean) : [name];
   return (
     <>
       <div className="tooltip-line">{about.join(" · ")}</div>
@@ -101,23 +104,46 @@ export const STATUS_WORDS: Record<AgentInfo["status"], string> = {
   stopped: "stopped",
 };
 
-// An agent's popup in the head and on the terminals' strip: who it is, what it does and how
-// long, and what a click does. `info` null: an agent not listed.
+// An agent's popup in the head and on the terminals' strip, in three parts (LAD-254,
+// docs/design/ui.md, Session head): the name after its status dot, and its status and how
+// long; under a line, labelled facts: Role (left out when it is the name), CLI, Model (in
+// code as the CLI named it, a configured model by its saved name, else a muted CLI default)
+// and Flow (when it works for a run); under a second line, what a click does. Neither the
+// effort nor a source: the agent's page says them. `info` null: an agent not listed.
 export function AgentPopup({ name, info }: { name: string; info: AgentInfo | null }) {
+  const model = info && modelName(info.model);
+  const facts: [string, ReactNode][] = info
+    ? [
+        ["Role", info.role !== name && info.role],
+        ["CLI", info.provider],
+        ["Model", !model ? <span className="muted">CLI default</span> : info.model.configured ? model : <code>{model}</code>],
+        ["Flow", info.run],
+      ]
+    : [];
+  const shown = facts.filter(([, value]) => value);
   return (
-    <>
-      <div className="tooltip-line tip-agent">{name}</div>
+    <div className="agent-tip">
+      <div className="tip-head">
+        {info && <StatusDot status={info.status} />}
+        <span className="tip-agent">{name}</span>
+      </div>
       {info && (
-        <>
-          <div className={`tooltip-line tip-status${info.status === "waiting" ? " waits" : ""}`}>
-            {STATUS_WORDS[info.status]} · {since(info.since)}
-          </div>
-          <div className="tooltip-line">{[info.role !== name && info.role, info.provider].filter(Boolean).join(" · ")}</div>
-          {info.run && <div className="tooltip-line">flow {info.run}</div>}
-        </>
+        <div className={`tip-status${info.status === "waiting" ? " waits" : ""}`}>
+          {STATUS_WORDS[info.status]} · {since(info.since)}
+        </div>
       )}
-      <div className="tooltip-line">Click to open the terminal</div>
-    </>
+      {shown.length > 0 && (
+        <dl className="tip-facts">
+          {shown.map(([label, value]) => (
+            <Fragment key={label}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </Fragment>
+          ))}
+        </dl>
+      )}
+      <div className="tip-hint">Click to open the terminal</div>
+    </div>
   );
 }
 

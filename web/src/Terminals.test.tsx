@@ -12,6 +12,7 @@ import {
   FakeScreen,
   FakeSocket,
   FakeXterm,
+  popupParts,
   setVisible,
   stream,
   stubDialogs,
@@ -573,9 +574,10 @@ test("the strip's button shows the agent's mark, as the head does, and its popup
   const buttons = within(within(panel()).getByRole("list", { name: "Agents" })).getAllByRole("button");
   expect(buttons.map((button) => button.firstChild?.textContent)).toEqual(["S", "D2", "D3"]);
   fireEvent.focus(buttons[1]!);
-  const lines = [...screen.getByRole("tooltip").querySelectorAll(".tooltip-line")].map((line) => line.textContent);
-  expect(lines[0]).toBe("developer-2");
-  expect(lines.at(-1)).toBe("Click to open the terminal");
+  const shown = popupParts(screen.getByRole("tooltip"));
+  expect(shown.name).toBe("developer-2");
+  expect(shown.facts).toContain("Model CLI default");
+  expect(shown.hint).toBe("Click to open the terminal");
 });
 
 test("the collapsed strip has a button per agent of the session, with its letter and status, then the caption", async () => {

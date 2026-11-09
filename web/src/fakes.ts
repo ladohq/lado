@@ -382,6 +382,20 @@ export const AGENT_REST = {
   effort: CLI_DEFAULT,
 };
 
+// An agent's popup (Team.tsx, AgentPopup) by its parts: the name, the status, the facts as
+// "label value" and the click's hint; null for a part it does not have.
+export function popupParts(tip: Element) {
+  const text = (selector: string) => tip.querySelector(selector)?.textContent ?? null;
+  const labels = [...tip.querySelectorAll(".tip-facts dt")].map((one) => one.textContent);
+  const values = [...tip.querySelectorAll(".tip-facts dd")].map((one) => one.textContent);
+  return {
+    name: text(".tip-agent"),
+    status: text(".tip-status"),
+    facts: labels.map((label, i) => `${label} ${values[i]}`),
+    hint: text(".tip-hint"),
+  };
+}
+
 // An attachment of run feature/x's design, as attached at record r1 (hash h1).
 export function attachment(more: Partial<AttachmentInfo> = {}): AttachmentInfo {
   return {

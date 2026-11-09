@@ -21,9 +21,8 @@
   list every saved model in `/model` beside their own.
 - **A default model for each agent CLI.** Pick it on Settings → Agent CLIs or with
   `lado model default`: a session started without a model of its own starts on it.
-- **See which model each agent runs on.** The agent's page, the Team chip's tooltip and `lado ls`
-  show its model and effort and where they came from: your choice, the CLI's default or your
-  Codex config.
+- **See which model each agent runs on.** The agent's page shows its model and effort and where
+  they came from; the Team tooltip and `lado ls` name the model.
 - **Ask for a worker on another model.** The supervisor sees every agent CLI's models and starts
   a worker on the one you name; a server that does not answer or a missing model is refused at
   once, not at the worker's first turn.

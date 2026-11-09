@@ -289,7 +289,7 @@ The browser (`test_browser.py`): on a new home volume the Playwright of `uv.lock
 tool run --from playwright==<version>`) installs its headless shell, whose `ldd` names no
 library `not found` (the missing ones in the failure), and launches Chromium, which renders
 a page with Latin and Cyrillic text and gives it back, its screenshot in `<temp
-dir>/lado-container-shots/` (in CI's artifact `container-<arch>`); a new home volume has no
+dir>/lado-container-shots/` (in CI's artifact `container-<arch>-<k>` of its shard); a new home volume has no
 `~/.cache/ms-playwright` and no `chromium`, `chromium-browser` or `google-chrome` on
 `PATH`. So the UI tests run in LADO's image after `make browser`. The
 toolchains' Go test (`test_toolchains.py`) has mise install Go from a mirror inside the
@@ -306,19 +306,31 @@ CI (`.github/workflows/ci.yml`) runs on each pull request, each push to main, da
 (03:47 UTC, `schedule`) and by hand (`workflow_dispatch`). Its jobs: `unit (<python>)`,
 `ruff format --check`, `ruff check` and the unit tests (in parallel, `-n auto`) on Python
 3.10 and 3.13; `integration (<python>, <k>)`, the integration tests in three shards per
-Python, each in one process (`-n0 --shard K/3`); `js`, the Node tests; `ui (<k>)`, the UI
-e2e tests in two shards on Python 3.13 (on two workers, `-n 2 --shard K/2`), the first also
-`make dist` (the web UI built and in both the sdist and the wheel), the second building only
-the bundle; `changes`, whether the run needs the smoke; `smoke <os> <provider>`, the smoke
+Python, each in one process (`-n0 --shard K/3`); `web`, `make dist` (the web UI's
+stale-types check, types, unit tests and build, and the bundle in both the sdist and the
+wheel) and the Node tests, which no UI job waits for; `ui (<k>)`, the UI e2e tests in four
+shards on Python 3.13 (on two workers, `-n 2 --shard K/4`), each building only the bundle;
+`changes`, whether the run needs the smoke; `smoke <os> <provider>`, the smoke
 tests on Linux and macOS, one cell per (system, provider), none stopping the others;
-`container (<arch>)`, LADO's image on amd64 (`ubuntu-24.04`) and arm64 (`ubuntu-24.04-arm`),
-each on its native runner: `make docker` (whose build runs each agent CLI's `--version`
+`container (<arch>, <k>)`, LADO's image on amd64 (`ubuntu-24.04`) and arm64
+(`ubuntu-24.04-arm`), each on its native runner, in two shards per architecture, each cell
+building its own image: `make docker` (whose build runs each agent CLI's `--version`
 once, with a throwaway HOME, so a CLI npm left without its native binary fails it; no
 retry) and `docker history lado:local` (each layer's
-size, so a new layer's is the image's growth), then `scripts/smoke_ci.py container <out>` (the
-container tests with the smoke cell's pass rule, so a skip is red; the artifact
-`container-<arch>`), on every run whatever it changes, pushing nothing anywhere; and
-`ci-ok`, the one check the ruleset of main requires. `--shard K/N` (`tests/shard.py`, also
+size, so a new layer's is the image's growth), then `scripts/smoke_ci.py container <out>
+K/2` (its shard of the container tests with the smoke cell's pass rule, so a skip or an
+empty shard is red; the artifact `container-<arch>-<k>`), on every run whatever it changes,
+pushing nothing anywhere; and
+`ci-ok`, the one check the ruleset of main requires. Every job has a `timeout-minutes`,
+about twice its p90 (a test refuses a job without one): a hung job ends red instead of
+running GitHub's six hours. A UI job takes Chromium and the `.deb` files `playwright install
+--with-deps` downloads (fonts, from an Ubuntu mirror that is sometimes slow or hangs) from a
+GitHub cache keyed by Playwright's version and the runner image's (`$ImageOS`,
+`$ImageVersion`): on a hit it installs them with `dpkg -i` and runs `playwright install
+chromium`, asking no mirror; on a miss it runs `--with-deps` with apt's retries and a 30 s
+network timeout, under the step's own 10 minutes, and keeps the debs apt downloaded. Only a
+run outside a pull request (push to main, schedule, dispatch) saves the cache, before the
+tests: a pull request's cache would be visible to it alone. `--shard K/N` (`tests/shard.py`, also
 locally) keeps the tests whose node id's CRC-32 modulo N is K - 1, so each test is in
 exactly one shard, always the same, and deselects the rest. The worker counts are for
 GitHub's 4-vCPU runners, where `-n auto` is four workers: four integration tests at once
@@ -450,8 +462,8 @@ Seven layers; each change gets tests at the lowest layer that can catch its bugs
    `lado server` on a free port, with sessions of the fake agent, isolated like the
    integration tests; only what needs a browser. Each test saves a screenshot of every
    screen it checks to `<temp dir>/lado-ui-shots/<test>.png` (the `shot` fixture), outside
-   the tree, for the reviewer. In `make check` and in CI (two shards, the first with
-   `make dist`).
+   the tree, for the reviewer. In `make check` and in CI (four shards; `make dist` in the
+   job `web`).
 5. **Smoke** (`make test-smoke`, marker `smoke`): each provider's real CLI with real tmux,
    hooks, `lado mcp` and SQLite, and a local endpoint that answers 401 instead of a model
    (Test infrastructure): the platform half of the live tests, without their model half. Needed for a

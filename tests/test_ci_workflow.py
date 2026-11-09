@@ -1,10 +1,11 @@
-""".github/workflows/ci.yml: the pytest commands of jobs `unit`, `integration` and `ui` and
-their shards; job `smoke`, the smoke tests on Linux and macOS for every provider, where job
-`changes` says a run needs it (every push to main, the daily schedule, a manual dispatch, a
-pull request beyond the skip list); job `container`, LADO's image built and tested on amd64
-and arm64 on every run; job `ci-ok`, the one check `main` requires, over every
-other job; the triggers; and the concurrency rule that cancels only a pull request's older
-run."""
+""".github/workflows/ci.yml: every job's time limit; the pytest commands of jobs `unit`,
+`integration` and `ui` and their shards; job `web`, make dist and the Node tests; the UI
+jobs' browser from a cache only runs outside a pull request save; job `smoke`, the smoke
+tests on Linux and macOS for every provider, where job `changes` says a run needs it (every
+push to main, the daily schedule, a manual dispatch, a pull request beyond the skip list);
+job `container`, LADO's image built and tested in two shards on amd64 and arm64 on every
+run; job `ci-ok`, the one check `main` requires, over every other job; the triggers; and
+the concurrency rule that cancels only a pull request's older run."""
 
 import importlib.util
 from pathlib import Path
@@ -330,8 +331,7 @@ def test_the_container_job_builds_then_tests_and_keeps_its_out(container):
     assert step_named(steps, "Image")["run"] == "make docker\ndocker history lado:local\n"
     run = step_named(steps, "Container tests")["run"]
     assert run == (
-        'uv run python scripts/smoke_ci.py container "$RUNNER_TEMP/container" '
-        "${{ matrix.shard }}/2"
+        'uv run python scripts/smoke_ci.py container "$RUNNER_TEMP/container" ${{ matrix.shard }}/2'
     )
     names = [s.get("name") for s in steps]
     assert names.index("Image") < names.index("Container tests")

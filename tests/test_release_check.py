@@ -114,6 +114,25 @@ def test_a_final_with_code_its_release_candidate_did_not_have_fails(repo):
     ]
 
 
+def test_a_final_may_edit_its_own_releases_checklist(repo):
+    repo.write("docs/releases/0.37.0.md", "# LADO 0.37.0: the release's checks\n")
+    repo.release("0.37.0rc2")
+    repo.write("docs/releases/0.37.0.md", "# LADO 0.37.0: the release's checks\n\nChecked.\n")
+    repo.release("0.37.0")
+    assert passes(repo.check("v0.37.0"))
+
+
+def test_a_final_that_edits_another_releases_checklist_fails(repo):
+    repo.release("0.37.0rc2")
+    repo.write("docs/releases/0.36.0.md", "# LADO 0.36.0: the release's checks\n")
+    repo.release("0.37.0")
+    done = repo.check("v0.37.0")
+    assert done.returncode == 1
+    assert done.stderr.splitlines() == [
+        "v0.37.0 differs from v0.37.0rc2 in docs/releases/0.36.0.md"
+    ]
+
+
 def test_a_final_that_changes_another_line_of_pyproject_fails(repo):
     repo.release("0.37.0rc1")
     repo.write("pyproject.toml", PYPROJECT.format(version="0.37.0").replace("[]", '["y"]'))

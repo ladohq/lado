@@ -1387,7 +1387,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   (`run`), a cell of CI's job `container` (`container`), and the CLIs' pins (docs/testing.md);
   standard library only.
   `scripts/release_check.py`: the Release workflow's check that a final release is the code
-  of its last release candidate (docs/release.md); standard library only.
+  of its last release candidate but CHANGELOG.md, its own checklist
+  `docs/releases/X.Y.Z.md` and the version lines (docs/release.md); standard library only.
   `scripts/check_telemetry.py`: the Release workflow's check that the region of
   `telemetry.ENDPOINT` accepts `telemetry.PROJECT_TOKEN` (one `POST /flags/?v=2` of its
   host, no event; docs/release.md); standard library and `lado.telemetry` only.
@@ -1402,8 +1403,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   `scripts/rc_check.py`: the human's checks of a release candidate (docs/release.md,
   section 4): `sandbox` (a clean install in a temporary folder, statistics off, removed
   after), `upgrade` (the human's `lado update X.Y.ZrcN`, keeping the final's database in
-  `~/.lado-rc/`) and `rollback`; run with `python3`, never `uv run`; standard library
-  only, nothing of `lado` imported (its CHANGELOG items through `release_notes.section`).
+  `~/.lado-rc/`) and `rollback`; run with `python3`, never `uv run`; `sandbox` and
+  `upgrade` end with docs/release.md's checks of every RC and the RC's own section of
+  `docs/releases/X.Y.Z.md`; standard library only, nothing of `lado` imported.
   `scripts/secret_dots_font.py`: writes `web/src/secret-dots.woff2`, the font of dots of the
   UI's secret field (docs/design/ui.md, Projects); a PEP 723 script with its own
   dependencies (fonttools, brotli), run as `uv run --script`; the font is committed and the

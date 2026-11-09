@@ -22,8 +22,10 @@ final's database (`backups/lado.db.schema-<N>`) in `~/.lado-rc/`, as the migrati
 only one. `rollback` goes back to the final of that copy: it asks first, stops the sessions
 and the UI server, puts the copy into `backups/lado.db.schema-<N>` when the RC moved the
 schema, runs `lado update <final>`, which restores it, and starts again the sessions the
-copy has and the UI. `sandbox` and `upgrade` end with what is left by hand, the items
-of CHANGELOG.md's `## X.Y.Z (unreleased)` among them (`release_notes.section`).
+copy has and the UI. `sandbox` and `upgrade` end with what is left by hand, read from
+the current folder: docs/release.md's list of the checks of every RC, then the items of
+the RC's own section `## X.Y.ZrcN` of its release's checklist, `docs/releases/X.Y.Z.md`,
+each on one line; a missing file, list or section is a warning line in its place.
 
 Exit 0 when every check passed, 1 for a failed check or a refusal, 2 for a usage error, 130
 on Ctrl-C. Standard library only; nothing of LADO is imported.
@@ -33,7 +35,6 @@ from __future__ import annotations  # the human's python3 may be older than LADO
 
 import argparse
 import contextlib
-import importlib.util
 import json
 import math
 import os
@@ -65,10 +66,11 @@ SESSION = "rc-check"  # the sandbox's session
 # never reach the sandbox's LADO.
 DROPPED = ("LADO_SESSION", "LADO_AGENT", "LADO_INSTANCE", "VIRTUAL_ENV", "TMUX", "TMUX_PANE")
 IDENTITY = "rc-check"  # the scratch repository's commit, with no git identity of the human's
-BY_HAND = [
-    "[ ] A session with the sdlc kit through one run to its first gate, answered in the UI",
-    "[ ] The UI: the chat, a gate's card, the System panel with its pre-release pill",
-]
+# The checklist: docs/release.md's list under this heading, then the RC's own section of
+# docs/releases/X.Y.Z.md; of each, the first line of each top-level open item.
+EVERY_RC = "The checks of every RC"  # a `### ` heading
+RELEASE_CHECKLIST = "docs/releases/{}.{}.{}.md"  # X.Y.Z's
+OPEN_ITEM = "- [ ] "
 
 
 class RcError(Exception):
@@ -183,34 +185,48 @@ def missing_tools() -> list[str]:
     return [name for name in NEEDED if shutil.which(name) is None]
 
 
-def _release_notes():
-    """scripts/release_notes.py, beside this script: the CHANGELOG's rules are its own."""
-    path = Path(__file__).resolve().with_name("release_notes.py")
-    spec = importlib.util.spec_from_file_location("release_notes", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def _items(text: str, heading: str, ends) -> list[str] | None:
+    """`[ ] <first line>` of each top-level `- [ ] ` item from the line `heading` to the
+    first line `ends` takes, or None without that heading."""
+    lines = text.splitlines()
+    if heading not in lines:
+        return None
+    items = []
+    for line in lines[lines.index(heading) + 1 :]:
+        if ends(line):
+            break
+        if line.startswith(OPEN_ITEM):
+            items.append(f"[ ] {line[len(OPEN_ITEM) :]}")
+    return items
 
 
-def checklist(version: Version, changelog: str | None, pyproject: str | None) -> list[str]:
-    """What is left to the human: the checks by hand, then each item of the RC's section
-    of CHANGELOG.md, then what makes that list doubtful."""
-    lines = list(BY_HAND)
-    if changelog is None:
-        lines.append("warning: no CHANGELOG.md here: run the script from the repository's root")
+def checklist(
+    version: Version, release_md: str | None, checklist_md: str | None, pyproject: str | None
+) -> list[str]:
+    """What is left to the human: docs/release.md's checks of every RC, then the items of
+    the RC's own section of its release's checklist, then what makes that list doubtful."""
+    if release_md is None:
+        return ["warning: no docs/release.md here: run the script from the repository's root"]
+    lines = _items(release_md, f"### {EVERY_RC}", lambda line: line.startswith("#"))
+    if not lines:
+        lines = [f'warning: docs/release.md has no list "{EVERY_RC}"']
+    path = RELEASE_CHECKLIST.format(*version.release)
+    advice = "write the RC's checklist before its commit (docs/release.md, section 2)"
+    if checklist_md is None:
+        lines.append(f"warning: no {path}: {advice}")
     else:
-        notes = _release_notes()
-        try:
-            text = notes.section(f"v{version}", changelog)
-        except notes.NotesError as error:
-            lines.append(f"warning: {error}")
+        own = _items(checklist_md, f"## {version}", lambda line: line.startswith("## "))
+        if own is None:
+            lines.append(f'warning: {path} has no section "## {version}": {advice}')
+        elif not own:
+            lines.append(f'warning: {path}\'s section "## {version}" has no item: {advice}')
         else:
-            lines += [f"[ ] {line[2:]}" for line in text.splitlines() if line.startswith("- ")]
+            lines += own
     found = PYPROJECT_VERSION.search(pyproject or "")
     if found and found[1] != str(version):
         lines.append(
             f"warning: pyproject.toml says {found[1]}, not {version}: this checkout is not the "
-            "RC's commit, and its CHANGELOG.md may not be the RC's"
+            "RC's commit, and its checklist may not be the RC's"
         )
     return lines
 
@@ -224,7 +240,9 @@ def _read(path: Path) -> str | None:
 
 def print_checklist(version: Version) -> None:
     print(f"\nLeft to check by hand on LADO {version}:")
-    for line in checklist(version, _read(Path("CHANGELOG.md")), _read(Path("pyproject.toml"))):
+    release = Path(RELEASE_CHECKLIST.format(*version.release))
+    texts = (_read(Path("docs/release.md")), _read(release), _read(Path("pyproject.toml")))
+    for line in checklist(version, *texts):
         print(f"  {line}")
 
 

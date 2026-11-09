@@ -16,17 +16,40 @@ import pytest
 ROOT = Path(__file__).parents[1]
 SCRIPT = ROOT / "scripts" / "rc_check.py"
 
-CHANGELOG = """# Changelog
+RELEASE_MD = """# Releasing LADO
 
-## 0.38.0 (unreleased)
+## 4. The manual checklist
 
-- Something new.
-- A fix
-  wrapped over two lines.
+Each RC is checked with `scripts/rc_check.py`.
 
-## 0.37.0 (2026-10-13)
+### The checks of every RC
 
-- An older item.
+- [ ] 4.1 A clean install: `sandbox`.
+- [ ] 4.2 Your own LADO (first RC of a cycle): `upgrade`.
+
+### 4.1 A clean install
+
+- [ ] Not a check of the list: another subsection's.
+"""
+
+CHECKLIST_MD = """# LADO 0.38.0: the release's checks
+
+The last final is 0.37.0.
+
+## 0.38.0rc1
+
+### Models
+
+- [ ] **Models.** A real server with each CLI.
+  - `lado model-server probe localhost:1234` names its type.
+  - [ ] a nested item is no check of its own.
+
+- [ ] **Phone.** The session's page on a real phone.
+- [x] Not open: checked before.
+
+## 0.38.0rc2
+
+- [ ] **Fix.** The model picker after rc1's fix.
 """
 
 
@@ -143,30 +166,72 @@ def test_pypi_unreachable_is_one_fail_line(capsys, monkeypatch, tmp_path):
     assert list(temp.iterdir()) == []
 
 
-def test_checklist_lists_the_rc_section_items():
-    lines = rc.checklist(rc.parse("0.38.0rc1"), CHANGELOG, 'version = "0.38.0rc1"\n')
-    assert lines[-2:] == ["[ ] Something new.", "[ ] A fix wrapped over two lines."]
-    assert any("sdlc" in line and "first gate" in line for line in lines)
-    assert any("pre-release" in line for line in lines)
-    assert not any(line.startswith("warning") for line in lines)
-    assert "An older item." not in "\n".join(lines)
-
-
-def test_checklist_without_the_section_warns():
-    lines = rc.checklist(rc.parse("0.39.0rc1"), CHANGELOG, 'version = "0.39.0rc1"\n')
-    assert lines[-1] == (
-        'warning: CHANGELOG.md has no section "## 0.39.0 (unreleased)" for v0.39.0rc1'
+def checklist(version: str, release_md=RELEASE_MD, checklist_md=CHECKLIST_MD, pyproject=None):
+    return rc.checklist(
+        rc.parse(version), release_md, checklist_md, pyproject or f'version = "{version}"\n'
     )
-    lines = rc.checklist(rc.parse("0.39.0rc1"), None, 'version = "0.39.0rc1"\n')
-    assert lines[-1] == "warning: no CHANGELOG.md here: run the script from the repository's root"
+
+
+def test_checklist_is_the_every_rc_checks_then_the_rcs_own():
+    assert checklist("0.38.0rc1") == [
+        "[ ] 4.1 A clean install: `sandbox`.",
+        "[ ] 4.2 Your own LADO (first RC of a cycle): `upgrade`.",
+        "[ ] **Models.** A real server with each CLI.",
+        "[ ] **Phone.** The session's page on a real phone.",
+    ]
+
+
+def test_checklist_takes_only_the_rcs_own_section():
+    lines = checklist("0.38.0rc2")
+    assert lines[2:] == ["[ ] **Fix.** The model picker after rc1's fix."]
+
+
+def test_checklist_without_the_releases_checklist_warns():
+    advice = "write the RC's checklist before its commit (docs/release.md, section 2)"
+    assert checklist("0.38.0rc3")[2:] == [
+        f'warning: docs/releases/0.38.0.md has no section "## 0.38.0rc3": {advice}'
+    ]
+    assert checklist("0.39.0rc1", checklist_md=None)[2:] == [
+        f"warning: no docs/releases/0.39.0.md: {advice}"
+    ]
+    empty = CHECKLIST_MD + "\n## 0.38.0rc4\n\nNothing yet.\n"
+    assert checklist("0.38.0rc4", checklist_md=empty)[2:] == [
+        f'warning: docs/releases/0.38.0.md\'s section "## 0.38.0rc4" has no item: {advice}'
+    ]
+
+
+def test_checklist_without_the_every_rc_list_warns():
+    lines = checklist("0.38.0rc2", release_md="# Releasing LADO\n\n## 4. The checklist\n")
+    assert lines == [
+        'warning: docs/release.md has no list "The checks of every RC"',
+        "[ ] **Fix.** The model picker after rc1's fix.",
+    ]
+
+
+def test_checklist_outside_the_repositorys_root_is_one_warning():
+    assert checklist("0.38.0rc1", release_md=None, checklist_md=None) == [
+        "warning: no docs/release.md here: run the script from the repository's root"
+    ]
 
 
 def test_checklist_warns_about_another_checkout():
-    lines = rc.checklist(rc.parse("0.38.0rc1"), CHANGELOG, '[project]\nversion = "0.37.1"\n')
-    assert (
+    lines = checklist("0.38.0rc1", pyproject='[project]\nversion = "0.37.1"\n')
+    assert lines[-1] == (
         "warning: pyproject.toml says 0.37.1, not 0.38.0rc1: this checkout is not the RC's "
-        "commit, and its CHANGELOG.md may not be the RC's"
-    ) in lines
+        "commit, and its checklist may not be the RC's"
+    )
+
+
+def test_the_repositorys_own_checklist_of_045_has_no_warning():
+    lines = rc.checklist(
+        rc.parse("0.45.0rc1"),
+        (ROOT / "docs" / "release.md").read_text(),
+        (ROOT / "docs" / "releases" / "0.45.0.md").read_text(),
+        'version = "0.45.0rc1"\n',
+    )
+    assert not [line for line in lines if not line.startswith("[ ] ")]
+    every_rc = [line for line in lines if line.startswith("[ ] 4.")]
+    assert len(every_rc) >= 6 and len(lines) > len(every_rc)
 
 
 def test_the_real_run_passes_output_and_exit_code():

@@ -9,7 +9,7 @@ import sys
 
 import httpx
 import pytest
-from agent_helpers import cut_off, fake_logs, wait_for
+from agent_helpers import cut_off, end_loop, fake_logs, wait_for
 from event_stream import EventStream
 from test_images import png
 
@@ -162,6 +162,9 @@ def stop_as_it_types(monkeypatch) -> None:
 
 def refused_by_the_stop(repo) -> str:
     """Write as the stop comes, check the refusal, resume; returns what tmux said."""
+    # The session loop would otherwise hand the message over in its own process, typing it
+    # past the patched send_text: then no stop comes and the write is "sent".
+    end_loop(SESSION)
     with pytest.raises(runtime.LadoError) as refused:
         runtime.write_as_human(SESSION, "merge it")
     assert str(refused.value) == cut_off("supervisor")

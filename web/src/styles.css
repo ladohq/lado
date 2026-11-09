@@ -4233,14 +4233,49 @@ h3 {
   color: var(--human);
 }
 
-/* The agent's popup: the tooltip, its first line the whole name. */
+/* The agent's popup (Team.tsx, AgentPopup; LAD-254, mockup-agent-popup.html option A): the
+   whole name after its status dot, the status under the name past the dot; under a line the
+   labelled facts, the labels muted; under a second line the click's hint, smaller. The
+   session card's .tip-facts and .tip-status are narrowed here: a label column as wide as its
+   longest label, the status muted. */
 .tooltip .tip-agent {
   color: var(--ink);
   font: 600 12.5px var(--mono);
 }
 
-.tooltip .tip-status.waits {
+.agent-tip .tip-head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.agent-tip .tip-status {
+  margin: 1px 0 6px 15px;
+  color: var(--muted);
+}
+
+.agent-tip .tip-status.waits {
   color: var(--human);
+}
+
+.agent-tip .tip-facts {
+  grid-template-columns: auto 1fr;
+  gap: 1px 10px;
+  margin: 0;
+}
+
+.agent-tip .tip-facts dd {
+  color: var(--ink);
+}
+
+.agent-tip .tip-facts code {
+  font: 12px var(--mono);
+}
+
+.agent-tip .tip-hint {
+  margin-top: 6px;
+  padding-top: 5px;
+  font-size: 11.5px;
 }
 
 /* An agent's status: colour and shape, so it reads without colour too. busy: a full green

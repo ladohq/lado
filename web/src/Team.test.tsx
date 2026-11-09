@@ -5,9 +5,9 @@ import { MemoryRouter } from "react-router";
 import { afterEach, expect, test } from "vitest";
 
 import type { AgentInfo, RunInfo } from "./api";
-import { AGENT_REST } from "./fakes";
+import { AGENT_REST, popupParts } from "./fakes";
 import { ResumeIcon, StopIcon } from "./icons";
-import { AgentChip, AgentTip, headName, moreName, RunFrame, runColours, StatusDot, teamGroups, teamMarks } from "./Team";
+import { AgentChip, AgentPopup, AgentTip, headName, moreName, RunFrame, runColours, StatusDot, teamGroups, teamMarks } from "./Team";
 
 afterEach(cleanup);
 
@@ -116,6 +116,60 @@ test("a chip's tooltip names the agent's model when its CLI has named one", () =
   const line = (info: AgentInfo) => render(<AgentTip name={info.name} info={info} />).container.textContent;
   expect(line(known)).toBe("w1 · developer · claude · gpt-5.6-sol");
   expect(line(agent("w2"))).toBe("w2 · developer · claude");
+});
+
+// The head's popup (AgentPopup) by its parts.
+const popup = (name: string, info: AgentInfo | null) =>
+  popupParts(render(<AgentPopup name={name} info={info} />).container);
+
+test("an agent's popup: the name, its status, the facts Role, CLI, Model and Flow, then the click's hint", () => {
+  const analyst = {
+    ...agent("analyst-254", "task/lad-254"),
+    role: "analyst",
+    model: { name: "claude-opus-5-5", source: "cli", detail: null, words: "CLI default" },
+  };
+  const shown = popup("analyst-254", analyst);
+  expect(shown).toEqual({
+    name: "analyst-254",
+    status: expect.stringMatching(/^idle · \d+ d$/),
+    facts: ["Role analyst", "CLI claude", "Model claude-opus-5-5", "Flow task/lad-254"],
+    hint: "Click to open the terminal",
+  });
+  cleanup();
+  const supervisor = { ...agent("supervisor"), role: "supervisor" };
+  expect(popup("supervisor", supervisor).facts).toEqual(["CLI claude", "Model CLI default"]); // the role is its name
+});
+
+test("the popup's Model: a configured model's saved name, else the CLI's name in code, else a muted CLI default", () => {
+  const configured = {
+    ...agent("w1"),
+    model: { name: "qwen3-coder", source: "configured", detail: null, words: "configured", configured: "Локальная Qwen" },
+  };
+  const model = (info: AgentInfo) => {
+    const { container } = render(<AgentPopup name={info.name} info={info} />);
+    const dt = [...container.querySelectorAll(".tip-facts dt")].find((one) => one.textContent === "Model")!;
+    const dd = dt.nextElementSibling!;
+    cleanup();
+    return [dd.textContent, dd.firstElementChild?.tagName ?? null, dd.firstElementChild?.className ?? null];
+  };
+  expect(model(configured)).toEqual(["Локальная Qwen", null, null]);
+  const named = { ...agent("w2"), model: { name: "gpt-5.6-sol", source: "cli", detail: null, words: "CLI default" } };
+  expect(model(named)).toEqual(["gpt-5.6-sol", "CODE", ""]);
+  expect(model(agent("w3"))).toEqual(["CLI default", "SPAN", "muted"]);
+});
+
+test("the popup names neither the effort nor a source; a waiting agent's status waits; an agent not listed: name and hint", () => {
+  const waiting: AgentInfo = {
+    ...agent("w1"),
+    status: "waiting",
+    model: { name: "gpt-5.6-sol", source: "config", detail: "~/.codex/config.toml", words: "from its Codex config" },
+    effort: { name: "high", source: "config", detail: "~/.codex/config.toml", words: "from its Codex config" },
+  };
+  const { container } = render(<AgentPopup name="w1" info={waiting} />);
+  expect(container.querySelector(".tip-status")!.className).toBe("tip-status waits");
+  expect(container.textContent).not.toMatch(/high|Codex config|config\.toml|Effort/);
+  cleanup();
+  expect(popup("gone", null)).toEqual({ name: "gone", status: null, facts: [], hint: "Click to open the terminal" });
 });
 
 // A run as the server lists it; only its name and status matter to its colour.

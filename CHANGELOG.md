@@ -4,188 +4,146 @@
 
 ### New
 
+- **Run agents on your own model server.** Save LM Studio, Ollama or another server and tick its
+  models: OpenCode, Kilo CLI, Claude Code and Codex agents run on them, Claude Code and Codex with
+  no login, your keys kept off the server. [docs/install.md](docs/install.md#the-agents-variables)
+- **Run agents on a cloud provider.** Its address and key are enough for any agent CLI: agents
+  know the model's limits and compact in time, and a refusal reads in plain words, with no key.
+  [docs/install.md](docs/install.md#a-cloud-provider)
+- **Model servers in Settings.** Add, change or remove a server, checked as you type, tick and
+  rename its models, undo a removal; an agent CLI that cannot run a model there is greyed out
+  with why, e.g. Codex CLI on LM Studio.
+- **Model servers in the terminal.** `lado model-server probe <address>` names a server's type,
+  its models and the agent CLIs that can use them; `lado model-server add` and `lado model add`
+  save them, and `lado doctor` checks the saved ones.
+- **Choose the session's model.** The Model field of New session and `lado start --model` start
+  the agents on a saved or built-in model, checked first; a resume keeps it. OpenCode and Kilo CLI
+  list every saved model in `/model` beside their own.
+- **A default model for each agent CLI.** Pick it on Settings → Agent CLIs or with
+  `lado model default`: a session started without a model of its own starts on it.
+- **See which model each agent runs on.** The agent's page, the Team chip's tooltip and `lado ls`
+  show its model and effort and where they came from: your choice, the CLI's default or your
+  Codex config.
+- **Ask for a worker on another model.** The supervisor sees every agent CLI's models and starts
+  a worker on the one you name; a server that does not answer or a missing model is refused at
+  once, not at the worker's first turn.
 - **New session starts where you worked.** The window opens on your last folder or project
-  repository with the cursor in Task; Where lists your recent places, then the other ways,
-  and the team is one line you open with Change. The rail's Launch is now New session.
+  repository with the cursor in Task; Where lists your recent places, and the team is one line
+  you open with Change. The rail's Launch is now New session.
 - **Start in a folder of documents.** For a folder outside git, Set up and start saves its
   files as the starting point; secrets, files over 50 MB and other repositories stay out
   unless you tick them, and are written to `.gitignore`. Too big a folder is refused.
-- **See which model each agent runs on.** The agent's page, the Team chip's tooltip,
-  `lado ls` and `list_agents` show its model and effort and where they came from: the CLI's
-  default or your Codex config (its profile too), as the CLIs report them.
-- **Choose the session's model.** `lado start --model` and the Model field in the New
-  session window's Team start the session's agents on a model, checked first against the
-  CLI's own list; a resume keeps it and checks it again.
-- **Run a session on your own model.** A session starts on a saved model or its CLI's default
-  from Settings → Agent CLIs, checked on its server first. OpenCode and Kilo CLI keep every saved
-  model in `/model` beside their own; `--model ''` is the CLI's own settings.
-- **Run agents on a cloud provider.** A provider's address and key are enough on OpenCode, Kilo CLI,
-  Claude Code and Codex: agents know its limits and compact in time, and a refusal reads in plain words
-  with its status, no key, and ends the turn once the CLI's limited repeats are spent.
-- **Run Claude Code on your own server.** An agent on a saved model of a server with Anthropic's
-  API runs there, with no Claude login: your login and keys stay off the server, and `/model`
-  shows that model alone. Workers can run on other servers or built-in models.
-- **Run Codex on your own server.** An agent on a saved model of a server with the Responses API runs
-  there, with no Codex login, and a refusal reads in plain words. LM Studio loses Codex's tools, so
-  LADO says so before you save the model.
-- **Start a worker on another model.** The supervisor sees every agent CLI's models with
-  `list_models` and names one in `spawn_worker(model=…)`; a silent server or a missing model
-  refuses the worker at once, instead of failing at its first turn.
-- **Find out what a model server is.** `lado model-server probe <address>` names the type
-  of a server in your network (Ollama, LM Studio, OpenAI- or Anthropic-compatible), its
-  models, embeddings ones marked, and the CLIs that can use it, generating nothing; `--key`.
-- **Save model servers and models under names.** `lado model-server add|list|remove` keeps
-  a server, its key in a private file; `lado model add|list|remove` a model on a saved
-  server, checked against its list (no embeddings model). `lado doctor` checks them.
-- **A default model for each agent CLI.** `lado model default` and Settings → Agent CLIs keep one
-  per agent CLI: one of its own or of your servers, picked from one searchable list. It is
-  kept and shown only: no session uses it yet.
-- **Set models in Settings.** Settings → Model servers: add, change or remove a server (checked
-  as you type), tick a model to save it, rename it, undo a removal (`lado model-server remove
-  --with-models`), all your models in one table; a CLI's default sits in its Agent CLIs row.
-- **One word for what runs an agent: agent CLI.** The New session window's field is Agent,
-  Settings' page Agent CLIs, the system panel's Agent CLIs; `lado start --provider` keeps
-  working.
 - **Settings in pages.** General, Agent CLIs, Model servers and Statistics each have a page
   beside a short list; old links still land on them. Help on the rail opens the documentation,
   GitHub and Report a bug; "Log in…" takes you straight to the CLI's login button.
 
 ### Improved
 
-- **One rule in Settings for on and off, and for removing.** Statistics is a switch like
-  Browser notifications. Removing a model never asks, a default's neither, and a model
-  unticked under a server can be undone too; only removing a server still asks.
-- **A default model says it was saved.** On Settings → Agent CLIs a green `✓ Saved` shows
-  beside the field once the default is saved, and stays until your next change on the page.
+- **One word for what runs an agent: agent CLI.** The New session window's field is Agent and
+  Settings' page Agent CLIs; permissions are named in each CLI's own words. `lado start
+  --provider` keeps working.
+- **New sessions take the agent you used last.** A folder with no sessions of its own takes
+  the agent CLI of your last session, in New session and in `lado start`.
 - **Resume or start fresh beside a stopped session.** When the place has a stopped session,
   New session offers Resume beside Start new session under a free name (`webapp-2`); the
   blue one follows whether you typed a task.
-- **New sessions take the agent you used last.** A folder with no sessions of its own takes
-  the agent CLI of your last session, in `lado start` (`provider: … (your last session)`) and
-  in New session. Permissions are named in each CLI's own words.
-- **Model servers says why an agent CLI cannot be ticked.** A server's model lists every agent
-  CLI; one that cannot run it there is greyed out with why, e.g. Codex CLI on LM Studio, or
-  `not installed`.
-- **OpenCode and Kilo CLI know your local model's context.** LADO reads it from the server at
-  each start, so agents compact in time; a model too small for an agent is warned about in `lado
-  start` and the launch window. `docs/install.md` says what to expect of small models.
+- **Statistics is a switch.** On Settings → Statistics it turns on and off like Browser
+  notifications.
+- **Small local models in OpenCode and Kilo CLI.** LADO reads the model's context from its
+  server at each start, so agents compact in time; a model too small is warned about at the
+  start. [docs/install.md](docs/install.md#what-to-expect-of-a-small-model)
 - **OpenCode no longer stalls without internet.** Its first start on a model of a server takes
-  seconds where it took over a minute. An agent keeps your TUI settings from the first run.
-- **Going back says what happens to your model servers.** `lado update` to an older version
-  warns that servers, models and default models are lost, and lists the folders of keys that
-  stay on disk; `docs/install.md` says how to remove them.
-
-- **A session's card reads at a glance.** Its facts have labels, it names the project, says what
-  to do with a stopped or broken session and opens beside the list, so the list stays in sight.
-  The rows no longer count agents and show how long the session ran.
-
-- **A session with many artifacts reads on one screen.** In a narrow column each artifact takes
-  two lines instead of a card, and from 100 artifacts they go in groups by run that fold, Session
-  first: open work stays open, finished runs fold, and your choice is remembered.
-
-- **The artifact panel says things once.** A title equal to the document's first heading is not
-  repeated, the pill says `session` or `step <name>`, and over the Artifacts tab the link reads
-  Full page. On a phone the bar keeps Download, Copy link and a `⋯` menu with the rest.
-
-- **Empty tabs say where their content comes from.** An empty Flows tab names the flows that can
-  run, or says the session's kits have none; an empty Artifacts tab says what lands there.
-
-- **A run says what it is about.** Its card and row show the first line of its task, a tooltip
-  the rest of it, and an opened step shows how long it took and its note, without repeating its
-  line.
-
-- **Stop no longer shows a button that is off.** With open runs, Stop and forget is gone and the
-  popover says how to forget the session after stopping.
-
-- **Errors and warnings look like what they are.** Each has a ground and an icon instead of a
-  stripe on the left, errors in red and warnings in amber, in both themes; a failed sign-in and
-  the kit windows' warnings too.
-
-- **A stopped session says so and offers Resume.** A bar with Resume session stands in the
-  composer's place, the empty feed tells what it shows, and terminals stay folded, saying the agent
-  is not running. Your terminals' layout comes back after Resume.
-
-- **Your agents stay in sight in the session's head, and the chat gets taller.** On every tab
-  the head shows the team with its statuses, as names or avatars by the room, and a list of all
-  agents; `Yours | All` moved to the tabs, and the keys hint shows only in an empty field.
-
-- **LADO tells you whether your decision got through.** When the connection drops, the Live
-  mark warns and Approve, Send, Stop and the like wait. If it drops mid-click, LADO checks by
-  itself once it can: the card goes, or the error says it was not delivered, with Retry.
-
-- **A session's head is one line at any width.** The folder, git, kits, CLI, Rename and Copy
-  link moved to Details, which a click on the title opens; the chat gets the height back,
-  and `Skip to chat` takes the keyboard straight to it.
-
-- **The card that waits for you always shows what you act on.** The recommendation, the
-  comment or choices and the buttons stay in sight, only the context scrolls, and the card
-  is as high as its content. While you write your own answer, the composer folds into a line.
-  On Needs you the card is whole and the page scrolls, with nothing to expand.
-
+  seconds where it took over a minute.
+- **A session's head is one line, with your team in it.** On every tab it shows the agents with
+  their statuses; the folder, git, kits and Copy link are in Details, opened by a click on the
+  title, and the chat gets the height back.
 - **A session's page fits any window.** The chat never gets narrower than 420 px: the terminals
   and the list fold by themselves and come back when there is room. A tablet's page stands
   still with the composer in sight, and a window of 600 px or less gets the phone layout.
+- **The card that waits for you always shows what you act on.** The recommendation, the
+  choices and the buttons stay in sight and only the context scrolls; while you write your own
+  answer, the composer folds into a line.
+- **LADO tells you whether your decision got through.** When the connection drops, the Live
+  mark warns and Approve, Send, Stop and the like wait. If it drops mid-click, LADO checks by
+  itself once it can: the card goes, or the error says it was not delivered, with Retry.
+- **A stopped session says so and offers Resume.** A bar with Resume session stands in the
+  composer's place, the empty feed tells what it shows, and terminals stay folded, saying the agent
+  is not running. Your terminals' layout comes back after Resume.
+- **A session's card reads at a glance.** Its facts have labels, it names the project, says what
+  to do with a stopped or broken session and opens beside the list, so the list stays in sight.
+  The rows no longer count agents and show how long the session ran.
+- **A session with many artifacts reads on one screen.** In a narrow column each artifact takes
+  two lines instead of a card, and from 100 artifacts they go in groups by run that fold, Session
+  first: open work stays open, finished runs fold, and your choice is remembered.
+- **The artifact panel says things once.** A title equal to the document's first heading is not
+  repeated, the pill says `session` or `step <name>`, and over the Artifacts tab the link reads
+  Full page. On a phone the bar keeps Download, Copy link and a `⋯` menu with the rest.
+- **Empty tabs say where their content comes from.** An empty Flows tab names the flows that can
+  run, or says the session's kits have none; an empty Artifacts tab says what lands there.
+- **A run says what it is about.** Its card and row show the first line of its task, a tooltip
+  the rest of it, and an opened step shows how long it took and its note.
+- **Stop no longer shows a button that is off.** With open runs, Stop and forget is gone and the
+  popover says how to forget the session after stopping.
+- **Errors and warnings look like what they are.** Each has a ground and an icon instead of a
+  stripe on the left, errors in red and warnings in amber, in both themes; a failed sign-in and
+  the kit windows' warnings too.
+- **An agent's status reads the same everywhere.** The Agents tab, an agent's page and the
+  update's list say `working`, `waits for you` and `in the background`, as the agent's popup does.
 
 ### Fixed
 
-- **A model ticked on Model servers is named by its id.** It was `<model> · <server> · <CLI>`,
-  which the columns beside it repeated and narrow fields cut; a taken name adds only what tells
-  the models apart. Models saved before keep their names.
-- **A silent OpenCode or Kilo start asks you nothing.** "Open its terminal" no longer shows for
-  a few seconds before such an agent is ready.
-- **A message right after an OpenCode or Kilo start arrives at once.** It reaches the agent as
-  soon as the agent's input field is ready, and the agent shows `starting` until then.
-- **An OpenCode agent on too small a model stops.** It sent requests without end, `busy` with a
-  silent chat; now the turn ends after three overflows, and the chat says why. LM Studio's
-  refusal for context reads the same way, with the server's text under it.
+- **An OpenCode or Kilo agent takes a message right after its start.** It arrives as soon as
+  the agent's input is ready, the agent shows `starting` until then, and "Open its terminal" no
+  longer flashes up meanwhile.
+- **An OpenCode agent on too small a model stops.** Its turn ends after three overflows of the
+  model's context and the chat says why, LM Studio's text under it, instead of `busy` forever.
 - **A failed turn is not called a reply.** A message whose turn ended on an error no longer shows
   "replied only in its terminal"; the next clean turn decides.
-
+- **The supervisor no longer asks again for a report it already got.** A message that comes
+  while an agent works reaches it at its next step, and no reminder goes to an agent that has
+  not read it yet.
 - **A message sent as the session stops says what happened.** Instead of Internal Server Error
   you read that it was not delivered, and your text stays to send after Resume. It can no longer
   land in another session whose name starts with the stopped one's.
-
-- **Closing a window puts you back where you were.** After Esc or Cancel in Take control, Resume
-  and every other window, the keyboard is on the button that opened it, and Tab goes on from there.
-
-- **Phone held sideways: Messages between agents is in reach.** Its icon ends the row of tabs on
-  Activity, so a stopped session's empty feed can show what it hides.
-
-- **A session's four tabs stay whole in a narrow chat.** Beside the terminals `Yours | All`
-  folds into an icon that does the same, and a tab you reach with Tab no longer hides under
-  the fade or the arrow.
-
-- **An agent's status reads the same everywhere.** The Agents tab, an agent's page and the
-  update's list say `working`, `waits for you` and `in the background`, as the agent's popup
-  does. The team's list button now has a tooltip with its name.
-
-- **A tooltip no longer pops up when you come back to LADO's tab.** A session's card and
-  other tooltips stay hidden on your return; Tab or the pointer shows them as usual.
-
-- **Placeholders read well in the dark theme.** Every field's hint now has the muted text
-  colour instead of the browser's pale grey.
-
 - **A stop no longer loses questions to you without a word.** Stop and `lado stop` say how
   many open questions close, a closed card reads "Closed: the session stopped", and after a
   resume the supervisor gets the unanswered ones to ask again.
+- **Closing a window puts you back where you were.** After Esc or Cancel in Take control, Resume
+  and every other window, the keyboard is on the button that opened it, and Tab goes on from there.
+- **A tooltip no longer pops up when you come back to LADO's tab.** A session's card and
+  other tooltips stay hidden on your return; Tab or the pointer shows them as usual.
+- **Placeholders read well in the dark theme.** Every field's hint now has the muted text
+  colour instead of the browser's pale grey.
+- **`lado project set` no longer prints a secret in its error.** A value typed with a
+  leading `-` before `--`, or as `--secret=…`, was repeated by the refusal; the refusal
+  now names none of the command line's words and says how to give the value.
+- **Settings stays on screen on a tablet held sideways.** The left rail ends with the visible
+  part of the screen, so Report a bug and Settings can be reached.
+- **The Resume window shows the whole folder.** Where wraps a long path onto several lines, so
+  on a phone you can read it to its end.
 
-- **The supervisor no longer asks again for a report it already got.** A message that
-  comes while an agent works reaches it with its next LADO tool call, and a reminder to an
-  agent whose message waits is refused.
+### Docker image
 
 - **Codex agents run shell commands in LADO's container.** Codex's sandbox cannot start in
   Docker, so in the mode `default` every command asked "retry without sandbox?". They now
   run without it there, and the session's start says so.
 
-- **`lado project set` no longer prints a secret in its error.** A value typed with a
-  leading `-` before `--`, or as `--secret=…`, was repeated by the refusal; the refusal
-  now names none of the command line's words and says how to give the value.
+### Upgrade
 
-- **Settings stays on screen on a tablet held sideways.** The left rail ends with the visible
-  part of the screen, so Report a bug and Settings can be reached.
+- **Running sessions restart with the update.** `lado update` stops and resumes them; after
+  an update made another way, restart them yourself.
+- **Going back to an older version forgets your model servers.** `lado update` to a version
+  before 0.45.0 says so and lists the folders of keys left on disk.
+  [docs/install.md](docs/install.md#going-back-to-an-older-version)
 
-- **The Resume window shows the whole folder.** Where wraps a long path onto several lines, so
-  on a phone you can read it to its end.
+### For integrators
+
+- MCP: `list_models` lists every agent CLI's models, `spawn_worker` takes `model`, and
+  `list_agents` names each agent's model and effort with where they came from.
+- MCP: every LADO tool's result, or its error, carries the messages that came while the agent
+  works, as text and in `lado_messages`.
+- API: model servers, models and default models (`/api/model-settings`, `/api/model-servers`,
+  `/api/models`, `/api/model-defaults/{cli}`); `POST /api/sessions` takes `model`.
 
 ## 0.44.0 (2026-11-02)
 

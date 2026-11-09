@@ -12,7 +12,8 @@ ROOT = Path(__file__).parents[1]
 WORKFLOWS = sorted(
     p for p in (ROOT / ".github" / "workflows").iterdir() if p.suffix in (".yml", ".yaml")
 )
-PINNED = re.compile(r"[\w.-]+/[\w.-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+")
+# owner/repo, or owner/repo/folder for an action in a folder of its repository.
+PINNED = re.compile(r"[\w.-]+/[\w.-]+(?:/[\w.-]+)*@[0-9a-f]{40} # v\d+\.\d+\.\d+")
 PEOPLE = (
     """contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), """
     "github.event.{}.author_association)"
@@ -55,11 +56,18 @@ def test_workflows_pin_every_action_to_a_commit(path):
         "      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7",
         "        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10",
         "        uses: anthropics/claude-code-action@v1 # v1.0.0",
+        "      - uses: actions/cache/restore@v6 # v6.1.0",
     ],
 )
 def test_an_unpinned_action_is_named_with_its_line(line):
     text = f"steps:\n{line}\n"
     assert unpinned(text) == [f"2: {line.strip()}"]
+
+
+def test_an_action_in_a_folder_of_its_repository_is_pinned_the_same_way():
+    """actions/cache/restore: the action in the folder restore/ of actions/cache."""
+    line = "      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0"
+    assert unpinned(f"steps:\n{line}\n") == []
 
 
 @pytest.fixture(scope="module")

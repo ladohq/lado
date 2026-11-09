@@ -1,9 +1,11 @@
-""".github/workflows/ci.yml: the pytest commands of jobs `unit`, `integration` and `ui` and
-their shards; job `smoke`, the smoke tests on Linux and macOS for every provider, where job
-`changes` says a run needs it (every push to main, the daily schedule, a manual dispatch, a
-pull request beyond the skip list); job `container`, LADO's image built and tested on amd64
-and arm64 on every run, its layers from a cache only main writes (release.yml reads none);
-job `ci-ok`, the one check `main` requires, over every other job; the triggers; and the
+""".github/workflows/ci.yml: every job's time limit; the pytest commands of jobs `unit`,
+`integration` and `ui` and their shards; job `web`, make dist and the Node tests; the UI
+jobs' browser from a cache only runs outside a pull request save; job `smoke`, the smoke
+tests on Linux and macOS for every provider, where job `changes` says a run needs it (every
+push to main, the daily schedule, a manual dispatch, a pull request beyond the skip list);
+job `container`, LADO's image built and tested in two shards on amd64 and arm64 on every
+run, its layers from a cache only main's shard 1 writes (release.yml reads none); job
+`ci-ok`, the one check `main` requires, over every other job; the triggers; and the
 concurrency rule that cancels only a pull request's older run."""
 
 import importlib.util
@@ -84,16 +86,110 @@ def test_integration_tests_in_three_shards_per_python_each_in_one_process(workfl
     ]
 
 
-def test_ui_tests_in_two_shards_on_two_workers_and_make_dist_once(workflow):
+def test_ui_tests_in_four_shards_on_two_workers_each_building_only_the_bundle(workflow):
+    """Two workers: four on the 4-vCPU runner starve LADO's test timers (LAD-41). The browser
+    tests need the bundle, not the type check or vitest: those are job web's."""
     ui = workflow["jobs"]["ui"]
     assert ui["name"] == "ui (${{ matrix.shard }})"
-    assert ui["strategy"] == {"fail-fast": False, "matrix": {"shard": [1, 2]}}
-    assert pytest_runs(ui) == ["uv run pytest -m ui -n 2 --shard ${{ matrix.shard }}/2"]
-    (dist,) = [s for s in ui["steps"] if s.get("run") == "make dist"]
-    assert dist["if"] == "matrix.shard == 1"
-    (bundle,) = [s for s in ui["steps"] if s.get("name") == "web UI bundle"]
-    assert bundle["if"] == "matrix.shard != 1"
+    assert ui["strategy"] == {"fail-fast": False, "matrix": {"shard": [1, 2, 3, 4]}}
+    assert pytest_runs(ui) == ["uv run pytest -m ui -n 2 --shard ${{ matrix.shard }}/4"]
+    bundle = step_named(ui["steps"], "web UI bundle")
+    assert "if" not in bundle
     assert bundle["run"] == "cd web && npm ci --no-audit --no-fund && npm run build"
+    runs = [s.get("run", "") for s in ui["steps"]]
+    assert not [r for r in runs if "make dist" in r or "make web" in r or "npm test" in r]
+
+
+# The UI jobs' browser: Chromium and the packages --with-deps downloads, from a cache.
+
+BROWSER_PATHS = "~/.cache/ms-playwright\n~/.cache/lado-apt\n"
+
+
+@pytest.fixture(scope="module")
+def ui_steps(workflow) -> list[dict]:
+    return workflow["jobs"]["ui"]["steps"]
+
+
+def test_the_browser_cache_key_is_playwrights_and_the_runner_images_version(ui_steps):
+    """A new runner image takes a fresh --with-deps, never debs built for the one before."""
+    key = step_named(ui_steps, "Browser cache key")
+    assert key["id"] == "browser-key"
+    # :? fails the step loudly on a runner without them, never a key without the image.
+    for part in ("${ImageOS:?}", "${ImageVersion:?}", 'version("playwright")', "ui-browser-"):
+        assert part in key["run"]
+    assert '>> "$GITHUB_OUTPUT"' in key["run"]
+    restore = step_using(ui_steps, "actions/cache/restore")
+    assert restore["id"] == "browser-cache"
+    assert restore["with"] == {"path": BROWSER_PATHS, "key": "${{ steps.browser-key.outputs.key }}"}
+
+
+def test_a_hit_installs_the_cached_packages_and_asks_no_mirror(ui_steps):
+    browser = step_named(ui_steps, "Browser")
+    assert browser["env"] == {"HIT": "${{ steps.browser-cache.outputs.cache-hit }}"}
+    # A hung mirror ends this step, not the job's whole budget.
+    assert browser["timeout-minutes"] == 10
+    hit, miss = browser["run"].split("else\n")
+    assert hit.startswith('if [ "$HIT" = true ]; then\n')
+    assert "sudo dpkg -i ~/.cache/lado-apt/*.deb" in hit
+    assert "uv run playwright install chromium" in hit
+    assert "--with-deps" not in hit and "apt-get" not in hit
+    assert "uv run playwright install --with-deps chromium" in miss
+    for setting in (
+        'Acquire::Retries "3";',
+        'Acquire::http::Timeout "30";',
+        'APT::Keep-Downloaded-Packages "true";',
+        'Binary::apt::APT::Keep-Downloaded-Packages "true";',
+    ):
+        assert setting in miss
+    assert miss.index("Acquire::Retries") < miss.index("--with-deps")
+    assert miss.index("--with-deps") < miss.index("/var/cache/apt/archives")
+
+
+def test_only_a_run_outside_a_pull_request_saves_the_browser_cache(ui_steps):
+    """A pull request's cache is visible to it alone and would spend the 10 GB."""
+    save = step_using(ui_steps, "actions/cache/save")
+    assert save["if"] == (
+        "github.event_name != 'pull_request' && steps.browser-cache.outputs.cache-hit != 'true'"
+    )
+    assert save["with"] == {"path": BROWSER_PATHS, "key": "${{ steps.browser-key.outputs.key }}"}
+
+
+def test_the_browser_is_saved_after_its_install_and_before_the_tests(ui_steps):
+    """Saved before the tests: a red test does not lose main's cache."""
+    labels = [s.get("name") or s.get("uses", "").split("@")[0] or s["run"] for s in ui_steps]
+    order = ["uv sync --locked", "Browser cache key", "actions/cache/restore", "Browser"]
+    order += ["actions/cache/save", "uv run pytest -m ui -n 2 --shard ${{ matrix.shard }}/4"]
+    positions = [labels.index(label) for label in order]
+    assert positions == sorted(positions)
+
+
+def test_web_runs_make_dist_and_the_node_tests_beside_the_ui_tests(workflow):
+    """make dist: the web UI's stale-types check, tsc, vitest, the build and the bundle in
+    the sdist and the wheel; the Node tests of the OpenCode-family plugin."""
+    jobs = workflow["jobs"]
+    web = jobs["web"]
+    assert web["runs-on"] == "ubuntu-latest"
+    assert "js" not in jobs
+    names = [s.get("uses", "").split("@")[0] or s["run"] for s in web["steps"]]
+    assert names == [
+        "actions/checkout",
+        "astral-sh/setup-uv",
+        "actions/setup-node",
+        "uv sync --locked",
+        "make dist",
+        "node --test tests/js/*.test.mjs",
+    ]
+    node = step_using(web["steps"], "actions/setup-node")
+    assert node["with"]["cache"] == "npm"
+    assert node["with"]["cache-dependency-path"] == "web/package-lock.json"
+    # No UI job waits for it: a vitest failure does not hold the browser tests back.
+    assert "needs" not in jobs["ui"] and "needs" not in web
+
+
+def test_every_job_has_a_time_limit(workflow):
+    """Without one a hung job runs GitHub's six hours (ui (1) on an apt mirror, 2026-10-31)."""
+    unlimited = [name for name, job in workflow["jobs"].items() if "timeout-minutes" not in job]
+    assert unlimited == []
 
 
 def test_ci_runs_on_pull_requests_pushes_to_main_daily_and_by_hand(workflow):
@@ -209,16 +305,20 @@ def container(workflow) -> dict:
     return workflow["jobs"]["container"]
 
 
-def test_the_image_is_built_and_tested_on_each_architectures_own_runner(container):
-    assert container["name"] == "container (${{ matrix.arch }})"
+def test_the_image_is_built_and_tested_in_two_shards_on_each_architectures_own_runner(
+    container,
+):
+    assert container["name"] == "container (${{ matrix.arch }}, ${{ matrix.shard }})"
     assert container["runs-on"] == "${{ matrix.runner }}"
     assert container["strategy"] == {
         "fail-fast": False,
         "matrix": {
+            "arch": ["amd64", "arm64"],
+            "shard": [1, 2],
             "include": [
                 {"arch": "amd64", "runner": "ubuntu-24.04"},
                 {"arch": "arm64", "runner": "ubuntu-24.04-arm"},
-            ]
+            ],
         },
     }
     assert container["timeout-minutes"] == 30
@@ -233,12 +333,14 @@ def test_the_container_job_builds_then_tests_and_keeps_its_out(container):
     # The layers' sizes in the log: a new layer's is the image's growth.
     assert step_named(steps, "Image")["run"].endswith("\ndocker history lado:local\n")
     run = step_named(steps, "Container tests")["run"]
-    assert run == 'uv run python scripts/smoke_ci.py container "$RUNNER_TEMP/container"'
+    assert run == (
+        'uv run python scripts/smoke_ci.py container "$RUNNER_TEMP/container" ${{ matrix.shard }}/2'
+    )
     names = [s.get("name") for s in steps]
     assert names.index("Image") < names.index("Container tests")
     upload = step_using(steps, "actions/upload-artifact")
     assert upload["if"] == "always()"
-    assert upload["with"]["name"] == "container-${{ matrix.arch }}"
+    assert upload["with"]["name"] == "container-${{ matrix.arch }}-${{ matrix.shard }}"
     # With test_browser.py's screenshot (its SHOTS: the runner's temp dir is /tmp).
     assert upload["with"]["path"] == "${{ runner.temp }}/container\n/tmp/lado-container-shots\n"
 

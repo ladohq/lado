@@ -18,10 +18,13 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # The ruleset of main requires one check, ci-ok (the last job), whatever the jobs are named.
+# Every job has a time limit, about twice its p90: a hung job ends red, not after GitHub's
+# six hours.
 jobs:
   unit:
     name: unit (${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       matrix:
         python-version: ["3.10", "3.13"]
@@ -41,6 +44,7 @@ jobs:
   integration:
     name: integration (${{ matrix.python-version }}, ${{ matrix.shard }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -57,25 +61,36 @@ jobs:
       # its own tmux, agents and session loop) starve each other past LADO's short test timers.
       - run: uv run pytest -m integration -n0 --shard ${{ matrix.shard }}/3
 
-  js:
+  # The web UI: its stale-types check, types, unit tests and build (make web), the bundle in
+  # both the sdist and the wheel (make dist); and the Node tests of the OpenCode-family
+  # plugin. No UI job waits for it.
+  web:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.13"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: lts/*
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: uv sync --locked
+      - run: make dist
       - run: node --test tests/js/*.test.mjs
 
-  # The web UI: types, unit tests and build (make web), the bundle in both the sdist and the
-  # wheel (make dist), once, in shard 1; and the browser tests against a real lado server in
-  # two shards (tests/shard.py), shard 2 building only the bundle they serve.
+  # The browser tests against a real lado server in four shards (tests/shard.py), each
+  # building only the bundle they serve.
   ui:
     name: ui (${{ matrix.shard }})
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
@@ -88,15 +103,57 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: sudo apt-get install -y tmux
       - run: uv sync --locked
-      - if: matrix.shard == 1
-        run: make dist
       - name: web UI bundle
-        if: matrix.shard != 1
         run: cd web && npm ci --no-audit --no-fund && npm run build
-      - run: uv run playwright install --with-deps chromium
+      # Chromium and the system packages its --with-deps downloads (fonts, from an Ubuntu
+      # mirror that is sometimes slow or hangs) from a cache keyed by Playwright's version
+      # and the runner image's: a new image takes a fresh --with-deps, never another's debs.
+      - name: Browser cache key
+        id: browser-key
+        run: |
+          version=$(uv run python -c 'import importlib.metadata as m; print(m.version("playwright"))')
+          echo "key=ui-browser-${ImageOS:?}-${ImageVersion:?}-playwright-$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: browser-cache
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/lado-apt
+          key: ${{ steps.browser-key.outputs.key }}
+      # A hit installs the cached debs and finds Chromium in its cache, asking no mirror. A
+      # miss runs --with-deps with apt's retries and a network timeout, and keeps the debs
+      # it downloaded (none when the image has every package).
+      - name: Browser
+        timeout-minutes: 10
+        env:
+          HIT: ${{ steps.browser-cache.outputs.cache-hit }}
+        run: |
+          if [ "$HIT" = true ]; then
+            if compgen -G ~/.cache/lado-apt/'*.deb' > /dev/null; then
+              sudo dpkg -i ~/.cache/lado-apt/*.deb
+            fi
+            uv run playwright install chromium
+          else
+            printf '%s\n' 'Acquire::Retries "3";' 'Acquire::http::Timeout "30";' \
+              'APT::Keep-Downloaded-Packages "true";' \
+              'Binary::apt::APT::Keep-Downloaded-Packages "true";' \
+              | sudo tee /etc/apt/apt.conf.d/90lado-ci
+            uv run playwright install --with-deps chromium
+            mkdir -p ~/.cache/lado-apt
+            find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -exec cp {} ~/.cache/lado-apt/ \;
+          fi
+      # Only outside a pull request: a pull request's cache is visible to it alone and would
+      # spend the repository's 10 GB. Before the tests, so a red test loses nothing.
+      - if: github.event_name != 'pull_request' && steps.browser-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/lado-apt
+          key: ${{ steps.browser-key.outputs.key }}
       # Two workers: a Chromium and a lado server each, on this 4-vCPU runner; -n auto's
       # four starve LADO's short test timers.
-      - run: uv run pytest -m ui -n 2 --shard ${{ matrix.shard }}/2
+      - run: uv run pytest -m ui -n 2 --shard ${{ matrix.shard }}/4
 
   # Whether this run needs the smoke (scripts/smoke_ci.py needed): always but on a pull
   # request whose every changed file is on this skip list. No path here may be or hold one
@@ -104,6 +161,7 @@ jobs:
   # and tests/js/, docker/, pyproject.toml, uv.lock and .github/workflows/).
   changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       smoke: ${{ steps.needed.outputs.smoke }}
     steps:
@@ -178,16 +236,19 @@ jobs:
           retention-days: 5
 
   # LADO's image (docker/Dockerfile) built from this run's wheel on each architecture's own
-  # runner, then the container tests (tests/container/) against it, red unless they passed
-  # with no skip (scripts/smoke_ci.py container). Every run, whatever it changes; nothing is
-  # pushed anywhere.
+  # runner, then the container tests (tests/container/) against it in two shards
+  # (tests/shard.py), each cell building its own image, red unless its tests passed with no
+  # skip (scripts/smoke_ci.py container). Every run, whatever it changes; nothing is pushed
+  # anywhere.
   container:
-    name: container (${{ matrix.arch }})
+    name: container (${{ matrix.arch }}, ${{ matrix.shard }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
+        arch: [amd64, arm64]
+        shard: [1, 2]
         include:
           - arch: amd64
             runner: ubuntu-24.04
@@ -230,12 +291,12 @@ jobs:
           make docker DOCKER_BUILD_FLAGS="--builder $BUILDER --load $cache"
           docker history lado:local
       - name: Container tests
-        run: uv run python scripts/smoke_ci.py container "$RUNNER_TEMP/container"
+        run: uv run python scripts/smoke_ci.py container "$RUNNER_TEMP/container" ${{ matrix.shard }}/2
       # The screenshot of tests/container/test_browser.py beside the cell's log.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: container-${{ matrix.arch }}
+          name: container-${{ matrix.arch }}-${{ matrix.shard }}
           path: |
             ${{ runner.temp }}/container
             /tmp/lado-container-shots
@@ -246,8 +307,9 @@ jobs:
   # whatever their results: a skipped required check counts as passed.
   ci-ok:
     if: always()
-    needs: [unit, integration, ui, js, changes, smoke, container]
+    needs: [unit, integration, web, ui, changes, smoke, container]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - env:

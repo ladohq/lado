@@ -8,7 +8,17 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { AgentInfo, SessionInfo } from "./api";
 import { App } from "./App";
-import { AGENT_REST, columnWidth, FakeEventSource, FakeResizeObserver, FakeScreen, FakeSocket, stream, stubDialogs } from "./fakes";
+import {
+  AGENT_REST,
+  columnWidth,
+  FakeEventSource,
+  FakeResizeObserver,
+  FakeScreen,
+  FakeSocket,
+  popupParts,
+  stream,
+  stubDialogs,
+} from "./fakes";
 import { LOST_AFTER_MS } from "./live";
 import { ranText, sessionMark, tabScroll } from "./Sessions";
 import { Shell, useTitle, useTopBar } from "./Shell";
@@ -105,11 +115,12 @@ test("the team shows every agent as a chip, the supervisor first, with its statu
   expect(chips.map((chip) => chip.getAttribute("aria-pressed"))).toEqual(["true", "false", "false", "false", "false"]);
 });
 
-test("a chip's popup: its name, status and how long, role · provider, its flow run and what a click does", async () => {
+test("a chip's popup: its name, status and how long, its facts Role, CLI, Model and Flow, and what a click does", async () => {
   const since = new Date(Date.now() - 4 * 60_000).toISOString();
+  const model = { name: "kilo/qwen3-coder", source: "cli", detail: null, words: "CLI default" };
   agents = [
     agent("supervisor", "supervisor", "idle", { since }),
-    agent("w1", "developer", "busy", { provider: "kilo", run: "feature/ui-polish", task: "Build it", since }),
+    agent("w1", "developer", "busy", { provider: "kilo", run: "feature/ui-polish", task: "Build it", since, model }),
   ];
   open();
   const team = await screen.findByRole("toolbar", { name: "Team" });
@@ -118,18 +129,22 @@ test("a chip's popup: its name, status and how long, role · provider, its flow 
     fireEvent.focus(chip);
     const shown = screen.getByRole("tooltip");
     expect(chip.getAttribute("aria-describedby")).toBe(shown.id);
-    const lines = [...shown.querySelectorAll(".tooltip-line")].map((line) => line.textContent);
+    const parts = popupParts(shown);
     fireEvent.blur(chip);
-    return lines;
+    return parts;
   };
-  expect(await tip("w1")).toEqual([
-    "w1",
-    "working · 4 min",
-    "developer · kilo",
-    "flow feature/ui-polish",
-    "Click to open the terminal",
-  ]); // no task
-  expect(await tip("supervisor")).toEqual(["supervisor", "idle · 4 min", "claude", "Click to open the terminal"]); // the role is its name
+  expect(await tip("w1")).toEqual({
+    name: "w1",
+    status: "working · 4 min",
+    facts: ["Role developer", "CLI kilo", "Model kilo/qwen3-coder", "Flow feature/ui-polish"],
+    hint: "Click to open the terminal",
+  }); // no task
+  expect(await tip("supervisor")).toEqual({
+    name: "supervisor",
+    status: "idle · 4 min",
+    facts: ["CLI claude", "Model CLI default"], // the role is its name
+    hint: "Click to open the terminal",
+  });
 });
 
 test("a run's agents are chips in a frame coloured by the run, with a link to its page in Flows", async () => {

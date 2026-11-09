@@ -222,7 +222,7 @@ jobs:
           SCOPE: container-${{ matrix.arch }}
         run: |
           case "$EVENT" in
-            pull_request) cache="--cache-from type=gha,scope=$SCOPE" ;;
+            pull_request) cache="--cache-from type=gha,scope=$SCOPE --cache-to type=gha,mode=min,scope=$SCOPE" ;;
             push) cache="--cache-from type=gha,scope=$SCOPE --cache-to type=gha,mode=min,scope=$SCOPE" ;;
             schedule | workflow_dispatch) cache="--no-cache --cache-to type=gha,mode=min,scope=$SCOPE" ;;
             *) echo "Image: no cache rule for the event $EVENT" >&2; exit 1 ;;

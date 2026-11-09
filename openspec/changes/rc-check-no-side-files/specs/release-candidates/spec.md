@@ -3,9 +3,9 @@
 ### Requirement: rc_check reads a database no LADO holds
 
 `scripts/rc_check.py` SHALL read `lado.db` and the copy `~/.lado-rc/lado.db.<final>` by
-its state: without a `-wal` file beside it, as an immutable read-only database
-(`mode=ro&immutable=1`), which creates no file; with one, with an ordinary connection
-that refuses writes (`PRAGMA query_only = ON`), so that a running LADO's WAL is read too.
+its state: without a `-wal` file beside it or with an empty one, as an immutable
+read-only database (`mode=ro&immutable=1`), which creates and changes no file; with a
+non-empty one, with an ordinary connection that refuses writes (`PRAGMA query_only = ON`), so that a running LADO's WAL is read too.
 Reading a database no process holds SHALL create no `-wal` or `-shm` file beside it, on
 any platform.
 
@@ -28,6 +28,12 @@ any platform.
 - **WHEN** the kept copy is in WAL mode with no `-wal` or `-shm` beside it, and the
   script's connection to it is open
 - **THEN** no `-wal` or `-shm` file of it exists, before or after the connection closes
+
+#### Scenario: empty side files left by macOS stay as they are
+- **WHEN** the kept copy is in WAL mode with an empty `-wal` and a `-shm` beside it, held
+  by no process, and the script reads it
+- **THEN** it reads the copy's schema and sessions, no other file appears beside it, and
+  the `-wal` stays empty and the `-shm` keeps its size
 
 #### Scenario: a running LADO's WAL is read
 - **WHEN** another connection holds `lado.db` in WAL mode, with a session written only to

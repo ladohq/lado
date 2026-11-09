@@ -19,15 +19,19 @@ shows. The tests could not catch it: they run on Linux and look only after the c
 
 Options weighed:
 
-- A (taken): choose the way of reading by the database's state, in `_reading()` alone.
-  No `-wal` beside it means no connection holds it in WAL mode (a connection to a WAL
-  database keeps its `-wal` while open), so it is read with
-  `file:<path>?mode=ro&immutable=1`, which creates no file at all and refuses writes, on
-  every platform. With a `-wal` beside it (a running LADO), it is read as now, its WAL
-  included. One function, one rule; `lado update` reads its backups the same way
-  (`self_update.py`). Long-term cost: a narrow race, a LADO that starts between the check
-  and the read is read without its first seconds of WAL; the plan the human confirms is
-  read again by nothing, so at worst it misses a session started in that instant.
+- A (taken, with the human's correction at the first `design_ok`): choose the way of
+  reading by the database's state, in `_reading()` alone. Without a `-wal` beside it, or
+  with an empty one, the WAL holds nothing the main file lacks, so it is read with
+  `file:<path>?mode=ro&immutable=1`, which creates no file, changes none and refuses
+  writes, on every platform. An empty `-wal` counts as none because macOS's SQLite leaves
+  one (with a `-shm`) after every close: in `~/.lado-rc/` now, and in `~/.lado/` after
+  LADO stops; a rule on the file's presence alone would read those databases the
+  ordinary way and leave the files again. With a non-empty `-wal` (a running LADO), it is
+  read as now, its WAL included. One function, one rule; `lado update` reads its backups
+  the same way (`self_update.py`). Long-term cost: a narrow race, a LADO that writes its
+  first WAL pages between the check and the read is read without them; the plan the
+  human confirms is read once, so at worst it misses a session started in that
+  instant.
 - B: `immutable=1` for the copy in `~/.lado-rc/` only, `lado.db` as now: fixes the
   symptom, but keeps two ways of reading picked by path (LAD-150's reason to reject it)
   and leaves `lado.db-wal` and `-shm` in `~/.lado/` on the Mac after `upgrade`, against
@@ -37,12 +41,14 @@ Options weighed:
 
 ## What Changes
 
-- `scripts/rc_check.py`: `_reading()` opens a database without a `-wal` beside it with
-  `mode=ro&immutable=1`, one with a `-wal` as now (ordinary, `query_only`); its docstring
+- `scripts/rc_check.py`: `_reading()` opens a database without a `-wal` beside it, or
+  with an empty one, with `mode=ro&immutable=1`, one with a non-empty `-wal` as now (ordinary, `query_only`); its docstring
   says why, the claim that SQLite's close removes the files goes.
 - `tests/test_rc_check.py`: the reads of a database at rest create no side file even
   while the connection is open (what fails on Linux today and stands for the Mac's
-  leftovers); a database held by another connection, with a row only in its WAL, is read
+  leftovers); a database with an empty `-wal` and `-shm` beside it (as macOS leaves them)
+  is read with no new file and neither of them grown; a database held by another
+  connection, with a row only in its WAL, is read
   with that row.
 - No CHANGELOG.md line (release tooling, users do not see it); no version bump: the fix
   ships in 0.45.0rc2, a fix release of the frozen 0.45.0.

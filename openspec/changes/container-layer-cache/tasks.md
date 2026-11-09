@@ -1,6 +1,6 @@
 ## 1. The image
 
-- [ ] 1.1 `docker/Dockerfile`: the wheel's `COPY` and `uv tool install` after openspec, before
+- [x] 1.1 `docker/Dockerfile`: the wheel's `COPY` and `uv tool install` after openspec, before
   `ENV`, with their comment (design D1); the header's text still true. Check: a test in
   `tests/test_docker.py` that the wheel's lines come after every CLI's and openspec's
   install; `make test`; `make docker` and `make test-container` locally when Docker runs

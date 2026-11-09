@@ -1,7 +1,7 @@
 # LAD-242 default-model-says-saved: review report
 
 Pull request #258 `fix/lad-242-default-model-saved` → `main`. Scale: tweak. Head reviewed:
-`8c81eed5`. On Settings → Agent CLIs, each save of a CLI's default made in its row shows a green
+`4a5ccc90`. On Settings → Agent CLIs, each save of a CLI's default made in its row shows a green
 `✓ Saved` beside the field (on the `Default model` line over it in a narrow row) until the human's
 next change on the page. Delta: one added requirement of `model-settings-page`, `A default saved
 says so`.
@@ -14,13 +14,18 @@ says so`.
 2. Local, precision, `300b2809..8c81eed5`: F1 and F2 closed; F3 and F4 found.
 3. Local, precision: no new commit; the pull request's description checked against the diff, F3
    closed.
+4. Local, precision, `8c81eed5..4a5ccc90` (the return from `conflicts`: the archive and main
+   brought in with PR #257 and #259): the pull request's own diff unchanged line by line; the
+   conflicts in `CHANGELOG.md` and the living spec of `model-settings-page` kept both sides
+   whole; main's changes to `styles.css` do not touch `.cli-model`, `.cli-saved` or
+   `@container cli-row`. No new finding.
 
 External rounds used: 1 of 1. Stand-ins: 0.
 
 ## The human's decisions
 
 - **Gate `merge_ok`, approved**, with the request to file a task about agents sharing `/tmp`
-  (Found on the way).
+  (Found on the way). After the return from `conflicts`, approved again with no comment.
 - Beyond the approved mockup (1440 and 390): in a CLI's row of 542 px or narrower (a tablet, a
   window up to about 915 px), the `Default model` label and `✓ Saved` stand over the field, as on a
   phone, and the field is wider than on main (428 against 304 px at 768).
@@ -47,13 +52,16 @@ External rounds used: 1 of 1. Stand-ins: 0.
 | UI `test_models_section.py`, `test_settings_pages.py` | `8c81eed5` | 44 passed |
 | `openspec validate default-model-says-saved --strict`, `--specs --strict`, the trial archive | `8c81eed5` | passed |
 | `openspec validate --specs --strict` after the archive | archive commit | 80 passed |
+| CI of the pull request, required `ci-ok` | `4a5ccc90` | green (unit, integration ×6, ui ×2, js, container; smoke skipped by the skip list) |
+| `openspec validate --specs --strict` | `4a5ccc90` | 82 passed |
+| UI `test_models_section.py`, `test_settings_pages.py` | `4a5ccc90` | 46 passed |
 
 The live tests were not run: `providers/`, `hooks.py`, `mcp_server.py`, `runtime.py`,
 `agent_env.py` and `tests/live/` did not change.
 
 ## Metrics
 
-Rounds: 3 local, 1 external, 0 stand-in. Local: 4 confirmed (2 important, 2 minor), 0 refuted.
+Rounds: 4 local, 1 external, 0 stand-in. Local: 4 confirmed (2 important, 2 minor), 0 refuted.
 External: 2 confirmed minor, 0 refuted. Findings in code changed by the developer's cleanup: 0. F2
 was found by an existing UI test in CI, not by a review pass.
 

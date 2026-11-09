@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import sqlite3
 import subprocess
 import sys
@@ -445,6 +446,24 @@ def check_loop_ended_by_stop(session: str) -> None:
     last = lines[-1] if lines else "nothing"
     if last not in [f"loop ended: {reason}" for reason in (loop.STOPPED, loop.TMUX_GONE)]:
         pytest.fail(f"loop.log, last line of {session}: {last}")
+
+
+def end_loop(session: str) -> None:
+    """End the session's loop and wait until it is gone, so that no process but the test's
+    hands a message over. Its pid is in the session's last `loop started` line of loop.log;
+    the session's next start starts a new loop."""
+    path = state.home() / "loop.log"
+    started = re.compile(rf" {re.escape(session)}: loop started, pid (\d+),")
+    pids = [
+        int(found[1])
+        for line in (path.read_text().splitlines() if path.exists() else [])
+        if (found := started.search(line))
+    ]
+    if not pids:
+        pytest.fail(f"loop.log has no `loop started` line of {session}")
+    os.kill(pids[-1], signal.SIGTERM)
+    if not loop.wait_stopped(session, timeout=TIMEOUT):
+        pytest.fail(f"the loop of {session} (pid {pids[-1]}) still runs after SIGTERM")
 
 
 def last_state(session: str) -> str:

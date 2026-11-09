@@ -566,12 +566,20 @@ def _terminal() -> bool:
 
 
 def _reading(path: Path) -> contextlib.closing:
-    """An ordinary connection to `path` that refuses writes (`query_only`). Not `mode=ro`:
-    lado.db is in WAL mode, and at rest (no LADO holds it, as after `lado update`, and
-    always the copy in ~/.lado-rc) it has no -shm, which a read-only connection must make:
-    macOS's SQLite refuses to, Linux's leaves -wal and -shm behind. Not `immutable=1`: it
-    ignores the WAL of a running LADO. As the last connection, this one removes the files
-    it made."""
+    """A connection to `path` that refuses writes, chosen by its -wal. Without one, or with
+    an empty one (macOS's SQLite keeps an empty -wal and a -shm after every close), the WAL
+    holds nothing beyond the main file: `immutable=1` reads it and creates or changes no
+    file on any platform, where an ordinary connection makes a -wal and a -shm that
+    macOS's SQLite leaves behind. A non-empty -wal is a running LADO's: an ordinary
+    connection with `query_only` reads it too, which `immutable=1` would ignore."""
+    try:
+        wal = Path(f"{path}-wal").stat().st_size
+    except FileNotFoundError:
+        wal = 0
+    if wal == 0:
+        return contextlib.closing(
+            sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro&immutable=1", uri=True)
+        )
     db = sqlite3.connect(path)
     db.execute("PRAGMA query_only = ON")
     return contextlib.closing(db)

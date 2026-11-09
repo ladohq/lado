@@ -248,23 +248,23 @@ the clone SHALL keep the clone and say `lado: the clone stays in <folder>`.
 
 ### Requirement: The New session window clones from a URL
 
-The New session window SHALL have a switch **From scratch | Folder | Clone from URL |
-Project** in its first field (capabilities session-scratch and projects). Its
-button **Clone and start** SHALL be on only when the branches are listed and the folder is
-`new` or `empty`. A listing failure SHALL show under the URL with its hint and Copy.
+The New session window SHALL offer a clone as **Clone from URL…** in Where's group Somewhere
+else (capability new-session-window). Its button **Clone and start in <folder>** SHALL be on
+only when the branches are listed and the folder is `new` or `empty`. A listing failure SHALL
+show under Repository URL with its hint and Copy.
 
 #### Scenario: A listing that fails
 - **WHEN** the listing of the URL fails as `ssh_denied`
-- **THEN** its text and the hint `ssh -T git@github.com` show under the URL with Copy, and
-  Clone and start is off
+- **THEN** its text and the hint `ssh -T git@github.com` show under Repository URL with
+  Copy, and Clone and start is off
 
 ### Requirement: Clone from URL shows the URL, the folder, the branch and the session's settings
 
-With Clone from URL the New session window SHALL show a URL field, **Clone into** (the default folder, which
-follows the URL until the human edits it) with the target folder's state, **Branch**
+With Clone from URL the window SHALL show **Repository URL** (`✓ Found` once listed), **Branch**
 (listed by the server half a second after the URL stops changing, `fetching branches…`
-meanwhile; the default branch chosen and marked `(default)`; a field that filters as the
-human types when there are more than 30), and the folder's Name, Kits, Agent CLI and Permission mode.
+meanwhile; the default branch chosen and marked `(default)`; a filtering field above 30
+branches), **Clone into** (the default folder until edited, with its state: `✓ New folder`,
+`✓ Empty folder` or the refusal), then Task and Team as for a folder.
 
 #### Scenario: Branches come by themselves
 - **WHEN** the human types a URL and stops
@@ -273,15 +273,14 @@ human types when there are more than 30), and the folder's Name, Kits, Agent CLI
 
 ### Requirement: Use this clone takes a clone that is there as it is
 
-For
-`same_repo` the button SHALL be **Use this clone**, with the note `LADO will use it as it
-is: no clone, no pull, no branch switch`; it switches the window to Folder with that
-folder and changes nothing on disk.
+For `same_repo` the button SHALL be **Use this clone**, with the note `LADO will use it as it
+is: no clone, no pull, no branch switch`; it turns Where to that folder and changes nothing
+on disk.
 
 #### Scenario: A clone that is there
 - **WHEN** Clone into is a clone of the same repository and the human presses Use this
   clone
-- **THEN** the window shows Folder with that folder, and nothing on disk changed
+- **THEN** Where shows that folder, and nothing on disk changed
 
 ### Requirement: The window shows a running clone and cannot be closed by mistake
 
@@ -295,14 +294,12 @@ from closing it, and offer **Cancel clone**.
 
 ### Requirement: After the clone the window starts the session
 
-After the clone the window SHALL start the session
-as Start does for a folder; a refused start SHALL switch the window to Folder with the
-cloned folder and show the refusal there.
+After the clone the window SHALL start the session as it does for a folder; a refused start
+SHALL turn Where to the cloned folder and show the refusal there.
 
 #### Scenario: A name taken after the clone
 - **WHEN** the clone ends and the start is refused because the name is taken
-- **THEN** the window shows Folder with the cloned folder and the refusal, and the clone
-  stays
+- **THEN** Where shows the cloned folder with the refusal, and the clone stays
 
 ### Requirement: The server runs a clone as a job its window keeps alive
 

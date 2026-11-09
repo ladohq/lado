@@ -38,7 +38,8 @@ export const externalDefault = (saved: ConfiguredModelInfo, wholeProcess = false
   whole_process: wholeProcess,
 });
 
-// The columns' fixture: three CLIs on one server. The real LM Studio does not suit Codex CLI.
+// The columns' fixture: three CLIs on one server. The real LM Studio does not suit Codex CLI
+// (LMSTUDIO_REAL).
 export const LMSTUDIO_PROBE: ProbeInfo = {
   kind: "LM Studio",
   address: "http://localhost:1234",
@@ -52,6 +53,17 @@ export const LMSTUDIO_PROBE: ProbeInfo = {
     { name: "kilo", title: "Kilo CLI", api: "chat completions" },
     { name: "opencode", title: "OpenCode", api: "chat completions" },
   ],
+  cannot: [{ name: "claude", title: "Claude Code", why: "it has no Anthropic Messages API" }],
+};
+
+export const CODEX_REFUSES = "its Responses API loses Codex CLI's MCP tools, so the agent could not talk to LADO";
+
+// LM Studio as the core sees it: Codex CLI refuses its type.
+export const LMSTUDIO_REAL: ProbeInfo = {
+  ...LMSTUDIO_PROBE,
+  cli_notes: [`Codex CLI: ${CODEX_REFUSES}`],
+  clis: LMSTUDIO_PROBE.clis.filter((c) => c.name !== "codex"),
+  cannot: [...LMSTUDIO_PROBE.cannot, { name: "codex", title: "Codex CLI", why: CODEX_REFUSES }],
 };
 
 export const LMSTUDIO: ModelServerInfo = {

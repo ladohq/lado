@@ -221,6 +221,19 @@ class CodexProvider(base.Provider):
     # No mode: Codex's own approvals (on-request in a trusted folder) and LADO's permission
     # profile. `default` asks for approvals as Codex's on-request does.
     permission_modes = ("default", "bypassPermissions")
+    permission_mode_words = {
+        "default": base.ModeWords(
+            "Work inside this folder (recommended)",
+            "Works inside the folder",
+            "Asks before going outside it.",
+        ),
+        "bypassPermissions": base.ModeWords(
+            "Full access, never ask ⚠",
+            "Full access ⚠",
+            "No limits, outside this folder too.",
+            risky=True,
+        ),
+    }
     # Every agent shares the user's login file, or gets the key of OPENAI_API_KEY in a file
     # of its own (first_hook_blocker); Codex reads CODEX_ACCESS_TOKEN itself. The first one
     # is named where a login is missing: the one a container's user most likely has.

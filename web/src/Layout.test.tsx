@@ -943,7 +943,7 @@ test("on a phone Sessions is the list, whatever the computer's list keeps: no st
   expect(list.classList.contains("sessions-strip")).toBe(false);
   expect(await within(list).findByRole("link", { name: /^lado/ })).toBeTruthy();
   expect(screen.getByRole("searchbox", { name: "Find a session" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "New session" })).toBeTruthy();
+  expect(screen.getAllByRole("button", { name: "New session" }).some((one) => one.classList.contains("plus"))).toBe(true);
   expect(screen.queryByRole("button", { name: "Collapse sessions" })).toBeNull();
   expect(screen.queryByRole("separator", { name: "Resize the session list" })).toBeNull();
   expect(screen.queryByText("Select a session")).toBeNull();

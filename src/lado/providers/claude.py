@@ -270,6 +270,32 @@ class ClaudeProvider(base.Provider):
         "dontAsk",
         "plan",
     )
+    # Claude Code 2.1.295's --help lists auto and manual without saying what they do: they
+    # keep their values as their names until their behaviour is checked.
+    permission_mode_words = {
+        "default": base.ModeWords(
+            "Ask before changes (recommended)",
+            "Asks before changes",
+            "Asks before it edits files or runs commands.",
+        ),
+        "plan": base.ModeWords(
+            "Plan only, no changes", "Plan only", "Reads and proposes a plan; changes nothing."
+        ),
+        "acceptEdits": base.ModeWords(
+            "Edit files without asking", "Edits without asking", "Still asks before commands."
+        ),
+        "dontAsk": base.ModeWords(
+            "Only what your settings allow",
+            "Only what settings allow",
+            "Never asks; refuses the rest.",
+        ),
+        BYPASS: base.ModeWords(
+            "Full access, never ask ⚠",
+            "Full access ⚠",
+            "Does anything, deleting files too. Only for a folder you can afford to lose.",
+            risky=True,
+        ),
+    }
 
     def launch_command(
         self,

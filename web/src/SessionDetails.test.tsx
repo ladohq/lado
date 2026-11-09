@@ -29,6 +29,7 @@ const ABOUT: SessionAbout = {
     name: "claude",
     title: "Claude Code",
     permission_modes: [],
+    mode_words: [],
     install_hint: "",
     installed: true,
     version: "2.1.0",

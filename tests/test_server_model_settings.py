@@ -138,6 +138,16 @@ def test_listing_asks_no_server(client, serve):
 # Adding and changing a server.
 
 
+LMSTUDIO_CANNOT = [
+    {"name": "claude", "title": "Claude Code", "why": "it has no Anthropic Messages API"},
+    {
+        "name": "codex",
+        "title": "Codex CLI",
+        "why": "its Responses API loses Codex CLI's MCP tools, so the agent could not talk to LADO",
+    },
+]
+
+
 def test_add_server_lmstudio(client, serve):
     server = serve("lmstudio")
     added = ok(add_server(client, "LM Studio дома", server.url.removeprefix("http://")))
@@ -158,6 +168,7 @@ def test_add_server_lmstudio(client, serve):
             "Codex CLI: its Responses API loses Codex CLI's MCP tools, so the agent could not "
             "talk to LADO"
         ],
+        "cannot": LMSTUDIO_CANNOT,
     }
     assert [s.name for s in state.model_servers()] == ["LM Studio дома"]
 
@@ -270,6 +281,7 @@ def test_probe_route_reads_now_and_keeps_the_probe(client, serve):
     server.requests.clear()
     probe = ok(client.post("/api/model-servers/lms/probe"))
     assert probe["models"] == ["qwen3-8b", fake.EMBEDDINGS]
+    assert probe["cannot"] == LMSTUDIO_CANNOT
     assert server.requests and {r.headers["Authorization"] for r in server.requests} == {
         "Bearer k-1"
     }

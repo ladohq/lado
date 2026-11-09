@@ -160,6 +160,21 @@ def test_the_refused_are_only_those_with_the_server_s_api(serve):
     assert ms.probe(serve("all").url).refused() == []
 
 
+def test_cannot_says_why_each_cli_cannot_use_the_server_in_lados_order(serve):
+    """The UI's reasons under a server's model: a type refusal, a missing API (LAD-241)."""
+    on_lmstudio = ms.probe(serve("lmstudio").url)
+    assert [(p.name, why) for p, why in on_lmstudio.cannot()] == [
+        ("claude", "it has no Anthropic Messages API"),
+        ("codex", providers.get("codex").refuses_server(base.LM_STUDIO)),
+    ]
+    assert ms.probe(serve("all").url).cannot() == []
+
+
+def test_cannot_says_an_api_did_not_answer_in_time(serve, short_ceilings):
+    found = ms.probe(serve("late-always").url)
+    assert found.cannot()[0][1] == "its Anthropic Messages API did not answer in time"
+
+
 def test_lm_studio_without_the_responses_api_says_so(serve):
     apis = frozenset({base.CHAT_COMPLETIONS})
     probe = replace(ms.probe(serve("lmstudio").url), apis=apis)

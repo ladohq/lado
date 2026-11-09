@@ -194,6 +194,90 @@ def test_a_built_in_default_from_a_long_list_searched_and_cleared(page: Page, cl
     assert state.cli_defaults() == []
 
 
+DONE = (
+    "() => { const p = document.createElement('span'); p.style.color = 'var(--done)';"
+    " document.body.append(p); const c = getComputedStyle(p).color; p.remove(); return c; }"
+)
+
+
+def pick_kilo_model(page: Page, model: str) -> None:
+    picker(page, "Kilo CLI").click()
+    agent_clis(page).get_by_role("option", name=model, exact=True).click()
+
+
+def test_a_default_saved_says_so_right_of_its_field_and_nothing_moves(
+    page: Page, clis, server, shot
+):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    open_clis(page, server)
+    kilo = card(page, "Kilo CLI")
+    field = picker(page, "Kilo CLI")
+    field.scroll_into_view_if_needed()
+    after = kilo.locator("xpath=following-sibling::li[1]")
+    slot = kilo.locator(".cli-saved")
+    expect(slot).to_have_attribute("role", "status")
+    expect(slot).to_have_text("")
+    before, below = top(field), top(after)
+    pick_kilo_model(page, "vendor/model-7")
+    expect(slot).to_have_text("✓ Saved")
+    expect(field).to_be_focused()
+    stays(field, before)
+    stays(after, below)
+    assert state.cli_defaults() == [state.ModelRef("kilo", None, "vendor/model-7")]
+    assert slot.evaluate("s => getComputedStyle(s).color") == page.evaluate(DONE)
+    box, at = field.bounding_box(), slot.bounding_box()
+    assert box and at and at["x"] >= box["x"] + box["width"], (at, box)  # right of the field
+    assert box["y"] <= at["y"] + at["height"] / 2 <= box["y"] + box["height"], (at, box)
+    assert box["width"] == 360, box  # the slot's room takes nothing from the field
+    shot(page, "1440-light", full_page=False)
+
+
+@pytest.mark.parametrize(
+    "width, scheme",
+    [(390, "light"), (768, "dark"), (901, "light")],
+    ids=["phone-light", "tablet-dark", "901-light"],
+)
+def test_a_default_saved_in_a_narrow_row_says_so_on_its_label_s_line(
+    browser: Browser, clis, server, shot, width, scheme
+):
+    """A row too narrow for a 360 px field and `✓ Saved` beside it (a phone, a tablet, a
+    window just over 900 px beside Settings' list): `✓ Saved` stands at the right of the
+    `Default model` line over the field, which takes the row's width (no room is lost to the
+    slot) and keeps it."""
+    phone = width <= 600
+    context = browser.new_context(
+        viewport={"width": width, "height": 844},
+        is_mobile=phone,
+        has_touch=phone,
+        color_scheme=scheme,
+    )
+    try:
+        page = context.new_page()
+        open_clis(page, server)
+        kilo = card(page, "Kilo CLI")
+        field = picker(page, "Kilo CLI")
+        field.scroll_into_view_if_needed()
+        box = field.bounding_box()
+        row = kilo.locator(".cli-model").bounding_box()
+        assert box and row and box["width"] == row["width"], (box, row)  # the row's width
+        pick_kilo_model(page, "vendor/model-7")
+        slot = kilo.locator(".cli-saved")
+        expect(slot).to_have_text("✓ Saved")
+        assert slot.evaluate("s => getComputedStyle(s).color") == page.evaluate(DONE)
+        stays(field, box["y"])
+        now = field.bounding_box()
+        assert now and now["width"] == box["width"], (now, box)  # the field keeps its width
+        label = kilo.locator(".cli-ml").bounding_box()
+        at = slot.bounding_box()
+        assert label and at and abs(at["y"] - label["y"]) < 1, (at, label)  # on its line
+        assert at["y"] + at["height"] <= now["y"] + 1  # over the field
+        assert abs(at["x"] + at["width"] - (now["x"] + now["width"])) < 1, (at, now)  # its right
+        assert page.evaluate("document.documentElement.scrollWidth") <= width
+        shot(page, f"{width}-{scheme}", full_page=False)
+    finally:
+        context.close()
+
+
 def test_a_list_lost_default_shows_in_its_row_after_opening(page: Page, clis, server, shot):
     state.set_cli_default(state.ModelRef("kilo", None, "old/gone"))
     page.set_viewport_size({"width": 1280, "height": 900})
@@ -610,6 +694,84 @@ def test_the_form_names_the_cli_a_server_s_type_does_not_suit(page: Page, clis, 
         "to LADO"
     )
     shot(page, "note")
+
+
+CODEX_ON_LMSTUDIO = (
+    "cannot use this server: its Responses API loses Codex CLI's MCP tools, so the agent could "
+    "not talk to LADO"
+)
+
+
+def open_qwen(page: Page) -> Locator:
+    """LM Studio дома open, qwen3-8b open under its row: its agent CLIs."""
+    toggle(page, "LM Studio дома").click()
+    lm = source(page, "LM Studio дома")
+    lm.get_by_role("button", name="qwen3-8b", exact=True).click()
+    return lm.get_by_role("group", name="Agent CLIs for qwen3-8b")
+
+
+def test_a_cli_lm_studio_does_not_suit_is_off_with_why(
+    browser: Browser, page: Page, clis, server, lms, shot
+):
+    """Every agent CLI under a model, in LADO's order; Codex CLI's tick off with the core's
+    why (LAD-241). At 1440 light, and at 390 dark."""
+    saved_server(lms)
+    page.set_viewport_size({"width": 1440, "height": 900})
+    open_settings(page, server)
+    sub = open_qwen(page)
+    items = sub.locator("label.mx-sub-item")
+    expect(items.nth(3)).to_be_visible()
+    titles = items.locator("> span:first-of-type").all_text_contents()
+    # The four agent CLIs first; the test server's stand-in providers after them.
+    assert titles[:4] == ["Claude Code", "Codex CLI", "Kilo CLI", "OpenCode"], titles
+    codex = sub.get_by_role("checkbox", name="qwen3-8b on Codex CLI", exact=True)
+    expect(codex).to_be_disabled()
+    expect(codex).not_to_be_checked()
+    expect(items.nth(1).locator(".mx-as")).to_have_text(CODEX_ON_LMSTUDIO)
+    expect(items.nth(0).locator(".mx-as")).to_have_text(
+        "cannot use this server: it has no Anthropic Messages API"
+    )
+    expect(items.nth(2).locator(".mx-as")).to_have_text("would be qwen3-8b")  # Kilo CLI
+    expect(sub.get_by_role("checkbox", name="qwen3-8b on Kilo CLI", exact=True)).to_be_enabled()
+    shot(page, "1440-light")
+
+    context = browser.new_context(
+        viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True, color_scheme="dark"
+    )
+    try:
+        phone = context.new_page()
+        open_settings(phone, server)
+        sub = open_qwen(phone)
+        expect(sub.locator("label.mx-cant .mx-as").first).to_be_visible()
+        expect(sub.locator("label.mx-cant").nth(1)).to_contain_text(CODEX_ON_LMSTUDIO)
+        sub.scroll_into_view_if_needed()
+        assert phone.evaluate("document.documentElement.scrollWidth") <= 390
+        shot(phone, "390-dark", full_page=False)
+    finally:
+        context.close()
+
+
+def test_a_saved_model_on_a_cli_that_cannot_says_its_name_and_why_beside_the_tick(
+    page: Page, clis, server, lms, shot
+):
+    """Codex CLI's model saved on LM Studio: its tick on and disabled, and under its title both
+    `as <name>` and why, in the column of the title, not squeezed under the tick (LAD-241)."""
+    state.add_model("Codex qwen", "codex", "qwen3-8b", saved_server(lms))
+    page.set_viewport_size({"width": 1440, "height": 900})
+    open_settings(page, server)
+    sub = open_qwen(page)
+    codex = sub.locator("label.mx-cant").filter(has_text="Codex CLI")
+    expect(codex.get_by_role("checkbox")).to_be_checked()
+    expect(codex.get_by_role("checkbox")).to_be_disabled()
+    said = codex.locator(".mx-as")
+    expect(said).to_have_text(["as Codex qwen", CODEX_ON_LMSTUDIO])
+    title = codex.locator("> span").first.bounding_box()
+    for line in (said.nth(0), said.nth(1)):
+        box = line.bounding_box()
+        assert box and title, (box, title)
+        assert abs(box["x"] - title["x"]) < 1, (box, title)
+        assert box["width"] > 100, box
+    shot(page, "saved")
 
 
 def test_key_and_new_key_are_dots_as_a_projects_secret(page: Page, clis, server, lms):

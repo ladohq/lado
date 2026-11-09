@@ -1,8 +1,10 @@
 // The New session window (docs/design/ui.md, Launch and session control): opened from the
-// rail's Launch, the session list's "+", and in its Resume mode from a stopped session's
-// Resume. What a folder is, which kits and providers there are and whether a name is taken
-// all come from the server; the window decides nothing the core decides.
-import { createContext, useContext, useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from "react";
+// rail's New session, the session list's "+", and in its Resume mode from a stopped session's
+// Resume. Top to bottom: Where (LaunchWhere.tsx), Task, Team (LaunchTeam.tsx), and a footer
+// that never scrolls, which says what is missing while its button is off. What a folder is,
+// which kits and providers there are and whether a name is taken all come from the server;
+// the window decides nothing the core decides.
+import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useNavigate } from "react-router";
 
 import {
@@ -23,33 +25,49 @@ import {
   type CloneRefused,
   type CloneTarget,
   type FolderInfo,
-  type KitInfo,
   type Launch,
   type Limits,
+  type ModelRefusal,
   type ProjectLaunch,
   type ProjectPlace,
-  type ModelRefusal,
-  type ProviderInfo,
   type ProviderSuggestion,
   type RecentFolder,
+  type Refused,
   type RemoteInfo,
+  type Resume,
   type ScratchTarget,
   type SessionInfo,
-  type Refused,
-  type Resume,
   type Started,
-  type Taken,
-  type Workspace,
 } from "./api";
-import { useCloneJob } from "./cloneJob";
-import { useCopy } from "./Copy";
-import { useLaunchModel } from "./LaunchModel";
-import { ProjectField } from "./LaunchProject";
 import { closedBy, looks, resumeAttempt } from "./attempts";
+import { since } from "./ChatText";
+import { useCloneJob } from "./cloneJob";
+import { InfoTip } from "./InfoTip";
+import { useLaunchModel, type Choice } from "./LaunchModel";
+import { ProjectField } from "./LaunchProject";
+import { LaunchSetup } from "./LaunchSetup";
+import { DEFAULT_MODE, LaunchTeam, modeWords } from "./LaunchTeam";
+import {
+  BranchField,
+  FolderHint,
+  FolderNotes,
+  FolderPathField,
+  lastPart,
+  PlaceBox,
+  PlaceIcon,
+  ScratchNameField,
+  TargetNote,
+  UrlField,
+  withSlash,
+  type Shown,
+  type Way,
+} from "./LaunchWhere";
 import { useLive, useLiveStore, useLocked } from "./live";
 import { useModal } from "./modal";
-import { ActionProblem, Waits } from "./waitingParts";
 import { agentClisPath, projectPath, sessionPath } from "./paths";
+import { ActionProblem, Waits } from "./waitingParts";
+
+export { FolderHint };
 
 // How long the window waits after a keystroke before it asks the server about the folder.
 export const DEBOUNCE = 200;
@@ -64,24 +82,20 @@ const CAN_CLONE = new Set<CloneTarget["state"]>(["new", "empty"]);
 // The folder states a fresh start may go on in (lado.scratch.CAN_START).
 const CAN_START = new Set<ScratchTarget["state"]>(["new", "empty"]);
 
-// Where a new session's folder comes from: made from scratch, one there is, a clone, or a
-// project's repository.
-type Source = "scratch" | "folder" | "url" | "project";
-
 const DEFAULT_KIT = "default";
-const DEFAULT_MODE = "default"; // also "no mode given": the provider's own default
-// Why the folder's provider was chosen, in the words `lado start` prints (runtime.Suggestion).
-const SUGGESTED: Record<ProviderSuggestion["reason"], string> = {
-  last_session: "from the folder's last session",
-  only_installed: "the only one installed",
-};
+
+const TASK_ABOUT = "The team gets this as its first message and answers in the chat. You can leave it empty.";
+const MESSAGE_ABOUT = "The team gets this as a message once it resumes, and answers in the chat. You can leave it empty.";
+const RESUME_ABOUT = "The team continues where it stopped: its chat, tasks and work stay.";
 
 // A session of these statuses can be resumed; a running one only opened.
 const RESUMABLE = new Set<SessionInfo["status"]>(["stopped", "tmux_gone"]);
 
-// A new session's window opens in Project with `project` (and its repository `repo`) chosen
-// (the project's page), else in Folder (From scratch without recent folders).
-export type LaunchMode = { kind: "new"; project?: string; repo?: string } | { kind: "resume"; session: SessionInfo };
+// A new session's window opens on a project (and its repository; the project's page) or a
+// folder (Resume's Start a new session instead), else on the last place.
+export type LaunchMode =
+  | { kind: "new"; project?: string; repo?: string; path?: string }
+  | { kind: "resume"; session: SessionInfo };
 
 const LaunchContext = createContext<(mode?: LaunchMode) => void>(() => {});
 
@@ -91,8 +105,32 @@ export const useLaunch = () => useContext(LaunchContext);
 // What a start or resume said, for the session's page to show (its problems until closed).
 export type StartedState = { started: Started };
 
+// What the New session window keeps when it closes without a start, until a start or a
+// reload of the page.
+type Draft = {
+  source: Way;
+  otherFolder: boolean;
+  projectPick: boolean;
+  path: string;
+  projectAsk: { project: string | null; repo: string | null };
+  scratchText: string;
+  scratchInto: string | null;
+  url: string;
+  into: string | null;
+  prompt: string;
+  name: string | null;
+  kits: string[];
+  provider: string | null;
+  permissionMode: string;
+  without: string;
+  touched: string[];
+  teamOpen: boolean;
+  model: { cli: string; choice: Choice } | null; // the Model field's choice, for its agent CLI
+};
+
 export function LaunchProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<LaunchMode | null>(null);
+  const draft = useRef<Draft | null>(null);
   const shown = useRef(mode);
   shown.current = mode;
   return (
@@ -100,8 +138,16 @@ export function LaunchProvider({ children }: { children: ReactNode }) {
       {children}
       {mode && (
         <LaunchDialog
-          key={mode.kind === "resume" ? `resume:${mode.session.name}` : "new"}
+          key={
+            mode.kind === "resume"
+              ? `resume:${mode.session.name}`
+              : `new:${mode.project ?? ""}:${mode.repo ?? ""}:${mode.path ?? ""}`
+          }
           mode={mode}
+          draft={mode.kind === "new" && !mode.project && !mode.path ? draft.current : null}
+          onDraft={(kept) => {
+            draft.current = kept;
+          }}
           onMode={setMode}
           onClose={() => setMode(null)}
           resumes={(name) => shown.current?.kind === "resume" && shown.current.session.name === name}
@@ -122,7 +168,7 @@ export function useDebounced<T>(value: T, ms = DEBOUNCE): T {
 }
 
 // null: asking; an error's `detail` is the server's (a CloneRefused for a clone)
-type Asked<T> = { value: T } | { error: string; detail?: unknown } | null;
+export type Asked<T> = { value: T } | { error: string; detail?: unknown } | null;
 
 // The server's answer to `ask(key)`, asked again when `key` changes; nothing for a null key.
 export function useAsked<T>(key: string | null, ask: (key: string) => Promise<T>): Asked<T> {
@@ -154,28 +200,11 @@ function useOnce<T>(ask: () => Promise<T>, skip = false): Asked<T> {
 
 const messageOf = (error: unknown) => (error instanceof ApiError ? error.message : String(error));
 
-const valueOf = <T,>(asked: Asked<T>): T | null => (asked !== null && "value" in asked ? asked.value : null);
-
-// Where suggestions come from (N1): the folder up to the last "/" and the name typed after it.
-function parentOf(path: string): { parent: string; prefix: string } | null {
-  const slash = path.lastIndexOf("/");
-  if (slash < 0) return null;
-  return { parent: path.slice(0, slash + 1), prefix: path.slice(slash + 1) };
-}
-
-// The workspace as a parent: "/" stays "/", "/a/b" becomes "/a/b/".
-const withSlash = (folder: string) => (folder.endsWith("/") ? folder : `${folder}/`);
+export const valueOf = <T,>(asked: Asked<T>): T | null => (asked !== null && "value" in asked ? asked.value : null);
 
 const sameFolder = (path: string, folder: string | null) => folder !== null && withSlash(path) === withSlash(folder);
 
 const splitWithout = (text: string) => text.split(/[\s,]+/).filter(Boolean);
-
-// "agent:reviewer@kit-a" as the button that switches it off says it.
-const switchOffLabel = (item: string) => {
-  const [, rest = item] = item.split(/:(.*)/);
-  const [name, kit] = rest.split("@");
-  return kit ? `Switch off ${name} of ${kit}` : `Switch off ${name}`;
-};
 
 const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((one, i) => one === b[i]);
 
@@ -193,64 +222,96 @@ const elapsed = (seconds: number) => {
 export const defaultBranch = (remote: RemoteInfo) =>
   remote.default ?? ["main", "master"].find((one) => remote.branches.includes(one)) ?? remote.branches[0];
 
+// The name after a taken one, for a start a race refused: "webapp-2" after "webapp".
+const nextName = (name: string) => {
+  const numbered = /^(.*)-(\d+)$/.exec(name);
+  return numbered ? `${numbered[1]}-${Number(numbered[2]) + 1}` : `${name}-2`;
+};
+
+// A missing item of the footer's "To start:", and the field it leads to.
+type Missing = { text: string; focus: () => void };
+
 function LaunchDialog({
   mode,
+  draft,
+  onDraft,
   onMode,
   onClose,
   resumes,
 }: {
   mode: LaunchMode;
+  draft: Draft | null; // what the window held when it last closed without a start
+  onDraft: (draft: Draft | null) => void;
   onMode: (mode: LaunchMode) => void;
   onClose: () => void;
   resumes: (session: string) => boolean; // the window stands now in Resume mode for it
 }) {
   const resuming = mode.kind === "resume" ? mode.session : null;
+  const asksProject = mode.kind === "new" ? (mode.project ?? null) : null;
+  const asksPath = mode.kind === "new" ? (mode.path ?? null) : null;
   const dialog = useRef<HTMLDialogElement>(null);
-  const advanced = useRef<HTMLDetailsElement>(null);
   const navigate = useNavigate();
   const live = useLive();
   const store = useLiveStore();
   const attempt = resumeAttempt(resuming?.name ?? "");
-  const waiting = useLocked(attempt) && resuming !== null; // New session's Start does not wait
+  const waiting = useLocked(attempt) && resuming !== null; // New session's start does not wait
   const ids = useId();
+  const whereRef = useRef<HTMLInputElement>(null);
+  const pathRef = useRef<HTMLInputElement>(null);
+  const urlRef = useRef<HTMLInputElement>(null);
+  const scratchRef = useRef<HTMLInputElement>(null);
+  const taskRef = useRef<HTMLTextAreaElement>(null);
+  const refusedRef = useRef<HTMLDivElement>(null);
+  const actionRef = useRef<HTMLButtonElement>(null);
+  const teamRefs = {
+    name: useRef<HTMLInputElement>(null),
+    agent: useRef<HTMLSelectElement>(null),
+    kits: useRef<HTMLSelectElement>(null),
+  };
 
-  const [path, setPath] = useState(resuming?.repo ?? "");
-  const [name, setName] = useState<string | null>(resuming?.name ?? null); // null: the default
-  const [kits, setKits] = useState<string[]>(resuming?.kits ?? [DEFAULT_KIT]);
-  // null: none chosen; a new session's comes from the folder's suggestion (the core's rule)
-  const [provider, setProvider] = useState<string | null>(resuming?.provider ?? null);
+  const [path, setPath] = useState(resuming?.repo ?? draft?.path ?? asksPath ?? "");
+  const [name, setName] = useState<string | null>(resuming?.name ?? draft?.name ?? null); // null: the default
+  const [kits, setKits] = useState<string[]>(resuming?.kits ?? draft?.kits ?? [DEFAULT_KIT]);
+  // null: none chosen; a new session's comes from the place's suggestion (the core's rule)
+  const [provider, setProvider] = useState<string | null>(resuming?.provider ?? draft?.provider ?? null);
   const [suggested, setSuggested] = useState<ProviderSuggestion["reason"] | null>(null);
-  const [permissionMode, setPermissionMode] = useState(resuming?.permission_mode ?? DEFAULT_MODE);
-  const [without, setWithout] = useState(resuming?.without.join(", ") ?? "");
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [prompt, setPrompt] = useState(""); // the human's first message to the supervisor
-  const [touched, setTouched] = useState<Set<string>>(new Set());
+  const [permissionMode, setPermissionMode] = useState(
+    resuming?.permission_mode ?? draft?.permissionMode ?? DEFAULT_MODE,
+  );
+  const [without, setWithout] = useState(resuming?.without.join(", ") ?? draft?.without ?? "");
+  const [teamOpen, setTeamOpen] = useState(draft?.teamOpen ?? false);
+  const [prompt, setPrompt] = useState(draft?.prompt ?? ""); // the task: the human's first message
+  const [touched, setTouched] = useState<Set<string>>(new Set(draft?.touched ?? []));
   const [fromLast, setFromLast] = useState(false);
   const [modeNote, setModeNote] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // What runs now, for the button's word: a start, a set-up, a resume.
+  const [busy, setBusyKind] = useState<"start" | "setup" | "resume" | null>(null);
+  const setBusy = (on: boolean) => setBusyKind(on ? "start" : null);
   const [refused, setRefused] = useState<ApiError | null>(null);
-  // Clone from URL: the URL, the folder (null: the default one), the branch the human picked
-  // for which URL, the running job, and what the last clone ended in.
-  // The source starts in Folder and becomes From scratch once the recent folders are none,
-  // unless the human picked one or typed a folder or URL before (sourceTouched).
-  const asksProject = mode.kind === "new" ? (mode.project ?? null) : null;
-  const [source, setSourceState] = useState<Source>(asksProject ? "project" : "folder");
-  const sourceTouched = useRef(asksProject !== null);
-  // Project: the project and repository asked of the server (null: its choice).
-  const [projectAsk, setProjectAsk] = useState<{ project: string | null; repo: string | null }>({
-    project: asksProject,
-    repo: (asksProject && mode.kind === "new" && mode.repo) || null,
-  });
-  const setSource = (next: Source) => {
-    sourceTouched.current = true;
+  // Where: the way and its fields; a folder's path, a project and repository asked of the
+  // server (null: its choice), a fresh start's name and folder, a clone's URL and folder.
+  const [source, setSourceState] = useState<Way>(asksProject ? "project" : (draft?.source ?? "folder"));
+  const [otherFolder, setOtherFolder] = useState(draft?.otherFolder ?? false);
+  const [projectPick, setProjectPick] = useState(asksProject !== null || (draft?.projectPick ?? false));
+  // The window opens on the last place once the recent places answer, unless it was told
+  // where (the project's page, Start a new session instead) or kept a draft.
+  const placeTouched = useRef(asksProject !== null || asksPath !== null || draft !== null);
+  const [projectAsk, setProjectAsk] = useState<{ project: string | null; repo: string | null }>(
+    asksProject !== null
+      ? { project: asksProject, repo: (mode.kind === "new" && mode.repo) || null }
+      : (draft?.projectAsk ?? { project: null, repo: null }),
+  );
+  const setSource = (next: Way) => {
+    placeTouched.current = true;
     setSourceState(next);
   };
-  // From scratch: the name as typed and the folder (null: the name's default one).
-  const [scratchText, setScratchText] = useState("");
-  const [scratchInto, setScratchInto] = useState<string | null>(null);
-  const [url, setUrl] = useState("");
-  const [into, setInto] = useState<string | null>(null);
+  const [scratchText, setScratchText] = useState(draft?.scratchText ?? "");
+  const [scratchInto, setScratchInto] = useState<string | null>(draft?.scratchInto ?? null);
+  const [url, setUrl] = useState(draft?.url ?? "");
+  const [into, setInto] = useState<string | null>(draft?.into ?? null);
   const [picked, setPicked] = useState<{ url: string; branch: string } | null>(null);
+  const [include, setInclude] = useState<string[]>([]); // the set-up's left-out files ticked in
+  const [checkTurn, setCheckTurn] = useState(0); // Check again of the set-up's author
   const clone = useCloneJob(); // its beacon cancels the clone of a page that goes away
   const job = clone.job;
   const [cloneEnd, setCloneEnd] = useState<{ note: string } | { refused: CloneRefused } | null>(null);
@@ -282,8 +343,8 @@ function LaunchDialog({
       repo:
         projectAsk.project === lastProject.project && projectAsk.repo !== null ? projectAsk.repo : lastProject.repo,
     });
-  // Start names the project the session goes to: the window opens on the last one used,
-  // and another project's session gets another client's keys.
+  // The button names the project the session goes to: another project's session gets
+  // another client's keys.
   const chosenProject = shownProject?.projects.find((one) => one.id === shownProject.project) ?? null;
   const projectTitle = projecting && chosenProject ? (chosenProject.title ?? chosenProject.id) : null;
   const typedText = scratchText.trim();
@@ -294,8 +355,8 @@ function LaunchDialog({
   const scratchAsked = useAsked(
     scratching && (settledText || settledScratchInto) ? JSON.stringify([settledText, settledScratchInto]) : null,
     (key) => {
-      const [text, path] = JSON.parse(key) as [string, string];
-      return getScratchTarget(text, path || null);
+      const [text, where] = JSON.parse(key) as [string, string];
+      return getScratchTarget(text, where || null);
     },
   );
   const fresh =
@@ -305,8 +366,8 @@ function LaunchDialog({
   const settledUrl = useDebounced(typedUrl);
   const settledInto = useDebounced(typedInto);
   const targetAsked = useAsked(cloning && settledUrl ? JSON.stringify([settledUrl, settledInto]) : null, (key) => {
-    const [asked, path] = JSON.parse(key) as [string, string];
-    return getCloneTarget(asked, path || null);
+    const [asked, where] = JSON.parse(key) as [string, string];
+    return getCloneTarget(asked, where || null);
   });
   const target = settledUrl === typedUrl && settledInto === typedInto ? valueOf(targetAsked) : null;
   const branchesUrl = useDebounced(typedUrl, BRANCHES_DEBOUNCE);
@@ -334,16 +395,69 @@ function LaunchDialog({
   // In the workspace, which the first clone or fresh start makes; nothing before it is known.
   const inWorkspace = (rest: string) => (workspace ? `${withSlash(workspace.path)}${rest}` : "");
   const settled = useDebounced(path.trim());
-  const checked = useAsked(resuming ? null : toCheck(settled), getFolder);
+  const checkKey = resuming ? null : toCheck(settled);
+  const checked = useAsked(checkKey === null ? null : JSON.stringify([checkKey, checkTurn]), (key) =>
+    getFolder((JSON.parse(key) as [string, number])[0]),
+  );
   const folder = valueOf(checked);
-  const current = folder !== null && folder.path === settled && settled === path.trim() ? folder : null;
+  // The answer to what the field holds now: useAsked gives only the answer of the key asked,
+  // and the answer's own path is no match for the text (the server expands `~`).
+  const current = folder !== null && settled === path.trim() ? folder : null;
+  // A plain folder checked again (Check again, a refused set-up): its last answer stays in
+  // sight, the panel counting or its Check again "Checking…", until the new one comes; a
+  // failed ask shows its error instead.
+  const [lastPlain, setLastPlain] = useState<{ key: string; info: FolderInfo } | null>(null);
+  useEffect(() => {
+    if (current && checkKey !== null) setLastPlain(current.setup ? { key: checkKey, info: current } : null);
+  }, [current, checkKey]);
+  const rechecking =
+    !resuming &&
+    source === "folder" &&
+    checked === null &&
+    checkKey !== null &&
+    settled === path.trim() &&
+    lastPlain?.key === checkKey;
+  const shownFolder = current ?? (rechecking ? lastPlain!.info : null);
+  // Check again answered with the author known: its button went, the focus goes on to Task.
+  const wasRechecking = useRef(false);
+  useEffect(() => {
+    if (wasRechecking.current && !rechecking && document.activeElement === document.body) taskRef.current?.focus();
+    wasRechecking.current = rechecking;
+  }, [rechecking]);
   const recentAsked = valueOf(useOnce(getRecentFolders, resuming !== null));
   const recent = recentAsked ?? [];
+  // The first answer of the recent places sets the window on the last place, or on New empty
+  // folder without one; the focus goes where the human types next.
+  const [opened, setOpened] = useState<"task" | "scratch" | null>(
+    draft !== null || asksProject !== null || asksPath !== null ? "task" : null,
+  );
   useEffect(() => {
-    if (recentAsked === null || sourceTouched.current) return;
-    sourceTouched.current = true; // decided once
-    if (recentAsked.length === 0) setSourceState("scratch");
+    if (recentAsked === null || placeTouched.current) return;
+    placeTouched.current = true; // decided once
+    const last = recentAsked[0];
+    if (!last) {
+      setSourceState("scratch");
+      setOpened("scratch");
+    } else if (last.project?.repo) {
+      setSourceState("project");
+      setProjectPick(false);
+      setProjectAsk({ project: last.project.id, repo: last.project.repo });
+      setOpened("task");
+    } else {
+      setSourceState("folder");
+      setOtherFolder(false);
+      setPath(last.path);
+      setOpened("task");
+    }
   }, [recentAsked]);
+  useEffect(() => {
+    if (opened === null || resuming) return;
+    (opened === "scratch" ? scratchRef : taskRef).current?.focus();
+  }, [opened, resuming]);
+  useEffect(() => {
+    if (resuming) taskRef.current?.focus();
+  }, [resuming]);
+
   // In Project the repository's git root (links resolved), as a session's folder is given.
   const root = resuming?.repo ?? (scratching ? null : projecting ? inProject?.root : folder?.root) ?? null;
   const kitList = useAsked(root ?? "", (where) => getKits(where || null));
@@ -352,7 +466,7 @@ function LaunchDialog({
   const loginsOf = resuming ? (resuming.project ?? "") : projecting ? (inProject?.project ?? null) : "";
   const providerList = useAsked(loginsOf, (project) => getProviders(project || null));
   const providers = valueOf(providerList);
-  // Without the limits the server checks the first message's length alone.
+  // Without the limits the server checks the task's length alone.
   const maxMessage = valueOf(useOnce<Limits>(getLimits))?.max_message ?? null;
   const promptText = prompt.trim();
   const promptOver = maxMessage !== null && promptText.length > maxMessage;
@@ -367,24 +481,28 @@ function LaunchDialog({
   const providerInfo = held ? null : inList;
   const noLogin = inList?.login_missing ? inList : null;
   const canStart = providerInfo?.installed === true && !providerInfo.login_missing;
+  // A provider the session cannot run: Team opens on its refusal.
+  const providerRefused =
+    providers !== null && (noLogin?.installed === true || (chosenProvider !== null && !providerInfo?.installed));
+  useEffect(() => {
+    if (providerRefused) setTeamOpen(true);
+  }, [providerRefused]);
 
   const modelRefusal = refused?.status === 409 && isModelRefusal(refused.detail) ? refused.detail : null;
   const model = useLaunchModel({
     cli: providerInfo ?? null,
     project: loginsOf,
     resuming,
-    busy,
+    busy: busy !== null,
     refusal: modelRefusal,
     onClearRefusal: () => setRefused((now) => (now?.status === 409 && isModelRefusal(now.detail) ? null : now)),
-    onShow: () => {
-      if (advanced.current) advanced.current.open = true;
-    },
+    onShow: () => setTeamOpen(true),
+    draft: draft?.model ?? null,
   });
   const modelReady = !model.blocked;
-  const modes = providerInfo?.permission_modes ?? [];
 
-  // M5: kits, provider and mode of a new session come from the folder's last session; in
-  // Project, from the repository's last session in the project.
+  // Kits and mode of a new session come from the folder's last session; in Project, from
+  // the repository's last session in the project.
   const last = resuming
     ? null
     : projecting
@@ -402,7 +520,7 @@ function LaunchDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [last?.name, folder?.root, projectRepo?.path, source]);
 
-  // No provider is the default: the folder's suggestion (a clone's or a fresh start's
+  // No provider is the default: the place's suggestion (a clone's or a fresh start's
   // folder's, a project's repository's), with its reason, or none.
   const suggesting = cloning ? target : scratching ? fresh : projecting ? inProject : folder;
   const suggestingPath = suggesting && "path" in suggesting ? suggesting.path : (projectRepo?.path ?? null);
@@ -415,16 +533,31 @@ function LaunchDialog({
 
   const touch = (field: string) => setTouched((before) => new Set(before).add(field));
 
+  // The focus a pick or a refusal moves, once the render that shows its field is done: not
+  // a frame later, when the human may type in another field already.
+  const [toFocus, setToFocus] = useState<{ run: () => void } | null>(null);
+  const focusNext = (run: () => void) => setToFocus({ run });
+  useEffect(() => {
+    toFocus?.run();
+  }, [toFocus]);
+
   const named = cloning ? target : projecting ? shownProject : current;
-  const shownName = name ?? named?.default_name ?? "";
+  // The session's name: the human's, else the place's free one (its default when free).
+  const shownName = scratching ? (fresh?.name ?? "") : (name ?? named?.free_name ?? named?.default_name ?? "");
   const resumable = (sessionName: string) => {
     const loaded = live.sessions;
     return loaded && "sessions" in loaded ? loaded.sessions.find((one) => one.name === sessionName) : undefined;
   };
-  const resumeIt = (sessionName: string) => {
-    const found = resumable(sessionName);
-    if (found) onMode({ kind: "resume", session: found });
-  };
+  // A stopped session of the place's default name: Resume it beside the new start. In a
+  // project only one of this project, as the core resumes none of another.
+  const stoppedSession =
+    !resuming && !cloning && !scratching && named?.name_state === "stopped_here" && named.default_name
+      ? resumable(named.default_name)
+      : undefined;
+  const stopped =
+    stoppedSession && RESUMABLE.has(stoppedSession.status) && (!projecting || stoppedSession.project === inProject?.project)
+      ? stoppedSession
+      : null;
 
   const chooseProvider = (next: string) => {
     touch("provider");
@@ -433,43 +566,35 @@ function LaunchDialog({
     const info = providers?.find((one) => one.name === next);
     const supported = info?.permission_modes ?? [];
     if (permissionMode !== DEFAULT_MODE && !supported.includes(permissionMode)) {
-      setModeNote(`${next} has no mode ${permissionMode}: set to default`);
+      setModeNote(`${info?.title ?? next} has no such mode: set to the default`);
       setPermissionMode(DEFAULT_MODE);
     } else {
       setModeNote(null);
     }
   };
 
-  // The provider's part holds in both modes: it is the condition under which ProviderNote
-  // shows no refusal. Resume does not check its folder.
-  const ready =
-    (resuming !== null || (current?.ok ?? false)) &&
-    canStart &&
-    modelReady &&
-    kits.length > 0 &&
-    !promptOver;
+  // A plain folder of files the start sets up first (lado.setup).
+  const setup = !resuming && source === "folder" && current && !current.ok ? (current.setup ?? null) : null;
+  const settingUp = setup !== null;
+  const setupReady = setup !== null && setup.refusal === null && setup.author === null;
+
+  // What each way needs beyond the team; the team's part holds in every way.
+  const teamReady = canStart && modelReady && kits.length > 0 && !promptOver;
+  const folderReady = (resuming !== null || (current?.ok ?? false) || setupReady) && teamReady;
   const cloneReady =
-    !promptOver &&
-    remote !== null &&
-    target !== null &&
-    CAN_CLONE.has(target.state) &&
-    canStart &&
-    modelReady &&
-    kits.length > 0 &&
-    shownName !== "";
+    teamReady && remote !== null && target !== null && CAN_CLONE.has(target.state) && shownName !== "";
   const scratchReady =
-    !promptOver &&
+    teamReady &&
     fresh !== null &&
     fresh.path !== null &&
     fresh.name !== null &&
     CAN_START.has(fresh.state) &&
     fresh.author === null &&
-    fresh.name_state === "free" &&
-    canStart &&
-    modelReady &&
-    kits.length > 0;
-  const projectReady =
-    !promptOver && projectRepo !== null && canStart && modelReady && kits.length > 0 && shownName !== "";
+    fresh.name_state === "free";
+  const projectReady = teamReady && projectRepo !== null && shownName !== "";
+  // Use this clone only turns Where to the clone that is there.
+  const useClone = cloning && target?.state === "same_repo";
+  const ready = useClone || (cloning ? cloneReady : scratching ? scratchReady : projecting ? projectReady : folderReady);
 
   // A new session in `where`, as the window's fields say; from scratch, its folder is made
   // a repository first, and the session takes the name and title of the name typed.
@@ -489,7 +614,35 @@ function LaunchDialog({
     });
   };
 
-  const opened = (started: Started) => {
+  // Closing without a start keeps the draft; a start clears it.
+  const close = () => {
+    if (!resuming) {
+      onDraft({
+        source,
+        otherFolder,
+        projectPick,
+        path,
+        projectAsk,
+        scratchText,
+        scratchInto,
+        url,
+        into,
+        prompt,
+        name,
+        kits,
+        provider,
+        permissionMode,
+        without,
+        touched: [...touched],
+        teamOpen,
+        model: model.kept,
+      });
+    }
+    onClose();
+  };
+
+  const openSession = (started: Started) => {
+    onDraft(null);
     onClose();
     const state: StartedState = { started };
     navigate(sessionPath(started.session.name, "activity"), { state });
@@ -497,24 +650,27 @@ function LaunchDialog({
 
   const toFolder = (where: string) => {
     setSource("folder");
+    setOtherFolder(false);
     setPath(where);
   };
 
-  // Start from scratch here: the folder checked in Folder, in Create in, its name in Name.
+  // Start from scratch here: the folder checked becomes New empty folder's target, its
+  // last segment the folder's name.
   const toScratch = (where: string) => {
     setSource("scratch");
     setScratchInto(where);
-    setScratchText(where.replace(/\/+$/, "").split("/").pop() ?? "");
+    setScratchText(lastPart(where));
     setRefused(null);
   };
 
-  // Folder's refusal inside a project: Project with its repository, or the project's page.
+  // Folder's refusal inside a project: the project's repository, or the project's page.
   const toProject = (place: ProjectPlace) => {
     if (place.repo === null) {
       leave(projectPath(place.id));
       return;
     }
     setSource("project");
+    setProjectPick(false);
     setProjectAsk({ project: place.id, repo: place.repo });
     setRefused(null);
   };
@@ -524,34 +680,67 @@ function LaunchDialog({
     navigate(to);
   };
 
+  // A refused request: Team opens on a refusal of one of its fields, the focus goes to the
+  // field to fix, else to the refusal.
+  const refuse = (error: unknown) => {
+    const given = error instanceof ApiError ? error : new ApiError(0, String(error));
+    setRefused(given);
+    const taken = given.status === 409 && !isModelRefusal(given.detail);
+    const switchOff = given.status === 400 && hasSwitchOff(given.detail);
+    if (taken || switchOff || isModelRefusal(given.detail)) setTeamOpen(true);
+    focusNext(() => {
+      if (taken) teamRefs.name.current?.focus();
+      else if (isModelRefusal(given.detail)) model.focus();
+      else refusedRef.current?.focus();
+    });
+  };
+
   // Make the folder a repository and start there; a start refused after the repository
-  // was made leaves the window in Folder with it and the refusal, as after a clone.
+  // was made leaves the window on the folder with the refusal, as after a clone.
   const createAndStart = async () => {
     if (fresh?.path == null) return;
     const where = fresh.path;
     setBusy(true);
     setRefused(null);
     try {
-      opened(await startIn({ kind: "scratch", path: where }));
+      openSession(await startIn({ kind: "scratch", path: where }));
     } catch (error) {
       const given = error instanceof ApiError ? error : new ApiError(0, String(error));
       if (given.status === 400 || given.status === 409) {
         const made = await getFolder(where).catch(() => null);
         if (made?.ok) toFolder(where);
       }
-      setRefused(given);
       setBusy(false);
+      refuse(given);
     }
   };
 
-  // Clone, then start in the clone as Start does for a folder; a start refused after the
-  // clone leaves the window in Folder with the clone and the refusal.
+  // Set the plain folder up and start there; a start refused after the set-up leaves the
+  // window on the folder, now a repository, with the refusal.
+  const setUpAndStart = async () => {
+    if (current === null) return;
+    const where = current.path;
+    setBusyKind("setup");
+    setRefused(null);
+    try {
+      // Only what this preview leaves out: a tick of an earlier one may name a file gone.
+      const left = new Set(current.setup?.left_out.map((one) => one.path) ?? []);
+      openSession(await startIn({ kind: "setup", path: where, include: include.filter((one) => left.has(one)) }));
+    } catch (error) {
+      setCheckTurn((turn) => turn + 1); // the folder may be a repository now
+      setBusy(false);
+      refuse(error);
+    }
+  };
+
+  // Clone, then start in the clone as for a folder; a start refused after the clone leaves
+  // the window on the clone's folder with the refusal.
   const cloneAndStart = async () => {
     if (target === null || branch === null) return;
     setBusy(true);
     setRefused(null);
     setCloneEnd(null);
-    const refuse = (error: unknown) => {
+    const failed = (error: unknown) => {
       const given = error instanceof ApiError ? error : new ApiError(0, String(error));
       const why = cloneRefused(given.detail);
       setCloneEnd({ refused: why ?? { message: given.message, kind: "refused", hint: null } });
@@ -560,19 +749,18 @@ function LaunchDialog({
     const asked = typedUrl; // its field is off while the clone runs
     // A job the server dropped (clone.KEPT) ended while this window did not ask: the clone
     // is there when the folder is now a clone of the URL.
-    const isThere = async (lost: CloneJob) =>
-      (await getCloneTarget(asked, lost.path)).state === "same_repo";
+    const isThere = async (lost: CloneJob) => (await getCloneTarget(asked, lost.path)).state === "same_repo";
     let end;
     try {
       end = await clone.run({ url: asked, path: target.path, branch }, isThere);
     } catch (error) {
-      refuse(error);
+      failed(error);
       return;
     }
     if ("ended" in end) {
       if (end.ended === "left") return;
       if (end.ended === "gone") {
-        refuse(end.error); // the job's end is unknown
+        failed(end.error); // the job's end is unknown
       } else if (end.ended === "away") {
         toFolder(end.job.path); // offered as a folder
         setCloneEnd({ note: `the clone ended while this window was away; it is in ${end.job.path}` });
@@ -592,16 +780,35 @@ function LaunchDialog({
       return;
     }
     try {
-      opened(await startIn({ kind: "folder", path: running.path }));
+      openSession(await startIn({ kind: "folder", path: running.path }));
     } catch (error) {
       toFolder(running.path);
-      setRefused(error instanceof ApiError ? error : new ApiError(0, String(error)));
       setBusy(false);
+      refuse(error);
     }
   };
 
-  // The resume of a session, kept when it gets no answer. Reached by what LADO reads there is
-  // no answer to show on the session's page; with no window open for it the human went
+  // The Team fields changed from those `session` has, and the task, for a resume. In New
+  // session the fields came from the place's last session and the suggestion, not from the
+  // stopped one beside it: only those the human touched count (`onlyTouched`).
+  const changedFrom = (session: SessionInfo, onlyTouched = false): Resume => {
+    const off = splitWithout(without);
+    const changed: Resume = {};
+    const counts = (field: string) => !onlyTouched || touched.has(field);
+    if (counts("kits") && !sameList(kits, session.kits)) changed.kits = kits;
+    if (counts("provider") && chosenProvider !== null && chosenProvider !== session.provider) {
+      changed.provider = chosenProvider;
+    }
+    if (counts("mode") && permissionMode !== (session.permission_mode ?? DEFAULT_MODE)) {
+      changed.permission_mode = permissionMode;
+    }
+    if (counts("without") && !sameList(off, session.without)) changed.without = off;
+    if (model.send !== undefined) changed.model = model.send;
+    return { ...changed, ...withPrompt };
+  };
+
+  // The Resume window's resume, kept when it gets no answer. Reached by what LADO reads there
+  // is no answer to show on the session's page; with no window open for it the human went
   // elsewhere, and stays there. The window may be a later one than this.
   const resume = async (session: SessionInfo, given: Resume) => {
     const got: { started?: Started } = {};
@@ -615,33 +822,40 @@ function LaunchDialog({
       closed: closedBy.resume,
       reached: () => {
         if (!resumes(session.name)) return;
-        if (got.started) opened(got.started);
+        if (got.started) openSession(got.started);
         else {
           onClose();
           navigate(sessionPath(session.name, "activity"));
         }
       },
     });
-    if (answered) opened(got.started!);
+    if (answered) openSession(got.started!);
     else setBusy(false);
   };
 
-  const submit = async () => {
-    setBusy(true);
+  // New session's Resume <name>: the stopped session of the place, with the task and the
+  // Team fields changed.
+  const resumeStopped = async () => {
+    if (stopped === null) return;
+    setBusyKind("resume");
     setRefused(null);
-    const off = splitWithout(without);
+    try {
+      openSession(await resumeSession(stopped.name, changedFrom(stopped, true)));
+    } catch (error) {
+      setBusy(false);
+      refuse(error);
+    }
+  };
+
+  const submit = async () => {
+    setBusyKind(resuming ? "resume" : "start");
+    setRefused(null);
     try {
       if (resuming) {
-        const changed: Record<string, unknown> = {};
-        if (!sameList(kits, resuming.kits)) changed.kits = kits;
-        if (chosenProvider !== null && chosenProvider !== resuming.provider) changed.provider = chosenProvider;
-        if (permissionMode !== (resuming.permission_mode ?? DEFAULT_MODE)) changed.permission_mode = permissionMode;
-        if (!sameList(off, resuming.without)) changed.without = off;
-        if (model.send !== undefined) changed.model = model.send;
-        await resume(resuming, { ...changed, ...withPrompt });
+        await resume(resuming, changedFrom(resuming));
         return;
       }
-      opened(
+      openSession(
         await startIn(
           projecting && inProject?.project && projectRepo
             ? { kind: "project", project: inProject.project, repo: projectRepo.name }
@@ -649,27 +863,211 @@ function LaunchDialog({
         ),
       );
     } catch (error) {
-      setRefused(error instanceof ApiError ? error : new ApiError(0, String(error)));
       setBusy(false);
+      refuse(error);
     }
   };
 
-  const title = resuming ? "Resume session" : "New session";
-  const taken = refused?.status === 409 && modelRefusal === null ? (refused.detail as Taken) : null;
-  // The session that has the name is this folder's (in Project: of this project too, as
-  // the core resumes none of another project or none): Resume it or Open it.
-  const takenHere =
-    taken !== null &&
-    taken.repo === root &&
-    (!projecting || (resumable(shownName)?.project ?? null) === (inProject?.project ?? null));
-  const detail = refused?.status === 400 ? refused.detail : null;
-  const switchOff =
-    detail !== null && typeof detail === "object" && "switch_off" in detail ? (detail as Refused).switch_off : [];
-  const addSwitchOff = (item: string) => {
-    const listed = splitWithout(without);
-    if (!listed.includes(item)) setWithout([...listed, item].join(", "));
-    if (advanced.current) advanced.current.open = true;
+  // The way's main action.
+  const start = () => {
+    if (busy !== null || waiting || !ready) return;
+    if (cloning) {
+      if (target?.state === "same_repo") toFolder(target.path);
+      else void cloneAndStart();
+    } else if (scratching) void createAndStart();
+    else if (settingUp) void setUpAndStart();
+    else void submit();
   };
+
+  // Enter in a field does what the blue button does: beside a stopped session with no task,
+  // Resume.
+  const act = () => {
+    if (!(stopped && !promptText)) start();
+    else if (busy === null && teamReady) void resumeStopped();
+  };
+
+  const title = resuming ? "Resume session" : "New session";
+  const taken = refused?.status === 409 && modelRefusal === null ? refused : null;
+  const detail = refused?.status === 400 ? refused.detail : null;
+  const switchOff = hasSwitchOff(detail) ? (detail as Refused).switch_off : [];
+
+  // What the closed Where shows.
+  const placeName = (where: string) => lastPart(where);
+  const shown: Shown = cloning
+    ? { icon: "link", name: "Clone from URL" }
+    : scratching
+      ? { icon: "plus", name: "New empty folder", path: scratchInto }
+      : projecting
+        ? projectPick || !projectRepo
+          ? { icon: "project", name: "Project" }
+          : { icon: "project", name: projectRepo.name, badge: projectTitle }
+        : path.trim()
+          ? { icon: "folder", name: placeName(path.trim()), path: path.trim() }
+          : otherFolder
+            ? { icon: "open", name: "Other folder" }
+            : { icon: "folder", name: recentAsked === null ? "…" : "Choose a place" };
+
+  // The footer's buttons: the way's start (or the clone's own), and Resume beside it.
+  const placeWord = cloning
+    ? target
+      ? lastPart(target.path)
+      : null
+    : projecting
+      ? projectTitle
+      : path.trim()
+        ? placeName(path.trim())
+        : null;
+  const startLabel = resuming
+    ? `Resume ${resuming.name}`
+    : cloning
+      ? target?.state === "same_repo"
+        ? "Use this clone"
+        : placeWord
+          ? `Clone and start in ${placeWord}`
+          : "Clone and start"
+      : scratching
+        ? "Create and start"
+        : settingUp
+          ? `Set up and start in ${placeWord}`
+          : stopped
+            ? projecting
+              ? `Start new session in ${projectTitle}`
+              : `Start new session ${shownName}`
+            : placeWord
+              ? `Start in ${placeWord}`
+              : "Start";
+  const busyLabel = { start: job ? "Cloning…" : "Starting…", setup: "Setting up…", resume: "Resuming…" };
+
+  // What keeps the start off, in the footer's words, each leading to its field.
+  const openTeam = (field: RefObject<HTMLElement | null>) => () => {
+    setTeamOpen(true);
+    focusNext(() => field.current?.focus());
+  };
+  const missing: Missing[] = [];
+  if (!resuming) {
+    const toWhere = () => (whereRef.current ?? pathRef.current)?.focus();
+    if (scratching) {
+      if (!fresh?.name || (fresh.state !== null && !CAN_START.has(fresh.state)) || fresh.name_state !== "free")
+        missing.push({ text: "name the folder", focus: () => scratchRef.current?.focus() });
+      if (fresh?.author) missing.push({ text: "tell git who you are", focus: () => scratchRef.current?.focus() });
+    } else if (cloning) {
+      if (remote === null || target === null || (!CAN_CLONE.has(target.state) && target.state !== "same_repo"))
+        missing.push({ text: "choose a place", focus: () => urlRef.current?.focus() });
+    } else if (projecting) {
+      if (projectRepo === null) missing.push({ text: "choose a place", focus: toWhere });
+    } else if (rechecking) {
+      missing.push({ text: "wait for the count", focus: toWhere });
+    } else if (current?.setup) {
+      const panel = () => document.getElementById(notesId)?.querySelector<HTMLElement>("button")?.focus();
+      const refusal = current.setup.refusal;
+      if (refusal) {
+        const smaller = refusal.kind === "home" || refusal.kind === "too_big";
+        missing.push({ text: smaller ? "choose a smaller folder" : "choose another folder", focus: toWhere });
+      } else if (current.setup.author) missing.push({ text: "tell git who you are", focus: panel });
+    } else if (!(current?.ok ?? false)) {
+      const asking = path.trim() !== "" && current === null && toCheck(path.trim()) !== null;
+      missing.push({ text: asking ? "wait for the check" : "choose a place", focus: toWhere });
+    }
+  }
+  if (providerList === null) missing.push({ text: "wait for the agent CLIs", focus: openTeam(teamRefs.agent) });
+  else if (providers === null || (chosenProvider === null && !noLogin)) {
+    // none chosen, or the list did not load: its error stands under Agent
+    missing.push({ text: "choose an agent", focus: openTeam(teamRefs.agent) });
+  }
+  if (noLogin?.installed) missing.push({ text: `log in to ${noLogin.title}`, focus: openTeam(teamRefs.agent) });
+  if (kits.length === 0) missing.push({ text: "choose a team setup", focus: openTeam(teamRefs.kits) });
+  if (model.blocked) {
+    missing.push({
+      text: "fix the model",
+      focus: () => {
+        setTeamOpen(true);
+        focusNext(model.focus);
+      },
+    });
+  }
+  if (promptOver) missing.push({ text: "shorten the task", focus: () => taskRef.current?.focus() });
+  const startOff = !ready && busy === null;
+  const toStart = startOff && missing.length > 0 ? missing : [];
+
+  // Team's explanation: where its settings come from.
+  const teamAbout = resuming
+    ? "As when it stopped. A change takes effect from now on."
+    : [
+        fromLast
+          ? "As in the last session in this folder."
+          : suggested === "last_any"
+            ? "Agent as in your last session; setup and permissions are LADO's defaults."
+            : "Setup and permissions are LADO's defaults.",
+        named && (named.name_state === "running" || named.name_state === "taken_elsewhere") && named.default_name
+          ? `"${named.default_name}" is taken by another session.`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+  // The agent's notes: the list's state, a CLI that cannot run, a login missing.
+  const providersNote =
+    providerList !== null && "error" in providerList ? (
+      <span className="field-note bad">{providerList.error}</span>
+    ) : providerList === null ? (
+      <span className="field-note">checking the agent CLIs…</span>
+    ) : null;
+  const agentNote = noLogin?.installed ? (
+    // A new session or a resume of it is refused (lado.logins).
+    <span className="field-note bad">
+      {noLogin.title} is not logged in: its agents cannot start.{" "}
+      <button type="button" className="link-button" onClick={() => leave(agentClisPath(noLogin.name))}>
+        Log in first
+      </button>
+    </span>
+  ) : providers !== null && providerInfo === null && chosenProvider !== null ? (
+    <span className="field-note bad">unknown agent CLI {chosenProvider}</span>
+  ) : providerInfo && !providerInfo.installed ? (
+    <span className="field-note bad">{`${providerInfo.detail}; ${providerInfo.install_hint}`}</span>
+  ) : providerInfo?.warning ? (
+    <span className="field-note warn">⚠ {providerInfo.warning}</span>
+  ) : null;
+
+  const nameNote = taken ? (
+    <>
+      <span className="field-note bad" role="alert">
+        {taken.message}
+      </span>
+      <button
+        type="button"
+        className="quiet"
+        onClick={() => {
+          setName(nextName(shownName));
+          setRefused(null);
+        }}
+      >
+        {`Use ${nextName(shownName)}`}
+      </button>
+    </>
+  ) : null;
+
+  const generalRefusal = refused !== null && taken === null && modelRefusal === null;
+  const notesId = `${ids}-place-notes`;
+  const busyNow = busy !== null || waiting;
+
+  const startButton = (primary: boolean) => (
+    <MaybeWaits resuming={resuming !== null}>
+      <button
+        ref={primary ? actionRef : undefined}
+        type="submit"
+        className={primary ? "primary" : "quiet peer"}
+        disabled={startOff || undefined}
+        aria-disabled={busyNow || undefined}
+        aria-describedby={toStart.length ? `${ids}-missing` : undefined}
+        onClick={(event) => {
+          event.preventDefault();
+          start();
+        }}
+      >
+        {busy !== null && (busy !== "resume" || resuming) ? busyLabel[busy] : startLabel}
+      </button>
+    </MaybeWaits>
+  );
 
   return (
     <dialog
@@ -678,972 +1076,398 @@ function LaunchDialog({
       aria-label={title}
       onCancel={(event) => {
         event.preventDefault();
-        if (!busy) onClose();
+        if (busy === null) close();
       }}
       onKeyDown={(event) => {
         if (event.key !== "Escape" || event.defaultPrevented) return;
         event.preventDefault();
-        if (!busy) onClose();
+        if (busy === null) close();
       }}
     >
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          if (busy || waiting) return;
-          if (source === "folder" && ready) void submit();
-          if (projecting && projectReady) void submit();
-          if (cloning && cloneReady) void cloneAndStart();
-          if (scratching && scratchReady) void createAndStart();
+          act();
         }}
       >
         <div className="launch-head">
           <h2>{title}</h2>
-          <button type="button" className="ghost" aria-label="Close" onClick={onClose} disabled={busy}>
+          <button type="button" className="ghost launch-x" aria-label="Close" onClick={close} disabled={busy !== null}>
             ×
           </button>
         </div>
 
-        {scratching ? (
-          <ScratchNameField
-            text={scratchText}
-            onText={(next) => {
-              setScratchText(next);
-              setRefused(null);
-            }}
-            target={fresh}
-            problem={scratchAsked !== null && "error" in scratchAsked ? scratchAsked.error : null}
-            head={<SourceSwitch source={source} onSource={setSource} disabled={busy} />}
-            disabled={busy}
-          />
-        ) : projecting ? (
-          <ProjectField
-            launch={shownProject}
-            asked={projectAsk}
-            asking={inProject === null}
-            problem={projectAsked !== null && "error" in projectAsked ? projectAsked.error : null}
-            head={<SourceSwitch source={source} onSource={setSource} disabled={busy} />}
-            disabled={busy}
-            onProject={(project) => {
-              setProjectAsk({ project, repo: null });
-              setRefused(null);
-            }}
-            onRepo={(repo) => {
-              setProjectAsk({ project: shownProject?.project ?? null, repo });
-              setRefused(null);
-            }}
-            onLeave={leave}
-          />
-        ) : cloning ? (
-          <UrlField
-            url={url}
-            onUrl={(next) => {
-              sourceTouched.current = true;
-              setUrl(next);
-              setRefused(null);
-              setCloneEnd(null);
-            }}
-            listing={typedUrl !== "" && remote === null && (remoteAsked === null || branchesUrl !== typedUrl)}
-            remote={remote}
-            failed={branchesUrl === typedUrl && remoteAsked !== null && "error" in remoteAsked ? remoteAsked : null}
-            head={<SourceSwitch source={source} onSource={setSource} disabled={busy} />}
-            disabled={busy}
-          />
-        ) : (
-          <WhereField
-            path={path}
-            onPath={(next) => {
-              sourceTouched.current = true;
-              setPath(next);
-              setRefused(null);
-            }}
-            onScratch={toScratch}
-            onProject={toProject}
-            folder={current}
-            checking={!resuming && toCheck(path.trim()) !== null && current === null}
-            problem={checked !== null && "error" in checked ? checked.error : null}
-            recent={recent}
-            workspace={workspace}
-            disabled={busy || resuming !== null}
-            fixed={resuming !== null}
-            head={resuming ? null : <SourceSwitch source={source} onSource={setSource} disabled={busy} />}
-          />
-        )}
+        <div className="launch-body">
+          {resuming && (
+            <div className="resume-status">
+              <p>
+                <b>{resuming.name}</b>
+                {` · ${resuming.stopped_at ? `stopped ${since(resuming.stopped_at)} ago` : "stopped"} `}
+                <InfoTip about="Resume">{RESUME_ABOUT}</InfoTip>
+              </p>
+              <button
+                type="button"
+                className="quiet"
+                disabled={busyNow}
+                onClick={() =>
+                  onMode(
+                    resuming.project
+                      ? { kind: "new", project: resuming.project, repo: lastPart(resuming.repo) }
+                      : { kind: "new", path: resuming.repo },
+                  )
+                }
+              >
+                Start a new session instead
+              </button>
+            </div>
+          )}
 
-        <div className="launch-grid">
-          {scratching && (
-            <div className="field launch-where launch-wide">
-              <label htmlFor={`${ids}-create-in`}>Create in</label>
-              <input
-                id={`${ids}-create-in`}
-                value={scratchInto ?? fresh?.path ?? ""}
-                placeholder={inWorkspace("<name>")}
-                autoComplete="off"
-                spellCheck={false}
-                disabled={busy}
-                onChange={(event) => {
-                  setScratchInto(event.target.value);
+          <div className="field launch-where" role="group" aria-labelledby={`${ids}-where-label`}>
+            <span className="field-label" id={`${ids}-where-label`}>
+              {resuming ? <span>Where</span> : <label htmlFor={`${ids}-where`}>Where</label>}
+              {projecting && projectRepo && chosenProject && !projectPick && (
+                <InfoTip about="Where">
+                  {`${projectRepo.name} is a repository of the project ${projectTitle}: the team works with ${projectTitle}'s keys and settings.`}
+                </InfoTip>
+              )}
+            </span>
+            {resuming ? (
+              <div className="where-fixed">
+                <PlaceIcon icon={resuming.project ? "project" : "folder"} />
+                <span>
+                  <span className="place-name">{lastPart(resuming.repo)}</span> <span className="where-path">{resuming.repo}</span>
+                </span>
+              </div>
+            ) : (
+              <PlaceBox
+                id={`${ids}-where`}
+                shown={shown}
+                recent={recent}
+                inputRef={whereRef}
+                describedBy={notesId}
+                disabled={busyNow}
+                onRecent={(place: RecentFolder) => {
                   setRefused(null);
+                  setInclude([]);
+                  if (place.project?.repo) {
+                    toProject({ id: place.project.id, title: place.project.title, repo: place.project.repo });
+                  } else {
+                    toFolder(place.path);
+                  }
+                  focusNext(() => taskRef.current?.focus());
+                }}
+                onPath={(where) => {
+                  setRefused(null);
+                  setInclude([]);
+                  toFolder(where);
+                }}
+                onWay={(way) => {
+                  setRefused(null);
+                  setInclude([]);
+                  setSource(way);
+                  if (way === "folder") {
+                    setOtherFolder(true);
+                    setPath("");
+                    focusNext(() => pathRef.current?.focus());
+                  } else if (way === "project") {
+                    setProjectPick(true);
+                    setProjectAsk({ project: null, repo: null });
+                  } else if (way === "url") focusNext(() => urlRef.current?.focus());
+                  else if (way === "scratch") focusNext(() => scratchRef.current?.focus());
                 }}
               />
-              {fresh?.text &&
-                (CAN_START.has(fresh.state) ? (
-                  <span className="field-note ok">✓ {fresh.text}</span>
-                ) : (
-                  <RefusedNote
-                    text={fresh.text}
-                    hint={fresh.hint ?? null}
-                    project={fresh.project ?? null}
-                    onProject={toProject}
-                  />
-                ))}
-              {fresh?.warning && <span className="field-note warn">⚠ {fresh.warning}</span>}
-            </div>
-          )}
-          {cloning && (
-            <>
-              <div className="field launch-where">
-                <label htmlFor={`${ids}-into`}>Clone into</label>
-                <input
-                  id={`${ids}-into`}
-                  value={into ?? target?.path ?? ""}
-                  placeholder={inWorkspace("<repo>")}
-                  autoComplete="off"
-                  spellCheck={false}
-                  disabled={busy}
-                  onChange={(event) => setInto(event.target.value)}
-                />
-                <TargetNote
-                  target={target}
-                  problem={targetAsked !== null && "error" in targetAsked ? targetAsked.error : null}
-                  onProject={toProject}
-                />
-                {target?.warning && <span className="field-note warn">⚠ {target.warning}</span>}
+            )}
+            {!resuming && source === "folder" && otherFolder && (
+              <FolderPathField
+                path={path}
+                onPath={(next) => {
+                  placeTouched.current = true;
+                  setPath(next);
+                  setRefused(null);
+                  setInclude([]);
+                }}
+                workspace={workspace}
+                disabled={busyNow}
+                inputRef={pathRef}
+                describedBy={notesId}
+              />
+            )}
+            {!resuming && source === "folder" && (
+              <FolderNotes
+                id={notesId}
+                folder={shownFolder}
+                checking={toCheck(path.trim()) !== null && shownFolder === null}
+                problem={checked !== null && "error" in checked ? checked.error : null}
+                stopped={stopped ? { name: stopped.name, at: stopped.stopped_at } : null}
+                disabled={busyNow}
+                onScratch={toScratch}
+                onProject={toProject}
+                setup={
+                  shownFolder?.setup ? (
+                    <LaunchSetup
+                      id={`${ids}-setup`}
+                      setup={shownFolder.setup}
+                      include={include}
+                      onInclude={setInclude}
+                      checkingAgain={rechecking}
+                      onCheckAgain={() => setCheckTurn((turn) => turn + 1)}
+                    />
+                  ) : null
+                }
+              />
+            )}
+            {projecting && !projectPick && projectRepo && (
+              <div id={notesId} className="place-notes">
+                <p className="place-line">
+                  <span className="ok">{`✓ Ready${projectRepo.branch ? ` · branch ${projectRepo.branch}` : ""}`}</span>
+                  {stopped && (
+                    <>
+                      {" · Session "}
+                      <b>{stopped.name}</b>
+                      {` stopped here${stopped.stopped_at ? ` ${since(stopped.stopped_at)} ago` : ""}`}
+                    </>
+                  )}
+                </p>
               </div>
-              <BranchField
-                remote={remote}
-                failed={branchesUrl === typedUrl && remoteAsked !== null && "error" in remoteAsked}
-                branch={branch}
-                onBranch={(next) => setPicked({ url: typedUrl, branch: next })}
-                disabled={busy}
+            )}
+            {projecting && (projectPick || (inProject !== null && projectRepo === null)) && (
+              <ProjectField
+                launch={shownProject}
+                asked={projectAsk}
+                asking={inProject === null}
+                problem={projectAsked !== null && "error" in projectAsked ? projectAsked.error : null}
+                disabled={busyNow}
+                onProject={(project) => {
+                  setProjectAsk({ project, repo: null });
+                  setRefused(null);
+                }}
+                onRepo={(repo) => {
+                  setProjectAsk({ project: shownProject?.project ?? null, repo });
+                  setRefused(null);
+                }}
+                onLeave={leave}
               />
-            </>
-          )}
-          {!scratching && (
-            <div className="field">
-              <label htmlFor={`${ids}-name`}>Name</label>
-              <input
-                id={`${ids}-name`}
-                value={shownName}
-                disabled={busy || resuming !== null}
-                onChange={(event) => setName(event.target.value)}
+            )}
+            {projecting && !projectPick && projectRepo === null && projectAsked !== null && "error" in projectAsked && (
+              <span className="field-note bad">{projectAsked.error}</span>
+            )}
+            {scratching && (
+              <ScratchNameField
+                text={scratchText}
+                onText={(next) => {
+                  setScratchText(next);
+                  setRefused(null);
+                }}
+                target={fresh}
+                problem={scratchAsked !== null && "error" in scratchAsked ? scratchAsked.error : null}
+                workspace={workspace}
+                disabled={busyNow}
+                inputRef={scratchRef}
+                onProject={toProject}
               />
-              {!resuming && name === null && named && (
-                <NameHint folder={named} disabled={busy} onResume={() => resumeIt(named.default_name ?? "")} />
-              )}
-            </div>
-          )}
+            )}
+            {cloning && (
+              <>
+                <UrlField
+                  url={url}
+                  onUrl={(next) => {
+                    placeTouched.current = true;
+                    setUrl(next);
+                    setRefused(null);
+                    setCloneEnd(null);
+                  }}
+                  listing={typedUrl !== "" && remote === null && (remoteAsked === null || branchesUrl !== typedUrl)}
+                  remote={remote}
+                  failed={branchesUrl === typedUrl && remoteAsked !== null && "error" in remoteAsked ? remoteAsked : null}
+                  disabled={busyNow}
+                  inputRef={urlRef}
+                />
+                <div className="launch-grid">
+                  <BranchField
+                    remote={remote}
+                    failed={branchesUrl === typedUrl && remoteAsked !== null && "error" in remoteAsked}
+                    branch={branch}
+                    onBranch={(next) => setPicked({ url: typedUrl, branch: next })}
+                    disabled={busyNow}
+                  />
+                  <div className="field launch-where">
+                    <label htmlFor={`${ids}-into`}>Clone into</label>
+                    <input
+                      id={`${ids}-into`}
+                      value={into ?? target?.path ?? ""}
+                      placeholder={inWorkspace("<repo>")}
+                      autoComplete="off"
+                      spellCheck={false}
+                      disabled={busyNow}
+                      onChange={(event) => setInto(event.target.value)}
+                    />
+                    <TargetNote
+                      target={target}
+                      problem={targetAsked !== null && "error" in targetAsked ? targetAsked.error : null}
+                      onProject={toProject}
+                    />
+                    {target?.warning && <span className="field-note warn">⚠ {target.warning}</span>}
+                  </div>
+                </div>
+                {target && (target.state === "same_repo" || target.state === "other_repo") && (
+                  <div className={`field-note ${target.state === "same_repo" ? "ok" : "bad"}`}>
+                    {target.state === "same_repo"
+                      ? `✓ ${target.text}. LADO will use it as it is: no clone, no pull, no branch switch.`
+                      : target.text}
+                  </div>
+                )}
+                {job && <CloneProgress job={job} />}
+              </>
+            )}
+            {cloneEnd && "note" in cloneEnd && (
+              <p className="field-note" role="status">
+                {cloneEnd.note}
+              </p>
+            )}
+            {cloneEnd && "refused" in cloneEnd && (
+              <div className="launch-refused">
+                <p className="problem" role="alert">
+                  {cloneEnd.refused.message}
+                </p>
+                {cloneEnd.refused.hint && (
+                  <FolderHint text={cloneEnd.refused.hint.text} command={cloneEnd.refused.hint.command} />
+                )}
+              </div>
+            )}
+          </div>
 
-          <KitsField
-            root={root}
-            listed={kitList}
+          <div className="field launch-task">
+            <span className="field-label">
+              <label htmlFor={`${ids}-task`}>{resuming ? "Message" : "Task"}</label>{" "}
+              <InfoTip about={resuming ? "Message" : "Task"}>{resuming ? MESSAGE_ABOUT : TASK_ABOUT}</InfoTip>
+            </span>
+            <textarea
+              ref={taskRef}
+              id={`${ids}-task`}
+              rows={3}
+              value={prompt}
+              disabled={busyNow}
+              placeholder={resuming ? "What should the team do next?" : "What should the team do?"}
+              aria-invalid={promptOver || undefined}
+              aria-describedby={promptOver ? `${ids}-task-note` : undefined}
+              onChange={(event) => setPrompt(event.target.value)}
+            />
+            {promptOver && (
+              <span id={`${ids}-task-note`} className="field-note bad">
+                {promptText.length} characters, the limit is {maxMessage}
+              </span>
+            )}
+          </div>
+
+          <LaunchTeam
+            open={teamOpen}
+            onOpen={setTeamOpen}
+            about={teamAbout}
+            modelPeek={model.peek}
+            name={resuming ? null : shownName}
+            onName={setName}
+            nameFixed={scratching}
+            nameNote={nameNote}
             kits={kits}
-            disabled={busy}
-            fromLast={fromLast}
             onKits={(next) => {
               touch("kits");
               setKits(next);
             }}
+            known={valueOf(kitList) ?? []}
+            kitsError={kitList !== null && "error" in kitList ? kitList.error : null}
+            providers={providers}
+            providersNote={providersNote}
+            chosen={chosenProvider}
+            info={providerInfo}
+            onProvider={chooseProvider}
+            agentNote={agentNote}
+            mode={modeWords(providerInfo).length ? permissionMode : DEFAULT_MODE}
+            onMode={(next) => {
+              touch("mode");
+              setModeNote(null);
+              setPermissionMode(next);
+            }}
+            modeNote={modeNote}
+            modelField={model.field}
+            without={without}
+            onWithout={(next) => {
+              touch("without");
+              setWithout(next);
+            }}
+            switchOff={switchOff}
+            disabled={busyNow}
+            refs={teamRefs}
           />
 
-          <div className="field">
-            <label htmlFor={`${ids}-provider`}>Agent CLI</label>
-            <select
-              id={`${ids}-provider`}
-              value={providers ? (chosenProvider ?? "") : ""}
-              disabled={busy || providers === null}
-              onChange={(event) => chooseProvider(event.target.value)}
-            >
-              {providers === null ? (
-                <option value="">checking…</option>
-              ) : (
-                <>
-                  {chosenProvider === null && (
-                    <option value="" disabled>
-                      choose…
-                    </option>
-                  )}
-                  {/* A chosen name the list lacks (a resumed session's) gets its own option,
-                      or the select would show the first one, and picking it would be no change. */}
-                  {chosenProvider !== null && providerInfo === null && (
-                    <option value={chosenProvider} disabled>
-                      {`${chosenProvider} · unknown`}
-                    </option>
-                  )}
-                  {providers.map((one) => (
-                    <option key={one.name} value={one.name} disabled={!one.installed || one.login_missing}>
-                      {!one.installed
-                        ? `${one.name} · not installed`
-                        : one.login_missing
-                          ? `${one.name} · not logged in`
-                          : `${one.name} · ${one.title} ${one.version}`.trim()}
-                    </option>
-                  ))}
-                </>
-              )}
-            </select>
-            <ProviderNote
-              asked={providerList}
-              info={providerInfo}
-              chosen={chosenProvider}
-              noLogin={noLogin}
-              onLogIn={() => {
-                onClose();
-                navigate(agentClisPath(noLogin?.name));
-              }}
-            />
-            {providers !== null && chosenProvider === null && !held && (
-              <span className="field-note">choose the agent CLI for this session</span>
-            )}
-            {suggested !== null && providerInfo?.installed && (
-              <span className="field-note">{SUGGESTED[suggested]}</span>
-            )}
-          </div>
-
-          <div className="field">
-            <label htmlFor={`${ids}-mode`}>Permission mode</label>
-            <select
-              id={`${ids}-mode`}
-              value={modes.length ? permissionMode : DEFAULT_MODE}
-              disabled={busy || modes.length === 0}
-              onChange={(event) => {
-                touch("mode");
-                setModeNote(null);
-                setPermissionMode(event.target.value);
-              }}
-            >
-              {(modes.length ? modes : [DEFAULT_MODE]).map((one) => (
-                <option key={one} value={one}>
-                  {one}
-                </option>
-              ))}
-            </select>
-            <span className="field-note">
-              {modeNote ??
-                (providerInfo === null
-                  ? ""
-                  : modes.length
-                    ? `the modes ${providerInfo.name} supports`
-                    : `${providerInfo.name} takes no permission mode`)}
-            </span>
-          </div>
+          {generalRefusal && (
+            <div className="launch-refused" ref={refusedRef} tabIndex={-1}>
+              <p className="problem" role="alert">
+                {refused.message}
+              </p>
+            </div>
+          )}
+          {modelRefusal && (
+            <p className="problem" role="alert">{`Not started: ${modelRefusal.short}. See Model above.`}</p>
+          )}
+          {resuming && <ActionProblem attempt={attempt} />}
         </div>
 
-        <FirstMessage text={prompt} onText={setPrompt} limit={maxMessage} disabled={busy} />
-
-        <details
-          className={`launch-advanced${model.peek && !advancedOpen ? " launch-first" : ""}`}
-          ref={advanced}
-          onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
-        >
-          <summary>
-            {model.peek && !advancedOpen ? model.peek : "Advanced: model, switch off agents, skills, MCP servers or flows"}
-          </summary>
-          <div className="launch-grid">{model.field}</div>
-          <label className="field">
-            Switch off
-            <input
-              value={without}
-              disabled={busy}
-              placeholder="agent:reviewer@kit-b, skill:style"
-              onChange={(event) => setWithout(event.target.value)}
-            />
-          </label>
-          <span className="field-note">
-            kind:name or kind:name@kit, separated by commas; kinds: agent, skill, mcp, flow
-          </span>
-        </details>
-
-        {cloning && target && (target.state === "same_repo" || target.state === "other_repo") && (
-          <div className={`field-note ${target.state === "same_repo" ? "ok" : "bad"}`}>
-            {target.state === "same_repo"
-              ? `✓ ${target.text}. LADO will use it as it is: no clone, no pull, no branch switch.`
-              : target.text}
-          </div>
-        )}
-
-        {job && <CloneProgress job={job} />}
-
-        {cloneEnd && "note" in cloneEnd && (
-          <p className="field-note" role="status">
-            {cloneEnd.note}
-          </p>
-        )}
-        {cloneEnd && "refused" in cloneEnd && (
-          <div className="launch-refused">
-            <p className="problem" role="alert">
-              {cloneEnd.refused.message}
+        <div className={`launch-buttons${stopped ? " two" : ""}`}>
+          {toStart.length > 0 && (
+            <p className="launch-missing" id={`${ids}-missing`}>
+              {"To start: "}
+              {toStart.map((one, i) => (
+                <span key={one.text}>
+                  {i > 0 && (i === toStart.length - 1 ? " and " : ", ")}
+                  <button type="button" className="link-button" onClick={one.focus}>
+                    {one.text}
+                  </button>
+                </span>
+              ))}
+              .
             </p>
-            {cloneEnd.refused.hint && (
-              <FolderHint text={cloneEnd.refused.hint.text} command={cloneEnd.refused.hint.command} />
-            )}
-          </div>
-        )}
-
-        {refused && (
-          <div className="launch-refused">
-            <p className="problem" role="alert">
-              {modelRefusal ? `Not started: ${modelRefusal.short}. See Model above.` : refused.message}
-            </p>
-            {switchOff.map((item) => (
-              <button
-                key={item}
-                type="button"
-                className="quiet"
-                disabled={busy || splitWithout(without).includes(item)}
-                onClick={() => addSwitchOff(item)}
-              >
-                {switchOffLabel(item)}
-              </button>
-            ))}
-            {taken && takenHere && RESUMABLE.has(taken.status) && resumable(shownName) && (
-              <button type="button" className="quiet" onClick={() => resumeIt(shownName)}>
-                Resume it
-              </button>
-            )}
-            {taken && takenHere && !RESUMABLE.has(taken.status) && (
-              <button
-                type="button"
-                className="quiet"
-                onClick={() => {
-                  onClose();
-                  navigate(sessionPath(shownName, "activity"));
-                }}
-              >
-                Open it
-              </button>
-            )}
-          </div>
-        )}
-
-        <div className="launch-buttons">
+          )}
           {job ? (
-            <button type="button" className="quiet" onClick={clone.cancel}>
+            <button type="button" className="launch-cancel" onClick={clone.cancel}>
               Cancel clone
             </button>
           ) : (
-            <button type="button" className="quiet" onClick={onClose} disabled={busy}>
+            <button type="button" className="launch-cancel" onClick={close} disabled={busy !== null}>
               Cancel
             </button>
           )}
-          {scratching ? (
-            <button type="submit" className="primary" disabled={busy || !scratchReady}>
-              {busy ? "Starting…" : "Create and start"}
-            </button>
-          ) : !cloning ? (
-            <MaybeWaits resuming={resuming !== null}>
-              <button type="submit" className="primary" disabled={busy || waiting || !(projecting ? projectReady : ready)}>
-                {busy
-                  ? resuming
-                    ? "Resuming…"
-                    : "Starting…"
-                  : projectTitle !== null
-                    ? `Start in ${projectTitle}`
-                    : title === "New session"
-                      ? "Start session"
-                      : title}
+          {stopped ? (
+            <>
+              <button
+                type="button"
+                className={promptText ? "quiet peer" : "primary"}
+                disabled={!teamReady || undefined}
+                aria-disabled={busyNow || undefined}
+                onClick={() => busy === null && void resumeStopped()}
+              >
+                {busy === "resume" ? "Resuming…" : `Resume ${stopped.name}`}
               </button>
-            </MaybeWaits>
-          ) : target?.state === "same_repo" && !busy ? (
-            <button
-              type="button"
-              className="primary"
-              onClick={() => {
-                setRefused(null);
-                toFolder(target.path);
-              }}
-            >
-              Use this clone
-            </button>
+              {startButton(promptText !== "")}
+            </>
           ) : (
-            <button type="submit" className="primary" disabled={busy || !cloneReady}>
-              {job ? "Cloning…" : busy ? "Starting…" : "Clone and start"}
-            </button>
+            startButton(true)
           )}
         </div>
-        {resuming && <ActionProblem attempt={attempt} />}
       </form>
     </dialog>
   );
 }
 
+const hasSwitchOff = (detail: unknown) =>
+  detail !== null && typeof detail === "object" && "switch_off" in detail && Array.isArray((detail as Refused).switch_off);
+
 // A 409 refused for the model: the field's, not a session that has the name.
 const isModelRefusal = (detail: unknown): detail is ModelRefusal =>
   typeof detail === "object" && detail !== null && "field" in detail && detail.field === "model";
 
-// Resume's button waits for the connection; New session's, the same button, does not.
-const MaybeWaits = ({ resuming, children }: { resuming: boolean; children: ReactElement<object> }) =>
+// Resume's button waits for the connection; New session's does not.
+const MaybeWaits = ({ resuming, children }: { resuming: boolean; children: React.ReactElement<object> }) =>
   resuming ? <Waits>{children}</Waits> : children;
-
-// The human's first message to the supervisor: a row folded each time the window opens,
-// which shows the text's first line while folded with text in it.
-function FirstMessage({
-  text,
-  onText,
-  limit,
-  disabled,
-}: {
-  text: string;
-  onText: (text: string) => void;
-  limit: number | null;
-  disabled: boolean;
-}) {
-  const trimmed = text.trim();
-  const first = trimmed.split("\n")[0].trim();
-  return (
-    <details className="launch-advanced launch-first">
-      <summary>
-        {first ? (
-          <>
-            First message to the supervisor: <span className="launch-first-peek">{first}</span>
-          </>
-        ) : (
-          "First message to the supervisor (optional)"
-        )}
-      </summary>
-      <div className="field">
-        <textarea
-          aria-label="First message"
-          rows={4}
-          value={text}
-          disabled={disabled}
-          placeholder="What the supervisor should do first"
-          onChange={(event) => onText(event.target.value)}
-        />
-        {limit !== null && trimmed.length > limit ? (
-          <span className="field-note bad">
-            {trimmed.length} characters, the limit is {limit}
-          </span>
-        ) : (
-          <span className="field-note">
-            sent to the supervisor as your message once it starts; its answer comes in the chat
-          </span>
-        )}
-      </div>
-    </details>
-  );
-}
-
-function WhereField({
-  path,
-  onPath,
-  onScratch,
-  onProject,
-  folder,
-  checking,
-  problem,
-  recent,
-  workspace,
-  disabled,
-  fixed,
-  head,
-}: {
-  path: string;
-  onPath: (path: string) => void;
-  onScratch: (path: string) => void; // Start from scratch here
-  onProject: (place: ProjectPlace) => void; // the refused folder's project
-  folder: FolderInfo | null;
-  checking: boolean;
-  problem: string | null;
-  recent: RecentFolder[];
-  workspace: Workspace | null; // LADO_REPOS, else ~/workspace; null until it is known
-  disabled: boolean;
-  fixed: boolean; // Resume: the session's folder as text that wraps, not a field
-  head: ReactNode; // the switch to Clone from URL, beside the label
-}) {
-  const ids = useId();
-  const input = useRef<HTMLInputElement>(null);
-  const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(-1);
-  const empty = path.trim() === "";
-  // An empty field suggests the workspace's subfolders, once it exists.
-  const made = workspace?.made ? workspace.path : null;
-  const split = empty && made ? { parent: withSlash(made), prefix: "" } : parentOf(path);
-  const parent = useDebounced(split?.parent ?? null);
-  const listed = valueOf(useAsked(open && parent ? parent : null, getFolder));
-  const prefix = (split?.prefix ?? "").toLowerCase();
-  const options =
-    open && listed && split && listed.path === split.parent
-      ? listed.subfolders.filter((one) => one.toLowerCase().startsWith(prefix) && one !== split.prefix)
-      : []; // a folder typed in full is not suggested again: its check shows under the field
-
-  const pick = (folderName: string) => {
-    if (!split) return;
-    onPath(split.parent + folderName);
-    setOpen(false);
-    setActive(-1);
-  };
-
-  return (
-    <div className="field launch-where">
-      <div className="where-head">
-        {fixed ? (
-          <span id={`${ids}-where`} className="field-label">
-            Where
-          </span>
-        ) : (
-          <label htmlFor={`${ids}-where`}>Where</label>
-        )}
-        {head}
-      </div>
-      {fixed ? (
-        <div role="group" aria-labelledby={`${ids}-where`} className="where-fixed">
-          {path}
-        </div>
-      ) : (
-        <div className="where-box">
-          <input
-            ref={input}
-            id={`${ids}-where`}
-            role="combobox"
-            aria-autocomplete="list"
-            aria-expanded={options.length > 0}
-            aria-controls={`${ids}-folders`}
-            aria-activedescendant={active >= 0 && options[active] ? `${ids}-folder-${active}` : undefined}
-            value={path}
-            placeholder={workspace ? `${withSlash(workspace.path)}…` : ""}
-            autoComplete="off"
-            spellCheck={false}
-            disabled={disabled}
-            onChange={(event) => {
-              onPath(event.target.value);
-              setOpen(true);
-              setActive(-1);
-            }}
-            onFocus={() => {
-              // Also before the workspace is known: a focus that comes first lists its
-              // subfolders once it is, and until then nothing is asked (no parent).
-              if (empty) setOpen(true);
-            }}
-            onBlur={() => setOpen(false)}
-            onKeyDown={(event) => {
-              if (options.length === 0) return;
-              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                event.preventDefault();
-                const step = event.key === "ArrowDown" ? 1 : -1;
-                setActive((at) => (at + step + options.length) % options.length);
-              } else if (event.key === "Enter" && active >= 0) {
-                event.preventDefault();
-                pick(options[active]);
-              } else if (event.key === "Escape") {
-                event.preventDefault();
-                setOpen(false);
-              }
-            }}
-          />
-          {options.length > 0 && (
-            <ul id={`${ids}-folders`} role="listbox" aria-label="Folders" className="where-list">
-              {options.map((one, i) => (
-                <li
-                  key={one}
-                  id={`${ids}-folder-${i}`}
-                  role="option"
-                  aria-selected={i === active}
-                  onMouseDown={(event) => {
-                    event.preventDefault(); // keep the input's focus
-                    pick(one);
-                  }}
-                >
-                  {one}/
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-      {made && !disabled && (
-        <div className="recent">
-          Workspace:
-          <button
-            type="button"
-            className="chip-button"
-            onClick={() => {
-              onPath(withSlash(made));
-              input.current?.focus(); // the list's keys and its closing on blur are the field's
-              setOpen(true);
-            }}
-          >
-            {made}
-          </button>
-        </div>
-      )}
-      {recent.length > 0 && !disabled && (
-        <div className="recent">
-          Recent:
-          {recent.map((one) => (
-            <button key={one.path} type="button" className="chip-button" onClick={() => onPath(one.path)}>
-              {one.path}
-            </button>
-          ))}
-        </div>
-      )}
-      {folder?.ok && (
-        <span className="field-note ok">
-          ✓ git repository{folder.branch ? ` · branch ${folder.branch}` : ""}
-        </span>
-      )}
-      {folder?.ok && folder.warning && <span className="field-note warn">⚠ {folder.warning}</span>}
-      {folder && !folder.ok && (
-        <div className="field-note bad">
-          <div>{folder.problem}</div>
-          {folder.scratch ? (
-            // In place of LAD-5's command: a new or empty folder takes no file into a commit.
-            <div className="folder-hint">
-              <div className="muted">
-                {folder.problem_kind === "missing"
-                  ? "LADO can make this folder and start it from scratch."
-                  : "The folder is empty: LADO can start it from scratch."}
-              </div>
-              <div className="folder-hint-command">
-                <button type="button" className="chip-button" disabled={disabled} onClick={() => onScratch(folder.path)}>
-                  Start from scratch here
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
-              {folder.project && (
-                <div className="folder-hint">
-                  <div className="folder-hint-command">
-                    <button
-                      type="button"
-                      className="chip-button"
-                      disabled={disabled}
-                      onClick={() => onProject(folder.project!)}
-                    >
-                      {`${folder.project.repo ? "Start in" : "Open"} the project ${folder.project.title ?? folder.project.id}`}
-                    </button>
-                  </div>
-                </div>
-              )}
-              {folder.hint && <FolderHint text={folder.hint.text} command={folder.hint.command} />}
-            </>
-          )}
-        </div>
-      )}
-      {problem && <span className="field-note bad">{problem}</span>}
-      {checking && !problem && <span className="field-note">checking…</span>}
-    </div>
-  );
-}
-
-// Where a session's folder comes from: a new one made from scratch, one there is, a clone
-// of a git URL, or a project's repository.
-function SourceSwitch({
-  source,
-  onSource,
-  disabled,
-}: {
-  source: Source;
-  onSource: (source: Source) => void;
-  disabled: boolean;
-}) {
-  return (
-    <span className="segments" role="group" aria-label="Source">
-      <button type="button" aria-pressed={source === "scratch"} disabled={disabled} onClick={() => onSource("scratch")}>
-        From scratch
-      </button>
-      <button type="button" aria-pressed={source === "folder"} disabled={disabled} onClick={() => onSource("folder")}>
-        Folder
-      </button>
-      <button type="button" aria-pressed={source === "url"} disabled={disabled} onClick={() => onSource("url")}>
-        Clone from URL
-      </button>
-      <button type="button" aria-pressed={source === "project"} disabled={disabled} onClick={() => onSource("project")}>
-        Project
-      </button>
-    </span>
-  );
-}
-
-// From scratch's first field: the name in the human's words, what LADO makes of it (the
-// folder's and the session's name, the title), and why git cannot sign its commit yet.
-function ScratchNameField({
-  text,
-  onText,
-  target,
-  problem,
-  head,
-  disabled,
-}: {
-  text: string;
-  onText: (text: string) => void;
-  target: ScratchTarget | null;
-  problem: string | null; // the server's refusal of the request itself
-  head: ReactNode;
-  disabled: boolean;
-}) {
-  const ids = useId();
-  const name = target?.name;
-  return (
-    <div className="field launch-where">
-      <div className="where-head">
-        <label htmlFor={`${ids}-scratch-name`}>Name</label>
-        {head}
-      </div>
-      <input
-        id={`${ids}-scratch-name`}
-        className="launch-words"
-        value={text}
-        placeholder="Coffee shop site"
-        autoComplete="off"
-        disabled={disabled}
-        onChange={(event) => onText(event.target.value)}
-      />
-      {text.trim() !== "" && target?.problem && <span className="field-note bad">{target.problem}</span>}
-      {name && (
-        <span className="field-note">
-          folder and session: <b>{name}</b>
-          {target.title ? ` · title: ${target.title}` : ""}
-        </span>
-      )}
-      {name && target.name_state && (
-        <NameHint folder={{ default_name: name, name_state: target.name_state }} disabled onResume={() => {}} />
-      )}
-      {target?.author && (
-        <div className="field-note bad">
-          <div>{target.author.text}</div>
-          {target.author.hint && <FolderHint text={target.author.hint.text} command={target.author.hint.command} />}
-        </div>
-      )}
-      {problem && <span className="field-note bad">{problem}</span>}
-    </div>
-  );
-}
-
-function UrlField({
-  url,
-  onUrl,
-  listing,
-  remote,
-  failed,
-  head,
-  disabled,
-}: {
-  url: string;
-  onUrl: (url: string) => void;
-  listing: boolean;
-  remote: RemoteInfo | null;
-  failed: { error: string; detail?: unknown } | null;
-  head: ReactNode;
-  disabled: boolean;
-}) {
-  const ids = useId();
-  const why = failed ? cloneRefused(failed.detail) : null;
-  return (
-    <div className="field launch-where">
-      <div className="where-head">
-        <label htmlFor={`${ids}-url`}>Where</label>
-        {head}
-      </div>
-      <input
-        id={`${ids}-url`}
-        value={url}
-        placeholder="git@github.com:owner/repo.git or https://…"
-        autoComplete="off"
-        spellCheck={false}
-        disabled={disabled}
-        onChange={(event) => onUrl(event.target.value)}
-      />
-      {listing && <span className="field-note">checking the repository…</span>}
-      {remote && (
-        <span className="field-note ok">
-          ✓ repository found · {remote.branches.length} branch{remote.branches.length === 1 ? "" : "es"}
-        </span>
-      )}
-      {failed && (
-        <div className="field-note bad">
-          <div>{why?.message ?? failed.error}</div>
-          {why?.hint && <FolderHint text={why.hint.text} command={why.hint.command} />}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// The clone's folder as the core finds it; another repository's clone or a clone of this
-// one are told under the fields, in full.
-function TargetNote({
-  target,
-  problem,
-  onProject,
-}: {
-  target: CloneTarget | null;
-  problem: string | null;
-  onProject: (place: ProjectPlace) => void;
-}) {
-  if (problem) return <span className="field-note bad">{problem}</span>;
-  if (target === null || target.state === "same_repo" || target.state === "other_repo") return null;
-  if (CAN_CLONE.has(target.state)) return <span className="field-note ok">✓ {target.text}</span>;
-  return <RefusedNote text={target.text} hint={target.hint ?? null} project={target.project ?? null} onProject={onProject} />;
-}
-
-// A folder that takes no clone or fresh start, with what to do instead when the core says
-// it: a folder inside a project leads to the project's page, above the core's command.
-function RefusedNote({
-  text,
-  hint,
-  project,
-  onProject,
-}: {
-  text: string;
-  hint: FolderInfo["hint"];
-  project: ProjectPlace | null;
-  onProject: (place: ProjectPlace) => void;
-}) {
-  if (!hint && !project) return <span className="field-note bad">{text}</span>;
-  return (
-    <div className="field-note bad">
-      <div>{text}</div>
-      {project && (
-        <div className="folder-hint">
-          <div className="folder-hint-command">
-            <button type="button" className="chip-button" onClick={() => onProject({ ...project, repo: null })}>
-              {`Open the project ${project.title ?? project.id}`}
-            </button>
-          </div>
-        </div>
-      )}
-      {hint && <FolderHint text={hint.text} command={hint.command} />}
-    </div>
-  );
-}
-
-function BranchField({
-  remote,
-  failed,
-  branch,
-  onBranch,
-  disabled,
-}: {
-  remote: RemoteInfo | null;
-  failed: boolean;
-  branch: string | null;
-  onBranch: (branch: string) => void;
-  disabled: boolean;
-}) {
-  const ids = useId();
-  const label = (one: string) => (one === remote?.default ? `${one} (default)` : one);
-  return (
-    <div className="field">
-      <label htmlFor={`${ids}-branch`}>Branch</label>
-      {remote && remote.branches.length > BRANCH_LIST ? (
-        <BranchCombo id={`${ids}-branch`} remote={remote} branch={branch} onBranch={onBranch} disabled={disabled} />
-      ) : (
-        <select
-          id={`${ids}-branch`}
-          value={remote ? (branch ?? "") : ""}
-          disabled={disabled || remote === null}
-          onChange={(event) => onBranch(event.target.value)}
-        >
-          {remote === null ? (
-            <option value="">{failed ? "—" : "fetching branches…"}</option>
-          ) : (
-            remote.branches.map((one) => (
-              <option key={one} value={one}>
-                {label(one)}
-              </option>
-            ))
-          )}
-        </select>
-      )}
-      {remote && branch === remote.default && <span className="field-note">the repository's default branch</span>}
-    </div>
-  );
-}
-
-// A long branch list: a field that lists the branches holding what is typed.
-function BranchCombo({
-  id,
-  remote,
-  branch,
-  onBranch,
-  disabled,
-}: {
-  id: string;
-  remote: RemoteInfo;
-  branch: string | null;
-  onBranch: (branch: string) => void;
-  disabled: boolean;
-}) {
-  const [typed, setTyped] = useState<string | null>(null); // null: the branch chosen
-  const [active, setActive] = useState(-1);
-  const shown = typed ?? branch ?? "";
-  const options = typed === null ? [] : remote.branches.filter((one) => one.includes(typed) && one !== typed);
-  const pick = (one: string) => {
-    onBranch(one);
-    setTyped(null);
-    setActive(-1);
-  };
-  return (
-    <div className="where-box">
-      <input
-        id={id}
-        role="combobox"
-        aria-autocomplete="list"
-        aria-expanded={options.length > 0}
-        aria-controls={`${id}-list`}
-        aria-activedescendant={active >= 0 && options[active] ? `${id}-option-${active}` : undefined}
-        value={shown}
-        autoComplete="off"
-        spellCheck={false}
-        disabled={disabled}
-        onChange={(event) => {
-          setTyped(event.target.value);
-          setActive(-1);
-          if (remote.branches.includes(event.target.value)) onBranch(event.target.value);
-        }}
-        onBlur={() => setTyped(null)}
-        onKeyDown={(event) => {
-          // Enter while typing picks the branch typed, or the one highlighted; text that is
-          // no branch never submits the form with another branch than it shows.
-          if (event.key === "Enter" && typed !== null) {
-            event.preventDefault();
-            if (active >= 0 && options[active]) pick(options[active]);
-            else if (remote.branches.includes(typed)) pick(typed);
-            return;
-          }
-          if (options.length === 0) return;
-          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-            event.preventDefault();
-            const step = event.key === "ArrowDown" ? 1 : -1;
-            setActive((at) => (at + step + options.length) % options.length);
-          } else if (event.key === "Escape") {
-            event.preventDefault();
-            setTyped(null);
-          }
-        }}
-      />
-      {options.length > 0 && (
-        <ul id={`${id}-list`} role="listbox" aria-label="Branches" className="where-list">
-          {options.map((one, i) => (
-            <li
-              key={one}
-              id={`${id}-option-${i}`}
-              role="option"
-              aria-selected={i === active}
-              onMouseDown={(event) => {
-                event.preventDefault(); // keep the input's focus
-                pick(one);
-              }}
-            >
-              {one === remote.default ? `${one} (default)` : one}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
 
 export function CloneProgress({ job }: { job: CloneJob }) {
   const progress = job.progress;
@@ -1673,158 +1497,4 @@ export function CloneProgress({ job }: { job: CloneJob }) {
       </div>
     </div>
   );
-}
-
-// What the human can do about the folder (the core's hint): its sentence, then its command
-// to copy. When no copy works, the command is selected to copy by hand.
-export function FolderHint({ text, command }: { text: string; command: string }) {
-  const { note, copy } = useCopy();
-  const [byHand, setByHand] = useState(false);
-  const code = useRef<HTMLElement>(null);
-  const onCopy = async () => {
-    const done = await copy(command, "Command copied");
-    setByHand(!done);
-    if (!done && code.current) window.getSelection()?.selectAllChildren(code.current);
-  };
-  return (
-    <div className="folder-hint">
-      <div className="muted">{text}</div>
-      <div className="folder-hint-command">
-        <code ref={code}>{command}</code>
-        <button type="button" className="chip-button" aria-label="Copy command" onClick={onCopy}>
-          Copy
-        </button>
-      </div>
-      <span role="status" className="muted">
-        {note || (byHand ? "Press ⌘C / Ctrl+C to copy" : "")}
-      </span>
-    </div>
-  );
-}
-
-function NameHint({
-  folder,
-  disabled,
-  onResume,
-}: {
-  folder: Pick<FolderInfo, "default_name" | "name_state">;
-  disabled: boolean;
-  onResume: () => void;
-}) {
-  const name = folder.default_name;
-  if (folder.name_state === "running") return <span className="field-note">"{name}" is taken by a running session</span>;
-  if (folder.name_state === "taken_elsewhere") {
-    return <span className="field-note">"{name}" is taken by a session of another folder</span>;
-  }
-  if (folder.name_state === "stopped_here") {
-    return (
-      <span className="field-note">
-        a stopped session {name} exists for this folder{" "}
-        <button type="button" className="link-button" disabled={disabled} onClick={onResume}>
-          Resume it
-        </button>
-      </span>
-    );
-  }
-  return null;
-}
-
-function KitsField({
-  root,
-  listed,
-  kits,
-  disabled,
-  fromLast,
-  onKits,
-}: {
-  root: string | null;
-  listed: Asked<KitInfo[]>;
-  kits: string[];
-  disabled: boolean;
-  fromLast: boolean;
-  onKits: (kits: string[]) => void;
-}) {
-  const id = useId();
-  const known = valueOf(listed) ?? [];
-  const others = known.filter((one) => !kits.includes(one.name));
-  return (
-    <div className="field">
-      <span id={id} className="field-label">
-        Kits
-      </span>
-      <div role="group" aria-labelledby={id} className="kits-box">
-        {kits.map((name) => {
-          const info = known.find((one) => one.name === name);
-          return (
-            <span key={name} className={`kits-box-chip${info && !info.valid ? " invalid" : ""}`} title={info?.problem ?? undefined}>
-              <span>{name}</span>
-              {info?.version && <span className="muted"> {info.version}</span>}
-              <button
-                type="button"
-                aria-label={`Remove ${name}`}
-                disabled={disabled}
-                onClick={() => onKits(kits.filter((one) => one !== name))}
-              >
-                ×
-              </button>
-            </span>
-          );
-        })}
-        {others.length > 0 && (
-          <select
-            aria-label="Add kit"
-            className="add-kit"
-            value=""
-            disabled={disabled}
-            onChange={(event) => event.target.value && onKits([...kits, event.target.value])}
-          >
-            <option value="">+ Add kit</option>
-            {others.map((one) => (
-              <option key={one.name} value={one.name} disabled={!one.valid}>
-                {one.valid
-                  ? `${one.name}${one.version ? ` ${one.version}` : ""}`
-                  : `${one.name} · invalid: run lado kits check ${one.name}`}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-      {kits.length === 0 && <span className="field-note bad">a session needs at least one kit</span>}
-      {listed !== null && "error" in listed && <span className="field-note warn">{listed.error}</span>}
-      {fromLast && <span className="field-note">from the last session of this folder</span>}
-      {root === null && listed === null && <span className="field-note">checking…</span>}
-    </div>
-  );
-}
-
-function ProviderNote({
-  asked,
-  info,
-  chosen,
-  noLogin,
-  onLogIn,
-}: {
-  asked: Asked<ProviderInfo[]>;
-  info: ProviderInfo | null;
-  chosen: string | null;
-  noLogin: ProviderInfo | null; // the provider chosen or suggested, when it lacks its login
-  onLogIn: () => void;
-}) {
-  if (asked !== null && "error" in asked) return <span className="field-note bad">{asked.error}</span>;
-  if (asked === null) return <span className="field-note">checking the agent CLIs…</span>;
-  if (noLogin?.installed) {
-    // A new session or a resume of it is refused (lado.logins).
-    return (
-      <span className="field-note bad">
-        {noLogin.title} is not logged in: its agents cannot start.{" "}
-        <button type="button" className="link-button" onClick={onLogIn}>
-          Log in first
-        </button>
-      </span>
-    );
-  }
-  if (info === null) return chosen ? <span className="field-note bad">unknown agent CLI {chosen}</span> : null;
-  if (!info.installed) return <span className="field-note bad">{`${info.detail}; ${info.install_hint}`}</span>;
-  if (info.warning) return <span className="field-note warn">⚠ {info.warning}</span>;
-  return null;
 }

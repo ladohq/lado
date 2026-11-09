@@ -756,7 +756,8 @@ model` alone prints its help.
 
 `lado model default` prints `CLI DEFAULT MODEL SERVER`, one line per agent CLI in LADO's order
 (`—` for none), running no CLI and asking no server; `lado model default <cli>` that CLI's
-line. No session reads a default yet. `lado model default <cli> <model>` sets the CLI's
+line. A session started without `--model` starts on its CLI's default as it is at each launch
+(`lado start --model`). `lado model default <cli> <model>` sets the CLI's
 default, replacing the one it had: `<model>` is a configured model of that CLI by its name
 ignoring case, else a built-in model. An external one asks no server: `<CLI>'s default model:
 <name> (<model> on <server>)`. A built-in one is checked as `lado start --model` checks a

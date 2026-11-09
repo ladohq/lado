@@ -169,14 +169,6 @@ RUN git config --system --add safe.directory '*' \
 USER lado
 WORKDIR /home/lado
 
-# Installed as lado: a chown afterwards would copy the layer. /opt only here and in the
-# CLIs' and openspec's installs below: at run time an install goes to the home volume
-# (NPM_CONFIG_PREFIX, uv's defaults under ~/.local).
-COPY --chown=lado:lado dist/lado-*.whl /tmp/wheel/
-RUN UV_TOOL_DIR=/opt/uv/tools UV_TOOL_BIN_DIR=/opt/uv/bin UV_PYTHON_INSTALL_DIR=/opt/uv/python \
-    uv tool install --python 3.13 /tmp/wheel/lado-*.whl \
- && rm -rf /tmp/wheel /home/lado/.cache
-
 # The four agent CLIs at the versions LADO is tested with (scripts/smoke_ci.py's PINS;
 # tests/test_docker.py keeps them the same), one layer each, so a moved pin rebuilds one.
 # Each package puts its native binary in place for its architecture, as an optional
@@ -209,6 +201,16 @@ RUN npm install -g --prefix /opt/agents "@kilocode/cli@${KILO_VERSION}" \
 ARG OPENSPEC_VERSION=1.14.1
 RUN npm install -g --prefix /opt/tools "@fission-ai/openspec@${OPENSPEC_VERSION}" \
  && npm cache clean --force
+
+# LADO from the build's one wheel, last: it changes with every commit, so CI's layer cache
+# (.github/workflows/ci.yml, job container) rebuilds only from here on. Installed as lado:
+# a chown afterwards would copy the layer. /opt only here and in the CLIs' and openspec's
+# installs above: at run time an install goes to the home volume (NPM_CONFIG_PREFIX, uv's
+# defaults under ~/.local).
+COPY --chown=lado:lado dist/lado-*.whl /tmp/wheel/
+RUN UV_TOOL_DIR=/opt/uv/tools UV_TOOL_BIN_DIR=/opt/uv/bin UV_PYTHON_INSTALL_DIR=/opt/uv/python \
+    uv tool install --python 3.13 /tmp/wheel/lado-*.whl \
+ && rm -rf /tmp/wheel /home/lado/.cache
 
 ENV PATH=/opt/uv/bin:/opt/agents/bin:/opt/tools/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/lado/.local/bin:/home/lado/.local/share/mise/shims:/opt/fallback/bin \
     NPM_CONFIG_PREFIX=/home/lado/.local \

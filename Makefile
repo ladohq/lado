@@ -67,11 +67,14 @@ dist: web ## build the sdist and the wheel into dist/ and check that both ship t
 	@echo "dist/: the sdist and the wheel ship the web UI's bundle"
 
 LADO_IMAGE ?= lado:local
+# More flags for `docker build`, none by default; CI's container cells pass their builder
+# and layer cache (.github/workflows/ci.yml).
+DOCKER_BUILD_FLAGS ?=
 
 docker: ## LADO's image $(LADO_IMAGE) from the working copy: the web UI's bundle, one wheel, the image
 	cd web && npm ci --no-audit --no-fund && npm run build
 	rm -rf dist && uv build --wheel
-	docker build -f docker/Dockerfile -t $(LADO_IMAGE) .
+	docker build $(DOCKER_BUILD_FLAGS) -f docker/Dockerfile -t $(LADO_IMAGE) .
 
 browser: ## install Chromium for the UI tests (Playwright)
 	uv run playwright install chromium

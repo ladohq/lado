@@ -148,6 +148,36 @@ def test_a_loose_openspec_pin_is_named():
     assert loose_pin(arg) == [f"no install of {OPENSPEC}"]
 
 
+def wheel_too_early(text: str) -> list[str]:
+    """The lines of `text` that put LADO's wheel before an install it must follow: its COPY
+    and its `uv tool install` come after every agent CLI's and openspec's npm install, so a
+    build with the CI cache rebuilds only the layers from the run's wheel on. Each install
+    after the wheel's first line is named; a missing wheel line too."""
+    found = lines(text)
+    wheel = [i for i, line in enumerate(found) if "lado-*.whl" in line]
+    if not wheel:
+        return ["no wheel"]
+    return [line for line in found[wheel[0] :] if "npm install" in line]
+
+
+def test_the_wheel_is_copied_and_installed_after_the_clis_and_openspec():
+    """D1 of container-layer-cache: the run's wheel changes on every pull request."""
+    assert wheel_too_early(DOCKERFILE) == []
+    found = lines()
+    [copy] = [i for i, line in enumerate(found) if line.startswith("COPY") and ".whl" in line]
+    [install] = [i for i, line in enumerate(found) if "uv tool install" in line]
+    assert copy + 1 == install
+    assert found[install + 1].startswith("ENV PATH=")
+
+
+def test_a_wheel_before_a_cli_is_named():
+    copy = "COPY --chown=lado:lado dist/lado-*.whl /tmp/wheel/\n"
+    cli = 'RUN npm install -g --prefix /opt/agents "@openai/codex@${CODEX_VERSION}"\n'
+    assert wheel_too_early(cli + OPENSPEC_INSTALL + "\n" + copy) == []
+    assert wheel_too_early(copy + cli) == [cli.strip()]
+    assert wheel_too_early(cli) == ["no wheel"]
+
+
 def test_opt_tools_is_named_only_where_it_is_made_installed_and_on_path():
     """openspec is no agent CLI: /opt/agents stays the four of PINS."""
     named = [line for line in flat() if "/opt/tools" in line]

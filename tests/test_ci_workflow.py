@@ -4,10 +4,13 @@ jobs' browser from a cache only runs outside a pull request save; job `smoke`, t
 tests on Linux and macOS for every provider, where job `changes` says a run needs it (every
 push to main, the daily schedule, a manual dispatch, a pull request beyond the skip list);
 job `container`, LADO's image built and tested in two shards on amd64 and arm64 on every
-run; job `ci-ok`, the one check `main` requires, over every other job; the triggers; and
-the concurrency rule that cancels only a pull request's older run."""
+run, its layers from a cache only main's shard 1 writes (release.yml reads none); job
+`ci-ok`, the one check `main` requires, over every other job; the triggers; and the
+concurrency rule that cancels only a pull request's older run."""
 
 import importlib.util
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -328,7 +331,7 @@ def test_the_container_job_runs_on_every_run(container):
 def test_the_container_job_builds_then_tests_and_keeps_its_out(container):
     steps = container["steps"]
     # The layers' sizes in the log: a new layer's is the image's growth.
-    assert step_named(steps, "Image")["run"] == "make docker\ndocker history lado:local\n"
+    assert step_named(steps, "Image")["run"].endswith("\ndocker history lado:local\n")
     run = step_named(steps, "Container tests")["run"]
     assert run == (
         'uv run python scripts/smoke_ci.py container "$RUNNER_TEMP/container" ${{ matrix.shard }}/2'
@@ -340,6 +343,126 @@ def test_the_container_job_builds_then_tests_and_keeps_its_out(container):
     assert upload["with"]["name"] == "container-${{ matrix.arch }}-${{ matrix.shard }}"
     # With test_browser.py's screenshot (its SHOTS: the runner's temp dir is /tmp).
     assert upload["with"]["path"] == "${{ runner.temp }}/container\n/tmp/lado-container-shots\n"
+
+
+def test_the_builder_and_the_caches_token_come_before_the_image(container):
+    """make docker's own builder cannot use GitHub's cache: a BuildKit builder of its own,
+    and the runtime's token and URLs in the build's environment."""
+    steps = container["steps"]
+    names = [s.get("name") or s.get("uses", "").split("@")[0] for s in steps]
+    buildx = step_using(steps, "docker/setup-buildx-action")
+    assert buildx["id"] == "buildx"
+    step_using(steps, "crazy-max/ghaction-github-runtime")
+    order = [
+        names.index(n)
+        for n in ("docker/setup-buildx-action", "crazy-max/ghaction-github-runtime", "Image")
+    ]
+    assert order == sorted(order)
+
+
+def image_build(
+    container, event: str, arch: str, tmp_path, shard: int = 1
+) -> subprocess.CompletedProcess:
+    """The step Image's script run for `event` in the cell (`arch`, `shard`), with make and
+    docker stubs that write their arguments, one call a line, to tmp_path/calls."""
+    step = step_named(container["steps"], "Image")
+    values = {
+        "${{ github.event_name }}": event,
+        "${{ matrix.arch }}": arch,
+        "${{ matrix.shard }}": str(shard),
+        "${{ steps.buildx.outputs.name }}": "builder-1",
+    }
+    env = {}
+    for name, value in step["env"].items():
+        for expression, filled in values.items():
+            value = value.replace(expression, filled)
+        assert "${{" not in value, value
+        env[name] = value
+    bin = tmp_path / "bin"
+    bin.mkdir()
+    for command in ("make", "docker"):
+        stub = bin / command
+        calls = tmp_path / "calls"
+        stub.write_text(f'#!/bin/sh\nprintf "%s|" {command} "$@" >> "{calls}"\necho >> "{calls}"\n')
+        stub.chmod(0o755)
+    env["PATH"] = f"{bin}:{os.environ['PATH']}"
+    return subprocess.run(
+        ["bash", "-e", "-c", step["run"]], env=env, capture_output=True, text=True
+    )
+
+
+def build_flags(container, event: str, arch: str, tmp_path, shard: int = 1) -> list[str]:
+    """The flags the step Image gives `docker build` through make docker."""
+    done = image_build(container, event, arch, tmp_path, shard)
+    assert done.returncode == 0, done.stderr
+    calls = (tmp_path / "calls").read_text().splitlines()
+    [make] = [c.split("|")[:-1] for c in calls if c.startswith("make|")]
+    assert make[:2] == ["make", "docker"] and len(make) == 3, make
+    name, flags = make[2].split("=", 1)
+    assert name == "DOCKER_BUILD_FLAGS"
+    return flags.split()
+
+
+def cache_flags(scope: str, read: bool, write: bool) -> list[str]:
+    flags = ["--builder", "builder-1", "--load"]
+    flags += ["--cache-from", f"type=gha,scope={scope}"] if read else ["--no-cache"]
+    if write:
+        flags += ["--cache-to", f"type=gha,mode=min,scope={scope}"]
+    return flags
+
+
+@pytest.mark.parametrize("arch", ["amd64", "arm64"])
+def test_a_pull_request_reads_mains_cache_and_writes_none(container, arch, tmp_path):
+    flags = build_flags(container, "pull_request", arch, tmp_path)
+    assert flags == cache_flags(f"container-{arch}", read=True, write=False)
+    assert "--cache-to" not in flags
+
+
+@pytest.mark.parametrize("arch", ["amd64", "arm64"])
+def test_a_push_to_main_reads_and_writes_its_architectures_cache(container, arch, tmp_path):
+    flags = build_flags(container, "push", arch, tmp_path)
+    assert flags == cache_flags(f"container-{arch}", read=True, write=True)
+
+
+@pytest.mark.parametrize("event", ["schedule", "workflow_dispatch"])
+def test_the_daily_and_a_manual_run_build_anew_and_write_the_cache(container, event, tmp_path):
+    flags = build_flags(container, event, "amd64", tmp_path)
+    assert flags == cache_flags("container-amd64", read=False, write=True)
+    assert "--cache-from" not in flags
+
+
+@pytest.mark.parametrize("event", ["push", "schedule", "workflow_dispatch"])
+def test_only_shard_1_writes_its_architectures_cache(container, event, tmp_path):
+    """Two cells never write one scope at once (D4): shard 2 builds as shard 1 does, and
+    writes nothing."""
+    flags = build_flags(container, event, "arm64", tmp_path, shard=2)
+    read = event == "push"
+    assert flags == cache_flags("container-arm64", read=read, write=False)
+
+
+def test_a_pull_requests_shard_2_writes_none_either(container, tmp_path):
+    flags = build_flags(container, "pull_request", "amd64", tmp_path, shard=2)
+    assert flags == cache_flags("container-amd64", read=True, write=False)
+
+
+def test_an_event_the_image_does_not_know_fails_the_step(container, tmp_path):
+    """A trigger added to ci.yml later must choose its cache, not get one by default."""
+    done = image_build(container, "merge_group", "amd64", tmp_path)
+    assert done.returncode != 0
+    assert "merge_group" in done.stdout + done.stderr
+
+
+def test_the_image_is_listed_after_its_build(container, tmp_path):
+    build_flags(container, "push", "amd64", tmp_path)
+    calls = (tmp_path / "calls").read_text().splitlines()
+    assert calls[-1] == "docker|history|lado:local|"
+
+
+def test_the_release_builds_without_any_cache():
+    """The published image is built from nothing: no layer CI wrote can enter it."""
+    release = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+    for word in ("cache-from", "cache-to", "type=gha"):
+        assert word not in release
 
 
 def test_the_container_job_pushes_nothing(container):

@@ -3415,6 +3415,11 @@ export interface components {
              * @default false
              */
             login_missing: boolean;
+            /**
+             * Starts On Server
+             * @default false
+             */
+            starts_on_server: boolean;
         };
         /**
          * ProviderLogins
@@ -3894,7 +3899,8 @@ export interface components {
          * @description The check a start would make of a model, for the launch window: `text` the line under
          *     its field. For a refusal, `short` the same to point at the field, `retry` whether a new
          *     check can help. `peek` a few words for the folded Advanced, of a refusal or of the
-         *     `warnings`, those of the chosen model's server only; `server` its name.
+         *     `warnings`, those of the chosen model's server only; `server` its name. `login`: refused
+         *     because the CLI's own login is missing (runtime.check_login), a server's model needs none.
          */
         SessionModelCheck: {
             /**
@@ -3919,6 +3925,11 @@ export interface components {
              * @default false
              */
             retry: boolean;
+            /**
+             * Login
+             * @default false
+             */
+            login: boolean;
             /**
              * Short
              * @default

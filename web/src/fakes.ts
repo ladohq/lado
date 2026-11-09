@@ -460,6 +460,7 @@ export function cli(name: string, title: string) {
     tested_version: "",
     warning: "",
     login_missing: false,
+    starts_on_server: false,
   };
 }
 

@@ -37,6 +37,7 @@ const ABOUT: SessionAbout = {
     tested_version: "2.1.0",
     warning: "",
     login_missing: false,
+    starts_on_server: false,
   },
 };
 

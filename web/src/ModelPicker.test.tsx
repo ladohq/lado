@@ -69,6 +69,7 @@ type Given = {
   health?: Record<string, Health>;
   where?: "settings" | "launch";
   fieldMark?: string | null;
+  needsLogin?: boolean;
 };
 
 function mount(first: Given = {}) {
@@ -96,6 +97,7 @@ function mount(first: Given = {}) {
           health={given.health ?? {}}
           fieldId="model-field"
           fieldMark={given.fieldMark ?? null}
+          needsLogin={given.needsLogin ?? false}
           onOpen={onOpen}
           onPick={onPick}
           onOther={onOther}
@@ -532,6 +534,26 @@ test("a kept model no longer saved stands above the groups, marked, in no group"
   fireEvent.click(row);
   expect(screen.queryByRole("listbox")).toBeNull();
   expect(onPick).not.toHaveBeenCalled();
+});
+
+test("without the CLI's login its settings and built-in models are marked, your models not", () => {
+  const cloud = model("CloudClaude", "claude", "Claude Code", "gw-opus", "OpenRouter");
+  const read = list({ choices: choices({ aliases: ["opus", "sonnet"], models: null, other_name: true }) });
+  const { field, onPick } = mount({ cli: CLAUDE, where: "launch", own: [cloud], read, needsLogin: true });
+  fireEvent.click(field);
+  const mark = (name: string) => screen.getByRole("option", { name }).querySelector(".mx-gone")?.textContent ?? null;
+  expect(mark("Claude Code's settings")).toBe("needs login");
+  expect(mark("opus")).toBe("needs login");
+  expect(mark("sonnet")).toBe("needs login");
+  expect(mark("CloudClaude, gw-opus, on the model server OpenRouter")).toBeNull();
+  expect(mark("Other name…")).toBeNull();
+  fireEvent.click(screen.getByRole("option", { name: "opus" }));
+  expect(onPick).toHaveBeenCalledWith({ builtin: "opus" }); // picked, then refused by the check
+});
+
+test("logged in, no row is marked as needing a login", () => {
+  fireEvent.click(mount({ cli: CLAUDE, where: "launch", read: list({ choices: choices({ aliases: ["opus"] }) }) }).field);
+  expect(screen.queryByText("needs login")).toBeNull();
 });
 
 test("Esc in a search first clears it, then closes with the focus on the field", () => {

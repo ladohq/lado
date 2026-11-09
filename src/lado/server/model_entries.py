@@ -17,7 +17,7 @@ from __future__ import annotations
 import threading
 import time
 
-from lado import model_check, model_servers, model_settings, providers, runtime, state
+from lado import logins, model_check, model_servers, model_settings, providers, runtime, state
 from lado.providers import base
 from lado.server import launch, models
 
@@ -49,6 +49,7 @@ def _refusal(exc: Exception, warnings: list[str] | None = None) -> Refusal:
 
 
 REFUSED = (model_settings.Refused, model_servers.ProbeError, runtime.LadoError)
+LOGIN_PEEK = "needs login"  # the folded Advanced's words for a model the missing login refuses
 
 
 def forget_probes() -> None:
@@ -216,7 +217,21 @@ def check_session_model(given: models.SessionModelAsked) -> models.SessionModelC
         row = model_settings.session_row(given.model, provider, env, listing)
         start = model_settings.start_model(state.PowerTable.of(row), provider)
         verdict = model_settings.check_start(start, provider, env, listing=listing)
+        if start.server is None:  # on a server check_login reads no status
+            runtime.check_login(provider, env, logins.SESSION, start)
         warnings, peek = _window_warnings(start, provider)
+    except runtime.NotLoggedIn:
+        what = start.name if start and start.name else f"{provider.title}'s own models"
+        return models.SessionModelCheck(
+            kind=model_check.REFUSED,
+            text=(
+                f"{provider.title} is not logged in, so it cannot run {what}: pick a model of "
+                "your server, or log in first."
+            ),
+            short=f"{provider.title} is not logged in",
+            peek=LOGIN_PEEK,
+            login=True,
+        )
     except REFUSED as exc:
         return models.SessionModelCheck(
             kind=model_check.REFUSED,

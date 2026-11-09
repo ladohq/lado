@@ -36,6 +36,7 @@ const CODEX: ProviderInfo = {
   tested_version: "",
   warning: "",
   login_missing: false,
+  starts_on_server: false,
 };
 
 function Team({ info = CODEX, peek = null }: { info?: ProviderInfo; peek?: ReactNode }) {
@@ -105,4 +106,21 @@ test("an agent with no modes: No permission modes., and no Permissions in the su
   expect(summary()).not.toContain("Permissions");
   fireEvent.click(screen.getByRole("button", { name: "Change" }));
   expect(screen.getByText("No permission modes.")).toBeTruthy();
+});
+
+test("a CLI without its login is offered for its server's models only when it can start on one", () => {
+  const option = (info: ProviderInfo) => {
+    render(<Team info={info} />);
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
+    const found = screen.getByRole("combobox", { name: "Agent" }).querySelector("option[value=codex]") as HTMLOptionElement;
+    const seen = [found.textContent, found.disabled];
+    cleanup();
+    return seen;
+  };
+  expect(option({ ...CODEX, login_missing: true, starts_on_server: true })).toEqual([
+    "Codex CLI 0.162.0 · not logged in: your server's models only",
+    false,
+  ]);
+  expect(option({ ...CODEX, login_missing: true })).toEqual(["Codex CLI · not logged in", true]);
+  expect(option(CODEX)).toEqual(["Codex CLI 0.162.0", false]);
 });

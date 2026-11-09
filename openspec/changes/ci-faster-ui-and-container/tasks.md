@@ -32,7 +32,7 @@
 - [x] 5.1 `docs/testing.md` (CI paragraph: jobs, shards, `web`, the browser cache, time
   limits) and the line "What CI proves" of `.lado/sdlc.md`; `tests/test_ci_workflow.py`'s
   docstring. Check: `make lint`, `openspec validate ci-faster-ui-and-container --strict`.
-- [ ] 5.2 Push; the pull request's CI green; two `workflow_dispatch` runs on the branch:
+- [x] 5.2 Push; the pull request's CI green; two `workflow_dispatch` runs on the branch:
   the first misses and saves the cache, the second hits (its browser step ≤ 15 s, no
   `apt-get update` in its log) (AC-3, D7). The build report lists each job's time against
   the baseline (AC-6).

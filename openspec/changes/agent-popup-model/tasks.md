@@ -15,17 +15,17 @@
 
 - [x] 2.1 web/src/Layout.test.tsx and web/src/Terminals.test.tsx: read the head's and the
   strip's popup by its parts (D3), expecting the model fact. `make web` passes.
-- [ ] 2.2 tests/ui/test_layout.py, `test_a_chips_tooltip_says_its_name_role_and_provider`:
+- [x] 2.2 tests/ui/test_layout.py, `test_a_chips_tooltip_says_its_name_role_and_provider`:
   expect `w1`, `idle · …`, `CLI fake`, `Model CLI default` (and the role when it is not the
   name) and the hint; screenshot of the head's popup attached to the build report.
   `uv run pytest -m ui tests/ui/test_layout.py` passes.
 
 ## 3. Documents
 
-- [ ] 3.1 CHANGELOG.md, 0.45.0's "See which model each agent runs on": "The agent's page
+- [x] 3.1 CHANGELOG.md, 0.45.0's "See which model each agent runs on": "The agent's page
   shows its model and effort and where they came from; the Team tooltip and `lado ls` name
   the model." (at most three lines, the rest of the item as it is).
-- [ ] 3.2 docs/design/ui.md, Session head's "An agent's popup" bullet: the three parts,
+- [x] 3.2 docs/design/ui.md, Session head's "An agent's popup" bullet: the three parts,
   the facts and the model's rule; the sentence about `AgentTip` kept.
 
 ## 4. Checks

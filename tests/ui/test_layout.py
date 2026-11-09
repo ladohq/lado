@@ -349,9 +349,13 @@ def test_a_chips_tooltip_says_its_name_role_and_provider(page: Page, server, rep
     chip = page.get_by_role("toolbar", name="Team").get_by_role("button", name="w1,")
     chip.hover()
     tip = page.get_by_role("tooltip")
-    expect(tip.locator(".tooltip-line")).to_have_text(
-        ["w1", re.compile(r"^idle · "), re.compile(r"^\w+ · fake$"), "Click to open the terminal"]
-    )
+    # The popup's three parts: the name and status, the labelled facts, the click's hint. The
+    # fake agent's CLI names no model.
+    expect(tip.locator(".tip-agent")).to_have_text("w1")
+    expect(tip.locator(".tip-status")).to_have_text(re.compile(r"^idle · "))
+    expect(tip.locator(".tip-facts dt")).to_have_text(["Role", "CLI", "Model"])
+    expect(tip.locator(".tip-facts dd")).to_have_text([re.compile(r"^\w+$"), "fake", "CLI default"])
+    expect(tip.locator(".tip-hint")).to_have_text("Click to open the terminal")
     expect(chip).to_have_attribute("aria-describedby", tip.get_attribute("id"))
     shot(page)
     page.mouse.move(5, 5)

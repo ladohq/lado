@@ -2018,10 +2018,14 @@ layout, below).
     as Details does (Esc and a second click back on the button, a press away or the focus going
     past it leave the focus there). Left open as the team reaches level 0, it keeps its button
     until it closes, then the focus goes to the team's first item. On a touch screen, with no tooltips, it is the way to whole names.
-  - An agent's popup, here and on the terminals' strip (`AgentPopup`): the whole name; the
-    status in words and how long, in `--human` when it waits; `role · provider`, the role left
-    out when it is the name; `flow <run>`; `Click to open the terminal`. A terminal's tab and a
-    phone's chip keep `AgentTip`.
+  - An agent's popup, here and on the terminals' strip (`AgentPopup`; LAD-254, 2026-11-09,
+    mockup-agent-popup.html option A), in three parts: the whole name after its status dot,
+    under it the status in words and how long, in `--human` when it waits; under a line,
+    labelled facts `Role` (left out when it is the name), `CLI`, `Model` and `Flow` (when it
+    works for a run); under a second line, smaller, `Click to open the terminal`. `Model` is a
+    configured model's saved name, else the name its CLI reported, in mono, else `CLI default`
+    in muted ink (`modelName`, shared with `AgentTip`); neither the effort nor a source, which
+    the agent's page shows. A terminal's tab and a phone's chip keep `AgentTip`.
   - The keyboard: a `role="toolbar"` named `Team`, one Tab stop, the arrows, Home and End move
     among agents, run links and the button. An agent is named `<name>, <role>, <status>` by the
     popup's words; the button `All N agents`, `<M> more agents`, or with no avatar `<M> agents`,

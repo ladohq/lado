@@ -61,6 +61,9 @@ them into one. Past sections stay as they were written.
 
 ## 2. The RC
 
+0. Write the RC's section `## X.Y.ZrcN` of its release's checklist, `docs/releases/X.Y.Z.md`
+   (4.7; the first RC makes the file), in a pull request of its own that the human reads,
+   or in the RC's commit: `rc_check.py` prints it from the RC's checkout.
 1. `uv version X.Y.ZrcN` (N from 1), commit `Release candidate X.Y.ZrcN` on main, push.
    CHANGELOG.md is not touched: its `## X.Y.Z (unreleased)` stays until the final.
 2. CI is green on that commit, the smoke on Linux and macOS with it.
@@ -89,8 +92,22 @@ in section 6 catches a mistake before it is published.
 Each RC is checked with `scripts/rc_check.py`, run with `python3` from the repository's
 root on the RC's commit (it needs `uv`, `tmux` and `git`, and stops at once, naming what
 is missing and how to install it, when one is not on PATH). It does every step a machine
-can and ends with a list of what is left to the human. The RC's image (4.5, 4.6) is
-checked by hand: `rc_check.py` does not do it yet.
+can and ends with the checklist left to the human, one line per check: the list below,
+then the items of the RC's own section of its release's checklist, `docs/releases/X.Y.Z.md`
+(4.7). The RC's image (4.5, 4.6) is checked by hand: `rc_check.py` does not do it yet.
+The System panel below is the popover of `live` in the top bar, not a page of Settings.
+
+This section holds the checks every RC needs. A check of one version, of what it changed,
+goes to that version's checklist (4.7), never here.
+
+### The checks of every RC
+
+- [ ] 4.1 A clean install: `sandbox` passes every check; a look at its UI.
+- [ ] 4.2 Your own LADO on the RC (first RC of a cycle): `upgrade`, one copy in `~/.lado-rc`.
+- [ ] 4.3 An sdlc run to its first gate, answered in the UI; the chat, a card, `pre-release`.
+- [ ] 4.4 Going back, last: `rollback`; the user's way back when the RC moved the schema.
+- [ ] 4.5 The image: all on the Mac, the pull and a session on Linux; installers if changed.
+- [ ] 4.6 The image's update from the last final (first RC of a cycle).
 
 ### 4.1 A clean install (every RC)
 
@@ -109,8 +126,8 @@ do (`uv tool install`) and checks, one line each, `[ok  ]` or `[FAIL]`:
 - a session on a scratch repository starts (Claude Code; `--provider` for another) and
   `lado ls` shows it.
 
-Then it opens the RC's UI and prints the link: look at the System panel (the
-`pre-release` pill) and at the session, then press Enter (`--no-ui` skips this). It
+Then it opens the RC's UI and prints the link: look at the System panel (`live` in the
+top bar, its `pre-release` pill) and at the session, then press Enter (`--no-ui` skips this). It
 stops the session, removes everything with the RC's own `lado uninstall`, and prints
 the list of what is left to check by hand. Your own `~/.lado` is never touched.
 
@@ -125,7 +142,7 @@ everything.
 python3 scripts/rc_check.py upgrade X.Y.ZrcN
 ```
 
-With your sessions running. It runs `lado update X.Y.ZrcN` (your own install, counted
+With your sessions running; before it, `ls ~/.lado-rc` and note what is there. It runs `lado update X.Y.ZrcN` (your own install, counted
 once as before), which shows its plan and asks as usual. A LADO on a final release is
 never offered an RC, so this one named update is the way onto it; after it, the next RCs
 and the final are offered as usual (the UI's Update, or `lado update`).
@@ -134,54 +151,19 @@ Then it runs `lado ls` once, which upgrades the database when no session resumed
 from a final whose schema the RC moved, it keeps a copy of the migration's backup of that
 final's database (`~/.lado/backups/lado.db.schema-<N>`) in `~/.lado-rc/`: the migration
 keeps only one, and the next RC's migration would replace it. Without a schema change it
-keeps nothing and says that `lado update <final>` alone goes back. Check what the update printed: the migration when the schema moved, your sessions
-back, the UI back.
+keeps nothing and says that `lado update <final>` alone goes back. Check what the update
+printed: the migration when the schema moved, your sessions back, the UI back.
+
+When the schema moved, `~/.lado-rc` then holds one file, `lado.db.<the final you came
+from>`, and the script said `Kept a copy of LADO <final>'s database`. A copy of another
+final left there (a LADO moved onto an RC without this script) is what `rollback` would go
+back to.
 
 ### 4.3 By hand, on your own LADO
 
 - A session with the sdlc kit through one run to its first gate, answered in the UI.
 - The UI: the chat, a gate's card, the System panel with its `pre-release` pill.
-- Each line of CHANGELOG.md's `## X.Y.Z (unreleased)` tried once (both commands above
-  print them as a checklist).
-- Projects (from 0.43.0), once with each provider (Claude Code with the human's yes):
-  `lado project create shop`, `lado project repo add shop --new app`,
-  `lado project set shop BOARD_URL https://a`, then `lado start --project shop --repo app
-  --provider <p>`. Ask the supervisor to print `$BOARD_URL` and to spawn a worker that
-  prints it too: both print `https://a`. Then ask it to start a session from a brief
-  (`start_session`): the new session is in project `shop` (`lado ls`) and its agents see
-  `BOARD_URL` too, which also checks that the agents' `lado mcp` gets LADO's `LADO_REPOS`.
-  Then a secret: `printf %s "$GH_TOKEN" | lado project set shop GH_TOKEN --secret` (a
-  real token of a test account), a new session in `shop`: `gh auth status` in the agent's
-  window is logged in with it, `lado project show shop` lists `GH_TOKEN` without a value.
-  Once more from the web UI: New session → Project → Shop → `app` → "Start in Shop": its
-  supervisor prints `$BOARD_URL` as `https://a`.
-- Projects in the web UI (from 0.43.0), once in Chrome, once in Safari and once in
-  Firefox, each with a password manager on: Projects → "+" makes a project, then "+ Add secret" with a value:
-  the browser offers to save no password, the field is empty after Add, the row says
-  `set · hidden` and `lado project show <id>` lists the name without a value.
-- Projects' secrets on the Mac (from 0.43.0), once, no agent needed: with
-  `LADO_HOME=$(mktemp -d) LADO_REPOS=$(mktemp -d) LADO_TELEMETRY=0` set a secret, then
-  replace `$LADO_HOME/projects/<id>/secrets` with a symbolic link to another folder:
-  `lado project set … --secret` and `lado project unset …` refuse, naming the link (the
-  unit tests of these refusals run on Linux only). `LADO_REPOS` keeps your own workspace
-  out: `lado` refuses when its `projects/` holds a project.
-- Models (from 0.45.0), with the live runs of section 2 and your own servers:
-  - After a turn of a Kilo agent, `lado ls` names its model: Kilo reports it in
-    `chat.message`, which the live tests do not check (they read Kilo's own `model.json`).
-  - Codex: `lado start --provider codex --model <a name of its list>` starts on it. With a
-    `model` in the repository's own `.codex/config.toml`, note what the agent's card says.
-  - A real model server through `lado model-server probe <address>`: a real LiteLLM is typed
-    OpenAI-compatible; on LM Studio `lado model add` refuses an embeddings model; a second
-    `lado model-server add` of one address names the first (`same address as model server`).
-  - An OpenCode agent on a model too small for its work, on a server that gives OpenCode a
-    context overflow (not LM Studio, which answers 400): the turn ends after three overflows
-    and the chat says why; never an endless `busy`.
-  - Qwen through Alibaba Model Studio, its address ending in `/compatible-mode/v1`, and a
-    model of a provider the CLI logged in to itself (`openrouter/<model>` from its list): a
-    real session answers, uses its tools and LADO's MCP tools.
-  - Settings → Model servers and Agent CLIs in Safari and Firefox, and on a real phone: the
-    pages do not scroll by themselves, a key shows as dots, the pages keep to the phone's width,
-    the model picker stays above the keyboard.
+- Then the RC's own section of its release's checklist (4.7), printed after this list.
 
 There is no fixed soak time: the final follows your "ok".
 
@@ -196,7 +178,9 @@ final the copy in `~/.lado-rc/` was taken from, and, when the RC moved the datab
 schema, put that copy back (what was done on the RC is then lost: it says so). It puts
 the copy into `~/.lado/backups/lado.db.schema-<N>` and leaves the restore to the RC's own
 `lado update <final>`, which warns, asks and restores, the way users go back too. Then it
-starts again the sessions the copy has, and the UI, on the final.
+starts again the sessions the copy has, and the UI, on the final. Read `lado update
+<final>`'s warning before you answer `y`: it names what going back loses. Go back last,
+after every other check of the RC.
 
 Once per RC that moved the schema, also the user's own way back, on a test home (a
 temp `LADO_HOME` and `LADO_TMUX_SOCKET`, never yours): `lado update <the final before>`
@@ -206,7 +190,10 @@ database of before the RC.
 
 ### 4.5 The image (every RC)
 
-On a Mac and on Linux, each in a fresh terminal with no `LADO_*` variable in its
+On the Mac all of 4.5: CI has no Docker Desktop. On Linux, `lado doctor`, the log's
+warnings, the missing workspace and the refusal of `lado update` are the container tests'
+(`tests/container/`, run on the bytes published, section 8): there, pull the image and run
+one session. Each in a fresh terminal with no `LADO_*` variable in its
 environment: compose takes a shell variable over `.env`, so an old `LADO_PORT` or
 `LADO_VERSION` there runs another port or version than the file says. `env | grep
 '^LADO_'` prints nothing.
@@ -241,7 +228,8 @@ docker compose exec lado lado ui --no-open
 ```
 
 `docker compose logs lado` has no warning about `LADO_REPOS` (not mounted, not
-writable) nor about git's identity (`user.name`, `user.email`); the last command prints the UI's link with its token. Then:
+writable) nor about git's identity (`user.name`, `user.email`); the last command prints
+the UI's link with its token. Then:
 
 - Log in to Claude Code once: `docker compose exec -it lado claude`, log in, exit. The
   login stays in the home volume.
@@ -250,20 +238,14 @@ writable) nor about git's identity (`user.name`, `user.email`); the last command
 - The UI: the System panel shows the `pre-release` and `container` pills, and no warning
   about a server open to the network (a note about the container's published port
   instead).
-- A session: the New session window with an empty Where offers the folders of
-  `LADO_WORKSPACE`; the session starts and its supervisor answers. A worker's worktree, if
-  you start one, is on the host at the same path, its files yours (on Linux).
-- Projects in the image (from 0.43.0): with `LADO_SECRETS=./secrets` in `.env` and a file
-  `secrets/BOARD_URL` holding `outside`, `docker compose up -d`, then
-  `docker compose exec lado lado project create shop`,
-  `docker compose exec lado lado project repo add shop --new app` and
-  `docker compose exec lado lado project set shop BOARD_URL https://a`. A session in it
-  (New session → Project → Shop → `app` → "Start in Shop"): its supervisor prints
-  `$BOARD_URL` as `https://a`, and the session on the test repository above prints
-  `outside`. `<LADO_WORKSPACE>/projects/shop/app` is on the host.
+- A session: on a new home volume the New session window opens on New empty folder (no
+  recent place yet); Where → Other folder… lists the folders of `LADO_WORKSPACE` under its
+  Folder field. The session starts and its supervisor answers; the next window opens on
+  that folder. A worker's worktree, if you start one, is on the host at the same path, its
+  files yours (on Linux).
 - `docker compose exec lado lado update` refuses at once, stops nothing and says a new
   image updates LADO in a container; the UI's Update does not start one either.
-- A missing workspace, on the Mac (Docker Desktop) and on Linux: `docker compose down`,
+- A missing workspace, on the Mac (Docker Desktop): `docker compose down`,
   set `LADO_WORKSPACE` in `.env` to a folder that does not exist, `docker compose up -d`.
   It refuses with Docker's error, the path in it is that folder's, and the folder is
   not made on the host; the guide's troubleshooting line reads that error. Put `.env`
@@ -275,6 +257,10 @@ Then remove it all, the home volume with Claude Code's login too:
 docker compose down -v
 cd / && rm -rf /tmp/lado-rc-image
 ```
+
+The installers run only when one of them changed since the last final, `X.Y.Z` here
+(`git diff --stat vX.Y.Z vX.Y.ZrcN -- docker/install.sh docker/install.ps1` prints
+something); otherwise the RC's are the final's, which were checked at their release.
 
 The installer, on the Mac, with Docker Desktop quit first: the RC's own `install.sh` (its
 release stamps it with the RC's version) in a folder of its own, so it meets no LADO of
@@ -314,36 +300,28 @@ PowerShell, LADO's link opens in Windows' browser and the UI answers; the phone'
 
 On one machine, as in 4.5 (a fresh terminal, a test workspace), from the last
 final before the RC, `X.Y.Z` below, the way a user of `X.Y.Z` updates: with that
-version's own `compose.yaml` and a session running. Two LADOs, each in a folder of its
-own; the second only stands beside the first. The old files come from the tag (a release
-before 0.40.0 has no `compose.yaml` asset). Both `.env` files name the workspace
+version's own `compose.yaml` and a session running. The old file comes from the tag (a
+release before 0.40.0 has no `compose.yaml` asset). The `.env` names the workspace
 `LADO_PROJECTS` on purpose: the `compose.yaml` of a final before 0.43.0 knows only that
-name, and the update checks that an installed `.env` keeps working:
+name, and the update checks that an installed `.env` keeps working. A second LADO beside
+it is the container tests' (`tests/container/test_two_lados.py`), not checked here:
 
 ```
-mkdir -p /tmp/lado-rc-update /tmp/lado-rc-beside
-git -C <repository> show vX.Y.Z:docker/compose.yaml > /tmp/lado-rc-update/compose.yaml
-git -C <repository> show vX.Y.Z:docker/compose.yaml > /tmp/lado-rc-beside/compose.yaml
-cat > /tmp/lado-rc-update/.env <<'EOF'
+mkdir -p /tmp/lado-rc-update && cd /tmp/lado-rc-update
+git -C <repository> show vX.Y.Z:docker/compose.yaml > compose.yaml
+cat > .env <<'EOF'
 COMPOSE_PROJECT_NAME=lado-rc-update
 LADO_VERSION=X.Y.Z
 LADO_PROJECTS=/absolute/path/to/a/test/folder
 LADO_PORT=8799
 EOF
-cat > /tmp/lado-rc-beside/.env <<'EOF'
-COMPOSE_PROJECT_NAME=lado-rc-beside
-LADO_VERSION=X.Y.Z
-LADO_PROJECTS=/absolute/path/to/a/test/folder
-LADO_PORT=8800
-EOF
-(cd /tmp/lado-rc-beside && docker compose up -d && docker compose ps -q)
-cd /tmp/lado-rc-update && docker compose up -d
+docker compose up -d
 ```
 
-In the first, log in to Claude Code and start a session as in 4.5, and a second one you
-stop (`docker compose exec lado lado stop <session>`, or the UI); leave the first
-running, idle. Then the update, by the guide's steps (docs/install.md, "Update the
-container"): put `LADO_VERSION=X.Y.ZrcN` in its `.env`, and
+Log in to Claude Code and start a session as in 4.5, and a second one you stop (`docker
+compose exec lado lado stop <session>`, or the UI); leave the first running, idle. Then
+the update, by the guide's steps (docs/install.md, "Update the container"): put
+`LADO_VERSION=X.Y.ZrcN` in `.env`, and
 
 ```
 cp compose.yaml compose.yaml.bak
@@ -360,13 +338,9 @@ from schema N to M; its backup is /home/lado/.lado/backups/lado.db.schema-N`. Th
 session resumes: the log has `lado: resumed session "<session>" at the container's start`
 and, a few seconds after the start, `lado ls` shows it running (before, it may still say
 `(stopped)`); the stopped one stays stopped. The UI shows the RC's version.
-From 0.45.0, a session on a chosen model of a CLI not logged in yet resumes too: the kept
-model is not refused because the CLI cannot list its models.
-The second LADO is as it was: `docker compose ps -q` in its folder prints the same
-container id, and its UI still shows `X.Y.Z`.
 
 Then back by the version's tag, as the guide's "Go back to the version before" says:
-`LADO_VERSION=X.Y.Z` in the first's `.env` again, keeping the new `compose.yaml`, and,
+`LADO_VERSION=X.Y.Z` in `.env` again, keeping the new `compose.yaml`, and,
 when the schema moved (N from the log above):
 
 ```
@@ -377,13 +351,45 @@ docker compose exec lado lado ls
 ```
 
 `X.Y.Z` starts on the restored lado.db and lists the sessions; without a schema change,
-`docker compose up -d` alone goes back. Remove both:
+`docker compose up -d` alone goes back. Remove it:
 
 ```
-(cd /tmp/lado-rc-update && docker compose down -v)
-(cd /tmp/lado-rc-beside && docker compose down -v)
-cd / && rm -rf /tmp/lado-rc-update /tmp/lado-rc-beside
+docker compose down -v
+cd / && rm -rf /tmp/lado-rc-update
 ```
+
+### 4.7 The release's checklist
+
+What one version needs checked by hand, beyond the list above, is that version's own
+checklist: `docs/releases/X.Y.Z.md`, one file per version, in English. It is how the next
+release learns what this one was checked for, and `rc_check.py` prints its RC's part.
+
+Its form: a heading `# LADO X.Y.Z: the release's checks`; a short paragraph naming the
+last final, whether the schema moves (from N to M), and what the checks of every RC above
+already cover; then one section `## X.Y.ZrcN` per RC, in order. A section's checks are
+top-level `- [ ] **Title.** …` items, each one check, its detail (commands, the exact
+lines expected) on nested lines under it; `###` subheadings may group them. `rc_check.py`
+prints the first line of each top-level `- [ ] ` item of its RC's section, so that line
+names the check on its own.
+
+Who and when: the release task writes the RC's section before the RC's commit (section 2,
+step 0). The first RC's section is the version's whole list; a later RC's holds only what
+its fixes touch, and what of the earlier RC's list was left open. The human may edit the
+file after the last RC (their notes, what they found): the final may differ from its last
+RC in its own checklist (section 6), so this needs no new RC.
+
+What goes in it:
+
+- each item of CHANGELOG.md's `## X.Y.Z (unreleased)` section, with what covers it (the
+  tests that run it, and at which layer: unit, integration, the browser, smoke, live, the
+  image) and what is tried by hand because nothing does: a real model server, a real phone
+  or tablet, Safari and Firefox (the browser tests run Chromium only), Docker Desktop, a
+  real CLI's login;
+- the steps of the release that the automatic tests do not cover, with the exact lines the
+  code prints;
+- what going back to the last final loses, when the release adds something it loses;
+- an earlier version's check again only when this release touches what it checked: a
+  check does not stay in the list because a release once needed it.
 
 ## 5. The final
 
@@ -420,8 +426,9 @@ on a checkout with every tag and the history (`fetch-depth: 0`). A tag that is n
 
 - it is `vX.Y.0` and no `vX.Y.0rcN` tag exists: `vX.Y.0 needs a release candidate: tag
   vX.Y.0rc1 first`;
-- it differs from its last RC (the highest N) in a file other than CHANGELOG.md,
-  pyproject.toml and uv.lock: `vX.Y.Z differs from vX.Y.ZrcN in <path>`, one line per file;
+- it differs from its last RC (the highest N) in a file other than CHANGELOG.md, its own
+  checklist `docs/releases/X.Y.Z.md` (4.7; another version's is refused), pyproject.toml
+  and uv.lock: `vX.Y.Z differs from vX.Y.ZrcN in <path>`, one line per file;
 - it changes a line of pyproject.toml that is not its `version = "..."` line, or a line of
   uv.lock that is not the `version = "..."` line of the `lado` package's own block (a
   dependency upgraded after the RC is code the RC did not test): `vX.Y.Z changes a line

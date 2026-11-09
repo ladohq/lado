@@ -921,11 +921,18 @@ def test_docs_list_every_field():
 def test_release_checks_in_a_fresh_home_send_nothing():
     # A fresh LADO_HOME is a new install to PostHog: the RC's scratch install never sends.
     # scripts/rc_check.py runs it, and tests/test_rc_check.py checks each of its commands
-    # for LADO_TELEMETRY=0; a scratch home docs/release.md still spells out needs it too.
+    # for LADO_TELEMETRY=0; a scratch home docs/release.md or a release's checklist
+    # (docs/releases/X.Y.Z.md) still spells out needs it too.
     from pathlib import Path
 
-    docs = Path(__file__).parent.parent / "docs" / "release.md"
-    assert "python3 scripts/rc_check.py sandbox" in docs.read_text()
-    lines = [line for line in docs.read_text().splitlines() if "LADO_HOME=$(mktemp -d)" in line]
-    for line in lines:
-        assert "LADO_TELEMETRY=0" in line, f"docs/release.md: {line.strip()}"
+    docs = Path(__file__).parent.parent / "docs"
+    assert "python3 scripts/rc_check.py sandbox" in (docs / "release.md").read_text()
+    lines = [
+        (path, line)
+        for path in [docs / "release.md", *sorted((docs / "releases").glob("*.md"))]
+        for line in path.read_text().splitlines()
+        if "LADO_HOME=$(mktemp -d)" in line
+    ]
+    assert lines  # the guard reads the files that hold such a line
+    for path, line in lines:
+        assert "LADO_TELEMETRY=0" in line, f"{path.relative_to(docs.parent)}: {line.strip()}"

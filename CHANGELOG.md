@@ -52,6 +52,8 @@
 
 ### Improved
 
+- **A default model says it was saved.** On Settings → Agent CLIs a green `✓ Saved` shows
+  beside the field once the default is saved, and stays until your next change on the page.
 - **Resume or start fresh beside a stopped session.** When the place has a stopped session,
   New session offers Resume beside Start new session under a free name (`webapp-2`); the
   blue one follows whether you typed a task.

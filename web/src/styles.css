@@ -11337,12 +11337,17 @@ section.artifact-group + section.artifact-group {
 }
 
 /* A CLI's default model in its row on Agent CLIs (CliDefault.tsx): `Default model` beside its
-   picker, up to 360 px, the notes under the picker; above it at 600 px and narrower. No
+   picker, up to 360 px, the notes under the picker, `✓ Saved`'s slot right of it; the label
+   and the slot above it in a row too narrow for both (the row is the container `cli-row`). No
    `overflow: hidden`: the picker's list leaves it. */
+.srow.pv.cli {
+  container: cli-row / inline-size;
+}
+
 .cli-model {
   display: grid;
   grid-column: 1 / -1;
-  grid-template-columns: 104px minmax(0, 360px);
+  grid-template-columns: 104px minmax(0, 360px) auto;
   align-items: start;
   gap: 6px 10px;
   min-width: 0;
@@ -11359,6 +11364,16 @@ section.artifact-group + section.artifact-group {
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+}
+
+/* Always there, empty until a save succeeds, with the room of `✓ Saved` kept: its line's height
+   and its width are the grid's, so filling it moves nothing. */
+.cli-saved {
+  min-width: 4.5em;
+  color: var(--done);
+  font-size: 13px;
+  line-height: 38px;
+  white-space: nowrap;
 }
 
 .cli-model.cli-off {
@@ -11722,15 +11737,35 @@ section.artifact-group + section.artifact-group {
   }
 }
 
-@media (max-width: 600px) {
+/* A CLI's row with no room for `✓ Saved` right of a 360 px field (104 + 10 + 360 + 10 + 4.5em):
+   `Default model` and the slot share a line over the field, which takes the row's width. */
+@container cli-row (max-width: 542px) {
   .cli-model {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     row-gap: 4px;
   }
 
   .cli-ml {
-    font-size: 14px;
     line-height: 20px;
+  }
+
+  .cli-saved {
+    grid-row: 1;
+    grid-column: 2;
+    justify-self: end;
+    min-width: 0; /* the label's line has the room */
+    line-height: 20px;
+  }
+
+  .cli-pick {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 600px) {
+  .cli-ml {
+    font-size: 14px;
   }
 
   .model-pick {
@@ -13779,8 +13814,21 @@ button.quiet.danger-text {
 }
 
 :root[data-phone] .cli-model {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   row-gap: 4px;
+}
+
+:root[data-phone] .cli-saved {
+  grid-row: 1;
+  grid-column: 2;
+  justify-self: end;
+  min-width: 0;
+  line-height: 20px;
+}
+
+:root[data-phone] .cli-pick {
+  grid-row: 2;
+  grid-column: 1 / -1;
 }
 
 /* Model servers: Add server and a model's name (a click renames it) 44 px high too. */

@@ -328,6 +328,42 @@ test("a CLI not installed with a default says it cannot run, and its settings cl
   expect(document.activeElement).toBe(within(row).getByText("Kilo CLI")); // the line went: its name
 });
 
+// `✓ Saved` of a default: one for the page, until the human's next change on it.
+
+const savedIn = (title: string) =>
+  screen.getByRole("listitem", { name: title }).querySelector(".cli-saved")?.textContent;
+
+async function saveSettings(title: string) {
+  fireEvent.click(await screen.findByRole("combobox", { name: `Default model of ${title}` }));
+  fireEvent.click(await screen.findByRole("option", { name: new RegExp(`${title}'s settings`) }));
+  await waitFor(() => expect(savedIn(title)).toBe("✓ Saved"));
+}
+
+test("✓ Saved moves to the row of the next save, and no minute takes it away", async () => {
+  await show();
+  await saveSettings("OpenCode");
+  expect(savedIn("Claude Code")).toBe("");
+  await saveSettings("Claude Code");
+  expect(savedIn("OpenCode")).toBe("");
+  vi.useFakeTimers();
+  await tick(60_000);
+  expect(savedIn("Claude Code")).toBe("✓ Saved");
+});
+
+test("opening a login sheet and ↻ take ✓ Saved away", async () => {
+  const row = await show();
+  await saveSettings("Claude Code");
+  fireEvent.click(within(row).getByRole("button", { name: "Log in…" }));
+  await screen.findByRole("dialog");
+  expect(savedIn("Claude Code")).toBe("");
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await waitFor(() => expect(refresh().className).not.toContain("spinning"));
+  await saveSettings("Claude Code");
+  fireEvent.click(refresh());
+  expect(savedIn("Claude Code")).toBe("");
+});
+
 // Arrival at a CLI's row (Needs you's and New session's Log in…).
 
 test("#<cli> scrolls its row to the middle once it is read, and focuses its login button", async () => {

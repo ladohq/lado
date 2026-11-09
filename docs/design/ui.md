@@ -2646,11 +2646,19 @@ provider-login-layers, providers-section-and-start-screens and settings-pages; b
   with one; none for a CLI with no way to log in from the page. No field, path or second
   button.
 - **Default model** (`CliDefault.tsx`), under the login of each installed CLI, whatever its
-  login: the label (104 px beside the picker, up to 360 px; over it on a phone) and the
-  CLI's picker (Model servers below: the picker, what is read when, a default in trouble),
-  its notes under it. A CLI not installed has no picker; with a default its row says
-  `Default model: <name> — cannot run: not installed` with `Use <CLI>'s settings`, which
-  clears it and puts the focus on the row's name. With no model server saved a line under the
+  login: the label (104 px beside the picker, up to 360 px; over it, the picker the row's
+  width, in a row narrower than 543 px: a phone, a tablet, a window up to about 915 px) and
+  the CLI's picker (Model servers below: the picker, what is read when, a default in
+  trouble), its notes under it. Each save of the row that succeeds (a row of the list, the
+  value it holds again too, `<CLI>'s settings`, `Other name…` → Use, `Use <CLI>'s settings`
+  under a warning) says `✓ Saved` in green right of the field (in a narrow row at the right
+  of the label's line), in a slot the row always has (a `role="status"` region, the ✓ hidden
+  from screen readers, its room kept so nothing moves or narrows); one for the page
+  (`Providers.tsx` keeps which row), it goes with the next save in any row, a refusal, a
+  login sheet opened, ↻ or leaving the page, never on a timer. A CLI not installed has no
+  picker; with a default its row says `Default model: <name> — cannot run: not installed`
+  with `Use <CLI>'s settings`, which clears it and puts the focus on the row's name (its line
+  going is the answer: no `✓ Saved`). With no model server saved a line under the
   rows: "Models of your own come from a model server: Model servers" (a link). The page reads
   the model settings when it opens and after its own changes (`useModelSettings`), never
   Model servers' state. A CLI LADO does not know has no row: its models are in Your models.
@@ -2970,8 +2978,8 @@ core's why (`ProbeInfo.cannot`); the CLIs a tick can save a model of are `ProbeI
   and a refusal of the key too, under it, with Add server or Save off until the key is
   edited or erased; never in the page's state, an address or the browser's storage.
 - **Looks**: the fields and notes are the launch window's (an ok note in `--action`); green
-  (`--done`) only for the found panel, `Saved model server …` and a server model's `in
-  <CLI>, …`. No colour of its own.
+  (`--done`) only for the found panel, `Saved model server …`, a server model's `in
+  <CLI>, …` and a default's `✓ Saved` on Agent CLIs. No colour of its own.
 - **Narrower than 600 px**: the forms' fields one under the other; a model's row in two
   lines (its name, then model, from and CLI, each whole and wrapped) with × at the right, no
   head row; a question's buttons, Add server and a model's name 44 px high; on Agent CLIs

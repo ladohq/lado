@@ -194,6 +194,90 @@ def test_a_built_in_default_from_a_long_list_searched_and_cleared(page: Page, cl
     assert state.cli_defaults() == []
 
 
+DONE = (
+    "() => { const p = document.createElement('span'); p.style.color = 'var(--done)';"
+    " document.body.append(p); const c = getComputedStyle(p).color; p.remove(); return c; }"
+)
+
+
+def pick_kilo_model(page: Page, model: str) -> None:
+    picker(page, "Kilo CLI").click()
+    agent_clis(page).get_by_role("option", name=model, exact=True).click()
+
+
+def test_a_default_saved_says_so_right_of_its_field_and_nothing_moves(
+    page: Page, clis, server, shot
+):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    open_clis(page, server)
+    kilo = card(page, "Kilo CLI")
+    field = picker(page, "Kilo CLI")
+    field.scroll_into_view_if_needed()
+    after = kilo.locator("xpath=following-sibling::li[1]")
+    slot = kilo.locator(".cli-saved")
+    expect(slot).to_have_attribute("role", "status")
+    expect(slot).to_have_text("")
+    before, below = top(field), top(after)
+    pick_kilo_model(page, "vendor/model-7")
+    expect(slot).to_have_text("✓ Saved")
+    expect(field).to_be_focused()
+    stays(field, before)
+    stays(after, below)
+    assert state.cli_defaults() == [state.ModelRef("kilo", None, "vendor/model-7")]
+    assert slot.evaluate("s => getComputedStyle(s).color") == page.evaluate(DONE)
+    box, at = field.bounding_box(), slot.bounding_box()
+    assert box and at and at["x"] >= box["x"] + box["width"], (at, box)  # right of the field
+    assert box["y"] <= at["y"] + at["height"] / 2 <= box["y"] + box["height"], (at, box)
+    assert box["width"] == 360, box  # the slot's room takes nothing from the field
+    shot(page, "1440-light", full_page=False)
+
+
+@pytest.mark.parametrize(
+    "width, scheme",
+    [(390, "light"), (768, "dark"), (901, "light")],
+    ids=["phone-light", "tablet-dark", "901-light"],
+)
+def test_a_default_saved_in_a_narrow_row_says_so_on_its_label_s_line(
+    browser: Browser, clis, server, shot, width, scheme
+):
+    """A row too narrow for a 360 px field and `✓ Saved` beside it (a phone, a tablet, a
+    window just over 900 px beside Settings' list): `✓ Saved` stands at the right of the
+    `Default model` line over the field, which takes the row's width (no room is lost to the
+    slot) and keeps it."""
+    phone = width <= 600
+    context = browser.new_context(
+        viewport={"width": width, "height": 844},
+        is_mobile=phone,
+        has_touch=phone,
+        color_scheme=scheme,
+    )
+    try:
+        page = context.new_page()
+        open_clis(page, server)
+        kilo = card(page, "Kilo CLI")
+        field = picker(page, "Kilo CLI")
+        field.scroll_into_view_if_needed()
+        box = field.bounding_box()
+        row = kilo.locator(".cli-model").bounding_box()
+        assert box and row and box["width"] == row["width"], (box, row)  # the row's width
+        pick_kilo_model(page, "vendor/model-7")
+        slot = kilo.locator(".cli-saved")
+        expect(slot).to_have_text("✓ Saved")
+        assert slot.evaluate("s => getComputedStyle(s).color") == page.evaluate(DONE)
+        stays(field, box["y"])
+        now = field.bounding_box()
+        assert now and now["width"] == box["width"], (now, box)  # the field keeps its width
+        label = kilo.locator(".cli-ml").bounding_box()
+        at = slot.bounding_box()
+        assert label and at and abs(at["y"] - label["y"]) < 1, (at, label)  # on its line
+        assert at["y"] + at["height"] <= now["y"] + 1  # over the field
+        assert abs(at["x"] + at["width"] - (now["x"] + now["width"])) < 1, (at, now)  # its right
+        assert page.evaluate("document.documentElement.scrollWidth") <= width
+        shot(page, f"{width}-{scheme}", full_page=False)
+    finally:
+        context.close()
+
+
 def test_a_list_lost_default_shows_in_its_row_after_opening(page: Page, clis, server, shot):
     state.set_cli_default(state.ModelRef("kilo", None, "old/gone"))
     page.set_viewport_size({"width": 1280, "height": 900})

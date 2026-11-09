@@ -690,29 +690,6 @@ them, and its confirmation SHALL clear those defaults.
   server
 - **THEN** the question names it, and once confirmed OpenCode's row on Agent CLIs shows `OpenCode's settings`
 
-### Requirement: Removing a default model asks first
-
-× on a model that is its CLI's default, and unticking it, SHALL ask in place, the focus on
-Cancel, Esc as Cancel: `Remove <name>? It is <CLI>'s default model: <CLI> goes back to its
-settings.`, with `Remove model` and Cancel; the tick SHALL stay on until the answer. The removal
-SHALL clear the default in one operation. Any other model SHALL be removed as before, unasked.
-A model removed by its tick SHALL leave no Undo; ticked again it SHALL NOT be a default again.
-
-#### Scenario: × on a default
-- **WHEN** the human presses × on `Локальная Qwen`, OpenCode's default, and confirms
-- **THEN** the row says `Removed Локальная Qwen. OpenCode is back on its settings.` with Undo,
-  and OpenCode's field shows `OpenCode's settings`
-
-#### Scenario: Cancel
-- **WHEN** the human presses Cancel or Esc at the question
-- **THEN** the model and the default stay
-
-#### Scenario: A default set in another window
-- **WHEN** this page shows no default, another window made `Локальная Qwen` OpenCode's, and the
-  human presses × on it
-- **THEN** it goes unasked, but the row says `OpenCode is back on its settings.` and Undo sets the
-  default again; removed by its tick, it leaves no Undo and OpenCode's row on Agent CLIs shows `OpenCode's settings`
-
 ### Requirement: The picker works from the keyboard
 
 The field SHALL be a combobox named `Default model of <CLI>`, in the launch window `Model`: Enter,
@@ -850,3 +827,47 @@ and × on one line, then `<model> · <server> · <agent CLI>` on the next, wrapp
 #### Scenario: Tablet
 - **WHEN** the human opens Model servers in a window 768 px wide with four models
 - **THEN** each model takes two lines, no name or id is cut, and the page does not scroll sideways
+
+### Requirement: Removing a model never asks
+
+Removing a model on Model servers, by × in Your models or by its tick under a server's model,
+SHALL ask nothing, an agent CLI's default too, and SHALL offer Undo where the human acted; the
+removal of a default SHALL clear the default in one operation. Only removing a server SHALL ask
+first, as its key cannot be brought back.
+
+#### Scenario: × on a default
+- **WHEN** the human presses × on `Локальная Qwen`, OpenCode's default
+- **THEN** no question shows, the row says `Removed Локальная Qwen. OpenCode is back on its
+  settings.` with Undo focused, and OpenCode's row on Agent CLIs shows `OpenCode's settings`
+
+#### Scenario: A default set in another window
+- **WHEN** this page shows no default, another window made `Локальная Qwen` OpenCode's, and the
+  human presses × on it
+- **THEN** the row says `Removed Локальная Qwen. OpenCode is back on its settings.` and Undo sets
+  the default again
+
+#### Scenario: A server
+- **WHEN** the human presses Remove on `LM Studio дома`
+- **THEN** the question shows and ends with `This cannot be undone.`
+
+### Requirement: Undo of a model unticked
+
+A model removed by its tick SHALL leave under that tick `Removed <name>.`, with `<CLI> is back
+on its settings.` when it was a default, and Undo, the focus staying on the tick; Undo SHALL
+save the model again under its name and set the default again, a refusal shown in that line.
+After ten seconds only Undo SHALL go; the line SHALL stay until the human's next change on the
+page. Ticking it again SHALL save the model as before, take the line away, and set no default.
+
+#### Scenario: Unticking a default
+- **WHEN** `Qwen в Kilo` is Kilo CLI's default and the human unticks Kilo CLI under `qwen3-8b`
+  on `LM Studio дома`
+- **THEN** no question shows, the model is removed, and under the tick the line says `Removed
+  Qwen в Kilo. Kilo CLI is back on its settings.` with Undo
+
+#### Scenario: Undo
+- **WHEN** the human presses that Undo
+- **THEN** `Qwen в Kilo` is saved again, the tick is on, and Kilo CLI's default is `Qwen в Kilo`
+
+#### Scenario: Ten seconds
+- **WHEN** ten seconds pass after the untick
+- **THEN** the line says `Removed Qwen в Kilo.` without Undo until the human's next change

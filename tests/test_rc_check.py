@@ -949,6 +949,44 @@ def test_the_scripts_reads_cannot_write(homes):
     assert names(copy) == ["app"] and side_files(copy) == []
 
 
+def test_no_side_file_while_the_script_reads(homes):
+    copy = homes.keep / "lado.db.0.37.1"
+    make_db(copy, 26, [("app", "/r/app", None)], wal=True)
+    with rc._reading(copy) as db:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 26
+        assert side_files(copy) == []  # macOS's SQLite would keep what is made here
+    assert side_files(copy) == []
+
+
+def test_empty_side_files_left_by_macos_stay_as_they_are(homes):
+    copy = homes.keep / "lado.db.0.37.1"
+    make_db(copy, 26, [("app", "/r/app", None)], wal=True)
+    Path(f"{copy}-wal").write_bytes(b"")
+    Path(f"{copy}-shm").write_bytes(bytes(32768))
+    with rc._reading(copy) as db:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 26
+        assert db.execute("SELECT name FROM sessions").fetchall() == [("app",)]
+    assert sorted(p.name for p in homes.keep.iterdir()) == [
+        "lado.db.0.37.1",
+        "lado.db.0.37.1-shm",
+        "lado.db.0.37.1-wal",
+    ]
+    assert Path(f"{copy}-wal").stat().st_size == 0
+    assert Path(f"{copy}-shm").stat().st_size == 32768
+
+
+def test_a_running_lados_wal_is_read(homes):
+    make_db(homes.live, 27, [("app", "/r/app", None)], wal=True)
+    with contextlib.closing(sqlite3.connect(homes.live)) as lado:  # a running LADO
+        lado.execute("PRAGMA wal_autocheckpoint = 0")
+        lado.execute("INSERT INTO sessions VALUES ('web', '/r/web', NULL)")
+        lado.commit()
+        assert Path(f"{homes.live}-wal").stat().st_size > 0
+        with rc._reading(homes.live) as db:
+            rows = db.execute("SELECT name FROM sessions ORDER BY name").fetchall()
+        assert rows == [("app",), ("web",)]
+
+
 def test_without_a_terminal_rollback_refuses(recorder, homes, on_rc, monkeypatch, capsys):
     monkeypatch.setattr(rc, "_terminal", lambda: False)
     assert rc.main(["rollback"]) == 1

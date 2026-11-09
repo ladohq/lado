@@ -20,7 +20,8 @@ import {
   ModelServer,
   refusal,
 } from "./modelFakes";
-import { ModelSettings, UNDO_MS } from "./ModelSettings";
+import { ModelSettings } from "./ModelSettings";
+import { UNDO_MS } from "./removedModels";
 import { useModelSettings } from "./useModelSettings";
 
 let server: ModelServer;
@@ -552,28 +553,6 @@ test("LADO's server gone: one line of its own, the value as it was, no model ser
 
 // Removing what is a default, on Model servers.
 
-test("× on a default asks in place, the focus on Cancel; Cancel and Esc keep the model", async () => {
-  server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
-  mountPage();
-  const yours = await table();
-  const remove = within(yours).getByRole("button", { name: "Remove Локальная Qwen" });
-  fireEvent.click(remove);
-  const question = within(yours).getByRole("alertdialog");
-  expect(question.textContent).toContain(
-    "Remove Локальная Qwen? It is OpenCode's default model: OpenCode goes back to its settings.",
-  );
-  const cancel = within(question).getByRole("button", { name: "Cancel" });
-  await waitFor(() => expect(document.activeElement).toBe(cancel));
-  fireEvent.click(cancel);
-  expect(within(yours).queryByRole("alertdialog")).toBeNull();
-  const again = within(yours).getByRole("button", { name: "Remove Локальная Qwen" });
-  await waitFor(() => expect(document.activeElement).toBe(again));
-  fireEvent.click(again);
-  fireEvent.keyDown(within(yours).getByRole("alertdialog"), { key: "Escape" });
-  expect(within(yours).queryByRole("alertdialog")).toBeNull();
-  expect(server.of("DELETE", "/api/models/")).toEqual([]);
-});
-
 test("× on any other model asks nothing", async () => {
   server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
   mountPage();
@@ -583,16 +562,18 @@ test("× on any other model asks nothing", async () => {
   expect(within(yours).queryByRole("alertdialog")).toBeNull();
 });
 
-test("a default removed says the CLI is back on its settings; Undo brings the model and the default back", async () => {
+test("× on a default asks nothing: the row says the CLI is back on its settings, Undo focused brings both back", async () => {
   server.entries = { models: [QWEN, CODER], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
   mountPage();
   const yours = await table();
   fireEvent.click(within(yours).getByRole("button", { name: "Remove Локальная Qwen" }));
-  fireEvent.click(within(yours).getByRole("button", { name: "Remove model" }));
+  expect(screen.queryByRole("alertdialog")).toBeNull();
   const undo = await within(yours).findByRole("button", { name: "Undo" });
+  expect(server.of("DELETE", "/api/models/")).toHaveLength(1);
   expect(undo.closest("[role=row]")?.textContent).toContain(
     "Removed Локальная Qwen. OpenCode is back on its settings.",
   );
+  await waitFor(() => expect(document.activeElement).toBe(undo));
   fireEvent.click(undo);
   const back = await within(yours).findByRole("button", { name: "Rename Локальная Qwen" });
   await waitFor(() => expect(back.closest("[role=row]")?.textContent).toContain("OpenCode · default"));
@@ -606,7 +587,6 @@ test("Undo of a default whose second call is refused: the model is back, the row
   mountPage();
   const yours = await table();
   fireEvent.click(within(yours).getByRole("button", { name: "Remove Локальная Qwen" }));
-  fireEvent.click(within(yours).getByRole("button", { name: "Remove model" }));
   fireEvent.click(await within(yours).findByRole("button", { name: "Undo" }));
   const row = (await within(yours).findByRole("button", { name: "Rename Локальная Qwen" })).closest("[role=row]");
   await waitFor(() => expect(row?.textContent).toContain("OpenCode is not installed"));
@@ -648,29 +628,54 @@ test("two defaults on a server: one sentence names them both", async () => {
   );
 });
 
-test("unticking a default asks under its row, the tick staying on until the answer", async () => {
-  server.entries = { models: [QWEN], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
-  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
-  mountPage();
-  await table();
+// The open list of Agent CLIs under LM Studio's qwen3-8b, and OpenCode's tick in it.
+async function openTick() {
   fireEvent.click(await screen.findByRole("button", { name: LMSTUDIO.name }));
   fireEvent.click(await screen.findByRole("button", { name: "qwen3-8b" }));
   const tick = (await screen.findByRole("checkbox", { name: "qwen3-8b on OpenCode" })) as HTMLInputElement;
+  return { tick, list: screen.getByRole("group", { name: "Agent CLIs for qwen3-8b" }) };
+}
+
+test("unticking a default asks nothing: the line under its tick says so, Undo brings the model and the default back", async () => {
+  server.entries = { models: [QWEN], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
+  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
+  mountPage();
+  const yours = await table();
+  const { tick, list } = await openTick();
+  tick.focus();
   fireEvent.click(tick);
-  const question = await screen.findByRole("alertdialog");
-  expect(question.textContent).toContain(
-    "Remove Локальная Qwen? It is OpenCode's default model: OpenCode goes back to its settings.",
-  );
-  expect(tick.checked).toBe(true);
-  expect(server.of("DELETE", "/api/models/")).toEqual([]);
-  fireEvent.click(within(question).getByRole("button", { name: "Cancel" }));
   expect(screen.queryByRole("alertdialog")).toBeNull();
-  expect(tick.checked).toBe(true);
-  fireEvent.click(tick);
-  fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Remove model" }));
   await waitFor(() => expect(tick.checked).toBe(false));
   expect(server.of("DELETE", "/api/models/")).toHaveLength(1);
-  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull(); // a tick leaves no Undo
+  expect(server.entries.defaults).toEqual([]);
+  const undo = await within(list).findByRole("button", { name: "Undo" });
+  expect(undo.closest(".mx-sub-undo")?.textContent).toBe(
+    "Removed Локальная Qwen. OpenCode is back on its settings.Undo",
+  );
+  expect(document.activeElement).toBe(tick); // the focus stays on the tick, Undo is next
+  expect(tick.closest("label")?.nextElementSibling).toBe(undo.closest(".mx-sub-undo"));
+  expect(within(yours).queryByRole("button", { name: "Undo" })).toBeNull(); // Undo only where the human acted
+  fireEvent.click(undo);
+  await waitFor(() => expect(tick.checked).toBe(true));
+  await waitFor(() => expect(within(list).queryByText(/Removed/)).toBeNull());
+  const added = server.entries.models.find((m) => m.name === QWEN.name);
+  expect(added).toBeTruthy();
+  expect(server.of("PUT", "/api/model-defaults/opencode")[0].body).toEqual({ external: added?.id });
+  await waitFor(() => expect(document.activeElement).toBe(tick));
+});
+
+test("Undo of an untick whose default is refused: the model is back, the line says why", async () => {
+  server.entries = { models: [QWEN], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
+  server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
+  server.answers["PUT /api/model-defaults/opencode"] = () => refusal("OpenCode is not installed", "cli");
+  mountPage();
+  await table();
+  const { tick, list } = await openTick();
+  fireEvent.click(tick);
+  fireEvent.click(await within(list).findByRole("button", { name: "Undo" }));
+  await waitFor(() => expect(tick.checked).toBe(true));
+  await waitFor(() => expect(list.querySelector(".mx-sub-undo")?.textContent).toContain("OpenCode is not installed"));
+  expect(within(list).queryByRole("button", { name: "Undo" })).toBeNull();
 });
 
 // A default set in another window: this page shows none, and the removal finds one.
@@ -693,18 +698,19 @@ test("× on a default this page did not know of: its row says so, and Undo sets 
   await waitFor(() => expect(server.of("PUT", "/api/model-defaults/opencode")).toHaveLength(1));
 });
 
-test("a tick off on a default this page did not know of clears it, leaving no Undo", async () => {
+test("a tick off on a default this page did not know of: its line says so, and Undo sets it again", async () => {
   server.entries = { models: [QWEN], servers: [LMSTUDIO] };
   server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
   mountPage();
   await table();
-  fireEvent.click(await screen.findByRole("button", { name: LMSTUDIO.name }));
-  fireEvent.click(await screen.findByRole("button", { name: "qwen3-8b" }));
-  const tick = (await screen.findByRole("checkbox", { name: "qwen3-8b on OpenCode" })) as HTMLInputElement;
+  const { tick, list } = await openTick();
   setElsewhere(QWEN);
   fireEvent.click(tick);
   await waitFor(() => expect(server.entries.defaults).toEqual([]));
-  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  const undo = await within(list).findByRole("button", { name: "Undo" });
+  expect(undo.closest(".mx-sub-undo")?.textContent).toContain("OpenCode is back on its settings.");
+  fireEvent.click(undo);
+  await waitFor(() => expect(server.of("PUT", "/api/model-defaults/opencode")).toHaveLength(1));
 });
 
 test("× with LADO's server gone says so in its own words, in its row", async () => {
@@ -885,7 +891,7 @@ test("a server removed: the focus goes to Add server", async () => {
   await waitFor(() => expect(document.activeElement).toBe(add));
 });
 
-test("a tick keeps the focus through its save and through the question", async () => {
+test("a tick keeps the focus through its save and its removal", async () => {
   server.entries = { models: [QWEN], servers: [LMSTUDIO], defaults: [externalDefault(QWEN)] };
   server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
   mountPage();
@@ -899,12 +905,10 @@ test("a tick keeps the focus through its save and through the question", async (
   await waitFor(() => expect(kilo.checked).toBe(true));
   expect(document.activeElement).toBe(kilo);
   const tick = (await screen.findByRole("checkbox", { name: "qwen3-8b on OpenCode" })) as HTMLInputElement;
+  tick.focus();
   fireEvent.click(tick);
-  fireEvent.keyDown(await screen.findByRole("alertdialog"), { key: "Escape" });
-  await waitFor(() => expect(document.activeElement).toBe(tick));
-  fireEvent.click(tick);
-  fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Remove model" }));
   await waitFor(() => expect(tick.checked).toBe(false));
+  await screen.findByRole("button", { name: "Undo" });
   expect(document.activeElement).toBe(tick);
 });
 

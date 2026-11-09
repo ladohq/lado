@@ -4,14 +4,14 @@
 // model` do, with their rules and lines: every refusal is the core's line under the field it
 // names. The entries are read when the page opens and after each change of its own
 // (useModelSettings; GET /api/model-settings asks no server); opening it reads no source.
-// Nothing under the pointer moves (useScrollAnchor) and no row leaves on a timer: a model
-// removed by × leaves its row as Undo, then as a line, until the human's next change here.
+// Nothing under the pointer moves (useScrollAnchor) and no row leaves on a timer: removing a
+// model asks nothing, a default's too; one removed by × leaves its row as Undo, then as a line,
+// until the human's next change here (removedModels.tsx, shared with the ticks).
 // Each CLI's default is picked on Agent CLIs (CliDefault.tsx).
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import {
-  addModel,
   checkProviders,
   type ConfiguredModelInfo,
   type EntryRefused,
@@ -22,30 +22,18 @@ import {
   refusalOf,
   removeModel,
   renameModel,
-  setModelDefault,
 } from "./api";
 import { CloseIcon } from "./icons";
 import { listed, ModelServers, type Read, type Saved, serverKey, type Sources } from "./ModelSources";
 import { agentClisPath } from "./paths";
 import { POLL_MS } from "./Providers";
+import { type Removed, UndoLine, useRemovedModels } from "./removedModels";
 import { SettingsPage } from "./SettingsPage";
 import { useModelSettings } from "./useModelSettings";
 import { useScrollAnchor } from "./useScrollAnchor";
 
 // Reads of the CLIs' rows at most while they are not read yet.
 const LOGIN_POLLS = 30;
-// How long a model removed by × offers Undo; its row then stays as a line.
-export const UNDO_MS = 10000;
-
-// A model removed by ×: its row offers Undo (`expired`: no more), saying why Undo was refused;
-// `wasDefault`: it was its CLI's default, which Undo sets again.
-type Removed = {
-  model: ConfiguredModelInfo;
-  wasDefault: boolean;
-  problem: string | null;
-  busy: boolean;
-  expired: boolean;
-};
 
 const fold = (text: string) => text.toLowerCase();
 
@@ -55,13 +43,11 @@ export function ModelSettings() {
   const [reads, setReads] = useState<Record<string, Read>>({});
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [saved, setSaved] = useState<Record<string, Saved>>({});
-  const [removed, setRemoved] = useState<Record<string, Removed>>({});
+  const removed = useRemovedModels(reload);
   // The names of models unticked here, by their tick's key, while the page stays open: a
   // tick again saves the model under its name (a mis-click loses no name).
   const [names, setNames] = useState<Record<string, string>>({});
   const [focusName, setFocusName] = useState<string | null>(null); // after Undo
-  // By a model's folded name: why Undo could not set its default again.
-  const [rowNotes, setRowNotes] = useState<Record<string, string>>({});
   const section = useRef<HTMLElement>(null);
   const reading = useRef<Record<string, number>>({}); // each source's latest read (ModelSources)
   useScrollAnchor(section);
@@ -115,13 +101,13 @@ export function ModelSettings() {
       return next;
     });
   }, []);
-  // The human's next change on the page: the lines of models removed by × whose Undo ran out
-  // go, and the lines of the last server added or changed.
+  // The human's next change on the page: the lines of removed models whose Undo ran out go,
+  // and the lines of the last server added or changed.
+  const touchRemoved = removed.touch;
   const onTouch = useCallback(() => {
-    setRemoved((now) => Object.fromEntries(Object.entries(now).filter(([, gone]) => !gone.expired)));
+    touchRemoved();
     setSaved((now) => (Object.keys(now).length ? {} : now));
-    setRowNotes((now) => (Object.keys(now).length ? {} : now));
-  }, []);
+  }, [touchRemoved]);
   const onName = useCallback(
     (key: string, name: string | null) =>
       setNames((now) => {
@@ -132,52 +118,13 @@ export function ModelSettings() {
       }),
     [],
   );
-  const set = (name: string, gone: Removed | null) =>
-    setRemoved((now) => {
-      const next = { ...now };
-      if (gone) next[fold(name)] = gone;
-      else delete next[fold(name)];
-      return next;
-    });
   const onRemoved = (model: ConfiguredModelInfo, wasDefault: boolean) => {
     onTouch();
-    set(model.name, { model, wasDefault, problem: null, busy: false, expired: false });
+    removed.add(model, wasDefault, null);
   };
   const undo = async (gone: Removed) => {
-    const { model } = gone;
     onTouch();
-    set(model.name, { ...gone, busy: true, problem: null });
-    let id: string;
-    try {
-      id = (
-        await addModel({
-          name: model.name,
-          cli: model.cli,
-          model: model.model,
-          server: model.server,
-        })
-      ).model.id;
-    } catch (error) {
-      set(model.name, {
-        ...gone,
-        busy: false,
-        problem: refusalOf(error).message,
-      });
-      void reload();
-      return;
-    }
-    // The Undo row goes only once the reload has brought the model back: nothing moves.
-    if (gone.wasDefault) {
-      try {
-        await reload((await setModelDefault(model.cli, { external: id })).settings);
-      } catch (error) {
-        // The model is back; only its default is not: its row says why.
-        await reload();
-        setRowNotes((now) => ({ ...now, [fold(model.name)]: refusalOf(error).message }));
-      }
-    } else await reload();
-    setFocusName(model.name);
-    set(model.name, null);
+    if (await removed.undo(gone)) setFocusName(gone.model.name);
   };
 
   const sources: Sources = {
@@ -194,6 +141,7 @@ export function ModelSettings() {
     onTouch,
     names,
     onName,
+    removed,
   };
   return (
     <SettingsPage slug="model-servers" className="setting mx" ref={section}>
@@ -209,8 +157,7 @@ export function ModelSettings() {
             entries={entries}
             logins={logins}
             reads={reads}
-            removed={removed}
-            rowNotes={rowNotes}
+            removed={removed.list.filter((gone) => gone.at === null)}
             focusName={focusName}
             onFocusName={setFocusName}
             onFocused={() => setFocusName(null)}
@@ -218,7 +165,7 @@ export function ModelSettings() {
             onTouch={onTouch}
             onRemoved={onRemoved}
             onUndo={(gone) => void undo(gone)}
-            onExpired={(gone) => set(gone.model.name, { ...gone, expired: true })}
+            onExpired={removed.expire}
           />
         </>
       )}
@@ -240,13 +187,13 @@ function downOf(server: string, reads: Record<string, Read>): string | null {
 }
 
 // Your models: every configured model in one table, by agent CLI in LADO's order (a CLI LADO
-// does not know last), then by name; a model removed by × keeps its place as Undo.
+// does not know last), then by name; a model removed by × keeps its place as Undo (`removed`:
+// those of ×; one unticked leaves its line under its tick only).
 function YourModels({
   entries,
   logins,
   reads,
   removed,
-  rowNotes,
   focusName,
   onFocusName,
   onFocused,
@@ -259,8 +206,7 @@ function YourModels({
   entries: Entries;
   logins: ProviderLogins[];
   reads: Record<string, Read>;
-  removed: Record<string, Removed>;
-  rowNotes: Record<string, string>;
+  removed: Removed[];
   focusName: string | null;
   onFocusName: (name: string) => void;
   onFocused: () => void;
@@ -273,7 +219,9 @@ function YourModels({
   const id = useId();
   const table = useRef<HTMLDivElement>(null);
   const live = entries.models;
-  const gone = Object.values(removed).filter((g) => !live.some((m) => fold(m.name) === fold(g.model.name)));
+  const gone = removed.filter((g) => !live.some((m) => fold(m.name) === fold(g.model.name)));
+  // Why Undo brought a model back without its default, by its folded name.
+  const notes = new Map(removed.filter((g) => g.back).map((g) => [fold(g.model.name), g.problem]));
   if (live.length + gone.length === 0 && entries.servers.length === 0) return null;
   const order = (cli: string) => {
     const at = logins.findIndex((row) => row.cli.name === cli);
@@ -312,8 +260,10 @@ function YourModels({
             </div>
             {rows.map(({ model, gone }) =>
               gone ? (
-                <UndoRow
+                <UndoLine
                   key={`removed:${model.name}`}
+                  className="mx-mrow mx-undo"
+                  row
                   gone={gone}
                   onUndo={onUndo}
                   onExpired={onExpired}
@@ -327,7 +277,7 @@ function YourModels({
                   address={servers.get(fold(model.server))}
                   gone={goneOf(model, reads)}
                   down={downOf(model.server, reads)}
-                  note={rowNotes[fold(model.name)] ?? null}
+                  note={notes.get(fold(model.name)) ?? null}
                   focus={focusName !== null && fold(focusName) === fold(model.name)}
                   onFocused={onFocused}
                   onRenamed={(name, back) => back && onFocusName(name)}
@@ -341,62 +291,6 @@ function YourModels({
         </>
       )}
     </section>
-  );
-}
-
-function UndoRow({
-  gone,
-  onUndo,
-  onExpired,
-  onLeft,
-}: {
-  gone: Removed;
-  onUndo: (gone: Removed) => void;
-  onExpired: (gone: Removed) => void;
-  onLeft: () => void; // Undo went with the focus on it
-}) {
-  const { model, wasDefault, problem, busy, expired } = gone;
-  const undo = useRef<HTMLButtonElement>(null);
-  const left = useRef(onLeft);
-  left.current = onLeft;
-  // Undo goes after UNDO_MS, kept while it runs or was refused (to say why); the row stays.
-  // The callbacks are the latest ones: the page renders again under it (a read of the CLIs'
-  // rows each second), which must not start the time over.
-  const latest = useRef(gone);
-  latest.current = gone;
-  const expire = useRef(onExpired);
-  expire.current = onExpired;
-  useEffect(() => {
-    if (problem || busy || expired) return;
-    const timer = setTimeout(() => {
-      if (document.activeElement === undo.current) left.current();
-      expire.current(latest.current);
-    }, UNDO_MS);
-    return () => clearTimeout(timer);
-  }, [problem, busy, expired]);
-  return (
-    <div className="mx-mrow mx-undo" role="row">
-      <span role="cell">
-        <span role="status">
-          Removed <b>{model.name}</b>.{wasDefault && ` ${model.cli_title} is back on its settings.`}
-        </span>
-        {problem && <span className="field-note bad">{problem}</span>}
-      </span>
-      {!expired && (
-        // × hands the focus to its Undo. Off while it runs by aria only: a button truly disabled
-        // would drop the focus, and a refusal leaves it here.
-        <button
-          ref={undo}
-          type="button"
-          className="link-button"
-          autoFocus
-          aria-disabled={busy ? true : undefined}
-          onClick={() => !busy && onUndo(gone)}
-        >
-          Undo
-        </button>
-      )}
-    </div>
   );
 }
 
@@ -428,12 +322,9 @@ function ModelRow({
   onRemoved: (model: ConfiguredModelInfo, wasDefault: boolean) => void;
 }) {
   const [renaming, setRenaming] = useState(false);
-  const [asking, setAsking] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const name = useRef<HTMLButtonElement>(null);
-  const cross = useRef<HTMLButtonElement>(null);
   const refocus = useRef(false);
-  const backToCross = useRef(false);
   useEffect(() => {
     if (!focus) return;
     name.current?.focus();
@@ -444,54 +335,18 @@ function ModelRow({
     refocus.current = false;
     name.current?.focus();
   }, [renaming]);
-  useEffect(() => {
-    if (asking || !backToCross.current) return;
-    backToCross.current = false;
-    cross.current?.focus();
-  }, [asking]);
+  // A default too goes at once: the answer's `cleared` says whether one went (this page may
+  // not have known), and Undo sets it again.
   const remove = async () => {
     setProblem(null);
     try {
       const left = await removeModel(model.name);
-      onRemoved(model, left.cleared.includes(model.cli)); // this page may not have known
+      onRemoved(model, left.cleared.includes(model.cli));
       await onChanged(left);
     } catch (error) {
-      setAsking(false);
       setProblem(refusalOf(error).message);
     }
   };
-  const cancel = () => {
-    backToCross.current = true;
-    setAsking(false);
-  };
-  if (asking)
-    return (
-      <div
-        className="mx-mrow yours mc-ask mx-confirm"
-        role="alertdialog"
-        aria-label={`Remove ${model.name}?`}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            event.preventDefault();
-            event.stopPropagation();
-            cancel();
-          }
-        }}
-      >
-        <p>
-          <b>{`Remove ${model.name}?`}</b>
-          {` It is ${model.cli_title}'s default model: ${model.cli_title} goes back to its settings.`}
-        </p>
-        <div className="mx-form-acts">
-          <button type="button" className="danger" onClick={() => void remove()}>
-            Remove model
-          </button>
-          <button type="button" className="quiet" autoFocus onClick={cancel}>
-            Cancel
-          </button>
-        </div>
-      </div>
-    );
   return (
     <div className="mx-mrow yours" role="row">
       <span className="mx-nm" role="cell">
@@ -550,12 +405,11 @@ function ModelRow({
       </span>
       <span className="mx-x-cell" role="cell">
         <button
-          ref={cross}
           type="button"
           className="mx-icon"
           title="Remove"
           aria-label={`Remove ${model.name}`}
-          onClick={() => (isDefault ? setAsking(true) : void remove())}
+          onClick={() => void remove()}
         >
           <CloseIcon />
         </button>

@@ -329,7 +329,9 @@ def test_other_name_on_claude_code_warns_and_stays(page: Page, clis, server, sho
     assert state.cli_defaults() == [state.ModelRef("claude", None, "claude-opus-4-1-20250805")]
 
 
-def test_an_external_default_removed_with_a_question_and_undo(page: Page, clis, server, lms, shot):
+def test_an_external_default_removed_without_a_question_and_undo(
+    page: Page, clis, server, lms, shot
+):
     saved_server(lms)
     state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
     state.add_model("Рабочая Qwen", "opencode", "qwen3-8b", "s1")
@@ -348,20 +350,11 @@ def test_an_external_default_removed_with_a_question_and_undo(page: Page, clis, 
     table = yours(page)
     expect(model_row(page, "Локальная Qwen")).to_contain_text("OpenCode · default")
     table.get_by_role("button", name="Remove Локальная Qwen").click()
-    ask = table.get_by_role("alertdialog")
-    expect(ask).to_contain_text(
-        "It is OpenCode's default model: OpenCode goes back to its settings."
-    )
-    expect(ask.get_by_role("button", name="Cancel")).to_be_focused()
-    shot(page, "default-asks")
-    ask.press("Escape")
-    expect(ask).to_have_count(0)
-    assert state.model("Локальная Qwen") is not None
-    table.get_by_role("button", name="Remove Локальная Qwen").click()
-    table.get_by_role("button", name="Remove model").click()
     undo = table.get_by_role("button", name="Undo")
     expect(undo).to_be_focused()
+    expect(page.get_by_role("alertdialog")).to_have_count(0)
     expect(table.get_by_text("OpenCode is back on its settings.")).to_be_visible()
+    assert state.model("Локальная Qwen") is None
     assert state.cli_defaults() == []
     shot(page, "default-removed")
     undo.click()
@@ -374,6 +367,44 @@ def test_an_external_default_removed_with_a_question_and_undo(page: Page, clis, 
         "link", name="Agent CLIs"
     ).click()
     expect(picker(page, "OpenCode")).to_contain_text("Локальная Qwen")
+
+
+def test_a_default_unticked_without_a_question_and_its_undo(page: Page, clis, server, lms, shot):
+    saved_server(lms)
+    saved = state.add_model("Qwen в Kilo", "kilo", "qwen3-8b", "s1")
+    state.set_cli_default(state.ModelRef("kilo", saved.id, None))
+    page.set_viewport_size({"width": 1280, "height": 900})
+    open_settings(page, server)
+    toggle(page, "LM Studio дома").click()
+    lm = source(page, "LM Studio дома")
+    lm.get_by_role("button", name="qwen3-8b", exact=True).click()
+    clis_of = lm.get_by_role("group", name="Agent CLIs for qwen3-8b")
+    kilo = clis_of.get_by_role("checkbox", name="qwen3-8b on Kilo CLI", exact=True)
+    expect(kilo).to_be_checked()
+    kilo.scroll_into_view_if_needed()
+    before = top(kilo)
+    kilo.click()
+    expect(kilo).not_to_be_checked()
+    expect(page.get_by_role("alertdialog")).to_have_count(0)
+    line = clis_of.locator(".mx-sub-undo")
+    expect(line).to_have_text("Removed Qwen в Kilo. Kilo CLI is back on its settings.Undo")
+    expect(kilo).to_be_focused()
+    stays(kilo, before)
+    assert state.model("Qwen в Kilo") is None
+    assert state.cli_defaults() == []
+    expect(yours(page).get_by_role("button", name="Undo")).to_have_count(0)
+    shot(page, "untick-line")
+    page.keyboard.press("Tab")  # Undo is the next stop
+    undo = line.get_by_role("button", name="Undo")
+    expect(undo).to_be_focused()
+    undo.click()
+    expect(kilo).to_be_checked()
+    expect(line).to_have_count(0)
+    expect(kilo).to_be_focused()
+    back = state.model("Qwen в Kilo")
+    assert back is not None
+    assert state.cli_defaults() == [state.ModelRef("kilo", back.id, None)]
+    expect(model_row(page, "Qwen в Kilo")).to_contain_text("Kilo CLI · default")
 
 
 def test_a_request_lado_s_server_did_not_answer_promises_nothing(
@@ -1088,19 +1119,19 @@ def test_the_picker_at_a_phones_width(browser: Browser, clis, server, lms, shot)
         size = chip.bounding_box()
         assert size and size["height"] >= 44, size
 
-        # Your models at a phone's width: no head row, two lines; ×'s question 44 px.
+        # Your models at a phone's width: no head row, two lines; × on the default asks
+        # nothing, its Undo 44 px.
         open_settings(page, server)
         table = yours(page)
         table.scroll_into_view_if_needed()
         expect(table.locator(".mx-mhead")).to_be_hidden()
-        x = table.get_by_role("button", name=re.compile("^Remove "))
-        x.click()
-        ask = table.get_by_role("alertdialog")
-        for button in ("Remove model", "Cancel"):
-            shown = ask.get_by_role("button", name=button).bounding_box()
-            assert shown and shown["height"] >= 44, shown
-        ask.get_by_role("button", name="Cancel").click()
-        expect(x).to_be_focused()
+        table.get_by_role("button", name=re.compile("^Remove ")).click()
+        expect(page.get_by_role("alertdialog")).to_have_count(0)
+        undo = table.get_by_role("button", name="Undo")
+        expect(undo).to_be_focused()
+        expect(table).to_contain_text("OpenCode is back on its settings.")
+        shown = undo.bounding_box()
+        assert shown and shown["height"] >= 44, shown
         assert page.evaluate("document.documentElement.scrollWidth") <= 390
         shot(page, "phone-your-models", full_page=False)
     finally:

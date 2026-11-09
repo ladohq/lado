@@ -9,6 +9,8 @@ from lado import state, telemetry
 
 pytestmark = pytest.mark.ui
 
+NAME = "Send anonymous statistics and errors to LADO's maintainers"
+
 
 @pytest.fixture
 def not_chosen(telemetry_on):
@@ -33,12 +35,54 @@ def test_the_banner_asks_once_and_settings_shows_the_choice(page: Page, not_chos
         "link", name="Statistics"
     ).click()
     section = page.get_by_role("region", name="Statistics")
-    expect(section.get_by_role("radio", name="Send", exact=True)).to_be_checked()
+    expect(section.get_by_role("switch", name=NAME)).to_be_checked()
+    expect(section.get_by_role("radio")).to_have_count(0)
     expect(section).to_contain_text("Not sent yet. What LADO collects ↗")
     shot(page, "settings")
     page.reload()
     expect(page.get_by_role("heading", name="Statistics")).to_be_visible()
     expect(page.locator(".stats-banner")).to_have_count(0)  # asked once
+
+
+def test_settings_not_chosen_is_off_and_turning_it_on_answers_the_banner(
+    page: Page, not_chosen, server, shot
+):
+    log_in(page, server)
+    banner = page.get_by_role("region", name="Usage statistics")
+    expect(banner).to_be_visible()
+    page.goto(f"{server['url']}/settings/statistics")
+    section = page.get_by_role("region", name="Statistics", exact=True)
+    switch = section.get_by_role("switch", name=NAME)
+    expect(switch).not_to_be_checked()
+    expect(switch).to_be_enabled()
+    expect(section).to_contain_text("Nothing is sent until you choose. What LADO collects ↗")
+    expect(banner).to_be_visible()  # off is not a choice: the banner still asks
+    page.set_viewport_size({"width": 1440, "height": 900})
+    shot(page, "not-chosen-1440", full_page=False)
+    page.set_viewport_size({"width": 390, "height": 844})
+    switch.scroll_into_view_if_needed()
+    # Beside its name, not under it: the switch's middle within the row's text.
+    beside = switch.evaluate(
+        """(sw) => {
+            const text = sw.closest('.srow').querySelector('.srow-text').getBoundingClientRect();
+            const box = sw.getBoundingClientRect();
+            const middle = box.top + box.height / 2;
+            return box.left >= text.right && middle > text.top && middle < text.bottom;
+        }"""
+    )
+    assert beside
+    shot(page, "not-chosen-390", full_page=False)
+    page.set_viewport_size({"width": 1440, "height": 900})
+    switch.click()
+    expect(switch).to_be_checked()
+    assert telemetry.state().on
+    page.reload()
+    expect(page.get_by_role("heading", name="Statistics")).to_be_visible()
+    expect(page.locator(".stats-banner")).to_have_count(0)
+    section.get_by_role("switch", name=NAME).click()
+    expect(section.get_by_role("switch", name=NAME)).not_to_be_checked()
+    expect(section).to_contain_text("Nothing is sent. What LADO collects ↗")
+    assert not telemetry.state().on
 
 
 @pytest.fixture
@@ -55,8 +99,8 @@ def test_settings_is_disabled_when_the_environment_switches_it_off(
     page.goto(f"{server['url']}/settings/statistics")
     section = page.get_by_role("region", name="Statistics")
     expect(section).to_contain_text("Off: DO_NOT_TRACK=1 is set in the server's environment.")
-    expect(section.get_by_role("radio", name="Don't send")).to_be_checked()
-    expect(section.get_by_role("radio", name="Don't send")).to_be_disabled()
+    expect(section.get_by_role("switch", name=NAME)).not_to_be_checked()
+    expect(section.get_by_role("switch", name=NAME)).to_be_disabled()
     shot(page, "settings-off")
     page.get_by_role("button", name="System").click()
     panel = page.get_by_role("dialog", name="System")

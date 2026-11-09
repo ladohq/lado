@@ -5,12 +5,15 @@
 // source's configured models first) and no tick changes it; it is bounded and scrolls within
 // itself. A server's model opens under its row every agent CLI in LADO's order: one installed
 // that can run it a tick with the name a tick would save (the core's), another a disabled tick
-// saying why not (the core's reason, or not installed). A tick is on exactly when a configured model
-// has that CLI, model and server: ticking saves one, unticking removes it with no Undo (a tick
-// again brings it back under its name while the page stays open), after a question when it is
-// its CLI's default. A server shows its list, its Change form or its Remove question, one at a
-// time. A server added takes the form's place, one removed leaves a line in its own.
+// saying why not (the core's reason, or not installed). A tick is on exactly when a configured
+// model has that CLI, model and server: ticking saves one; unticking removes it at once, a
+// default too, and leaves under the tick its line with Undo (removedModels.tsx, the same as Your
+// models'), the focus staying on the tick; a tick again brings it back under its name while the
+// page stays open. Only removing a server asks first: its key cannot be brought back. A server
+// shows its list, its Change form or its Remove question, one at a time. A server added takes
+// the form's place, one removed leaves a line in its own.
 import {
+  Fragment,
   type MutableRefObject,
   type ReactNode,
   type RefObject,
@@ -45,6 +48,7 @@ import {
 import { ChevronIcon, ForgetIcon, PencilIcon } from "./icons";
 import { MODEL_DEBOUNCE, useDebounced } from "./Launch";
 import { SecretField } from "./ProjectVariables";
+import { type Removed, type RemovedModels, UndoLine } from "./removedModels";
 
 const SEARCH_ABOVE = 10; // a list longer than this has a search field
 const SHORT = 20; // a server's list this long shows whole on a phone
@@ -81,6 +85,7 @@ export type Sources = {
   onTouch: () => void; // the human changes something here
   names: Record<string, string>; // the names of models unticked here, by tickKey
   onName: (key: string, name: string | null) => void;
+  removed: RemovedModels; // a model unticked has its `at`: its tickKey
 };
 
 export const serverKey = (name: string) => `server:${name.toLowerCase()}`;
@@ -530,13 +535,14 @@ function SourceBody({
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [pop, setPop] = useState<string | null>(null);
-  // A tick off on its CLI's default: asked first, the tick staying on until the answer.
-  const [asking, setAsking] = useState<ConfiguredModelInfo | null>(null);
   const boxes = useRef<Record<string, HTMLInputElement | null>>({}); // by tickKey
-  const answered = () => {
-    if (asking) boxes.current[tickKey(asking.cli, asking.model, server)]?.focus();
-    setAsking(null);
-  };
+  // A list closed, or the source, drops the lines of its unticks.
+  const forget = sources.removed.forget;
+  useEffect(() => {
+    if (pop === null) return;
+    return () =>
+      forget((gone) => gone.at !== null && gone.model.model === pop && fold(gone.model.server) === fold(server));
+  }, [pop, server, forget]);
   // The name a tick would save under each CLI of the open server model, by the core.
   const [would, setWould] = useState<{
     model: string;
@@ -614,9 +620,12 @@ function SourceBody({
     );
   }
   const has = listed(read);
-  const configured = new Set(own.map((m) => m.model));
-  // The order of the read; a model it no longer lists shows while it is configured, and one
-  // configured since (by Model id) comes last.
+  // A model unticked here keeps its row while its line is under the tick: the line, its Undo
+  // and the focus on the tick stay, also for a model the list no longer has.
+  const unticked = sources.removed.list.filter((g) => g.at !== null && fold(g.model.server) === fold(server));
+  const configured = new Set([...own, ...unticked.map((g) => g.model)].map((m) => m.model));
+  // The order of the read; a model it no longer lists shows while it is configured (or its
+  // untick's line shows), and one configured since (by Model id) comes last.
   const rows = [
     ...read.order.filter((m) => configured.has(m) || has === null || has.has(m)),
     ...[...configured].filter((m) => !read.order.includes(m)),
@@ -627,14 +636,6 @@ function SourceBody({
   const probe = "probe" in read ? read.probe : null;
   const embeddings = probe?.embeddings.length ?? 0;
   const whole = probe?.models !== null;
-  const tick = async (on: string, model: string, add: boolean) => {
-    const [one] = ticked(models, on, model, server);
-    if (!add && one && sources.settings.defaults.some((d) => d.external === one.id)) {
-      setAsking(one);
-      return;
-    }
-    await change(on, model, add);
-  };
   const change = async (on: string, model: string, add: boolean) => {
     sources.onTouch();
     setBusy(true);
@@ -642,6 +643,7 @@ function SourceBody({
     const key = tickKey(on, model, server);
     try {
       if (add) {
+        sources.removed.forget((gone) => gone.at === key); // its line goes; no default comes back
         const kept = sources.names[key] ?? null; // its name, if unticked here
         try {
           await addModel({ name: kept, cli: on, model, server });
@@ -653,8 +655,10 @@ function SourceBody({
       } else {
         const [one] = ticked(models, on, model, server);
         if (one) {
-          await removeModel(one.name);
+          // A default too: the answer's `cleared` says whether one went, and Undo sets it again.
+          const left = await removeModel(one.name);
           sources.onName(key, one.name);
+          sources.removed.add(one, left.cleared.includes(one.cli), key);
         }
       }
     } catch (error) {
@@ -664,9 +668,20 @@ function SourceBody({
       void sources.onChanged();
     }
   };
+  // Undo of an untick: the model back under its name, the focus back on its tick.
+  const undo = async (gone: Removed, key: string) => {
+    sources.onTouch();
+    if (!(await sources.removed.undo(gone))) return;
+    sources.onName(key, null);
+    boxes.current[key]?.focus({ preventScroll: true });
+  };
   const box = (on: Column, model: string) => {
     const state = tickState(models, on.name, model, server);
     const gone = missing(model) && !state.on; // a model gone from the list is unticked only
+    const key = tickKey(on.name, model, server);
+    // Unticked here with its line under it: off by aria only, so the focus stays; Undo brings
+    // it back.
+    const held = gone && unticked.some((g) => g.at === key);
     const [one] = ticked(models, on.name, model, server);
     return (
       <input
@@ -674,11 +689,11 @@ function SourceBody({
         aria-label={`${model} on ${on.title}`}
         checked={state.on}
         ref={(el) => {
-          boxes.current[tickKey(on.name, model, server)] = el;
+          boxes.current[key] = el;
         }}
         // Off while a save runs, by aria only: a box truly disabled would drop the focus.
-        aria-disabled={busy ? true : undefined}
-        disabled={state.several.length > 0 || gone}
+        aria-disabled={busy || held ? true : undefined}
+        disabled={state.several.length > 0 || (gone && !held)}
         title={
           state.several.length
             ? `${state.several.join(", ")}: remove them in Your models`
@@ -688,7 +703,7 @@ function SourceBody({
                 ? `Unticking removes ${one.name}.`
                 : undefined
         }
-        onChange={(event) => !busy && void tick(on.name, model, event.target.checked)}
+        onChange={(event) => !busy && !held && void change(on.name, model, event.target.checked)}
       />
     );
   };
@@ -760,63 +775,45 @@ function SourceBody({
             <p>
               Agent CLIs that run <b className="mono">{model}</b>:
             </p>
-            {clis.map((on) =>
-              on.why ? (
-                // On when a model of it is saved, as any tick; removed in Your models.
-                <label key={on.name} className="mx-sub-item mx-cant">
-                  <input
-                    type="checkbox"
-                    aria-label={`${model} on ${on.title}`}
-                    aria-description={on.why}
-                    checked={tickState(models, on.name, model, server).on}
-                    readOnly
-                    disabled
-                  />
-                  <span>{on.title}</span>
-                  {ticked(models, on.name, model, server).length > 0 && named(on, model, undefined)}
-                  <span className="mx-as">{on.why}</span>
-                </label>
-              ) : (
-                <label key={on.name} className="mx-sub-item">
-                  {box(on, model)}
-                  <span>{on.title}</span>
-                  {named(on, model, would?.model === model ? would.by[on.name] : undefined)}
-                </label>
-              ),
-            )}
-            {asking?.model === model && (
-              <div
-                className="mx-confirm"
-                role="alertdialog"
-                aria-label={`Remove ${asking.name}?`}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    event.stopPropagation();
-                    answered();
-                  }
-                }}
-              >
-                <p>
-                  <b>{`Remove ${asking.name}?`}</b>
-                  {` It is ${asking.cli_title}'s default model: ${asking.cli_title} goes back to its settings.`}
-                </p>
-                <div className="mx-form-acts">
-                  <button
-                    type="button"
-                    className="danger"
-                    onClick={() => {
-                      answered();
-                      void change(asking.cli, model, false);
-                    }}
-                  >
-                    Remove model
-                  </button>
-                  <button type="button" className="quiet" autoFocus onClick={answered}>
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
+            {clis.map((on) => {
+              if (on.why)
+                return (
+                  // On when a model of it is saved, as any tick; removed in Your models.
+                  <label key={on.name} className="mx-sub-item mx-cant">
+                    <input
+                      type="checkbox"
+                      aria-label={`${model} on ${on.title}`}
+                      aria-description={on.why}
+                      checked={tickState(models, on.name, model, server).on}
+                      readOnly
+                      disabled
+                    />
+                    <span>{on.title}</span>
+                    {ticked(models, on.name, model, server).length > 0 && named(on, model, undefined)}
+                    <span className="mx-as">{on.why}</span>
+                  </label>
+                );
+              const key = tickKey(on.name, model, server);
+              const gone = sources.removed.list.find((g) => g.at === key);
+              return (
+                <Fragment key={on.name}>
+                  <label className="mx-sub-item">
+                    {box(on, model)}
+                    <span>{on.title}</span>
+                    {named(on, model, would?.model === model ? would.by[on.name] : undefined)}
+                  </label>
+                  {gone && (
+                    <UndoLine
+                      className="mx-undo mx-sub-undo"
+                      gone={gone}
+                      onUndo={(g) => void undo(g, key)}
+                      onExpired={sources.removed.expire}
+                      onLeft={() => boxes.current[key]?.focus({ preventScroll: true })}
+                    />
+                  )}
+                </Fragment>
+              );
+            })}
           </div>
         )}
         {note(model)}

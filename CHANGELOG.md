@@ -52,6 +52,9 @@
 
 ### Improved
 
+- **One rule in Settings for on and off, and for removing.** Statistics is a switch like
+  Browser notifications. Removing a model never asks, a default's neither, and a model
+  unticked under a server can be undone too; only removing a server still asks.
 - **A default model says it was saved.** On Settings → Agent CLIs a green `✓ Saved` shows
   beside the field once the default is saved, and stays until your next change on the page.
 - **Resume or start fresh beside a stopped session.** When the place has a stopped session,

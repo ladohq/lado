@@ -104,7 +104,7 @@ goes to that version's checklist (4.7), never here.
 
 - [ ] 4.1 A clean install: `sandbox` passes every check; a look at its UI.
 - [ ] 4.2 Your own LADO on the RC (first RC of a cycle): `upgrade`, one copy in `~/.lado-rc`.
-- [ ] 4.3 An sdlc run to its first gate, answered in the UI; the chat, a card, `pre-release`.
+- [ ] 4.3 A session of the built-in supervisor: the chat, a question card answered in the UI, pre-release.
 - [ ] 4.4 Going back, last: `rollback`; the user's way back when the RC moved the schema.
 - [ ] 4.5 The image: all on the Mac, the pull and a session on Linux; installers if changed.
 - [ ] 4.6 The image's update from the last final (first RC of a cycle).
@@ -161,9 +161,17 @@ back to.
 
 ### 4.3 By hand, on your own LADO
 
-- A session with the sdlc kit through one run to its first gate, answered in the UI.
-- The UI: the chat, a gate's card, the System panel with its `pre-release` pill.
+The release's check checks LADO itself, not its kits: no kit is needed here.
+
+- New session on any folder with the built-in supervisor; it answers in the chat.
+- Ask it in the chat to ask you a question with choices: its card shows, and the choice you
+  press in the UI reaches it (it names it in the chat).
+- The System panel with its `pre-release` pill.
 - Then the RC's own section of its release's checklist (4.7), printed after this list.
+
+Flows and gates are the tests': a gate's card in the browser tests with the fake agent
+(`tests/ui/test_gates.py`), a flow run by a real CLI in the live tests
+(`tests/live/test_live.py`, the flow `tiny` of a test kit).
 
 There is no fixed soak time: the final follows your "ok".
 
@@ -186,7 +194,33 @@ Once per RC that moved the schema, also the user's own way back, on a test home 
 temp `LADO_HOME` and `LADO_TMUX_SOCKET`, never yours): `lado update <the final before>`
 from the RC with a session in it, as `docs/install.md` "Going back to an older version"
 says. It warns before it asks, and the old final starts with that session and the
-database of before the RC.
+database of before the RC. In a fresh terminal, `X.Y.Z` the final before:
+
+```
+export T=$(mktemp -d)
+export HOME=$T LADO_HOME=$T/.lado LADO_TMUX_SOCKET=lado-rc-back LADO_TELEMETRY=0
+export LADO_AGENT_ENV=inherit PATH=$T/.local/bin:$PATH
+uv tool install lado==X.Y.Z
+lado start <a test repository> --name back --provider opencode
+lado update X.Y.ZrcN --yes
+```
+
+`LADO_AGENT_ENV=inherit`: the new `HOME` has no shell profile, so without it the agent's
+CLI is not on the agents' PATH and LADO refuses with that hint. OpenCode needs no login.
+Then the RC's own checks of the way back (its checklist, 4.7), and
+
+```
+lado update X.Y.Z
+lado ls
+```
+
+`lado ls` lists `back` on X.Y.Z. Then remove it all and close the terminal:
+
+```
+lado stop --all
+tmux -L lado-rc-back kill-server
+rm -rf "$T"
+```
 
 ### 4.5 The image (every RC)
 

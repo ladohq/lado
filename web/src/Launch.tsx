@@ -46,7 +46,7 @@ import { InfoTip } from "./InfoTip";
 import { useLaunchModel, type Choice } from "./LaunchModel";
 import { ProjectField } from "./LaunchProject";
 import { LaunchSetup } from "./LaunchSetup";
-import { DEFAULT_MODE, LaunchTeam, modeWords } from "./LaunchTeam";
+import { cannotStart, DEFAULT_MODE, LaunchTeam, modeWords } from "./LaunchTeam";
 import {
   BranchField,
   FolderHint,
@@ -474,13 +474,15 @@ function LaunchDialog({
 
   // A new session's suggestion of a CLI without its login is not taken (held): the field
   // stays at "choose…" and says why. A resume keeps its session's CLI chosen, and is refused
-  // without its login as a new session is (lado.logins): another CLI can be chosen.
+  // without its login as a new session is (lado.logins): another CLI can be chosen. A CLI
+  // that starts on a saved model of a server without it is offered, for those models only.
   const inList = providers?.find((one) => one.name === provider) ?? null;
-  const held = !resuming && !touched.has("provider") && inList?.login_missing === true;
+  const held = !resuming && !touched.has("provider") && inList !== null && cannotStart(inList);
   const chosenProvider = held ? null : provider;
   const providerInfo = held ? null : inList;
-  const noLogin = inList?.login_missing ? inList : null;
-  const canStart = providerInfo?.installed === true && !providerInfo.login_missing;
+  const noLogin = inList && cannotStart(inList) ? inList : null;
+  const serverOnly = providerInfo?.installed && providerInfo.login_missing && !noLogin ? providerInfo : null;
+  const canStart = providerInfo?.installed === true && !cannotStart(providerInfo);
   // A provider the session cannot run: Team opens on its refusal.
   const providerRefused =
     providers !== null && (noLogin?.installed === true || (chosenProvider !== null && !providerInfo?.installed));
@@ -497,6 +499,7 @@ function LaunchDialog({
     refusal: modelRefusal,
     onClearRefusal: () => setRefused((now) => (now?.status === 409 && isModelRefusal(now.detail) ? null : now)),
     onShow: () => setTeamOpen(true),
+    onLogin: () => providerInfo && leave(agentClisPath(providerInfo.name)),
     draft: draft?.model ?? null,
   });
   const modelReady = !model.blocked;
@@ -1024,6 +1027,15 @@ function LaunchDialog({
     <span className="field-note bad">unknown agent CLI {chosenProvider}</span>
   ) : providerInfo && !providerInfo.installed ? (
     <span className="field-note bad">{`${providerInfo.detail}; ${providerInfo.install_hint}`}</span>
+  ) : serverOnly ? (
+    // A start on a server's model needs no login of the CLI (runtime.check_login).
+    <span className="field-note">
+      {serverOnly.title} is not logged in: its agents run on your server's models only.{" "}
+      <button type="button" className="link-button" onClick={() => leave(agentClisPath(serverOnly.name))}>
+        Log in
+      </button>{" "}
+      for its own models.
+    </span>
   ) : providerInfo?.warning ? (
     <span className="field-note warn">⚠ {providerInfo.warning}</span>
   ) : null;

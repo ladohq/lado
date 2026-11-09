@@ -71,17 +71,20 @@ export function useLaunchModel({
   refusal,
   onClearRefusal,
   onShow,
+  onLogin,
   draft = null,
 }: {
   // the choice the window's draft kept, for its agent CLI: taken only with that CLI
   draft?: { cli: string; choice: Choice } | null;
-  cli: { name: string; title: string } | null;
+  // `starts_on_server` with `login_missing`: its agents start on a saved model of a server only
+  cli: { name: string; title: string; login_missing?: boolean; starts_on_server?: boolean } | null;
   project: string | null; // null: not known yet, so nothing is checked
   resuming: SessionInfo | null;
   busy: boolean;
   refusal: ModelRefusal | null; // the last start's, for the value in the field
   onClearRefusal: () => void;
   onShow: () => void; // open Advanced
+  onLogin: () => void; // to the CLI's login, leaving the window
 }) {
   const id = useId();
   const field = useRef<HTMLButtonElement>(null);
@@ -144,6 +147,48 @@ export function useLaunchModel({
           : null;
   const missing = choice.kind === "kept" && resuming?.model_missing === true;
 
+  // Without its login the CLI starts on a saved model of a server only (runtime.check_login): a
+  // new session opening on a value that needs the login takes its one saved model, once, and
+  // never after the human moved the field; with several the human picks.
+  const serverOnly = cli?.login_missing === true && cli.starts_on_server === true;
+  const [moved, setMoved] = useState(false);
+  const [tookOne, setTookOne] = useState(false); // the field took the one model by itself
+  const picksOne =
+    serverOnly &&
+    entries !== null &&
+    resuming === null &&
+    draft?.cli !== name &&
+    !moved &&
+    choice.kind === "default" &&
+    (defaultValue === null || defaultValue.external === null) &&
+    own.length === 1;
+  useEffect(() => {
+    if (!picksOne) return;
+    setChoice({ kind: "pick", value: asValue(own[0].name) });
+    setTookOne(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- when it comes to that
+  }, [picksOne]);
+  // The CLI's settings need the login: refused here, as the start would refuse them.
+  const loginRefusal: SessionModelCheck | null =
+    serverOnly && entries !== null && value === null && !picksOne
+      ? {
+          kind: "refused",
+          text: `${cli.title} is not logged in, so it runs on your server's models only: pick one.`,
+          field: "",
+          name: "",
+          retry: false,
+          short: `${cli.title} is not logged in`,
+          peek: "needs login",
+          warnings: [],
+          server: null,
+          login: true,
+        }
+      : null;
+  // A refusal for the missing login is left by a server's model: the default when it is on a
+  // server, else the first saved one.
+  const serverValue =
+    defaultValue !== null && defaultValue.external !== null ? defaultValue : own[0] ? asValue(own[0].name) : null;
+
   // A model is its CLI's: another agent CLI takes the field to that CLI's default, or back to
   // what a resumed session has. No CLI says nothing of that: the agent CLIs are being read again
   // (another project), and the same one comes back.
@@ -160,6 +205,8 @@ export function useLaunchModel({
       lost ? `${nameOf(value)} belongs to ${before.title}, so the model is back to ${cli.title}'s default.` : null,
     );
     setChoice(cli.name === resuming?.provider ? cameWith(resuming) : { kind: "default" });
+    setMoved(false);
+    setTookOne(false);
     setOther(null);
     onClearRefusal();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- when the agent CLI changes
@@ -178,7 +225,8 @@ export function useLaunchModel({
   // The refusal Check again asks about stands, with Start off, until the new answer comes.
   const asking = again !== null && asked !== null && answer === null;
   const refusedCheck = checked?.kind === "refused" ? checked : null;
-  const refused = refusal ?? refusedCheck ?? (asking ? again : null);
+  const refused = refusal ?? loginRefusal ?? refusedCheck ?? (asking ? again : null);
+  const byLogin = refused !== null && "login" in refused && refused.login;
   const wrong = refused !== null || missing;
 
   useEffect(() => {
@@ -202,6 +250,8 @@ export function useLaunchModel({
 
   const changed = (next: Choice) => {
     setChoice(next);
+    setMoved(true);
+    setTookOne(false);
     setLostNote(null);
     setOther(null);
     setAgain(null);
@@ -216,6 +266,10 @@ export function useLaunchModel({
   };
   const useSettings = () => {
     changed({ kind: "settings", chosen: true });
+    field.current?.focus({ preventScroll: true });
+  };
+  const useServer = (next: CliDefault) => {
+    changed(sameModel(next, defaultValue) && !resuming ? { kind: "default" } : { kind: "pick", value: next });
     field.current?.focus({ preventScroll: true });
   };
   const checkAgain = () => {
@@ -274,14 +328,33 @@ export function useLaunchModel({
               {asking ? "Checking…" : "Check again"}
             </button>
           )}
-          <button type="button" className="chip-button" onClick={useSettings}>
-            {`Use ${title}'s settings`}
-          </button>
+          {byLogin ? (
+            <>
+              {serverValue !== null && (
+                <button type="button" className="chip-button" onClick={() => useServer(serverValue)}>
+                  {`Use ${nameOf(serverValue)}`}
+                </button>
+              )}
+              <button type="button" className="chip-button" onClick={onLogin}>
+                Log in first
+              </button>
+            </>
+          ) : (
+            <button type="button" className="chip-button" onClick={useSettings}>
+              {`Use ${title}'s settings`}
+            </button>
+          )}
         </span>
       </span>,
     );
   } else {
-    if (lostNote === null && choice.kind === "default" && defaultValue !== null) {
+    if (lostNote === null && choice.kind === "pick" && tookOne) {
+      notes.push(
+        <span key="note" className="field-note">
+          {`For this session only: ${title} is not logged in, so it runs on your server's model.`}
+        </span>,
+      );
+    } else if (lostNote === null && choice.kind === "default" && defaultValue !== null) {
       notes.push(
         <span key="note" className="field-note">
           {`${title}'s default model, from Settings → Agent CLIs.`}
@@ -351,6 +424,7 @@ export function useLaunchModel({
         invalid={wrong}
         fieldMark={missing ? "not in Settings" : null}
         defaultModel={defaultValue}
+        needsLogin={serverOnly}
         describedBy={notes.length > 0 ? notesId : undefined}
         fieldRef={field}
         onOpen={() => undefined}
@@ -377,7 +451,8 @@ export function useLaunchModel({
   const pastDefault = choice.kind === "settings" && defaultValue !== null;
   // Team's summary names the model only off the CLI's default, or when its check warns.
   const told = choice.kind !== "default" || wrong || Boolean(checked?.peek);
-  const named = !told ? null : value !== null ? nameOf(value) : pastDefault ? `${title}'s settings` : null;
+  const named =
+    !told ? null : value !== null ? nameOf(value) : pastDefault || wrong ? `${title}'s settings` : null;
   const peek =
     named === null ? null : (
       <span className="launch-first-line">

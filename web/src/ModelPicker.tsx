@@ -142,6 +142,7 @@ export function ModelPicker({
   invalid = false,
   fieldMark = null,
   defaultModel = null,
+  needsLogin = false,
   describedBy,
   fieldRef,
   onOpen,
@@ -160,6 +161,8 @@ export function ModelPicker({
   invalid?: boolean; // the value is refused
   fieldMark?: string | null; // why the value stands out, in the field
   defaultModel?: CliDefault | null; // marked `default` (`where` launch)
+  // The CLI's own login is missing: its settings and built-in models are marked (`where` launch)
+  needsLogin?: boolean;
   describedBy?: string;
   fieldRef?: RefObject<HTMLButtonElement | null>; // the owner hands the focus back to the field
   onOpen: () => void;
@@ -201,6 +204,7 @@ export function ModelPicker({
       ? "other name"
       : null;
 
+  const loginMark = needsLogin ? "needs login" : null;
   const settingsRow: Row = {
     key: "settings",
     pick: null,
@@ -208,6 +212,7 @@ export function ModelPicker({
     selected: value === null,
     title: `${cli.title}'s settings`,
     id: "no model set: the agent CLI chooses",
+    mark: loginMark,
   };
   // A value that stands out (a model no longer saved) is of no group: above them, kept by a pick.
   const standing: Row | null =
@@ -249,8 +254,8 @@ export function ModelPicker({
     isDefault: defaultModel?.builtin === model,
   });
   const builtins: Row[] = [
-    ...(extra !== null && holds(extra) ? [builtin(extra, extraMark)] : []),
-    ...built.filter((model) => holds(model)).map((model) => builtin(model, null)),
+    ...(extra !== null && holds(extra) ? [builtin(extra, extraMark ?? loginMark)] : []),
+    ...built.filter((model) => holds(model)).map((model) => builtin(model, loginMark)),
   ];
   const otherRow: Row | null = choices?.other_name
     ? {

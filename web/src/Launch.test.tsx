@@ -117,6 +117,7 @@ function provider(name: string, more: Partial<ProviderInfo> = {}): ProviderInfo 
     tested_version: "",
     warning: "",
     login_missing: false,
+    starts_on_server: false,
     ...more,
   };
 }
@@ -1051,6 +1052,170 @@ test("the Project way asks for the chosen project's providers, where its own log
   fireEvent.change(within(dialog).getByRole("combobox", { name: "Project" }), { target: { value: "acme" } });
   await waitFor(() => expect(calls.some((c) => c.path === "/api/providers?project=acme")).toBe(true));
   expect(await screen.findByText(NO_LOGIN, { exact: false })).toBeTruthy();
+});
+
+// A CLI without its login that starts on a saved model of a server (openspec change
+// window-server-model-without-login)
+
+const SERVER_ONLY = "Claude Code is not logged in: its agents run on your server's models only.";
+const ONE_MODEL = "For this session only: Claude Code is not logged in, so it runs on your server's model.";
+const PICK_ONE = "Claude Code is not logged in, so it runs on your server's models only: pick one.";
+const CANNOT_RUN_OPUS = "Claude Code is not logged in, so it cannot run opus: pick a model of your server, or log in first.";
+const onServer = () => [provider("claude", { login_missing: true, starts_on_server: true }), provider("kilo")];
+const cloud = (name = "CloudClaude") => saved(name, `gw-${name.toLowerCase()}`, "claude", "OpenRouter");
+
+function sessionCheckOk() {
+  return {
+    kind: "ok",
+    text: "in its list of models",
+    field: "",
+    name: "",
+    retry: false,
+    short: "",
+    peek: "",
+    warnings: [],
+    server: null,
+    login: false,
+  };
+}
+
+// The start's login check, as the server makes it: a built-in model needs the login.
+function loginCheck(asked: unknown) {
+  const { model } = asked as { model: string };
+  if (model.startsWith("Cloud")) return { ...sessionCheckOk(), text: `OpenRouter lists ${model} among its models.` };
+  return {
+    ...sessionCheckOk(),
+    kind: "refused",
+    text: `Claude Code is not logged in, so it cannot run ${model}: pick a model of your server, or log in first.`,
+    short: "Claude Code is not logged in",
+    peek: "needs login",
+    login: true,
+  };
+}
+
+test("a CLI without its login but with a server's model is taken, and its one model with it", async () => {
+  providers = async () => onServer();
+  modelEntries = { models: [cloud()], servers: [], defaults: [] };
+  sessionCheck = loginCheck;
+  await openLaunch();
+  await ready("/src/app", { provider: { name: "claude", reason: "last_session" } });
+  const claude = within(providerSelect()).getByRole("option", {
+    name: "Claude Code 2.1.287 · not logged in: your server's models only",
+    hidden: true,
+  }) as HTMLOptionElement;
+  expect(claude.disabled).toBe(false);
+  expect(providerSelect().value).toBe("claude");
+  expect(teamIsOpen()).toBe(false); // nothing stops the start: Team stays folded
+  openTeam();
+  const note = (await screen.findByText(SERVER_ONLY, { exact: false })).closest(".field-note") as HTMLElement;
+  expect(note.classList).not.toContain("bad");
+  expect(note.textContent).toBe(`${SERVER_ONLY} Log in for its own models.`);
+  expect(within(note).getByRole("button", { name: "Log in" })).toBeTruthy();
+  await waitFor(() => expect(modelField().textContent).toContain("CloudClaude"));
+  await screen.findByText(ONE_MODEL);
+  expect(footerText()).not.toContain("log in to");
+  expect((await startedWith()).model).toBe("CloudClaude");
+});
+
+test("a built-in model of a CLI without its login is refused, with its ways out, and marked in the list", async () => {
+  providers = async () => onServer();
+  modelEntries = { models: [cloud()], servers: [], defaults: [] };
+  sessionCheck = loginCheck;
+  await openLaunch();
+  await ready("/src/app");
+  openTeam();
+  await waitFor(() => expect(modelField().textContent).toContain("CloudClaude"));
+  fireEvent.click(modelField());
+  const marked = (name: string) => screen.getByRole("option", { name }).textContent?.includes("needs login");
+  await screen.findByRole("option", { name: "opus" });
+  expect([marked("Claude Code's settings"), marked("opus"), marked("sonnet")]).toEqual([true, true, true]);
+  expect(marked("CloudClaude, gw-cloudclaude, on the model server OpenRouter")).toBe(false);
+  fireEvent.click(screen.getByRole("option", { name: "opus" }));
+  const refusal = (await screen.findByText(CANNOT_RUN_OPUS)).closest(".field-note") as HTMLElement;
+  expect(within(refusal).getByRole("button", { name: "Use CloudClaude" })).toBeTruthy();
+  expect(within(refusal).getByRole("button", { name: "Log in first" })).toBeTruthy();
+  expect(within(refusal).queryByRole("button", { name: "Use Claude Code's settings" })).toBeNull();
+  await waitFor(() => expect(footerText()).toContain("To start: fix the model."));
+  expect(startButton().disabled).toBe(true);
+  toggleTeam();
+  expect(summary()).toBe("Model opus ! needs login");
+  toggleTeam();
+  fireEvent.click(within(screen.getByText(CANNOT_RUN_OPUS).closest(".field-note") as HTMLElement).getByRole("button", { name: "Use CloudClaude" }));
+  await waitFor(() => expect(modelField().textContent).toContain("CloudClaude"));
+  expect(screen.queryByText(ONE_MODEL)).toBeNull(); // the human's pick: no note of a pick by itself
+  expect((await startedWith()).model).toBe("CloudClaude");
+});
+
+test("a built-in default of a CLI without its login gives way to its one server model", async () => {
+  providers = async () => onServer();
+  modelEntries = { models: [cloud()], servers: [], defaults: [{ ...defaultOf(cloud()), external: null, builtin: "opus", name: "opus", model: "opus", server: null }] };
+  sessionCheck = loginCheck;
+  await openLaunch();
+  await ready("/src/app");
+  openTeam();
+  await waitFor(() => expect(modelField().textContent).toContain("CloudClaude"));
+  await screen.findByText(ONE_MODEL);
+  expect((await startedWith()).model).toBe("CloudClaude");
+});
+
+test("with several server models nothing is taken by itself, and the CLI's settings are refused", async () => {
+  providers = async () => onServer();
+  modelEntries = { models: [cloud(), cloud("CloudOpus")], servers: [], defaults: [] };
+  sessionCheck = loginCheck;
+  await openLaunch();
+  await ready("/src/app");
+  openTeam();
+  const refusal = (await screen.findByText(PICK_ONE)).closest(".field-note") as HTMLElement;
+  expect(within(refusal).getByRole("button", { name: "Log in first" })).toBeTruthy();
+  expect(within(refusal).queryByRole("button", { name: "Use Claude Code's settings" })).toBeNull();
+  expect(modelField().textContent).toContain("Claude Code's settings");
+  expect(startButton().disabled).toBe(true);
+  expect(footerText()).toContain("To start: fix the model.");
+  expect(checked()).toEqual([]); // refused in the window itself
+  await pickRow(/^CloudOpus/);
+  expect((await startedWith()).model).toBe("CloudOpus");
+});
+
+test("the Model field's Log in first closes the window and opens Agent CLIs", async () => {
+  providers = async () => onServer();
+  modelEntries = { models: [cloud(), cloud("CloudOpus")], servers: [], defaults: [] };
+  await openLaunch();
+  await ready("/src/app");
+  openTeam();
+  const refusal = (await screen.findByText(PICK_ONE)).closest(".field-note") as HTMLElement;
+  fireEvent.click(within(refusal).getByRole("button", { name: "Log in first" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "New session" })).toBeNull());
+  expect(await screen.findByRole("heading", { name: "Agent CLIs" })).toBeTruthy();
+});
+
+test("the human's move off the one server model is never undone", async () => {
+  providers = async () => onServer();
+  modelEntries = { models: [cloud()], servers: [], defaults: [] };
+  sessionCheck = loginCheck;
+  await openLaunch();
+  await ready("/src/app");
+  openTeam();
+  await waitFor(() => expect(modelField().textContent).toContain("CloudClaude"));
+  await pickRow(/^Claude Code's settings/);
+  await screen.findByText(PICK_ONE);
+  fireEvent.focus(window); // the entries are read again
+  await waitFor(() => expect(calls.filter((c) => c.path === "/api/model-settings").length).toBeGreaterThan(1));
+  expect(modelField().textContent).toContain("Claude Code's settings");
+  expect(startButton().disabled).toBe(true);
+});
+
+test("logged in, a CLI's one server model is not taken by itself", async () => {
+  modelEntries = { models: [cloud()], servers: [], defaults: [] };
+  await openLaunch();
+  await ready("/src/app");
+  openTeam();
+  await waitFor(() => expect(modelField().disabled).toBe(false));
+  await waitFor(() => expect(calls.some((c) => c.path === "/api/model-settings")).toBe(true));
+  expect(modelField().textContent).toContain("Claude Code's settings");
+  expect(screen.queryByText(ONE_MODEL)).toBeNull();
+  fireEvent.click(modelField());
+  await screen.findByRole("option", { name: "opus" });
+  expect(screen.queryByText("needs login")).toBeNull();
 });
 
 // Starting
@@ -1997,6 +2162,19 @@ test("Resume of a CLI without its login is off, says Log in first, and another C
   expect(resume.disabled).toBe(true);
   fireEvent.change(providerSelect(), { target: { value: "kilo" } });
   await waitFor(() => expect(resume.disabled).toBe(false));
+});
+
+test("Resume of a session on a server's model without the CLI's login is on and keeps its model", async () => {
+  sessions = [session("lado", { status: "stopped", repo: "/src/lado", provider: "claude", model: "CloudClaude" })];
+  providers = async () => onServer();
+  modelEntries = { models: [cloud(), cloud("CloudOpus")], servers: [], defaults: [] };
+  sessionCheck = loginCheck;
+  const button = await resumeWindow();
+  const dialog = screen.getByRole("dialog", { name: "Resume session" });
+  expect(await within(dialog).findByText(SERVER_ONLY, { exact: false })).toBeTruthy();
+  expect(providerSelect().value).toBe("claude");
+  await waitFor(() => expect(modelField().textContent).toContain("CloudClaude"));
+  expect(await resumed(button)).toEqual({});
 });
 
 // The session's actions, by status: icons in its head, in the top bar; its list row has only

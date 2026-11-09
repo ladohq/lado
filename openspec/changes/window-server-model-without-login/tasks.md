@@ -25,20 +25,20 @@
 
 ## 3. The window (web)
 
-- [ ] 3.1 `web/src/LaunchTeam.tsx` and `web/src/Launch.tsx`: the option, `held`, the notes under
+- [x] 3.1 `web/src/LaunchTeam.tsx` and `web/src/Launch.tsx`: the option, `held`, the notes under
   Agent, `canStart` and the footer by design D3. Vitest in `LaunchTeam.test.tsx` and
   `Launch.test.tsx`: the option's text and enabled state with and without `starts_on_server`; a
   suggested CLI with it is taken; the plain note and its `Log in` link; no `log in to` in the
   footer; without it everything as before (AC-1, AC-2, AC-6).
-- [ ] 3.2 `web/src/LaunchModel.tsx`: the CLI's `login_missing`/`starts_on_server` passed in; the
+- [x] 3.2 `web/src/LaunchModel.tsx`: the CLI's `login_missing`/`starts_on_server` passed in; the
   refusal of the CLI's settings, the one-model pick of a new session, and `Use <name>` / `Log in
   first` on a refusal with `login` by design D4. Vitest (fakes in `fakes.ts`/`modelFakes.ts`): one
   saved model is taken with its note; two are not and the field is refused; a resume keeps its
   kept model; a human's change is not undone; `opus` refused shows both ways out and not `Use
   Claude Code's settings`; logged in, nothing changes (AC-3, AC-5, AC-7).
-- [ ] 3.3 `web/src/ModelPicker.tsx`: `needsLogin` and the `needs login` marks by design D5. Vitest
+- [x] 3.3 `web/src/ModelPicker.tsx`: `needsLogin` and the `needs login` marks by design D5. Vitest
   in `ModelPicker.test.tsx` (AC-5).
-- [ ] 3.4 `make web` passes (stale-types check, tsc, vitest, build).
+- [x] 3.4 `make web` passes (stale-types check, tsc, vitest, build).
 
 ## 4. End to end (UI)
 

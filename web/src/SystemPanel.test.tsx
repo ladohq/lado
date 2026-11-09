@@ -20,6 +20,7 @@ const PROVIDER = {
   install_hint: "",
   detail: "",
   login_missing: false,
+  starts_on_server: false,
 };
 
 const SYSTEM: SystemInfo = {

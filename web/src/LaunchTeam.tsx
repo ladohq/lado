@@ -10,6 +10,10 @@ import { InfoTip } from "./InfoTip";
 
 export const DEFAULT_MODE = "default"; // also "no mode given": the provider's own default
 
+// Its agents need the login it lacks for every model it can start on: no saved model of a
+// server lets them start without it (ProviderInfo.starts_on_server).
+export const cannotStart = (info: ProviderInfo) => info.login_missing && !info.starts_on_server;
+
 // A provider's modes in its own words (Provider.mode_words), none without a provider.
 export const modeWords = (info: ProviderInfo | null): ModeWordsInfo[] => info?.mode_words ?? [];
 
@@ -177,12 +181,14 @@ export function LaunchTeam({
                   </option>
                 )}
                 {providers.map((one) => (
-                  <option key={one.name} value={one.name} disabled={!one.installed || one.login_missing}>
+                  <option key={one.name} value={one.name} disabled={!one.installed || cannotStart(one)}>
                     {!one.installed
                       ? `${one.title} · not installed`
-                      : one.login_missing
+                      : cannotStart(one)
                         ? `${one.title} · not logged in`
-                        : `${one.title} ${one.version}`.trim()}
+                        : one.login_missing
+                          ? `${`${one.title} ${one.version}`.trim()} · not logged in: your server's models only`
+                          : `${one.title} ${one.version}`.trim()}
                   </option>
                 ))}
               </>

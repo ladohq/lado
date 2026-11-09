@@ -1,27 +1,27 @@
 ## 1. The providers list (server)
 
-- [ ] 1.1 `tests/test_server_launch.py` (unit): failing tests first. Claude Code not logged in with a
+- [x] 1.1 `tests/test_server_launch.py` (unit): failing tests first. Claude Code not logged in with a
   saved model `CloudClaude` (not its default) → `login_missing: true`, `starts_on_server: true`;
   the same model as its default → the same (replaces
   `test_claude_code_with_a_default_on_a_server_is_not_missing_its_login`); no saved model →
   `starts_on_server: false`; Codex with a model that needs a login and a saved model → true; Kilo
   or OpenCode with a saved model → both false; logged in → both false (AC-1, AC-2).
-- [ ] 1.2 `src/lado/server/models.py` `ProviderInfo.starts_on_server: bool = False` with its comment;
+- [x] 1.2 `src/lado/server/models.py` `ProviderInfo.starts_on_server: bool = False` with its comment;
   `src/lado/server/launch.py` `provider_infos`: `login_missing` without the default-on-server case,
   `starts_on_server` by design D1 (saved models read once, outside the threads; `has_db` false →
   none); docstring updated. Tests of 1.1 pass.
 
 ## 2. The window's check of a model (server)
 
-- [ ] 2.1 `tests/test_server_launch.py` (unit, beside the other `CHECK` tests): failing tests first.
+- [x] 2.1 `tests/test_server_launch.py` (unit, beside the other `CHECK` tests): failing tests first.
   Claude Code not logged in: `opus` → `kind: refused`, `login: true`, the text, `short` and `peek`
   of design D2; `CloudClaude` → `ok` and no login status read; logged in: `opus` → no `login`
   (AC-4).
-- [ ] 2.2 `src/lado/server/models.py` `SessionModelCheck.login: bool = False`;
+- [x] 2.2 `src/lado/server/models.py` `SessionModelCheck.login: bool = False`;
   `src/lado/server/model_entries.py` `check_session_model` calls `runtime.check_login` after the
   model's check for a start with no server, a `NotLoggedIn` its refusal (design D2). Tests of 2.1
   pass.
-- [ ] 2.3 `make web-types`; commit `web/openapi.json` and `web/src/api.gen.ts`.
+- [x] 2.3 `make web-types`; commit `web/openapi.json` and `web/src/api.gen.ts`.
 
 ## 3. The window (web)
 

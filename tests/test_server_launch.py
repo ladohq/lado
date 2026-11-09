@@ -400,6 +400,7 @@ def test_providers_are_lados_registry_with_their_status(client, monkeypatch):
         "tested_version": "2.1.287",
         "warning": "",
         "login_missing": False,
+        "starts_on_server": False,
     }
     assert "default" not in kilo
     risky = [w["title"] for w in claude["mode_words"] if w["risky"]]
@@ -1484,14 +1485,44 @@ def test_the_check_of_a_model_of_enough_or_unknown_context_does_not_warn(
     assert client.post(CHECK, json=asked).json()["warnings"] == []
 
 
-def test_claude_code_with_a_default_on_a_server_is_not_missing_its_login(
+def _logins(client) -> dict[str, tuple[bool, bool]]:
+    """Each provider's (login_missing, starts_on_server)."""
+    found = _by_name(client.get("/api/providers"))
+    return {n: (p["login_missing"], p["starts_on_server"]) for n, p in found.items()}
+
+
+def test_claude_code_with_a_saved_model_of_a_server_starts_on_it_without_its_login(
     client, cli_logins, fake_clis
 ):
+    """openspec change window-server-model-without-login: a saved model, the default or not."""
     cli_logins.logged_out()
-    assert _by_name(client.get("/api/providers"))["claude"]["login_missing"] is True
-    saved = _saved("Шлюз Opus", "claude", "gw-opus")
+    assert _logins(client)["claude"] == (True, False)
+    saved = _saved("CloudClaude", "claude", "gw-opus")
+    assert _logins(client)["claude"] == (True, True)
     state.set_cli_default(state.ModelRef("claude", saved.id, None))
-    assert _by_name(client.get("/api/providers"))["claude"]["login_missing"] is False
+    assert _logins(client)["claude"] == (True, True)
+    cli_logins.logged_in()
+    assert _logins(client)["claude"] == (False, False)
+
+
+def test_codex_with_a_saved_model_of_a_server_starts_on_it_without_its_login(
+    client, cli_logins, fake_clis, codex_home
+):
+    cli_logins.answer("codex", 1, "", "Not logged in\n")
+    assert _logins(client)["codex"] == (True, False)
+    _saved("CloudCodex", "codex", "gw-codex")
+    assert _logins(client)["codex"] == (True, True)
+
+
+def test_a_cli_that_needs_no_login_on_a_server_never_starts_on_it_without_one(
+    client, cli_logins, fake_clis
+):
+    cli_logins.answer("kilo", 1, "", "")
+    cli_logins.answer("opencode", 1, "", "")
+    _saved("Локальная Qwen", "opencode", "qwen3-8b")
+    state.add_model("Kilo Qwen", "kilo", "qwen3-8b", "lm")
+    found = _logins(client)
+    assert (found["opencode"], found["kilo"]) == ((False, False), (False, False))
 
 
 def test_the_check_of_a_server_s_type_the_cli_refuses_has_no_way_to_try_again(
@@ -1505,6 +1536,43 @@ def test_the_check_of_a_server_s_type_the_cli_refuses_has_no_way_to_try_again(
     assert found["text"].startswith(
         "Шлюз GPT is on the model server LM Studio дома; LM Studio дома does not suit Codex CLI"
     )
+
+
+def _cloud_claude(monkeypatch):
+    """CloudClaude, Claude Code's saved model on a gateway that speaks Anthropic's API."""
+    apis = [providers.base.ANTHROPIC_MESSAGES]
+    server = state.add_model_server("gw", "OpenRouter", "http://localhost:1", "", apis)
+    monkeypatch.setattr(
+        model_settings,
+        "probe_saved",
+        lambda s: model_servers.Probe(s.address, False, "", frozenset(apis), ("gw-opus",)),
+    )
+    monkeypatch.setattr(model_servers, "context_limits", lambda root, key: {})
+    return state.add_model("CloudClaude", "claude", "gw-opus", server.id)
+
+
+def test_the_check_of_a_built_in_model_without_the_login_is_refused(
+    client, cli_logins, monkeypatch, fake_clis
+):
+    """openspec change window-server-model-without-login: the login a start would check."""
+    _models(monkeypatch, "claude", "opus", "sonnet")
+    server_launch.forget_model_lists()
+    _cloud_claude(monkeypatch)
+    cli_logins.logged_out()
+    found = client.post(CHECK, json={"cli": "claude", "model": "opus"}).json()
+    assert (found["kind"], found["login"], found["retry"]) == ("refused", True, False)
+    assert found["text"] == (
+        "Claude Code is not logged in, so it cannot run opus: pick a model of your server, "
+        "or log in first."
+    )
+    assert (found["short"], found["peek"]) == ("Claude Code is not logged in", "needs login")
+    cli_logins.calls.clear()
+    found = client.post(CHECK, json={"cli": "claude", "model": "CloudClaude"}).json()
+    assert (found["kind"], found["login"]) == ("ok", False)
+    assert [argv for argv, _ in cli_logins.calls if argv[1:3] == ["auth", "status"]] == []
+    cli_logins.logged_in()
+    found = client.post(CHECK, json={"cli": "claude", "model": "opus"}).json()
+    assert (found["kind"], found["login"]) == ("ok", False)
 
 
 def test_the_check_of_an_unknown_cli_is_a_refusal(client):

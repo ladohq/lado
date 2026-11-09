@@ -17,7 +17,6 @@ from lado import (
     doctor,
     kits,
     logins,
-    model_settings,
     project_secrets,
     projects,
     providers,
@@ -296,9 +295,10 @@ def provider_infos(project: str | None = None, has_db: bool = True) -> list[mode
     """Each provider of the registry, its CLI checked anew (`<cli> --version`), all at once,
     and whether it lacks the login its agents need in the environment the agents of
     `project` (or of no project) start from, as a new session's start reads it
-    (runtime.check_login): a default model on a server that takes the CLI's whole process needs
-    none, and a model picked in the window is not known here. NoSuchProject for an unknown
-    `project`."""
+    (runtime.check_login) for the CLI's own models, whatever its default; and whether it can
+    still start without it on a saved model of a server that takes the CLI's whole process,
+    which needs none. The model picked in the window is checked by its own call
+    (model_entries.check_session_model). NoSuchProject for an unknown `project`."""
     if project is not None:
         projects.get(project)
     registry = [providers.get(name) for name in providers.names()]
@@ -307,15 +307,15 @@ def provider_infos(project: str | None = None, has_db: bool = True) -> list[mode
     except runtime.LadoError:
         layers = None  # the start says why itself
     # Read here, not in `one`: its threads must not all open a lado.db that may be new.
-    on_server = {d.ref.cli for d in model_settings.defaults() if d.server} if has_db else set()
+    saved = {m.cli for m in state.models()} if has_db else set()
 
     def one(provider: providers.Provider) -> models.ProviderInfo:
         info = provider_info(provider)
         if layers is not None and info.installed:
             env = runtime.agents_env(layers, provider)
-            needs_none = provider.name in on_server and provider.external_whole_process
-            info.login_missing = (
-                not needs_none and logins.refusal(provider, env, logins.SESSION) is not None
+            info.login_missing = logins.refusal(provider, env, logins.SESSION) is not None
+            info.starts_on_server = (
+                info.login_missing and provider.external_whole_process and provider.name in saved
             )
         return info
 

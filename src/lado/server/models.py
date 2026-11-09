@@ -521,8 +521,12 @@ class ProviderInfo(BaseModel):
     warning: str  # "" unless its version is not the tested one
     # Its agents need a login and it has none, in the environment of the agents of the
     # project asked for (or of none): a new session or worker of it is refused
-    # (lado.logins.refusal). False when the login cannot be read.
+    # (lado.logins.refusal) on the CLI's own models, whatever its default model. False when
+    # the login cannot be read.
     login_missing: bool = False
+    # With login_missing, its agents can still start on a saved model of a server: the CLI
+    # takes that server's whole process (runtime.check_login) and has a saved model.
+    starts_on_server: bool = False
 
 
 class ModelCheck(BaseModel):
@@ -551,9 +555,11 @@ class SessionModelCheck(ModelCheck):
     """The check a start would make of a model, for the launch window: `text` the line under
     its field. For a refusal, `short` the same to point at the field, `retry` whether a new
     check can help. `peek` a few words for the folded Advanced, of a refusal or of the
-    `warnings`, those of the chosen model's server only; `server` its name."""
+    `warnings`, those of the chosen model's server only; `server` its name. `login`: refused
+    because the CLI's own login is missing (runtime.check_login), a server's model needs none."""
 
     retry: bool = False
+    login: bool = False
     short: str = ""
     peek: str = ""
     warnings: list[str] = []

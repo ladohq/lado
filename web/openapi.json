@@ -9113,6 +9113,11 @@
             "type": "boolean",
             "title": "Login Missing",
             "default": false
+          },
+          "starts_on_server": {
+            "type": "boolean",
+            "title": "Starts On Server",
+            "default": false
           }
         },
         "type": "object",
@@ -10581,6 +10586,11 @@
             "title": "Retry",
             "default": false
           },
+          "login": {
+            "type": "boolean",
+            "title": "Login",
+            "default": false
+          },
           "short": {
             "type": "string",
             "title": "Short",
@@ -10617,7 +10627,7 @@
           "text"
         ],
         "title": "SessionModelCheck",
-        "description": "The check a start would make of a model, for the launch window: `text` the line under\nits field. For a refusal, `short` the same to point at the field, `retry` whether a new\ncheck can help. `peek` a few words for the folded Advanced, of a refusal or of the\n`warnings`, those of the chosen model's server only; `server` its name."
+        "description": "The check a start would make of a model, for the launch window: `text` the line under\nits field. For a refusal, `short` the same to point at the field, `retry` whether a new\ncheck can help. `peek` a few words for the folded Advanced, of a refusal or of the\n`warnings`, those of the chosen model's server only; `server` its name. `login`: refused\nbecause the CLI's own login is missing (runtime.check_login), a server's model needs none."
       },
       "SessionStatus": {
         "type": "string",

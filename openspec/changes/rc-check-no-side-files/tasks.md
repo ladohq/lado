@@ -31,7 +31,7 @@
 
 ## 3. Checks
 
-- [ ] 3.1 `make lint`, `make test`, `openspec validate rc-check-no-side-files --strict`
+- [x] 3.1 `make lint`, `make test`, `openspec validate rc-check-no-side-files --strict`
   and the trial archive of `.lado/sdlc.md` pass; `python3 scripts/rc_check.py --help`
   runs. No CHANGELOG.md line, no doc change beyond the docstring
   (docs/design/modules.md's line of `rc_check.py` does not describe how it reads; check).

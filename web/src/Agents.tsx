@@ -293,8 +293,13 @@ function ModelFact({ fact }: { fact: ModelInfo }) {
     return (
       <>
         <b>{fact.configured}</b>
-        <span className="muted"> · </span>
-        <code>{fact.name}</code>
+        {/* A model named by its id says it once, as its name. */}
+        {fact.name.toLowerCase() !== fact.configured.toLowerCase() && (
+          <>
+            <span className="muted"> · </span>
+            <code>{fact.name}</code>
+          </>
+        )}
         <span className="muted">{` · server ${fact.server}, `}</span>
         <code>{fact.address}</code>
         <span className="muted"> · {fact.words}</span>

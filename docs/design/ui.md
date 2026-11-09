@@ -2803,9 +2803,11 @@ core's why (`ProbeInfo.cannot`); the CLIs a tick can save a model of are `ProbeI
   finds it well. An older read's late answer changes nothing.
 - **The picker** (`ModelPicker.tsx`, the one component any place that picks a model uses): a
   combobox `Default model of <CLI>`, its value `<CLI>'s settings`, a built-in id, or a name,
-  id and server's mark. Its list lies over the page, `position: fixed` by the field's box and
-  the visual viewport, opening upward with fewer than 240 px below and more above, at most
-  420 px high (60% of the window under 600 px); a press outside or a scroll the human starts
+  id and server's mark; a model whose id is its name ignoring case shows no id, in the field
+  (`mp-id`) or its row (`mp-sub`), the field's title and the row's label keeping it. Its list
+  lies over the page, `position: fixed` by the field's box and the visual viewport, opening
+  upward with fewer than 240 px below and more above, at most 420 px high (60% of the window
+  under 600 px); a press outside or a scroll the human starts
   outside the list closes it. Rows in one order, an empty group not shown: `<CLI>'s settings`,
   YOUR MODELS, BUILT-IN (`BUILT-IN · aliases` for aliases only), `Other name…` kept at the
   bottom, only with no full list. Above ten models a search by name, id and server. The footer
@@ -2841,7 +2843,8 @@ core's why (`ProbeInfo.cannot`); the CLIs a tick can save a model of are `ProbeI
   title; `⚠ <server>` in `--warn` once its read here found it not answering, the why in the
   title), Agent CLI (`<CLI> · default` for a CLI's default, so × is seen to clear it) and
   **×**. It does not fold. At 900 px and narrower no head row: the name and ×, then
-  `<model> · <server> · <CLI>` wrapped whole; × 32 px, 44 on a phone. A model's
+  `<model> · <server> · <CLI>` wrapped whole, the model left out when it is the name ignoring
+  case (`mx-model-named`: the line then starts at the server); × 32 px, 44 on a phone. A model's
   mark under its name:
   `⚠ not in list` (its title: `<server> no longer lists <model>: agents on it stop at their
   first turn.`) once its server's list was read here and lacks it.
@@ -2910,9 +2913,11 @@ core's why (`ProbeInfo.cannot`); the CLIs a tick can save a model of are `ProbeI
   <name>`, and a tick again saves the model under that name, or under its default when the
   name was taken meanwhile; a ticked model is titled `Unticking removes <name>.`. Several
   models of one tick: on and disabled, titled `<names>: remove them in Your models`.
-  Default names (the core's `model_settings.default_name`): `<model> · <server>`, with
-  ` · <CLI>` when the server suits more than one CLI; a taken name gets ` · <CLI>`, then
-  ` (2)`, ` (3)`, each cut to 64 characters before its suffix.
+  Default names (the core's `model_settings.default_name`): the model as the server gives it,
+  whole (`qwen/qwen3-coder`), as its server and CLI show beside it everywhere; a name taken
+  ignoring case gets ` · <CLI>` when another CLI's model holds it, ` · <server>` when the same
+  CLI's does, then ` · <server> · <CLI>`, then ` (2)`, ` (3)`, each cut to 64 characters before
+  its suffix. No saved model is renamed.
 - **Embeddings and gone models**: a model the server types as embeddings is not listed;
   `<n> embeddings model(s) hidden: agents cannot run on it (them).` under the list. A
   configured model whose model the read list lacks shows first, ticked, `no longer listed`,
@@ -3070,8 +3075,9 @@ it here instead of `lado ls`, `list_agents` and `lado finish`.
   among the facts (LAD-169, option A of its mockup): the name in code type, then, muted,
   ` · ` and where it came from in the API's words (`AgentInfo.model`/`effort`, `ModelInfo.words`
   from `state.source_words`: `CLI default`, `your Codex config, profile work`), or only
-  the muted words while there is no name; the feed updates them when the CLI names its
-  model (docs/design/agents.md); Branch,
+  the muted words while there is no name; a configured model's Model reads `<name> · <model> ·
+  server <server>, <address> · <words>`, without `<model> · ` when it is the name ignoring
+  case; the feed updates them when the CLI names its model (docs/design/agents.md); Branch,
   Work (asked when the page opens, when the agent leaves busy, to any status, the moment a
   turn's commits exist, and with Refresh; no comparison with `idle` alone, which would miss
   `background`, `web/src/status.test.ts`; feature/background-status; "as of"

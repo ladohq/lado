@@ -462,9 +462,7 @@ def test_a_tick_in_the_middle_of_a_long_list_moves_nothing(
     middle.scroll_into_view_if_needed()
     before = top(middle)
     middle.click()
-    expect(
-        model_row(page, "vendor/model-160 · LM Studio дома · Kilo CLI")
-    ).to_be_visible()  # a row below
+    expect(model_row(page, "vendor/model-160")).to_be_visible()  # a row below
     expect(middle).to_be_checked()
     stays(middle, before)
     shot(page, "server-long-list")
@@ -502,7 +500,9 @@ def test_x_undo_and_undo_running_out_move_nothing(page: Page, clis, server, lms,
     lm = source(page, "LM Studio дома")
     lm.get_by_role("button", name="qwen3-8b", exact=True).click()
     kilo = lm.get_by_role("checkbox", name="qwen3-8b on Kilo CLI", exact=True)
-    expect(lm.get_by_text("would be qwen3-8b · LM Studio дома · Kilo CLI")).to_be_visible()
+    expect(
+        lm.locator("label", has_text="Kilo CLI").get_by_text("would be qwen3-8b", exact=True)
+    ).to_be_visible()
     kilo.focus()
     page.wait_for_timeout(300)  # the names the core gave have settled
     below = top(kilo)
@@ -556,8 +556,10 @@ def test_a_server_added_ticked_renamed_unticked_refreshed_and_removed(
     row = lm.get_by_role("button", name="qwen3-8b", exact=True)
     row.click()
     clis_of = lm.get_by_role("group", name="Agent CLIs for qwen3-8b")
-    expect(clis_of.get_by_text("would be qwen3-8b · LM Studio дома · Kilo CLI")).to_be_visible()
     opencode = clis_of.get_by_role("checkbox", name="qwen3-8b on OpenCode", exact=True)
+    expect(
+        clis_of.locator("label", has_text="Kilo CLI").get_by_text("would be qwen3-8b", exact=True)
+    ).to_be_visible()
     opencode.scroll_into_view_if_needed()
     before = top(opencode)
     opencode.click()
@@ -566,7 +568,8 @@ def test_a_server_added_ticked_renamed_unticked_refreshed_and_removed(
     stays(opencode, before)
     shot(page, "server-model-clis")
 
-    name = "qwen3-8b · LM Studio дома · OpenCode"
+    name = "qwen3-8b"  # the model's id, as a tick names it
+    expect(clis_of.get_by_text(f"as {name}", exact=True)).to_be_visible()
     opencode_card = yours(page)
     opencode_card.get_by_role("button", name=f"Rename {name}").click()
     field = opencode_card.get_by_role("textbox", name=f"Name of {name}")
@@ -661,7 +664,7 @@ def test_the_form_checks_before_add_a_silent_server_and_change(page: Page, clis,
         )
     ).to_be_visible()
     shot(page, "silent")
-    assert [m.name for m in state.models()] == ["qwen3-8b · lab · OpenCode"]
+    assert [m.name for m in state.models()] == ["qwen3-8b"]
 
     moved = fake.Server("lmstudio")
     try:
@@ -674,7 +677,7 @@ def test_the_form_checks_before_add_a_silent_server_and_change(page: Page, clis,
         expect(lm.get_by_text('Saved model server "lab".')).to_be_visible()
         expect(lm.get_by_role("button", name="qwen3-8b", exact=True)).to_be_visible()  # opened
         assert state.model_server("lab").address == moved.url
-        assert state.model("qwen3-8b · lab · OpenCode").server == state.model_server("lab").id
+        assert state.model("qwen3-8b").server == state.model_server("lab").id
     finally:
         moved.close()
 
@@ -728,7 +731,7 @@ def test_a_cli_lm_studio_does_not_suit_is_off_with_why(
     expect(items.nth(0).locator(".mx-as")).to_have_text(
         "cannot use this server: it has no Anthropic Messages API"
     )
-    expect(sub.get_by_text("would be qwen3-8b · LM Studio дома · Kilo CLI")).to_be_visible()
+    expect(items.nth(2).locator(".mx-as")).to_have_text("would be qwen3-8b")  # Kilo CLI
     expect(sub.get_by_role("checkbox", name="qwen3-8b on Kilo CLI", exact=True)).to_be_enabled()
     shot(page, "1440-light")
 
@@ -1102,6 +1105,63 @@ def test_the_picker_at_a_phones_width(browser: Browser, clis, server, lms, shot)
         shot(page, "phone-your-models", full_page=False)
     finally:
         context.close()
+
+
+def test_a_model_named_by_its_id_shows_it_once(page: Page, clis, server, lms, shot, monkeypatch):
+    """A tick names a server's model by its id (`as qwen3.8-27b`); the id is not said again
+    beside the name: in Kilo CLI's picker at 768 px, whole, and in Your models' second line at
+    900 px and narrower, which starts at the server (openspec change short-model-names)."""
+    listed = dict(fake.PROFILES["lmstudio"])
+    listed[("GET", fake.MODELS)] = fake.openai_list("qwen3.8-27b", "qwen3-8b")
+    monkeypatch.setitem(fake.PROFILES, "lmstudio", listed)
+    saved_server(lms, name="LM Studio")
+    state.add_model("Своя Qwen", "kilo", "qwen3-8b", "s1")  # named otherwise: its id stays
+    page.set_viewport_size({"width": 1440, "height": 900})
+    open_settings(page, server)
+    toggle(page, "LM Studio").click()
+    lm = source(page, "LM Studio")
+    lm.get_by_role("button", name="qwen3.8-27b", exact=True).click()
+    lm.get_by_role("checkbox", name="qwen3.8-27b on Kilo CLI", exact=True).click()
+    expect(lm.get_by_text("as qwen3.8-27b", exact=True)).to_be_visible()
+    saved = state.model("qwen3.8-27b")
+    assert saved and (saved.cli, saved.model) == ("kilo", "qwen3.8-27b")
+    state.set_cli_default(state.ModelRef("kilo", saved.id, None))
+    for width in (1440, 768, 390):
+        page.set_viewport_size({"width": width, "height": 900})
+        open_clis(page, server)
+        field = picker(page, "Kilo CLI")
+        field.scroll_into_view_if_needed()
+        expect(field.locator(".mp-title")).to_have_text("qwen3.8-27b")
+        expect(field.locator(".mp-id")).to_have_count(0)
+        expect(field.locator(".srv")).to_have_text("LM Studio")
+        assert field.locator(".mp-title").evaluate("t => t.scrollWidth <= t.clientWidth")  # whole
+        shot(page, f"agent-clis-{width}", full_page=False)
+        if width == 768:
+            field.click()
+            row = agent_clis(page).get_by_role("option", name=re.compile("^qwen3.8-27b, "))
+            expect(row.locator(".mp-sub")).to_have_count(0)
+            other = agent_clis(page).get_by_role("option", name=re.compile("^Своя Qwen, "))
+            expect(other.locator(".mp-sub")).to_have_text("qwen3-8b")
+            shot(page, "agent-clis-768-picker", full_page=False)
+            page.keyboard.press("Escape")
+        open_settings(page, server)
+        row = model_row(page, "qwen3.8-27b")
+        row.scroll_into_view_if_needed()
+        model = row.locator(".mx-model")
+        if width <= 900:  # the narrow line: no header row, the model under its name
+            expect(model).to_be_hidden()
+            # The line as drawn: each shown cell with the ` · ` its ::before puts in front.
+            line = row.locator(".mx-meta").evaluate(
+                "m => [...m.children].filter(c => getComputedStyle(c).display !== 'none')"
+                ".map(c => { const b = getComputedStyle(c, '::before').content;"
+                " return (b.startsWith('\"') ? JSON.parse(b) : '') + c.textContent; }).join('')"
+            )
+            assert line == "LM Studio · Kilo CLI · default", line
+            expect(model_row(page, "Своя Qwen").locator(".mx-model")).to_be_visible()
+            assert page.evaluate("document.documentElement.scrollWidth") <= width
+        else:
+            expect(model).to_be_visible()  # the table's Model column keeps it
+        shot(page, f"model-servers-{width}", full_page=False)
 
 
 def test_a_tick_at_the_page_s_end_stays_under_the_pointer(page: Page, clis, server, lms):

@@ -147,11 +147,11 @@ its server's name and address.
 ### Requirement: The agent's page, the Team tooltip and lado ls show the model
 
 The agent's page SHALL show the model's name in its head line after the role and the
-provider ("CLI default model" when it has none) and the facts Model and Effort, each its
-name and its source's words; an external model's fact SHALL read `<saved name> · <model> · server
-<server>, <address> · <source's words>`, and its saved name stand in the head line. The Team chip's
-tooltip SHALL add the model's name when it has one. `lado ls` SHALL show the model's name, or `-`,
-after the agent's time.
+provider ("CLI default model" when none) and the facts Model and Effort, each its name and its
+source's words; an external model's fact SHALL read `<name> · <model> · server <server>,
+<address> · <source's words>`, without `<model> · ` when it is the name ignoring case. The Team
+chip's tooltip SHALL add the model's name when it has one. `lado ls` SHALL show the model's
+name, or `-`, after the agent's time.
 
 #### Scenario: A Codex agent on its page
 - **WHEN** the human opens the page of a Codex agent whose model is `gpt-5.6-sol` and
@@ -175,6 +175,12 @@ after the agent's time.
 - **WHEN** the human opens the page of an OpenCode agent on `Локальная Qwen`, chosen for the session
 - **THEN** its head line ends with `Локальная Qwen`, and Model reads `Локальная Qwen · qwen3-8b ·
   server LM Studio дома, http://localhost:1234 · chosen for the session`
+
+#### Scenario: An external model named by its id
+- **WHEN** the human opens the page of a Kilo agent on `qwen3.8-27b`, the model `qwen3.8-27b` on
+  `LM Studio` at `http://localhost:1234`, Kilo CLI's default model
+- **THEN** Model reads `qwen3.8-27b · server LM Studio, http://localhost:1234 · Kilo CLI's default
+  model`
 
 ### Requirement: LADO's model is known by its provider id
 

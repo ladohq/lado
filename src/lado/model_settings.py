@@ -372,22 +372,28 @@ def check_model(
 
 
 def default_name(provider: providers.Provider, model: str, server: state.ModelServer) -> str:
-    """The name a model gets when the human gives none: `<model> · <server>`, and ` · <CLI
-    title>` when the server suits more than one CLI (each name then says its CLI, whatever
-    was ticked first). A name taken ignoring case gets ` · <CLI title>`, then ` (2)`, ` (3)`,
-    … until free; each try is cut to MAX_NAME characters before its suffix."""
-    suffixes = ["", f" · {provider.title}"]
-    base_name = f"{model} · {server.name}"
-    if len(model_servers.suiting(server.apis, server.kind)[0]) > 1:
-        suffixes = [f" · {provider.title}"]
-    number = 2
-    while True:
-        for suffix in suffixes:
-            name = base_name[: MAX_NAME - len(suffix)].rstrip() + suffix
-            if state.model(name) is None:
-                return name
-        suffixes = [f" · {provider.title} ({number})"]
-        number += 1
+    """The name a model gets when the human gives none: the model as the server gives it,
+    whole (its server and CLI show beside it on every page). A name taken ignoring case gets
+    what tells the model from the one holding it: ` · <CLI title>` when that one is another
+    CLI's, ` · <server>` when it is the same CLI's; then ` · <server> · <CLI title>`, then
+    that with ` (2)`, ` (3)`, … until free. Each try is cut to MAX_NAME characters before its
+    suffix; no saved model is renamed."""
+
+    def cut(suffix: str) -> str:
+        return model[: MAX_NAME - len(suffix)].rstrip() + suffix
+
+    name = cut("")
+    holder = state.model(name)
+    if holder is None:
+        return name
+    name = cut(f" · {provider.title}" if holder.cli != provider.name else f" · {server.name}")
+    if state.model(name) is None:
+        return name
+    both = f" · {server.name} · {provider.title}"
+    name, number = cut(both), 2
+    while state.model(name) is not None:
+        name, number = cut(f"{both} ({number})"), number + 1
+    return name
 
 
 def add_model(

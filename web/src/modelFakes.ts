@@ -254,12 +254,16 @@ export class ModelServer {
   }
 
   title = (cli: string) => this.logins.find((r) => r.cli.name === cli)?.cli.title ?? cli;
-  taken = (name: string) => this.entries.models.some((m) => m.name.toLowerCase() === name.toLowerCase());
+  taken = (name: string) => this.holder(name) !== undefined;
+  holder = (name: string) => this.entries.models.find((m) => m.name.toLowerCase() === name.toLowerCase());
 
-  // The core's default name in short: `<model> · <server> · <CLI title>`; ` (2)` when taken.
+  // The core's default name in short: the model; when taken ` · <CLI title>` (another CLI's)
+  // or ` · <server>` (the same CLI's), then ` · <server> · <CLI title>`.
   named(given: Added): string {
-    const base = `${given.model} · ${given.server} · ${this.title(given.cli)}`;
-    return this.taken(base) ? `${base} (2)` : base;
+    const holder = this.holder(given.model);
+    if (!holder) return given.model;
+    const next = `${given.model} · ${holder.cli !== given.cli ? this.title(given.cli) : given.server}`;
+    return this.holder(next) ? `${given.model} · ${given.server} · ${this.title(given.cli)}` : next;
   }
 
   of(method: string, start: string): Call[] {

@@ -86,10 +86,12 @@ class Where(BaseModel):
     for "scratch" (lado.scratch.make), or the repository `repo` of the project `project`
     for "project" (lado.projects.repository). The route checks which fields a kind takes."""
 
-    kind: str  # "folder", "scratch" or "project"; another kind is refused for now
-    path: str | None = None  # "folder" and "scratch" only
+    kind: str  # "folder", "scratch", "setup" or "project"; another kind is refused for now
+    path: str | None = None  # "folder", "scratch" and "setup" only
     project: str | None = None  # "project" only
     repo: str | None = None  # "project" only
+    # "setup" only: the left-out files the human ticked in (lado.setup.make)
+    include: list[str] | None = None
 
 
 NameState = Literal["free", "running", "stopped_here", "taken_elsewhere"]
@@ -108,6 +110,9 @@ class FolderInfo(BaseModel):
     hint: "HintInfo | None"  # what the human can do about it, when they can
     subfolders: list[str]  # its folders' names, no hidden ones, at most SUBFOLDERS
     default_name: str | None  # the name a session started here gets
+    # default_name when no session has it, else the first <name>-2, <name>-3, … none has
+    # (runtime.free_name): the name the window gives a new session beside a stopped one
+    free_name: str | None = None
     # free; running: a session of that name runs; stopped_here: one of this folder can be
     # resumed; taken_elsewhere: a session of another folder has it
     name_state: NameState | None
@@ -118,9 +123,47 @@ class FolderInfo(BaseModel):
     warning: str | None = None
     # missing or not_repo, and a fresh start may go on there (lado.scratch: new or empty)
     scratch: bool = False
+    # not_repo and not empty: what setting it up would save and leave out (lado.setup)
+    setup: "SetupInfo | None" = None
     # refused inside a project's folder: the project and the repository it is in
     # (lado.projects.place); None for any other folder
     project: "ProjectPlace | None" = None
+
+
+class LeftOutInfo(BaseModel):
+    """A path the set-up's first commit leaves out (lado.setup.LeftOut)."""
+
+    path: str  # relative to the folder; a repository's ends in "/"
+    reason: Literal["secret", "large", "repository"]
+    size: int | None  # in bytes; None for a repository
+    line: str  # its .gitignore line as one word of the by-hand command (setup.shell_line)
+
+
+class SetupRefusal(BaseModel):
+    """Why a folder may not be set up (lado.setup.Refusal)."""
+
+    # home: the home folder or one holding the workspace; too_big: past the limits;
+    # unreadable: git cannot read all of it; odd_name: a path to leave out with a line
+    # break or bytes that are no UTF-8
+    kind: Literal["home", "too_big", "unreadable", "odd_name"]
+    files: int  # counted until the refusal
+    bytes: int
+    line: str  # git's line for unreadable, the name escaped for odd_name
+
+
+class SetupInfo(BaseModel):
+    """What setting a plain folder up would do (lado.setup.preview), and whether git knows
+    the author of its commit."""
+
+    files: int  # the files its first commit would save
+    bytes: int
+    left_out: list[LeftOutInfo]
+    refusal: SetupRefusal | None
+    author: "ScratchProblem | None"  # None when git knows the author
+    # the by-hand command after the .gitignore lines: the window rebuilds the whole from
+    # the lines of what stays left out (`printf '%s\n' <lines> >> .gitignore && <make>`)
+    make: str
+    max_files: int  # setup.MAX_FILES, for too_big's words
 
 
 class ProjectPlace(BaseModel):
@@ -171,6 +214,7 @@ class CloneTarget(BaseModel):
     branch: str | None  # its current branch, for same_repo
     suggestion: str | None  # a free folder beside it, for other_repo
     default_name: str  # the name a session started there gets
+    free_name: str | None = None  # as FolderInfo's
     name_state: NameState  # as FolderInfo's, before anything is cloned
     provider: "ProviderSuggestion | None"  # as FolderInfo's for a folder with no sessions
     warning: str | None = None  # as FolderInfo's, for the folder the clone goes to
@@ -246,13 +290,16 @@ class CloneJob(BaseModel):
 
 class ProviderSuggestion(BaseModel):
     name: str
-    # last_session: the folder's last session's; only_installed: the one CLI installed
-    reason: Literal["last_session", "only_installed"]
+    # last_session: the folder's last session's; last_any: the latest started session's of
+    # any folder; only_installed: the one CLI installed
+    reason: Literal["last_session", "last_any", "only_installed"]
 
 
 class RecentFolder(BaseModel):
     path: str
     session: SessionInfo  # its latest started session
+    # a repository of the project of that session: the project and the repository
+    project: ProjectPlace | None = None
 
 
 class Workspace(BaseModel):
@@ -449,12 +496,23 @@ class MarketplaceUpdate(BaseModel):
     error: str | None
 
 
+class ModeWordsInfo(BaseModel):
+    """A permission mode as the UI names it (providers.base.ModeWords)."""
+
+    value: str  # the CLI's own value, as permission_modes has it
+    title: str
+    summary: str  # its few words in Team's summary
+    description: str  # "" for a mode named by its value
+    risky: bool  # its description shows even when another mode is chosen
+
+
 class ProviderInfo(BaseModel):
     """A provider of LADO's registry and whether its CLI can run here."""
 
     name: str
     title: str
     permission_modes: list[str]
+    mode_words: list[ModeWordsInfo]  # permission_modes in their order, each with its words
     install_hint: str
     installed: bool
     version: str
@@ -618,12 +676,21 @@ class CliApi(BaseModel):
     api: str
 
 
+class CliCannot(BaseModel):
+    """An agent CLI that cannot use a model server, and why, as the end of a sentence."""
+
+    name: str
+    title: str
+    why: str
+
+
 class ProbeInfo(BaseModel):
     """What a probe found on a model server (lado.model_servers.Probe): its type, the
     address that answered (the typed one with its scheme and path filled in), its models
     (None for no list, why in `models_why`), those it types as embeddings, why its APIs
-    could not be told ("" when they could), the CLIs that can use it, and for each CLI that has
-    its API and refuses its type a line of why."""
+    could not be told ("" when they could), the CLIs that can use it, for each CLI that has
+    its API and refuses its type a line of why, and each CLI that cannot use it with why
+    (`Probe.cannot`), both lists of CLIs in LADO's order."""
 
     kind: str
     address: str
@@ -633,6 +700,7 @@ class ProbeInfo(BaseModel):
     apis_why: str
     clis: list[CliApi]
     cli_notes: list[str]
+    cannot: list[CliCannot]
 
 
 class ModelServerAdd(BaseModel):
@@ -1162,6 +1230,7 @@ class ProjectLaunch(BaseModel):
     # (SessionInfo.repo, Taken.repo); its listed path may go through a link
     root: str | None
     default_name: str | None  # <project>-<repo> as the core makes it
+    free_name: str | None = None  # as FolderInfo's
     name_state: "NameState | None"  # a session of the name in no or another project: elsewhere
     provider: "ProviderSuggestion | None"
     last: SessionInfo | None  # the repository's latest started session of this project

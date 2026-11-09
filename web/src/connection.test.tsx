@@ -672,7 +672,7 @@ test("while lost Resume session waits in the bar, and says why", () => {
 const resumeWindow = async () => {
   await press("open resume");
   const dialog = await screen.findByRole("dialog", { name: "Resume session" });
-  await waitFor(() => expect(within(dialog).getByRole<HTMLButtonElement>("button", { name: "Resume session" }).disabled).toBe(false));
+  await waitFor(() => expect(within(dialog).getByRole<HTMLButtonElement>("button", { name: "Resume s" }).disabled).toBe(false));
   return dialog;
 };
 
@@ -682,7 +682,7 @@ test("Resume without an answer: not confirmed; once it runs the window closes on
   const dialog = await resumeWindow();
   server.down = true;
   await act(async () => {
-    fireEvent.click(within(dialog).getByRole("button", { name: "Resume session" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Resume s" }));
     await new Promise((done) => setTimeout(done));
   });
   expect(within(dialog).getByText("Resume not confirmed")).toBeTruthy();
@@ -698,7 +698,7 @@ test("Resume's error survives closing the window; Retry from the new one closes 
   const first = await resumeWindow();
   server.down = true;
   await act(async () => {
-    fireEvent.click(within(first).getByRole("button", { name: "Resume session" }));
+    fireEvent.click(within(first).getByRole("button", { name: "Resume s" }));
     await new Promise((done) => setTimeout(done));
   });
   await back();
@@ -722,7 +722,7 @@ test("Resume reached with its window closed leaves the human where they are", as
   const dialog = await resumeWindow();
   server.down = true;
   await act(async () => {
-    fireEvent.click(within(dialog).getByRole("button", { name: "Resume session" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Resume s" }));
     await new Promise((done) => setTimeout(done));
   });
   fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
@@ -740,7 +740,7 @@ test("Resume not delivered: Retry resumes, and a refusal as running counts as re
   const dialog = await resumeWindow();
   server.down = true;
   await act(async () => {
-    fireEvent.click(within(dialog).getByRole("button", { name: "Resume session" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Resume s" }));
     await new Promise((done) => setTimeout(done));
   });
   await back();

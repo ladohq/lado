@@ -69,8 +69,9 @@ def target_info(url: str, path: str | None, has_db: bool) -> models.CloneTarget:
         branch=target.branch,
         suggestion=target.suggestion,
         default_name=name,
+        free_name=launch.free_name(name, has_db),
         name_state=launch.name_state(name, os.path.realpath(folder), has_db),
-        provider=launch.provider_suggestion(None),  # a new folder has no last session
+        provider=launch.provider_suggestion(None, has_db),  # a new folder has no last session
         warning=runtime.outside_workspace(folder),
         hint=models.hint_info(target.hint),
         project=launch.project_place(folder) if target.state == "in_project" else None,

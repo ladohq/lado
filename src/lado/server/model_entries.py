@@ -101,6 +101,7 @@ def probe_info(found: model_servers.Probe) -> models.ProbeInfo:
         apis_why=found.apis_why or found.late_warning() or "",
         clis=[models.CliApi(name=p.name, title=p.title, api=api) for p, api in suits],
         cli_notes=[f"{p.title}: {why}" for p, why in found.refused()],
+        cannot=[models.CliCannot(name=p.name, title=p.title, why=why) for p, why in found.cannot()],
     )
 
 

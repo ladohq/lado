@@ -42,7 +42,8 @@ own. While the connection is lost it SHALL be disabled and say "Waiting for conn
 What the composer held when the session stopped SHALL be there after the resume.
 
 #### Scenario: Resume
-- **WHEN** the human presses Resume session and confirms the window, and the session runs
+- **WHEN** the human presses Resume session, then `Resume <name>` in the window, and the
+  session runs
 - **THEN** the composer stands in the bar's place
 
 #### Scenario: A draft
@@ -159,9 +160,9 @@ Reconnect.
 
 ### Requirement: The Resume window shows the session's folder whole
 
-The Resume window SHALL show the session's folder under Where as text that cannot be edited and
-wraps onto as many lines as it needs, with nothing cut and no sideways scroll, at any window
-width. New session's Where SHALL stay an input.
+The Resume window SHALL show Where fixed: the folder's name, then its whole path as text that
+cannot be edited and wraps onto as many lines as it needs, with nothing cut and no sideways
+scroll, at any window width. New session's Where SHALL stay a combobox the human can type in.
 
 #### Scenario: A long path on a phone
 - **WHEN** the Resume window opens in a window 402 px wide for a session whose folder's path is
@@ -174,7 +175,7 @@ width. New session's Where SHALL stay an input.
 
 #### Scenario: New session
 - **WHEN** the New session window opens
-- **THEN** Where is an input the human can type in
+- **THEN** Where is a combobox the human can type a path in
 
 ### Requirement: A delivery a session's end cuts off is refused in plain words
 

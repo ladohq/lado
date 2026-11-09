@@ -15,7 +15,8 @@ answer then goes once more, cut at LATE_TIMEOUT, and an API still silent is neit
 nor missing (`Probe.late`). No redirect is
 followed, so neither a request nor the key reaches another host. The CLIs that suit a
 server follow from the APIs it proved, by each provider's `server_api`; its type decides
-only what a provider refuses (`Provider.refuses_server`). The key goes in the requests'
+only what a provider refuses (`Provider.refuses_server`); `Probe.cannot` says why each other
+CLI cannot use the server. The key goes in the requests'
 headers and nowhere else: no message is built from a request's headers.
 """
 
@@ -159,6 +160,20 @@ class Probe:
             for provider, api in suiting(self.apis, self.kind)[1]
             if api in self.apis and (why := provider.refuses_server(self.kind))
         ]
+
+    def cannot(self) -> list[tuple[providers.Provider, str]]:
+        """Each CLI that cannot use the server, in the registry's order, with why as the end of
+        a sentence: its refusal of the type, an API that did not answer, or a missing one."""
+        out = []
+        for provider, api in suiting(self.apis, self.kind)[1]:
+            if api in self.apis:
+                why = provider.refuses_server(self.kind)
+            elif api in self.late:
+                why = f"its {api} {LATE}"
+            else:
+                why = f"it has no {api}"
+            out.append((provider, why))
+        return out
 
     def late_warning(self) -> str | None:
         """What to tell of the `late` APIs when the server is saved; None for none."""

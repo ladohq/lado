@@ -4,12 +4,18 @@
 
 ### New
 
+- **New session starts where you worked.** The window opens on your last folder or project
+  repository with the cursor in Task; Where lists your recent places, then the other ways,
+  and the team is one line you open with Change. The rail's Launch is now New session.
+- **Start in a folder of documents.** For a folder outside git, Set up and start saves its
+  files as the starting point; secrets, files over 50 MB and other repositories stay out
+  unless you tick them, and are written to `.gitignore`. Too big a folder is refused.
 - **See which model each agent runs on.** The agent's page, the Team chip's tooltip,
   `lado ls` and `list_agents` show its model and effort and where they came from: the CLI's
   default or your Codex config (its profile too), as the CLIs report them.
-- **Choose the session's model.** `lado start --model` and the Model field in the launch
-  window's Advanced start the session's agents on a model, checked first against the CLI's
-  own list; a resume keeps it and checks it again.
+- **Choose the session's model.** `lado start --model` and the Model field in the New
+  session window's Team start the session's agents on a model, checked first against the
+  CLI's own list; a resume keeps it and checks it again.
 - **Run a session on your own model.** A session starts on a saved model or its CLI's default
   from Settings → Agent CLIs, checked on its server first. OpenCode and Kilo CLI keep every saved
   model in `/model` beside their own; `--model ''` is the CLI's own settings.
@@ -37,7 +43,7 @@
 - **Set models in Settings.** Settings → Model servers: add, change or remove a server (checked
   as you type), tick a model to save it, rename it, undo a removal (`lado model-server remove
   --with-models`), all your models in one table; a CLI's default sits in its Agent CLIs row.
-- **One word for what runs an agent: agent CLI.** The launch window's field is Agent CLI,
+- **One word for what runs an agent: agent CLI.** The New session window's field is Agent,
   Settings' page Agent CLIs, the system panel's Agent CLIs; `lado start --provider` keeps
   working.
 - **Settings in pages.** General, Agent CLIs, Model servers and Statistics each have a page
@@ -48,6 +54,15 @@
 
 - **A default model says it was saved.** On Settings → Agent CLIs a green `✓ Saved` shows
   beside the field once the default is saved, and stays until your next change on the page.
+- **Resume or start fresh beside a stopped session.** When the place has a stopped session,
+  New session offers Resume beside Start new session under a free name (`webapp-2`); the
+  blue one follows whether you typed a task.
+- **New sessions take the agent you used last.** A folder with no sessions of its own takes
+  the agent CLI of your last session, in `lado start` (`provider: … (your last session)`) and
+  in New session. Permissions are named in each CLI's own words.
+- **Model servers says why an agent CLI cannot be ticked.** A server's model lists every agent
+  CLI; one that cannot run it there is greyed out with why, e.g. Codex CLI on LM Studio, or
+  `not installed`.
 - **OpenCode and Kilo CLI know your local model's context.** LADO reads it from the server at
   each start, so agents compact in time; a model too small for an agent is warned about in `lado
   start` and the launch window. `docs/install.md` says what to expect of small models.

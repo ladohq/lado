@@ -93,7 +93,7 @@ test("New session… opens the window in Project with the project", async () => 
   const page = await screen.findByRole("region", { name: "Project acme" });
   fireEvent.click(within(page).getByRole("button", { name: "New session…" }));
   const dialog = await screen.findByRole("dialog", { name: "New session" });
-  expect(within(dialog).getByRole("button", { name: "Project" }).getAttribute("aria-pressed")).toBe("true");
+  expect((within(dialog).getByRole("combobox", { name: "Where" }) as HTMLInputElement).value).toBe("Project");
   const select = (await within(dialog).findByRole("combobox", { name: "Project" })) as HTMLSelectElement;
   expect(select.value).toBe("acme");
   expect(server.calls("GET", "/api/project-launch?project=acme")).toHaveLength(1);

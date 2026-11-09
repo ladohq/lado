@@ -123,6 +123,7 @@ def _bare_info(provider: providers.Provider, installed: bool) -> models.Provider
         name=provider.name,
         title=provider.title,
         permission_modes=list(provider.permission_modes),
+        mode_words=launch.mode_words(provider),
         install_hint=provider.install_hint,
         installed=installed,
         version="",

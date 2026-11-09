@@ -12,6 +12,7 @@ import subprocess
 
 import agent_helpers
 import pytest
+from launch_window import agent, new_session, pick_place
 from playwright.sync_api import Browser, Page, expect
 from test_launch import idle, log_in
 from test_phone import UPRIGHT, no_sideways_scroll, wheel_to_the_end
@@ -148,7 +149,7 @@ def test_start_session_and_the_sessions_block(page: Page, shop, server, shot):
         "radio", name=re.compile("^frontend")
     )
     expect(frontend).to_have_attribute("aria-checked", "true")
-    dialog.get_by_label("Agent CLI").select_option("fake")
+    agent(dialog).select_option("fake")
     dialog.get_by_role("button", name="Start in Shop").click()
     expect(page).to_have_url(f"{server['url']}/sessions/shop-frontend/activity")
     idle("shop-frontend")
@@ -299,10 +300,9 @@ def test_clone_into_a_projects_folder_opens_the_project(page: Page, shop, server
     url = agent_helpers.bare_remote(tmp_path / "admin-remote")
     page.set_viewport_size({"width": 1440, "height": 900})
     log_in(page, server)
-    page.get_by_role("button", name="New session").click()
-    dialog = page.get_by_role("dialog", name="New session")
-    dialog.get_by_role("button", name="Clone from URL").click()
-    dialog.get_by_role("textbox", name=re.compile("Where")).fill(url)
+    dialog = new_session(page)
+    pick_place(dialog, "Clone from URL…")
+    dialog.get_by_role("textbox", name="Repository URL").fill(url)
     dialog.get_by_role("textbox", name="Clone into").fill(str(shop / "admin"))
     button = dialog.get_by_role("button", name="Open the project Shop")
     expect(button).to_be_visible()

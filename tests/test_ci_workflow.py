@@ -82,16 +82,41 @@ def test_integration_tests_in_three_shards_per_python_each_in_one_process(workfl
     ]
 
 
-def test_ui_tests_in_two_shards_on_two_workers_and_make_dist_once(workflow):
+def test_ui_tests_in_four_shards_on_two_workers_each_building_only_the_bundle(workflow):
+    """Two workers: four on the 4-vCPU runner starve LADO's test timers (LAD-41). The browser
+    tests need the bundle, not the type check or vitest: those are job web's."""
     ui = workflow["jobs"]["ui"]
     assert ui["name"] == "ui (${{ matrix.shard }})"
-    assert ui["strategy"] == {"fail-fast": False, "matrix": {"shard": [1, 2]}}
-    assert pytest_runs(ui) == ["uv run pytest -m ui -n 2 --shard ${{ matrix.shard }}/2"]
-    (dist,) = [s for s in ui["steps"] if s.get("run") == "make dist"]
-    assert dist["if"] == "matrix.shard == 1"
-    (bundle,) = [s for s in ui["steps"] if s.get("name") == "web UI bundle"]
-    assert bundle["if"] == "matrix.shard != 1"
+    assert ui["strategy"] == {"fail-fast": False, "matrix": {"shard": [1, 2, 3, 4]}}
+    assert pytest_runs(ui) == ["uv run pytest -m ui -n 2 --shard ${{ matrix.shard }}/4"]
+    bundle = step_named(ui["steps"], "web UI bundle")
+    assert "if" not in bundle
     assert bundle["run"] == "cd web && npm ci --no-audit --no-fund && npm run build"
+    runs = [s.get("run", "") for s in ui["steps"]]
+    assert not [r for r in runs if "make dist" in r or "make web" in r or "npm test" in r]
+
+
+def test_web_runs_make_dist_and_the_node_tests_beside_the_ui_tests(workflow):
+    """make dist: the web UI's stale-types check, tsc, vitest, the build and the bundle in
+    the sdist and the wheel; the Node tests of the OpenCode-family plugin."""
+    jobs = workflow["jobs"]
+    web = jobs["web"]
+    assert web["runs-on"] == "ubuntu-latest"
+    assert "js" not in jobs
+    names = [s.get("uses", "").split("@")[0] or s["run"] for s in web["steps"]]
+    assert names == [
+        "actions/checkout",
+        "astral-sh/setup-uv",
+        "actions/setup-node",
+        "uv sync --locked",
+        "make dist",
+        "node --test tests/js/*.test.mjs",
+    ]
+    node = step_using(web["steps"], "actions/setup-node")
+    assert node["with"]["cache"] == "npm"
+    assert node["with"]["cache-dependency-path"] == "web/package-lock.json"
+    # No UI job waits for it: a vitest failure does not hold the browser tests back.
+    assert "needs" not in jobs["ui"] and "needs" not in web
 
 
 def test_every_job_has_a_time_limit(workflow):

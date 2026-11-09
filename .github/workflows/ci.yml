@@ -61,19 +61,28 @@ jobs:
       # its own tmux, agents and session loop) starve each other past LADO's short test timers.
       - run: uv run pytest -m integration -n0 --shard ${{ matrix.shard }}/3
 
-  js:
+  # The web UI: its stale-types check, types, unit tests and build (make web), the bundle in
+  # both the sdist and the wheel (make dist); and the Node tests of the OpenCode-family
+  # plugin. No UI job waits for it.
+  web:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.13"
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: lts/*
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: uv sync --locked
+      - run: make dist
       - run: node --test tests/js/*.test.mjs
 
-  # The web UI: types, unit tests and build (make web), the bundle in both the sdist and the
-  # wheel (make dist), once, in shard 1; and the browser tests against a real lado server in
-  # two shards (tests/shard.py), shard 2 building only the bundle they serve.
+  # The browser tests against a real lado server in four shards (tests/shard.py), each
+  # building only the bundle they serve.
   ui:
     name: ui (${{ matrix.shard }})
     runs-on: ubuntu-latest
@@ -81,7 +90,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
@@ -94,15 +103,12 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: sudo apt-get install -y tmux
       - run: uv sync --locked
-      - if: matrix.shard == 1
-        run: make dist
       - name: web UI bundle
-        if: matrix.shard != 1
         run: cd web && npm ci --no-audit --no-fund && npm run build
       - run: uv run playwright install --with-deps chromium
       # Two workers: a Chromium and a lado server each, on this 4-vCPU runner; -n auto's
       # four starve LADO's short test timers.
-      - run: uv run pytest -m ui -n 2 --shard ${{ matrix.shard }}/2
+      - run: uv run pytest -m ui -n 2 --shard ${{ matrix.shard }}/4
 
   # Whether this run needs the smoke (scripts/smoke_ci.py needed): always but on a pull
   # request whose every changed file is on this skip list. No path here may be or hold one
@@ -233,7 +239,7 @@ jobs:
   # whatever their results: a skipped required check counts as passed.
   ci-ok:
     if: always()
-    needs: [unit, integration, ui, js, changes, smoke, container]
+    needs: [unit, integration, web, ui, changes, smoke, container]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

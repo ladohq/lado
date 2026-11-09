@@ -1,7 +1,7 @@
 # LAD-243 settings-one-rule: review report
 
 Pull request #261 `fix/lad-243-settings-one-rule` → `main`. Scale: tweak. Head reviewed:
-`4e3ce1b5`. Settings → Statistics becomes a switch (not chosen shows as off with its line, the
+`4ec32144`. Settings → Statistics becomes a switch (not chosen shows as off with its line, the
 banner keeps asking); removing a model on Model servers never asks, by × or by its tick, a default
 too, and offers Undo where the human acted (under the tick for an untick); removing a server keeps
 its question. Delta: changes to `usage-telemetry` and `model-settings-page`.
@@ -13,6 +13,12 @@ its question. Delta: changes to `usage-telemetry` and `model-settings-page`.
 3. External 1, Claude Code GitHub Action: E2 and E3 minor, E1 refuted. It read the code
    (`removedModels.tsx`, `ModelSettings.tsx`, `ModelSources.tsx`, `Telemetry.tsx`, `styles.css`),
    not the tests, docs, specs or the changelog.
+4. Local, precision, `4e3ce1b5..4ec32144` (the return from `merge`): the archive `d4d07b62` and the
+   merge of `origin/main` `2c8c075c` (PR #258, #259, #260; LAD-242, LAD-241, LAD-240), read with
+   `git show --remerge-diff`. In `ModelSources.tsx` the list of every CLI from LAD-240 (a disabled
+   tick with its reason) joins this change's Undo line under a tick and F1; the question on a
+   default that came from `main` goes by this change's rule. Tests, styles, `ui.md`, the changelog
+   and the living spec `model-settings-page` keep both sides. No new finding.
 
 External rounds used: 1 of 1. Stand-ins: 0.
 
@@ -36,7 +42,9 @@ External rounds used: 1 of 1. Stand-ins: 0.
 
 | Check | Head | Result |
 |---|---|---|
+| CI of the pull request, required `ci-ok` | `4ec32144` | green after a rerun of `container (amd64)` and `container (arm64)` (run 42583320227) |
 | CI of the pull request, required `ci-ok` | `4e3ce1b5` | green after a rerun of `ui (1)` (run 42515114557) |
+| `make lint`; `make web`; UI `test_models_section.py`, `test_statistics.py`; `openspec validate --specs --strict` | `4ec32144` | clean; 1839 passed (82 files); 35 passed; 82 passed |
 | `make lint` | `4e3ce1b5` | clean |
 | `make web` (vitest, tsc, stale types, build) | `4e3ce1b5` | 1796 passed (78 files) |
 | UI `test_models_section.py`, `test_statistics.py` | `4e3ce1b5` | 28 passed |
@@ -49,19 +57,20 @@ smoke was skipped by CI's skip list. The live tests were not run: `providers/`, 
 
 Flakes: Vitest `src/LoginSheet.test.tsx` ("OpenCode's sheet opens its own login window at once, with
 Log out of one… when logged in", `TypeError` at `:238`) failed in `ui (1)` / `make dist` on the
-first attempt and passed on the rerun; the pull request does not touch it.
+first attempt and passed on the rerun; the pull request does not touch it. Not a flake but an
+outage: `container (amd64/arm64)` on `4ec32144` failed in `tests/container/test_toolchains.py` on
+HTTP 504 from GitHub while `mise install` fetched Python, and passed on the rerun.
 
 ## Metrics
 
-Rounds: 2 local, 1 external, 0 stand-in. Local: 1 confirmed (important), 0 refuted. External: 2
+Rounds: 3 local, 1 external, 0 stand-in. Local: 1 confirmed (important), 0 refuted. External: 2
 confirmed minor, 1 refuted. Findings in code changed by the developer's cleanup: 0.
 
 ## What was not checked
 
 - Integration, smoke and live tests were not run locally (the core and providers did not change).
-- After the review, `main` got PR #259 (LAD-241, also the ticks of Model servers) and then #258 and
-  #260; the pull request conflicted with it, and the code after that merge was not reviewed at
-  `4e3ce1b5`.
+- The merge of `main` (`4ec32144`) was read locally only: the external rounds (1 of 1) were used
+  before it.
 
 ## Found on the way
 

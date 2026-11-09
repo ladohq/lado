@@ -96,6 +96,69 @@ def test_ui_tests_in_four_shards_on_two_workers_each_building_only_the_bundle(wo
     assert not [r for r in runs if "make dist" in r or "make web" in r or "npm test" in r]
 
 
+# The UI jobs' browser: Chromium and the packages --with-deps downloads, from a cache.
+
+BROWSER_PATHS = "~/.cache/ms-playwright\n~/.cache/lado-apt\n"
+
+
+@pytest.fixture(scope="module")
+def ui_steps(workflow) -> list[dict]:
+    return workflow["jobs"]["ui"]["steps"]
+
+
+def test_the_browser_cache_key_is_playwrights_and_the_runner_images_version(ui_steps):
+    """A new runner image takes a fresh --with-deps, never debs built for the one before."""
+    key = step_named(ui_steps, "Browser cache key")
+    assert key["id"] == "browser-key"
+    # :? fails the step loudly on a runner without them, never a key without the image.
+    for part in ("${ImageOS:?}", "${ImageVersion:?}", 'version("playwright")', "ui-browser-"):
+        assert part in key["run"]
+    assert '>> "$GITHUB_OUTPUT"' in key["run"]
+    restore = step_using(ui_steps, "actions/cache/restore")
+    assert restore["id"] == "browser-cache"
+    assert restore["with"] == {"path": BROWSER_PATHS, "key": "${{ steps.browser-key.outputs.key }}"}
+
+
+def test_a_hit_installs_the_cached_packages_and_asks_no_mirror(ui_steps):
+    browser = step_named(ui_steps, "Browser")
+    assert browser["env"] == {"HIT": "${{ steps.browser-cache.outputs.cache-hit }}"}
+    # A hung mirror ends this step, not the job's whole budget.
+    assert browser["timeout-minutes"] == 10
+    hit, miss = browser["run"].split("else\n")
+    assert hit.startswith('if [ "$HIT" = true ]; then\n')
+    assert "sudo dpkg -i ~/.cache/lado-apt/*.deb" in hit
+    assert "uv run playwright install chromium" in hit
+    assert "--with-deps" not in hit and "apt-get" not in hit
+    assert "uv run playwright install --with-deps chromium" in miss
+    for setting in (
+        'Acquire::Retries "3";',
+        'Acquire::http::Timeout "30";',
+        'APT::Keep-Downloaded-Packages "true";',
+        'Binary::apt::APT::Keep-Downloaded-Packages "true";',
+    ):
+        assert setting in miss
+    assert miss.index("Acquire::Retries") < miss.index("--with-deps")
+    assert miss.index("--with-deps") < miss.index("/var/cache/apt/archives")
+
+
+def test_only_a_run_outside_a_pull_request_saves_the_browser_cache(ui_steps):
+    """A pull request's cache is visible to it alone and would spend the 10 GB."""
+    save = step_using(ui_steps, "actions/cache/save")
+    assert save["if"] == (
+        "github.event_name != 'pull_request' && steps.browser-cache.outputs.cache-hit != 'true'"
+    )
+    assert save["with"] == {"path": BROWSER_PATHS, "key": "${{ steps.browser-key.outputs.key }}"}
+
+
+def test_the_browser_is_saved_after_its_install_and_before_the_tests(ui_steps):
+    """Saved before the tests: a red test does not lose main's cache."""
+    labels = [s.get("name") or s.get("uses", "").split("@")[0] or s["run"] for s in ui_steps]
+    order = ["uv sync --locked", "Browser cache key", "actions/cache/restore", "Browser"]
+    order += ["actions/cache/save", "uv run pytest -m ui -n 2 --shard ${{ matrix.shard }}/4"]
+    positions = [labels.index(label) for label in order]
+    assert positions == sorted(positions)
+
+
 def test_web_runs_make_dist_and_the_node_tests_beside_the_ui_tests(workflow):
     """make dist: the web UI's stale-types check, tsc, vitest, the build and the bundle in
     the sdist and the wheel; the Node tests of the OpenCode-family plugin."""

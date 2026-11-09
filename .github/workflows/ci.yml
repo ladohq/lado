@@ -105,7 +105,52 @@ jobs:
       - run: uv sync --locked
       - name: web UI bundle
         run: cd web && npm ci --no-audit --no-fund && npm run build
-      - run: uv run playwright install --with-deps chromium
+      # Chromium and the system packages its --with-deps downloads (fonts, from an Ubuntu
+      # mirror that is sometimes slow or hangs) from a cache keyed by Playwright's version
+      # and the runner image's: a new image takes a fresh --with-deps, never another's debs.
+      - name: Browser cache key
+        id: browser-key
+        run: |
+          version=$(uv run python -c 'import importlib.metadata as m; print(m.version("playwright"))')
+          echo "key=ui-browser-${ImageOS:?}-${ImageVersion:?}-playwright-$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: browser-cache
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/lado-apt
+          key: ${{ steps.browser-key.outputs.key }}
+      # A hit installs the cached debs and finds Chromium in its cache, asking no mirror. A
+      # miss runs --with-deps with apt's retries and a network timeout, and keeps the debs
+      # it downloaded (none when the image has every package).
+      - name: Browser
+        timeout-minutes: 10
+        env:
+          HIT: ${{ steps.browser-cache.outputs.cache-hit }}
+        run: |
+          if [ "$HIT" = true ]; then
+            if compgen -G ~/.cache/lado-apt/'*.deb' > /dev/null; then
+              sudo dpkg -i ~/.cache/lado-apt/*.deb
+            fi
+            uv run playwright install chromium
+          else
+            printf '%s\n' 'Acquire::Retries "3";' 'Acquire::http::Timeout "30";' \
+              'APT::Keep-Downloaded-Packages "true";' \
+              'Binary::apt::APT::Keep-Downloaded-Packages "true";' \
+              | sudo tee /etc/apt/apt.conf.d/90lado-ci
+            uv run playwright install --with-deps chromium
+            mkdir -p ~/.cache/lado-apt
+            find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -exec cp {} ~/.cache/lado-apt/ \;
+          fi
+      # Only outside a pull request: a pull request's cache is visible to it alone and would
+      # spend the repository's 10 GB. Before the tests, so a red test loses nothing.
+      - if: github.event_name != 'pull_request' && steps.browser-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/lado-apt
+          key: ${{ steps.browser-key.outputs.key }}
       # Two workers: a Chromium and a lado server each, on this 4-vCPU runner; -n auto's
       # four starve LADO's short test timers.
       - run: uv run pytest -m ui -n 2 --shard ${{ matrix.shard }}/4

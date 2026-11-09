@@ -30,6 +30,6 @@
 
 ## 4. Checks
 
-- [ ] 4.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui tests/ui/test_layout.py`,
+- [x] 4.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui tests/ui/test_layout.py`,
   `openspec validate agent-popup-model --strict`, and the trial archive of the settings'
   Checks pass.

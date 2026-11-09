@@ -75,7 +75,6 @@ def test_the_notes_name_lados_image():
 
 
 def test_the_section_is_the_notes_without_their_footer():
-    """scripts/rc_check.py reads a release candidate's items by the notes' own rules."""
     for tag in ("v0.37.0", "v0.38.0rc1"):
         assert notes.section(tag, CHANGELOG) == notes.notes(tag, CHANGELOG).split("\n\n---\n\n")[0]
     with pytest.raises(notes.NotesError, match="no section"):

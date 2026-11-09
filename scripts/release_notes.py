@@ -70,8 +70,7 @@ def notes(tag: str, changelog: str) -> str:
 
 
 def section(tag: str, changelog: str) -> str:
-    """The text of `tag`'s section of CHANGELOG.md, each list item on one line (also
-    scripts/rc_check.py's checklist)."""
+    """The text of `tag`'s section of CHANGELOG.md, each list item on one line."""
     version, _, candidate = _parse(tag)
     found: str | None = None  # the section's heading
     lines: list[str] = []

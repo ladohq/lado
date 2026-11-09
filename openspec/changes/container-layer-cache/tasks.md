@@ -10,13 +10,13 @@
 
 ## 2. CI
 
-- [ ] 2.1 `.github/workflows/ci.yml`, job `container`: the builder (`docker/setup-buildx-action`)
+- [x] 2.1 `.github/workflows/ci.yml`, job `container`: the builder (`docker/setup-buildx-action`)
   and the runtime's variables (`crazy-max/ghaction-github-runtime`), both pinned by SHA,
   before `Image`; `Image` builds with `--builder <name> --load` and the flags per event of
   D3 in scope `container-${{ matrix.arch }}`; its comment says so. If LAD-248's shards are
   on `main` by then, only shard 1 writes (D4). Check: `tests/test_ci_workflow.py` per D5,
   one test per scenario of the delta; `make test`.
-- [ ] 2.2 `tests/test_ci_workflow.py`: `release.yml` holds no `cache-from`, `cache-to` or
+- [x] 2.2 `tests/test_ci_workflow.py`: `release.yml` holds no `cache-from`, `cache-to` or
   `type=gha`. Check: `make test`.
 
 ## 3. Docs and the measurement

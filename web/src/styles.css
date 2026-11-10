@@ -7314,12 +7314,20 @@ button.locked:disabled,
   background: var(--action-ground);
 }
 
+/* One chevron, down while Team is folded, up while it is open. */
 .team-change::after {
-  content: " ›";
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-right: 1.6px solid;
+  border-bottom: 1.6px solid;
+  transform: translateY(-3px) rotate(45deg);
 }
 
 .team-change[aria-expanded="true"]::after {
-  content: " ⌄";
+  transform: translateY(1px) rotate(225deg);
 }
 
 .team-body {
@@ -8477,6 +8485,11 @@ button.locked:disabled,
   .team-sum {
     flex-basis: 100%;
     order: 3;
+  }
+
+  .team-sum > span {
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .team-change {

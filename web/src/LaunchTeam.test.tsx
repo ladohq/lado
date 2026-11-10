@@ -73,9 +73,17 @@ function Team({ info = CODEX, peek = null }: { info?: ProviderInfo; peek?: React
 
 const summary = () => document.querySelector(".team-sum")?.textContent;
 
-test("the summary reads Setup, Agent, Permissions in the CLI's words, and a model off the default, no Name", () => {
+test("the summary reads Kits, Agent, Permissions in the CLI's words, and a model off the default, no Name", () => {
   render(<Team peek={<span>Model kilo/large</span>} />);
-  expect(summary()).toBe("Setup defaultAgent Codex CLIPermissions Works inside the folderModel kilo/large");
+  expect(summary()).toBe("Kits defaultAgent Codex CLIPermissions Works inside the folderModel kilo/large");
+});
+
+test("Kits says what kits are also when none has a description", () => {
+  render(<Team />);
+  fireEvent.click(screen.getByRole("button", { name: "Change" }));
+  expect(screen.getByRole("group", { name: /^Kits/ })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "About Kits" }));
+  expect(screen.getByText("Kits add roles, skills and ways of working to the team. Install more on the Kits page.")).toBeTruthy();
 });
 
 test("Change opens the fields and reads Hide; Hide folds them", () => {

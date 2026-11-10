@@ -57,4 +57,4 @@ def name_field(dialog: Locator) -> Locator:
 
 def add_setup(dialog: Locator) -> Locator:
     open_team(dialog)
-    return dialog.get_by_role("combobox", name="Add setup")
+    return dialog.get_by_role("combobox", name="Add kit")

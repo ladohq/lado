@@ -1,7 +1,7 @@
 // New session's Team (docs/design/ui.md, Launch and session control): the session's settings
-// as one line (setup, agent, permissions in the agent CLI's own words, a model off the
-// default), and Change, which opens the fields: Agent, Team setup, Permissions, Model and
-// Switch off. The session's name stands beside Task (Launch.tsx). The window holds their
+// as one line (kits, agent, permissions in the agent CLI's own words, a model off the
+// default), and Change, which opens the fields: Agent, Kits, Permissions, Model and Switch
+// off. The session's name stands beside Task (Launch.tsx). The window holds their
 // values; this file shows and edits them.
 import type { ReactNode, RefObject } from "react";
 import { useId } from "react";
@@ -18,6 +18,7 @@ export const cannotStart = (info: ProviderInfo) => info.login_missing && !info.s
 // A provider's modes in its own words (Provider.mode_words), none without a provider.
 export const modeWords = (info: ProviderInfo | null): ModeWordsInfo[] => info?.mode_words ?? [];
 
+const KITS_ABOUT = "Kits add roles, skills and ways of working to the team. Install more on the Kits page.";
 const SWITCH_OFF_ABOUT = "kind:name or kind:name@kit, separated by commas; kinds: agent, skill, mcp, flow.";
 
 // "agent:reviewer@kit-a" as the button that switches it off says it.
@@ -98,7 +99,7 @@ export function LaunchTeam({
         {!open && (
           <p className="team-sum">
             <span>
-              <span className="k">Setup</span> {kits.length ? kits.join(", ") : "none"}
+              <span className="k">Kits</span> {kits.length ? kits.join(", ") : "none"}
             </span>
             <span>
               <span className="k">Agent</span> {agentName}
@@ -171,14 +172,13 @@ export function LaunchTeam({
         </div>
         <div className="field launch-wide">
           <span id={`${ids}-kits`} className="field-label">
-            Team setup{" "}
-            {described.length > 0 && (
-              <InfoTip about="Team setup">
-                {described.map((kit) => (
-                  <span key={kit!.name} className="info-line">{`${kit!.name}: ${kit!.description}`}</span>
-                ))}
-              </InfoTip>
-            )}
+            Kits{" "}
+            <InfoTip about="Kits">
+              <span className="info-line">{KITS_ABOUT}</span>
+              {described.map((kit) => (
+                <span key={kit!.name} className="info-line">{`${kit!.name}: ${kit!.description}`}</span>
+              ))}
+            </InfoTip>
           </span>
           <div role="group" aria-labelledby={`${ids}-kits`} className="kits-box">
             {kits.map((kitName) => {
@@ -205,13 +205,13 @@ export function LaunchTeam({
             {others.length > 0 && (
               <select
                 ref={refs.kits}
-                aria-label="Add setup"
+                aria-label="Add kit"
                 className="add-kit"
                 value=""
                 disabled={disabled}
                 onChange={(event) => event.target.value && onKits([...kits, event.target.value])}
               >
-                <option value="">+ Add setup</option>
+                <option value="">+ Add kit</option>
                 {others.map((one) => (
                   <option key={one.name} value={one.name} disabled={!one.valid}>
                     {one.valid

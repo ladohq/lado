@@ -20,7 +20,7 @@
 - [x] 3.1 Name on Task's label row by D3–D7 and D11, with failing vitest first in
   `web/src/Launch.test.tsx` (the list of plan Task 3); the existing tests of Team's Name and
   Session name follow (AC-1–AC-5, AC-9). Check: `make web`.
-- [ ] 3.2 Kits by D10 in `LaunchTeam.tsx` and `Launch.tsx`, with vitest first
+- [x] 3.2 Kits by D10 in `LaunchTeam.tsx` and `Launch.tsx`, with vitest first
   (`LaunchTeam.test.tsx`, `Launch.test.tsx`); one chevron on Change/Hide; the summary wraps at
   760 px or less (AC-8). Check: `make web`.
 - [ ] 3.3 Where on one line by D9 in `LaunchWhere.tsx` and `styles.css`, with vitest first

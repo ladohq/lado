@@ -992,7 +992,7 @@ function LaunchDialog({
     missing.push({ text: "choose an agent", focus: openTeam(teamRefs.agent) });
   }
   if (noLogin?.installed) missing.push({ text: `log in to ${noLogin.title}`, focus: openTeam(teamRefs.agent) });
-  if (kits.length === 0) missing.push({ text: "choose a team setup", focus: openTeam(teamRefs.kits) });
+  if (kits.length === 0) missing.push({ text: "choose a kit", focus: openTeam(teamRefs.kits) });
   if (model.blocked) {
     missing.push({
       text: "fix the model",
@@ -1009,13 +1009,11 @@ function LaunchDialog({
   // Team's explanation: where its settings come from.
   const teamAbout = resuming
     ? "As when it stopped. A change takes effect from now on."
-    : [
-        fromLast
-          ? "As in the last session in this folder."
-          : suggested === "last_any"
-            ? "Agent as in your last session; setup and permissions are LADO's defaults."
-            : "Setup and permissions are LADO's defaults.",
-      ].join(" ");
+    : fromLast
+      ? "As in the last session in this folder."
+      : suggested === "last_any"
+        ? "Agent as in your last session; kits and permissions are LADO's defaults."
+        : "Kits and permissions are LADO's defaults.";
 
   // The agent's notes: the list's state, a CLI that cannot run, a login missing.
   const providersNote =

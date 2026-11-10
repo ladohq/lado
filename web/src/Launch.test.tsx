@@ -352,7 +352,7 @@ const teamSummary = () => document.querySelector(".team-sum")?.textContent ?? ""
 // Team's fields, also while it is folded (hidden).
 const providerSelect = () => screen.getByRole("combobox", { name: "Agent", hidden: true }) as HTMLSelectElement;
 const nameField = () => screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement;
-const kitsGroup = () => screen.getByRole("group", { name: /^Team setup/, hidden: true });
+const kitsGroup = () => screen.getByRole("group", { name: /^Kits/, hidden: true });
 
 const modeChosen = () => (document.querySelector(".mode-list input:checked") as HTMLInputElement | null)?.value;
 
@@ -588,6 +588,8 @@ test("Name stands on Task's label row, not in Team", async () => {
     ),
   ).toBeTruthy();
   expect(teamSummary()).not.toContain("Name");
+  fireEvent.click(screen.getByRole("button", { name: "About Team" }));
+  expect(screen.getByText("Kits and permissions are LADO's defaults.")).toBeTruthy();
   openTeam();
   expect(screen.queryByRole("textbox", { name: "Session name", hidden: true })).toBeNull();
 });
@@ -917,7 +919,7 @@ test("a recent folder's last session gives kits, agent and mode", async () => {
   await openLaunch(false);
   await waitFor(() => expect(placeBox().value).toBe("app"));
   await screen.findByText(/✓ Ready/);
-  await waitFor(() => expect(teamSummary()).toContain("Setup team"));
+  await waitFor(() => expect(teamSummary()).toContain("Kits team"));
   await waitFor(() => expect(providerSelect().value).toBe("kilo"));
   expect(teamSummary()).toContain("Agent Kilo CLI");
   expect(teamSummary()).toContain("Permissions Plan only");
@@ -993,10 +995,10 @@ test("a workspace not made yet: its placeholders and no suggestions", async () =
 
 // Team (capability new-session-window)
 
-test("Team is one line; Change opens Agent, Team setup, Permissions, Model and Switch off", async () => {
+test("Team is one line; Change opens Agent, Kits, Permissions, Model and Switch off", async () => {
   await openLaunch();
   await ready("/src/lado");
-  expect(teamSummary()).toBe("Setup defaultAgent Claude CodePermissions Asks before changes");
+  expect(teamSummary()).toBe("Kits defaultAgent Claude CodePermissions Asks before changes");
   const change = screen.getByRole("button", { name: "Change" });
   expect(change.getAttribute("aria-expanded")).toBe("false");
   fireEvent.click(change);
@@ -1004,7 +1006,7 @@ test("Team is one line; Change opens Agent, Team setup, Permissions, Model and S
   expect(body.hidden).toBe(false);
   expect(screen.getByRole("button", { name: "Hide" }).getAttribute("aria-expanded")).toBe("true");
   expect([...body.querySelectorAll(".field-label, label, legend")].map((one) => one.textContent?.trim()).filter(Boolean)).toEqual(
-    expect.arrayContaining(["Agent", "Team setup", "Permissions", "Model", "Switch off"]),
+    expect.arrayContaining(["Agent", "Kits", "Permissions", "Model", "Switch off"]),
   );
   expect(body.textContent).not.toContain("Session name");
 });
@@ -1044,11 +1046,13 @@ test("kits start as the default kit; an invalid kit cannot be added and says why
   openTeam();
   const field = kitsGroup();
   expect(within(field).getByText("default")).toBeTruthy();
-  const add = (await within(field).findByRole("combobox", { name: "Add setup" })) as HTMLSelectElement;
+  const add = (await within(field).findByRole("combobox", { name: "Add kit" })) as HTMLSelectElement;
+  expect((within(add).getAllByRole("option")[0] as HTMLOptionElement).textContent).toBe("+ Add kit");
   const broken = within(add).getByRole("option", { name: /broken/ }) as HTMLOptionElement;
   expect(broken.disabled).toBe(true);
   expect(broken.textContent).toContain("invalid: run lado kits check broken");
-  fireEvent.click(screen.getByRole("button", { name: "About Team setup" }));
+  fireEvent.click(screen.getByRole("button", { name: "About Kits" }));
+  expect(screen.getByText("Kits add roles, skills and ways of working to the team. Install more on the Kits page.")).toBeTruthy();
   expect(screen.getByText("default: a supervisor that delegates")).toBeTruthy();
   fireEvent.change(add, { target: { value: "team" } });
   expect(within(field).getByText("team")).toBeTruthy();
@@ -1063,7 +1067,9 @@ test("without a kit Start stays off and the footer says why", async () => {
   fireEvent.click(within(kitsGroup()).getByRole("button", { name: "Remove default" }));
   expect(await screen.findByText("a session needs at least one kit")).toBeTruthy();
   expect(startButton().disabled).toBe(true);
-  await waitFor(() => expect(footerText()).toContain("To start: choose a team setup."));
+  await waitFor(() => expect(footerText()).toContain("To start: choose a kit."));
+  fireEvent.click(screen.getByRole("button", { name: "choose a kit" }));
+  expect(document.activeElement).toBe(within(kitsGroup()).getByRole("combobox", { name: "Add kit" }));
 });
 
 test("providers show checking while their CLIs are asked, a missing one is off, a warning is shown", async () => {
@@ -1095,7 +1101,7 @@ test("the folder's suggested agent is chosen; Team's info says where it comes fr
   await waitFor(() => expect(providerSelect().value).toBe("kilo"));
   expect(teamSummary()).toContain("Agent Kilo CLI");
   fireEvent.click(screen.getByRole("button", { name: "About Team" }));
-  expect(screen.getByText("Agent as in your last session; setup and permissions are LADO's defaults.")).toBeTruthy();
+  expect(screen.getByText("Agent as in your last session; kits and permissions are LADO's defaults.")).toBeTruthy();
   await waitFor(() => expect(startButton().disabled).toBe(false));
 });
 
@@ -2208,7 +2214,7 @@ test("Resume fills the window from the session, sends only what changed and show
   expect(within(dialog).getByRole("group", { name: "Where" }).querySelector(".where-fixed")!.textContent).toBe("lado /src/lado");
   expect(within(dialog).queryByRole("combobox", { name: "Where" })).toBeNull();
   expect(firstField().placeholder).toBe("What should the team do next?");
-  expect(teamSummary()).toBe("Setup teamAgent Kilo CLIPermissions Plan only");
+  expect(teamSummary()).toBe("Kits teamAgent Kilo CLIPermissions Plan only");
   await waitFor(() => expect(providerSelect().value).toBe("kilo"));
   expect(modeChosen()).toBe("plan");
   openTeam();
@@ -3393,11 +3399,11 @@ test("the clone's form does not take kits and mode from a folder typed before (F
   answers["GET /api/clone-target"] = () => json(target());
   answers["POST /api/remote-branches"] = remote();
   await openLaunch(false);
-  await waitFor(() => expect(teamSummary()).toContain("Setup team"));
+  await waitFor(() => expect(teamSummary()).toContain("Kits team"));
   await pickPlace("Clone from URL…");
   fireEvent.change(urlInput(), { target: { value: URL_ } });
   await screen.findByText("✓ Found");
-  await waitFor(() => expect(teamSummary()).toContain("Setup default"));
+  await waitFor(() => expect(teamSummary()).toContain("Kits default"));
   expect(modeChosen()).toBe("default");
 });
 
@@ -3985,7 +3991,7 @@ test("Project chooses the last used repository and takes its last session's sett
   const dialog = await openProject();
   expect((within(dialog).getByRole("combobox", { name: "Project" }) as HTMLSelectElement).value).toBe("shop");
   expect(repoRadio(dialog, "backend").getAttribute("aria-checked")).toBe("true");
-  await waitFor(() => expect(teamSummary()).toContain("Setup team"));
+  await waitFor(() => expect(teamSummary()).toContain("Kits team"));
   await waitFor(() => expect(providerSelect().value).toBe("kilo"));
   expect(modeChosen()).toBe("plan");
   expect(await screen.findByRole("button", { name: "Start new session in Shop" })).toBeTruthy();

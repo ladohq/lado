@@ -30,7 +30,8 @@ Options weighed:
 - The rows of the session list show no tooltip on hover or keyboard focus.
 - An icon of the folded strip shows a short tooltip right of it: the title in bold, the name
   in `--muted` after it when the session has a title, then the state line with the icon's mark
-  (`Needs you: 1 gate`, `2 of 3 agents working`, `idle`, `stopped 5 h ago`, a trouble). A
+  (`Needs you: 1 gate`, `2 of 3 agents working`, `idle`, a trouble). A stopped session has no
+  icon in the strip (as before), so no such tooltip. A
   session in trouble in which something waits keeps `Needs you: …` on a line of its own, as its
   icon is the waiting one. As wide as its text, at most the UI's tooltip width (320 px); the
   UI's tooltip delay (0.3 s), at once on keyboard focus, Esc closes it.

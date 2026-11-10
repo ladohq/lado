@@ -2,14 +2,16 @@
 
 - [ ] 1.1 `web/src/Layout.test.tsx` (vitest): failing tests first. A row on hover and on keyboard
   focus shows no tooltip (AC-1). An icon's tooltip holds `.tip-top` and the state line and no
-  `.tip-facts` or `.tip-hint`, for a titled session that needs the human, a stopped one
-  (`stopped`), an idle untitled one, and a session in trouble with a gate (two lines) (AC-2,
+  `.tip-facts` or `.tip-hint`, for a titled session that needs the human, a working one, an
+  idle untitled one, a session whose loop is down, and a session in trouble with a gate (two
+  lines) (AC-2,
   AC-3); Esc hides it. The tests of the row's card and of its facts ("a row's card on focus and
   hover…", "a titled row's card…", "a card names the project…", "a project's new title … in the
   open card", "a card shows six kits…", "a card says how to go on…") are removed or turned into
   icon tests of what stays; the state-line tests ("a card's state line…") check the icon only.
 - [ ] 1.2 `web/src/Sessions.tsx` by D1 and D2: `SessionRow` without `Tooltip`; `SessionTip` with
-  the title line, `TipState` and the trouble's `Needs you` line only; remove `HOW_TO_GO_ON`,
+  the title line, `TipState` and the trouble's `Needs you` line only; `TipState` without its `stopped` branch,
+  `SessionTip` without `useRanParts`; remove `HOW_TO_GO_ON`,
   `KITS_SHOWN` and what only they used; fix the comments that name the row's card.
   `web/src/styles.css` by D3. `make web` green (lint, tsc, vitest, build).
 
@@ -17,8 +19,8 @@
 
 - [ ] 2.1 `tests/ui/test_session_list.py`: `test_a_row_shows_its_sessions_card_under_the_pointer`
   becomes: hovering a row at 1440×900 shows no tooltip after 500 ms and its computed `cursor` is `pointer` (AC-1); folded, hovering the
-  calm session's icon shows its name and `idle`, and the stopped one's `stopped <1 min ago`, with
-  no `dt` and no `.tip-hint` (AC-2); its width is at most 320 px. Screenshots of the icon's
+  calm session's icon shows its name and `idle`, with no `dt` and no `.tip-hint`, and the stopped
+  session has no icon (AC-2); its width is at most 320 px. Screenshots of the icon's
   tooltip and of a hovered row as run artifacts.
 - [ ] 2.2 `tests/ui/test_session_list.py`, the `tabs` fixture and its five tests by D4: the list
   folded, the trigger is the session's icon in the strip; each test keeps its scenario (AC-4).

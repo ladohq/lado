@@ -32,9 +32,10 @@ text, at most the UI's tooltip width (320 px).
 - **THEN** the tooltip reads `Session popup UI lad-264`, then `Needs you: 1 gate`, and has no
   Project, Ran, Folder, Kits, CLI or Mode
 
-#### Scenario: A stopped session
-- **WHEN** the human hovers the icon of a session stopped 5 hours ago
-- **THEN** the tooltip's state line reads `stopped 5 h ago`, and no line says how to go on
+#### Scenario: A session whose loop does not run
+- **WHEN** the human hovers the icon of a session whose session loop does not run
+- **THEN** the tooltip's state line reads its status in words with the `--danger` dot, and no
+  line says how to go on
 
 #### Scenario: Trouble while a gate waits
 - **WHEN** a session's tmux session is gone and a gate waits in it
@@ -50,12 +51,11 @@ text, at most the UI's tooltip width (320 px).
 The state line of a strip icon's tooltip SHALL be the mark and words of the session:
 `<n> of <m> agents working` with the working dot in the group's colour; `idle` with the ring in
 `--muted`; `Needs you: <what waits>` with the diamond in `--human`; a trouble's status with a
-`--danger` dot; `stopped <time> ago` in `--muted`, or `stopped` when the session has no stop
-time.
+`--danger` dot. A stopped session has no icon in the strip, so no tooltip there.
 
-#### Scenario: Stopped
-- **WHEN** the human hovers the icon of a session stopped 5 hours ago
-- **THEN** the state line reads `stopped 5 h ago` with no dot
+#### Scenario: Idle
+- **WHEN** the human hovers the icon of a running session where no agent works
+- **THEN** the state line reads `idle` after the ring
 
 #### Scenario: Agents at work
 - **WHEN** the human hovers the icon of a session where 2 of its 3 agents work

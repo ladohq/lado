@@ -14,8 +14,10 @@ cover the strip's other icons.
 ### D2. `SessionTip` becomes the icon's short tooltip
 
 It keeps `.tip-top` (title, name) and `TipState`, and the line `Needs you: …` under a trouble;
-the facts (`<dl class="tip-facts">`), the hint (`HOW_TO_GO_ON`) and `KITS_SHOWN` go. The state
-line still needs the stopped text from `useRanParts`; `ran` is no longer read there.
+the facts (`<dl class="tip-facts">`), the hint (`HOW_TO_GO_ON`) and `KITS_SHOWN` go. The strip
+has icons only for sessions not stopped (`SessionStrip`, `isLive`), so `TipState` loses its
+`stopped` branch and its `stopped` parameter, and `SessionTip` no longer calls `useRanParts`.
+(Found by the developer at build, redesign 1.)
 
 ### D3. The width is the UI tooltip's
 

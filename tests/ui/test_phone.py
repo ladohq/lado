@@ -1318,6 +1318,27 @@ def test_a_gates_and_a_questions_tabs_fit_the_phone(device, server, repo, shot, 
     shot(page, full_page=False)
 
 
+def test_a_tap_shows_a_cut_heads_question_whole_and_no_tooltip_of_a_tab(device, server, repo, shot):
+    """The head's question cut on its line shows whole in a tooltip on a tap; a gate's tab, a
+    button, shows none on a tap, and its run's name stays within 170 px."""
+    session = gated_session(repo)
+    runtime.ask_human(session, "supervisor", "Which way shall I take? " * 6, None, ["one", "two"])
+    page = opened(device(UPRIGHT), server, f"/sessions/{session}")
+    card = waiting_card(page, session)
+    gate_tab = card.get_by_role("tab", name="ship/x 1")
+    gate_tab.tap()
+    expect(gate_tab).to_have_attribute("aria-selected", "true")
+    expect(page.get_by_role("tooltip")).to_have_count(0)
+    assert box(gate_tab)["width"] <= 170
+    card.get_by_role("tab", name="supervisor 1").tap()
+    head = card.locator(".waiting-head").get_by_role("heading", level=3)
+    expect(head).to_be_visible()
+    assert head.evaluate("t => t.scrollWidth > t.clientWidth")  # cut with "…"
+    head.tap()
+    expect(page.get_by_role("tooltip")).to_contain_text("Which way shall I take?")
+    shot(page, full_page=False)
+
+
 # Nothing scrolls sideways
 
 

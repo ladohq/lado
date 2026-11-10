@@ -99,7 +99,7 @@ const ownOnly = (question: MessageInfo) => question.free_answer && (question.cho
 // A question's pick: the human's, else the supervisor's recommended choice when it is one of
 // the question's choices; a question that takes only own words has its field (with the words
 // a fold kept, `drafts`).
-function pickOf(picks: Picks, question: MessageInfo, drafts: Record<number, string> = {}): Pick | undefined {
+function pickOf(picks: Picks, question: MessageInfo, drafts: Record<number, string>): Pick | undefined {
   const own = ownOnly(question) ? { own: drafts[question.id] ?? "" } : undefined;
   if (question.id in picks) return picks[question.id] ?? own;
   const rec = question.recommendation;
@@ -476,7 +476,6 @@ export function WaitingCard({
       : `var(--avatar-${avatar(tab.agent).colour})`;
   const panelId = `waiting-${session}-panel`;
   const shape: CardShape = {
-    expanded,
     whole: !chat,
     chat: chat !== undefined,
     phone: phone !== null,

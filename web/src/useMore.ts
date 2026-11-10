@@ -16,11 +16,9 @@ function useLaidOut(box: RefObject<HTMLElement | null>, changed: () => void) {
 }
 
 // Whether a box that scrolls has more below what it shows, and the `scrolled` to call on its
-// scroll. A pixel of slack: a zoomed page rounds the heights. `given`: the box's ref, when its
-// owner measures it too.
-export function useMore<T extends HTMLElement>(given?: RefObject<T | null>) {
-  const own = useRef<T>(null);
-  const box = given ?? own;
+// scroll. A pixel of slack: a zoomed page rounds the heights.
+export function useMore<T extends HTMLElement>() {
+  const box = useRef<T>(null);
   const [more, setMore] = useState(false);
   const scrolled = useCallback(() => {
     const element = box.current;

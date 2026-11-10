@@ -46,13 +46,12 @@ export const gateTitle = (gate: GateInfo) => `Gate #${gate.id} · ${gate.run} ·
 // its tab while it is open, and scrolls to its line once closed.
 export const gateAnchor = (id: number) => `gate-${id}`;
 
-const noMeasure = () => {};
+const nothing = () => {}; // a whole card measures nothing and has no splitter
 
 // An open gate on its run's page in Flows: the waiting card's panel without tabs, whole (the
 // page scrolls), `kicker` over its question; its field opens on 3 lines.
 export function GateCard({ session, gate, stopped, kicker }: { session: string; gate: GateInfo; stopped: boolean; kicker?: string }) {
   const card: CardShape = {
-    expanded: false,
     whole: true,
     chat: false,
     phone: false,
@@ -60,9 +59,9 @@ export function GateCard({ session, gate, stopped, kicker }: { session: string; 
     headId: `gate-${gate.id}-head`,
     feedRoom: null,
     recHeight: null,
-    setRecHeight: noMeasure,
-    head: noMeasure,
-    foot: noMeasure,
+    setRecHeight: nothing,
+    head: nothing,
+    foot: nothing,
   };
   return (
     <section className="waiting-panel solo whole" aria-labelledby={card.headId}>

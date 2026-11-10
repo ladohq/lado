@@ -65,11 +65,10 @@ export function ActionProblem({ attempt: key, off = false }: { attempt: string; 
 export const CARD_FIELD_LINES: [number, number] = [1, MOST_LINES];
 
 const REPORT_MIN = 56; // the report's least height (styles.css, .waiting-scroll)
-export const REC_LINES = { window: 82, phone: 42 }; // the recommendation's text by default: 4 lines, a phone's 2
+const REC_LINES = { window: 82, phone: 42 }; // the recommendation's text by default: 4 lines, a phone's 2
 
 // What a tab takes from its card.
 export type CardShape = {
-  expanded: boolean;
   whole: boolean; // Needs you, a run's page: nothing scrolls inside, nothing fades, no splitter
   chat: boolean; // in a session's chat: the recommendation has its splitter
   phone: boolean;

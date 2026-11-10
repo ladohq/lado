@@ -676,6 +676,29 @@ test("in a session's chat the card minimizes to its tabs and one line; the icon,
   expect(selected()).toEqual([tab("supervisor 1")]);
 });
 
+test("a choice gate's pick stays across the tabs and the minimized card, as its comment does", () => {
+  const choosing = { ...GATE_812, kind: "choice" as const, options: ["ship", "rework"], recommendation: given("ship") };
+  show({ questions: [question(5, "supervisor")], gates: [choosing], chat: IN_CHAT });
+  fireEvent.click(tab("task/lad-52 1"));
+  const pressed = () =>
+    within(within(card()).getByRole("group", { name: "Choices" }))
+      .getAllByRole("button")
+      .filter((one) => one.getAttribute("aria-pressed") === "true")
+      .map((one) => one.textContent);
+  expect(pressed()).toEqual(["✓ ship"]);
+  fireEvent.click(within(card()).getByRole("button", { name: "rework" }));
+  fireEvent.click(tab("supervisor 1"));
+  fireEvent.click(tab("task/lad-52 1"));
+  expect(pressed()).toEqual(["rework"]);
+  fireEvent.click(iconButton("Minimize the card"));
+  fireEvent.click(iconButton("Restore the card"));
+  expect(pressed()).toEqual(["rework"]);
+  fireEvent.click(within(card()).getByRole("button", { name: "rework" })); // unpicked: none, not the recommended one
+  fireEvent.click(tab("supervisor 1"));
+  fireEvent.click(tab("task/lad-52 1"));
+  expect(pressed()).toEqual([]);
+});
+
 test("a minimized agent's tab shows its first question on the line", () => {
   show({ questions: [question(5, "w1", { summary: "First?" }), question(6, "w1", { summary: "Second?" })], chat: IN_CHAT });
   fireEvent.click(iconButton("Minimize the card"));

@@ -81,12 +81,16 @@ SHALL lie over its line.
 A choice gate's options SHALL be pills above the comment that a click picks and unpicks, the
 recommended one picked ahead with its ✓; Send SHALL answer the gate with the one picked and the
 comment, and SHALL be off with "Choose an answer first" until one is, so a slip of the pointer
-sends nothing.
+sends nothing. The card SHALL keep the pick across its tabs and its minimizing, as the comment.
 
 #### Scenario: A choice gate
 - **WHEN** a choice gate with the options ship and rework waits, the supervisor recommending
   ship, and the human clicks rework
 - **THEN** rework is picked and nothing is sent; Send answers the gate `rework`
+
+#### Scenario: The pick kept
+- **WHEN** the human picks rework, opens another tab of the card and comes back
+- **THEN** rework is still picked, not the recommended ship
 
 ### Requirement: A question without choices shows its field at once
 

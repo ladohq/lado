@@ -183,6 +183,7 @@ export function WaitingCard({
   const [picks, setPicks] = useState<Picks>({});
   const [drafts, setDrafts] = useState<Record<number, string>>({}); // a field's words, closed by the fold
   const [comments, setComments] = useState<Record<number, string>>({}); // a gate's, by its id
+  const [gatePicks, setGatePicks] = useState<Record<number, string | null>>({}); // a choice gate's, the same
   // The files of each field, by questionFiles / gateFiles, kept as the comments are.
   const [files, setFiles] = useState<Record<string, Attached[]>>({});
   const keptFiles = useRef(files);
@@ -234,10 +235,12 @@ export function WaitingCard({
     setPicks(keptOf(open));
     setDrafts(keptOf(open));
   }, [openKey]);
-  // Comments of gates no longer open go.
+  // Comments and picks of gates no longer open go.
   const gatesKey = gates.map((one) => one.id).sort((a, b) => a - b).join(",");
   useEffect(() => {
-    setComments(keptOf(new Set(gates.map((one) => one.id))));
+    const still = new Set(gates.map((one) => one.id));
+    setComments(keptOf(still));
+    setGatePicks(keptOf(still));
   }, [gatesKey]);
   // Files of questions and gates no longer open go, and so do all of them with the card.
   useEffect(() => {
@@ -655,6 +658,8 @@ export function WaitingCard({
               marked={marked === shown.gate.id}
               comment={comments[shown.gate.id] ?? ""}
               onComment={(text) => setComments((now) => ({ ...now, [shown.gate.id]: text }))}
+              picked={gatePicks[shown.gate.id]}
+              onPick={(option) => setGatePicks((now) => ({ ...now, [shown.gate.id]: option }))}
               files={filesOf(gateFiles(shown.gate.id))}
               onFiles={setFilesOf(gateFiles(shown.gate.id))}
               limits={limits}

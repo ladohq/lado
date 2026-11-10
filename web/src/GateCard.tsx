@@ -76,8 +76,9 @@ export function GateCard({ session, gate, stopped, kicker }: { session: string; 
 // next step and a button per option, the recommended one primary; a choice gate's options are
 // pills a click picks, the recommended one ahead, and Send answers with the one picked, so a
 // slip of the pointer sends nothing (the human's decision of 2026-11-10). `marked`, the gate a
-// link asked for. `comment` and `onComment`, `files` and `onFiles`: the comment and its files kept
-// by who shows the panel (the waiting card, across its tabs and its expanded view), else here.
+// link asked for. `comment` and `onComment`, `picked` and `onPick`, `files` and `onFiles`: the
+// comment, a choice gate's pick and the files, kept by who shows the panel (the waiting card,
+// across its tabs, its minimizing and its expanded view), else here.
 // The comment takes files as the composer does (attachFiles.AnswerBox); their count and size
 // stand beside the buttons, and a button uploads those not uploaded yet, then answers with
 // their names.
@@ -90,6 +91,8 @@ export function GatePanel({
   marked = false,
   comment: kept,
   onComment,
+  picked: keptPicked,
+  onPick,
   files: keptFiles,
   onFiles,
   limits: given,
@@ -102,6 +105,8 @@ export function GatePanel({
   marked?: boolean;
   comment?: string;
   onComment?: (comment: string) => void;
+  picked?: string | null; // a choice gate's option picked (null: unpicked; undefined: the recommended one)
+  onPick?: (option: string | null) => void;
   files?: Attached[];
   onFiles?: SetFiles;
   limits?: Limits | null; // the card's; alone, the panel loads its own
@@ -121,7 +126,9 @@ export function GatePanel({
   const choosing = gate.kind === "choice";
   const choice = gate.recommendation?.state === "given" ? gate.recommendation.choice : null;
   const recommended = choice && gate.options.includes(choice) ? choice : undefined;
-  const [picked, setPicked] = useState<string | null | undefined>(undefined);
+  const [ownPicked, setOwnPicked] = useState<string | null | undefined>(undefined);
+  const picked = onPick ? keptPicked : ownPicked;
+  const setPicked = onPick ?? setOwnPicked;
   const chosen = picked === undefined ? recommended : picked;
   const live = useLiveStore();
   const { lost } = useLive();

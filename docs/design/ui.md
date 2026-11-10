@@ -826,7 +826,8 @@ reaches the feed. LADO takes the model and builds it on what it has:
   choice gate's own options are pills above the comment, as a question's choices
   (`ChoicesFrame`), a click picks one (the recommended one ahead, with its ✓) and Send
   answers with it, off with "Choose an answer first" until one is picked, so a slip of the
-  pointer sends nothing (the human's decision of 2026-11-10, LAD-266), then "<n> file(s), <size>" while files are attached. A button
+  pointer sends nothing (the human's decision of 2026-11-10, LAD-266); the waiting card keeps
+  the pick by the gate's id across its tabs and its minimizing, as the comment, then "<n> file(s), <size>" while files are attached. A button
   uploads the files not uploaded yet, then answers with the comment and their names; a
   failed upload stops the answer, its chip red with the reason, and says "Remove it, or
   answer again to try it again"; a comment of files only is an answer too. The buttons are

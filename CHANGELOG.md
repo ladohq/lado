@@ -7,6 +7,12 @@
 - **Codex agents run on the model you chose.** A Codex agent runs on the model chosen in LADO or
   in your Codex config even when the repository's `.codex/config.toml` names another, and shows
   the repository's model from the start when nothing else names one.
+- **A stopped session resumes on its own agent CLI and model.** New session no longer offers
+  Resume beside a stopped session: it starts a new one; resume the stopped one from its page or
+  the session list.
+- **`lado doctor` says which agents start without a login.** For Claude Code
+  or Codex not logged in, it says that their agents on your model server's models start and
+  where to log in for their own models, no longer that every new session is refused.
 
 ## 0.45.0 (2026-11-09)
 

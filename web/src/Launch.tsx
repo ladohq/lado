@@ -551,7 +551,8 @@ function LaunchDialog({
     const loaded = live.sessions;
     return loaded && "sessions" in loaded ? loaded.sessions.find((one) => one.name === sessionName) : undefined;
   };
-  // A stopped session of the place's default name: Resume it beside the new start. In a
+  // A stopped session of the place's default name: the line under Where names it, to say why
+  // the new session takes the free name; it is resumed from its page or the session list. In a
   // project only one of this project, as the core resumes none of another.
   const stoppedSession =
     !resuming && !cloning && !scratching && named?.name_state === "stopped_here" && named.default_name
@@ -791,21 +792,14 @@ function LaunchDialog({
     }
   };
 
-  // The Team fields changed from those `session` has, and the task, for a resume. In New
-  // session the fields came from the place's last session and the suggestion, not from the
-  // stopped one beside it: only those the human touched count (`onlyTouched`).
-  const changedFrom = (session: SessionInfo, onlyTouched = false): Resume => {
+  // The Team fields changed from those `session` has, and the task, for a resume.
+  const changedFrom = (session: SessionInfo): Resume => {
     const off = splitWithout(without);
     const changed: Resume = {};
-    const counts = (field: string) => !onlyTouched || touched.has(field);
-    if (counts("kits") && !sameList(kits, session.kits)) changed.kits = kits;
-    if (counts("provider") && chosenProvider !== null && chosenProvider !== session.provider) {
-      changed.provider = chosenProvider;
-    }
-    if (counts("mode") && permissionMode !== (session.permission_mode ?? DEFAULT_MODE)) {
-      changed.permission_mode = permissionMode;
-    }
-    if (counts("without") && !sameList(off, session.without)) changed.without = off;
+    if (!sameList(kits, session.kits)) changed.kits = kits;
+    if (chosenProvider !== null && chosenProvider !== session.provider) changed.provider = chosenProvider;
+    if (permissionMode !== (session.permission_mode ?? DEFAULT_MODE)) changed.permission_mode = permissionMode;
+    if (!sameList(off, session.without)) changed.without = off;
     if (model.send !== undefined) changed.model = model.send;
     return { ...changed, ...withPrompt };
   };
@@ -834,20 +828,6 @@ function LaunchDialog({
     });
     if (answered) openSession(got.started!);
     else setBusy(false);
-  };
-
-  // New session's Resume <name>: the stopped session of the place, with the task and the
-  // Team fields changed.
-  const resumeStopped = async () => {
-    if (stopped === null) return;
-    setBusyKind("resume");
-    setRefused(null);
-    try {
-      openSession(await resumeSession(stopped.name, changedFrom(stopped, true)));
-    } catch (error) {
-      setBusy(false);
-      refuse(error);
-    }
   };
 
   const submit = async () => {
@@ -880,13 +860,6 @@ function LaunchDialog({
     } else if (scratching) void createAndStart();
     else if (settingUp) void setUpAndStart();
     else void submit();
-  };
-
-  // Enter in a field does what the blue button does: beside a stopped session with no task,
-  // Resume.
-  const act = () => {
-    if (!(stopped && !promptText)) start();
-    else if (busy === null && teamReady) void resumeStopped();
   };
 
   const title = resuming ? "Resume session" : "New session";
@@ -1062,25 +1035,6 @@ function LaunchDialog({
   const notesId = `${ids}-place-notes`;
   const busyNow = busy !== null || waiting;
 
-  const startButton = (primary: boolean) => (
-    <MaybeWaits resuming={resuming !== null}>
-      <button
-        ref={primary ? actionRef : undefined}
-        type="submit"
-        className={primary ? "primary" : "quiet peer"}
-        disabled={startOff || undefined}
-        aria-disabled={busyNow || undefined}
-        aria-describedby={toStart.length ? `${ids}-missing` : undefined}
-        onClick={(event) => {
-          event.preventDefault();
-          start();
-        }}
-      >
-        {busy !== null && (busy !== "resume" || resuming) ? busyLabel[busy] : startLabel}
-      </button>
-    </MaybeWaits>
-  );
-
   return (
     <dialog
       ref={dialog}
@@ -1099,7 +1053,7 @@ function LaunchDialog({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          act();
+          start();
         }}
       >
         <div className="launch-head">
@@ -1424,7 +1378,7 @@ function LaunchDialog({
           {resuming && <ActionProblem attempt={attempt} />}
         </div>
 
-        <div className={`launch-buttons${stopped ? " two" : ""}`}>
+        <div className="launch-buttons">
           {toStart.length > 0 && (
             <p className="launch-missing" id={`${ids}-missing`}>
               {"To start: "}
@@ -1448,22 +1402,22 @@ function LaunchDialog({
               Cancel
             </button>
           )}
-          {stopped ? (
-            <>
-              <button
-                type="button"
-                className={promptText ? "quiet peer" : "primary"}
-                disabled={!teamReady || undefined}
-                aria-disabled={busyNow || undefined}
-                onClick={() => busy === null && void resumeStopped()}
-              >
-                {busy === "resume" ? "Resuming…" : `Resume ${stopped.name}`}
-              </button>
-              {startButton(promptText !== "")}
-            </>
-          ) : (
-            startButton(true)
-          )}
+          <MaybeWaits resuming={resuming !== null}>
+            <button
+              ref={actionRef}
+              type="submit"
+              className="primary"
+              disabled={startOff || undefined}
+              aria-disabled={busyNow || undefined}
+              aria-describedby={toStart.length ? `${ids}-missing` : undefined}
+              onClick={(event) => {
+                event.preventDefault();
+                start();
+              }}
+            >
+              {busy !== null ? busyLabel[busy] : startLabel}
+            </button>
+          </MaybeWaits>
         </div>
       </form>
     </dialog>

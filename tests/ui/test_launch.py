@@ -1244,7 +1244,8 @@ def test_on_a_phone_a_folders_path_is_cut_before_its_name(page: Page, server, re
             const style = getComputedStyle(input);
             const probe = document.createElement("span");
             probe.textContent = input.value;
-            probe.style.cssText = `position:absolute;visibility:hidden;white-space:pre;font:${style.font}`;
+            probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre";
+            probe.style.font = style.font;
             document.body.append(probe);
             const width = probe.getBoundingClientRect().width;
             probe.remove();

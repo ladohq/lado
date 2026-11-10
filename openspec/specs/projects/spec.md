@@ -1772,9 +1772,9 @@ each with its name, branch and remote, one chosen; the start SHALL send `where: 
 ### Requirement: The Project way's start names the project
 
 For a project's repository the start button SHALL read `Start in <title>` (the id without
-one), and `Start new session in <title>` beside `Resume <name>` when the repository has a
-stopped session of the default name, so the human sees which project's keys the session
-gets; another place's button names the place.
+one), and `Start new session in <title>` when the repository has a stopped session of the
+default name, so the human sees which project's keys the session gets; another place's button
+names the place.
 
 #### Scenario: Another project than the one last used
 - **WHEN** the window opens on `Shop`, the project last used, and the human picks `ACME CRM`
@@ -1796,13 +1796,14 @@ one of the project's repositories: it SHALL NOT add, clone or make one.
 
 For a project's repository, Team's Name SHALL be the default name, else the free name, until
 the human edits it; Team setup and Permissions SHALL come from the repository's last session,
-as for a folder, and Agent from the server's suggestion. Resume SHALL be offered only for a
-stopped session of the name that is of this project.
+as for a folder, and Agent from the server's suggestion. The line `Session <name> stopped here`
+SHALL name only a stopped session of the name that is of this project.
 
 #### Scenario: A taken name
 - **WHEN** a stopped `shop-frontend` of this repository exists and the window opens on it
-- **THEN** Team reads `Name shop-frontend-2`, and the footer shows `Resume shop-frontend` and
-  `Start new session in Shop`, also when the workspace's path goes through a link
+- **THEN** Team reads `Name shop-frontend-2`, and the footer shows one button, `Start new
+  session in Shop`, and no `Resume shop-frontend`, also when the workspace's path goes through a
+  link
 
 ### Requirement: The Project way sends the human to the project when nothing can be chosen
 

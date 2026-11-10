@@ -500,9 +500,9 @@ test("a recent project repository opens on its project: the badge, the button na
   expect(screen.getByText("backend is a repository of the project Shop: the team works with Shop's keys and settings.")).toBeTruthy();
 });
 
-// A stopped session of the place: Resume beside a new start (D3, D5)
+// A stopped session of the place: the free name and one start button (LAD-261)
 
-test("a stopped session of the place gives the free name and two buttons; the blue one follows Task", async () => {
+test("a stopped session of the place gives the free name and one start button, the primary, no Resume", async () => {
   sessions = [session("webapp", { status: "stopped", repo: WEBAPP, stopped_at: ago(2 * 86400_000) })];
   recent = [recentFolder(WEBAPP)];
   folders[WEBAPP] = folder(WEBAPP, {
@@ -514,95 +514,24 @@ test("a stopped session of the place gives the free name and two buttons; the bl
   await openLaunch(false);
   const line = await screen.findByText(/stopped here/);
   expect(line.closest(".place-line")!.textContent).toBe("✓ Ready · branch main · Session webapp stopped here 2 d ago");
-  const resume = await screen.findByRole("button", { name: "Resume webapp" });
   const fresh = screen.getByRole("button", { name: "Start new session webapp-2" }) as HTMLButtonElement;
   expect(teamSummary()).toContain("Name webapp-2");
-  expect(resume.className).toBe("primary");
-  expect(fresh.className).toBe("quiet peer");
-  const order = () => [...document.querySelectorAll(".launch-buttons button")].map((one) => one.textContent);
-  const before = order();
-  fireEvent.change(screen.getByRole("textbox", { name: "Task" }), { target: { value: "Add a contact form" } });
-  expect(resume.className).toBe("quiet peer");
   expect(fresh.className).toBe("primary");
-  expect(order()).toEqual(before);
+  expect(screen.queryByRole("button", { name: "Resume webapp" })).toBeNull();
+  const order = () => [...document.querySelectorAll(".launch-buttons button")].map((one) => one.textContent);
+  expect(order()).toEqual(["Cancel", "Start new session webapp-2"]);
+  fireEvent.change(screen.getByRole("textbox", { name: "Task" }), { target: { value: "Add a contact form" } });
+  expect(fresh.className).toBe("primary");
   answers["POST /api/sessions"] = () => json({ session: session("webapp-2", { repo: WEBAPP }), ...STARTED });
   await waitFor(() => expect(fresh.disabled).toBe(false));
   fireEvent.click(fresh);
   await screen.findByRole("region", { name: "Session webapp-2" });
+  expect(calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual(["/api/sessions"]);
   expect(calls.find((c) => c.method === "POST")!.body).toMatchObject({
     where: { kind: "folder", path: WEBAPP },
     name: "webapp-2",
     prompt: "Add a contact form",
   });
-});
-
-test("Resume <name> in New session resumes the stopped session with the task", async () => {
-  sessions = [session("webapp", { status: "stopped", repo: WEBAPP })];
-  recent = [recentFolder(WEBAPP)];
-  folders[WEBAPP] = folder(WEBAPP, {
-    default_name: "webapp",
-    free_name: "webapp-2",
-    name_state: "stopped_here",
-    provider: { name: "claude", reason: "last_session" },
-  });
-  answers["POST /api/sessions/webapp/resume"] = () => json({ session: session("webapp"), ...STARTED, resumed: true });
-  await openLaunch(false);
-  const resume = (await screen.findByRole("button", { name: "Resume webapp" })) as HTMLButtonElement;
-  fireEvent.change(screen.getByRole("textbox", { name: "Task" }), { target: { value: "Go on" } });
-  await waitFor(() => expect(resume.disabled).toBe(false));
-  fireEvent.click(resume);
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "New session" })).toBeNull());
-  expect(calls.find((c) => c.method === "POST")).toMatchObject({ path: "/api/sessions/webapp/resume", body: { prompt: "Go on" } });
-});
-
-test("Resume beside a new start sends only what the human changed, not the window's other values", async () => {
-  // The stopped session has its own kits, agent CLI and Switch off; the folder's last session,
-  // which the window's Team comes from, is another one.
-  const stopped = session("webapp", {
-    status: "stopped",
-    repo: WEBAPP,
-    kits: ["team"],
-    provider: "kilo",
-    permission_mode: "plan",
-    without: ["agent:reviewer"],
-  });
-  sessions = [stopped];
-  recent = [recentFolder(WEBAPP, { name: "webapp-3", kits: ["default"], provider: "claude", permission_mode: null })];
-  folders[WEBAPP] = folder(WEBAPP, {
-    default_name: "webapp",
-    free_name: "webapp-2",
-    name_state: "stopped_here",
-    provider: { name: "claude", reason: "last_session" },
-  });
-  answers["POST /api/sessions/webapp/resume"] = () => json({ session: session("webapp"), ...STARTED, resumed: true });
-  await openLaunch(false);
-  const resume = (await screen.findByRole("button", { name: "Resume webapp" })) as HTMLButtonElement;
-  await waitFor(() => expect(providerSelect().value).toBe("claude"));
-  await waitFor(() => expect(resume.disabled).toBe(false));
-  fireEvent.click(resume);
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "New session" })).toBeNull());
-  expect(calls.find((c) => c.method === "POST")!.body).toEqual({});
-});
-
-test("Resume beside a new start sends the fields the human changed", async () => {
-  sessions = [session("webapp", { status: "stopped", repo: WEBAPP, without: ["agent:reviewer"] })];
-  recent = [recentFolder(WEBAPP)];
-  folders[WEBAPP] = folder(WEBAPP, {
-    default_name: "webapp",
-    free_name: "webapp-2",
-    name_state: "stopped_here",
-    provider: { name: "claude", reason: "last_session" },
-  });
-  answers["POST /api/sessions/webapp/resume"] = () => json({ session: session("webapp"), ...STARTED, resumed: true });
-  await openLaunch(false);
-  const resume = (await screen.findByRole("button", { name: "Resume webapp" })) as HTMLButtonElement;
-  openTeam();
-  fireEvent.change(screen.getByRole("textbox", { name: "Switch off" }), { target: { value: "skill:x" } });
-  chooseMode("plan");
-  await waitFor(() => expect(resume.disabled).toBe(false));
-  fireEvent.click(resume);
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "New session" })).toBeNull());
-  expect(calls.find((c) => c.method === "POST")!.body).toEqual({ without: ["skill:x"], permission_mode: "plan" });
 });
 
 test("a name a running session has gives the free name and one button", async () => {
@@ -1438,7 +1367,7 @@ test("a list of agent CLIs that fails: the footer says choose an agent, Team sho
   expect(await screen.findByText("the CLIs cannot be read")).toBeTruthy();
 });
 
-test("Enter in a field beside a stopped session with no task resumes it, as its blue button does", async () => {
+test("Enter in a field beside a stopped session with no task starts the new session", async () => {
   sessions = [session("webapp", { status: "stopped", repo: WEBAPP })];
   recent = [recentFolder(WEBAPP)];
   folders[WEBAPP] = folder(WEBAPP, {
@@ -1447,14 +1376,16 @@ test("Enter in a field beside a stopped session with no task resumes it, as its 
     name_state: "stopped_here",
     provider: { name: "claude", reason: "last_session" },
   });
+  answers["POST /api/sessions"] = () => json({ session: session("webapp-2", { repo: WEBAPP }), ...STARTED });
   answers["POST /api/sessions/webapp/resume"] = () => json({ session: session("webapp"), ...STARTED, resumed: true });
   await openLaunch(false);
-  const resume = (await screen.findByRole("button", { name: "Resume webapp" })) as HTMLButtonElement;
-  await waitFor(() => expect(resume.disabled).toBe(false));
+  const fresh = (await screen.findByRole("button", { name: "Start new session webapp-2" })) as HTMLButtonElement;
+  await waitFor(() => expect(fresh.disabled).toBe(false));
   openTeam();
   fireEvent.submit(nameField().closest("form")!);
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "New session" })).toBeNull());
-  expect(calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual(["/api/sessions/webapp/resume"]);
+  await screen.findByRole("region", { name: "Session webapp-2" });
+  expect(calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual(["/api/sessions"]);
+  expect(calls.find((c) => c.method === "POST")!.body).toMatchObject({ name: "webapp-2" });
 });
 
 test("the draft keeps the model picked, for its agent CLI", async () => {
@@ -2106,7 +2037,8 @@ test("Start a new session instead turns the Resume window into New session on th
   await screen.findByRole("dialog", { name: "New session" });
   await waitFor(() => expect(placeBox().value).toBe("lado"));
   await waitFor(() => expect(teamSummary()).toContain("Name lado-2"));
-  expect(await screen.findByRole("button", { name: "Resume lado" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "Start new session lado-2" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Resume lado" })).toBeNull();
 });
 
 test("Resume is off while the session's provider is not installed, on once an installed one is picked", async () => {
@@ -3846,8 +3778,12 @@ test("Project chooses the last used repository and takes its last session's sett
   await waitFor(() => expect(teamSummary()).toContain("Setup team"));
   await waitFor(() => expect(providerSelect().value).toBe("kilo"));
   expect(modeChosen()).toBe("plan");
-  expect(await screen.findByRole("button", { name: "Resume shop-backend" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Start new session in Shop" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "Start new session in Shop" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Resume shop-backend" })).toBeNull();
+  expect([...document.querySelectorAll(".launch-buttons button")].map((one) => one.textContent)).toEqual([
+    "Cancel",
+    "Start new session in Shop",
+  ]);
   expect(calls.some((c) => c.path === "/api/kits?where=%2Freal%2Fprojects%2Fshop%2Fbackend")).toBe(true);
 });
 
@@ -3880,11 +3816,12 @@ test("Start in starts in the project's repository chosen", async () => {
   });
 });
 
-test("Resume is offered only for a stopped session of the name that is of this project", async () => {
+test("only a stopped session of the name that is of this project makes the start a new session", async () => {
   sessions = [session("shop-backend", { status: "stopped", repo: "/real/projects/shop/backend", project: null })];
   await openProject();
   await waitFor(() => expect(startIn("Shop").disabled).toBe(false));
-  expect(screen.queryByRole("button", { name: "Resume shop-backend" })).toBeNull();
+  expect(startIn("Shop").textContent).toBe("Start in Shop");
+  expect(screen.queryByText(/stopped here/)).toBeNull();
 });
 
 test("an empty project leaves Start off and leads to its page", async () => {

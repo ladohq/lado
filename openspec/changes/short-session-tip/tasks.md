@@ -17,14 +17,14 @@
 
 ## 2. In a browser (UI e2e)
 
-- [ ] 2.1 `tests/ui/test_session_list.py`: `test_a_row_shows_its_sessions_card_under_the_pointer`
+- [x] 2.1 `tests/ui/test_session_list.py`: `test_a_row_shows_its_sessions_card_under_the_pointer`
   becomes: hovering a row at 1440×900 shows no tooltip after 500 ms and its computed `cursor` is `pointer` (AC-1); folded, hovering the
   calm session's icon shows its name and `idle`, with no `dt` and no `.tip-hint`, and the stopped
   session has no icon (AC-2); its width is at most 320 px. Screenshots of the icon's
   tooltip and of a hovered row as run artifacts.
-- [ ] 2.2 `tests/ui/test_session_list.py`, the `tabs` fixture and its five tests by D4: the list
+- [x] 2.2 `tests/ui/test_session_list.py`, the `tabs` fixture and its five tests by D4: the list
   folded, the trigger is the session's icon in the strip; each test keeps its scenario (AC-4).
-- [ ] 2.3 Grep `tests/ui/` for the row's card (`.tip-facts`, `.tip-hint`, `session-tip`, a
+- [x] 2.3 Grep `tests/ui/` for the row's card (`.tip-facts`, `.tip-hint`, `session-tip`, a
   tooltip after hovering a session row) and fix every hit.
 
 ## 3. Documents and regression

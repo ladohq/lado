@@ -52,11 +52,12 @@ def waiting_card(page: Page, session: str):
     return page.get_by_role("region", name=f"What waits for you in {session}")
 
 
-def gated_session(repo, note: str = REVIEW) -> str:
-    """A running session of the fake agent whose run ship/x waits at gate "check": review's
-    note before it (`note`) carries the artifact review, and the gate reads plan. The gate's
-    request for a recommendation is handled (the fake supervisor gives none): the card's
+def gated_session(repo, note: str = REVIEW, name: str = "x") -> str:
+    """A running session of the fake agent whose run ship/<name> waits at gate "check":
+    review's note before it (`note`) carries the artifact review, and the gate reads plan. The
+    gate's request for a recommendation is handled (the fake supervisor gives none): the card's
     footer no longer changes under a test that measures it or drags its edge."""
+    run = f"ship/{name}"
     kit = repo.parent / "kits" / "uiflow"
     (kit / "flows").mkdir(parents=True, exist_ok=True)
     (kit / "kit.yaml").write_text("name: uiflow\nversion: 1.0.0\n")
@@ -68,23 +69,23 @@ def gated_session(repo, note: str = REVIEW) -> str:
         lambda: state.get_agent(session, "supervisor").status == state.IDLE, "idle", session
     )
     agent_helpers.wait_for(lambda: loop.running(session), "the session loop", session)
-    runs.start(session, "ship", "Add a login page", name="x")
+    runs.start(session, "ship", "Add a login page", name=name)
     plan = "# The plan\n\nTwo steps."
     artifacts.write(
-        session, "supervisor", "ship/x/plan", plan, title="The plan", summary="two steps"
+        session, "supervisor", f"{run}/plan", plan, title="The plan", summary="two steps"
     )
-    runs.advance(session, "supervisor", "ship/x", "ready", "planned")
-    artifacts.write(session, "supervisor", "ship/x/review", REVIEW, summary="split it")
+    runs.advance(session, "supervisor", run, "ready", "planned")
+    artifacts.write(session, "supervisor", f"{run}/review", REVIEW, summary="split it")
     runs.advance(
         session,
         "supervisor",
-        "ship/x",
+        run,
         "done",
         "the plan is reviewed",
         note,
-        attached=["ship/x/review"],
+        attached=[f"{run}/review"],
     )
-    gate = state.open_gate(session, "ship/x")
+    gate = state.open_gate(session, run)
     agent_helpers.wait_for(
         lambda: state.get_gate(gate.id).recommendation_state == state.REC_MISSING,
         "the gate's request for a recommendation handled",
@@ -717,18 +718,25 @@ def line_ground(page: Page) -> str:
     )
 
 
+LONG_RUN = "the-login-page-and-its-welcome-e-mail"
+# A text cut on its line with "…".
+CUT = "e => e.scrollWidth > e.clientWidth && getComputedStyle(e).textOverflow === 'ellipsis'"
+
+
 def test_a_gates_tab_names_its_run_and_its_tooltip_the_step_and_the_reports_author(
     page: Page, server, repo, shot
 ):
     """The tab reads the run's name and its count, a badge of --count-ink; its tooltip on a
-    hover says the step and who wrote the report (on the focus: WaitingCard.test.tsx)."""
-    session = gated_session(repo)
+    hover says the step and who wrote the report (on the focus: WaitingCard.test.tsx). A long
+    run's name is cut with "…" in a tab of at most 220 px."""
+    session = gated_session(repo, name=LONG_RUN)
     reported_by("reviewer")
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
-    tab = waiting_card(page, session).get_by_role("tab", name="ship/x 1")
+    tab = waiting_card(page, session).get_by_role("tab", name=f"ship/{LONG_RUN} 1")
     expect(tab).to_be_visible()
-    assert tab.bounding_box()["width"] <= 220
+    assert 200 <= tab.bounding_box()["width"] <= 220, tab.bounding_box()
+    assert tab.locator(".waiting-tab-name").evaluate(CUT) is True
     expect(tab.locator(".waiting-tab-count")).to_have_css("color", "rgb(61, 67, 80)")
     tab.hover()
     tip = page.get_by_role("tooltip")

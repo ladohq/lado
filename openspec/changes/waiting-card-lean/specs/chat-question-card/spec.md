@@ -87,7 +87,49 @@ Send, as any answer. A second click SHALL take it back.
 - **WHEN** the human clicks Skip, types "not now" and clicks Send
 - **THEN** the question is dismissed with the comment "not now"
 
+## RENAMED Requirements
+
+- FROM: `### Requirement: The card's title is at most two lines`
+- TO: `### Requirement: The card's question is its head, on one line`
+- FROM: `### Requirement: The context says there is more and leads to it`
+- TO: `### Requirement: The report and the recommendation fade while there is more`
+
 ## MODIFIED Requirements
+
+### Requirement: A ring around an item of the card shows whole
+
+The waiting card SHALL show the ring around one of its items whole, on all four sides: the
+focus ring of a gate's comment, of an own answer and of a Skip's comment, and the ring of a
+question reached from the feed. Neither the report, the choices' area nor the panel SHALL cut a
+ring at rest, while the human types, or after the report scrolled a field into view. The room
+for a ring SHALL move nothing: the head, the report and the footer's items SHALL start at the
+panel's padding.
+
+#### Scenario: A gate's comment with the focus
+- **WHEN** the human clicks into the comment field on a gate's tab
+- **THEN** the field's focus ring is whole on the left, the top, the right and the bottom,
+  within the card's footer
+
+#### Scenario: A long gate's comment
+- **WHEN** the human types a comment of 12 lines on a gate's tab
+- **THEN** the field, 8 lines high, has its focus ring whole on all four sides
+
+#### Scenario: An own answer with the focus
+- **WHEN** the human picks Other… on a question and its field gets the focus
+- **THEN** the field's focus ring is whole on all four sides
+
+#### Scenario: The first question marked
+- **WHEN** the human comes to the card's first question from its line in the feed
+- **THEN** the question's ring is whole on all four sides, its top too
+
+#### Scenario: A narrow window
+- **WHEN** the window is 600 px wide and the comment field on a gate's tab has the focus
+- **THEN** the field's focus ring is whole on all four sides
+
+#### Scenario: Nothing moves
+- **WHEN** a gate's tab is shown
+- **THEN** its question and its comment field start at the same distance from the panel's
+  left edge
 
 ### Requirement: A tab shows whose items it holds
 
@@ -282,7 +324,7 @@ Needs you has its own requirement.
 - **THEN** the recommendation, the comment field and the buttons are in sight without
   scrolling the card
 
-### Requirement: The card's title is at most two lines
+### Requirement: The card's question is its head, on one line
 
 The question (a gate's, or a single question's text) SHALL be the card's head: a band of
 `--human-head` the frame's width, no border or line under it, never scrolling, its text 15 px
@@ -305,7 +347,7 @@ have no head. The card's panel SHALL be named by its head.
 - **WHEN** a gate's long report is scrolled to its end
 - **THEN** the gate's question still stands in the head, with nothing beside it
 
-### Requirement: The context says there is more and leads to it
+### Requirement: The report and the recommendation fade while there is more
 
 When the report does not fit, its lower edge SHALL fade out over 22 px, and the recommendation's
 text that does not fit SHALL fade over 26 px, each while more stands below what it shows and not
@@ -391,7 +433,9 @@ composer SHALL not fold.
 
 A click on "Write to supervisor instead" SHALL close the open fields of the shown tab and bring the
 composer back with the focus in it; each field's words and files SHALL be kept and SHALL come back
-when the human opens Other… or Skip again. A quote sent to the composer SHALL do the same.
+when the human opens Other… or Skip again. A quote sent to the composer while the composer is
+folded (a phone, a field in focus) SHALL do the same. A question without choices keeps its field,
+its answer or its skip.
 
 #### Scenario: Other… and back
 - **WHEN** on a phone the human opens Other… on question #5, types "keep the worker" and taps

@@ -24,8 +24,8 @@ with the same words. On a gate whose note the lead wrote itself no disagreement 
 In the chat's card the recommendation's text SHALL stand in a box as high as the recommendation's
 splitter sets (by default 4 lines, a phone 2), which a shorter text SHALL not fill; a longer one
 SHALL scroll inside it, by the wheel, a finger or the keys with the focus on it, and SHALL fade at
-its lower edge until it is scrolled to its end. On Needs you, on a run's page and in the expanded
-card's whole view it SHALL show whole.
+its lower edge until it is scrolled to its end; the expanded card keeps the box and its splitter.
+On Needs you, on a run's page and under each question of a tab of several it SHALL show whole.
 
 #### Scenario: A long recommendation
 - **WHEN** a recommendation of ten lines waits on a gate in the chat

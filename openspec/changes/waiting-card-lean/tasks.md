@@ -9,7 +9,10 @@
   titled chips) were checked against a mutation of the code.
 - [x] 1.2 UI e2e by the plan's table: `tests/ui/test_gates.py`, `test_chat.py`, `test_phone.py`,
   `test_needs_you.py`, `test_flows_tab.py`, `test_narrow_layout.py`. Run: `uv run pytest -m ui
-  <files>` (red). Run red against the new card (62 failed), then rewritten to it.
+  <files>` (red). Run red against the new card (62 failed), then rewritten to it;
+  `test_narrow_layout.py` needed no change (its 601 to 900 px cases passed as they were, the
+  splitter dragged up is in `test_gates.py`'s low windows), and `test_selection.py` and
+  `test_connection.py` followed the card too.
 
 ## 2. The server
 

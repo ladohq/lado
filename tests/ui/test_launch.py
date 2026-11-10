@@ -974,9 +974,9 @@ def test_no_author_in_the_container(page: Page, projects, git_config, server_in_
 
 
 def test_scenario_1_a_new_session_beside_a_stopped_one_with_a_task(page: Page, server, repo, shot):
-    """The latest session ran in the folder and is stopped: the window opens on it with
-    Resume as the main button; a task makes Start new session the main one, which starts
-    `<name>-2` with the task as its first message."""
+    """The latest session ran in the folder and is stopped: the window opens on it with one
+    button, Start new session, the main one, and no Resume (LAD-261); it starts `<name>-2`
+    with the task as its first message, and the stopped session stays stopped."""
     runtime.start_session(str(repo), "my-repo", None, "fake")
     idle("my-repo")
     agent_helpers.wait_for(lambda: loop.running("my-repo"), "the session loop", "my-repo")
@@ -987,10 +987,12 @@ def test_scenario_1_a_new_session_beside_a_stopped_one_with_a_task(page: Page, s
     task = dialog.get_by_role("textbox", name="Task")
     expect(task).to_be_focused()
     expect(dialog.locator(".place-line")).to_contain_text("· Session my-repo stopped here")
-    resume = dialog.get_by_role("button", name="Resume my-repo")
     fresh = dialog.get_by_role("button", name="Start new session my-repo-2")
-    expect(resume).to_have_class("primary")
-    expect(fresh).to_have_class("quiet peer")
+    expect(fresh).to_have_class("primary")
+    expect(dialog.get_by_role("button", name="Resume my-repo")).to_have_count(0)
+    expect(dialog.locator(".launch-buttons button")).to_have_text(
+        ["Cancel", "Start new session my-repo-2"]
+    )
     expect(dialog.locator(".team-sum")).to_contain_text("Name my-repo-2")
     shot(page, "a")
     for width in (1440, 390):
@@ -1000,7 +1002,6 @@ def test_scenario_1_a_new_session_beside_a_stopped_one_with_a_task(page: Page, s
 
     task.fill("Add a contact form")
     expect(fresh).to_have_class("primary")
-    expect(resume).to_have_class("quiet peer")
     shot(page, "a2")
     fresh.click()
     expect(page).to_have_url(f"{server['url']}/sessions/my-repo-2/activity")
@@ -1009,6 +1010,7 @@ def test_scenario_1_a_new_session_beside_a_stopped_one_with_a_task(page: Page, s
         "Add a contact form"
     )
     idle("my-repo-2")
+    assert state.get_session("my-repo").stopped_at is not None
     runtime.stop_session("my-repo-2")
 
 
@@ -1027,8 +1029,8 @@ def test_where_lists_recent_places_and_a_project_repository_starts_in_its_projec
     pick_place(dialog, re.compile("^frontend"))  # opens the list, the project's item
     expect(dialog.get_by_role("combobox", name="Where")).to_have_value("frontend")
     expect(dialog.locator(".place-box .place-badge")).to_have_text("Project Shop")
-    expect(dialog.get_by_role("button", name="Resume shop-frontend")).to_be_visible()
     expect(dialog.get_by_role("button", name="Start new session in Shop")).to_be_visible()
+    expect(dialog.get_by_role("button", name="Resume shop-frontend")).to_have_count(0)
     where = dialog.get_by_role("combobox", name="Where")
     where.focus()
     where.press("ArrowDown")

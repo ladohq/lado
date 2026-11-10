@@ -123,28 +123,6 @@ modes.` and Team no Permissions.
 - **WHEN** a provider lists a mode `manual` with no words
 - **THEN** the row reads `manual` and has no description
 
-### Requirement: A stopped session of the place offers Resume beside a new start
-
-When the place has a stopped session of its default name, the window SHALL name the new
-session by the free name, say `Session <name> stopped here <when>` under Where, and show
-`Resume <name>` and `Start new session <free name>` in the footer; the primary SHALL be Resume
-while Task is empty and Start new while Task holds text.
-
-#### Scenario: Back to a stopped session
-- **WHEN** `~/workspace/webapp` has the stopped session `webapp` and the window opens on it
-- **THEN** Team reads `Name webapp-2`, the footer shows `Resume webapp` as the primary and
-  `Start new session webapp-2` beside it
-
-#### Scenario: A new task
-- **WHEN** the human types a task
-- **THEN** `Start new session webapp-2` becomes the primary, the buttons keep their places,
-  and pressing it starts `webapp-2` with the task
-
-#### Scenario: Resume with a task
-- **WHEN** the human presses `Resume webapp` with a task typed
-- **THEN** the window resumes `webapp` with the task as `prompt` and only the Team fields the
-  human changed, never the others' values (they came from the place's last session)
-
 ### Requirement: A name taken elsewhere gives the free name
 
 When another running session or a session of another folder has the default name, the window
@@ -171,7 +149,8 @@ wait for the count, fix the model, shorten the task, log in to `<CLI>`.
 #### Scenario: Enter beside a stopped session
 - **WHEN** the place has a stopped session, Task is empty and the human presses Enter in a
   field of the window
-- **THEN** the window resumes that session, as its blue button `Resume <name>` would
+- **THEN** the window starts the new session under the free name, as its button `Start new
+  session <free name>` would; the stopped session stays stopped
 
 #### Scenario: No agent chosen
 - **WHEN** two CLIs are installed and none is suggested
@@ -241,3 +220,25 @@ window's title are.
 #### Scenario: The rail
 - **WHEN** the human hovers the rail's item that opens the window
 - **THEN** its name and tooltip read `New session`
+
+### Requirement: A stopped session of the place leaves the new session the free name
+
+When the place has a stopped session of its default name, the New session window SHALL name the
+new session by the free name, say `Session <name> stopped here <when>` under Where, and show one
+start button, `Start new session <free name>`, the primary; it SHALL NOT offer to resume the
+stopped session, which the human resumes from its page or the session list.
+
+#### Scenario: Back to a stopped session
+- **WHEN** `~/workspace/webapp` has the stopped session `webapp` and the window opens on it
+- **THEN** Team reads `Name webapp-2`, the line under Where says `Session webapp stopped here`,
+  and the footer shows Cancel and `Start new session webapp-2` as the primary, no `Resume webapp`
+
+#### Scenario: A new task
+- **WHEN** the human types a task and presses `Start new session webapp-2`
+- **THEN** the window starts `webapp-2` with the task, and `webapp` stays stopped
+
+#### Scenario: The last launch was on another CLI's model
+- **WHEN** the Claude Code session `nologin` on `CloudClaude` is stopped in a folder whose last
+  launch is a Codex session on `CloudCodex`, neither CLI logged in, and the window opens there
+- **THEN** it offers no Resume, and the Resume window of `nologin` (from its page) resumes it on
+  Claude Code and `CloudClaude`

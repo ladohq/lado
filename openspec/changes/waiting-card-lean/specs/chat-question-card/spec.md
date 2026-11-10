@@ -47,9 +47,9 @@ aria-label. On a hover, a focus or a drag only the splitter's line and the point
 ### Requirement: The recommendation's height is set by a splitter in the chat
 
 In a session's chat, while the shown tab of one item has a given recommendation, a splitter with
-the UI's grip SHALL stand between the report and the footer: dragging it, or ↑ / ↓ on it, SHALL
-set the height of the recommendation's text between one line (20 px) and the lesser of its whole
-text and the height at which the report is 56 px, and a double click SHALL give back 4 lines (a
+the UI's grip SHALL stand between the report and the footer. Dragging it or ↑ / ↓ SHALL set the
+recommendation's text from one line (20 px) up to its whole text, taking room from the report
+down to 56 px, then from the feed down to 160 px; a double click SHALL give back 4 lines (a
 phone: 2). The height SHALL be kept in the browser, one value for every card.
 
 #### Scenario: Where there is none
@@ -147,9 +147,10 @@ buttons SHALL be off and the tab SHALL say "The session is stopped: resume it to
 ### Requirement: The card keeps the chat in view and expands within its page
 
 The card SHALL be as high as its content and at most half the chat's height unless the human
-set another height. Short of room only its report SHALL give way, down to 56 px; its tabs, its
-head, the recommendation's splitter and its footer SHALL not. The report SHALL scroll inside it
-while the tabs, the head and the footer stay in view.
+set another height, or its tabs, head, splitter and footer with a report of 56 px take more.
+Short of room only its report SHALL give way, down to 56 px; its tabs, its head, the
+recommendation's splitter and its footer SHALL not. The report SHALL scroll inside it while the
+tabs, the head and the footer stay in view.
 
 #### Scenario: Long questions
 - **WHEN** the supervisor's tab holds three questions whose text is longer than half the
@@ -219,10 +220,10 @@ edge, nor a window of 900 px or less, nor the phone layout (capability phone-lay
 whatever its width, where the card is at most half the chat's height.
 
 #### Scenario: Made smaller
-- **WHEN** the human drags the edge above the card down to 230 px
-- **THEN** the card is 230 px high, its report scrolls inside with the footer in view, and
+- **WHEN** the human drags the edge above the card down to 300 px
+- **THEN** the card is 300 px high, its report scrolls inside with the footer in view, and
   after a reload, in another session's chat and for the next gate or question the card is
-  230 px high
+  300 px high
 
 #### Scenario: A narrow window
 - **WHEN** the window is 800 px wide
@@ -323,15 +324,15 @@ SHALL stay in the page for a screen reader, and nothing SHALL fade in a whole ca
 
 The card's parts SHALL give up height in this order: the feed and the report down to 56 px, then
 the choices' area down to one row, the recommendation's text down to one line, then the field
-stops at its height and scrolls inside. The buttons SHALL always be in sight. A phone's field in
-focus SHALL take the report and the choices' area out at once (capability phone-layout). The
-chat's feed SHALL have no least height while a card shows, but the edge's bounds SHALL still
-keep its 160 px.
+stops at its height and scrolls inside. The buttons SHALL always be in sight: on a touch screen
+with a field of the footer in focus the report SHALL go past 56 px, then the head (a phone:
+phone-layout). The feed SHALL have no least height while a card shows, but the edge's bounds
+SHALL keep its 160 px.
 
 #### Scenario: Six long choices in a low window
 - **WHEN** a question with six long choices waits in a chat 420 px high
-- **THEN** the choices' area is at least one row high and scrolls inside, and Send and Skip
-  are in sight
+- **THEN** the choices' area is at least one row high and scrolls inside, Skip among the
+  choices, and Send is in sight
 
 #### Scenario: A field that grew
 - **WHEN** the human types 8 lines in a card with no room left above it

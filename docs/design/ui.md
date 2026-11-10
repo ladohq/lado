@@ -702,7 +702,10 @@ Sessions for now. The UI's texts are in English.
   over an iframe and ends on the release or a cancel. The artifact panel's edge is the
   same component (Artifacts, The panel), and so is the edge above the waiting card in a
   session's chat (The waiting card, Height): `edge="top"`, horizontal, a `row-resize`
-  cursor, ↑ / ↓, the pointer's y, its grip's dots in a row (since LAD-54).
+  cursor, ↑ / ↓, the pointer's y, its grip's dots in a row (since LAD-54), and the
+  recommendation's splitter in that card (LAD-266). A splitter's `title` ("<name>: drag, or
+  double-click for the default width") is its hint; `hint={false}` leaves it out where the
+  name alone is enough, for a screen reader (the waiting card's two splitters).
 - **The window never scrolls** on a wide window: `html` and `body` do not scroll or bounce
   (`overflow: hidden`, `overscroll-behavior: none`) and the frame is the window's height;
   only regions inside scroll (the session list, the feed, the session's column, a page's
@@ -718,9 +721,9 @@ Sessions for now. The UI's texts are in English.
   (also to its chat); then the session's open questions and gates as the chat's waiting
   card (The waiting card, LAD-28; before, a card per item with its own link), answered in
   place. The card is whole (LAD-194, the human's decision of 2026-11-05 after a check on an
-  iPhone): no limit on its context, no fade, no "↓ more", no Expand; the page scrolls, the
-  footer right under the context, and the browser leads the keyboard, so the buttons under a
-  field may lie under it until the human scrolls. A chip in a
+  iPhone; LAD-266): no limit on its report or its recommendation, no fade, no splitter, no
+  Expand; the page scrolls, the footer right under the report, and the browser leads the
+  keyboard, so the buttons under a field may lie under it until the human scrolls. A chip in a
   card opens the artifact panel over Needs you (`?view=<record>&session=<name>`,
   `paths.VIEW_SESSION_PARAM`; Artifacts, The panel), so the cards and their picks stay as they
   were (LAD-48; before, it went to the session's Activity tab
@@ -806,12 +809,13 @@ reaches the feed. LADO takes the model and builds it on what it has:
   is 400 with its reason). An **open gate** is a quiet line of the feed where it opened (the flag
   avatar, "Gate #id run · state waits: <question> ↓", the time) and a tab of the waiting
   card above the composer (The waiting card, below; since LAD-28, 2026-10-13: before, a row
-  of the feed with its card). The tab shows its panel (`GatePanel`, also the compact card of
-  a run's page in Flows), which has no head of its own: the question, the note before the gate (its summary in bold, its body
-  open, more than 20 lines behind Show more) with its chips, then under a muted "It reads"
-  a line per artifact the gate reads (a chip that opens its latest record, and its "title —
-  summary"; "<name>: no record yet"; the name alone while the session's artifacts are not
-  loaded): the latest record comes from the feed's artifacts, so a write while the gate is
+  of the feed with its card). The tab shows its panel (`GatePanel`, also the whole card of
+  a run's page in Flows): the question in its head, the note before the gate (its summary in bold, its body
+  open, more than 20 lines behind Show more), then one row of chips: the note's, then the
+  artifacts the gate reads but the note does not carry, by their titles (LAD-266; before,
+  under a muted "It reads", a line each with its size and "title — summary"); "<name>: no
+  record yet"; the name alone while the session's artifacts are not loaded: the latest record
+  comes from the feed's artifacts, so a write while the gate is
   open shows at once, and the note's chip of an artifact written since says "changed
   since" (docs/design/artifacts.md, Flows), the supervisor's recommendation (below), an
   optional comment for the next step, which takes files as the composer does (LAD-86,
@@ -1036,8 +1040,11 @@ Built in the chat task (2026-10-03):
   them, by id) and one per open gate, in the order their first item was asked (then by its
   id); a tab shows the agent's avatar letter in its colour (`avatar`), or a gate's the
   Flows icon in its run's colour (`runColours`, grey until the runs load), the name (the
-  run's for a gate) and the number of its items in a muted badge; its 3 px top in that
-  colour, dashed for a gate. Many tabs stay on one line, as the terminals' (Terminals,
+  run's for a gate) and the number of its items in a badge of `--count-ink` on `--raised`; its
+  3 px top in that colour, dashed for a gate. A gate's tab is at most 220 px wide (170 px at
+  600 px or less), its run's name cut with "…"; its tooltip, on a hover and on the focus (a
+  button's: none on a tap), says "step <state>" and, when the gate keeps a note, "report by
+  <agent>" (`GateInfo.note_by`, the note's author; LAD-266). Many tabs stay on one line, as the terminals' (Terminals,
   Tabs): a name is cut with an ellipsis down to about 72 px (a shorter one whole), then the
   row scrolls sideways (the wheel too), with no bar, which would lie between the shown tab
   and the panel; the shown tab scrolls into view, and the expand button at the right never
@@ -1045,48 +1052,58 @@ Built in the chat task (2026-10-03):
   on other tabs, and when it empties the first one shows. **A tab's parts** (decided
   2026-11-05, LAD-194, audit LAD-189 F14, F18, F19, frames g3-*; before, a list that scrolled
   and a Send row, so the comment and the recommendation lay under a scroll with no sign of
-  them): `waitingParts.tsx`, shared by an agent's tab and a gate's. A title of at most 2
-  lines, 16 px 600, cut with "…", the whole text then first in the context; the item's meta
-  at its right, mono 12 `--muted` (`<run> · <state> · gate #<id>`, `#<id>`), under it on a
-  phone. A context, the one part that scrolls, a region "Context of the card" the keyboard
-  reaches: a gate's note and what it reads, a question's details and chips; cut, it fades
-  over 28 px into the panel's ground and shows "↓ more" (24 px, next in the Tab order; the
-  card's Expand), both gone at its end and in the expanded card. A footer, always whole,
-  under a line of `--human` at 30 %: the recommendation's line, a gate's comment or a
-  question's choices and field, the buttons. Nothing to show in the context (a gate with no
-  note), no context. **An agent's tab**: one question has its text as the title, its details
-  in the context, and in the footer its choices as chips (32 px, radius 16; one picked,
-  `--action` on `--action-ground`, ✓ on the recommended choice while it stays picked; a second
-  click unpicks), **Other…** (only for a question with a free answer: a field "Your own
-  answer"), then Send and **Skip question**, a text button in `--action` with no frame (a
-  field "Why you skip it (optional)"; a second click takes it back; it goes with Send, as any
-  answer). The three exclude each other, and a pick is kept per question across tab switches.
-  The choices' area is as high as its content up to 4 rows (`--waiting-choices-max`, 160 px; a
-  phone 148 px), then scrolls inside with a fade, a focusable group "Choices" (F43). Several
-  questions have no title: numbered in the context, each with its details, recommendation,
-  choices, Skip question and field; the footer holds Send and the count (the human's decision
-  of 2026-11-05: no pager). **The composer's fold** (LAD-194): while the shown tab of the chat's
-  card has a field of Other… or Skip question open, and the card is neither minimized nor
-  expanded, the composer gives way to a line of 40 px in a dashed `--line` frame, "Answering
-  question #<id> above · Write to supervisor instead" (the first such question), so only one
-  field talks to the agent. The card reports it (`onFold`), the chat shows `ComposerFold`, and
-  the composer stays mounted and hidden, its text, files and quotes kept; it takes no files
+  them; LAD-266, 0.44's look with the mockup `ui-design/gate-card-lean-3`: before, a title of
+  two lines with mono meta beside it and "↓ more"): `waitingParts.tsx` (`CardBody`), shared by
+  an agent's tab, a gate's and a gate on its run's page. A **head**: the question on a band of
+  `--human-head` the panel's width, no line under it, 15 px 600 on one line cut with "…";
+  never scrolling; cut, its whole text is in the UI's tooltip (a hover, the keyboard's focus,
+  a tap: the head is then a stop of the Tab key) and nowhere else; nothing beside it; it
+  names the panel. A **report**, the one part that scrolls, a region "Context of the card"
+  the keyboard reaches: a gate's note and its documents, a question's details and chips; cut,
+  it fades at its lower edge, a mask over 22 px (`has-more`, `useMore.ts`), gone at its end;
+  no "↓ more" or "more". The **recommendation's splitter** (below, Height) or, with none, a
+  line of `--human` at 35 % parts it from the **footer**, always whole: the recommendation
+  (below), a gate's comment or a question's choices and field, the buttons. Nothing for the
+  report (a gate with no note), no report. **An agent's tab**: one question has its text as
+  the head, its details in the report, and in the footer its choices as pills (32 px, radius
+  16; one picked, `--action` on `--action-ground`, ✓ on the recommended choice while it stays
+  picked; a second click unpicks), **Other…** (a question with choices and a free answer: a
+  field "Your own answer"), then **Skip**, a pill in their style (a field "Why you skip it
+  (optional)"; a second click takes it back; it goes with Send, as any answer), then Send. The
+  three exclude each other, and a pick is kept per question across tab switches. A question
+  with no choices and a free answer shows its field at once, "Your answer" (named "Your answer
+  to: <question>"), with no Other…; Skip turns it into a skip's comment and back, the words
+  kept; it counts as answered with words or files. The choices' area is as high as its content
+  up to 4 rows (`--waiting-choices-max`, 160 px; a phone 148 px), then scrolls inside with a
+  fade, a focusable group "Choices" (F43); Skip scrolls with them. Several questions have no
+  head: numbered in the report on the card's ground, no block of their own, each after the
+  first under the footer's line, the panel's width; each with its details, its recommendation
+  whole, its choices with Skip and its field; the footer holds Send and the count (the human's
+  decision of 2026-11-05: no pager). **The composer's fold** (LAD-194; on a phone only since
+  LAD-266): on a phone, while a field of the shown tab of the chat's card has the focus and
+  the card is neither minimized nor expanded, the composer gives way to a line of 40 px in a
+  dashed `--line` frame, "Answering question #<id> above · Write to supervisor instead" (the
+  first question with an open field) or "Commenting on gate #<id> above", so only one field
+  talks to the agent. The card reports it (`onFold`), the chat shows `ComposerFold`, and the
+  composer stays mounted and hidden, its text, files and quotes kept; it takes no files
   meanwhile, and a file dropped on the chat goes nowhere. The link closes the tab's fields and
   gives the composer the focus; a quote does the same; the fields' words stay as drafts for
-  the next Other… or Skip question, their files per question. In a stopped session no field
-  folds the composer: the bar stands in its place (Composer, below). **Fields** (LAD-70, mockup `task/lad-70/mockup-answer-field.html`; LAD-194):
-  those two and a gate's comment for the next step, as wide as their question, open on 1 line
-  (36 px, a phone 44 px), grow with their text, not by the focus (frame g3-390-kbd), to 4 lines,
-  in the expanded card to 8 (`cardLines`, the composer's rule, `fieldHeight.ts`), then scroll
-  inside, with no resize handle; a gate's comment on the Flows tab's card opens 3 lines high
-  and grows to 8, as it did. A field in the footer grows in place; one in the context of several
-  questions brings its lower edge into view (`scrollIntoView({block: "nearest"})`). A ring
+  the next Other… or Skip, their files per question. On a computer an open field leaves the
+  composer as it is. In a stopped session no field folds the composer: the bar stands in its
+  place (Composer, below). **Fields** (LAD-70, mockup `task/lad-70/mockup-answer-field.html`;
+  LAD-194; LAD-266): those two and a gate's comment for the next step ("Comment for the next
+  step (optional)", its placeholder "Comment (optional)" at 600 px or less), as wide as their
+  question, open on 1 line (40 px, a phone 44 px), grow with their text, not by the focus
+  (frame g3-390-kbd), to 8 lines (`CARD_FIELD_LINES`, the composer's rule, `fieldHeight.ts`),
+  then scroll inside, with no resize handle; a gate's comment on the Flows tab's card opens 3
+  lines high and grows to 8, as it did. A field in the footer grows in place; one in the report
+  of several questions brings its lower edge into view (`scrollIntoView({block: "nearest"})`). A ring
   around an item of the card shows whole (LAD-78, mockup `task/lad-78/mockup-focus-ring.html`;
-  LAD-194): the boxes that scroll (the context, the choices' area) keep `--ring-room` (4 px, the
-  largest ring) as padding, pulled back where the items must stand at the footer's edge, the
-  footer's padding holds a field's 3 px ring, and a field scrolled into view keeps that room
-  (`scroll-margin`; also the Flows tab's gate card). A single item marked from the feed fills
-  the top, so its ring stands inside it (`inset`); a question of several keeps its ring around it.
+  LAD-194): the boxes that scroll (the report, the choices' area) keep room for a ring as
+  padding, pulled back where the items must stand at the footer's edge, the footer's padding
+  holds a field's 3 px ring, and a field scrolled into view keeps that room (`scroll-margin`;
+  also the Flows tab's gate card). An item marked from the feed (a single item's head, a
+  question of several) has its ring inside it (`inset`): the panel cuts what is outside.
   **Files in the fields** (decided 2026-10-18, LAD-86, mockup
   `task/lad-86/mockup-answer-files.html`, option A): Other…'s field, Skip's and a gate's
   comment take files as the composer does (Files in the composer, below; one module,
@@ -1116,18 +1133,38 @@ Built in the chat task (2026-10-03):
   `task/lad-28/mockup-recommendation-in-tab.html`, option B): the counter counts it and Send
   sends it as any pick; the human's own pick, also an unpick, wins, and a recommendation
   given later picks its choice then only in a question the human has not touched. A comment with a choice is not offered (the API keeps `text` with `choice`).
-  **A gate's tab**: the gate's panel (Flow gates, above), its question the title, its note and
-  reads the context, its recommendation, comment and buttons the footer; they answer at once. **Look**: the panel on `--human-ground` in a 1 px `--human` frame,
+  **A gate's tab**: the gate's panel (Flow gates, above), its question the head, its note (no
+  band at its left; its summary and headings 14 px 600) and its documents the report, its
+  recommendation, comment and buttons the footer; they answer at once. Its documents are one
+  row of chips (LAD-266): the note's attachments, then what the gate reads but the note does
+  not carry, each once, by the artifact's title, else its short name, with no size, no
+  tooltip and no "It reads" (`AttachmentChips`'s `titled`); a chip opens the artifact panel
+  as in the chat, on Needs you too, and keeps the name "Open artifact <full name>"; one the
+  gate reads is shown as of its latest record. **Look**: the panel on `--human-ground` in a 1 px `--human` frame,
   radius `0 10px 10px 10px`; the shown tab lies on it, tinted with 10 % of its colour, its
-  text `--ink` 600; the others `--raised` and `--muted`. **Height** (LAD-194): as high as its
-  content. Title and context together are at most 40 % of the chat, measured (`useHeight` on
-  `.chat`, `--waiting-top-max`), and of the window (`40dvh`) until it is measured.
-  The footer is not in that limit and is not cut by it. Short of room the feed
-  goes first (no least height while a card shows), then the context and the title, then the
-  choices' area to one row, an opened recommendation to one line, then the field stops at its
-  height and scrolls inside; the buttons stay. The order is a ratio of `flex-shrink` weights
-  (styles.css), no measuring in JS; on a phone a field in the footer takes the choices out at
-  once (Phone layout). At 601 to 900 px, where a session's page stands still (LAD-193), the
+  text `--ink` 600; the others `--raised` and `--muted`. **Height** (LAD-194; LAD-266): as high
+  as its content and at most half the chat, measured (`useHeight` on `.chat`, `--waiting-max`;
+  `50dvh` until it is measured). The limit is the report's to keep: it is at most half the
+  chat less the tabs, the head and the footer (`--waiting-rest`, measured) and at least 56 px,
+  so a card whose rest alone takes more than half is taller, its report at its least; the
+  head, the recommendation's splitter and the footer never give way to the limit. Short of
+  room the feed goes first (no least height while a card shows), then the report down to 56
+  px, then the choices' area to one row, the recommendation's text to one line, then the
+  field stops at its height and scrolls inside; the buttons stay. The order is a ratio of
+  `flex-shrink` weights (styles.css); on a phone a field in the footer takes the report, the
+  splitter and the choices out at once, and the head gives way before the recommendation
+  (Phone layout); on any touch screen with a field of the footer in focus (its keyboard
+  open), the report may go past its least, then the head. **The recommendation's splitter**
+  (LAD-266): in a session's chat, while the shown tab of one item has a given recommendation,
+  the UI's `Splitter` with its grip ("Resize the recommendation", `edge="top"`, no tooltip)
+  stands between the report and the footer, 8 px over their border with a line of `--human`
+  at 35 %, 2 px `--action` on a hover, the focus or a drag; a phone holds it by a band of 24
+  px. Dragged, or ↑ / ↓ by 40 px, it sets the height of the recommendation's text from one
+  line (20 px) to the lesser of its whole text and the room the report gives down to 56 px
+  and the feed down to its 160 px (once the report is at its least the card grows into the
+  feed); a double click gives back 4 lines (82 px; a phone 2, 42 px). The height is one value
+  in the browser for every card (`lado.recommendationHeight`). No splitter on Needs you, on a
+  run's page, without a given recommendation, or in a tab of several questions. At 601 to 900 px, where a session's page stands still (LAD-193), the
   card stands above the composer as in a wide window, so its footer and the composer are in
   sight at once. In a session's chat on a window wider than 900 px, the edge above the card is a splitter (decided
   2026-10-14, LAD-54, mockup `task/lad-54/mockup-gate-card.html`, screen D; before, the
@@ -1135,9 +1172,10 @@ Built in the chat task (2026-10-03):
   read the replies in the other half): dragged, or ↑ / ↓ on it by 40 px, it gives the
   card a height from its least one (`WAITING_MIN`, 166 px) to the room it shares with the
   feed less the feed's 160 px (`FEED_MIN`); a double click forgets it, back to the content's
-  height. The height is the whole card's but goes to the top, less the tabs and the footer
-  (`--waiting-rest`), so the footer never gives way to it: lower than they are, they show whole
-  with no title or context. It is one value for every session, as the columns' widths are (`lado.waitingHeight`); a chat too
+  height. The height is the whole card's but goes to the report, less the tabs, the head and
+  the footer (`--waiting-rest`), so they never give way to it: lower than they are, they show
+  whole with the report at its least, 56 px. Neither splitter has a tooltip, only its name
+  (`Splitter`'s `hint={false}`; LAD-266). It is one value for every session, as the columns' widths are (`lado.waitingHeight`); a chat too
   short for it shows the card lower and keeps the chosen height. Dragged down past the
   least height, the card stays at it and minimizes (below) when the edge is let go, while
   the edge still holds the pointer, so the release lands on no line or tab of the
@@ -1187,27 +1225,28 @@ Built in the chat task (2026-10-03):
   supervisor for its view on each gate and each other agent's question (docs/design/agents.md), and it is part of that card, never an entry of its own: `recommendation`
   of `GateInfo` and of a question's `MessageInfo` (`RecommendationInfo`: state, text,
   choice, disagrees, by, at; none when never asked), brought by the feed with the item.
-  In the waiting card, in the chat and on Needs you (`RecommendationBar`, LAD-194; the human's
-  decision of 2026-11-05), one line over the answer: the avatar of 20 px, "**Supervisor
-  recommends <option>:** <text>" (the option as the card's button names it) or "**Supervisor's
-  recommendation:** <text>" without an option of the card's, cut with "…" (a phone: 2 lines);
-  " · disagrees with <agent>" in orange stands right after the option, so a cut never takes it.
-  Its whole text and time are in its tooltip; a click opens it to 3 lines of Markdown that scroll
-  inside, with a fade at the lower edge until the end; in the expanded card it shows whole, at most 40 % of the window's height. On a run's page
-  in Flows, a block between the question's text (the gate's note and what it reads) and the
-  answer: the supervisor's small avatar,
-  "Supervisor's recommendation", "disagrees with <agent>" as an orange chip when the
-  supervisor disagrees with the agent whose report led to the gate or who asks, the time
-  on the right, then the whole text as Markdown (no length limit or Show more: the
-  supervisor is told to keep it short). Its left band is the supervisor's avatar colour,
-  orange when it disagrees. On a gate the recommended option's button is the panel's only
+  One block in every place the card stands (LAD-266; before, one line over the answer in the
+  card, `RecommendationBar` of LAD-194, and a block with a band on a run's page), first in the
+  footer: `--panel` in a 1 px `--line` frame, radius 6; its head the supervisor's avatar of 20
+  px, "supervisor recommends **<option>**" (the option as the card's button names it; without
+  one of the card's options, "supervisor"), the time on the right, 13 px `--muted`; then its
+  text as Markdown in a box of `--adv`, 4 lines (82 px; a phone 2, 42 px) or what the splitter
+  set (The waiting card, Height), that scrolls on its own (`overscroll-behavior: contain`), a
+  stop of the Tab key, and fades at its lower edge over 26 px while more is below; no "more" or
+  "less". On Needs you, on a run's page and in a tab of several questions it is whole. When
+  the supervisor disagrees with the agent whose report led to the gate or who asks, the block
+  has a `--warn` frame and an `AlertIcon` of 16 px in `--warn` before the avatar; the words are
+  only in the block's name, "Supervisor's recommendation, disagrees with the step's report" (a
+  gate) or "…, disagrees with <agent>" (a question), and in the sign's tooltip; none when the
+  supervisor wrote the gate's report itself. On a gate the recommended option's button is the panel's only
   primary one, the others quiet, with no other label, whether the supervisor agrees or not;
   the option is not named in the block's head (the blue button says it). Without a
   recommended option the first button stays primary. On a question, whose choices in its
   tab are picks and whose primary button is Send, the recommended choice is picked ahead
   (The waiting card, above). While it is asked, one muted
-  italic line "Supervisor is preparing a recommendation…"; when the supervisor's turn
-  ended without it, "The supervisor gave no recommendation"; never asked, nothing. The
+  italic line "Supervisor is preparing a recommendation…" and no block; when the supervisor's
+  turn ended without it, or never asked, nothing (`lado answer` still says "The supervisor
+  gave no recommendation"). The
   human answers in every state; a recommendation given later replaces the line and moves
   the primary button (or picks its choice). Closed (a gate opened by a click, a closed question under its
   choices), one quiet line with the small avatar, "Supervisor recommended: <option>" (the
@@ -2505,29 +2544,33 @@ phone held sideways). Change: `openspec/changes/phone-layout/`.
 - **Sessions**: no strip; `/sessions` is the list across the screen, a session's page the
   session alone. `lado.sessionsList` is neither read nor written.
 - **Tabs**: a session's four tabs without their icons fit 360 px; the Kits page's three too.
-- **The chat**: the feed scrolls by itself, the waiting card (its title and context at most
-  40 % of the chat, no edge, no height of its own) and the composer stay at the bottom; the composer's text is
+- **The chat**: the feed scrolls by itself, the waiting card (at most half the chat, as on a
+  computer; no edge, no height of its own) and the composer stay at the bottom; the composer's text is
   16 px (Safari zooms into a smaller field) and its keys hint is not shown; so is the text
   of the card's fields that take files (an own answer, a skip's or a gate's comment; LAD-86). A
   stopped session's bar has its button under the text at full width, 44 px high, held upright,
   and stays one row held sideways (`data-phone="short"`), the button 44 px high too. A flow event's
   line starts at the feed's left edge, its actor, chips and time on the first line, its
-  text wrapped under them, whole. The card's tabs, Minimize and Expand (44×44), fields, chips
-  and buttons are 44 px high; "↓ more" stays 24 px, as Expand does the same. Its tabs draw in
+  text wrapped under them, whole. The card's tabs, Minimize and Expand (44×44), fields, chips,
+  pills (Skip too) and buttons are 44 px high, and the answer's buttons share the footer's
+  width, "<k> of <n> answered" on a line of its own. The recommendation's text opens on 2 lines,
+  and its splitter is held by a band of 24 px that scrolls nothing (LAD-266). Its tabs draw in
   (a name down to 48 px, less padding), so a gate's and a question's stand whole. A field of the card
   in focus does not expand it (LAD-194, the human's decision of 2026-11-05; since LAD-126 it
   did, as the field lay in a list with no room above the keyboard): the footer is always whole,
-  so the session's tabs, the Team row, the context and a question's choices step aside (`typing`)
+  so the session's tabs, the Team row, the report, the recommendation's splitter and a
+  question's choices (Skip among them) step aside (`typing`)
   and the composer folds, a gate's comment into "Commenting on gate #<id> above", until the focus
   leaves. The session's tabs go too, unlike frame g3-390-kbd: the human's decision of 2026-11-05,
   as the buttons were cut under about 375 px. So do the choices, whole and at once, ahead of the
   recommendation and against spec §3's order: the human's decision of 2026-11-05 (F16), as Send
   was cut under about 378 px under a recommendation of two lines; the field closed, they are
-  back. A field in the context of several questions keeps the context it stands
-  in, and comes back into its view when the keyboard opens; an expanded card keeps its context.
-  A button pressed keeps the focus in the field, so nothing moves under the finger before its
-  click. Below 440 px of app (imitated down to 340 px; a real keyboard is the human's to check) the
-  top goes first, the meta before the title. An expanded card, by its button or sideways, hides the
+  back. A field in the report of several questions keeps the report it stands
+  in, and comes back into its view when the keyboard opens; an expanded card keeps its report,
+  which then gives way first, past its least. A button pressed keeps the focus in the field, so
+  nothing moves under the finger before its click. Below 440 px of app (imitated down to 340
+  px; a real keyboard is the human's to check) the head goes first, before the recommendation,
+  whose text then gives way down to its head line (LAD-266). An expanded card, by its button or sideways, hides the
   session's tabs and the Team row: it fills the page under the top bar, until its fold button,
   Esc, or nothing waits. Needs you, which scrolls as a page, changes nothing on a field's focus.
 - **Sideways** (`short`): the chat's card is minimized by the layout (its tabs and one
@@ -3223,10 +3266,13 @@ follows a run and answers its gate here instead of `lado ls`, `lado log` and `fl
     `pre-wrap`, so is the gate card's problem).
   - **Now**, a card: an active run `Now · <how long>`, who acts as the core says it (the
     UI does not parse it; a link to the agent while it lives) · state · `visit 2 of 3`; a
-    waiting run, orange, `Waits for you · <how long>` and its open gate, the chat's `Gate`
-    in its compact form (title, question, comment, buttons; no note, no reads, which are
-    in the history), answered in place through `answerGate` (disabled while the session
-    is stopped), or the run's `reason` without a gate; an ended or cancelled run `Ended ·
+    waiting run at a gate, the gate's whole card (`GateCard`, LAD-266; before, a compact
+    form under "Gate #n · run · state"): the waiting card's panel without tabs, its head
+    `Waits for you · <how long>` (12 px 600 caps, `--muted`) over the question, the note and
+    its documents' chips, the recommendation, the comment (3 lines) and the buttons, nothing
+    scrolling inside and no splitter, answered in place through `answerGate` (disabled while
+    the session is stopped); a waiting run without a gate, orange, `Waits for you · <how
+    long>` and the run's `reason`; an ended or cancelled run `Ended ·
     <time>` (green) or `Cancelled · <time>`, the end's or cancel's `detail` and how long
     the run took (`created_at` to `ended_at`). The chat's gate card is unchanged.
   - **History · N events**: one feed, the newest first by default; the switch "Newest
@@ -3651,7 +3697,10 @@ high, 14 px, radius 8, by one rule each (`.answer .primary, .answer .quiet`; `.w
 .primary, .waiting-send .quiet`), and the fields take radius 8 with them; the global
 `.primary` (32 px, radius 6) and `.quiet` (28 px, 13 px) stay as they are elsewhere (one
 UI-wide scale: BACKLOG.md). The main action is `.primary`, the others `.quiet`; a
-question's options are neutral until picked, Other… in `--muted`, Skip question in `--action`.
+question's options are neutral until picked, Other… and Skip in `--muted`. The waiting card has
+two colours of its own (LAD-266): `--human-head`, a step deeper than `--human-ground`, the
+question's head (`--ink` and `--muted` on it at least 4.5:1; never `--human`), and
+`--count-ink` for a tab's count on its `--raised` badge.
 
 **Time**: every time of day in the UI is written in 24 hours (`clock()`, `hourCycle:
 "h23"`), whatever the browser's locale.

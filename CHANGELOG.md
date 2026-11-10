@@ -1,9 +1,12 @@
 # Changelog
 
-## 0.45.1 (unreleased)
+## 0.46.0 (unreleased)
 
 ### Improved
 
+- **The waiting card looks as in 0.44 again, with fewer words.** The question stands on top, only
+  the report scrolls, and the supervisor's recommendation shows a few lines you can make taller;
+  documents show their titles. Needs you and a run's page in Flows show the whole card.
 - **Hovering a session no longer covers the chat.** A session in the list shows no card under
   the pointer; an icon of the folded list shows only the session's name and state. The rest is
   in the details that the session's title opens.

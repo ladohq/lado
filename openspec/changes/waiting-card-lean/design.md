@@ -40,6 +40,18 @@ LAD-194 (choices' area, opened recommendation, field) stays for a footer taller 
 the 601 to 900 px and phone requirements rely on it; the recommendation's box (D4) takes the
 opened recommendation's place in it.
 
+Built (agreed with the supervisor on 2026-11-10): a `max-height` on the whole card cut its footer
+in a low chat, where the tabs, the head and the footer alone take more than half, and the footer
+measured in that state fed the limit back. So the half of the chat (`--waiting-max`, measured)
+is the report's to keep: `max-height: max(56px, var(--waiting-max) − var(--waiting-rest))`, the
+rest being the tabs, the head, the footer and the panel's borders, measured always; such a card
+is taller than half, its report at 56 px. With a field of the footer in focus, on a phone the
+head gives way before the recommendation (its band's padding moves to its text, so it can go to
+nothing), and on any touch screen (a tablet's keyboard, a phone's expanded card) the report
+gives way past 56 px, then the head, so the field and the buttons stay above the keyboard.
+Scenario "Made smaller" uses 300 px: 230 px is below the least of a card whose head and footer
+never give way.
+
 **D3. The fade.** `useMore` stays the one measure (`scrollTop + clientHeight < scrollHeight −
 1`, on scroll, resize, and content); its class becomes `has-more` on the box itself, and the fade
 is a `mask-image` on it (report 22 px, recommendation 26 px), not a pseudo-element over a ground,
@@ -63,8 +75,12 @@ its own). Props: `rec`, `options`, `label`, `kind` ("gate" | "question"), `whole
 **D5. The recommendation's splitter.** The shared `Splitter` (`edge="top"`, `grip`, label "Resize
 the recommendation"), placed by the panel between `.waiting-scroll` and `.waiting-foot` only in
 the chat, with a given recommendation, not in the `whole` card. `width` is `--adv`; bounds `min`
-20 (one line), `initial` 82 (phone 42), `max` = min(the text's `scrollHeight`, the room at which
-the report is 56 px), measured with `useHeight` on the report and the text. `onReset` goes back to
+20 (one line), `initial` 82 (phone 42), `max` = min(the text's whole height, the room the report
+gives down to 56 px plus what the feed gives down to its 160 px), measured with `useHeight` on
+the report, the text's box and the text (built so, agreed with the supervisor on 2026-11-10: on
+a phone the report is at 56 px from the start, and the room at which it is 56 px alone left the
+splitter nothing to move; once the report is at its least the card grows into the feed, as its
+edge does). `onReset` goes back to
 `initial`. The value is one in the browser, `lado.recommendationHeight` in `prefs.ts`, as the
 card's `lado.waitingHeight` is: one for every card and session. CSS: in the column's flow, 8 px
 high over the border (`margin: -4px 0`), a 1 px line of `--human` 35 % always, 2 px `--action` on
@@ -113,7 +129,11 @@ then in the footer the recommendation, the choices' area (`ChoicesArea` with Ski
 field and Send. Several: no head; the list in the report with no padding, each question 12/16/14,
 parted from the one before by the same 35 % line; each question's own recommendation is the same
 block (D4), whole, as the report scrolls. "k of N answered" stays as in 0.44 and main, gone once
-all are answered.
+all are answered. As a pill among the choices, Skip scrolls with them when they scroll and
+steps aside with them on a phone while a field has the focus (the supervisor's choice of
+2026-11-10: the scenario "Six long choices in a low window" says Skip is among the choices and
+Send in sight, no longer "Send and Skip"). On a phone the answer's buttons share the footer's
+width and "k of N answered" takes its own line.
 
 **D13. The composer.** On a computer the card no longer folds the composer: `foldLine` is only
 for the phone's `typing` (gate: "Commenting on gate #<id> above"; question: "Answering question

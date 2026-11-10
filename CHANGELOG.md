@@ -1,9 +1,21 @@
 # Changelog
 
-## 0.45.1 (unreleased)
+## 0.46.0 (unreleased)
+
+### New
+
+- **The session's name beside Task, made from the task.** New session names the session after
+  a tracker key in the task (`Fix LAD-263 …` gives `lad-263`), else after the place, until you
+  type your own name, which is kept as typed
+  in the session list; empty the field to get LADO's name back.
 
 ### Improved
 
+- **A project's session name says a repeated name once.** The repository `lado` of the project
+  `lado` gives the session `lado`, not `lado-lado`, also for `lado start --project`; resume an
+  older `lado-lado` by its name.
+- **New session reads more easily.** Where shows each place on one line, and Team says Kits, as
+  the Kits page does.
 - **Hovering a session no longer covers the chat.** A session in the list shows no card under
   the pointer; an icon of the folded list shows only the session's name and state. The rest is
   in the details that the session's title opens.

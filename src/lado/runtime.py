@@ -416,8 +416,15 @@ def slug(value: str) -> str:
 
 
 def project_session_name(project: str, repo_name: str) -> str:
-    """The default name of a session in the repository `repo_name` of `project`."""
-    return slug(f"{project}-{repo_name}")
+    """The default name of a session in the repository `repo_name` of `project`: the two
+    joined without a repeat (`lado`/`lado` is `lado`, `lado`/`lado-site` is `lado-site`,
+    `acme-web`/`web` is `acme-web`, `shop`/`frontend` is `shop-frontend`)."""
+    p, r = slug(project), slug(repo_name)
+    if r == p or r.startswith(f"{p}-"):
+        return r
+    if p.endswith(f"-{r}"):
+        return p
+    return f"{p}-{r}"
 
 
 def _run_git(

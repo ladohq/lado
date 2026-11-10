@@ -253,6 +253,12 @@ def test_the_project_and_repository_asked(client, shop, acme, fake_tmux):
     assert project_launch(client)["gone"] is None  # nothing asked, nothing gone
 
 
+def test_a_repository_named_as_its_project_is_named_once(client, shop):
+    projects.create("lado", "LADO")
+    init_repo(projects.folder("lado") / "lado")
+    assert project_launch(client, project="lado", repo="lado")["default_name"] == "lado"
+
+
 def test_a_project_whose_folder_is_not_found_is_chosen_only_when_asked(client, shop, acme):
     projects.create("aaa", "Aaa")  # first by title
     projects.folder("aaa").rmdir()

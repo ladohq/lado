@@ -40,6 +40,28 @@ def test_a_session_in_a_project_takes_its_repository_and_name(shop, fake_tmux):
 def test_the_default_name_of_a_session_in_a_project():
     assert runtime.project_session_name("shop", "Front.End") == "shop-front-end"
     assert runtime.project_session_name("shop", "frontend") == "shop-frontend"
+    assert runtime.project_session_name("acme", "api") == "acme-api"
+
+
+@pytest.mark.parametrize(
+    ("project", "repo", "name"),
+    [("lado", "lado", "lado"), ("lado", "lado-site", "lado-site"), ("acme-web", "web", "acme-web")],
+)
+def test_the_default_name_does_not_repeat_the_project(project, repo, name):
+    assert runtime.project_session_name(project, repo) == name
+
+
+def test_a_repository_named_as_its_project_starts_without_the_repeat(
+    tmp_path, monkeypatch, fake_tmux
+):
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    projects.create("lado", "LADO")
+    init_repo(projects.folder("lado") / "lado")
+    _start(project="lado", repo_name="lado", name="lado-lado")  # a session of before
+    runtime.stop_session("lado-lado")
+    started = _start(project="lado", repo_name="lado")
+    assert (started.session.name, started.resumed) == ("lado", False)
+    assert state.get_session("lado-lado").stopped_at
 
 
 def test_the_longest_project_and_repository_give_a_session_name_that_starts(shop, fake_tmux):

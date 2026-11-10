@@ -17,7 +17,7 @@ const RECENT: RecentFolder[] = [
   { path: "/w/projects/shop/backend", session: session("shop-backend", "/w/projects/shop/backend"), project: { id: "shop", title: "Shop", repo: "backend" } },
 ];
 
-function box(shown: Shown = { icon: "folder", name: "webapp", path: "/w/webapp" }) {
+function box(shown: Shown = { icon: "folder", name: "webapp", sub: "/w/webapp" }) {
   const calls = { recent: vi.fn(), path: vi.fn(), way: vi.fn() };
   render(
     <PlaceBox
@@ -34,11 +34,19 @@ function box(shown: Shown = { icon: "folder", name: "webapp", path: "/w/webapp" 
   return { input: screen.getByRole("combobox"), calls };
 }
 
-test("closed, it shows the place's name, its path, and a project's badge", () => {
-  box({ icon: "project", name: "backend", badge: "Shop" });
+test("closed, it shows the place's name and its secondary on one line, the two as its tooltip", () => {
+  box({ icon: "project", name: "backend", sub: "in project Shop" });
   expect((screen.getByRole("combobox") as HTMLInputElement).value).toBe("backend");
-  expect(screen.getByText("Project Shop")).toBeTruthy();
+  const sub = screen.getByText("in project Shop", { selector: ".place-text .place-sub" });
+  expect(sub.closest(".place-box")!.getAttribute("title")).toBe("backend — in project Shop");
+  expect(document.querySelector(".place-badge")).toBeNull();
   expect(screen.getByRole("combobox").getAttribute("aria-expanded")).toBe("false");
+});
+
+test("a place without a secondary has its name alone as its tooltip", () => {
+  box({ icon: "link", name: "Clone from URL" });
+  expect(document.querySelector(".place-sub")).toBeNull();
+  expect(document.querySelector(".place-box")!.getAttribute("title")).toBe("Clone from URL");
 });
 
 test("Alt+Down opens it on Recent then Somewhere else; arrows move, Enter picks a way", () => {
@@ -49,7 +57,7 @@ test("Alt+Down opens it on Recent then Somewhere else; arrows move, Enter picks 
   const options = within(list).getAllByRole("option");
   expect(options.map((one) => one.textContent)).toEqual([
     "webapp/w/webapp",
-    "backendProject Shop",
+    "backendin project Shop",
     "Other folder…",
     "Clone from URL…",
     "New empty folder…",
@@ -81,7 +89,7 @@ test("a typed letter opens it filtered by name; a typed path offers Use folder",
   const { input, calls } = box();
   fireEvent.keyDown(input, { key: "k" });
   expect((input as HTMLInputElement).value).toBe("k");
-  expect(screen.getAllByRole("option")[0].textContent).toBe("backendProject Shop");
+  expect(screen.getAllByRole("option")[0].textContent).toBe("backendin project Shop");
   fireEvent.change(input, { target: { value: "/tmp/x" } });
   expect(screen.getAllByRole("option").map((one) => one.textContent)).toEqual(["Use folder /tmp/x"]);
   fireEvent.keyDown(input, { key: "Enter" });

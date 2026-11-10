@@ -175,4 +175,4 @@ session ran in that project, listed as a project item (capability new-session-wi
 #### Scenario: A project's session in the recent places
 - **WHEN** the latest session ran in the repository `backend` of the project `shop`
 - **THEN** `/api/folders/recent` lists it with `project: {id: "shop", title, repo:
-  "backend"}`, and Where's Recent shows `backend` with the badge `Project <title>`
+  "backend"}`, and Where's Recent shows `backend` with `in project <title>`

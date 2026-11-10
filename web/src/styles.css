@@ -7003,27 +7003,34 @@ button.locked:disabled,
   transform: rotate(180deg);
 }
 
+/* A place on one line: its name, then the muted secondary, which shrinks first (down to
+   about 12 characters), then the name. A pair that fits is never cut. */
 .place-text {
   display: flex;
   flex: 1;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: baseline;
-  column-gap: 8px;
+  gap: 8px;
   min-width: 0;
+  white-space: nowrap;
 }
 
 .place-name {
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.place-path {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: var(--muted);
-  font-size: 12px;
+  font-size: 15px;
+  font-weight: 600;
   text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.place-sub {
+  flex: 0 1000 auto;
+  min-width: min(12ch, 45%);
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
 }
 
 .field input.place-input {
@@ -7040,28 +7047,50 @@ button.locked:disabled,
   cursor: pointer;
 }
 
-.field input.place-input.place-name {
-  flex: none;
-  max-width: 100%;
+/* The closed field is as wide as its name, not the row, so the secondary follows it: a
+   grid of one cell holds the input and a hidden copy of the name in the same font, which
+   sets the cell's width; it shrinks below that once the secondary is at its minimum. */
+.place-fit {
+  display: inline-grid;
+  flex: 0 1 auto;
+  grid-template-columns: minmax(0, max-content);
+  min-width: 0;
+}
+
+.place-fit.open {
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* 1 px over the text: layout rounds a text's width down, and a fraction short shows an
+   ellipsis. */
+.place-fit::after {
+  content: attr(data-text);
+  grid-area: 1 / 1;
+  height: 0;
+  padding-right: 1px;
+  overflow: hidden;
   font-size: 15px;
   font-weight: 600;
+  visibility: hidden;
+  white-space: pre;
+}
+
+/* No width of its own (an input's default is some 20 characters): the cell's. */
+.field .place-fit > input.place-input {
+  grid-area: 1 / 1;
+  width: 0;
+  min-width: 100%;
+}
+
+.field input.place-input.place-name {
+  font-size: 15px;
+  font-weight: 600;
+  text-overflow: ellipsis;
 }
 
 .field input.place-input:disabled {
   background: none;
-}
-
-.place-badge {
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding: 0 7px;
-  border-radius: 4px;
-  background: var(--action-ground);
-  color: var(--action);
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
 }
 
 .place-list {
@@ -7175,6 +7204,65 @@ button.locked:disabled,
   gap: 2px;
 }
 
+/* Task's label row carries the session's name on its right; on a narrow window Name drops
+   under Task's label rather than overflow. */
+.task-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  min-width: 0;
+}
+
+.name-inline {
+  display: flex;
+  flex: 0 1 300px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.name-inline > .field-label {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.field .name-inline input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-overflow: ellipsis;
+}
+
+.field .name-inline input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+.field .name-inline input:hover {
+  border-color: var(--muted);
+}
+
+.field .name-inline input:focus {
+  outline: 0;
+  border-color: var(--action);
+  box-shadow: 0 0 0 3px var(--action-ground);
+}
+
+.field .name-inline input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
 .launch-task textarea {
   width: 100%;
   min-height: 84px;
@@ -7247,12 +7335,20 @@ button.locked:disabled,
   background: var(--action-ground);
 }
 
+/* One chevron, down while Team is folded, up while it is open. */
 .team-change::after {
-  content: " ›";
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-right: 1.6px solid;
+  border-bottom: 1.6px solid;
+  transform: translateY(-3px) rotate(45deg);
 }
 
 .team-change[aria-expanded="true"]::after {
-  content: " ⌄";
+  transform: translateY(1px) rotate(225deg);
 }
 
 .team-body {
@@ -8392,6 +8488,17 @@ button.locked:disabled,
     flex-basis: 100%;
   }
 
+  /* A phone: Name's part as narrow as its field allows, so the row's free room falls
+     between Task's label and Name's, which then read as two. */
+  .name-inline {
+    flex: 0 1 auto;
+  }
+
+  .field .name-inline input {
+    width: 140px;
+    max-width: 140px;
+  }
+
   .team-head {
     flex-wrap: wrap;
   }
@@ -8399,6 +8506,11 @@ button.locked:disabled,
   .team-sum {
     flex-basis: 100%;
     order: 3;
+  }
+
+  .team-sum > span {
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .team-change {

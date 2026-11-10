@@ -1,6 +1,6 @@
 """The New session window's controls for the browser tests (openspec change
-new-session-window): the rail's New session, Where's list, Other folder…'s path field, Team
-and the footer's start button."""
+new-session-window): the rail's New session, Where's list, Other folder…'s path field, the
+session's Name, Team and the footer's start button."""
 
 from playwright.sync_api import Locator, Page, expect
 
@@ -51,10 +51,10 @@ def agent(dialog: Locator) -> Locator:
 
 
 def name_field(dialog: Locator) -> Locator:
-    open_team(dialog)
-    return dialog.get_by_role("textbox", name="Session name")
+    """The session's Name, on Task's label row."""
+    return dialog.get_by_role("textbox", name="Name", exact=True)
 
 
-def add_setup(dialog: Locator) -> Locator:
+def add_kit(dialog: Locator) -> Locator:
     open_team(dialog)
-    return dialog.get_by_role("combobox", name="Add setup")
+    return dialog.get_by_role("combobox", name="Add kit")

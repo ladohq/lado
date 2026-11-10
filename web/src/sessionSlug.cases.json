@@ -1,0 +1,15 @@
+{
+  "about": "A session's name as the core makes it from a typed text (runtime.slug) and as the New session window shows it (sessionName.ts's slug): one table, read by sessionName.test.ts and tests/test_session_slug_cases.py. An empty slug is a text with nothing left: the core then says lado, the window takes its automatic name.",
+  "cases": [
+    { "text": "Review Kao", "slug": "review-kao" },
+    { "text": "review-kao", "slug": "review-kao" },
+    { "text": "Front.End", "slug": "front-end" },
+    { "text": "lad_263", "slug": "lad_263" },
+    { "text": "--a--", "slug": "a" },
+    { "text": "  Fix   the  login ", "slug": "fix-the-login" },
+    { "text": "LAD-263: codex", "slug": "lad-263-codex" },
+    { "text": "Вход", "slug": "" },
+    { "text": "Вход после сессии 2", "slug": "2" },
+    { "text": "Ünïcode", "slug": "n-code" }
+  ]
+}

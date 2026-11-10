@@ -123,7 +123,7 @@ def test_the_last_repository_comes_back_with_its_stopped_session_beside_a_new_on
     log_in(page, server)
     dialog = new_session(page)
     expect(dialog.get_by_role("combobox", name="Where")).to_have_value("frontend")
-    expect(dialog.locator(".place-box .place-badge")).to_have_text("Project Shop")
+    expect(dialog.locator(".place-box .place-sub")).to_have_text("in project Shop")
     expect(dialog.locator(".place-line")).to_contain_text("Session shop-frontend stopped here")
     expect(agent(dialog)).to_have_value("fake")  # its last session's
     expect(name_field(dialog)).to_have_value("shop-frontend-2")
@@ -149,7 +149,7 @@ def test_folders_refusal_inside_a_project_leads_to_the_project(page: Page, shop,
     shot(page, "refused")
     refusal.get_by_role("button", name="Start in the project Shop").click()
     expect(dialog.get_by_role("combobox", name="Where")).to_have_value("backend")
-    expect(dialog.locator(".place-box .place-badge")).to_have_text("Project Shop")
+    expect(dialog.locator(".place-box .place-sub")).to_have_text("in project Shop")
     expect(name_field(dialog)).to_have_value("shop-backend")
 
     # A folder of the project that is no repository: its page.
@@ -210,3 +210,54 @@ def test_on_a_phone_the_project_way_fits_the_sheet(page: Page, shop, server, sho
     dialog.get_by_role("combobox", name="Project").select_option("acme")
     expect(dialog).to_contain_text("No repositories yet.")
     shot(page, "phone-empty-dark", full_page=False)
+
+
+def test_a_repository_named_as_its_project_is_named_once(page: Page, shop, server, shot):
+    """The project lado's repository lado: the window offers `lado`, not `lado-lado`, and
+    the session starts under it (change session-name-from-task)."""
+    projects.create("lado", "LADO")
+    agent_helpers.init_repo(projects.folder("lado") / "lado")
+    page.set_viewport_size({"width": 1440, "height": 900})
+    log_in(page, server)
+    dialog = new_session(page)
+    to_project(dialog)
+    dialog.get_by_role("combobox", name="Project").select_option("lado")
+    expect(repo(dialog, "lado")).to_have_attribute("aria-checked", "true")
+    expect(name_field(dialog)).to_have_value("lado")
+    shot(page, "lado")
+    agent(dialog).select_option("fake")
+    dialog.get_by_role("button", name="Start in LADO").click()
+    expect(page).to_have_url(f"{server['url']}/sessions/lado/activity")
+    idle("lado")
+    assert state.get_session("lado").project == "lado"
+    runtime.stop_session("lado")
+
+
+def test_on_a_phone_where_is_one_line_with_its_project(page: Page, shop, server, shot):
+    """A long repository of a long project: the place's name and the start of `in project
+    …` share one line at 390 px, the secondary cut first (change session-name-from-task)."""
+    projects.create("northwind", "Northwind Traders")
+    agent_helpers.init_repo(projects.folder("northwind") / "customer-portal-frontend")
+    runtime.start_session(
+        None, None, None, "fake", project="northwind", repo_name="customer-portal-frontend"
+    )
+    idle("northwind-customer-portal-frontend")
+    runtime.stop_session("northwind-customer-portal-frontend")
+    page.set_viewport_size({"width": 390, "height": 844})
+    log_in(page, server)
+    dialog = new_session(page)
+    where = dialog.get_by_role("combobox", name="Where")
+    expect(where).to_have_value("customer-portal-frontend")
+    sub = dialog.locator(".place-box .place-sub")
+    expect(sub).to_have_text("in project Northwind Traders")
+    expect(sub).to_be_visible()
+    text = dialog.locator(".place-box .place-text").bounding_box()
+    name_box, sub_box = where.bounding_box(), sub.bounding_box()
+    assert abs(name_box["y"] + name_box["height"] - (sub_box["y"] + sub_box["height"])) < 6
+    assert text["height"] < 30, text  # one line
+    assert sub_box["width"] >= 50, sub_box  # its start shows
+    assert dialog.locator(".place-box").get_attribute("title") == (
+        "customer-portal-frontend — in project Northwind Traders"
+    )
+    no_sideways_scroll(page)
+    shot(page, "one-line", full_page=False)

@@ -1,6 +1,7 @@
 // New session's Where (docs/design/ui.md, Launch and session control): one combobox that
-// shows the place and lists the recent places (folders, and a project's repositories with
-// the project's badge), then the other ways; a typed path lists that folder and its parent's
+// shows the place on one line, its name then a muted secondary (a folder's path, a project's
+// repository `in project <title>`), and lists the recent places the same way, then the other
+// ways; a typed path lists that folder and its parent's
 // subfolders. Under it stand the fields of the way chosen and the folder check's notes.
 // Every fact comes from the server; this file only shows and picks.
 import { useLayoutEffect, useId, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
@@ -25,8 +26,9 @@ export type Way = "folder" | "url" | "scratch" | "project";
 
 export type Icon = "folder" | "project" | "link" | "plus" | "open" | "search";
 
-// What the closed field shows of the place.
-export type Shown = { icon: Icon; name: string; path?: string | null; badge?: string | null };
+// What the closed field shows of the place: its name, then a secondary, muted, on the same
+// line (a folder's path, `in project <title>`), which is cut first.
+export type Shown = { icon: Icon; name: string; sub?: string | null };
 
 const WAYS: { way: Way; label: string; icon: Icon }[] = [
   { way: "folder", label: "Other folder…", icon: "open" },
@@ -69,7 +71,8 @@ export function PlaceIcon({ icon }: { icon: Icon }) {
   );
 }
 
-export const Badge = ({ title }: { title: string }) => <span className="place-badge">{`Project ${title}`}</span>;
+// A project's repository's secondary.
+export const projectSub = (title: string) => `in project ${title}`;
 
 // Where suggestions come from: the folder up to the last "/" and the name typed after it.
 export function parentOf(path: string): { parent: string; prefix: string } | null {
@@ -197,11 +200,7 @@ export function PlaceBox({
           <PlaceIcon icon={one.project ? "project" : "folder"} />
           <span className="place-text">
             <span className="place-name">{recentName(one)}</span>
-            {one.project ? (
-              <Badge title={one.project.title ?? one.project.id} />
-            ) : (
-              <span className="place-path">{one.path}</span>
-            )}
+            <span className="place-sub">{one.project ? projectSub(one.project.title ?? one.project.id) : one.path}</span>
           </span>
           {(one.session.running_since ?? one.session.stopped_at) && (
             <span className="place-meta">{`${since((one.session.running_since ?? one.session.stopped_at)!)} ago`}</span>
@@ -235,6 +234,7 @@ export function PlaceBox({
       <div
         ref={box}
         className={`place-box${open ? " open" : ""}${disabled ? " off" : ""}`}
+        title={open ? undefined : shown.sub ? `${shown.name} — ${shown.sub}` : shown.name}
         onMouseDown={(event) => {
           if (disabled || event.target === inputRef.current) return;
           event.preventDefault();
@@ -245,65 +245,66 @@ export function PlaceBox({
       >
         <PlaceIcon icon={open ? "search" : shown.icon} />
         <span className="place-text">
-          <input
-            ref={inputRef}
-            id={id}
-            role="combobox"
-            aria-autocomplete="list"
-            aria-expanded={open}
-            aria-controls={`${id}-list`}
-            aria-activedescendant={open && options[at] ? optionId(at) : undefined}
-            aria-describedby={describedBy}
-            className={`place-input${open ? "" : " place-name"}`}
-            value={open ? query : shown.name}
-            size={open ? undefined : Math.max(shown.name.length, 1)}
-            placeholder={open ? "Type a name or a path" : ""}
-            readOnly={!open}
-            autoComplete="off"
-            spellCheck={false}
-            disabled={disabled}
-            onClick={() => (open ? undefined : show())}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setActive(0);
-              setOpen(true);
-            }}
-            onPaste={(event) => {
-              if (open) return;
-              event.preventDefault();
-              setQuery(event.clipboardData.getData("text"));
-              show();
-            }}
-            onBlur={close}
-            onKeyDown={(event) => {
-              if (!open) {
+          {/* As wide as the name's text, in the field's own font: a hidden copy sizes it. */}
+          <span className={`place-fit${open ? " open" : ""}`} data-text={open ? "" : shown.name}>
+            <input
+              ref={inputRef}
+              id={id}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={open}
+              aria-controls={`${id}-list`}
+              aria-activedescendant={open && options[at] ? optionId(at) : undefined}
+              aria-describedby={describedBy}
+              className={`place-input${open ? "" : " place-name"}`}
+              value={open ? query : shown.name}
+              placeholder={open ? "Type a name or a path" : ""}
+              readOnly={!open}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={disabled}
+              onClick={() => (open ? undefined : show())}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setActive(0);
+                setOpen(true);
+              }}
+              onPaste={(event) => {
+                if (open) return;
+                event.preventDefault();
+                setQuery(event.clipboardData.getData("text"));
+                show();
+              }}
+              onBlur={close}
+              onKeyDown={(event) => {
+                if (!open) {
+                  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                    event.preventDefault();
+                    show();
+                  } else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey && event.key !== " ") {
+                    event.preventDefault();
+                    setQuery(event.key);
+                    show();
+                  }
+                  return;
+                }
                 if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                   event.preventDefault();
-                  show();
-                } else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey && event.key !== " ") {
+                  const step = event.key === "ArrowDown" ? 1 : -1;
+                  if (options.length) setActive((at + step + options.length) % options.length);
+                } else if (event.key === "Enter") {
                   event.preventDefault();
-                  setQuery(event.key);
-                  show();
+                  if (options[at]) pick(options[at]);
+                } else if (event.key === "Escape") {
+                  event.preventDefault(); // the first Esc closes only the list
+                  close();
+                } else if (event.key === "Tab") {
+                  close();
                 }
-                return;
-              }
-              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                event.preventDefault();
-                const step = event.key === "ArrowDown" ? 1 : -1;
-                if (options.length) setActive((at + step + options.length) % options.length);
-              } else if (event.key === "Enter") {
-                event.preventDefault();
-                if (options[at]) pick(options[at]);
-              } else if (event.key === "Escape") {
-                event.preventDefault(); // the first Esc closes only the list
-                close();
-              } else if (event.key === "Tab") {
-                close();
-              }
-            }}
-          />
-          {!open && shown.path && <span className="place-path">{shown.path}</span>}
-          {!open && shown.badge && <Badge title={shown.badge} />}
+              }}
+            />
+          </span>
+          {!open && shown.sub && <span className="place-sub">{shown.sub}</span>}
         </span>
         <svg className={`place-chev${open ? " up" : ""}`} width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
           <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
@@ -557,6 +558,7 @@ export function ScratchNameField({
         onChange={(event) => onText(event.target.value)}
       />
       <div id={notes} className="place-notes">
+        <span className="field-note">Also the session’s name.</span>
         {text.trim() !== "" && target?.problem && <span className="field-note bad">{target.problem}</span>}
         {name && name !== text.trim() && <span className="field-note">{`folder ${name}`}</span>}
         {target?.text &&

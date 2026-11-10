@@ -1375,7 +1375,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   (the dialog, its requests, the footer and the draft), `src/LaunchWhere.tsx` (Where's
   combobox and each way's fields), `src/LaunchTeam.tsx` (Team's summary and fields),
   `src/LaunchSetup.tsx` (a plain folder's set-up panel, the core's quoting ported),
-  `src/LaunchProject.tsx` (Project…), `src/LaunchModel.tsx` (the Model field);
+  `src/LaunchProject.tsx` (Project…), `src/LaunchModel.tsx` (the Model field),
+  `src/sessionName.ts` (the session's name beside Task: from the task, else the place, a typed
+  one kept; pure), with `src/sessionSlug.cases.json`, the one table of names its `slug` and the
+  core's `runtime.slug` make, for vitest and `tests/test_session_slug_cases.py`;
   `src/InfoTip.tsx` is the one info button.
 - `tests/`: pytest tests; `tests/integration/`: integration tests with a fake agent;
   `tests/ui/`: UI end-to-end tests in a browser; `tests/live/`: live tests with real agent

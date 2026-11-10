@@ -202,7 +202,10 @@ forgotten is named with `lado forget <s> --force`. The project's record, its oth
 and sessions stay.
 
 `lado start --project <id> --repo <name>` starts a session in the project's repository
-`<name>` (one `lado project show` lists), named `<id>-<name>` without `--name`, and prints
+`<name>` (one `lado project show` lists), named `<id>-<name>` without `--name`, said once
+when one repeats the other (`lado`/`lado` is `lado`, `lado`/`lado-site` is `lado-site`,
+`acme-web`/`web` is `acme-web`; a session named `lado-lado` before is resumed by `--name
+lado-lado`), and prints
 `Started session "<session>" in <folder> (project <id>)`; the session refers to the project
 in lado.db (`sessions.project`) and keeps it for good: a resume keeps it, a session its
 supervisor starts with `start_session` is in the same project and repository, and a name a

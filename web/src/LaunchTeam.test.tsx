@@ -48,10 +48,6 @@ function Team({ info = CODEX, peek = null }: { info?: ProviderInfo; peek?: React
       onOpen={setOpen}
       about="As in the last session in this folder."
       modelPeek={peek}
-      name="webapp-2"
-      onName={() => {}}
-      nameFixed={false}
-      nameNote={null}
       kits={["default"]}
       onKits={() => {}}
       known={[]}
@@ -70,25 +66,34 @@ function Team({ info = CODEX, peek = null }: { info?: ProviderInfo; peek?: React
       onWithout={() => {}}
       switchOff={[]}
       disabled={false}
-      refs={{ name: createRef(), agent: createRef(), kits: createRef() }}
+      refs={{ agent: createRef(), kits: createRef() }}
     />
   );
 }
 
 const summary = () => document.querySelector(".team-sum")?.textContent;
 
-test("the summary reads Setup, Agent, Permissions in the CLI's words and Name, and a model off the default", () => {
+test("the summary reads Kits, Agent, Permissions in the CLI's words, and a model off the default, no Name", () => {
   render(<Team peek={<span>Model kilo/large</span>} />);
-  expect(summary()).toBe("Setup defaultAgent Codex CLIPermissions Works inside the folderName webapp-2Model kilo/large");
+  expect(summary()).toBe("Kits defaultAgent Codex CLIPermissions Works inside the folderModel kilo/large");
+});
+
+test("Kits says what kits are also when none has a description", () => {
+  render(<Team />);
+  fireEvent.click(screen.getByRole("button", { name: "Change" }));
+  expect(screen.getByRole("group", { name: /^Kits/ })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "About Kits" }));
+  expect(screen.getByText("Kits add roles, skills and ways of working to the team. Install more on the Kits page.")).toBeTruthy();
 });
 
 test("Change opens the fields and reads Hide; Hide folds them", () => {
   render(<Team />);
   fireEvent.click(screen.getByRole("button", { name: "Change" }));
-  expect(screen.getByRole("textbox", { name: "Session name" })).toBeTruthy();
+  expect(screen.getByRole("combobox", { name: "Agent" })).toBeTruthy();
+  expect(screen.queryByRole("textbox", { name: "Session name" })).toBeNull();
   expect(summary()).toBeUndefined();
   fireEvent.click(screen.getByRole("button", { name: "Hide" }));
-  expect(screen.queryByRole("textbox", { name: "Session name" })).toBeNull();
+  expect(screen.queryByRole("combobox", { name: "Agent" })).toBeNull();
 });
 
 test("the chosen mode and the risky one show their description; a pick changes the summary", () => {

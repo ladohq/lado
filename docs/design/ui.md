@@ -518,27 +518,12 @@ Sessions for now. The UI's texts are in English.
   its run time (Running, below) or its stopped text (Stopped); the status of a session whose tmux session is gone or whose loop does not
   run, and on hover or keyboard focus of the row ⋯ with the entry's menu, Copy link and
   Open in new tab; the session's own actions are in its head (Launch and session control,
-  below). On hover or keyboard focus a row shows the session's card (`SessionTip` in a
-  `Tooltip`, the one of the strip's icons, below; LAD-223, mockup artifact
-  `task/lad-223/mockup-session-card.html`, labelled rows): the title in bold with the name after
-  it (or the name), with no dot before it (the row has its own); the state line with the
-  row's mark, hidden from a screen reader as the word stands next to it:
-  `<n> of <m> agents working` in the group's colour, `idle` in `--muted`,
-  `Needs you: <what waits>` in `--human`, a trouble's status in `--danger`, `stopped <time> ago`
-  or `stopped` in `--muted`, and under a trouble what waits on a line of its own. Under a line
-  come the labels Project (`SessionInfo.project_title`, the id without one), Ran (the run
-  time with no word), Folder, Kits (at most 6 names, then `+<n> more`: Details has them all),
-  CLI and Mode; a label with no value is not drawn. A stopped or broken session's card ends with
-  what to do: `Open it and press Resume`, or `Open it and press Stop session, then Resume`
-  when its loop does not run. All from `SessionInfo`, no CLI commands, and a project's
-  rename touches its sessions (`state.set_project_title`), so the feed brings the new title.
-  The card is 360 px wide, or the window less 16 px, and at most the window less 16 px high,
-  its end cut where the window is lower: it takes no pointer, so it does not scroll. It opens right of
-  its row or icon (`Tooltip`'s `side="right"`), level with it and moved only as far as the
-  window asks, the list staying in sight; a row as wide as the window has it under or over.
-  Deliberately it stays a tooltip (WCAG 1.4.13 aside, the human's answer, LAD-223): it goes
-  when the pointer leaves the row, even towards it; it shows on focus, Esc closes it, and
-  Details copies the path. A Running row (a session whose status is `running`
+  below). A row shows no tooltip on hover or keyboard focus (LAD-264, which removed the
+  session's card of LAD-223: it covered the chat and repeated Details): the row shows the
+  whole title, wrapped when long, and the session's facts are in Details, opened by the title
+  in the session's head. A project's rename touches its sessions
+  (`state.set_project_title`), so the feed brings the new title, and the head asks its
+  Details again. A Running row (a session whose status is `running`
   and in which nothing waits) also says whether its agents work now (decided 2026-10-08
   in feature/session-activity; mockup artifact
   `feature/session-activity/mockup-list.html`, variant A without the word "working"): a
@@ -558,7 +543,7 @@ Sessions for now. The UI's texts are in English.
   session has, and its words, is one rule, `sessionMark` (Sessions.tsx; decided
   2026-10-19, LAD-108, mockup artifact `task/lad-108/mockup-head-status.html`): stopped,
   tmux gone or loop down by its status; else needs you when something waits; else working
-  or idle. The row, the strip's icon, the card and the session's head all take it. The
+  or idle. The row, the strip's icon, the icon's tooltip and the session's head all take it. The
   group is not the mark: a session in trouble in which something waits is in Needs you,
   its strip icon `<name>, needs you`, while its head's dot says the trouble. The
   rule of working is the
@@ -625,8 +610,19 @@ Sessions for now. The UI's texts are in English.
   first two (`crm-api` CA, `lado` LA). A later badge alike in the strip gets a mark (`154·2`,
   at 10 px so that it fits). The open session's icon is scrolled into view. One that needs the
   human is marked by colour (`--human` on `--human-ground`, no count) and the waiting diamond on
-  its corner, where the others have their dot, and its label says `<name>, needs you`. On hover or focus it shows the session's card,
-  the row's (above). While the list loads the column is empty and `aria-busy`; when
+  its corner, where the others have their dot, and its label says `<name>, needs you`. On hover or keyboard focus an icon shows a short
+  tooltip (`SessionTip` in the UI's `Tooltip`; LAD-264, mockup artifact
+  `task/lad-264/mockup-session-tip.html`): the title in bold with the name after it in
+  `--muted` (or the name), then the state line with the icon's mark, hidden from a screen
+  reader as the word stands next to it: `<n> of <m> agents working` in the group's colour,
+  `idle` in `--muted`, `Needs you: <what waits>` in `--human`, a trouble's status in
+  `--danger`; under a trouble what waits, on a line of its own. Nothing else: the project,
+  the run time, the folder, the kits, the CLI and the mode are in Details. The strip has no
+  icon of a stopped session, so no tooltip of one. It is as wide as its text, at most the
+  tooltip's 320 px; it opens right of the icon (`side="right"`), level with it, so that it
+  covers no other icon, and moves only as far as the window asks. It stays a tooltip: no
+  pointer events, it goes when the pointer leaves the icon, even towards it, and Esc closes
+  it. While the list loads the column is empty and `aria-busy`; when
   `/api/sessions` fails, an alert icon in `--danger` takes its place with the error in its
   label and tooltip, the open list's text; Sessions and "+" work either way. Collapsed is
   remembered with the width (`lado.sessionsList`, `{ width, collapsed }`; a value stored
@@ -1415,7 +1411,7 @@ Built in the layout task (2026-10-03, schema 14):
   the keyboard's focus (not a click's), goes when the pointer leaves, the focus goes or on
   Esc; `role="tooltip"`, the trigger's `aria-describedby` while it shows, no pointer
   events, kept inside the window; under its trigger, or over it when it does not fit below
-  and there is more room over it (a session's card: beside it, above), with an arrow on the edge facing the trigger that points at the trigger's centre
+  and there is more room over it (a session strip icon's: beside it, above), with an arrow on the edge facing the trigger that points at the trigger's centre
   (Look: Tooltips). A chip opens the agent's terminal in the panel, or selects its tab. The feed
   holds, in time order: the messages with the human and the questions; the flow runs'
   gates as cards or lines (Flow gates above); their events as quiet lines grouped by run

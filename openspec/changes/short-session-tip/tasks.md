@@ -29,12 +29,13 @@
 
 ## 3. Documents and regression
 
-- [ ] 3.1 `docs/design/ui.md`: the session list's paragraph says a row shows no tooltip (LAD-264)
+- [x] 3.1 `docs/design/ui.md`: the session list's paragraph says a row shows no tooltip (LAD-264)
   and drops the card's description; the strip's paragraph says an icon shows a short tooltip
   (title, name, state line; a trouble's `Needs you` line), right of it, the tooltip's width; the
   Tooltip paragraph (about line 1418) no longer names the session's card. Grep `docs/design/` for
   `SessionTip` and "session's card" and fix every hit.
-- [ ] 3.2 CHANGELOG.md, `## 0.45.1 (unreleased)`, Changed: hovering a session in the list no
+- [x] 3.2 CHANGELOG.md, `## 0.45.1 (unreleased)`, Changed (under `### Improved`: docs/release.md
+  has no Changed group): hovering a session in the list no
   longer opens a card over the chat; an icon of the folded list shows the session's name and
   state; the rest is in the details of the session's title (AC-5).
 - [ ] 3.3 Regression: `make lint`, `make test`, `make web`, `uv run pytest -m ui

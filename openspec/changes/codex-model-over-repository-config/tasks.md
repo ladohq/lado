@@ -36,9 +36,10 @@
 
 ## 4. Docs and the regression run
 
-- [ ] 4.1 `src/lado/providers/codex.py`'s docstring or comments, and `docs/design/agents.md` where a Codex agent's model is described
-  (its model paragraph, lines 221-232: `Codex \`model\` at the top level and in the carried profile`): the model goes on the command
-  line too, and why; the repository's model is shown when nothing else names one.
+- [ ] 4.1 `src/lado/providers/codex.py`'s docstring or comments, and `docs/design/agents.md`'s
+  paragraph on an agent's model (around lines 221-232, "Codex `model` at the top level and in the
+  carried profile"): the model goes on the command line too, and why; the repository's model is
+  shown when nothing else names one.
 - [ ] 4.2 CHANGELOG.md: `## 0.45.1 (unreleased)` on top, under Fixed a line: a Codex agent runs on
   the model chosen in LADO or in your Codex config, even when the repository's `.codex/config.toml`
   names another (LAD-263).

@@ -56,6 +56,15 @@ export function freeName(base: string, taken: ReadonlySet<string>): string {
   return name;
 }
 
+// The free name after the taken `id`: a numbered name of a taken series (`webapp-2`, with
+// `webapp` taken) goes on with its series (`webapp-3`); a number that is part of the name
+// (`lad-263`) stays in it (`lad-263-2`).
+export function nextFree(id: string, taken: ReadonlySet<string>): string {
+  const all = new Set([...taken, id]);
+  const numbered = /^(.+)-\d+$/.exec(id);
+  return freeName(numbered && all.has(numbered[1]) ? numbered[1] : id, all);
+}
+
 export type NameMode = "auto" | "custom";
 
 export type SessionName = {

@@ -733,6 +733,30 @@ test("a typed name a session has is refused under Task with the next free one, a
   expect(nameField().getAttribute("aria-invalid")).toBeNull();
 });
 
+test("a numbered name taken offers the next number, not a second one", async () => {
+  sessions = [session("webapp"), session("webapp-2")];
+  await openLaunch();
+  await ready("/src/app");
+  setName("webapp-2");
+  fireEvent.click(await screen.findByRole("button", { name: "Use webapp-3" }));
+  expect(nameField().value).toBe("webapp-3");
+});
+
+test("a race on a numbered automatic name offers the next number", async () => {
+  sessions = [session("webapp")];
+  folders[WEBAPP] = folder(WEBAPP, { provider: { name: "claude", reason: "only_installed" } });
+  answers["POST /api/sessions"] = () =>
+    json({ detail: { message: 'session "webapp-2" exists already (running, in /src/x)', status: "running", repo: "/src/x" } }, 409);
+  await openLaunch();
+  type(WEBAPP);
+  await screen.findByText(/✓ Ready · branch main/);
+  await waitFor(() => expect(nameField().value).toBe("webapp-2"));
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  fireEvent.click(startButton());
+  fireEvent.click(await screen.findByRole("button", { name: "Use webapp-3" }));
+  expect(nameField().value).toBe("webapp-3");
+});
+
 test("a typed name over the title's limit keeps Start off", async () => {
   answers["GET /api/limits"] = () => json(LIMITS);
   await openLaunch();

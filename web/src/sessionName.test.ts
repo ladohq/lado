@@ -2,7 +2,7 @@
 // words, else the place's name; numbered when taken; a typed name kept with its title.
 import { describe, expect, test } from "vitest";
 
-import { autoBase, freeName, sessionName, slug } from "./sessionName";
+import { autoBase, freeName, nextFree, sessionName, slug } from "./sessionName";
 import cases from "./sessionSlug.cases.json";
 
 describe("slug, as the core's runtime.slug", () => {
@@ -57,6 +57,21 @@ describe("freeName, as the core's runtime.free_name", () => {
     expect(freeName("lad-263", new Set())).toBe("lad-263");
     expect(freeName("lad-263", new Set(["lad-263"]))).toBe("lad-263-2");
     expect(freeName("lad-263", new Set(["lad-263", "lad-263-2", "lad-263-4"]))).toBe("lad-263-3");
+  });
+});
+
+describe("nextFree: the name a taken one gives way to", () => {
+  test("a numbered name of a taken series goes on with its number", () => {
+    expect(nextFree("webapp-2", new Set(["webapp", "webapp-2"]))).toBe("webapp-3");
+    expect(nextFree("webapp", new Set(["webapp"]))).toBe("webapp-2");
+  });
+
+  test("a number that is part of the name stays", () => {
+    expect(nextFree("lad-263", new Set(["lad-263"]))).toBe("lad-263-2");
+  });
+
+  test("the name itself counts as taken", () => {
+    expect(nextFree("app", new Set())).toBe("app-2");
   });
 });
 

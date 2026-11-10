@@ -76,7 +76,7 @@ import {
 import { useLive, useLiveStore, useLocked } from "./live";
 import { useModal } from "./modal";
 import { agentClisPath, projectPath, sessionPath } from "./paths";
-import { freeName, sessionName, type NameMode } from "./sessionName";
+import { nextFree, sessionName, type NameMode } from "./sessionName";
 import { ActionProblem, Waits } from "./waitingParts";
 
 export { FolderHint };
@@ -1058,7 +1058,7 @@ function LaunchDialog({
   };
   // Use <next>: the first free name after a taken one, typed for the human.
   const nextButton = (id: string) => {
-    const next = freeName(id, new Set([...sessionNames, id]));
+    const next = nextFree(id, sessionNames);
     return (
       <button type="button" className="quiet" disabled={busyNow} onClick={() => typeName(next)}>
         {`Use ${next}`}

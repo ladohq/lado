@@ -220,7 +220,12 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   unknown token is shown as itself. A launch says what it set up (`Launch.model`, `effort`),
   which `runtime` records before the window opens (`state.set_model`): Codex's carried
   `model` and `model_reasoning_effort`, the chosen profile's before the top level's, as
-  Codex reads them, and the session's model. A session keeps its model as a power table
+  Codex reads them, and the session's model. In a trusted folder the repository's
+  `.codex/config.toml` wins over a Codex agent's config.toml, and `-m` over both (Codex CLI
+  0.162.0): so a Codex agent whose config names a model, LADO's or the carried one, also gets
+  it as `-m`, and one with none runs on the repository's, which its launch records from the
+  nearest `.codex/config.toml` up to the project root (a worktree's own) as `cli` with the
+  detail `the repository's .codex/config.toml`. A session keeps its model as a power table
   (`sessions.power`, schema 37: rows `light`, `normal` and `heavy`, all the same for now, each a
   CLI and a model: built-in, external by a saved model's id with copies for the words after its
   removal, or `""` for the CLI's own settings; a stored text that is no table reads as
@@ -230,7 +235,7 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   nothing keeps nothing, so a default changed later reaches the next resume and worker. Its name
   goes in `AgentSpec.model`, with `model_source`, which the provider applies its own way (Claude
   Code `--model`, Codex `model` at the top level and in the carried profile of its
-  config.toml, the OpenCode family `model` in its config content and `--model`, the only one that
+  config.toml and `-m`, the OpenCode family `model` in its config content and `--model`, the only one that
   beats Kilo's remembered `/model` pick, the fake agent
   `FAKE_AGENT_MODEL`) and returns as `Launch.model` with that source, so a Kilo
   agent shows it also while its plugin names none. Both family CLIs remember the last `/model`

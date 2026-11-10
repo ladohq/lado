@@ -557,6 +557,7 @@ export function ScratchNameField({
         onChange={(event) => onText(event.target.value)}
       />
       <div id={notes} className="place-notes">
+        <span className="field-note">Also the session’s name.</span>
         {text.trim() !== "" && target?.problem && <span className="field-note bad">{target.problem}</span>}
         {name && name !== text.trim() && <span className="field-note">{`folder ${name}`}</span>}
         {target?.text &&

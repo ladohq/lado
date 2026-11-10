@@ -1,6 +1,6 @@
 ## 1. The core's default name
 
-- [ ] 1.1 `runtime.project_session_name` by design D8, with failing pytest first
+- [x] 1.1 `runtime.project_session_name` by design D8, with failing pytest first
   (`tests/test_runtime_projects.py`: `lado`/`lado` → `lado`, `lado`/`lado-site` → `lado-site`,
   `acme-web`/`web` → `acme-web`, `acme`/`api` → `acme-api`, `lado start --project lado --repo
   lado` starts `lado` and leaves a stopped `lado-lado`; `tests/test_server_project_launch.py`:
@@ -9,15 +9,15 @@
 
 ## 2. The rule (web)
 
-- [ ] 2.1 `web/src/sessionName.ts` (`autoBase`, `freeName`, `slug`, `sessionName`) with
+- [x] 2.1 `web/src/sessionName.ts` (`autoBase`, `freeName`, `slug`, `sessionName`) with
   `web/src/sessionName.test.ts` first: the examples of the design doc's rule and the spec's
   table (AC-2, AC-3, AC-4). Check: `npx vitest run src/sessionName.test.ts`.
-- [ ] 2.2 `web/src/sessionSlug.cases.json` read by vitest against `slug` and by
+- [x] 2.2 `web/src/sessionSlug.cases.json` read by vitest against `slug` and by
   `tests/test_session_slug_cases.py` against `runtime.slug` (D2). Check: both pass.
 
 ## 3. The window (web)
 
-- [ ] 3.1 Name on Task's label row by D3–D7 and D11, with failing vitest first in
+- [x] 3.1 Name on Task's label row by D3–D7 and D11, with failing vitest first in
   `web/src/Launch.test.tsx` (the list of plan Task 3); the existing tests of Team's Name and
   Session name follow (AC-1–AC-5, AC-9). Check: `make web`.
 - [ ] 3.2 Kits by D10 in `LaunchTeam.tsx` and `Launch.tsx`, with vitest first

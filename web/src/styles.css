@@ -7183,6 +7183,65 @@ button.locked:disabled,
   gap: 2px;
 }
 
+/* Task's label row carries the session's name on its right; on a narrow window Name drops
+   under Task's label rather than overflow. */
+.task-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  min-width: 0;
+}
+
+.name-inline {
+  display: flex;
+  flex: 0 1 300px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.name-inline > .field-label {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.field .name-inline input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  text-overflow: ellipsis;
+}
+
+.field .name-inline input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+.field .name-inline input:hover {
+  border-color: var(--muted);
+}
+
+.field .name-inline input:focus {
+  outline: 0;
+  border-color: var(--action);
+  box-shadow: 0 0 0 3px var(--action-ground);
+}
+
+.field .name-inline input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
 .launch-task textarea {
   width: 100%;
   min-height: 84px;
@@ -8398,6 +8457,17 @@ button.locked:disabled,
 
   .launch-missing {
     flex-basis: 100%;
+  }
+
+  /* A phone: Name's part as narrow as its field allows, so the row's free room falls
+     between Task's label and Name's, which then read as two. */
+  .name-inline {
+    flex: 0 1 auto;
+  }
+
+  .field .name-inline input {
+    width: 140px;
+    max-width: 140px;
   }
 
   .team-head {

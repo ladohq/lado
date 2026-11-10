@@ -351,7 +351,7 @@ const teamSummary = () => document.querySelector(".team-sum")?.textContent ?? ""
 
 // Team's fields, also while it is folded (hidden).
 const providerSelect = () => screen.getByRole("combobox", { name: "Agent", hidden: true }) as HTMLSelectElement;
-const nameField = () => screen.getByRole("textbox", { name: "Session name", hidden: true }) as HTMLInputElement;
+const nameField = () => screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement;
 const kitsGroup = () => screen.getByRole("group", { name: /^Team setup/, hidden: true });
 
 const modeChosen = () => (document.querySelector(".mode-list input:checked") as HTMLInputElement | null)?.value;
@@ -406,8 +406,11 @@ test("the window asks Where, then Task, then shows Team, with no source switch a
   open();
   fireEvent.click(within(rail()).getByRole("button", { name: "New session" }));
   const dialog = await screen.findByRole("dialog", { name: "New session" });
-  const labels = [...dialog.querySelectorAll(".launch-body > .field > .field-label, .launch-team .team-head .field-label")]
-    .map((one) => one.textContent?.trim());
+  const labels = [
+    ...dialog.querySelectorAll(
+      ".launch-body > .field > .field-label, .task-head > .field-label, .launch-team .team-head .field-label",
+    ),
+  ].map((one) => one.textContent?.trim());
   expect(labels).toEqual(["Where", "Task", "Team"]);
   expect(within(dialog).queryByRole("group", { name: "Source" })).toBeNull();
   expect(within(dialog).queryByText(/Advanced/)).toBeNull();
@@ -515,12 +518,13 @@ test("a stopped session of the place gives the free name and one start button, t
   const line = await screen.findByText(/stopped here/);
   expect(line.closest(".place-line")!.textContent).toBe("✓ Ready · branch main · Session webapp stopped here 2 d ago");
   const fresh = screen.getByRole("button", { name: "Start new session webapp-2" }) as HTMLButtonElement;
-  expect(teamSummary()).toContain("Name webapp-2");
+  expect(nameField().value).toBe("webapp-2");
   expect(fresh.className).toBe("primary");
   expect(screen.queryByRole("button", { name: "Resume webapp" })).toBeNull();
   const order = () => [...document.querySelectorAll(".launch-buttons button")].map((one) => one.textContent);
   expect(order()).toEqual(["Cancel", "Start new session webapp-2"]);
-  fireEvent.change(screen.getByRole("textbox", { name: "Task" }), { target: { value: "Add a contact form" } });
+  // A task without Latin words leaves the place's name.
+  fireEvent.change(screen.getByRole("textbox", { name: "Task" }), { target: { value: "Добавить форму" } });
   expect(fresh.className).toBe("primary");
   answers["POST /api/sessions"] = () => json({ session: session("webapp-2", { repo: WEBAPP }), ...STARTED });
   await waitFor(() => expect(fresh.disabled).toBe(false));
@@ -530,7 +534,7 @@ test("a stopped session of the place gives the free name and one start button, t
   expect(calls.find((c) => c.method === "POST")!.body).toMatchObject({
     where: { kind: "folder", path: WEBAPP },
     name: "webapp-2",
-    prompt: "Add a contact form",
+    prompt: "Добавить форму",
   });
 });
 
@@ -540,25 +544,229 @@ test("a name a running session has gives the free name and one button", async ()
   folders[WEBAPP] = folder(WEBAPP, { default_name: "webapp", free_name: "webapp-2", name_state: "running" });
   await openLaunch(false);
   await screen.findByText("✓ Ready · branch main");
-  expect(teamSummary()).toContain("Name webapp-2");
+  expect(nameField().value).toBe("webapp-2");
+  expect(nameNote()).toBe("Name: webapp exists already, so this one is webapp-2.");
   expect(screen.queryByRole("button", { name: "Resume webapp" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "About Team" }));
-  expect(document.body.textContent).toContain('"webapp" is taken by another session.');
+  expect(document.body.textContent).not.toContain("is taken by another session");
 });
 
-test("a 409 after the press opens Team, puts the focus on Session name and offers the next name", async () => {
+test("a 409 after the press says so under Task, puts the focus on Name, offers the next name and leaves Team", async () => {
   answers["POST /api/sessions"] = () =>
     json({ detail: { message: 'session "app" exists already (stopped, in /src/app)', status: "stopped", repo: "/src/app" } }, 409);
   await openLaunch();
   await ready("/src/app");
   fireEvent.click(startButton());
-  await screen.findByText('session "app" exists already (stopped, in /src/app)');
-  await waitFor(() => expect(teamIsOpen()).toBe(true));
+  const refusal = await screen.findByText('session "app" exists already (stopped, in /src/app)');
+  expect(refusal.closest(".launch-task")).toBeTruthy();
   await waitFor(() => expect(document.activeElement).toBe(nameField()));
+  expect(teamIsOpen()).toBe(false);
   expect(nameField().getAttribute("aria-invalid")).toBe("true");
-  expect(nameField().getAttribute("aria-describedby")).toBeTruthy();
+  expect(nameField().getAttribute("aria-describedby")).toBe(refusal.closest("[id]")!.id);
   fireEvent.click(screen.getByRole("button", { name: "Use app-2" }));
   expect(nameField().value).toBe("app-2");
+});
+
+// The session's name beside Task (change session-name-from-task)
+
+const taskField = () => screen.getByRole("textbox", { name: "Task" }) as HTMLTextAreaElement;
+const nameNote = () => document.getElementById(nameField().getAttribute("aria-describedby") ?? "")?.textContent ?? "";
+const setTask = (text: string) => fireEvent.change(taskField(), { target: { value: text } });
+const setName = (text: string) => fireEvent.change(nameField(), { target: { value: text } });
+
+test("Name stands on Task's label row, not in Team", async () => {
+  await openLaunch();
+  await ready("/src/app");
+  expect(nameField().value).toBe("app");
+  expect(nameField().closest(".task-head")).toBeTruthy();
+  const head = nameField().closest(".task-head")!;
+  expect([...head.querySelectorAll(".field-label")].map((one) => one.textContent?.trim())).toEqual(["Task", "Name"]);
+  fireEvent.click(within(head as HTMLElement).getByRole("button", { name: "About Name" }));
+  expect(
+    screen.getByText(
+      "How you find this session in the list. LADO makes it from the task; type your own, or clear the field to get LADO’s back.",
+    ),
+  ).toBeTruthy();
+  expect(teamSummary()).not.toContain("Name");
+  openTeam();
+  expect(screen.queryByRole("textbox", { name: "Session name", hidden: true })).toBeNull();
+});
+
+test("New empty folder has no Name: its Folder name is the session's", async () => {
+  await openLaunch(false);
+  await screen.findByRole("textbox", { name: "Folder name" });
+  expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
+  expect(screen.getByText("Also the session’s name.")).toBeTruthy();
+});
+
+test("the task's key names the session 300 ms after the typing, at once on leaving Task", async () => {
+  await openLaunch();
+  await ready("/src/app");
+  setTask("LAD-263: the codex model must win");
+  expect(nameField().value).toBe("app");
+  await waitFor(() => expect(nameField().value).toBe("lad-263"));
+  setTask("Fix the login redirect after the session expires");
+  fireEvent.blur(taskField());
+  expect(nameField().value).toBe("fix-login-redirect");
+  expect(nameNote()).toBe("");
+});
+
+test("another place names the session without a task, and keeps the task's name with one", async () => {
+  await openLaunch();
+  await ready("/src/app");
+  await ready("/src/webapp");
+  expect(nameField().value).toBe("webapp");
+  setTask("Поправить вход");
+  fireEvent.blur(taskField());
+  expect(nameField().value).toBe("webapp");
+  setTask("Fix the login redirect");
+  fireEvent.blur(taskField());
+  await ready("/src/app");
+  expect(nameField().value).toBe("fix-login-redirect");
+});
+
+test("a taken automatic name is numbered, and the note says so", async () => {
+  sessions = [session("lad-263")];
+  await openLaunch();
+  await ready("/src/app");
+  setTask("LAD-263: the codex model");
+  fireEvent.blur(taskField());
+  await waitFor(() => expect(nameField().value).toBe("lad-263-2"));
+  expect(nameNote()).toBe("Name: lad-263 exists already, so this one is lad-263-2.");
+  expect(nameField().getAttribute("aria-invalid")).toBeNull();
+});
+
+test("a typed name is kept over the task and the place, and starts with its title", async () => {
+  answers["POST /api/sessions"] = () => json({ session: session("review-kao", { repo: "/src/app" }), ...STARTED });
+  await openLaunch();
+  await ready("/src/webapp");
+  setName("Review Kao");
+  expect(nameNote()).toBe("Name shown as “Review Kao” · in links and branches: review-kao");
+  setTask("LAD-1: something else");
+  fireEvent.blur(taskField());
+  await ready("/src/app");
+  expect(nameField().value).toBe("Review Kao");
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  fireEvent.click(startButton());
+  await screen.findByRole("region", { name: "Session review-kao" });
+  expect(calls.find((c) => c.method === "POST")!.body).toMatchObject({ name: "review-kao", title: "Review Kao" });
+});
+
+test("an edit of the automatic name is the human's; a plain name has no title", async () => {
+  answers["POST /api/sessions"] = () => json({ session: session("lad-263-docs", { repo: "/src/app" }), ...STARTED });
+  await openLaunch();
+  await ready("/src/app");
+  setTask("LAD-263: docs");
+  fireEvent.blur(taskField());
+  setName("lad-263-docs");
+  setTask("Fix the login redirect");
+  fireEvent.blur(taskField());
+  expect(nameField().value).toBe("lad-263-docs");
+  expect(nameNote()).toBe("");
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  fireEvent.click(startButton());
+  await screen.findByRole("region", { name: "Session lad-263-docs" });
+  const sent = calls.find((c) => c.method === "POST")!.body;
+  expect(sent).toMatchObject({ name: "lad-263-docs" });
+  expect(sent).not.toHaveProperty("title");
+});
+
+test("a typed name in another script is the title of the automatic name", async () => {
+  answers["POST /api/sessions"] = () => json({ session: session("fix-login-redirect", { repo: "/src/app" }), ...STARTED });
+  await openLaunch();
+  await ready("/src/app");
+  setTask("Fix the login redirect");
+  fireEvent.blur(taskField());
+  setName("Вход после сессии");
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  fireEvent.click(startButton());
+  await screen.findByRole("region", { name: "Session fix-login-redirect" });
+  expect(calls.find((c) => c.method === "POST")!.body).toMatchObject({
+    name: "fix-login-redirect",
+    title: "Вход после сессии",
+  });
+});
+
+test("an emptied Name shows the automatic name as its placeholder, and holds it again on leaving", async () => {
+  await openLaunch();
+  await ready("/src/app");
+  setTask("Fix the login redirect");
+  fireEvent.blur(taskField());
+  nameField().focus();
+  setName("Review");
+  setName("");
+  expect(nameField().value).toBe("");
+  expect(nameField().placeholder).toBe("fix-login-redirect");
+  setTask("LAD-9: another");
+  fireEvent.blur(taskField());
+  fireEvent.blur(nameField());
+  expect(nameField().value).toBe("lad-9");
+});
+
+test("a typed name a session has is refused under Task with the next free one, and no Resume", async () => {
+  sessions = [session("review-kao", { status: "stopped", repo: "/src/lado" }), session("review-kao-2")];
+  await openLaunch();
+  await ready("/src/app");
+  setName("review-kao");
+  expect(nameField().getAttribute("aria-invalid")).toBe("true");
+  expect(nameNote()).toContain("Name: a session named review-kao exists (stopped, in lado).");
+  expect(screen.queryByRole("button", { name: "Resume it" })).toBeNull();
+  expect(startButton().disabled).toBe(true);
+  await waitFor(() => expect(footerText()).toContain("To start: choose another name."));
+  fireEvent.click(screen.getByRole("button", { name: "choose another name" }));
+  expect(document.activeElement).toBe(nameField());
+  fireEvent.click(screen.getByRole("button", { name: "Use review-kao-3" }));
+  expect(nameField().value).toBe("review-kao-3");
+  expect(nameField().getAttribute("aria-invalid")).toBeNull();
+});
+
+test("a typed name over the title's limit keeps Start off", async () => {
+  answers["GET /api/limits"] = () => json(LIMITS);
+  await openLaunch();
+  await ready("/src/app");
+  setName("x".repeat(81));
+  await waitFor(() => expect(nameNote()).toBe("Name: at most 80 characters."));
+  expect(nameField().getAttribute("aria-invalid")).toBe("true");
+  expect(startButton().disabled).toBe(true);
+  await waitFor(() => expect(footerText()).toContain("shorten the name"));
+  setName("x".repeat(80));
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+});
+
+test("a clone with no URL and no task asks for a name", async () => {
+  await openLaunch();
+  await pickPlace("Clone from URL…");
+  expect(nameField().value).toBe("");
+  await waitFor(() => expect(footerText()).toContain("name the session"));
+  fireEvent.click(screen.getByRole("button", { name: "name the session" }));
+  expect(document.activeElement).toBe(nameField());
+});
+
+test("the draft keeps a typed name, not the automatic one", async () => {
+  const dialog = await openLaunch();
+  await ready("/src/app");
+  setName("Review Kao");
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  fireEvent.click(within(rail()).getByRole("button", { name: "New session" }));
+  await screen.findByRole("dialog", { name: "New session" });
+  expect(nameField().value).toBe("Review Kao");
+});
+
+test("a task names the session beside a stopped one, and the button says so", async () => {
+  sessions = [session("webapp", { status: "stopped", repo: WEBAPP, stopped_at: ago(2 * 86400_000) })];
+  recent = [recentFolder(WEBAPP)];
+  folders[WEBAPP] = folder(WEBAPP, {
+    default_name: "webapp",
+    free_name: "webapp-2",
+    name_state: "stopped_here",
+    provider: { name: "claude", reason: "last_session" },
+  });
+  await openLaunch(false);
+  await screen.findByRole("button", { name: "Start new session webapp-2" });
+  setTask("Fix the login redirect");
+  fireEvent.blur(taskField());
+  expect(screen.getByRole("button", { name: "Start new session fix-login-redirect" })).toBeTruthy();
+  expect(document.querySelector(".place-line")!.textContent).toContain("Session webapp stopped here");
 });
 
 // Where: Other folder…
@@ -785,10 +993,10 @@ test("a workspace not made yet: its placeholders and no suggestions", async () =
 
 // Team (capability new-session-window)
 
-test("Team is one line; Change opens Session name, Agent, Team setup, Permissions, Model and Switch off", async () => {
+test("Team is one line; Change opens Agent, Team setup, Permissions, Model and Switch off", async () => {
   await openLaunch();
   await ready("/src/lado");
-  expect(teamSummary()).toBe("Setup defaultAgent Claude CodePermissions Asks before changesName lado");
+  expect(teamSummary()).toBe("Setup defaultAgent Claude CodePermissions Asks before changes");
   const change = screen.getByRole("button", { name: "Change" });
   expect(change.getAttribute("aria-expanded")).toBe("false");
   fireEvent.click(change);
@@ -796,9 +1004,9 @@ test("Team is one line; Change opens Session name, Agent, Team setup, Permission
   expect(body.hidden).toBe(false);
   expect(screen.getByRole("button", { name: "Hide" }).getAttribute("aria-expanded")).toBe("true");
   expect([...body.querySelectorAll(".field-label, label, legend")].map((one) => one.textContent?.trim()).filter(Boolean)).toEqual(
-    expect.arrayContaining(["Session name", "Agent", "Team setup", "Permissions", "Model", "Switch off"]),
+    expect.arrayContaining(["Agent", "Team setup", "Permissions", "Model", "Switch off"]),
   );
-  expect(nameField().value).toBe("lado");
+  expect(body.textContent).not.toContain("Session name");
 });
 
 test("Permissions are the agent's words: the chosen one's description and always the risky one's", async () => {
@@ -1262,6 +1470,7 @@ const LIMITS = {
   image_limit: 500,
   image_max_side: 8000,
   max_message: 20,
+  max_title: 80,
 };
 const firstField = () => screen.getByRole("textbox", { name: /^(Task|Message)$/ }) as HTMLTextAreaElement;
 
@@ -2036,7 +2245,7 @@ test("Start a new session instead turns the Resume window into New session on th
   fireEvent.click(within(dialog).getByRole("button", { name: "Start a new session instead" }));
   await screen.findByRole("dialog", { name: "New session" });
   await waitFor(() => expect(placeBox().value).toBe("lado"));
-  await waitFor(() => expect(teamSummary()).toContain("Name lado-2"));
+  await waitFor(() => expect(nameField().value).toBe("lado-2"));
   expect(await screen.findByRole("button", { name: "Start new session lado-2" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Resume lado" })).toBeNull();
 });
@@ -3122,7 +3331,8 @@ test("a name taken after the clone switches the window to Folder with the clone 
   expect((await within(dialog).findByRole("alert")).textContent).toContain('session "marketplace" exists already');
   expect(placeBox().value).toBe("marketplace");
   expect(screen.getByText(INTO, { selector: ".place-path" })).toBeTruthy();
-  await waitFor(() => expect(teamIsOpen()).toBe(true));
+  await waitFor(() => expect(document.activeElement).toBe(nameField()));
+  expect(teamIsOpen()).toBe(false);
 });
 
 test("a poll that fails is asked again: the clone goes on, Cancel clone stays (F3)", async () => {
@@ -3344,18 +3554,18 @@ async function scratchReady(text = "Сайт кофейни") {
   return dialog;
 }
 
-test("the first window: New empty folder, the folder's name when it differs, and Team's Name", async () => {
+test("the first window: New empty folder, the folder's name when it differs, and no Name", async () => {
   const dialog = await openLaunch(false);
   await waitFor(() => expect(placeBox().value).toBe("New empty folder"));
   await waitFor(() => expect(footerText()).toContain("To start: name the folder"));
   fireEvent.change(scratchName(), { target: { value: "Сайт кофейни" } });
   expect(await within(dialog).findByText("folder sait-kofeini")).toBeTruthy();
-  await waitFor(() => expect(teamSummary()).toContain("Name sait-kofeini"));
-  expect(nameField().disabled).toBe(true);
+  expect(within(dialog).getByText("Also the session’s name.")).toBeTruthy();
+  expect(within(dialog).queryByRole("textbox", { name: "Name" })).toBeNull();
+  expect(teamSummary()).not.toContain("Name");
   await waitFor(() => expect(createButton().disabled).toBe(false));
   fireEvent.change(scratchName(), { target: { value: "shop" } });
-  await waitFor(() => expect(teamSummary()).toContain("Name shop"));
-  expect(within(dialog).queryByText(/^folder /)).toBeNull();
+  await waitFor(() => expect(within(dialog).queryByText(/^folder /)).toBeNull());
 });
 
 test("a developer's window opens on the last place, not New empty folder", async () => {

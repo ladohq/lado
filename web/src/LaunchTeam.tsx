@@ -1,7 +1,8 @@
 // New session's Team (docs/design/ui.md, Launch and session control): the session's settings
-// as one line (setup, agent, permissions in the agent CLI's own words, name, a model off the
-// default), and Change, which opens the fields: Session name, Agent, Team setup, Permissions,
-// Model and Switch off. The window holds their values; this file shows and edits them.
+// as one line (setup, agent, permissions in the agent CLI's own words, a model off the
+// default), and Change, which opens the fields: Agent, Team setup, Permissions, Model and
+// Switch off. The session's name stands beside Task (Launch.tsx). The window holds their
+// values; this file shows and edits them.
 import type { ReactNode, RefObject } from "react";
 import { useId } from "react";
 
@@ -27,7 +28,6 @@ const switchOffLabel = (item: string) => {
 };
 
 export type TeamRefs = {
-  name: RefObject<HTMLInputElement | null>;
   agent: RefObject<HTMLSelectElement | null>;
   kits: RefObject<HTMLSelectElement | null>;
 };
@@ -38,10 +38,6 @@ export function LaunchTeam({
   about,
   // the summary's model part (useLaunchModel's peek), shown off the CLI's default only
   modelPeek,
-  name,
-  onName,
-  nameFixed,
-  nameNote,
   kits,
   onKits,
   known,
@@ -66,10 +62,6 @@ export function LaunchTeam({
   onOpen: (open: boolean) => void;
   about: string;
   modelPeek: ReactNode;
-  name: string | null; // null: no Name in the summary (Resume)
-  onName: (name: string) => void;
-  nameFixed: boolean;
-  nameNote: ReactNode; // a refusal of the name, with its way out
   kits: string[];
   onKits: (kits: string[]) => void;
   known: KitInfo[];
@@ -116,11 +108,6 @@ export function LaunchTeam({
                 <span className="k">Permissions</span> {chosenWords?.summary ?? mode}
               </span>
             )}
-            {name !== null && (
-              <span>
-                <span className="k">Name</span> {name}
-              </span>
-            )}
             {modelPeek}
           </p>
         )}
@@ -135,25 +122,6 @@ export function LaunchTeam({
         </button>
       </div>
       <div id={`${ids}-body`} className="team-body" hidden={!open}>
-        {name !== null && (
-          <div className="field">
-            <label htmlFor={`${ids}-name`}>Session name</label>
-            <input
-              ref={refs.name}
-              id={`${ids}-name`}
-              value={name}
-              disabled={disabled || nameFixed}
-              aria-invalid={nameNote ? true : undefined}
-              aria-describedby={nameNote ? `${ids}-name-note` : undefined}
-              onChange={(event) => onName(event.target.value)}
-            />
-            {nameNote && (
-              <div id={`${ids}-name-note`} className="place-notes">
-                {nameNote}
-              </div>
-            )}
-          </div>
-        )}
         <div className="field">
           <label htmlFor={`${ids}-agent`}>Agent</label>
           <select

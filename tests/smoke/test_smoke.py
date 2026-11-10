@@ -145,6 +145,11 @@ def test_the_session_s_model_reaches_the_cli(
         # The CLI itself, without the test's own --model (real_clis.with_model).
         monkeypatch.setitem(providers._PROVIDERS, provider, CLASSES[provider]())
     model = SESSION_MODELS[provider]
+    if provider == "codex":
+        # The repository's model, which wins over the agent's config.toml but not over -m
+        # (LAD-263): the CLI must never ask for it.
+        (smoke_repo / ".codex").mkdir()
+        (smoke_repo / ".codex" / "config.toml").write_text('model = "smoke-model"\n')
     started = runtime.start_session(
         str(smoke_repo), SESSION, "bypassPermissions", provider, model=model
     )
@@ -165,6 +170,8 @@ def test_the_session_s_model_reaches_the_cli(
         runtime.write_as_human(SESSION, HUMAN_SAYS)
     wait_for(lambda: asked in fake_endpoint.models, f"a request for {asked}", 120)
     print(f"{provider}: models asked {fake_endpoint.models}")
+    if provider == "codex":
+        assert "smoke-model" not in fake_endpoint.models
     runtime.stop_session(SESSION)
 
 

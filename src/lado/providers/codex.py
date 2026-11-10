@@ -524,6 +524,18 @@ class CodexProvider(base.Provider):
         # the hooks with its own environment, copies the CLI into the home and outlives the
         # agent.
         argv = [self.command, "--no-daemon"]
+        # In a trusted folder the repository's .codex/config.toml wins over the agent's
+        # config.toml, and -m over both (Codex CLI 0.162.0, checked by hand): the model the
+        # config was given goes on the command line too, so a repository's own never replaces
+        # it. With none there, the agent runs on the repository's, shown from its launch.
+        model, _ = _setting(config, "model")
+        if isinstance(model, str) and model:
+            argv += ["-m", model]
+            chosen = self.session_choice(spec) or _carried(config, "model")
+        elif trust[1] == "trusted" and (model := _repo_model(cwd, home)):
+            chosen = state.Choice(model, state.CLI_DEFAULT, "the repository's .codex/config.toml")
+        else:
+            chosen = None
         if session.permission_mode == "default":
             argv += ["-a", "on-request"]
         elif session.permission_mode == "bypassPermissions":
@@ -537,7 +549,7 @@ class CodexProvider(base.Provider):
             argv,
             env,
             warnings,
-            model=self.session_choice(spec) or _carried(config, "model"),
+            model=chosen,
             effort=_carried(config, "model_reasoning_effort"),
         )
 
@@ -1027,20 +1039,41 @@ def _trust_entry(projects, cwd: Path) -> tuple[str, str] | None:
 # config (launch_command). Plugins' hooks come from plugins installed in the Codex home,
 # which is new for each agent, with plugins off: none.
 def _repo_hook_files(cwd: Path, home: Path) -> list[Path]:
-    cwd, root = cwd.resolve(), _project_root(cwd)
     top = gitpaths.rev_parse(cwd, "--show-toplevel")
     checkout = Path(top).resolve() if top else None
     main = gitpaths.main_root(cwd)
-    folders = [f for f in (cwd, *cwd.parents) if f == root or root in f.parents]
     files = []
-    for folder in reversed(folders):
+    for folder in _codex_folders(cwd, home):
         dot = folder / ".codex"
-        if not dot.is_dir() or dot.resolve() == home.resolve():
-            continue
         if checkout and checkout != main and folder.is_relative_to(checkout):
             dot = main / folder.relative_to(checkout) / ".codex"
         files += [dot / "hooks.json", dot / "config.toml"]
     return files
+
+
+def _codex_folders(cwd: Path, home: Path) -> list[Path]:
+    """The folders from the project root down to `cwd` that have a .codex folder, the Codex
+    home `home` not counted, the root first."""
+    cwd, root, home = cwd.resolve(), _project_root(cwd), home.resolve()
+    folders = [f for f in (cwd, *cwd.parents) if f == root or root in f.parents]
+    return [
+        f for f in reversed(folders) if (f / ".codex").is_dir() and (f / ".codex").resolve() != home
+    ]
+
+
+# The repository's model (Codex CLI 0.162.0, checked by hand): the `model` of the nearest
+# .codex/config.toml from the agent's folder up to the project root that names one, in a
+# linked worktree the worktree's own file (unlike its hooks); a project's profiles are
+# ignored. A file Codex cannot read names none: Codex warns about it itself.
+def _repo_model(cwd: Path, home: Path) -> str | None:
+    for folder in reversed(_codex_folders(cwd, home)):
+        try:
+            model = _read_toml(folder / ".codex" / "config.toml").get("model")
+        except (OSError, ValueError):
+            continue
+        if isinstance(model, str) and model:
+            return model
+    return None
 
 
 def _hook_handlers(path: Path) -> list[tuple[str, str]]:

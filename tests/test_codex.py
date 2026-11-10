@@ -651,6 +651,106 @@ def test_no_session_model_keeps_the_carried_one(repo, codex_home):
     assert launch.model == state.Choice("gpt-5.5", state.CLI_CONFIG)
 
 
+# The repository's .codex/config.toml wins over the agent's config.toml in a trusted folder,
+# and -m over both (Codex CLI 0.162.0, checked by hand): the agent's model goes on the
+# command line too.
+REPO_MODEL = "the repository's .codex/config.toml"
+
+
+def _repo_model(folder, text='model = "gpt-5.6-terra"\n'):
+    (folder / ".codex").mkdir(parents=True, exist_ok=True)
+    (folder / ".codex" / "config.toml").write_text(text)
+
+
+def test_the_session_s_model_goes_on_the_command_line_over_the_repo_s(repo, codex_home):
+    _repo_model(repo)
+    launch, config = _launch(repo, model="gpt-5.6-luna")
+    assert launch.argv == ["codex", "--no-daemon", "-m", "gpt-5.6-luna"]
+    assert config["model"] == "gpt-5.6-luna"
+    assert launch.model == state.Choice("gpt-5.6-luna", state.SESSION)
+
+
+def test_the_user_s_carried_model_goes_on_the_command_line(repo, codex_home):
+    _repo_model(repo)
+    _user_config(codex_home, 'model = "gpt-5.6-sol"\n')
+    launch, _ = _launch(repo)
+    assert launch.argv == ["codex", "--no-daemon", "-m", "gpt-5.6-sol"]
+    assert launch.model == state.Choice("gpt-5.6-sol", state.CLI_CONFIG)
+
+
+def test_the_carried_profile_s_model_goes_on_the_command_line(repo, codex_home):
+    _repo_model(repo)
+    _user_config(
+        codex_home, 'profile = "work"\nmodel = "gpt-5.5"\n[profiles.work]\nmodel = "gpt-5.6-sol"\n'
+    )
+    launch, _ = _launch(repo)
+    assert launch.argv == ["codex", "--no-daemon", "-m", "gpt-5.6-sol"]
+    assert launch.model == state.Choice("gpt-5.6-sol", state.CLI_CONFIG, "profile work")
+
+
+def test_the_model_comes_before_the_permission_flags_and_the_notice(repo, codex_home):
+    launch, _ = _launch(repo, mode="default", notice="hello", model="gpt-5.6-luna")
+    assert launch.argv == [
+        "codex",
+        "--no-daemon",
+        "-m",
+        "gpt-5.6-luna",
+        "-a",
+        "on-request",
+        "hello",
+    ]
+
+
+def test_no_model_anywhere_goes_on_no_command_line(repo, codex_home):
+    launch, _ = _launch(repo)
+    assert launch.argv == ["codex", "--no-daemon"]
+    assert launch.model is None
+
+
+def test_a_repo_s_model_with_none_of_lado_s_is_shown_from_the_start(repo, codex_home):
+    _repo_model(repo)
+    launch, config = _launch(repo)
+    assert launch.argv == ["codex", "--no-daemon"]
+    assert "model" not in config
+    assert launch.model == state.Choice("gpt-5.6-terra", state.CLI_DEFAULT, REPO_MODEL)
+
+
+def test_a_folder_s_own_codex_config_is_nearer(repo, codex_home):
+    _repo_model(repo)
+    _repo_model(repo / "sub", 'model = "gpt-5.6-terra-sub"\n')
+    launch, _ = _launch(repo / "sub")
+    assert launch.model == state.Choice("gpt-5.6-terra-sub", state.CLI_DEFAULT, REPO_MODEL)
+
+
+def test_a_nearer_codex_config_without_a_model_leaves_the_repo_s(repo, codex_home):
+    _repo_model(repo)
+    _repo_model(repo / "sub", 'approval_policy = "never"\n')
+    launch, _ = _launch(repo / "sub")
+    assert launch.model == state.Choice("gpt-5.6-terra", state.CLI_DEFAULT, REPO_MODEL)
+
+
+def test_a_worker_reads_its_worktree_s_own_codex_config(repo, codex_home):
+    _repo_model(repo, 'model = "gpt-5.6-terra-main"\n')
+    worktree = _worktree(repo)
+    _repo_model(worktree)
+    launch, _ = _launch(worktree)
+    assert launch.model == state.Choice("gpt-5.6-terra", state.CLI_DEFAULT, REPO_MODEL)
+
+
+def test_an_untrusted_repo_s_model_is_not_read(repo, codex_home):
+    _repo_model(repo)
+    _trust(codex_home, repo.resolve(), level="untrusted")
+    launch, _ = _launch(repo)
+    assert (launch.argv, launch.model) == (["codex", "--no-daemon"], None)
+
+
+@pytest.mark.parametrize("text", ["model = [", 'approval_policy = "never"\n', "model = 5\n"])
+def test_a_repo_codex_config_naming_no_model_gives_none(repo, codex_home, text):
+    _repo_model(repo, text)
+    launch, _ = _launch(repo)
+    assert launch.model is None
+
+
 def test_codex_pairs_an_approval_with_its_tool_call():
     cli = providers.get("codex")
     asked = {"tool_name": "mcp__echo__echo", "tool_input": {"text": "hello"}, "turn_id": "t"}
@@ -1160,6 +1260,13 @@ def test_a_server_is_a_provider_of_the_agent_s_config_and_its_choice(repo, catal
         "wire_api": "responses",
         "env_key": "LADO_MODEL_KEY_AAAA1111",
     }
+
+
+def test_a_server_s_model_goes_on_the_command_line_over_the_repo_s(repo, catalogue, codex_home):
+    _repo_model(repo)
+    _user_config(codex_home, 'model = "gpt-5.6-sol"\n')
+    launch, _ = _launch_on(repo)
+    assert launch.argv == ["codex", "--no-daemon", "-m", "gw-gpt"]
 
 
 def test_the_user_s_providers_stay_beside_the_server_s(repo, catalogue, codex_home):

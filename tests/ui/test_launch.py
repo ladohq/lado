@@ -1223,3 +1223,36 @@ def test_the_resume_window(page: Page, server, repo, shot):
     fresh = page.get_by_role("dialog", name="New session")
     expect(fresh.get_by_role("combobox", name="Where")).to_have_value(repo.name)
     expect(name_field(fresh)).to_have_value("my-repo")
+
+
+def test_on_a_phone_a_folders_path_is_cut_before_its_name(page: Page, server, repo, shot):
+    """Where at 390 px with a short folder name and a long path: the path (the secondary) is
+    cut first, the name shows whole (change session-name-from-task, F3)."""
+    page.set_viewport_size({"width": 390, "height": 844})
+    log_in(page, server)
+    dialog, where = other_folder(page)
+    where.fill(str(repo))
+    expect(dialog).to_contain_text("✓ Ready · branch main")
+    name = dialog.get_by_role("combobox", name="Where")
+    expect(name).to_have_value(repo.name)
+    sub = dialog.locator(".place-box .place-sub")
+    expect(sub).to_have_text(str(repo))
+    # An input's scrollWidth does not grow with its text: measure the text by its font.
+    room, text = name.evaluate(
+        """async input => {
+            await document.fonts.ready;
+            const style = getComputedStyle(input);
+            const probe = document.createElement("span");
+            probe.textContent = input.value;
+            probe.style.cssText = `position:absolute;visibility:hidden;white-space:pre;font:${style.font}`;
+            document.body.append(probe);
+            const width = probe.getBoundingClientRect().width;
+            probe.remove();
+            const edges = ["paddingLeft", "paddingRight", "borderLeftWidth", "borderRightWidth"];
+            const pad = edges.reduce((sum, one) => sum + parseFloat(style[one]), 0);
+            return [input.getBoundingClientRect().width - pad, width];
+        }"""
+    )
+    assert text <= room, (text, room)  # a fraction of a pixel short shows an ellipsis
+    assert sub.evaluate("span => span.scrollWidth > span.clientWidth")  # the path is cut
+    shot(page, "folder", full_page=False)

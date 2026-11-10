@@ -245,63 +245,65 @@ export function PlaceBox({
       >
         <PlaceIcon icon={open ? "search" : shown.icon} />
         <span className="place-text">
-          <input
-            ref={inputRef}
-            id={id}
-            role="combobox"
-            aria-autocomplete="list"
-            aria-expanded={open}
-            aria-controls={`${id}-list`}
-            aria-activedescendant={open && options[at] ? optionId(at) : undefined}
-            aria-describedby={describedBy}
-            className={`place-input${open ? "" : " place-name"}`}
-            value={open ? query : shown.name}
-            size={open ? undefined : Math.max(shown.name.length, 1)}
-            placeholder={open ? "Type a name or a path" : ""}
-            readOnly={!open}
-            autoComplete="off"
-            spellCheck={false}
-            disabled={disabled}
-            onClick={() => (open ? undefined : show())}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setActive(0);
-              setOpen(true);
-            }}
-            onPaste={(event) => {
-              if (open) return;
-              event.preventDefault();
-              setQuery(event.clipboardData.getData("text"));
-              show();
-            }}
-            onBlur={close}
-            onKeyDown={(event) => {
-              if (!open) {
+          {/* As wide as the name's text, in the field's own font: a hidden copy sizes it. */}
+          <span className={`place-fit${open ? " open" : ""}`} data-text={open ? "" : shown.name}>
+            <input
+              ref={inputRef}
+              id={id}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={open}
+              aria-controls={`${id}-list`}
+              aria-activedescendant={open && options[at] ? optionId(at) : undefined}
+              aria-describedby={describedBy}
+              className={`place-input${open ? "" : " place-name"}`}
+              value={open ? query : shown.name}
+              placeholder={open ? "Type a name or a path" : ""}
+              readOnly={!open}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={disabled}
+              onClick={() => (open ? undefined : show())}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setActive(0);
+                setOpen(true);
+              }}
+              onPaste={(event) => {
+                if (open) return;
+                event.preventDefault();
+                setQuery(event.clipboardData.getData("text"));
+                show();
+              }}
+              onBlur={close}
+              onKeyDown={(event) => {
+                if (!open) {
+                  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                    event.preventDefault();
+                    show();
+                  } else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey && event.key !== " ") {
+                    event.preventDefault();
+                    setQuery(event.key);
+                    show();
+                  }
+                  return;
+                }
                 if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                   event.preventDefault();
-                  show();
-                } else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey && event.key !== " ") {
+                  const step = event.key === "ArrowDown" ? 1 : -1;
+                  if (options.length) setActive((at + step + options.length) % options.length);
+                } else if (event.key === "Enter") {
                   event.preventDefault();
-                  setQuery(event.key);
-                  show();
+                  if (options[at]) pick(options[at]);
+                } else if (event.key === "Escape") {
+                  event.preventDefault(); // the first Esc closes only the list
+                  close();
+                } else if (event.key === "Tab") {
+                  close();
                 }
-                return;
-              }
-              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                event.preventDefault();
-                const step = event.key === "ArrowDown" ? 1 : -1;
-                if (options.length) setActive((at + step + options.length) % options.length);
-              } else if (event.key === "Enter") {
-                event.preventDefault();
-                if (options[at]) pick(options[at]);
-              } else if (event.key === "Escape") {
-                event.preventDefault(); // the first Esc closes only the list
-                close();
-              } else if (event.key === "Tab") {
-                close();
-              }
-            }}
-          />
+              }}
+            />
+          </span>
           {!open && shown.sub && <span className="place-sub">{shown.sub}</span>}
         </span>
         <svg className={`place-chev${open ? " up" : ""}`} width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">

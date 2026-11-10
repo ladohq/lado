@@ -7047,13 +7047,43 @@ button.locked:disabled,
   cursor: pointer;
 }
 
-/* As wide as the name (its size), not the row: the secondary follows it. */
-.field input.place-input.place-name {
+/* The closed field is as wide as its name, not the row, so the secondary follows it: a
+   grid of one cell holds the input and a hidden copy of the name in the same font, which
+   sets the cell's width; it shrinks below that once the secondary is at its minimum. */
+.place-fit {
+  display: inline-grid;
   flex: 0 1 auto;
-  width: auto;
+  grid-template-columns: minmax(0, max-content);
   min-width: 0;
-  max-width: 100%;
-  field-sizing: content;
+}
+
+.place-fit.open {
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* 1 px over the text: layout rounds a text's width down, and a fraction short shows an
+   ellipsis. */
+.place-fit::after {
+  content: attr(data-text);
+  grid-area: 1 / 1;
+  height: 0;
+  padding-right: 1px;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  visibility: hidden;
+  white-space: pre;
+}
+
+/* No width of its own (an input's default is some 20 characters): the cell's. */
+.field .place-fit > input.place-input {
+  grid-area: 1 / 1;
+  width: 0;
+  min-width: 100%;
+}
+
+.field input.place-input.place-name {
   font-size: 15px;
   font-weight: 600;
   text-overflow: ellipsis;

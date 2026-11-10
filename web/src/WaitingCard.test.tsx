@@ -60,6 +60,7 @@ function gate(id: number, run: string, created_at: string, more: Partial<GateInf
     closed_by_event: null,
     answer_attachments: [],
     problem: null,
+    note_by: null,
     recommendation: null,
     ...more,
   };

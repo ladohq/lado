@@ -1677,6 +1677,8 @@ class GateInfo(BaseModel):
     # for one closed before schema 31.
     answer_attachments: list[AttachmentInfo]
     problem: str | None  # why its run's flow snapshot cannot be read; None when it can
+    # Who reported the note that led to the gate (runs.recommendation_by); None without one.
+    note_by: str | None
     recommendation: RecommendationInfo | None  # the lead's; None when never asked
 
 
@@ -2089,6 +2091,7 @@ def gate_info(gate: state.Gate) -> GateInfo:
             reads = [artifacts.full_name(gate.run, name) for name in runs.gate_reads(gate)]
         except runs.SnapshotError as error:
             problem = _unreadable(gate.session, error)
+    note_by = runs.recommendation_by(gate)
     return GateInfo(
         id=gate.id,
         run=gate.run,
@@ -2108,9 +2111,8 @@ def gate_info(gate: state.Gate) -> GateInfo:
         closed_by_event=gate.closed_event,
         answer_attachments=[attachment_info(a) for a in runs.gate_answer_attachments(gate)],
         problem=problem,
-        recommendation=recommendation_info(gate, runs.recommendation_by(gate))
-        if gate.recommendation_state
-        else None,
+        note_by=note_by,
+        recommendation=recommendation_info(gate, note_by) if gate.recommendation_state else None,
     )
 
 

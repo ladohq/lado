@@ -87,6 +87,7 @@ function gate(more: Partial<GateInfo> = {}): GateInfo {
     closed_by_event: null,
     answer_attachments: [],
     problem: null,
+    note_by: null,
     recommendation: null,
     ...more,
   };

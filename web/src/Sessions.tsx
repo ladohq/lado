@@ -1436,22 +1436,15 @@ function useNow(from: string | null): number {
 // The seconds from `iso` to `now`, none below 0.
 const secondsSince = (iso: string, now: number) => Math.max(0, (now - new Date(iso).getTime()) / 1000);
 
-// How long the session ran at `now`: its closed spans and the time since its last start; and
-// when it is stopped with a stop time, how long ago, in words.
-function ranParts(session: SessionInfo, now: number): { ran: string; stopped: string | null } {
+// The one text of how long it ran for the head and the list's rows, at `now`: its closed spans
+// and the time since its last start, with no prefix while it runs; stopped with a stop time,
+// how long ago too.
+export function ranText(session: SessionInfo, now: number): string {
   const { running_since: since, stopped_at: stopped } = session;
   const seconds = (iso: string) => secondsSince(iso, now);
-  return {
-    ran: duration(session.ran_seconds + (since ? seconds(since) : 0), true),
-    stopped: !since && stopped ? `stopped ${duration(seconds(stopped))} ago` : null,
-  };
-}
-
-// The one text of how long it ran for the head and the list's rows: while it runs with no
-// prefix; stopped, how long ago too.
-export function ranText(session: SessionInfo, now: number): string {
-  const { ran, stopped } = ranParts(session, now);
-  return session.running_since ? ran : stopped ? `${stopped} · ran ${ran}` : `ran ${ran}`;
+  const ran = duration(session.ran_seconds + (since ? seconds(since) : 0), true);
+  if (since) return ran;
+  return stopped ? `stopped ${duration(seconds(stopped))} ago · ran ${ran}` : `ran ${ran}`;
 }
 
 // The clock of a session's run time, counted on each minute.

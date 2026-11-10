@@ -555,8 +555,9 @@ rest. An agent that needs a tool the repository lacks (Go,
 Rust, Java, a Python, ...) installs it with mise by itself: by the repository's version files
 (`.tool-versions`, `mise.toml`, `.go-version`, `.java-version`, `.python-version`,
 `.ruby-version`) when they name it, otherwise as `<tool>@<version>`, which it runs with
-`mise exec`. A `go.mod` names a Go only by its `toolchain` line: its `go` line is a minimum
-and is not read. It adds no file to the repository unless you ask. What mise installs lives on the
+`mise exec`. A `go.mod` names a Go by its `toolchain` line, or by an exact `go` line
+(`go 1.23.4`) when it has none; a `go` line without the patch (`go 1.23`) is a minimum and is
+not read. It adds no file to the repository unless you ask. What mise installs lives on the
 home volume, so it stays for every agent of this LADO, after `docker compose up -d
 --force-recreate` and after an update; a second LADO has its own home volume and its own
 tools.

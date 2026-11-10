@@ -539,6 +539,20 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
+## Flaky: the New session window's Cancel by the keyboard may miss the focus
+
+Size: S. Why here: a red UI run with no real error; the same race may move a human's focus
+from the button they reached with Tab to Task.
+
+`tests/ui/test_layout.py::test_the_session_list_and_session_windows_give_the_focus_back`
+failed once in a parallel run of the UI files that open New session (`expect(window)
+.to_have_count(0)` after Enter on Cancel: the window stayed open) and passed alone with
+`-n0`. Likely cause, not proven: the window puts the focus in Task once the recent places
+answer (`Launch.tsx`, the `opened` effect), which can come after the test focused Cancel, so
+Enter lands in Task. Wanted: the window's first focus never takes it from a field the human
+already moved to, and the test waits for that state.
+Found: 2026-11-10, branch lado/new-session/task-lad-265 (LAD-265).
+
 ## The epic's vitest tests keep `{ timeout: 3000 }` after the suite's wait became 10 s
 
 Size: XS: delete nine options at the merge of the epic. Why here: nothing fails, a wait is only

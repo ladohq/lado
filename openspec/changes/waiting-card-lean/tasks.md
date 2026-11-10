@@ -62,6 +62,7 @@
 
 - [x] 9.1 `docs/design/ui.md` (the sections the plan's Task 12 names) and CHANGELOG.md
   (`0.46.0 (unreleased)`, one item under Improved). Check: read against the code.
-- [ ] 9.2 The regression run of the plan and screenshots of each place at 1440, 768, 390, light and
+- [x] 9.2 The regression run of the plan and screenshots of each place at 1440, 768, 390, light and
   dark as run artifacts. Check: all green; `openspec validate waiting-card-lean --strict` and the
-  trial archive pass.
+  trial archive pass. Screenshots: run artifact `screenshots.html` (24: the chat's gate and
+  questions, Needs you, a run's page).

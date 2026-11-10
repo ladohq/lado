@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.45.1 (unreleased)
+
+### Fixed
+
+- **`lado doctor` says which agents start without a login.** For Claude Code
+  or Codex not logged in, it says that their agents on your model server's models start and
+  where to log in for their own models, no longer that every new session is refused.
+
 ## 0.45.0 (2026-11-09)
 
 ### New

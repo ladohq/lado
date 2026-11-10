@@ -1457,6 +1457,14 @@ test("past the report's least, the recommendation's splitter takes what the feed
   expect(recSplitter()!.getAttribute("aria-valuemax")).toBe("122");
 });
 
+test("with no report the recommendation's splitter takes only what the feed can give", () => {
+  columnWidth(null);
+  const noNote = { ...GATE_RECOMMENDED, note: "", note_body: "" };
+  show({ questions: [], gates: [noNote], chat: { feed: 200, loaded: true } });
+  recLaidOut(900); // the feed has 40 px over its 160
+  expect(recSplitter()!.getAttribute("aria-valuemax")).toBe("122");
+});
+
 test("no splitter without a given recommendation, nor on Needs you", () => {
   show({ questions: [], gates: [gate(1, "ship/x", "2026-10-03T12:00:06.000Z")], chat: IN_CHAT });
   expect(recSplitter()).toBeNull();
@@ -1501,6 +1509,18 @@ test("on a phone an open field in focus folds the composer with the question's l
   expect(fold).toHaveBeenLastCalledWith(null);
   fireEvent.click(within(card()).getByRole("button", { name: "Other…" }));
   expect(own()!.value).toBe("keep the worker");
+});
+
+test("on a phone the fold's link leaves a skipped question without choices skipped, its comment kept", async () => {
+  FakeScreen.phone();
+  const fold = vi.fn();
+  show({ questions: [question(5, "w1", { choices: [] })], chat: IN_CHAT, onFold: fold });
+  fireEvent.click(within(card()).getByRole("button", { name: "Skip" }));
+  fireEvent.change(within(card()).getByRole("textbox", { name: "Why you skip it (optional)" }), { target: { value: "not now" } });
+  act(() => fold.mock.lastCall?.[0].write());
+  expect((within(card()).getByRole("textbox", { name: "Why you skip it (optional)" }) as HTMLTextAreaElement).value).toBe("not now");
+  fireEvent.click(send());
+  await waitFor(() => expect(posted[0]?.body).toEqual({ answers: [{ question: 5, skip: true, text: "not now" }] }));
 });
 
 test("on a phone a skip's field folds the composer too, and a choice does not", () => {

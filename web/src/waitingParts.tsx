@@ -185,10 +185,11 @@ export function CardBody({
   const full = textHeight ?? Infinity; // not laid out yet: the height asked
   // The room the text and the report share, less the report's least, and what the feed can
   // give past it: the card grows into the feed once the report is at its least.
+  const fromReport = report ? (reportHeight === null ? null : Math.max(0, reportHeight - REPORT_MIN)) : 0;
   const room =
-    reportHeight !== null && boxHeight !== null && report
-      ? boxHeight + Math.max(0, reportHeight - REPORT_MIN) + Math.max(0, card.feedRoom ?? 0)
-      : Infinity;
+    boxHeight !== null && fromReport !== null
+      ? boxHeight + fromReport + Math.max(0, card.feedRoom ?? 0) // the feed not measured: nothing from it
+      : Infinity; // not laid out yet
   const most = Math.min(full, room);
   const max = Math.max(REC_MIN, Math.floor(Number.isFinite(most) ? most : asked));
   const height = card.recHeight === null ? null : Math.max(REC_MIN, Math.min(card.recHeight, max));

@@ -270,9 +270,12 @@ export function WaitingCard({
           : null;
   const closing = useRef(() => {});
   closing.current = () => {
-    if (stopped || fields.length === 0) return;
-    setDrafts((now) => ({ ...now, ...Object.fromEntries(fields.map((one) => [one.id, pickText(pickOf(picks, one, drafts))])) }));
-    setPicks((now) => ({ ...now, ...Object.fromEntries(fields.map((one) => [one.id, null])) }));
+    // A question that takes only own words keeps its field and its pick: the field is its
+    // answer (or a skip's comment), nothing to close.
+    const closed = fields.filter((one) => !ownOnly(one));
+    if (stopped || closed.length === 0) return;
+    setDrafts((now) => ({ ...now, ...Object.fromEntries(closed.map((one) => [one.id, pickText(pickOf(picks, one, drafts))])) }));
+    setPicks((now) => ({ ...now, ...Object.fromEntries(closed.map((one) => [one.id, null])) }));
   };
   useEffect(() => {
     onFold?.(foldLine === null ? null : { line: foldLine, ...(fields.length > 0 && { write: () => closing.current() }) });

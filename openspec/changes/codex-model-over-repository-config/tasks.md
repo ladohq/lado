@@ -43,6 +43,6 @@
 - [x] 4.2 CHANGELOG.md: `## 0.45.1 (unreleased)` on top, under Fixed a line: a Codex agent runs on
   the model chosen in LADO or in your Codex config, even when the repository's `.codex/config.toml`
   names another (LAD-263).
-- [ ] 4.3 The settings' Checks: `make lint`, `make test`, `openspec validate
+- [x] 4.3 The settings' Checks: `make lint`, `make test`, `openspec validate
   codex-model-over-repository-config --strict`, the trial archive in a copy, and
   `openspec validate --specs --strict`; all green, test counts as numbers in the build report.

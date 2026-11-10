@@ -423,11 +423,22 @@ test("the window opens on the last place with the focus in Task, and the button 
   open();
   fireEvent.click(within(rail()).getByRole("button", { name: "New session" }));
   await waitFor(() => expect(placeBox().value).toBe("webapp"));
-  expect(screen.getByText(WEBAPP, { selector: ".place-path" })).toBeTruthy();
+  expect(screen.getByText(WEBAPP, { selector: ".place-sub" })).toBeTruthy();
   await screen.findByText("✓ Ready · branch main");
   await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Task" })));
   await waitFor(() => expect(startButton().textContent).toBe("Start in webapp"));
   expect(calls.some((c) => c.path === `/api/folders?path=${encodeURIComponent(WEBAPP)}`)).toBe(true);
+});
+
+test("Where's info gives a folder's whole path; New empty folder's line names the workspace", async () => {
+  recent = [recentFolder(WEBAPP)];
+  folders[WEBAPP] = folder(WEBAPP);
+  const dialog = await openLaunch(false);
+  await waitFor(() => expect(placeBox().value).toBe("webapp"));
+  fireEvent.click(within(dialog).getByRole("button", { name: "About Where" }));
+  expect(within(dialog).getByText(WEBAPP, { selector: ".info-pop, .info-pop *" })).toBeTruthy();
+  await pickPlace("New empty folder…");
+  expect(screen.getByText(HOME_WORKSPACE, { selector: ".place-text .place-sub" })).toBeTruthy();
 });
 
 test("the first session ever opens on New empty folder, with no message above Where", async () => {
@@ -437,7 +448,7 @@ test("the first session ever opens on New empty folder, with no message above Wh
   await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Folder name" })));
 });
 
-test("Where's list has Recent with a project's badge, then Somewhere else", async () => {
+test("Where's list has Recent with a project's repository in its project, then Somewhere else", async () => {
   recent = [
     recentFolder(WEBAPP),
     recentFolder("/ws/projects/shop/backend", { project: "shop" }, { id: "shop", title: "Shop", repo: "backend" }),
@@ -449,7 +460,7 @@ test("Where's list has Recent with a project's badge, then Somewhere else", asyn
   const list = await screen.findByRole("listbox", { name: "Places" });
   expect([...list.querySelectorAll(".place-group")].map((one) => one.textContent)).toEqual(["Recent", "Somewhere else"]);
   const options = within(list).getAllByRole("option").map((one) => one.querySelector(".place-text")!.textContent);
-  expect(options).toEqual([`webapp${WEBAPP}`, "backendProject Shop", "Other folder…", "Clone from URL…", "New empty folder…", "Project…"]);
+  expect(options).toEqual([`webapp${WEBAPP}`, "backendin project Shop", "Other folder…", "Clone from URL…", "New empty folder…", "Project…"]);
   expect(placeBox().getAttribute("aria-expanded")).toBe("true");
   expect(within(list).getAllByRole("option")[0].getAttribute("aria-selected")).toBe("true");
 });
@@ -492,11 +503,11 @@ test("a typed path lists Use folder first, then its parent's subfolders; Enter o
   expect(await screen.findByText("✓ Ready · branch main")).toBeTruthy();
 });
 
-test("a recent project repository opens on its project: the badge, the button names the project", async () => {
+test("a recent project repository opens on its project, named on Where's line; the button names the project", async () => {
   recent = [recentFolder("/ws/projects/shop/backend", { project: "shop" }, { id: "shop", title: "Shop", repo: "backend" })];
   await openLaunch(false);
   await waitFor(() => expect(placeBox().value).toBe("backend"));
-  expect(screen.getByText("Project Shop", { selector: ".place-text .place-badge" })).toBeTruthy();
+  expect(screen.getByText("in project Shop", { selector: ".place-text .place-sub" })).toBeTruthy();
   expect(calls.some((c) => c.path === "/api/project-launch?project=shop&repo=backend")).toBe(true);
   await waitFor(() => expect(startButton().textContent).toMatch(/Shop$/));
   fireEvent.click(screen.getByRole("button", { name: "About Where" }));
@@ -3336,7 +3347,7 @@ test("a name taken after the clone switches the window to Folder with the clone 
   fireEvent.click(cloneButton());
   expect((await within(dialog).findByRole("alert")).textContent).toContain('session "marketplace" exists already');
   expect(placeBox().value).toBe("marketplace");
-  expect(screen.getByText(INTO, { selector: ".place-path" })).toBeTruthy();
+  expect(screen.getByText(INTO, { selector: ".place-sub" })).toBeTruthy();
   await waitFor(() => expect(document.activeElement).toBe(nameField()));
   expect(teamIsOpen()).toBe(false);
 });
@@ -3423,7 +3434,7 @@ test("Cancel clone pressed as the clone ends starts no session; the clone is off
   await act(async () => release());
   expect(await screen.findByText(`the clone ended before Cancel clone; it is in ${INTO}`)).toBeTruthy();
   expect(placeBox().value).toBe("marketplace");
-  expect(screen.getByText(INTO, { selector: ".place-path" })).toBeTruthy();
+  expect(screen.getByText(INTO, { selector: ".place-sub" })).toBeTruthy();
   expect(calls.some((c) => c.method === "POST" && c.path === "/api/sessions")).toBe(false);
 });
 
@@ -3524,7 +3535,7 @@ test("a clone that ended while the window was away is offered as a folder, not r
   fireEvent.click(cloneButton());
   expect(await screen.findByText(`the clone ended while this window was away; it is in ${INTO}`)).toBeTruthy();
   expect(placeBox().value).toBe("marketplace");
-  expect(screen.getByText(INTO, { selector: ".place-path" })).toBeTruthy();
+  expect(screen.getByText(INTO, { selector: ".place-sub" })).toBeTruthy();
   expect(within(dialog).queryByRole("alert")).toBeNull();
 });
 
@@ -3685,7 +3696,7 @@ test("a start refused after the repository was made turns Where to it, with the 
   fireEvent.click(createButton());
   expect((await within(dialog).findByRole("alert")).textContent).toBe("the provider nosuch is not known");
   await waitFor(() => expect(placeBox().value).toBe("sait-kofeini"));
-  expect(screen.getByText(KOFEINI, { selector: ".place-path" })).toBeTruthy();
+  expect(screen.getByText(KOFEINI, { selector: ".place-sub" })).toBeTruthy();
 });
 
 test("a start refused before the repository was made keeps New empty folder", async () => {
@@ -3717,7 +3728,7 @@ test("Start from scratch here: an empty folder turns Where to New empty folder w
   expect(within(dialog).queryByText("git init")).toBeNull();
   fireEvent.click(within(dialog).getByRole("button", { name: "Start from scratch here" }));
   expect(placeBox().value).toBe("New empty folder");
-  expect(screen.getByText(empty, { selector: ".place-path" })).toBeTruthy();
+  expect(screen.getByText(empty, { selector: ".place-sub" })).toBeTruthy();
   expect(scratchName().value).toBe("coffee-site");
   await waitFor(() => expect(createButton().disabled).toBe(false));
   fireEvent.click(screen.getByRole("button", { name: "About Folder name" }));
@@ -4107,7 +4118,7 @@ test("Folder's refusal of a project's repository turns Where to the project with
   expect(within(box).getByText(SHOP_HINT.command)).toBeTruthy(); // the command stays below
   fireEvent.click(within(box).getByRole("button", { name: "Start in the project Shop" }));
   await waitFor(() => expect(placeBox().value).toBe("frontend"));
-  expect(within(dialog).getByText("Project Shop", { selector: ".place-text .place-badge" })).toBeTruthy();
+  expect(within(dialog).getByText("in project Shop", { selector: ".place-text .place-sub" })).toBeTruthy();
   await waitFor(() => expect(nameField().value).toBe("shop-frontend"));
   expect(calls.some((c) => c.path === "/api/project-launch?project=shop&repo=frontend")).toBe(true);
 });

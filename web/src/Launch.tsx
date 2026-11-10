@@ -62,6 +62,7 @@ import {
   FolderHint,
   FolderNotes,
   FolderPathField,
+  inProject as inProjectWords,
   lastPart,
   PlaceBox,
   PlaceIcon,
@@ -906,13 +907,13 @@ function LaunchDialog({
   const shown: Shown = cloning
     ? { icon: "link", name: "Clone from URL" }
     : scratching
-      ? { icon: "plus", name: "New empty folder", path: scratchInto }
+      ? { icon: "plus", name: "New empty folder", sub: scratchInto ?? workspace?.path }
       : projecting
         ? projectPick || !projectRepo
           ? { icon: "project", name: "Project" }
-          : { icon: "project", name: projectRepo.name, badge: projectTitle }
+          : { icon: "project", name: projectRepo.name, sub: projectTitle && inProjectWords(projectTitle) }
         : path.trim()
-          ? { icon: "folder", name: placeName(path.trim()), path: path.trim() }
+          ? { icon: "folder", name: placeName(path.trim()), sub: path.trim() }
           : otherFolder
             ? { icon: "open", name: "Other folder" }
             : { icon: "folder", name: recentAsked === null ? "…" : "Choose a place" };
@@ -1153,10 +1154,14 @@ function LaunchDialog({
           <div className="field launch-where" role="group" aria-labelledby={`${ids}-where-label`}>
             <span className="field-label" id={`${ids}-where-label`}>
               {resuming ? <span>Where</span> : <label htmlFor={`${ids}-where`}>Where</label>}
-              {projecting && projectRepo && chosenProject && !projectPick && (
+              {projecting && projectRepo && chosenProject && !projectPick ? (
                 <InfoTip about="Where">
                   {`${projectRepo.name} is a repository of the project ${projectTitle}: the team works with ${projectTitle}'s keys and settings.`}
                 </InfoTip>
+              ) : (
+                !resuming &&
+                source === "folder" &&
+                path.trim() && <InfoTip about="Where">{path.trim()}</InfoTip>
               )}
             </span>
             {resuming ? (

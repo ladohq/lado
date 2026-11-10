@@ -7011,27 +7011,34 @@ button.locked:disabled,
   transform: rotate(180deg);
 }
 
+/* A place on one line: its name, then the muted secondary, which shrinks first (down to
+   about 12 characters), then the name. A pair that fits is never cut. */
 .place-text {
   display: flex;
   flex: 1;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: baseline;
-  column-gap: 8px;
+  gap: 8px;
   min-width: 0;
+  white-space: nowrap;
 }
 
 .place-name {
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.place-path {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: var(--muted);
-  font-size: 12px;
+  font-size: 15px;
+  font-weight: 600;
   text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.place-sub {
+  flex: 0 1000 auto;
+  min-width: min(12ch, 45%);
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
 }
 
 .field input.place-input {
@@ -7049,27 +7056,16 @@ button.locked:disabled,
 }
 
 .field input.place-input.place-name {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 100%;
   font-size: 15px;
   font-weight: 600;
+  text-overflow: ellipsis;
 }
 
 .field input.place-input:disabled {
   background: none;
-}
-
-.place-badge {
-  display: inline-flex;
-  align-items: center;
-  height: 20px;
-  padding: 0 7px;
-  border-radius: 4px;
-  background: var(--action-ground);
-  color: var(--action);
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
 }
 
 .place-list {

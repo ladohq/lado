@@ -1,6 +1,7 @@
 // New session's Where (docs/design/ui.md, Launch and session control): one combobox that
-// shows the place and lists the recent places (folders, and a project's repositories with
-// the project's badge), then the other ways; a typed path lists that folder and its parent's
+// shows the place on one line, its name then a muted secondary (a folder's path, a project's
+// repository `in project <title>`), and lists the recent places the same way, then the other
+// ways; a typed path lists that folder and its parent's
 // subfolders. Under it stand the fields of the way chosen and the folder check's notes.
 // Every fact comes from the server; this file only shows and picks.
 import { useLayoutEffect, useId, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
@@ -25,8 +26,9 @@ export type Way = "folder" | "url" | "scratch" | "project";
 
 export type Icon = "folder" | "project" | "link" | "plus" | "open" | "search";
 
-// What the closed field shows of the place.
-export type Shown = { icon: Icon; name: string; path?: string | null; badge?: string | null };
+// What the closed field shows of the place: its name, then a secondary, muted, on the same
+// line (a folder's path, `in project <title>`), which is cut first.
+export type Shown = { icon: Icon; name: string; sub?: string | null };
 
 const WAYS: { way: Way; label: string; icon: Icon }[] = [
   { way: "folder", label: "Other folder…", icon: "open" },
@@ -69,7 +71,8 @@ export function PlaceIcon({ icon }: { icon: Icon }) {
   );
 }
 
-export const Badge = ({ title }: { title: string }) => <span className="place-badge">{`Project ${title}`}</span>;
+// A project's repository's secondary.
+export const inProject = (title: string) => `in project ${title}`;
 
 // Where suggestions come from: the folder up to the last "/" and the name typed after it.
 export function parentOf(path: string): { parent: string; prefix: string } | null {
@@ -197,11 +200,7 @@ export function PlaceBox({
           <PlaceIcon icon={one.project ? "project" : "folder"} />
           <span className="place-text">
             <span className="place-name">{recentName(one)}</span>
-            {one.project ? (
-              <Badge title={one.project.title ?? one.project.id} />
-            ) : (
-              <span className="place-path">{one.path}</span>
-            )}
+            <span className="place-sub">{one.project ? inProject(one.project.title ?? one.project.id) : one.path}</span>
           </span>
           {(one.session.running_since ?? one.session.stopped_at) && (
             <span className="place-meta">{`${since((one.session.running_since ?? one.session.stopped_at)!)} ago`}</span>
@@ -235,6 +234,7 @@ export function PlaceBox({
       <div
         ref={box}
         className={`place-box${open ? " open" : ""}${disabled ? " off" : ""}`}
+        title={open ? undefined : shown.sub ? `${shown.name} — ${shown.sub}` : shown.name}
         onMouseDown={(event) => {
           if (disabled || event.target === inputRef.current) return;
           event.preventDefault();
@@ -302,8 +302,7 @@ export function PlaceBox({
               }
             }}
           />
-          {!open && shown.path && <span className="place-path">{shown.path}</span>}
-          {!open && shown.badge && <Badge title={shown.badge} />}
+          {!open && shown.sub && <span className="place-sub">{shown.sub}</span>}
         </span>
         <svg className={`place-chev${open ? " up" : ""}`} width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
           <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />

@@ -23,7 +23,7 @@
 - [x] 3.2 Kits by D10 in `LaunchTeam.tsx` and `Launch.tsx`, with vitest first
   (`LaunchTeam.test.tsx`, `Launch.test.tsx`); one chevron on Change/Hide; the summary wraps at
   760 px or less (AC-8). Check: `make web`.
-- [ ] 3.3 Where on one line by D9 in `LaunchWhere.tsx` and `styles.css`, with vitest first
+- [x] 3.3 Where on one line by D9 in `LaunchWhere.tsx` and `styles.css`, with vitest first
   (`LaunchWhere.test.tsx`, the badge's assertions in `Launch.test.tsx`) (AC-7). Check: `make web`.
 
 ## 4. In a browser (UI e2e)

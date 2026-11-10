@@ -272,9 +272,9 @@ cli_auth_credentials_store="file"`, `opencode auth list`, `kilo auth list`; Code
 <how> · <where from>`, where from the layer that gives it (`LADO's secret`, `outside
 folder`, `login shell`, `the process that starts LADO`) or the CLI's own login file
 (`Claude Code's login file`, `Codex's login file`, or the file's path), e.g.
-`[ok] Claude Code login: Subscription (token) · LADO's secret`; `[warn] Claude Code login: not logged in: new
-sessions and workers of it are refused, a resumed agent waits (Settings → Agent CLIs and
-environment)` for a CLI whose agents need one (Claude Code; Codex on OpenAI's models, its
+`[ok] Claude Code login: Subscription (token) · LADO's secret`; `[warn] Claude Code login: not logged in: only
+its agents on your model server's models start; log in in Settings → Agent CLIs for its own
+models` for a CLI whose agents need one (Claude Code; Codex on OpenAI's models, its
 default, by the model provider of the user's Codex config); `[warn] Codex CLI login: not
 logged in: Your Codex keeps its login in the system keyring, which Codex agents cannot
 read. …` when the user's Codex is logged in only there;

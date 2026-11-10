@@ -146,8 +146,8 @@ def login_check(found: logins.Login) -> Check:
             return Check(
                 name,
                 WARN,
-                "not logged in: new sessions and workers of it are refused, a resumed agent "
-                f"waits ({logins.SETTINGS})",
+                "not logged in: only its agents on your model server's models start; log in "
+                f"in {logins.SETTINGS} for its own models",
             )
         return Check(name, INFO, "none")
     return Check(name, WARN, f"unknown: {status.problem}")

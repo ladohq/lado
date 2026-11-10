@@ -261,8 +261,8 @@ def test_a_login_line_per_installed_cli(cli_logins, monkeypatch, codex_home):
         doctor.Check(
             "Codex CLI login",
             doctor.WARN,
-            "not logged in: new sessions and workers of it are refused, a resumed agent waits "
-            "(Settings → Agent CLIs)",
+            "not logged in: only its agents on your model server's models start; log in in "
+            "Settings → Agent CLIs for its own models",
         ),
         doctor.Check(
             "Kilo CLI login", doctor.WARN, "unknown: `kilo auth list` timed out after 10 s"
@@ -283,14 +283,14 @@ def test_claude_not_logged_in_warns_where_to_log_in(cli_logins, capsys, monkeypa
     assert check == doctor.Check(
         "Claude Code login",
         doctor.WARN,
-        "not logged in: new sessions and workers of it are refused, a resumed agent waits "
-        "(Settings → Agent CLIs)",
+        "not logged in: only its agents on your model server's models start; log in in "
+        "Settings → Agent CLIs for its own models",
     )
     monkeypatch.setattr(doctor, "run_checks", lambda: [check])
     assert doctor.main() == 0  # a warning: the exit code stays
     assert (
-        "[warn] Claude Code login: not logged in: new sessions and workers of it are refused, a "
-        "resumed agent waits (Settings → Agent CLIs)" in capsys.readouterr().out
+        "[warn] Claude Code login: not logged in: only its agents on your model server's models "
+        "start; log in in Settings → Agent CLIs for its own models" in capsys.readouterr().out
     )
 
 

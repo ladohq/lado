@@ -278,18 +278,26 @@ once logged in. An unknown state SHALL NOT hold it.
 
 `lado doctor` SHALL print one login line per installed CLI: `ok` with the method and where
 it comes from when logged in, `warn` for a CLI whose agents need a login and have none
-(with where to log in), `info` for a CLI without a login whose agents do not need one,
-`warn` with why when unknown; the exit code SHALL not change for these lines.
+(saying that only its agents on the model server's models start, and where to log in for
+its own models), `info` for a CLI without a login whose agents do not need one, `warn`
+with why when unknown; the exit code SHALL not change for these lines.
 
 #### Scenario: Claude Code not logged in
 - **WHEN** Claude Code is installed and not logged in
-- **THEN** `lado doctor` prints `[warn] Claude Code login: not logged in: …Settings →
-  Agent CLIs…` and exits as before
+- **THEN** `lado doctor` prints `[warn] Claude Code login: not logged in: only its agents
+  on your model server's models start; log in in Settings → Agent CLIs for its own
+  models` and exits as before
 
 #### Scenario: Claude Code with a token of LADO's secrets
 - **WHEN** LADO's secrets hold `CLAUDE_CODE_OAUTH_TOKEN`
 - **THEN** `lado doctor` prints `[ok] Claude Code login: Subscription (token) · LADO's
   secret`
+
+#### Scenario: Codex not logged in on OpenAI's models
+- **WHEN** Codex CLI is installed, not logged in, and the user's Codex config names
+  OpenAI's model provider (or none)
+- **THEN** `lado doctor` prints `[warn] Codex CLI login: not logged in: only its agents on
+  your model server's models start; log in in Settings → Agent CLIs for its own models`
 
 ### Requirement: Claude Code's login method says how the human pays
 

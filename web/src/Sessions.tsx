@@ -4,7 +4,6 @@
 // is the Sessions page and a session's page shows the session alone (docs/design/ui.md,
 // Phone layout).
 import {
-  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -509,72 +508,38 @@ function StripIcon({ session, mark }: { session: SessionInfo; mark: string }) {
   );
 }
 
-const KITS_SHOWN = 6; // a card's kits; Details has them all
-
-// The card's line of what a session is in, with the row's mark in the words' colour: the
-// mark is hidden from a screen reader, which reads the words.
-function TipState({ session, stopped }: { session: SessionInfo; stopped: string | null }) {
-  const { mark } = sessionMark(session);
+// The tooltip's line of what a session is in, with the icon's mark in the words' colour: the
+// mark is hidden from a screen reader, which reads the words. The strip has no icon of a
+// stopped session, so no line of one.
+function TipState({ session }: { session: SessionInfo }) {
   const working = workWord(session);
   const [dot, tone, words] =
-    mark === "stopped"
-      ? [null, "tip-muted", stopped ?? STATUS.stopped]
-      : mark === "needs-you"
-        ? ["dot-waiting", "tip-waits", `Needs you: ${about(session)}`]
-        : working
-          ? [`activity-${working}`, session.busy > 0 ? "tip-status" : "tip-muted", work(session)]
-          : [`session-dot-${session.status}`, "danger-text", STATUS[session.status]];
+    sessionMark(session).mark === "needs-you"
+      ? ["dot-waiting", "tip-waits", `Needs you: ${about(session)}`]
+      : working
+        ? [`activity-${working}`, session.busy > 0 ? "tip-status" : "tip-muted", work(session)]
+        : [`session-dot-${session.status}`, "danger-text", STATUS[session.status]];
   return (
     <div className="tip-state">
-      {dot && <span className={`dot ${dot}`} aria-hidden="true" />}
+      <span className={`dot ${dot}`} aria-hidden="true" />
       <span className={tone}>{words}</span>
     </div>
   );
 }
 
-// What brings a stopped or broken session back (Resume is on the session's page).
-const HOW_TO_GO_ON: Partial<Record<SessionStatus, string>> = {
-  stopped: "Open it and press Resume",
-  tmux_gone: "Open it and press Resume",
-  loop_down: "Open it and press Stop session, then Resume",
-};
-
-// Who a session is, the card of its row and of its icon: its title and name (or its name),
-// what it is in, then its labelled facts; a fact without a value is not drawn. What waits in
-// a session in trouble stands under its trouble. The state line's colours explain the row's
-// and the icon's: its group's tone, a session in trouble in the danger colour.
+// A strip icon's tooltip, who the session is and what it is in: its title and name (or its
+// name), then the state line; what waits in a session in trouble stands under its trouble.
+// The rest is in Details, the head's title. The state line's colours explain the icon's: its
+// group's tone, a session in trouble in the danger colour.
 function SessionTip({ session }: { session: SessionInfo }) {
-  const { ran, stopped } = useRanParts(session);
-  const hidden = session.kits.length - KITS_SHOWN;
-  const kits = session.kits.slice(0, KITS_SHOWN).join(", ") + (hidden > 0 ? ` +${hidden} more` : "");
-  const facts: [string, ReactNode][] = [
-    ["Project", session.project_title ?? session.project],
-    ["Ran", ran],
-    ["Folder", <code>{session.repo}</code>],
-    ["Kits", kits],
-    ["CLI", session.provider],
-    ["Mode", session.permission_mode],
-  ];
-  const hint = HOW_TO_GO_ON[session.status];
   return (
     <div className={`session-tip tone-${TONES[groupOf(session)]}`}>
       <div className="tip-top">
         <b>{label(session)}</b>
         {session.title !== null && <span className="tip-muted"> {session.name}</span>}
       </div>
-      <TipState session={session} stopped={stopped} />
+      <TipState session={session} />
       {session.status !== "running" && waits(session) && <div className="tip-waits">Needs you: {about(session)}</div>}
-      <dl className="tip-facts">
-        {facts
-          .filter(([, value]) => value)
-          .map(([name, value]) => (
-            <Fragment key={name}>
-              <dt>{name}</dt>
-              <dd>{value}</dd>
-            </Fragment>
-          ))}
-      </dl>
-      {hint && <div className="tip-hint">{hint}</div>}
     </div>
   );
 }
@@ -586,10 +551,10 @@ const waits = (session: SessionInfo) => {
   return isLive(session) && gates + questions + agents > 0;
 };
 
-// What a session is in, the one rule of its row, its icon, its card and its head: stopped or
-// in trouble (tmux gone, loop down) by its status; else needs you when something waits for
-// the human; else working when an agent works (SessionInfo.busy), idle when none does. The
-// words name it in the head's tooltip and the phone's details, in the card's words.
+// What a session is in, the one rule of its row, its icon, the icon's tooltip and its head:
+// stopped or in trouble (tmux gone, loop down) by its status; else needs you when something
+// waits for the human; else working when an agent works (SessionInfo.busy), idle when none
+// does. The words name it in the head's tooltip and the phone's details.
 type Mark = "needs-you" | "working" | "idle" | Exclude<SessionStatus, "running">;
 
 export function sessionMark(session: SessionInfo): { mark: Mark; words: string } {
@@ -605,13 +570,13 @@ const detailsState = (session: SessionInfo, ran: string): string => {
   return `${sessionMark(session).words.replace(`${STATUS.running} · `, "")} · ${ran}`;
 };
 
-// A running session's agents at work, in its card's and its head's words.
+// A running session's agents at work, in its icon's tooltip's and its head's words.
 const work = (session: SessionInfo) =>
   session.busy > 0 ? `${session.busy} of ${count(session.agents, "agent")} working` : "idle";
 
 // The list's groups, by their ids (prefs.ts): a stopped session is Stopped whatever waits in
 // it, one in trouble is in Needs you when something waits. Each has its name and its
-// heading's tone (GroupHead), which its rows and cards take.
+// heading's tone (GroupHead), which its rows and the icons' tooltips take.
 const groupOf = (session: SessionInfo): SessionGroup =>
   !isLive(session) ? "stopped" : waits(session) ? "needs-you" : "running";
 
@@ -724,20 +689,18 @@ function SessionRow({ session }: { session: SessionInfo }) {
   const working = workWord(session);
   return (
     <li ref={item} className="session-row">
-      <Tooltip tip={<SessionTip session={session} />} side="right">
-        <NavLink to={sessionPath(session.name)} className="session-link">
-          <span className="session-name">
-            <span>{label(session)}</span>
-            {working && <span className={`dot activity-${working}`} role="img" aria-label={working} />}
-          </span>
-          {waits(session) ? (
-            <span className="session-about">{named(session, about(session))}</span>
-          ) : (
-            <RanAbout session={session} />
-          )}
-          {session.status !== "running" && session.status !== "stopped" && <Status status={session.status} />}
-        </NavLink>
-      </Tooltip>
+      <NavLink to={sessionPath(session.name)} className="session-link">
+        <span className="session-name">
+          <span>{label(session)}</span>
+          {working && <span className={`dot activity-${working}`} role="img" aria-label={working} />}
+        </span>
+        {waits(session) ? (
+          <span className="session-about">{named(session, about(session))}</span>
+        ) : (
+          <RanAbout session={session} />
+        )}
+        {session.status !== "running" && session.status !== "stopped" && <Status status={session.status} />}
+      </NavLink>
       <SessionRowMenu name={session.name} onRename={edit} />
     </li>
   );
@@ -1474,7 +1437,7 @@ function useNow(from: string | null): number {
 const secondsSince = (iso: string, now: number) => Math.max(0, (now - new Date(iso).getTime()) / 1000);
 
 // How long the session ran at `now`: its closed spans and the time since its last start; and
-// when it is stopped with a stop time, how long ago, in words. The card says them apart.
+// when it is stopped with a stop time, how long ago, in words.
 function ranParts(session: SessionInfo, now: number): { ran: string; stopped: string | null } {
   const { running_since: since, stopped_at: stopped } = session;
   const seconds = (iso: string) => secondsSince(iso, now);
@@ -1495,7 +1458,6 @@ export function ranText(session: SessionInfo, now: number): string {
 const useRanClock = (session: SessionInfo) => useNow(session.running_since ?? session.stopped_at);
 
 const useRan = (session: SessionInfo) => ranText(session, useRanClock(session));
-const useRanParts = (session: SessionInfo) => ranParts(session, useRanClock(session));
 
 
 // What a start or resume from the New session window said: the settings a resume changed,

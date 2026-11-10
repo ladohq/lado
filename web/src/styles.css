@@ -3343,20 +3343,12 @@ h3 {
   color: var(--muted);
 }
 
-/* A session's card (Sessions.tsx, SessionTip): one width whatever it says, within the window.
-   Its height is bounded inside the tooltip, whose own overflow would cut the arrow off: the
-   12 px are the tooltip's padding and border. */
-.tooltip:has(.session-tip) {
-  width: min(360px, 100vw - 16px);
-  max-width: min(360px, 100vw - 16px);
-}
-
+/* A strip icon's tooltip (Sessions.tsx, SessionTip): the name, the state line; as wide as its
+   text, up to the tooltip's own width. */
 .session-tip {
   display: grid;
   gap: 6px;
-  max-height: calc(100vh - 16px - 12px);
   padding: 3px 0;
-  overflow: hidden;
 }
 
 .tip-top {
@@ -3386,7 +3378,7 @@ h3 {
   color: var(--muted);
 }
 
-/* What waits for the human, in a session's card. */
+/* What waits for the human, in a strip icon's tooltip. */
 .tip-waits {
   color: var(--human);
   font-weight: 600;
@@ -4236,7 +4228,7 @@ h3 {
 /* The agent's popup (Team.tsx, AgentPopup; LAD-254, mockup-agent-popup.html option A): the
    whole name after its status dot, the status under the name past the dot; under a line the
    labelled facts, the labels muted; under a second line the click's hint, smaller. The
-   session card's .tip-facts and .tip-status are narrowed here: a label column as wide as its
+   shared .tip-facts and .tip-status are narrowed here: a label column as wide as its
    longest label, the status muted. */
 .tooltip .tip-agent {
   color: var(--ink);

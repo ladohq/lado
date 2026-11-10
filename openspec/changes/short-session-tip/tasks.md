@@ -1,6 +1,6 @@
 ## 1. The list and the strip (web)
 
-- [ ] 1.1 `web/src/Layout.test.tsx` (vitest): failing tests first. A row on hover and on keyboard
+- [x] 1.1 `web/src/Layout.test.tsx` (vitest): failing tests first. A row on hover and on keyboard
   focus shows no tooltip (AC-1). An icon's tooltip holds `.tip-top` and the state line and no
   `.tip-facts` or `.tip-hint`, for a titled session that needs the human, a working one, an
   idle untitled one, a session whose loop is down, and a session in trouble with a gate (two
@@ -9,7 +9,7 @@
   hover…", "a titled row's card…", "a card names the project…", "a project's new title … in the
   open card", "a card shows six kits…", "a card says how to go on…") are removed or turned into
   icon tests of what stays; the state-line tests ("a card's state line…") check the icon only.
-- [ ] 1.2 `web/src/Sessions.tsx` by D1 and D2: `SessionRow` without `Tooltip`; `SessionTip` with
+- [x] 1.2 `web/src/Sessions.tsx` by D1 and D2: `SessionRow` without `Tooltip`; `SessionTip` with
   the title line, `TipState` and the trouble's `Needs you` line only; `TipState` without its `stopped` branch,
   `SessionTip` without `useRanParts`; remove `HOW_TO_GO_ON`,
   `KITS_SHOWN` and what only they used; fix the comments that name the row's card.

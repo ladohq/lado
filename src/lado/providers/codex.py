@@ -1054,12 +1054,10 @@ def _repo_hook_files(cwd: Path, home: Path) -> list[Path]:
 def _codex_folders(cwd: Path, home: Path) -> list[Path]:
     """The folders from the project root down to `cwd` that have a .codex folder, the Codex
     home `home` not counted, the root first."""
-    cwd, root = cwd.resolve(), _project_root(cwd)
+    cwd, root, home = cwd.resolve(), _project_root(cwd), home.resolve()
     folders = [f for f in (cwd, *cwd.parents) if f == root or root in f.parents]
     return [
-        f
-        for f in reversed(folders)
-        if (f / ".codex").is_dir() and (f / ".codex").resolve() != home.resolve()
+        f for f in reversed(folders) if (f / ".codex").is_dir() and (f / ".codex").resolve() != home
     ]
 
 
@@ -1071,7 +1069,7 @@ def _repo_model(cwd: Path, home: Path) -> str | None:
     for folder in reversed(_codex_folders(cwd, home)):
         try:
             model = _read_toml(folder / ".codex" / "config.toml").get("model")
-        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+        except (OSError, ValueError):
             continue
         if isinstance(model, str) and model:
             return model

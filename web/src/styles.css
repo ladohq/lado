@@ -7910,8 +7910,7 @@ button.locked:disabled,
   height: 36px;
 }
 
-.launch-buttons .primary,
-.launch-buttons .peer {
+.launch-buttons .primary {
   padding: 0 16px;
   font-size: 14px;
   font-weight: 600;
@@ -8399,22 +8398,6 @@ button.locked:disabled,
 
   .launch-missing {
     flex-basis: 100%;
-  }
-
-  /* Two actions: a column, Resume on top; × closes. */
-  .launch-buttons.two {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .launch-buttons.two .launch-cancel {
-    display: none;
-  }
-
-  .launch-buttons.two .primary,
-  .launch-buttons.two .peer {
-    flex: none;
-    width: 100%;
   }
 
   .team-head {

@@ -7,7 +7,7 @@ import re
 
 import fake_model_server as fake
 import pytest
-from launch_window import agent, open_team, other_folder, start_button
+from launch_window import agent, new_session, open_team, other_folder, start_button
 from playwright.sync_api import Browser, Locator, Page, expect
 from test_launch import idle, log_in, stopped_session
 
@@ -400,6 +400,61 @@ def test_a_model_the_list_lacks_is_refused_in_the_window(
     expect(start_button(dialog)).to_be_disabled()
     expect(dialog.get_by_role("button", name="Use Fake agent's settings")).to_be_visible()
     shot(page, "refused")
+
+
+def test_new_session_beside_a_stopped_one_on_another_cli_s_model_offers_no_resume(
+    page: Page, fake_models, logins, server, repo, shot
+):
+    """LAD-261's scenario 1: `my-repo` on "fake-claude" and CloudClaude is stopped, the folder's
+    last launch is `my-repo-2` on "fake-codex" and CloudCodex, neither CLI logged in. New session
+    there offers no Resume, which took the last launch's model; the Resume window of `my-repo`
+    resumes it on its own CLI and model."""
+    cloud = fake.Server("all")
+    model_settings.add_server("OpenRouter", cloud.url, None, warn=print, note=print)
+    gateway = state.model_server("OpenRouter").id
+    claude_model = state.add_model("CloudClaude", "fake-claude", "m1", gateway)
+    state.add_model("CloudCodex", "fake-codex", "m1", gateway)
+    runtime.start_session(str(repo), "my-repo", None, "fake-claude", model="CloudClaude")
+    idle("my-repo")
+    runtime.stop_session("my-repo")
+    runtime.start_session(str(repo), "my-repo-2", None, "fake-codex", model="CloudCodex")
+    idle("my-repo-2")
+    runtime.stop_session("my-repo-2")
+
+    page.set_viewport_size({"width": 1280, "height": 900})
+    log_in(page, server)
+    dialog = new_session(page)
+    expect(dialog.get_by_role("combobox", name="Where")).to_have_value(repo.name)
+    expect(dialog.locator(".place-line")).to_contain_text(
+        "Session my-repo stopped here", timeout=30_000
+    )
+    expect(agent(dialog)).to_have_value("fake-codex")  # the last launch's
+    expect(dialog.get_by_role("button", name="Resume my-repo")).to_have_count(0)
+    expect(dialog.locator(".launch-buttons button")).to_have_text(
+        ["Cancel", "Start new session my-repo-3"]
+    )
+    expect(start_button(dialog)).to_have_class("primary")
+    shot(page, "beside-stopped")
+    dialog.get_by_role("button", name="Cancel").click()
+    expect(dialog).to_have_count(0)
+
+    page.goto(f"{server['url']}/sessions/my-repo")
+    page.locator(".stopped-bar").get_by_role("button", name="Resume session").click()
+    window = page.get_by_role("dialog", name="Resume session")
+    expect(agent(window)).to_have_value("fake-claude", timeout=30_000)
+    expect(window.get_by_role("combobox", name="Model")).to_contain_text("CloudClaude")
+    resume = window.get_by_role("button", name="Resume my-repo")
+    expect(resume).to_be_enabled()
+    shot(page, "resume-window")
+    resume.click()
+    expect(window).to_have_count(0)
+    idle("my-repo")
+    resumed = state.get_session("my-repo")
+    assert resumed.stopped_at is None
+    assert resumed.provider == "fake-claude"
+    assert resumed.power.row().model_id == claude_model.id
+    runtime.stop_session("my-repo")
+    cloud.close()
 
 
 def test_resume_of_a_kept_model_the_cli_lacks_says_the_way_out(

@@ -127,9 +127,10 @@ def test_the_last_repository_comes_back_with_its_stopped_session_beside_a_new_on
     expect(dialog.locator(".place-line")).to_contain_text("Session shop-frontend stopped here")
     expect(agent(dialog)).to_have_value("fake")  # its last session's
     expect(name_field(dialog)).to_have_value("shop-frontend-2")
-    expect(dialog.get_by_role("button", name="Resume shop-frontend")).to_have_class("primary")
     start = dialog.get_by_role("button", name="Start new session in Shop")
+    expect(start).to_have_class("primary")
     expect(start).to_be_enabled()
+    expect(dialog.get_by_role("button", name="Resume shop-frontend")).to_have_count(0)
     shot(page, "taken")
     start.click()
     expect(page).to_have_url(f"{server['url']}/sessions/shop-frontend-2/activity")

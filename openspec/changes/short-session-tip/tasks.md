@@ -38,7 +38,7 @@
   has no Changed group): hovering a session in the list no
   longer opens a card over the chat; an icon of the folded list shows the session's name and
   state; the rest is in the details of the session's title (AC-5).
-- [ ] 3.3 Regression: `make lint`, `make test`, `make web`, `uv run pytest -m ui
+- [x] 3.3 Regression: `make lint`, `make test`, `make web`, `uv run pytest -m ui
   tests/ui/test_session_list.py tests/ui/test_sessions_strip.py tests/ui/test_layout.py
   tests/ui/test_narrow_layout.py`, `openspec validate short-session-tip --strict` and the trial
   archive of the settings' Checks.

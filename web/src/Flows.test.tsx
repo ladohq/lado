@@ -661,7 +661,10 @@ test("an active run's now says who acts, as the core says it, linked while it li
   expect(now.textContent).toContain("review · visit 2 of 3");
 });
 
-test("a waiting run's now is its gate, compact, answered on the page; the run moves on with the feed", async () => {
+// The gate's whole card on a run's page, named by its question.
+const gateCard = async () => screen.findByRole("region", { name: "Merge it?" });
+
+test("a waiting run's now is its gate's whole card, answered on the page; the run moves on with the feed", async () => {
   const posted = serve({
     runs: [WAITING],
     notes: [note(1, { run: WAITING.name, summary: "the design" })],
@@ -672,13 +675,17 @@ test("a waiting run's now is its gate, compact, answered on the page; the run mo
   expect(region.querySelector(".run-head .pill")?.textContent).toBe("Waits for you");
   expect(within(region).getByRole("listitem", { name: "State merge_ok" }).className).toContain("waiting");
   const now = nowCard(region);
-  expect(now.className).toContain("waits");
-  const card = within(now).getByRole("article", { name: "Gate #41" });
-  expect(within(card).getByRole("heading", { name: "Gate #41 · feature/flows-tab · merge_ok" })).toBeTruthy();
-  expect(card.querySelector("time")?.getAttribute("dateTime")).toBe(gate(41).created_at);
-  expect(within(card).getByText("Merge it?")).toBeTruthy();
-  expect(card.textContent).not.toContain("ready to merge");
-  expect(within(card).queryByRole("list", { name: "Artifacts it reads" })).toBeNull();
+  const card = within(now).getByRole("region", { name: "Merge it?" });
+  expect(card.classList.contains("whole")).toBe(true);
+  // The kicker and the question in its head; no "Gate #n · run · state" over it.
+  const head = card.querySelector(".waiting-head") as HTMLElement;
+  expect(head.textContent).toMatch(/^Waits for you · .+Merge it\?$/);
+  expect(card.textContent).not.toContain("Gate #41");
+  // The note and its chips show, whole, with no splitter.
+  expect(within(card).getByText("ready to merge")).toBeTruthy();
+  expect(card.querySelector(".chips")?.textContent).toBe("report");
+  expect(within(card).queryByRole("separator")).toBeNull();
+  expect(within(card).getByRole("region", { name: "Context of the card" }).hasAttribute("tabindex")).toBe(false);
   fireEvent.change(within(card).getByRole("textbox"), { target: { value: "ship it" } });
   fireEvent.click(within(card).getByRole("button", { name: "Approve" }));
   await waitFor(() =>
@@ -690,7 +697,7 @@ test("a waiting run's now is its gate, compact, answered on the page; the run mo
     { kind: "runs", session: "lado", key: WAITING.name, op: "update", item: { ...WAITING, state: "done", status: "ended", acting: "", gate: null, ended_at: "2026-10-04T11:05:00.000Z" } },
     "12",
   );
-  expect(within(region).queryByRole("article", { name: "Gate #41" })).toBeNull();
+  expect(within(region).queryByRole("region", { name: "Merge it?" })).toBeNull();
   expect(nowCard(region).textContent).toContain(`Ended · ${clock("2026-10-04T11:05:00.000Z")}`);
   expect(within(region).getByRole("listitem", { name: "State done" }).getAttribute("aria-current")).toBe("step");
 });
@@ -698,7 +705,7 @@ test("a waiting run's now is its gate, compact, answered on the page; the run mo
 test("the gate on a run's page keeps the files of its comment and answers with them", async () => {
   const posted = serve({ runs: [WAITING], gates: [gate(41)] });
   open(runPath("lado", WAITING.name));
-  const card = within(nowCard(await page("feature/flows-tab"))).getByRole("article", { name: "Gate #41" });
+  const card = within(nowCard(await page("feature/flows-tab"))).getByRole("region", { name: "Merge it?" });
   const clip = within(card).getByRole("button", { name: "Attach files" });
   await waitFor(() => expect(clip.getAttribute("title")).toContain("up to 10 files"));
   const log = new File(["boom"], "server.log");
@@ -738,13 +745,14 @@ test("an ended and a cancelled run's now: when, the event's detail and how long 
   expect(nowCard(region).textContent).toBe(`Cancelled · ${clock(CANCELLED.ended_at!)}not needed · took 1 d 2 h`);
 });
 
-test("the compact gate on a run's page shows the supervisor's recommendation and its primary button", async () => {
+test("the gate on a run's page shows the supervisor's whole recommendation and its primary button", async () => {
   const recommendation = { state: "given" as const, text: "Reject it.", choice: "reject", disagrees: true, by: "reviewer", at: null };
   serve({ runs: [WAITING], gates: [gate(41, { recommendation })] });
   open(runPath("lado", WAITING.name));
-  const card = await screen.findByRole("article", { name: "Gate #41" });
-  const block = within(card).getByRole("region", { name: "Supervisor's recommendation" });
-  expect(block.querySelector(".rec-differs")?.textContent).toBe("disagrees with reviewer");
+  const card = await gateCard();
+  const block = within(card).getByRole("note", { name: "Supervisor's recommendation, disagrees with the step's report" });
+  expect(block.querySelector(".rec-title")?.textContent).toBe("supervisor recommends Reject");
+  expect(block.querySelector(".rec-text")?.hasAttribute("tabindex")).toBe(false); // whole: nothing to scroll
   expect(within(card).getByRole("button", { name: "Reject" }).className).toBe("primary");
   expect(within(card).getByRole("button", { name: "Approve" }).className).toBe("quiet");
 });
@@ -752,7 +760,7 @@ test("the compact gate on a run's page shows the supervisor's recommendation and
 test("in a stopped session the gate on the run's page cannot be answered", async () => {
   serve({ runs: [WAITING], gates: [gate(41)] });
   open(runPath("old", WAITING.name));
-  const card = await screen.findByRole("article", { name: "Gate #41" });
+  const card = await gateCard();
   expect((within(card).getByRole("button", { name: "Approve" }) as HTMLButtonElement).disabled).toBe(true);
 });
 

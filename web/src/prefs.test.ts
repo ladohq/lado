@@ -23,11 +23,14 @@ import {
   storeArtifactGroups,
   storeFlowsGroups,
   storeLastColumn,
+  REC_MIN,
   storedMinimized,
+  storedRecommendationHeight,
   storedSessionsList,
   storedWaitingHeight,
   storeMinimized,
   storePanel,
+  storeRecommendationHeight,
   storeRailCollapsed,
   storeSessionGroups,
   storeSessionsList,
@@ -203,6 +206,19 @@ test("the waiting card's height is one value, none at first; a broken one is non
   for (const bad of ["tall", "", String(WAITING_MIN - 1), "-5", "Infinity"]) {
     localStorage.setItem("lado.waitingHeight", bad);
     expect(storedWaitingHeight()).toBeNull();
+  }
+});
+
+test("the recommendation's height in the waiting card is one value, none at first; a broken one is none", () => {
+  expect(storedRecommendationHeight()).toBeNull();
+  storeRecommendationHeight(140);
+  expect(localStorage.getItem("lado.recommendationHeight")).toBe("140");
+  expect(storedRecommendationHeight()).toBe(140);
+  storeRecommendationHeight(null); // back to the default
+  expect(localStorage.getItem("lado.recommendationHeight")).toBeNull();
+  for (const bad of ["tall", "", String(REC_MIN - 1), "-5", "Infinity"]) {
+    localStorage.setItem("lado.recommendationHeight", bad);
+    expect(storedRecommendationHeight()).toBeNull();
   }
 });
 

@@ -65,13 +65,43 @@ export function Attachments({
   attachments: AttachmentInfo[];
   short?: boolean; // the name without the run: shown where the run is known
 }) {
-  const artifacts = useLive().artifacts[session];
-  const view = useView(session);
   if (attachments.length === 0) return null;
   return (
     <div className="chips">
+      <AttachmentChips session={session} attachments={attachments} short={short} />
+    </div>
+  );
+}
+
+// The chips alone, for a row that holds others too. `titled` (the waiting card's): a chip
+// shows the artifact's title, else its short name, and no size or tooltip.
+export function AttachmentChips({
+  session,
+  attachments,
+  short = false,
+  titled = false,
+}: {
+  session: string;
+  attachments: AttachmentInfo[];
+  short?: boolean;
+  titled?: boolean;
+}) {
+  const artifacts = useLive().artifacts[session];
+  const view = useView(session);
+  return (
+    <>
       {attachments.map((attached) => {
-        const chip = (
+        const chip = titled ? (
+          <button
+            type="button"
+            className="chip"
+            aria-label={`Open artifact ${attached.full_name}`}
+            onClick={() => view(attached.record)}
+          >
+            <KindIcon mediaType={attached.media_type} />
+            <span className="chip-name">{attached.title || attached.name}</span>
+          </button>
+        ) : (
           <button
             type="button"
             className="chip"
@@ -108,6 +138,6 @@ export function Attachments({
           </span>
         );
       })}
-    </div>
+    </>
   );
 }

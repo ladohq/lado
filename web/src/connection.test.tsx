@@ -322,7 +322,7 @@ test("the same error shows wherever the gate shows, and survives a change of pag
   view.rerender(
     <LiveContext.Provider value={live}>
       <MemoryRouter>
-        <GateCard session="s" gate={open} stopped={false} compact />
+        <GateCard session="s" gate={open} stopped={false} />
       </MemoryRouter>
     </LiveContext.Provider>,
   );

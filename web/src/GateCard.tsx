@@ -1,29 +1,31 @@
 // A flow gate (docs/design/ui.md, The human in the session): open, its panel (GatePanel),
 // answered with one of its options and a comment for the next step, in its tab of the
-// waiting card or as a card on a run's page; closed, a folded card in the feed with its
-// answer that opens read only (GateLine). The panel has no head of its own: the tab or the run's page
-// names the gate (gateTitle). The answer goes through the server to runs.answer, as
-// `lado answer` and the popup do; the panel changes only when the feed brings the closed
-// gate, whoever answered it.
+// waiting card or as a whole card on a run's page (GateCard); closed, a folded card in the
+// feed with its answer that opens read only (GateLine). The answer goes through the server to
+// runs.answer, as `lado answer` and the popup do; the panel changes only when the feed brings
+// the closed gate, whoever answered it.
 import { useState, type ReactNode } from "react";
 
 import { answerGate, ApiError, HUMAN, type GateInfo, type Limits, type RunEventInfo, type RunInfo } from "./api";
 import { AnswerBox, filesLine, uploadFiles, useLimits, useOwnFiles, type Attached, type SetFiles } from "./attachFiles";
 import { closedBy, gateAttempt, looks } from "./attempts";
-import { size } from "./artifacts";
 import { KindIcon } from "./ArtifactView";
-import { Attachments, useView } from "./Attachments";
+import { AttachmentChips, Attachments, useView } from "./Attachments";
 import { Body, clock, Preview } from "./ChatText";
 import { MiniAvatar } from "./FeedRow";
+import { CARD_LINES, MOST_LINES } from "./fieldHeight";
 import { OutcomeChip } from "./flowSteps";
 import { ChevronIcon, GateIcon } from "./icons";
 import { useLive, useLiveStore, useLocked } from "./live";
+import { useMedia } from "./phone";
 import { quoteArea } from "./quote";
-import { disagreed, primaryOf, Recommendation, RecommendationBar } from "./Recommendation";
-import { ActionProblem, CardFoot, cardLines, CardTop, STOPPED_NOTE, WAITING_NOTE, type CardShape } from "./waitingParts";
+import { disagreed, primaryOf } from "./Recommendation";
+import { ActionProblem, CardBody, STOPPED_NOTE, WAITING_NOTE, type CardShape } from "./waitingParts";
 
 const NOTE_LINES = 20; // the lines of the note before the gate shown before Show more
 const CLOSED_NOTE_LINES = 6; // the same in a closed gate's card, its Note line opened
+const COMMENT = "Comment for the next step (optional)";
+const NARROW = "(max-width: 600px)"; // a narrow window's placeholder is shorter
 
 // How a button names an option, by the gate's kind; a choice gate's options are its own.
 const LABELS: Record<string, Record<string, string>> = {
@@ -37,50 +39,52 @@ const label = (gate: GateInfo) => (option: string) => LABELS[gate.kind]?.[option
 const whatOf = (gate: GateInfo, option: string) =>
   gate.kind !== "approval" ? "Answer" : option === "approve" ? "Approval" : option === "reject" ? "Rejection" : "Answer";
 
-// How a gate is named wherever one title stands for it (a closed gate's line, a run's page).
+// How a gate is named wherever one title stands for it (a closed gate's line).
 export const gateTitle = (gate: GateInfo) => `Gate #${gate.id} · ${gate.run} · ${gate.state}`;
 
 // The DOM id of a gate's place in the feed: a link to it (Needs you, a notification) shows
 // its tab while it is open, and scrolls to its line once closed.
 export const gateAnchor = (id: number) => `gate-${id}`;
 
-// The card of an open gate, no head, on a run's page in Flows (compact: the notes are in the
-// run's history): its panel.
-export function GateCard({
-  session,
-  gate,
-  stopped,
-  compact = false,
-}: {
-  session: string;
-  gate: GateInfo;
-  stopped: boolean;
-  compact?: boolean;
-}) {
+const noMeasure = () => {};
+
+// An open gate on its run's page in Flows: the waiting card's panel without tabs, whole (the
+// page scrolls), `kicker` over its question; its field opens on 3 lines.
+export function GateCard({ session, gate, stopped, kicker }: { session: string; gate: GateInfo; stopped: boolean; kicker?: string }) {
+  const card: CardShape = {
+    expanded: false,
+    whole: true,
+    chat: false,
+    phone: false,
+    fieldLines: [CARD_LINES, MOST_LINES],
+    headId: `gate-${gate.id}-head`,
+    recHeight: null,
+    setRecHeight: noMeasure,
+    head: noMeasure,
+    foot: noMeasure,
+  };
   return (
-    <div className="chat-gate open">
-      <GatePanel session={session} gate={gate} stopped={stopped} compact={compact} />
-    </div>
+    <section className="waiting-panel solo whole" aria-labelledby={card.headId}>
+      <GatePanel session={session} gate={gate} stopped={stopped} card={card} kicker={kicker} />
+    </section>
   );
 }
 
-// What answers an open gate, wherever it is answered (a gate's card, its tab of the waiting
-// card): the question, the note that led to it in full with its chips, the artifacts it
-// reads, the supervisor's recommendation (Recommendation.tsx), the comment for the next step
-// and a button per option, the recommended one primary. `compact`: without the note and the
-// artifacts. `card`: as a tab of the waiting card (waitingParts.tsx), the question its title,
-// the note and reads its context, the recommendation's line, the comment and the buttons
-// its footer; `marked`, the gate a link asked for. `comment` and `onComment`, `files` and `onFiles`: the
-// comment and its files kept by who shows the panel (the waiting card, across its tabs and
-// its expanded view), else here. The comment takes files as the composer does
-// (attachFiles.AnswerBox); their count and size stand beside the buttons, and a button
-// uploads those not uploaded yet, then answers with their names.
+// What answers an open gate, as a tab of the waiting card (waitingParts.tsx) or on a run's
+// page: the question its head, the note that led to it and its documents' chips its report,
+// then in the footer the supervisor's recommendation (Recommendation.tsx), the comment for the
+// next step and a button per option, the recommended one primary. `marked`, the gate a link
+// asked for. `comment` and `onComment`, `files` and `onFiles`: the comment and its files kept
+// by who shows the panel (the waiting card, across its tabs and its expanded view), else here.
+// The comment takes files as the composer does (attachFiles.AnswerBox); their count and size
+// stand beside the buttons, and a button uploads those not uploaded yet, then answers with
+// their names.
 export function GatePanel({
   session,
   gate,
   stopped,
-  compact = false,
   card,
+  kicker,
   marked = false,
   comment: kept,
   onComment,
@@ -91,8 +95,8 @@ export function GatePanel({
   session: string;
   gate: GateInfo;
   stopped: boolean;
-  compact?: boolean;
-  card?: CardShape;
+  card: CardShape;
+  kicker?: string;
   marked?: boolean;
   comment?: string;
   onComment?: (comment: string) => void;
@@ -113,6 +117,7 @@ export function GatePanel({
   const primary = primaryOf(gate.options, gate.recommendation);
   const live = useLiveStore();
   const { lost } = useLive();
+  const narrow = useMedia(NARROW);
   const attempt = gateAttempt(session, gate.id);
   const locked = useLocked(attempt);
 
@@ -140,29 +145,6 @@ export function GatePanel({
     }
   }
 
-  // A readable area of the selection bar, laid out as if it were not there.
-  const about = !card && (
-    <div className="gate-about" {...quoteArea(session)}>
-      <p className="gate-question">{gate.question}</p>
-      {!compact && <Note session={session} gate={gate} />}
-      {!compact && gate.problem && <p className="problem gate-problem">Artifacts it reads cannot be shown: {gate.problem}</p>}
-      {!compact && <Reads session={session} names={gate.reads ?? []} />}
-      <Recommendation rec={gate.recommendation} />
-    </div>
-  );
-  const field = (
-    <AnswerBox
-      label="Comment for the next step (optional)"
-      text={comment}
-      change={setComment}
-      off={card !== undefined && stopped}
-      locked={busy}
-      files={files}
-      setFiles={setFiles}
-      limits={limits}
-      lines={card && cardLines(card.expanded)}
-    />
-  );
   const buttons = [
     ...gate.options.map((option) => (
       <button
@@ -186,72 +168,62 @@ export function GatePanel({
       </span>
     ),
   ];
-  const said = (
+  const area = quoteArea(session);
+  const reads = (gate.reads ?? []).filter((name) => !gate.attachments.some((one) => one.full_name === name));
+  const report = (gate.note || gate.note_body || gate.attachments.length > 0 || gate.problem || reads.length > 0) && (
     <>
-      {stopped && <p className="chat-note">{STOPPED_NOTE}</p>}
-      {problem && (
-        <p className="field-problem" role="alert">
-          {problem}
-        </p>
+      <Note gate={gate} />
+      {gate.problem && <p className="problem gate-problem">Artifacts it reads cannot be shown: {gate.problem}</p>}
+      {(gate.attachments.length > 0 || reads.length > 0) && (
+        <div className="chips">
+          <AttachmentChips session={session} attachments={gate.attachments} titled />
+          <Reads session={session} names={reads} />
+        </div>
       )}
-      <ActionProblem attempt={attempt} off={stopped} />
     </>
   );
-  if (card) {
-    const context = gate.note || gate.note_body || gate.attachments.length > 0 || gate.problem || (gate.reads ?? []).length > 0;
-    return (
-      <>
-        <CardTop
-          card={card}
-          title={gate.question}
-          meta={`${gate.run} · ${gate.state} · gate #${gate.id}`}
-          item={gate.id}
-          marked={marked}
-          area={quoteArea(session)}
-        >
-          {context && (
-            <>
-              <Note session={session} gate={gate} />
-              {gate.problem && <p className="problem gate-problem">Artifacts it reads cannot be shown: {gate.problem}</p>}
-              <Reads session={session} names={gate.reads ?? []} />
-            </>
-          )}
-        </CardTop>
-        <CardFoot card={card}>
-          <RecommendationBar
-            rec={gate.recommendation}
-            options={gate.options}
-            label={label(gate)}
-            whole={card.expanded}
-            area={quoteArea(session)}
-          />
-          <form className="answer" onSubmit={(event) => event.preventDefault()}>
-            {field}
-          </form>
-          <div className="waiting-send">
-            {buttons}
-            {said}
-          </div>
-        </CardFoot>
-      </>
-    );
-  }
   return (
-    <>
-      {about}
+    <CardBody
+      card={card}
+      title={gate.question}
+      kicker={kicker}
+      item={gate.id}
+      marked={marked}
+      area={area}
+      report={report}
+      rec={{ rec: gate.recommendation, options: gate.options, label: label(gate), kind: "gate", area }}
+    >
       <form className="answer" onSubmit={(event) => event.preventDefault()}>
-        {field}
-        <div className="choices">{buttons}</div>
-        {said}
+        <AnswerBox
+          label={COMMENT}
+          placeholder={narrow ? "Comment (optional)" : COMMENT}
+          text={comment}
+          change={setComment}
+          off={stopped}
+          locked={busy}
+          files={files}
+          setFiles={setFiles}
+          limits={limits}
+          lines={card.fieldLines}
+        />
       </form>
-    </>
+      <div className="waiting-send">
+        {buttons}
+        {stopped && <p className="chat-note">{STOPPED_NOTE}</p>}
+        {problem && (
+          <p className="field-problem" role="alert">
+            {problem}
+          </p>
+        )}
+        <ActionProblem attempt={attempt} off={stopped} />
+      </div>
+    </CardBody>
   );
 }
 
-// The note of the step that led to the gate: its summary, then its body at once, and its
-// artifacts as chips with their short names (they are the run's).
-function Note({ session, gate }: { session: string; gate: GateInfo }) {
-  if (!gate.note && !gate.note_body && gate.attachments.length === 0) return null;
+// The note of the step that led to the gate: its summary, then its body at once.
+function Note({ gate }: { gate: GateInfo }) {
+  if (!gate.note && !gate.note_body) return null;
   return (
     <div className="gate-note">
       {gate.note && (
@@ -260,51 +232,42 @@ function Note({ session, gate }: { session: string; gate: GateInfo }) {
         </p>
       )}
       {gate.note_body && <Preview text={gate.note_body} lines={NOTE_LINES} />}
-      <Attachments session={session} attachments={gate.attachments} short />
     </div>
   );
 }
 
-// The artifacts the gate reads, by their full names (the core leaves out those its note
-// carries), under a muted "It reads": each as of its latest record among the feed's
-// artifacts, so a write while the gate is open shows at once. A chip opens that record;
-// before the session's artifacts are loaded, a name alone.
+// The artifacts the gate reads but its note does not carry, as chips beside the note's: each
+// as of its latest record among the feed's artifacts, so a write while the gate is open shows
+// at once, by its title, else its short name. A chip opens that record; before the session's
+// artifacts are loaded, a name alone.
 function Reads({ session, names }: { session: string; names: string[] }) {
   const artifacts = useLive().artifacts[session];
   const view = useView(session);
-  if (names.length === 0) return null;
   const items = artifacts && "items" in artifacts ? artifacts.items : undefined;
-  return (
-    <>
-      <p className="gate-reads-label" aria-hidden="true">It reads</p>
-      <ul className="gate-reads" aria-label="Artifacts it reads">
-        {names.map((name) => {
-          const found = items?.find((one) => one.full_name === name);
-          const short = name.slice(name.lastIndexOf("/") + 1);
-          if (!found) return <li key={name} className="gate-read muted">{short}{items && ": no record yet"}</li>;
-          const about = [found.title, found.latest.summary].filter(Boolean).join(" — ");
-          return (
-            <li key={name} className="gate-read">
-              <button
-                type="button"
-                className="chip"
-                aria-label={`Open artifact ${found.full_name}`}
-                title={found.title ? `${found.full_name} · ${found.title}` : found.full_name}
-                onClick={() => view(found.latest.id)}
-              >
-                <KindIcon mediaType={found.latest.media_type} />
-                <span className="chip-name">
-                  <span className="full-name">{found.name}</span>
-                </span>
-                <span className="chip-size">{size(found.latest.size)}</span>
-              </button>
-              {about && <span className="gate-read-about">{about}</span>}
-            </li>
-          );
-        })}
-      </ul>
-    </>
-  );
+  return names.map((name) => {
+    const found = items?.find((one) => one.full_name === name);
+    const short = name.slice(name.lastIndexOf("/") + 1);
+    if (!found) {
+      return (
+        <span key={name} className="gate-read muted">
+          {short}
+          {items && ": no record yet"}
+        </span>
+      );
+    }
+    return (
+      <button
+        key={name}
+        type="button"
+        className="chip"
+        aria-label={`Open artifact ${found.full_name}`}
+        onClick={() => view(found.latest.id)}
+      >
+        <KindIcon mediaType={found.latest.media_type} />
+        <span className="chip-name">{found.title || found.name}</span>
+      </button>
+    );
+  });
 }
 
 // A closed gate (docs/design/ui.md, Flow gates): a folded card, its head one button that

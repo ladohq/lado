@@ -1968,7 +1968,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     start.add_argument(
         "--name",
-        help="session name (default: repository folder name; in a project <project>-<repo>)",
+        help=(
+            "session name (default: repository folder name; in a project <project>-<repo>, "
+            "said once when one repeats the other)"
+        ),
     )
     start.add_argument(
         "--provider",

@@ -62,7 +62,7 @@ import {
   FolderHint,
   FolderNotes,
   FolderPathField,
-  inProject as inProjectWords,
+  projectSub,
   lastPart,
   PlaceBox,
   PlaceIcon,
@@ -911,7 +911,7 @@ function LaunchDialog({
       : projecting
         ? projectPick || !projectRepo
           ? { icon: "project", name: "Project" }
-          : { icon: "project", name: projectRepo.name, sub: projectTitle && inProjectWords(projectTitle) }
+          : { icon: "project", name: projectRepo.name, sub: projectTitle && projectSub(projectTitle) }
         : path.trim()
           ? { icon: "folder", name: placeName(path.trim()), sub: path.trim() }
           : otherFolder
@@ -1056,18 +1056,22 @@ function LaunchDialog({
     setNameEmptied(text === "");
     setRefused((now) => (now?.status === 409 && !isModelRefusal(now.detail) ? null : now));
   };
-  const useNext = (id: string) => (
-    <button type="button" className="quiet" disabled={busyNow} onClick={() => typeName(freeName(id, new Set([...sessionNames, id])))}>
-      {`Use ${freeName(id, new Set([...sessionNames, id]))}`}
-    </button>
-  );
+  // Use <next>: the first free name after a taken one, typed for the human.
+  const nextButton = (id: string) => {
+    const next = freeName(id, new Set([...sessionNames, id]));
+    return (
+      <button type="button" className="quiet" disabled={busyNow} onClick={() => typeName(next)}>
+        {`Use ${next}`}
+      </button>
+    );
+  };
   const holder = naming.taken && nameId ? resumable(nameId) : undefined;
   const nameNote = !hasName ? null : taken && nameId ? (
     <>
       <span className="field-note bad" role="alert">
         {taken.message}
       </span>
-      {useNext(nameId)}
+      {nextButton(nameId)}
     </>
   ) : naming.taken && nameId ? (
     <>
@@ -1078,7 +1082,7 @@ function LaunchDialog({
           ? ` exists (${RESUMABLE.has(holder.status) ? "stopped" : "running"}, in ${lastPart(holder.repo)}).`
           : " exists."}
       </span>
-      {useNext(nameId)}
+      {nextButton(nameId)}
     </>
   ) : nameOver ? (
     <span className="field-note bad">{`Name: at most ${maxTitle} characters.`}</span>

@@ -72,7 +72,7 @@ export function PlaceIcon({ icon }: { icon: Icon }) {
 }
 
 // A project's repository's secondary.
-export const inProject = (title: string) => `in project ${title}`;
+export const projectSub = (title: string) => `in project ${title}`;
 
 // Where suggestions come from: the folder up to the last "/" and the name typed after it.
 export function parentOf(path: string): { parent: string; prefix: string } | null {
@@ -200,7 +200,7 @@ export function PlaceBox({
           <PlaceIcon icon={one.project ? "project" : "folder"} />
           <span className="place-text">
             <span className="place-name">{recentName(one)}</span>
-            <span className="place-sub">{one.project ? inProject(one.project.title ?? one.project.id) : one.path}</span>
+            <span className="place-sub">{one.project ? projectSub(one.project.title ?? one.project.id) : one.path}</span>
           </span>
           {(one.session.running_since ?? one.session.stopped_at) && (
             <span className="place-meta">{`${since((one.session.running_since ?? one.session.stopped_at)!)} ago`}</span>

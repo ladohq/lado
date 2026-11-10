@@ -331,12 +331,20 @@ def test_a_runs_page_shows_its_flow_and_steps_and_its_gate_is_answered_there(
         "title", "you · reads plan"
     )
     expect(run.get_by_role("list", name="Ways back")).to_have_count(0)
-    # Now: the gate, compact, without its note and what it reads (they are in the history).
+    # Now: the gate's whole card, "Waits for you" in its head over the question; its note and
+    # chips, no "Gate #n · run · state", no splitter, nothing that scrolls inside.
     now = run.get_by_role("region", name="Now")
-    expect(now).to_contain_text("Waits for you")
-    card = now.get_by_role("article", name="Gate #1", exact=True)
-    expect(card).to_contain_text("Ship it?")
-    expect(card.get_by_role("list", name="Artifacts it reads")).to_have_count(0)
+    card = now.get_by_role("region", name="Ship it?")
+    head = card.locator(".waiting-head")
+    expect(head.locator(".waiting-kicker")).to_have_text(re.compile(r"^Waits for you · "))
+    expect(head.get_by_role("heading", name="Ship it?")).to_be_visible()
+    expect(card).not_to_contain_text("Gate #1")
+    expect(card.locator(".gate-note")).to_contain_text("built the form")
+    expect(card.locator(".chips")).to_have_count(1)
+    expect(card.get_by_role("separator")).to_have_count(0)
+    report = card.get_by_role("region", name="Context of the card")
+    assert report.evaluate("r => getComputedStyle(r).maxHeight") == "none"
+    expect(report).not_to_have_class(re.compile(r"\bhas-more\b"))
     # The history, the newest first; the latest step with a note is open.
     events = run.get_by_role("list", name="Events")
     tops = events.locator(".feed-top")

@@ -75,6 +75,7 @@ export type CardShape = {
   phone: boolean;
   fieldLines: [number, number]; // the lines a field opens with and grows to
   headId: string; // the head's, which names the panel
+  feedRoom: number | null; // what the chat's feed can give over its least (null: no feed)
   recHeight: number | null; // the recommendation's text, by its splitter (null: the default)
   setRecHeight: (height: number | null) => void;
   head: (element: HTMLElement | null) => void; // measured: the human's height leaves it whole
@@ -153,7 +154,8 @@ type RecProps = Omit<ComponentProps<typeof Recommendation>, "whole" | "height" |
 // (`report`, null for none), then in the footer its recommendation (`rec`) and the rest
 // (`children`). In a session's chat a given recommendation has a splitter over the footer,
 // which sets its text's height between a line and the lesser of its whole text and the room
-// at which the report is at its least; else a line parts the report from the footer.
+// the report gives down to its least and the feed down to its own; else a line parts the
+// report from the footer.
 export function CardBody({
   card,
   title,
@@ -182,8 +184,12 @@ export function CardBody({
   const initial = card.phone ? REC_LINES.phone : REC_LINES.window;
   const asked = card.recHeight ?? initial;
   const full = textHeight ?? Infinity; // not laid out yet: the height asked
-  // The room the text and the report share, less the report's least.
-  const room = reportHeight !== null && boxHeight !== null && report ? boxHeight + reportHeight - REPORT_MIN : Infinity;
+  // The room the text and the report share, less the report's least, and what the feed can
+  // give past it: the card grows into the feed once the report is at its least.
+  const room =
+    reportHeight !== null && boxHeight !== null && report
+      ? boxHeight + Math.max(0, reportHeight - REPORT_MIN) + Math.max(0, card.feedRoom ?? 0)
+      : Infinity;
   const most = Math.min(full, room);
   const max = Math.max(REC_MIN, Math.floor(Number.isFinite(most) ? most : asked));
   const height = card.recHeight === null ? null : Math.max(REC_MIN, Math.min(card.recHeight, max));

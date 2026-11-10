@@ -482,6 +482,7 @@ export function WaitingCard({
     phone: phone !== null,
     fieldLines: CARD_FIELD_LINES,
     headId: `waiting-${session}-head`,
+    feedRoom: chat?.feed != null ? chat.feed - FEED_MIN : null,
     recHeight,
     setRecHeight: (next) => {
       setRecHeight(next);
@@ -492,7 +493,7 @@ export function WaitingCard({
   };
   const style = {
     ...(given !== null && { "--waiting-height": `${given}px` }),
-    ...(given !== null && rest !== null && { "--waiting-rest": `${rest}px` }),
+    ...(rest !== null && { "--waiting-rest": `${rest}px` }),
     ...(chat?.height != null && { "--waiting-max": `${Math.round(chat.height * CARD_SHARE)}px` }),
   } as CSSProperties;
 

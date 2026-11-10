@@ -159,26 +159,32 @@ def test_the_phones_targets_have_their_sizes(device, server, repo, shot):
         "Expand": card.get_by_role("button", name="Expand the card"),
         "tab": card.get_by_role("tab").first,
         "comment": panel.locator(".answer-box").first,
+        "chip": panel.locator(".chip").first,
     }
     assert {name: high(one) for name, one in gate.items()} == dict.fromkeys(gate, 44)
     for name in ("Stop", "Menu", "Minimize", "Expand"):
         assert round(box(gate[name])["width"]) == 44, name
+    # The answer's buttons share the footer's width.
+    row = box(panel.locator(".waiting-send"))
+    approve, reject = box(gate["Approve"]), box(gate["Reject"])
+    assert abs(approve["width"] - reject["width"]) <= 2, (approve, reject)  # a frame's 2 px
+    assert reject["x"] + reject["width"] >= row["x"] + row["width"] - 1, (reject, row)
     toggle = box(page.get_by_role("button", name="Messages between agents"))
     assert (toggle["width"], toggle["height"]) == (36, 36)
     # As they are: not the main action, past WCAG's 24 px.
     assert high(page.get_by_role("group", name="Team").get_by_role("button").first) >= 24
     tabs = page.get_by_role("navigation", name="Session sections")
     assert high(tabs.get_by_role("link").first) >= 24
-    assert high(card.locator(".waiting-more")) == 24
     shot(page, "gate", full_page=False)
 
     card.get_by_role("tab", name="supervisor 1").click()
     question = {
         "Send answer": panel.get_by_role("button", name="Send answer to supervisor"),
-        "Skip question": panel.get_by_role("button", name="Skip question"),
+        "Skip": panel.get_by_role("button", name="Skip", exact=True),
         "choice": panel.get_by_role("button", name="yes", exact=True),
+        "Other…": panel.get_by_role("button", name="Other…"),
     }
-    expect(question["Skip question"]).to_be_visible()
+    expect(question["Skip"]).to_be_visible()
     assert {name: high(one) for name, one in question.items()} == dict.fromkeys(question, 44)
 
     card.get_by_role("button", name="Minimize the card").tap()
@@ -558,7 +564,7 @@ def test_the_composer_stays_at_the_bottom_with_a_gate_waiting(device, server, re
     assert composer["y"] + composer["height"] <= UPRIGHT[1]
     assert composer["y"] + composer["height"] >= UPRIGHT[1] - 40, composer  # at the bottom
     chat = box(page.get_by_role("region", name="Chat"))
-    assert box(card.locator(".waiting-top"))["height"] <= chat["height"] * 0.4 + 1
+    assert box(card)["height"] <= chat["height"] * 0.5 + 1
     within(card.locator(".waiting-foot"), 0, UPRIGHT[1])
     assert page.locator(".chat-feed").evaluate("f => getComputedStyle(f).overflowY") == "auto"
     expect(page.locator(".composer-keys")).to_be_hidden()
@@ -639,7 +645,7 @@ def test_the_composer_and_the_send_button_are_in_sight(device, server, repo, sho
 def test_the_app_shrinks_to_the_visible_part_and_grows_back(device, server, repo, shot):
     """AC-2: with the visible part 300 px lower than the window (the keyboard), the app ends
     at its bottom, the top bar stays at its top, the composer and Send within it, the card's
-    title and context at most 40 % of the chat; when it grows back, the app does too."""
+    report keeping it to half the chat; when it grows back, the app does too."""
     session = question_session(repo)
     phone = device(UPRIGHT)
     phone.add_init_script(FAKE_VIEWPORT)
@@ -657,7 +663,9 @@ def test_the_app_shrinks_to_the_visible_part_and_grows_back(device, server, repo
     within(page.locator(".chat > .composer"), 0, shrunk)
     within(send, 0, shrunk)
     chat = box(page.get_by_role("region", name="Chat"))["height"]
-    assert box(card.locator(".waiting-top"))["height"] <= chat * 0.4 + 1
+    # Half the chat, but the head and the footer never give way: then the report is at its least.
+    report = box(card.locator(".waiting-scroll"))["height"]
+    assert box(card)["height"] <= chat * 0.5 + 1 or abs(report - 56) <= 1, (box(card), chat, report)
     assert page.evaluate("document.documentElement.style.getPropertyValue('--phone-height')") == (
         f"{shrunk}px"
     )
@@ -806,11 +814,12 @@ def test_a_long_note_scrolls_in_the_context_and_the_footer_stays_on_a_phone(
     page = opened(device(UPRIGHT), server, f"/sessions/{session}")
     card = waiting_card(page, session)
     panel = card.get_by_role("tabpanel")
-    expect(panel.get_by_role("region", name="Supervisor's recommendation")).to_contain_text(
-        "Supervisor recommends Approve:"
-    )
+    expect(
+        panel.get_by_role("note", name="Supervisor's recommendation").locator(".rec-title")
+    ).to_have_text("supervisor recommends Approve")
     for part in (
-        panel.get_by_role("region", name="Supervisor's recommendation"),
+        panel.get_by_role("heading", name="Build it as planned?"),
+        panel.get_by_role("note", name="Supervisor's recommendation"),
         panel.get_by_role("textbox", name="Comment for the next step (optional)"),
         panel.get_by_role("button", name="Approve", exact=True),
         panel.get_by_role("button", name="Reject", exact=True),
@@ -820,62 +829,75 @@ def test_a_long_note_scrolls_in_the_context_and_the_footer_stays_on_a_phone(
     shot(page, full_page=False)
 
 
-def test_a_long_recommendation_opens_to_three_lines_that_scroll(device, server, repo, shot):
-    """Cut on 2 lines; a tap opens it to 3 lines, and the rest scrolls inside them."""
+def test_a_long_recommendation_shows_two_lines_that_scroll_and_fade(device, server, repo, shot):
+    """On a phone the text stands in a box of 2 lines (42 px) that scrolls inside and fades at
+    its lower edge until its end, and again when it scrolls back; nothing to open."""
     session = gated_session(repo)
     recommended(session, "A reason to approve. " * 40, choice="approve")
     page = opened(device(UPRIGHT), server, f"/sessions/{session}")
-    block = waiting_card(page, session).get_by_role("region", name="Supervisor's recommendation")
-    line = block.get_by_role("button")
-    expect(line).to_be_visible()
-    assert box(line)["height"] <= 2 * 21 + 1
-    shot(page, "cut", full_page=False)
-    line.tap()
-    body = block.locator(".rec-bar-body")
-    expect(body).to_be_visible()
-    assert body.evaluate(
-        "b => b.clientHeight <= 3 * parseFloat(getComputedStyle(b).lineHeight) + 1"
-    )
-    assert body.evaluate("b => b.scrollHeight > b.clientHeight")
-    shot(page, "opened", full_page=False)
-
-
-def test_an_opened_recommendation_fades_until_its_end(device, server, repo, shot):
-    """Opened, a text longer than its 3 lines fades at the lower edge until it is scrolled to
-    its end, and again when it scrolls back; one that fits does not fade."""
-    session = gated_session(repo)
-    recommended(session, "A reason to approve. " * 40, choice="approve")
-    page = opened(device(UPRIGHT), server, f"/sessions/{session}")
-    block = waiting_card(page, session).get_by_role("region", name="Supervisor's recommendation")
-    block.get_by_role("button").tap()
-    frame = block.locator(".rec-bar-frame")
-    cut = re.compile(r"\bcut\b")
-    expect(frame).to_have_class(cut)
-    assert frame.evaluate("f => getComputedStyle(f, '::after').content") != "none"
+    block = waiting_card(page, session).get_by_role("note", name="Supervisor's recommendation")
+    text = block.locator(".rec-text")
+    expect(text).to_be_visible()
+    assert round(box(text)["height"]) == 42
+    assert text.evaluate("t => t.scrollHeight > t.clientHeight")
+    expect(block.get_by_role("button")).to_have_count(0)
+    more = re.compile(r"\bhas-more\b")
+    expect(text).to_have_class(more)
+    assert "calc(100% - 26px)" in text.evaluate("t => getComputedStyle(t).maskImage")
     shot(page, "fades", full_page=False)
-    body = frame.locator(".rec-bar-body")
-    body.evaluate("b => { b.scrollTop = b.scrollHeight; }")
-    expect(frame).not_to_have_class(cut)
-    assert frame.evaluate("f => getComputedStyle(f, '::after').content") == "none"
+    text.evaluate("t => { t.scrollTop = t.scrollHeight; }")
+    expect(text).not_to_have_class(more)
     shot(page, "at-its-end", full_page=False)
-    body.evaluate("b => { b.scrollTop = 0; }")
-    expect(frame).to_have_class(cut)
+    text.evaluate("t => { t.scrollTop = 0; }")
+    expect(text).to_have_class(more)
 
 
-def test_a_short_opened_recommendation_does_not_fade(device, server, repo):
+def test_a_short_recommendation_does_not_fade(device, server, repo):
     session = gated_session(repo)
     recommended(session, "A short reason.", choice="approve")
     page = opened(device(UPRIGHT), server, f"/sessions/{session}")
-    block = waiting_card(page, session).get_by_role("region", name="Supervisor's recommendation")
-    block.get_by_role("button").tap()
-    expect(block.locator(".rec-bar-body")).to_be_visible()
-    expect(block.locator(".rec-bar-frame")).not_to_have_class(re.compile(r"\bcut\b"))
+    block = waiting_card(page, session).get_by_role("note", name="Supervisor's recommendation")
+    expect(block.locator(".rec-text")).to_be_visible()
+    expect(block.locator(".rec-text")).not_to_have_class(re.compile(r"\bhas-more\b"))
+
+
+def test_the_recommendations_splitter_takes_a_finger_and_hides_while_typing(
+    device, server, repo, shot
+):
+    """The splitter is held by a band 24 px high: a drag 8 px above its line grows the text and
+    scrolls no feed; a field in focus hides it with the report."""
+    session = gated_session(repo, LONG_NOTE)
+    recommended(session, "A reason to approve. " * 40, choice="approve")
+    page = opened(device(UPRIGHT), server, f"/sessions/{session}")
+    card = waiting_card(page, session)
+    panel = card.get_by_role("tabpanel")
+    splitter = panel.get_by_role("separator", name="Resize the recommendation")
+    expect(splitter).to_be_visible()
+    assert round(box(splitter)["height"]) == 24
+    text = panel.locator(".rec-text")
+    before = box(text)["height"]
+    feed = page.locator(".chat-feed")
+    scrolled = feed.evaluate("f => f.scrollTop")
+    edge = box(splitter)
+    x, y = edge["x"] + edge["width"] / 3, edge["y"] + edge["height"] / 2 - 8
+    page.mouse.move(x, y)
+    page.mouse.down()
+    page.mouse.move(x, y - 30, steps=5)
+    page.mouse.up()
+    page.wait_for_function(
+        "([t, h]) => t.getBoundingClientRect().height > h + 20", arg=[text.element_handle(), before]
+    )
+    assert feed.evaluate("f => f.scrollTop") == scrolled
+    shot(page, "dragged", full_page=False)
+    panel.get_by_role("textbox", name="Comment for the next step (optional)").tap()
+    expect(splitter).to_be_hidden()
+    expect(card.get_by_role("region", name="Context of the card")).to_be_hidden()
 
 
 @pytest.mark.parametrize("visible", [350, 340])
 def test_six_choices_keep_the_buttons_above_the_keyboard(device, server, repo, shot, visible):
     """A question of six choices of two lines each with a long own answer, little left: the
-    field, Send and Skip question whole."""
+    field and Send whole (the choices, Skip among them, hide while it has the focus)."""
     session = gated_session(repo)
     choices = [f"Choice {n}: a rather long choice that takes the most of a row" for n in range(6)]
     runtime.ask_human(session, "supervisor", "Which one?", None, choices)
@@ -890,9 +912,8 @@ def test_six_choices_keep_the_buttons_above_the_keyboard(device, server, repo, s
     page.evaluate(f"window.moveViewport({visible}, 0)")
     expect(page.locator(".app")).to_have_css("height", f"{visible}px")
     within(send, 0, visible)
-    within(card.get_by_role("button", name="Skip question"), 0, visible)
     within(own, 0, visible)
-    for part in (send, card.get_by_role("button", name="Skip question"), own):
+    for part in (send, own):
         uncut(card, part)
     shot(page, full_page=False)
 
@@ -900,14 +921,14 @@ def test_six_choices_keep_the_buttons_above_the_keyboard(device, server, repo, s
 @pytest.mark.parametrize("visible", [350, 340])
 @pytest.mark.parametrize(
     ("button", "field"),
-    [("Other…", "Your own answer"), ("Skip question", "Why you skip it (optional)")],
+    [("Other…", "Your own answer"), ("Skip", "Why you skip it (optional)")],
     ids=["other", "skip"],
 )
 def test_a_field_hides_the_choices_under_a_recommendation_above_the_keyboard(
     device, server, repo, shot, visible, button, field
 ):
     """A question of six choices under a recommendation of two lines, little left: the field
-    in the footer hides the choices, so the field, Send and Skip question are whole; the
+    in the footer hides the choices (Skip among them), so the field and Send are whole; the
     field losing the focus brings them back (the human's decision of 2026-11-05, F16)."""
     session = gated_session(repo)
     choices = [f"Choice {n}: a rather long choice that takes the most of a row" for n in range(6)]
@@ -920,14 +941,13 @@ def test_a_field_hides_the_choices_under_a_recommendation_above_the_keyboard(
     card, send = question_tab(page, session)
     area = card.get_by_role("group", name="Choices")
     expect(area).to_be_visible()
-    card.get_by_role("button", name=button).evaluate("b => b.click()")
+    card.get_by_role("button", name=button, exact=True).evaluate("b => b.click()")
     own = card.get_by_role("textbox", name=field)
     expect(own).to_be_focused()
     page.evaluate(f"window.moveViewport({visible}, 0)")
     expect(page.locator(".app")).to_have_css("height", f"{visible}px")
     expect(area).to_be_hidden()
-    skip = card.get_by_role("button", name="Skip question")
-    for part in (card.get_by_role("region", name="Supervisor's recommendation"), own, send, skip):
+    for part in (card.get_by_role("note", name="Supervisor's recommendation"), own, send):
         within(part, 0, visible)
         uncut(card, part)
     shot(page, "keyboard", full_page=False)
@@ -1066,8 +1086,8 @@ def test_the_expanded_card_keeps_its_context_with_a_field_in_focus(device, serve
 
 
 def test_the_cards_targets_are_44_px_on_a_phone(device, server, repo, shot):
-    """A question's tab, a choice, Send answer, Skip question, Minimize and Expand, a gate's
-    field and buttons; the choices' area stops at 148 px."""
+    """A question's tab, a choice, Send answer, Skip, Minimize and Expand, a gate's field and
+    buttons; the choices' area stops at 148 px; the gate's placeholder is the short one."""
     session = gated_session(repo)
     choices = [f"Choice {n}: what it does twice" for n in range(6)]
     runtime.ask_human(session, "supervisor", "Which one?", None, choices)
@@ -1077,7 +1097,7 @@ def test_the_cards_targets_are_44_px_on_a_phone(device, server, repo, shot):
         card.get_by_role("tab", name="supervisor 1"),
         card.get_by_role("button", name=choices[0]),
         send,
-        card.get_by_role("button", name="Skip question"),
+        card.get_by_role("button", name="Skip", exact=True),
         card.get_by_role("button", name="Minimize the card"),
         card.get_by_role("button", name="Expand the card"),
     ):
@@ -1089,6 +1109,7 @@ def test_the_cards_targets_are_44_px_on_a_phone(device, server, repo, shot):
     field = card.get_by_role("textbox", name="Comment for the next step (optional)")
     frame = card.locator(".answer-box")
     expect(field).to_be_visible()
+    expect(field).to_have_attribute("placeholder", "Comment (optional)")
     assert round(box(frame)["height"]) == 44
     for name in ("Approve", "Reject"):
         assert round(box(card.get_by_role("button", name=name))["height"]) == 44
@@ -1272,7 +1293,7 @@ def test_only_the_cards_placeholder_keeps_14_px_on_a_phone(device, server, repo)
     expect(comment).to_be_visible()
     assert comment.evaluate(size) == "14px"
     page.goto(f"{server['url']}/sessions/{session}/flows/ship%2Fx")
-    gate = page.get_by_role("region", name="Now").get_by_role("article", name="Gate #1", exact=True)
+    gate = page.get_by_role("region", name="Now").get_by_role("region", name="Build it as planned?")
     assert gate.get_by_role("textbox", name=name).evaluate(size) == "16px"
 
 

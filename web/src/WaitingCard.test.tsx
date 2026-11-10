@@ -1387,6 +1387,21 @@ test("the chat's height sets the card's limit at half of it; with no height of i
   expect(card().style.getPropertyValue("--waiting-max")).toBe("");
 });
 
+test("the card knows what of it never gives way, so only its report keeps to half the chat", () => {
+  columnWidth(null);
+  show({ questions: [question(5, "w1")], chat: { feed: 100, height: 360, loaded: true } });
+  const sizes: Record<string, number> = { "waiting-tabs-row": 36, "waiting-head": 42, "waiting-foot": 200 };
+  FakeResizeObserver.resize(
+    () => 800,
+    (target) => Object.entries(sizes).find(([name]) => target.classList.contains(name))?.[1] ?? 0,
+  );
+  // styles.css: the report at most half the chat less the tabs, the head, the footer and the
+  // panel's borders, and at least 56 px.
+  expect(card().classList.contains("sized")).toBe(false);
+  expect(card().style.getPropertyValue("--waiting-max")).toBe("180px");
+  expect(card().style.getPropertyValue("--waiting-rest")).toBe("280px");
+});
+
 // The recommendation's splitter (docs/design/ui.md, The waiting card).
 const recSplitter = () => within(card()).queryByRole("separator", { name: "Resize the recommendation" });
 const recText = () => card().querySelector(".rec-text") as HTMLElement;
@@ -1433,6 +1448,13 @@ test("the recommendation's splitter goes no higher than its whole text, nor than
   expect(recSplitter()!.getAttribute("aria-valuemax")).toBe("126");
   fireEvent.keyDown(recSplitter()!, { key: "ArrowUp" });
   expect(recText().style.getPropertyValue("--adv")).toBe("126px");
+});
+
+test("past the report's least, the recommendation's splitter takes what the feed can give, down to its least", () => {
+  columnWidth(null);
+  show({ questions: [], gates: [GATE_RECOMMENDED], chat: { feed: 200, loaded: true } });
+  recLaidOut(900, 56); // the report at its least; the feed has 40 px over its 160
+  expect(recSplitter()!.getAttribute("aria-valuemax")).toBe("122");
 });
 
 test("no splitter without a given recommendation, nor on Needs you", () => {

@@ -115,7 +115,7 @@ def measured(field) -> dict:
     return field.evaluate(MEASURE_FIELD)
 
 
-def assert_long_field_fits(field, lines: int = 4) -> None:
+def assert_long_field_fits(field, lines: int = 8) -> None:
     """A field with 12 lines: `lines` high, scrolled to its last line, its lower edge within
     the card's footer, above the Send row and within the window."""
     got = measured(field)
@@ -124,12 +124,12 @@ def assert_long_field_fits(field, lines: int = 4) -> None:
     assert got["inFoot"] and got["aboveSend"] and got["inWindow"], got
 
 
-def test_a_gates_long_comment_grows_to_4_lines_and_stays_above_the_send_row(
+def test_a_gates_long_comment_grows_to_8_lines_and_stays_above_the_send_row(
     page: Page, server, repo, shot
 ):
-    """The comment for the next step opens 1 line and 36 px high, grows with its text to 4
-    lines, in the expanded card to 8, then scrolls; its lower edge stays above the Send row
-    and within the window."""
+    """The comment for the next step opens 1 line and 40 px high, grows with its text to 8
+    lines, in the expanded card too, then scrolls; its lower edge stays above the Send row and
+    within the window."""
     session = gated_session(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
@@ -137,7 +137,7 @@ def test_a_gates_long_comment_grows_to_4_lines_and_stays_above_the_send_row(
     field = panel.get_by_role("textbox", name="Comment for the next step (optional)")
     expect(field).to_be_visible()
     assert measured(field)["lines"] == 1
-    assert round(frame_of(field).bounding_box()["height"]) == 36
+    assert round(frame_of(field).bounding_box()["height"]) == 40
     field.fill(TWELVE_LINES)
     expect(field).to_be_focused()
     assert_long_field_fits(field)
@@ -249,7 +249,7 @@ def test_a_gates_long_comment_on_the_flows_tab_shows_its_ring_whole(page: Page, 
     session = gated_session(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}/flows/ship%2Fx")
-    card = page.get_by_role("region", name="Now").get_by_role("article", name="Gate #1", exact=True)
+    card = page.get_by_role("region", name="Now").get_by_role("region", name="Build it as planned?")
     field = card.get_by_role("textbox", name="Comment for the next step (optional)")
     assert field.evaluate("f => f.rows") == 3
     field.fill(TWELVE_LINES)
@@ -265,7 +265,7 @@ MEASURE_PLACES = """panel => {
   const frame = panel.getBoundingClientRect();
   const at = el => el.getBoundingClientRect();
   return {
-    question: at(panel.querySelector('.waiting-title-text')).left - frame.left,
+    question: at(panel.querySelector('.waiting-head-text')).left - frame.left,
     field: at(panel.querySelector('.answer-box')).left - frame.left,
   };
 }"""
@@ -286,10 +286,10 @@ def test_the_room_for_the_ring_moves_nothing_on_a_gates_tab(page: Page, server, 
 
 LONG_NOTE = "\n\n".join(f"Point {n}: what the review found and why it matters." for n in range(60))
 
-# Whether anything but the context scrolls in the panel, and how far the context can.
+# Whether anything but the report scrolls in the panel, and how far the report can.
 MEASURE_SCROLLERS = """panel => {
   const scrolls = el => el.scrollHeight > el.clientHeight + 1;
-  const context = panel.querySelector('.waiting-context');
+  const context = panel.querySelector('.waiting-scroll');
   return {
     context: scrolls(context),
     panel: panel.scrollTop,
@@ -342,7 +342,7 @@ def test_a_window_768_wide_keeps_the_footer_in_sight(
     panel = card.get_by_role("tabpanel")
     parts = (
         [
-            panel.get_by_role("region", name="Supervisor's recommendation"),
+            panel.get_by_role("note", name="Supervisor's recommendation"),
             panel.get_by_role("textbox", name="Comment for the next step (optional)"),
             panel.get_by_role("button", name="Approve", exact=True),
             panel.get_by_role("button", name="Reject", exact=True),
@@ -350,7 +350,7 @@ def test_a_window_768_wide_keeps_the_footer_in_sight(
         if tab == "gate"
         else [
             panel.get_by_role("button", name="Send answer to supervisor"),
-            panel.get_by_role("button", name="Skip question"),
+            panel.get_by_role("button", name="Skip", exact=True),
         ]
     )
     expect(parts[0]).to_be_visible()
@@ -381,8 +381,9 @@ def whole_in_sight(page: Page, card, *parts) -> None:
 
 @pytest.mark.parametrize("height", [700, 500, 420])
 def test_a_low_window_keeps_a_grown_footer_at_the_pages_top(page: Page, server, repo, shot, height):
-    """A card taller than the room from the chat's top to the window's edge: the context gives
-    way, and a field of 4 lines under an opened recommendation leaves the buttons in sight."""
+    """A card taller than the room from the chat's top to the window's edge: the report gives
+    way, and a field of 8 lines under a recommendation its splitter made taller leaves the
+    buttons in sight."""
     session = gated_session(repo, LONG_NOTE)
     recommended(session, "A reason to approve. " * 40, choice="approve")
     page.set_viewport_size({"width": 768, "height": height})
@@ -390,9 +391,12 @@ def test_a_low_window_keeps_a_grown_footer_at_the_pages_top(page: Page, server, 
     page.goto(f"{server['url']}/sessions/{session}")
     card = waiting_card(page, session)
     panel = card.get_by_role("tabpanel")
-    panel.get_by_role("region", name="Supervisor's recommendation").get_by_role("button").click()
+    splitter = panel.get_by_role("separator", name="Resize the recommendation")
+    splitter.focus()
+    for _ in range(2):
+        splitter.press("ArrowUp")
     field = panel.get_by_role("textbox", name="Comment for the next step (optional)")
-    field.fill("one\ntwo\nthree\nfour")
+    field.fill("\n".join(f"line {n}" for n in range(1, 9)))
     whole_in_sight(
         page,
         card,
@@ -420,10 +424,11 @@ def test_a_low_window_keeps_six_choices_buttons_at_the_pages_top(
     card = waiting_card(page, session)
     card.get_by_role("tab", name="supervisor 1").click()
     panel = card.get_by_role("tabpanel")
-    parts = [
-        panel.get_by_role("button", name="Send answer to supervisor"),
-        panel.get_by_role("button", name="Skip question"),
-    ]
+    parts = [panel.get_by_role("button", name="Send answer to supervisor")]
+    # Skip is a pill among the choices, which scroll inside their area.
+    expect(
+        panel.get_by_role("group", name="Choices").get_by_role("button", name="Skip", exact=True)
+    ).to_be_attached()
     if own:
         panel.get_by_role("button", name="Other…").click()
         parts.append(panel.get_by_role("textbox", name="Your own answer"))
@@ -473,6 +478,11 @@ def narrow_session(page: Page, server, repo):
     card = waiting_card(page, session)
     approve = card.get_by_role("button", name="Approve", exact=True)
     expect(approve).to_be_visible()
+    # Laid out: its parts measured, so its report keeps to its limit.
+    expect(card).to_have_attribute("style", re.compile(r"--waiting-rest"))
+    page.evaluate(
+        "() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))"
+    )
     in_sight(page, approve)
     return card, approve, card.bounding_box()["height"]
 
@@ -530,53 +540,57 @@ def test_a_block_over_the_chat_moves_the_cards_limit_with_it(page: Page, server,
 def test_a_long_note_scrolls_in_the_context_and_the_footer_stays(
     page: Page, server, repo, shot, width
 ):
-    """F14: whatever the note's length, the recommendation, the comment field and the buttons
-    are in sight, and only the context scrolls."""
+    """F14: whatever the note's length, the head, the recommendation, the comment field and the
+    buttons are in sight, and only the report scrolls; the card is at most half the chat, the
+    report at least 56 px."""
     session = gated_session(repo, LONG_NOTE)
     recommended(session, VIEW, choice="approve")  # a phone's: test_phone.py
     page.set_viewport_size({"width": width, "height": 900})
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
-    panel = waiting_card(page, session).get_by_role("tabpanel")
+    card = waiting_card(page, session)
+    panel = card.get_by_role("tabpanel")
     field = panel.get_by_role("textbox", name="Comment for the next step (optional)")
     approve = panel.get_by_role("button", name="Approve", exact=True)
-    rec = panel.get_by_role("region", name="Supervisor's recommendation")
-    expect(rec).to_contain_text("Supervisor recommends Approve:")
-    in_sight(page, rec, field, approve, panel.get_by_role("button", name="Reject", exact=True))
+    head = panel.get_by_role("heading", name="Build it as planned?")
+    rec = panel.get_by_role("note", name="Supervisor's recommendation")
+    expect(rec.locator(".rec-title")).to_have_text("supervisor recommends Approve")
+    in_sight(
+        page, head, rec, field, approve, panel.get_by_role("button", name="Reject", exact=True)
+    )
     got = panel.evaluate(MEASURE_SCROLLERS)
     assert got == {"context": True, "panel": 0, "foot": False}, got
+    chat = page.get_by_role("region", name="Chat").bounding_box()
+    assert card.bounding_box()["height"] <= chat["height"] / 2 + 1, (card.bounding_box(), chat)
+    assert panel.locator(".waiting-scroll").bounding_box()["height"] >= 56 - 0.5
     shot(page, full_page=False)
 
 
-def test_a_cut_context_fades_says_more_and_goes_at_its_end(page: Page, server, repo, shot):
-    """The fade and "↓ more" show while the context is cut, go at its end, by the keys too,
-    and "↓ more" expands the card, where neither shows."""
+def test_a_cut_report_fades_until_its_end_with_no_more(page: Page, server, repo, shot):
+    """The report fades at its lower edge while it is cut, by a mask over 22 px, and not at its
+    end, by the keys too; no "↓ more" or "more" shows. The question stays in the head."""
     session = gated_session(repo, LONG_NOTE)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
     card = waiting_card(page, session)
     context = card.get_by_role("region", name="Context of the card")
-    more = card.get_by_role("button", name="↓ more")
-    expect(more).to_be_visible()
-    assert round(more.bounding_box()["height"]) == 24
-    frame = card.locator(".waiting-context-frame")
-    expect(frame).to_have_class(re.compile(r"\bcut\b"))
-    fade = frame.evaluate("f => getComputedStyle(f, '::after').height")
-    assert fade == "28px"
+    expect(context).to_have_class(re.compile(r"\bhas-more\b"))
+    mask = context.evaluate("c => getComputedStyle(c).maskImage")
+    assert "calc(100% - 22px)" in mask, mask
+    for word in ("↓ more", "more", "less"):
+        expect(card.get_by_role("button", name=word, exact=True)).to_have_count(0)
     context.focus()
-    # Its ring stands inside it: the top around it would cut one outside.
+    # Its ring stands inside it: the panel around it would cut one outside.
     assert context.evaluate("c => parseFloat(getComputedStyle(c).outlineOffset)") < 0
     page.keyboard.press("End")
-    expect(more).to_have_count(0)
-    expect(frame).not_to_have_class(re.compile(r"\bcut\b"))
+    expect(context).not_to_have_class(re.compile(r"\bhas-more\b"))
+    head = card.locator(".waiting-head")
+    expect(head).to_have_text("Build it as planned?")
+    assert head.bounding_box()["y"] < context.bounding_box()["y"]
     shot(page, "end", full_page=False)
     page.keyboard.press("Home")
-    expect(more).to_be_visible()
+    expect(context).to_have_class(re.compile(r"\bhas-more\b"))
     shot(page, "cut", full_page=False)
-    more.click()
-    expect(card).to_have_class(re.compile(r"\bexpanded\b"))
-    expect(more).to_have_count(0)
-    expect(frame).not_to_have_class(re.compile(r"\bcut\b"))
 
 
 def test_the_human_answers_a_gate_on_its_tab(page: Page, server, repo, shot):
@@ -590,14 +604,16 @@ def test_the_human_answers_a_gate_on_its_tab(page: Page, server, repo, shot):
     expect(card).to_contain_text("Build it as planned?")
     expect(card.locator("strong").first).to_have_text("the plan is reviewed")
     expect(card).to_contain_text("Split it in two, then ship.")
-    # The note in full with its artifact, then the artifact the gate reads, under it.
-    note = card.locator(".gate-note")
-    expect(note.get_by_role("button", name="Open artifact ship/x/review")).to_be_visible()
-    reads = card.get_by_role("list", name="Artifacts it reads")
-    expect(reads.get_by_role("listitem")).to_have_count(1)
-    expect(reads).to_contain_text("The plan — two steps")
+    # The note in full, then one row of chips: its artifact, then the one the gate reads, by
+    # their titles (the review has none: its short name), with no size and no "It reads".
+    expect(card.locator(".gate-note")).to_contain_text("Split it in two, then ship.")
+    chips = card.locator(".chips")
+    expect(chips).to_have_count(1)
+    expect(chips.get_by_role("button")).to_have_text(["review", "The plan"])
+    expect(card).not_to_contain_text("It reads")
+    expect(chips.locator(".chip-size")).to_have_count(0)
     shot(page, "card")
-    reads.get_by_role("button", name="Open artifact ship/x/plan").click()
+    chips.get_by_role("button", name="Open artifact ship/x/plan").click()
     panel = page.get_by_role("dialog", name="Artifact ship/x/plan")
     expect(panel).to_contain_text("Two steps.")
     shot(page, "read")
@@ -686,6 +702,108 @@ def line_ground(page: Page) -> str:
     )
 
 
+def test_a_gates_tab_names_its_run_and_its_tooltip_the_step_and_the_reports_author(
+    page: Page, server, repo, shot
+):
+    """The tab reads the run's name and its count, a badge of --count-ink; its tooltip, on a
+    hover and on the focus, the step and who wrote the report."""
+    session = gated_session(repo)
+    reported_by("reviewer")
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    tab = waiting_card(page, session).get_by_role("tab", name="ship/x 1")
+    expect(tab).to_be_visible()
+    assert tab.bounding_box()["width"] <= 220
+    expect(tab.locator(".waiting-tab-count")).to_have_css("color", "rgb(61, 67, 80)")
+    tab.hover()
+    tip = page.get_by_role("tooltip")
+    expect(tip.locator(".tooltip-line")).to_have_text(["step check", "report by reviewer"])
+    shot(page, full_page=False)
+    page.mouse.move(0, 0)
+    expect(tip).to_have_count(0)
+    page.get_by_role("button", name="Expand the card").focus()
+    page.keyboard.press("Shift+Tab")
+    page.keyboard.press("Shift+Tab")
+    expect(tab).to_be_focused()
+    expect(tip.locator(".tooltip-line")).to_have_text(["step check", "report by reviewer"])
+
+
+# The text box of the recommendation: its height.
+def rec_height(panel) -> float:
+    return panel.locator(".rec-text").bounding_box()["height"]
+
+
+def test_the_recommendations_splitter_sets_its_height_and_keeps_it(page: Page, server, repo, shot):
+    """In the chat a given recommendation's text is 4 lines high (82 px) under a splitter with
+    the grip and no tooltip: dragged up 60 px its text is 60 px higher and the report as much
+    lower, kept after a reload; ↑ makes it higher; a double click gives the 4 lines back. Both
+    of the card's splitters have no title, only their names."""
+    session = gated_session(repo, LONG_NOTE)
+    recommended(session, "A reason to approve. " * 60, choice="approve")
+    page.set_viewport_size({"width": 1440, "height": 1200})  # the report has room to give
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session)
+    panel = card.get_by_role("tabpanel")
+    splitter = panel.get_by_role("separator", name="Resize the recommendation")
+    expect(splitter).to_be_visible()
+    for edge in (splitter, card.get_by_role("separator", name="Resize the card")):
+        assert edge.get_attribute("title") is None
+    assert round(rec_height(panel)) == 82
+    text = panel.locator(".rec-text")
+    expect(text).to_have_class(re.compile(r"\bhas-more\b"))
+    line = splitter.evaluate("s => getComputedStyle(s, '::after').backgroundColor")
+    report = panel.locator(".waiting-scroll").bounding_box()["height"]
+    box = splitter.bounding_box()
+    page.mouse.move(box["x"] + box["width"] / 3, box["y"] + box["height"] / 2)
+    assert splitter.evaluate("s => getComputedStyle(s).cursor") == "row-resize"
+    assert splitter.evaluate("s => getComputedStyle(s, '::after').backgroundColor") != line
+    page.mouse.down()
+    page.mouse.move(box["x"] + box["width"] / 3, box["y"] + box["height"] / 2 - 60, steps=6)
+    page.mouse.up()
+    assert round(rec_height(panel)) == 142
+    page.wait_for_function(
+        "([r, want]) => Math.abs(r.getBoundingClientRect().height - want) <= 1",
+        arg=[panel.locator(".waiting-scroll").element_handle(), report - 60],
+        timeout=3000,
+    )
+    shot(page, "dragged", full_page=False)
+    page.reload()
+    expect(splitter).to_be_visible()
+    assert round(rec_height(panel)) == 142
+    splitter.focus()
+    splitter.press("ArrowUp")
+    assert round(rec_height(panel)) == 182
+    splitter.dblclick()
+    page.wait_for_function(
+        "t => t.style.getPropertyValue('--adv') === ''", arg=text.element_handle()
+    )
+    assert round(rec_height(panel)) == 82
+    # Scrolled to its end, its fade goes.
+    text.evaluate("t => t.scrollTo(0, t.scrollHeight)")
+    expect(text).not_to_have_class(re.compile(r"\bhas-more\b"))
+
+
+def test_a_gate_without_a_recommendation_has_a_line_over_its_footer_and_no_splitter(
+    page: Page, server, repo, shot
+):
+    session = gated_session(repo)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    panel = waiting_card(page, session).get_by_role("tabpanel")
+    expect(panel.get_by_role("button", name="Approve", exact=True)).to_be_visible()
+    agent_helpers.wait_for(
+        lambda: state.get_gate(1).recommendation_state == state.REC_MISSING,
+        "gate #1's request handled",
+        session,
+    )
+    expect(panel.locator(".rec, .rec-asked")).to_have_count(0)  # missing: nothing
+    expect(panel.get_by_role("separator")).to_have_count(0)
+    foot = panel.locator(".waiting-foot")
+    expect(foot).to_have_css("border-top-width", "1px")
+    shot(page, full_page=False)
+
+
 def test_the_humans_answer_is_the_runs_move_at_the_bottom_with_its_comment(
     page: Page, server, repo, shot
 ):
@@ -752,11 +870,24 @@ VIEW = (
 )
 
 
+def reported_by(agent: str) -> None:
+    """Gate #1's note as if `agent` reported it, not the supervisor that advanced the run."""
+    with state.connect() as db:
+        db.execute(
+            "UPDATE notes SET actor = ? WHERE id = (SELECT note_id FROM gates WHERE id = 1)",
+            (agent,),
+        )
+
+
+WARN = "rgb(138, 90, 0)"  # --warn in the light theme
+
+
 def test_a_gate_with_a_recommendation_that_disagrees(page: Page, server, repo, shot):
     """The supervisor's view is part of the gate's tab in the waiting card: preparing, then
-    given with the recommended option as the blue button, in light and dark; closed, one
-    quiet line in the feed."""
+    given with the recommended option as the blue button, a --warn frame and sign for its
+    disagreement, in light and dark; closed, one quiet line in the feed."""
     session = gated_session(repo)
+    reported_by("reviewer")
     page.set_viewport_size({"width": 1800, "height": 1100})  # the chat at its own width
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
@@ -777,50 +908,38 @@ def test_a_gate_with_a_recommendation_that_disagrees(page: Page, server, repo, s
     ]
     assert queued == []
     state.ask_recommendation(session, state.GATE, 1, None, "")  # asked again
-    block = card.get_by_role("region", name="Supervisor's recommendation")
-    expect(block).to_have_text("SSupervisor is preparing a recommendation…")
+    expect(card.locator(".rec-asked")).to_have_text("Supervisor is preparing a recommendation…")
+    expect(card.get_by_role("separator", name="Resize the recommendation")).to_have_count(0)
     expect(card.get_by_role("button", name="Approve", exact=True)).to_have_class("primary")
     expect(card.get_by_role("button", name="Reject", exact=True)).to_be_enabled()
     shot(page, "preparing")
     runtime.recommend(session, "supervisor", VIEW, gate=1, choice="reject", disagrees=True)
-    expect(block.locator(".rec-bar-name")).to_have_text(
-        "Supervisor recommends Reject · disagrees with supervisor:"
+    block = card.get_by_role(
+        "note", name="Supervisor's recommendation, disagrees with the step's report"
     )
-    expect(block.locator(".rec-differs")).to_have_css("color", ORANGE)
-    line = block.get_by_role("button")
-    assert round(line.bounding_box()["height"]) <= 22  # one line, its text cut
-    expect(block.locator(".rec-bar-text")).to_contain_text("no test")
+    expect(block.locator(".rec-title")).to_have_text("supervisor recommends Reject")
+    expect(block).to_have_css("border-top-color", WARN)
+    expect(block.locator(".rec-warn")).to_have_css("color", WARN)
+    expect(block).not_to_contain_text("disagrees")  # its words only for a screen reader
+    expect(block.locator(".rec-text strong")).to_have_text("no test")
+    expect(block.get_by_role("button")).to_have_count(0)  # nothing opens or closes it
     expect(card.get_by_role("button", name="Reject", exact=True)).to_have_class("primary")
     expect(card.get_by_role("button", name="Approve", exact=True)).to_have_class("quiet")
-    # Between the note and the answer.
-    order = card.locator(".gate-note, .gate-reads, .rec-bar, form.answer").evaluate_all(
-        "all => all.map(one => one.className)"
+    # Between the note's chips and the answer, under the splitter.
+    order = card.locator(".gate-note, .chips, .splitter, .rec, form.answer").evaluate_all(
+        "all => all.map(one => one.className.split(' ')[0])"
     )
-    assert order == ["gate-note", "gate-reads", "rec-bar differs", "answer"]
+    assert order == ["gate-note", "chips", "splitter", "rec", "answer"]
     for theme in ("light", "dark"):
         page.emulate_media(color_scheme=theme)
         shot(page, f"given-{theme}")
     page.emulate_media(color_scheme="light")
-    # A click opens it to 3 lines of Markdown that scroll inside.
-    line.click()
-    body = block.locator(".rec-bar-body")
-    expect(body.locator("strong")).to_have_text("no test")
-    assert body.evaluate(
-        "b => b.clientHeight <= 3 * parseFloat(getComputedStyle(b).lineHeight) + 1"
-    )
-    shot(page, "opened")
-    # The expanded card shows it whole.
-    waiting_card(page, session).get_by_role("button", name="Expand the card").click()
-    expect(block).to_have_class(re.compile(r"\bwhole\b"))
-    assert block.locator(".rec-bar-body").evaluate("b => b.scrollHeight <= b.clientHeight + 1")
-    shot(page, "whole")
-    waiting_card(page, session).get_by_role("button", name="Collapse the card").click()
     card.get_by_role("button", name="Reject", exact=True).click()
     line = page.get_by_role("article", name="Gate #1", exact=True)
     line.get_by_role("button", name="Gate #1 · ship/x · check: reject by human").click()
     quiet = line.locator("details.gate-row", has_text="Supervisor")
     expect(quiet.locator("summary")).to_have_text(
-        "Supervisorrecommended Reject · you agreed · disagreed with supervisor"
+        "Supervisorrecommended Reject · you agreed · disagreed with reviewer"
     )
     expect(quiet.locator(".chat-body")).not_to_be_visible()
     quiet.locator("summary").click()

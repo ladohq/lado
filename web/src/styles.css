@@ -5242,8 +5242,14 @@ h3 {
 
 .chat > .waiting-card {
   --chat-side: max(0px, (100% - 860px) / 2);
-  max-height: var(--waiting-max, 50%);
   margin-inline: var(--chat-side);
+}
+
+/* Half the chat (--waiting-max, measured) is the report's to keep to, less what never gives
+   way (--waiting-rest: the tabs, the head, the footer, the panel's borders); a card whose rest
+   alone takes more is taller, its report at its least. */
+.chat > .waiting-card .waiting-scroll {
+  max-height: max(56px, var(--waiting-max, 50dvh) - var(--waiting-rest, 0px));
 }
 
 .waiting-tabs-row {
@@ -5431,13 +5437,9 @@ h3 {
    report, less the tabs, the head and the footer (--waiting-rest), so they never give way to
    it. Not on a narrow window, which has no edge. */
 @media (min-width: 901px) {
-  .chat > .waiting-card.sized {
-    max-height: none;
-  }
-
   .waiting-card.sized .waiting-scroll {
-    flex: none;
     height: max(56px, var(--waiting-height) - var(--waiting-rest, 0px));
+    max-height: none;
   }
 }
 
@@ -5838,6 +5840,7 @@ h3 {
 
 .waiting-card.expanded .waiting-scroll {
   flex-grow: 1;
+  max-height: none;
 }
 
 .chat-summary {
@@ -13462,6 +13465,21 @@ button.quiet.danger-text {
   height: 44px;
 }
 
+/* The answer's buttons share the footer's width (a hint's or a lost connection's span with
+   its button); the count of answers goes to its own line. */
+:root[data-phone] .waiting-send > :is(.primary, .quiet, .waiting-send-off, .lost-wait) {
+  flex: 1 1 0;
+  justify-content: center;
+}
+
+:root[data-phone] .waiting-send > :is(.waiting-send-off, .lost-wait) > button {
+  width: 100%;
+}
+
+:root[data-phone] .waiting-send .waiting-count {
+  flex-basis: 100%;
+}
+
 :root[data-phone] .waiting-expand {
   width: 44px;
   height: 44px;
@@ -13487,6 +13505,38 @@ button.quiet.danger-text {
 :root[data-phone] .waiting-card.typing:has(.waiting-foot .waiting-field:focus) .waiting-panel > .splitter-top,
 :root[data-phone] .waiting-card.typing:has(.waiting-foot .waiting-field:focus) .waiting-choices-frame {
   display: none;
+}
+
+/* Short of room above the keyboard the head gives way first, before the recommendation: its
+   band's padding moves to its text, so it can go to nothing. */
+:root[data-phone] .waiting-card.typing:has(.waiting-foot .waiting-field:focus) .waiting-head {
+  flex: 0 100000 auto;
+  min-height: 0;
+  padding-block: 0;
+  overflow: hidden;
+}
+
+:root[data-phone] .waiting-card.typing:has(.waiting-foot .waiting-field:focus) .waiting-head-text {
+  padding-block: 11px;
+}
+
+/* On any touch screen, its keyboard open over a field of the footer (a tablet's, the expanded
+   card's on a phone), the report that stays gives way first, past its least, then the head. */
+@media (pointer: coarse) {
+  .waiting-card:has(.waiting-foot .waiting-field:focus) .waiting-scroll {
+    min-height: 0;
+  }
+
+  .waiting-card:has(.waiting-foot .waiting-field:focus) .waiting-head {
+    flex: 0 1000 auto;
+    min-height: 0;
+    padding-block: 0;
+    overflow: hidden;
+  }
+
+  .waiting-card:has(.waiting-foot .waiting-field:focus) .waiting-head-text {
+    padding-block: 11px;
+  }
 }
 
 /* The composer: Safari zooms into a field under 16 px; no keys on a touch screen. */

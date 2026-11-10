@@ -58,6 +58,7 @@ export function GateCard({ session, gate, stopped, kicker }: { session: string; 
     phone: false,
     fieldLines: [CARD_LINES, MOST_LINES],
     headId: `gate-${gate.id}-head`,
+    feedRoom: null,
     recHeight: null,
     setRecHeight: noMeasure,
     head: noMeasure,

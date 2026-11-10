@@ -15,6 +15,9 @@
   older `lado-lado` by its name.
 - **New session reads more easily.** Where shows each place on one line, and Team says Kits, as
   the Kits page does.
+- **Hovering a session no longer covers the chat.** A session in the list shows no card under
+  the pointer; an icon of the folded list shows only the session's name and state. The rest is
+  in the details that the session's title opens.
 
 ### Fixed
 

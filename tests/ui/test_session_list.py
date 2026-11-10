@@ -1,7 +1,9 @@
 """The session list's groups in a browser (docs/design/ui.md, Structure: Sessions): each
 heading folds its group by a click, Enter or Space, remembered over a reload; the open
-session is seen in its folded group; a row shows the session's card under the pointer, and
+session is seen in its folded group; a row shows no tooltip, a strip icon a short one, and
 not when the focus comes back to it with the tab."""
+
+import re
 
 import agent_helpers
 import pytest
@@ -133,7 +135,7 @@ def test_each_group_folds_by_its_heading_remembered_and_the_open_session_stays_i
     shot(page, "dark")
 
 
-def test_a_row_shows_its_sessions_card_under_the_pointer(page: Page, server, repo, shot):
+def test_a_row_shows_no_tooltip_and_a_strip_icon_a_short_one(page: Page, server, repo, shot):
     page.set_viewport_size({"width": 1440, "height": 900})
     calm = running_session(repo)
     old = running_session(repo)
@@ -141,42 +143,58 @@ def test_a_row_shows_its_sessions_card_under_the_pointer(page: Page, server, rep
     log_in(page, server)
     page.goto(f"{server['url']}/sessions")
     sessions = page.get_by_role("navigation", name="Sessions")
-    sessions.get_by_role("link", name=calm).hover()
-    card = page.get_by_role("tooltip")
-    expect(card.locator(".tip-top")).to_have_text(calm)
-    expect(card.locator(".tip-state")).to_have_text("idle")
-    expect(card.locator("dt")).to_have_text(["Ran", "Folder", "Kits", "CLI"])
-    expect(card.locator("dd")).to_have_text(["<1 min", str(repo), "default", "fake"])
-    shot(page, "running")
+    tip = page.get_by_role("tooltip")
+    row = sessions.get_by_role("link", name=calm)
+    row.hover()
+    page.wait_for_timeout(500)  # past the tooltip's delay: one that would show has shown
+    expect(tip).to_have_count(0)
+    assert row.evaluate("e => getComputedStyle(e).cursor") == "pointer"
+    shot(page, "row")
+    row.focus()
+    expect(tip).to_have_count(0)
 
     sessions.get_by_role("button", name="Stopped 1").click()
     stopped = sessions.get_by_role("link", name=old)
     expect(stopped.locator(".session-about")).to_have_text("stopped <1 min ago · ran <1 min")
     stopped.hover()
-    expect(card.locator(".tip-top")).to_have_text(old)
-    expect(card.locator(".tip-state")).to_have_text("stopped <1 min ago")
-    expect(card.locator(".tip-hint")).to_have_text("Open it and press Resume")
-    shot(page, "stopped")
+    page.wait_for_timeout(500)
+    expect(tip).to_have_count(0)
+
+    page.get_by_role("button", name="Collapse sessions").click()
+    strip = page.locator("nav.sessions-strip")
+    expect(strip.get_by_role("link")).to_have_count(1)  # no icon of the stopped session
+    strip.get_by_role("link", name=re.compile(f"^{calm}")).hover()
+    expect(tip.locator(".tip-top")).to_have_text(calm)
+    expect(tip.locator(".tip-state")).to_have_text("idle")
+    expect(tip.locator("dt, .tip-facts, .tip-hint")).to_have_count(0)
+    expect(tip).to_have_attribute("data-side", "right")
+    assert tip.bounding_box()["width"] <= 320
+    shot(page, "icon", full_page=False)
 
 
 @pytest.fixture
 def tabs(browser_type, server, repo):
-    """A session's row and a second tab, for real tab switches. In full Chromium with the
-    focus emulation off: the default headless shell sends no blur or focus on a switch, and
-    a test there passes with the defect in place (openspec tooltip-focus)."""
+    """A session's icon in the folded list's strip and a second tab, for real tab switches.
+    In full Chromium with the focus emulation off: the default headless shell sends no blur
+    or focus on a switch, and a test there passes with the defect in place (openspec
+    tooltip-focus)."""
     browser = browser_type.launch(channel="chromium")
     context = browser.new_context(viewport={"width": 1440, "height": 900})
     page = context.new_page()
     other = context.new_page()
     session = running_session(repo)
     page.bring_to_front()
+    # Folded by its stored setting, not a click: a click would make the pointer the last input.
+    page.add_init_script(
+        "localStorage.setItem('lado.sessionsList', JSON.stringify({ width: 260, collapsed: true }))"
+    )
     log_in(page, server)
     page.goto(f"{server['url']}/sessions")
-    row = page.get_by_role("navigation", name="Sessions").get_by_role("link", name=session)
-    expect(row).to_be_visible()
+    icon = page.locator("nav.sessions-strip").get_by_role("link", name=re.compile(f"^{session}"))
+    expect(icon).to_be_visible()
     for tab in (page, other):  # after the navigation, which brings the emulation back
         context.new_cdp_session(tab).send("Emulation.setFocusEmulationEnabled", {"enabled": False})
-    yield page, other, row
+    yield page, other, icon
     browser.close()
 
 
@@ -197,60 +215,60 @@ def away_and_back(page: Page, other: Page) -> None:
     page.wait_for_timeout(500)  # past the tooltip's delay: one that would show has shown
 
 
-def test_a_clicked_row_shows_no_tooltip_when_the_focus_returns_with_the_tab(tabs, shot):
-    page, other, row = tabs
-    row.click()
+def test_a_clicked_icon_shows_no_tooltip_when_the_focus_returns_with_the_tab(tabs, shot):
+    page, other, icon = tabs
+    icon.click()
     page.mouse.move(800, 600)
-    card = page.get_by_role("tooltip")
-    expect(card).to_have_count(0)
+    tip = page.get_by_role("tooltip")
+    expect(tip).to_have_count(0)
     away_and_back(page, other)
-    expect(row).to_be_focused()
-    expect(card).to_have_count(0)
+    expect(icon).to_be_focused()
+    expect(tip).to_have_count(0)
     shot(page, "returned")
 
 
-def test_a_clicked_row_and_a_key_show_no_tooltip_when_the_focus_returns_with_the_tab(tabs):
-    page, other, row = tabs
-    row.click()
+def test_a_clicked_icon_and_a_key_show_no_tooltip_when_the_focus_returns_with_the_tab(tabs):
+    page, other, icon = tabs
+    icon.click()
     page.mouse.move(800, 600)
     page.keyboard.press("Shift")
-    card = page.get_by_role("tooltip")
-    expect(card).to_have_count(0)
+    tip = page.get_by_role("tooltip")
+    expect(tip).to_have_count(0)
     away_and_back(page, other)
-    expect(row).to_be_focused()
-    expect(card).to_have_count(0)
+    expect(icon).to_be_focused()
+    expect(tip).to_have_count(0)
 
 
 def test_a_keyboards_tooltip_goes_and_stays_away_when_the_focus_returns_with_the_tab(tabs):
-    page, other, row = tabs
-    row.focus()
-    card = page.get_by_role("tooltip")
-    expect(card).to_be_visible()
+    page, other, icon = tabs
+    icon.focus()
+    tip = page.get_by_role("tooltip")
+    expect(tip).to_be_visible()
     away_and_back(page, other)
-    expect(row).to_be_focused()
-    expect(card).to_have_count(0)
+    expect(icon).to_be_focused()
+    expect(tip).to_have_count(0)
 
 
-def test_after_the_focus_returns_tab_and_back_shows_the_rows_tooltip(tabs):
-    page, other, row = tabs
-    row.focus()
+def test_after_the_focus_returns_tab_and_back_shows_the_icons_tooltip(tabs):
+    page, other, icon = tabs
+    icon.focus()
     away_and_back(page, other)
     expect(page.get_by_role("tooltip")).to_have_count(0)
     page.keyboard.press("Tab")
-    expect(row).not_to_be_focused()
+    expect(icon).not_to_be_focused()
     page.keyboard.press("Shift+Tab")
-    expect(row).to_be_focused()
+    expect(icon).to_be_focused()
     expect(page.get_by_role("tooltip")).to_be_visible()
 
 
-def test_after_the_focus_returns_the_pointer_shows_the_rows_tooltip(tabs):
-    page, other, row = tabs
-    row.focus()
+def test_after_the_focus_returns_the_pointer_shows_the_icons_tooltip(tabs):
+    page, other, icon = tabs
+    icon.focus()
     away_and_back(page, other)
-    card = page.get_by_role("tooltip")
-    expect(card).to_have_count(0)
-    row.hover()
-    expect(card).to_be_visible()
+    tip = page.get_by_role("tooltip")
+    expect(tip).to_have_count(0)
+    icon.hover()
+    expect(tip).to_be_visible()
 
 
 def test_a_running_row_says_whether_its_agents_work_and_follows_their_hooks(

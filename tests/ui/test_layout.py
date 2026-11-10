@@ -450,106 +450,52 @@ def assert_in_window(page: Page, box: dict) -> None:
     assert box["y"] + box["height"] <= size["height"] - 8
 
 
-def test_a_sessions_card_opens_right_of_the_list_at_its_row(page: Page, server, repo, shot):
-    rows = rows_of(page, server, repo, 12)
-    expect(rows).to_have_count(12)
-    row = rows.nth(4)
-    row.hover()
-    card = page.get_by_role("tooltip")
-    expect(card).to_be_visible()
-    box, at = card.bounding_box(), row.bounding_box()
-    assert box["x"] >= at["x"] + at["width"]  # no row under it
-    assert box["width"] == 360
+def strip_icons(page: Page):
+    """The session list folded to its strip, and the strip's icons."""
+    page.get_by_role("button", name="Collapse sessions").click()
+    return page.locator("nav.sessions-strip .strip-session")
+
+
+def test_a_strip_icons_tooltip_opens_right_of_it_at_its_level(page: Page, server, repo, shot):
+    page.set_viewport_size({"width": 1440, "height": 900})
+    expect(rows_of(page, server, repo, 12)).to_have_count(12)
+    icons = strip_icons(page)
+    expect(icons).to_have_count(12)
+    icon = icons.nth(4)
+    icon.hover()
+    tip = page.get_by_role("tooltip")
+    expect(tip).to_be_visible()
+    box, at = tip.bounding_box(), icon.bounding_box()
+    assert tip.get_attribute("data-side") == "right"
+    assert box["x"] >= at["x"] + at["width"]  # no icon under it
+    assert box["width"] <= 320  # as wide as its text, the UI tooltip's width at most
     assert_in_window(page, box)
     middle = at["y"] + at["height"] / 2
     assert abs(box["y"] + box["height"] / 2 - middle) <= 1
-    arrow = card.evaluate("c => parseFloat(getComputedStyle(c, '::before').top)")
-    assert abs(box["y"] + 1 + arrow - middle) <= 1  # from inside the card's border
-    assert card.evaluate("c => getComputedStyle(c, '::before').left") == "-5px"
+    arrow = tip.evaluate("c => parseFloat(getComputedStyle(c, '::before').top)")
+    assert abs(box["y"] + 1 + arrow - middle) <= 1.5  # from inside its border; sub-pixel
+    assert tip.evaluate("c => getComputedStyle(c, '::before').left") == "-5px"
     shot(page)
 
-    # Towards the card the pointer leaves the row, and the card goes.
+    # Towards the tooltip the pointer leaves the icon, and the tooltip goes.
     page.mouse.move(box["x"] + 20, box["y"] + 20)
-    expect(card).to_have_count(0)
+    expect(tip).to_have_count(0)
 
 
-def test_the_lowest_rows_card_moves_up_into_the_window(page: Page, server, repo, shot):
-    page.set_viewport_size({"width": 1440, "height": 500})
-    rows = rows_of(page, server, repo, 16)
-    expect(rows).to_have_count(16)
-    rows.last.hover()
-    card = page.get_by_role("tooltip")
-    expect(card).to_be_visible()
-    box, at = card.bounding_box(), rows.last.bounding_box()
-    assert_in_window(page, box)
-    assert box["y"] + box["height"] / 2 < at["y"] + at["height"] / 2  # moved up past its level
-    assert box["y"] <= at["y"] + at["height"] / 2 <= box["y"] + box["height"]  # the arrow reaches
-    shot(page, full_page=False)
-
-
-def test_a_full_width_row_opens_its_card_under_or_over_it(page: Page, server, repo, shot):
-    page.set_viewport_size({"width": 590, "height": 900})  # the list is the page, no room beside
-    rows = rows_of(page, server, repo, 4)
-    expect(rows).to_have_count(4)
-    rows.first.focus()
-    card = page.get_by_role("tooltip")
-    expect(card).to_be_visible()
-    assert card.get_attribute("data-side") in ("below", "above")
-    assert_in_window(page, card.bounding_box())
-    shot(page, full_page=False)
-    page.keyboard.press("Escape")
-    expect(card).to_have_count(0)
-
-
-def test_in_a_window_of_640_px_the_strips_card_stays_in_the_window(page: Page, server, repo, shot):
+def test_in_a_window_of_640_px_the_strips_tooltip_stays_in_the_window(
+    page: Page, server, repo, shot
+):
     page.set_viewport_size({"width": 640, "height": 900})
     rows_of(page, server, repo, 4)
     icon = page.locator("nav.sessions-strip .strip-session").first
     icon.focus()
-    card = page.get_by_role("tooltip")
-    expect(card).to_be_visible()
-    box, at = card.bounding_box(), icon.bounding_box()
-    assert card.get_attribute("data-side") == "right"
+    tip = page.get_by_role("tooltip")
+    expect(tip).to_be_visible()
+    box, at = tip.bounding_box(), icon.bounding_box()
+    assert tip.get_attribute("data-side") == "right"
     assert box["x"] >= at["x"] + at["width"]
     assert_in_window(page, box)
     shot(page)
-
-
-def test_a_card_keeps_its_width_and_cuts_a_long_list_of_kits(page: Page, server, repo, shot):
-    kits = [f"kit-with-a-rather-long-name-{n}" for n in range(9)]
-    state.add_session(
-        state.Session("many", f"{repo}/{'long-folder/' * 12}", None, "fake", kits=kits)
-    )
-    rows = rows_of(page, server, repo, 1)
-    expect(rows).to_have_count(2)
-    card = page.get_by_role("tooltip")
-    rows.filter(has_text="row-0").hover()
-    expect(card).to_be_visible()
-    assert card.bounding_box()["width"] == 360
-    rows.filter(has_text="many").hover()
-    expect(card.locator("dd").filter(has_text="+3 more")).to_be_visible()
-    box = card.bounding_box()
-    assert box["width"] == 360
-    assert_in_window(page, box)
-    cli = card.get_by_text("CLI").bounding_box()
-    assert cli["y"] + cli["height"] <= box["y"] + box["height"]
-    shot(page)
-
-
-def test_in_a_window_lower_than_the_card_it_is_cut_at_the_windows_height(
-    page: Page, server, repo, shot
-):
-    page.set_viewport_size({"width": 1440, "height": 200})
-    rows = rows_of(page, server, repo, 1)
-    expect(rows).to_have_count(1)
-    rows.first.hover()
-    card = page.get_by_role("tooltip")
-    expect(card).to_be_visible()
-    box = card.bounding_box()
-    assert box["height"] <= 200 - 16
-    assert_in_window(page, box)
-    assert card.evaluate("c => getComputedStyle(c, '::before').left") == "-5px"  # its arrow stays
-    shot(page, full_page=False)
 
 
 def session_item(name: str, **more) -> dict:
@@ -575,50 +521,55 @@ def session_item(name: str, **more) -> dict:
     }
 
 
-def test_each_state_of_a_session_reads_on_its_card(page: Page, server, shot):
+def test_each_state_of_a_session_reads_on_its_icons_tooltip(page: Page, server, shot):
     gate = {"gates": 1, "questions": 0, "agents": 0}
-    five_hours_ago = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 5 * 3600))
     since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     live = {"running_since": since}
     project = {"project": "lado", "project_title": "LADO", "permission_mode": "bypassPermissions"}
+    # Each state: its session, the tooltip's lines. The strip has no icon of a stopped session.
     states = {
-        "working": (session_item("working", busy=2, **live, **project), ["2 of 5 agents working"]),
+        "working": (
+            session_item("working", busy=2, **live, **project),
+            ["working", "2 of 5 agents working"],
+        ),
         "idle": (
             session_item("titled", title="Session UI review", project="shop-api", **live),
-            ["idle"],
+            ["Session UI review titled", "idle"],
         ),
-        "needs-you": (session_item("gated", waiting=gate, **live), ["Needs you: 1 gate"]),
-        "gone": (session_item("gone", status="tmux_gone"), ["tmux session is gone"]),
+        "needs-you": (
+            session_item("gated", waiting=gate, **live),
+            ["gated", "Needs you: 1 gate"],
+        ),
+        "gone": (session_item("gone", status="tmux_gone"), ["gone", "tmux session is gone"]),
         "down": (
             session_item("down", status="loop_down", **live),
-            ["session loop not running"],
+            ["down", "session loop not running"],
         ),
         "gone-gated": (
             session_item("held", status="tmux_gone", waiting=gate),
-            ["tmux session is gone"],
+            ["held", "tmux session is gone", "Needs you: 1 gate"],
         ),
-        "stopped": (
-            session_item("old", status="stopped", stopped_at=five_hours_ago),
-            ["stopped 5 h ago"],
-        ),
-        "undated": (session_item("undated", status="stopped"), ["stopped"]),
     }
+    stopped = session_item("old", status="stopped")
     page.route(
         f"{server['url']}/api/sessions",
-        lambda route: route.fulfill(json=[item for item, _ in states.values()]),
+        lambda route: route.fulfill(json=[item for item, _ in states.values()] + [stopped]),
     )
+    page.set_viewport_size({"width": 1440, "height": 900})
     log_in(page, server)
     page.goto(f"{server['url']}/sessions")
-    sessions = page.get_by_role("navigation", name="Sessions")
-    sessions.get_by_role("button", name="Stopped 2").click()
-    shot(page, "list")
-    card = page.get_by_role("tooltip")
-    for shown, (item, words) in states.items():
-        sessions.locator(f".session-link[href='/sessions/{item['name']}']").hover()
-        expect(card.locator(".tip-state")).to_have_text(words)
-        shot(page, shown)
+    icons = strip_icons(page)
+    expect(icons).to_have_count(len(states))
+    expect(page.locator(".strip-session[href='/sessions/old']")).to_have_count(0)
+    shot(page, "strip")
+    tip = page.get_by_role("tooltip")
+    for shown, (item, lines) in states.items():
+        page.locator(f".strip-session[href='/sessions/{item['name']}']").hover()
+        expect(tip.locator(".session-tip > *")).to_have_text(lines)
+        expect(tip.locator("dt, .tip-facts, .tip-hint")).to_have_count(0)
+        shot(page, shown, full_page=False)
         page.mouse.move(900, 800)
-        expect(card).to_have_count(0)
+        expect(tip).to_have_count(0)
 
 
 def gives_the_focus_back(page: Page, opener, window, by: str = "Escape") -> None:

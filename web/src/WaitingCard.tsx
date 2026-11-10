@@ -484,6 +484,7 @@ export function WaitingCard({
             storeWaitingHeight(null);
           }}
           grip
+          hint={false}
         />
       )}
       <div ref={headMeasured} className="waiting-head">

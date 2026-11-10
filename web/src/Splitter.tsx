@@ -66,7 +66,8 @@ export function useStripFocus(collapsed: boolean) {
 // `onReset`: what a double click does instead of the default width (the waiting card goes
 // back to its height by the stylesheet). `onChange` is told whether a drag moved it (true)
 // or a key (false), and `onEnd` when a drag ends: the waiting card minimizes on the release
-// of a drag below its least height, while the edge still holds the pointer.
+// of a drag below its least height, while the edge still holds the pointer. `hint`: false
+// leaves out the tooltip, its name is then only for a screen reader (the waiting card's edges).
 export function Splitter({
   label,
   edge,
@@ -76,6 +77,7 @@ export function Splitter({
   onReset,
   onEnd,
   grip = false,
+  hint = true,
 }: {
   label: string;
   edge: "left" | "right" | "top";
@@ -85,6 +87,7 @@ export function Splitter({
   onReset?: () => void;
   onEnd?: () => void;
   grip?: boolean;
+  hint?: boolean;
 }) {
   const across = edge === "top";
   const outward = edge === "right" ? 1 : -1;
@@ -127,7 +130,7 @@ export function Splitter({
       aria-valuemin={bounds.min}
       aria-valuemax={bounds.max}
       tabIndex={0}
-      title={`${label}: drag, or double-click for the default ${across ? "height" : "width"}`}
+      title={hint ? `${label}: drag, or double-click for the default ${across ? "height" : "width"}` : undefined}
       className={`splitter splitter-${edge}`}
       data-dragging={dragging || undefined}
       onPointerDown={drag}

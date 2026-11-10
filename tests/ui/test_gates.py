@@ -33,6 +33,11 @@ states:
   end: {end: true}
 """
 
+# The same flow with a choice gate: its options are its outcomes' names.
+SHIP_CHOICE = SHIP.replace("gate: approval", "gate: choice").replace(
+    "{approved: end, rejected: plan}", "{ship: end, rework: plan}"
+)
+
 REVIEW = """\
 ## Review of the plan
 
@@ -52,16 +57,16 @@ def waiting_card(page: Page, session: str):
     return page.get_by_role("region", name=f"What waits for you in {session}")
 
 
-def gated_session(repo, note: str = REVIEW, name: str = "x") -> str:
-    """A running session of the fake agent whose run ship/<name> waits at gate "check":
-    review's note before it (`note`) carries the artifact review, and the gate reads plan. The
-    gate's request for a recommendation is handled (the fake supervisor gives none): the card's
-    footer no longer changes under a test that measures it or drags its edge."""
+def gated_session(repo, note: str = REVIEW, name: str = "x", flow: str = SHIP) -> str:
+    """A running session of the fake agent whose run ship/<name> of `flow` waits at gate
+    "check": review's note before it (`note`) carries the artifact review, and the gate reads
+    plan. The gate's request for a recommendation is handled (the fake supervisor gives none):
+    the card's footer no longer changes under a test that measures it or drags its edge."""
     run = f"ship/{name}"
     kit = repo.parent / "kits" / "uiflow"
     (kit / "flows").mkdir(parents=True, exist_ok=True)
     (kit / "kit.yaml").write_text("name: uiflow\nversion: 1.0.0\n")
-    (kit / "flows" / "ship.yaml").write_text(SHIP)
+    (kit / "flows" / "ship.yaml").write_text(flow)
     agent_helpers.install_kit(kit)
     session = f"ui-{uuid.uuid4().hex[:6]}"
     runtime.start_session(str(repo), session, None, "fake", ["default", "uiflow"])
@@ -767,6 +772,8 @@ def test_the_recommendations_splitter_sets_its_height_and_keeps_it(page: Page, s
     expect(splitter).to_be_visible()
     for edge in (splitter, card.get_by_role("separator", name="Resize the card")):
         assert edge.get_attribute("title") is None
+        # The grip lies over the edge's line (its ::after), not under it.
+        assert edge.locator(".splitter-grip").evaluate("g => getComputedStyle(g).zIndex") == "1"
     assert round(rec_height(panel)) == 82
     text = panel.locator(".rec-text")
     expect(text).to_have_class(re.compile(r"\bhas-more\b"))
@@ -800,6 +807,39 @@ def test_the_recommendations_splitter_sets_its_height_and_keeps_it(page: Page, s
     # Scrolled to its end, its fade goes.
     text.evaluate("t => t.scrollTo(0, t.scrollHeight)")
     expect(text).not_to_have_class(re.compile(r"\bhas-more\b"))
+
+
+def test_a_wheel_over_the_recommendations_head_scrolls_its_text(page: Page, server, repo, shot):
+    """Its box may be a line high: the wheel over the whole block scrolls it (the human's
+    decision of 2026-11-10); at its end the wheel goes on to the feed."""
+    session = gated_session(repo, LONG_NOTE)
+    recommended(session, "A reason to approve. " * 60, choice="approve")
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    panel = waiting_card(page, session).get_by_role("tabpanel")
+    head = panel.locator(".rec-head")
+    text = panel.locator(".rec-text")
+    expect(text).to_be_visible()
+    assert text.evaluate("t => t.scrollTop") == 0
+    head.hover()
+    page.mouse.wheel(0, 60)
+    page.wait_for_function("t => t.scrollTop > 0", arg=text.element_handle())
+    assert panel.locator(".waiting-scroll").evaluate("r => r.scrollTop") == 0
+
+
+def test_a_recommendation_of_a_line_has_no_splitter_and_a_line_over_the_footer(
+    page: Page, server, repo, shot
+):
+    """Nothing to drag, no splitter: the text of a line is whole in its box."""
+    session = gated_session(repo, LONG_NOTE)
+    recommended(session, "Approve it.", choice="approve")
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    panel = waiting_card(page, session).get_by_role("tabpanel")
+    expect(panel.locator(".rec-text")).to_be_visible()
+    expect(panel.get_by_role("separator", name="Resize the recommendation")).to_have_count(0)
+    expect(panel.locator(".waiting-foot")).to_have_css("border-top-width", "1px")
+    shot(page, full_page=False)
 
 
 def test_a_gate_without_a_recommendation_has_a_line_over_its_footer_and_no_splitter(
@@ -854,6 +894,28 @@ def test_the_humans_answer_is_the_runs_move_at_the_bottom_with_its_comment(
     ).to_be_visible()
     link = feed.locator(":scope > .run-group").last.get_by_role("link", name="ship/x")
     expect(link).to_have_attribute("href", f"/sessions/{session}/flows/ship%2Fx")
+
+
+def test_a_choice_gates_option_is_picked_then_sent(page: Page, server, repo, shot):
+    """A click on an option only picks it, a pill: Send answers with it (the human's decision
+    of 2026-11-10)."""
+    session = gated_session(repo, flow=SHIP_CHOICE)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions/{session}")
+    card = waiting_card(page, session).get_by_role("tabpanel")
+    choices = card.get_by_role("group", name="Choices")
+    expect(choices.get_by_role("button")).to_have_text(["ship", "rework"])
+    send = card.get_by_role("button", name="Send", exact=True)
+    expect(send).to_be_disabled()
+    choices.get_by_role("button", name="ship").click()
+    choices.get_by_role("button", name="rework").click()
+    expect(choices.get_by_role("button", name="rework")).to_have_attribute("aria-pressed", "true")
+    shot(page, "picked", full_page=False)
+    assert state.get_gate(1).answer is None
+    send.click()
+    agent_helpers.wait_for(
+        lambda: state.get_gate(1).answer == "rework", "gate #1 answered", session
+    )
 
 
 def test_a_gate_answered_with_lado_answer_leaves_the_card_on_the_open_page(
@@ -943,11 +1005,11 @@ def test_a_gate_with_a_recommendation_that_disagrees(page: Page, server, repo, s
     expect(block.get_by_role("button")).to_have_count(0)  # nothing opens or closes it
     expect(card.get_by_role("button", name="Reject", exact=True)).to_have_class("primary")
     expect(card.get_by_role("button", name="Approve", exact=True)).to_have_class("quiet")
-    # Between the note's chips and the answer, under the splitter.
+    # Between the note's chips and the answer; a text of a line has no splitter over it.
     order = card.locator(".gate-note, .chips, .splitter, .rec, form.answer").evaluate_all(
         "all => all.map(one => one.className.split(' ')[0])"
     )
-    assert order == ["gate-note", "chips", "splitter", "rec", "answer"]
+    assert order == ["gate-note", "chips", "rec", "answer"]
     for theme in ("light", "dark"):
         page.emulate_media(color_scheme=theme)
         shot(page, f"given-{theme}")

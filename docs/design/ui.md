@@ -811,7 +811,7 @@ reaches the feed. LADO takes the model and builds it on what it has:
   card above the composer (The waiting card, below; since LAD-28, 2026-10-13: before, a row
   of the feed with its card). The tab shows its panel (`GatePanel`, also the whole card of
   a run's page in Flows): the question in its head, the note before the gate (its summary in bold, its body
-  open, more than 20 lines behind Show more), then one row of chips: the note's, then the
+  whole, as the report scrolls; LAD-266, before: more than 20 lines behind Show more), then one row of chips: the note's, then the
   artifacts the gate reads but the note does not carry, by their titles (LAD-266; before,
   under a muted "It reads", a line each with its size and "title — summary"); "<name>: no
   record yet"; the name alone while the session's artifacts are not loaded: the latest record
@@ -821,9 +821,12 @@ reaches the feed. LADO takes the model and builds it on what it has:
   optional comment for the next step, which takes files as the composer does (LAD-86,
   mockup `task/lad-86/mockup-gate-files.html`: the composer's frame with the paperclip at
   its left, the chips above the text, paste and a drop on the field; The waiting card,
-  Fields), and a button per option (Approve / Reject, a choice gate's own options,
-  Continue / Cancel run at a loop limit; the recommended one primary, else the first; on
-  the tab, in its Send row), then "<n> file(s), <size>" while files are attached. A button
+  Fields), and a button per option (Approve / Reject, Continue / Cancel run at a loop
+  limit; the recommended one primary, else the first; on the tab, in its Send row); a
+  choice gate's own options are pills above the comment, as a question's choices
+  (`ChoicesFrame`), a click picks one (the recommended one ahead, with its ✓) and Send
+  answers with it, off with "Choose an answer first" until one is picked, so a slip of the
+  pointer sends nothing (the human's decision of 2026-11-10, LAD-266), then "<n> file(s), <size>" while files are attached. A button
   uploads the files not uploaded yet, then answers with the comment and their names; a
   failed upload stops the answer, its chip red with the reason, and says "Remove it, or
   answer again to try it again"; a comment of files only is an answer too. The buttons are
@@ -1004,8 +1007,9 @@ Built in the chat task (2026-10-03):
     characters (`CHARS_PER_LINE`). A message's text shows whole up to 30 such lines and
     6000 characters; a longer one shows its first 12 (at most 2400 characters), then
     **Show more** / **Show less** (`aria-expanded`), which opens it in place. Every
-    `Preview` says Show more: the note before a gate cuts at 20 lines, an agent's task in
-    Agents at 3, each at its own number of lines.
+    `Preview` says Show more: a closed gate's note cuts at 6 lines, an agent's task in
+    Agents at 3, each at its own number of lines; an open gate's note is whole, its report
+    scrolling (LAD-266).
   - The **agents' messages to each other**: one muted line of the summary (14 px, cut with
     an ellipsis), a chevron before it when there is a body, which opens under it on a click
     or the keyboard (a native `<details>`) with a muted rule on its left.
@@ -1164,7 +1168,10 @@ Built in the chat task (2026-10-03):
   and the feed down to its 160 px (once the report is at its least the card grows into the
   feed); a double click gives back 4 lines (82 px; a phone 2, 42 px). The height is one value
   in the browser for every card (`lado.recommendationHeight`). No splitter on Needs you, on a
-  run's page, without a given recommendation, or in a tab of several questions. At 601 to 900 px, where a session's page stands still (LAD-193), the
+  run's page, without a given recommendation, in a tab of several questions, or when it has
+  nothing to drag (a text of a line; the footer has its line then; the room does not count, as
+  it changes when the splitter comes and goes). Its grip lies
+  over its line. At 601 to 900 px, where a session's page stands still (LAD-193), the
   card stands above the composer as in a wide window, so its footer and the composer are in
   sight at once. In a session's chat on a window wider than 900 px, the edge above the card is a splitter (decided
   2026-10-14, LAD-54, mockup `task/lad-54/mockup-gate-card.html`, screen D; before, the
@@ -1233,7 +1240,10 @@ Built in the chat task (2026-10-03):
   text as Markdown in a box of `--adv`, 4 lines (82 px; a phone 2, 42 px) or what the splitter
   set (The waiting card, Height), that scrolls on its own (`overscroll-behavior: contain`), a
   stop of the Tab key, and fades at its lower edge over 26 px while more is below; no "more" or
-  "less". On Needs you, on a run's page and in a tab of several questions it is whole. When
+  "less". A wheel anywhere over the block scrolls its text, as a box of a line is hard to hit
+  (the human's decision of 2026-11-10); at the text's end the wheel goes on to what is around
+  it. On Needs you, on a run's page and in a tab of several questions it is whole, a phone's
+  too. When
   the supervisor disagrees with the agent whose report led to the gate or who asks, the block
   has a `--warn` frame and an `AlertIcon` of 16 px in `--warn` before the avatar; the words are
   only in the block's name, "Supervisor's recommendation, disagrees with the step's report" (a

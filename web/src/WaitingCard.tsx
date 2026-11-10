@@ -51,8 +51,7 @@ import { usePhone } from "./phone";
 import { fitWidth, Splitter, useHeight } from "./Splitter";
 import { runColours } from "./Team";
 import { Tooltip } from "./Tooltip";
-import { useMore } from "./useMore";
-import { ActionProblem, CARD_FIELD_LINES, CardBody, STOPPED_NOTE, Waits, type CardShape } from "./waitingParts";
+import { ActionProblem, CARD_FIELD_LINES, CardBody, ChoicesFrame, STOPPED_NOTE, Waits, type CardShape } from "./waitingParts";
 
 type AgentTab = { key: string; agent: string; questions: MessageInfo[]; since: string };
 export type WaitingTab = AgentTab | { key: string; gate: GateInfo; since: string };
@@ -769,23 +768,12 @@ function QuestionField({ card, question, now, pick, files, setFiles, limits, off
   );
 }
 
-// The choices of a single question in the footer: by content up to its limit, then they
-// scroll inside with a fade, a group the keyboard reaches.
+// The choices of a single question in the footer.
 function ChoicesArea(props: QuestionProps) {
-  const { box, more, scrolled } = useMore<HTMLDivElement>();
   return (
-    <div className={`waiting-choices-frame${more ? " cut" : ""}`}>
-      <div
-        ref={box}
-        className="waiting-choices"
-        role="group"
-        aria-label="Choices"
-        tabIndex={more ? 0 : undefined}
-        onScroll={scrolled}
-      >
-        <Choices {...props} />
-      </div>
-    </div>
+    <ChoicesFrame>
+      <Choices {...props} />
+    </ChoicesFrame>
   );
 }
 

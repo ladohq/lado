@@ -112,7 +112,17 @@ less); on Needs you they are buttons as in the chat (they already open `useView`
 
 **D10. The note.** `.gate-note` loses its left border and padding; its summary 14/600, its body
 14/1.45 with headings 14/600. `Preview`'s 20 lines and Show more stay (not in the design's words
-to remove).
+to remove). Built: the human rejected the merge on 2026-11-10 for this, and the open gate's note
+is whole (`Body`), its report scrolling; a closed gate's 6 lines stay.
+
+**After the merge's rejection (2026-11-10).** The human's other remarks and decisions: the
+recommendation's splitter stands only when it has something to drag (its whole text more than a
+line's rounding over 20 px; not by the room, which changes as the splitter comes and goes and
+made it flicker in a low window), and its grip lies over its line (`z-index`); a wheel anywhere over the
+recommendation's block scrolls its text (decision 1a); a choice gate's options are pills that
+pick and Send answers, the recommended one picked ahead (decision 2a; approval and loop gates
+answer at once as before); a phone's whole card (Needs you) shows the recommendation whole, as
+its phone rule of 42 px no longer outweighs `.whole`.
 
 **D11. Fields.** `cardLines` returns `[1, MOST_LINES]` (8) in every state; `FIELD_LINES` goes.
 The field is 40 px on one line, 44 px at 600 px or less; the gate's placeholder is "Comment for

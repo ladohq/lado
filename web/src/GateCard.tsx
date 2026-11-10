@@ -20,10 +20,10 @@ import { useLive, useLiveStore, useLocked } from "./live";
 import { useMedia } from "./phone";
 import { quoteArea } from "./quote";
 import { disagreed, primaryOf } from "./Recommendation";
-import { ActionProblem, CardBody, STOPPED_NOTE, WAITING_NOTE, type CardShape } from "./waitingParts";
+import { Tooltip } from "./Tooltip";
+import { ActionProblem, CardBody, ChoicesFrame, STOPPED_NOTE, WAITING_NOTE, type CardShape } from "./waitingParts";
 
-const NOTE_LINES = 20; // the lines of the note before the gate shown before Show more
-const CLOSED_NOTE_LINES = 6; // the same in a closed gate's card, its Note line opened
+const CLOSED_NOTE_LINES = 6; // a closed gate's note's lines before Show more, its Note line opened
 const COMMENT = "Comment for the next step (optional)";
 const NARROW = "(max-width: 600px)"; // a narrow window's placeholder is shorter
 
@@ -73,8 +73,10 @@ export function GateCard({ session, gate, stopped, kicker }: { session: string; 
 // What answers an open gate, as a tab of the waiting card (waitingParts.tsx) or on a run's
 // page: the question its head, the note that led to it and its documents' chips its report,
 // then in the footer the supervisor's recommendation (Recommendation.tsx), the comment for the
-// next step and a button per option, the recommended one primary. `marked`, the gate a link
-// asked for. `comment` and `onComment`, `files` and `onFiles`: the comment and its files kept
+// next step and a button per option, the recommended one primary; a choice gate's options are
+// pills a click picks, the recommended one ahead, and Send answers with the one picked, so a
+// slip of the pointer sends nothing (the human's decision of 2026-11-10). `marked`, the gate a
+// link asked for. `comment` and `onComment`, `files` and `onFiles`: the comment and its files kept
 // by who shows the panel (the waiting card, across its tabs and its expanded view), else here.
 // The comment takes files as the composer does (attachFiles.AnswerBox); their count and size
 // stand beside the buttons, and a button uploads those not uploaded yet, then answers with
@@ -115,6 +117,12 @@ export function GatePanel({
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const primary = primaryOf(gate.options, gate.recommendation);
+  // A choice gate's option is picked, then sent: until the human picks, the recommended one.
+  const choosing = gate.kind === "choice";
+  const choice = gate.recommendation?.state === "given" ? gate.recommendation.choice : null;
+  const recommended = choice && gate.options.includes(choice) ? choice : undefined;
+  const [picked, setPicked] = useState<string | null | undefined>(undefined);
+  const chosen = picked === undefined ? recommended : picked;
   const live = useLiveStore();
   const { lost } = useLive();
   const narrow = useMedia(NARROW);
@@ -145,18 +153,43 @@ export function GatePanel({
     }
   }
 
+  const off = busy || stopped || locked;
+  const send = (
+    <button
+      key="send"
+      type="button"
+      className={`primary${lost ? " locked" : ""}`}
+      disabled={off || !chosen}
+      onClick={() => chosen && void answer(chosen)}
+    >
+      Send
+    </button>
+  );
   const buttons = [
-    ...gate.options.map((option) => (
-      <button
-        key={option}
-        type="button"
-        className={`${option === primary ? "primary" : "quiet"}${lost ? " locked" : ""}`}
-        disabled={busy || stopped || locked}
-        onClick={() => void answer(option)}
-      >
-        {label(gate)(option)}
-      </button>
-    )),
+    ...(choosing
+      ? [
+          !chosen && !off ? (
+            // A button that is off takes no pointer or focus: the hint is around it.
+            <Tooltip key="send" tip="Choose an answer first">
+              <span className="waiting-send-off" tabIndex={0}>
+                {send}
+              </span>
+            </Tooltip>
+          ) : (
+            send
+          ),
+        ]
+      : gate.options.map((option) => (
+          <button
+            key={option}
+            type="button"
+            className={`${option === primary ? "primary" : "quiet"}${lost ? " locked" : ""}`}
+            disabled={off}
+            onClick={() => void answer(option)}
+          >
+            {label(gate)(option)}
+          </button>
+        ))),
     files.length > 0 && (
       <span key="files" className="waiting-count">
         {filesLine(files)}
@@ -193,6 +226,26 @@ export function GatePanel({
       report={report}
       rec={{ rec: gate.recommendation, options: gate.options, label: label(gate), kind: "gate", area }}
     >
+      {choosing && (
+        <ChoicesFrame>
+          {gate.options.map((option) => {
+            const on = option === chosen;
+            return (
+              <button
+                key={option}
+                type="button"
+                className={`waiting-option${on ? " on" : ""}`}
+                aria-pressed={on}
+                disabled={off}
+                onClick={() => setPicked(on ? null : option)}
+              >
+                {on && option === recommended && <span aria-hidden="true">✓ </span>}
+                {option}
+              </button>
+            );
+          })}
+        </ChoicesFrame>
+      )}
       <form className="answer" onSubmit={(event) => event.preventDefault()}>
         <AnswerBox
           label={COMMENT}
@@ -221,7 +274,8 @@ export function GatePanel({
   );
 }
 
-// The note of the step that led to the gate: its summary, then its body at once.
+// The note of the step that led to the gate: its summary, then its whole body (the report
+// scrolls; nothing folds).
 function Note({ gate }: { gate: GateInfo }) {
   if (!gate.note && !gate.note_body) return null;
   return (
@@ -231,7 +285,7 @@ function Note({ gate }: { gate: GateInfo }) {
           <strong>{gate.note}</strong>
         </p>
       )}
-      {gate.note_body && <Preview text={gate.note_body} lines={NOTE_LINES} />}
+      {gate.note_body && <Body text={gate.note_body} />}
     </div>
   );
 }

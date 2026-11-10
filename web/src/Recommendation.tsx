@@ -31,7 +31,7 @@ export const disagreed = (rec: RecommendationInfo, verb: string) => `${verb}${re
 // An open card's block: "supervisor recommends <option>" as the card's buttons name it (a
 // choice not among `options` counts as none, as in primaryOf), the time, then the text in its
 // box, `height` high (null: the stylesheet's 4 lines, a phone's 2) and fading at its lower
-// edge while more is below; `whole`, all of it. A disagreement is a --warn frame and a sign,
+// edge while more is below, a wheel over the whole block scrolling it; `whole`, all of it. A disagreement is a --warn frame and a sign,
 // its words in the block's name and the sign's tooltip; none when the lead wrote the gate's
 // report itself. While it is asked, one muted line; missing or never asked, nothing.
 export function Recommendation({
@@ -60,7 +60,13 @@ export function Recommendation({
   const against = rec.disagrees && rec.by !== LEAD;
   const name = against ? `${TITLE}, disagrees with ${kind === "gate" ? "the step's report" : (rec.by ?? "the agent")}` : TITLE;
   return (
-    <section className={`rec${against ? " against" : ""}`} role="note" aria-label={name} {...area}>
+    <section
+      ref={whole ? undefined : wheelToText}
+      className={`rec${against ? " against" : ""}`}
+      role="note"
+      aria-label={name}
+      {...area}
+    >
       <div className="rec-head">
         {against && (
           <Tooltip tip={name}>
@@ -84,6 +90,27 @@ export function Recommendation({
       <RecText text={rec.text} whole={whole} height={height} measure={measure} />
     </section>
   );
+}
+
+const LINE = 20; // a wheel's line in the text, in pixels (14 px at 1.45)
+
+// A wheel anywhere over the block scrolls its text, whose box may be a line high and hard to
+// hit; over the text itself the browser does, and at the text's end the wheel goes on to
+// what is around (the feed, the page). A ref's callback: its cleanup takes the listener off.
+function wheelToText(block: HTMLElement | null) {
+  if (!block) return;
+  const wheel = (event: WheelEvent) => {
+    const text = block.querySelector<HTMLElement>(".rec-text");
+    if (!text || text.contains(event.target as Node)) return;
+    const unit = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? LINE : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? text.clientHeight : 1;
+    const end = Math.max(0, text.scrollHeight - text.clientHeight);
+    const top = Math.min(end, Math.max(0, text.scrollTop + event.deltaY * unit));
+    if (top === text.scrollTop) return;
+    event.preventDefault();
+    text.scrollTop = top;
+  };
+  block.addEventListener("wheel", wheel, { passive: false });
+  return () => block.removeEventListener("wheel", wheel);
 }
 
 // The text in its box: it scrolls on its own, the keyboard reaches it, a fade says there is more.

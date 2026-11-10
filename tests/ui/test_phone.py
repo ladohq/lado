@@ -869,6 +869,24 @@ def test_a_short_recommendation_does_not_fade(device, server, repo):
     expect(block.locator(".rec-text")).not_to_have_class(re.compile(r"\bhas-more\b"))
 
 
+def test_on_needs_you_a_long_recommendation_is_whole_above_the_comment(device, server, repo, shot):
+    """Needs you's card is whole on a phone too: the recommendation's text is all there in its
+    box, which ends above the comment and the buttons (the human's screen of 2026-11-10)."""
+    session = gated_session(repo, LONG_NOTE)
+    recommended(
+        session, "I disagree with the reviewer: it doubles the requests. " * 6, choice="reject"
+    )
+    page = opened(device(UPRIGHT), server, "/needs-you")
+    block = page.get_by_role("note", name=re.compile(r"^Supervisor's recommendation"))
+    text = block.locator(".rec-text")
+    expect(text).to_be_visible()
+    assert text.evaluate("t => t.scrollHeight <= t.clientHeight + 1") is True
+    comment = page.get_by_role("textbox", name="Comment for the next step (optional)")
+    assert box(block)["y"] + box(block)["height"] <= box(comment)["y"]
+    block.scroll_into_view_if_needed()
+    shot(page, full_page=False)
+
+
 def test_the_recommendations_splitter_takes_a_finger_and_hides_while_typing(
     device, server, repo, shot
 ):

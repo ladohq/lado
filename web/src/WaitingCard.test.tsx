@@ -1480,6 +1480,17 @@ test("in the expanded card with no report the recommendation's splitter goes up 
   expect(recSplitter()!.getAttribute("aria-valuemax")).toBe("182");
 });
 
+test("a recommendation whose text is a line has no splitter, nothing to drag, and a line over the footer", () => {
+  columnWidth(null);
+  show({ questions: [], gates: [GATE_RECOMMENDED], chat: IN_CHAT });
+  recLaidOut(21); // a line and its rounding
+  expect(recSplitter()).toBeNull();
+  expect(card().querySelector(".waiting-foot")!.classList.contains("ruled")).toBe(true);
+  recLaidOut(41); // two lines
+  expect(recSplitter()!.getAttribute("aria-valuemax")).toBe("41");
+  expect(card().querySelector(".waiting-foot")!.classList.contains("ruled")).toBe(false);
+});
+
 test("no splitter without a given recommendation, nor on Needs you", () => {
   show({ questions: [], gates: [gate(1, "ship/x", "2026-10-03T12:00:06.000Z")], chat: IN_CHAT });
   expect(recSplitter()).toBeNull();

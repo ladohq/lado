@@ -61,11 +61,32 @@ export function ActionProblem({ attempt: key, off = false }: { attempt: string; 
   );
 }
 
+// Choices in the footer, a question's or a choice gate's: by content up to their limit, then
+// they scroll inside with a fade, a group the keyboard reaches.
+export function ChoicesFrame({ children }: { children: ReactNode }) {
+  const { box, more, scrolled } = useMore<HTMLDivElement>();
+  return (
+    <div className={`waiting-choices-frame${more ? " cut" : ""}`}>
+      <div
+        ref={box}
+        className="waiting-choices"
+        role="group"
+        aria-label="Choices"
+        tabIndex={more ? 0 : undefined}
+        onScroll={scrolled}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 // A field's least and most lines in the card: it opens on one line.
 export const CARD_FIELD_LINES: [number, number] = [1, MOST_LINES];
 
 const REPORT_MIN = 56; // the report's least height (styles.css, .waiting-scroll)
 const REC_LINES = { window: 82, phone: 42 }; // the recommendation's text by default: 4 lines, a phone's 2
+const DRAG_MIN = 2; // a text less than this over REC_MIN, a line's rounding, has nothing to drag
 
 // What a tab takes from its card.
 export type CardShape = {
@@ -153,8 +174,8 @@ type RecProps = Omit<ComponentProps<typeof Recommendation>, "whole" | "height" |
 // (`report`, null for none), then in the footer its recommendation (`rec`) and the rest
 // (`children`). In a session's chat a given recommendation has a splitter over the footer,
 // which sets its text's height between a line and the lesser of its whole text and the room
-// the report gives down to its least and the feed down to its own; else a line parts the
-// report from the footer.
+// the report gives down to its least and the feed down to its own; when its text is a line,
+// nothing to drag, and elsewhere, a line parts the report from the footer.
 export function CardBody({
   card,
   title,
@@ -179,7 +200,7 @@ export function CardBody({
   const [textMeasured, textHeight] = useHeight<HTMLElement>();
   const [boxMeasured, boxHeight] = useHeight<HTMLElement>();
   const [reportMeasured, reportHeight] = useHeight<HTMLElement>();
-  const split = card.chat && !card.whole && rec?.rec?.state === "given";
+  const given = card.chat && !card.whole && rec?.rec?.state === "given";
   const initial = card.phone ? REC_LINES.phone : REC_LINES.window;
   const asked = card.recHeight ?? initial;
   const full = textHeight ?? Infinity; // not laid out yet: the height asked
@@ -194,6 +215,9 @@ export function CardBody({
   const most = Math.min(full, room);
   const max = Math.max(REC_MIN, Math.floor(Number.isFinite(most) ? most : asked));
   const height = card.recHeight === null ? null : Math.max(REC_MIN, Math.min(card.recHeight, max));
+  // A text of a line has nothing to drag. Only the text's height counts: the room changes as
+  // the splitter comes and goes, which would make it flicker.
+  const split = given && full - REC_MIN >= DRAG_MIN;
   return (
     <>
       {title !== undefined && (

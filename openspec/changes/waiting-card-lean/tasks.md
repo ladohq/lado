@@ -69,3 +69,11 @@
   dark as run artifacts. Check: all green; `openspec validate waiting-card-lean --strict` and the
   trial archive pass. Screenshots: run artifact `screenshots.html` (24: the chat's gate and
   questions, Needs you, a run's page).
+
+## 10. The merge's rejection (2026-11-10)
+
+- [x] 10.1 The human's six remarks (design.md, "After the merge's rejection"): no splitter with
+  nothing to drag, its grip over its line, the open gate's note whole, the wheel over the
+  recommendation's block, a choice gate picked then sent, a phone's whole recommendation on
+  Needs you. Check: `Chat.test.tsx`, `WaitingCard.test.tsx`, `Recommendation.test.tsx`,
+  `connection.test.tsx`, `test_gates.py`, `test_phone.py`.

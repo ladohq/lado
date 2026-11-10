@@ -1180,22 +1180,81 @@ test("a gate whose run's flow cannot be read shows the problem instead of the ar
   expect(approve.disabled).toBe(false);
 });
 
-test("a long note before the gate is behind Show more", async () => {
+test("a long note before the gate shows whole, with no Show more: its report scrolls", async () => {
   const body = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join("\n\n");
   serve([], undefined, [], [gate(1, { note_body: body })]);
   open();
   const card = await gateTab();
-  expect(within(card).getByText("line 20")).toBeTruthy();
-  expect(within(card).queryByText("line 21")).toBeNull();
-  fireEvent.click(within(card).getByRole("button", { name: "Show more" }));
   expect(within(card).getByText("line 30")).toBeTruthy();
+  expect(within(card).queryByRole("button", { name: /Show (more|less)/ })).toBeNull();
+});
+
+// A choice gate's options are picked as a question's choices, then sent (the human's decision
+// of 2026-11-10): a slip of the pointer sends nothing.
+const choices = (card: HTMLElement) => within(card).getByRole("group", { name: "Choices" });
+const pills = (card: HTMLElement) =>
+  within(choices(card))
+    .getAllByRole("button")
+    .map((pill) => [pill.textContent, pill.getAttribute("aria-pressed")]);
+const sendGate = (card: HTMLElement) => within(card).getByRole("button", { name: "Send" }) as HTMLButtonElement;
+
+test("a choice gate's options are pills: a click picks one, Send answers with it and the comment", async () => {
+  const { posted } = serve([], undefined, [], [gate(1, { kind: "choice", options: ["left", "right"] })]);
+  open();
+  const card = await gateTab();
+  expect(pills(card)).toEqual([
+    ["left", "false"],
+    ["right", "false"],
+  ]);
+  expect(sendGate(card).disabled).toBe(true);
+  expect(card.querySelector(".waiting-send-off")).toBeTruthy(); // "Choose an answer first" around it
+  fireEvent.click(within(choices(card)).getByRole("button", { name: "left" }));
+  fireEvent.click(within(choices(card)).getByRole("button", { name: "left" })); // unpicked
+  expect(sendGate(card).disabled).toBe(true);
+  fireEvent.click(within(choices(card)).getByRole("button", { name: "right" }));
+  expect(pills(card)).toEqual([
+    ["left", "false"],
+    ["right", "true"],
+  ]);
+  expect(posted).toEqual([]);
+  fireEvent.change(within(card).getByRole("textbox", { name: "Comment for the next step (optional)" }), { target: { value: "go" } });
+  fireEvent.click(sendGate(card));
+  await waitFor(() => expect(posted).toEqual([{ path: "/api/sessions/lado/gates/1/answer", body: { option: "right", comment: "go" } }]));
+});
+
+test("a choice gate's recommended option is picked ahead with its ✓; the human picks another", async () => {
+  const { posted } = serve([], undefined, [], [gate(1, { kind: "choice", options: ["left", "right"], recommendation: given("right") })]);
+  open();
+  const card = await gateTab();
+  expect(pills(card)).toEqual([
+    ["left", "false"],
+    ["✓ right", "true"],
+  ]);
+  expect(sendGate(card).disabled).toBe(false);
+  fireEvent.click(within(choices(card)).getByRole("button", { name: "left" }));
+  expect(pills(card)).toEqual([
+    ["left", "true"],
+    ["right", "false"],
+  ]);
+  fireEvent.click(sendGate(card));
+  await waitFor(() => expect(posted).toEqual([{ path: "/api/sessions/lado/gates/1/answer", body: { option: "left", comment: "" } }]));
+});
+
+test.each([[null], ["maybe"]])("a choice gate's recommendation with the choice %s picks nothing ahead", async (choice) => {
+  serve([], undefined, [], [gate(1, { kind: "choice", options: ["left", "right"], recommendation: given(choice) })]);
+  open();
+  const card = await gateTab();
+  expect(pills(card)).toEqual([
+    ["left", "false"],
+    ["right", "false"],
+  ]);
+  expect(sendGate(card).disabled).toBe(true);
 });
 
 test.each([
   [gate(1), ["Approve", "Reject"]],
-  [gate(1, { kind: "choice", options: ["left", "right"] }), ["left", "right"]],
   [gate(1, { kind: "loop", options: ["continue", "cancel"], reads: [] }), ["Continue", "Cancel run"]],
-])("a gate's buttons are its options", async (one, labels) => {
+])("an approval's and a loop's buttons are their options, each answering at once", async (one, labels) => {
   serve([], undefined, [], [one]);
   open();
   const card = await gateTab();

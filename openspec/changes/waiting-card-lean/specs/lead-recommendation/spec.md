@@ -36,6 +36,19 @@ On Needs you, on a run's page and under each question of a tab of several it SHA
 - **WHEN** the same gate waits on a phone 390×844
 - **THEN** 2 lines show with a fade
 
+#### Scenario: Whole on a phone's Needs you
+- **WHEN** the same gate waits on Needs you on a phone 390×844
+- **THEN** all its text shows, its block ending above the comment field
+
+### Requirement: A wheel over the recommendation's block scrolls its text
+
+In the chat's card a wheel anywhere over the recommendation's block SHALL scroll its text, as a
+box of a line is hard to hit; at the text's end the wheel SHALL go on to what is around it.
+
+#### Scenario: The wheel over its head
+- **WHEN** the box is a line high and the human turns the wheel over "supervisor recommends"
+- **THEN** the text scrolls; at its end the wheel scrolls what is around it
+
 ## MODIFIED Requirements
 
 ### Requirement: The card shows the recommendation as part of the gate or question

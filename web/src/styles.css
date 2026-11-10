@@ -10917,6 +10917,7 @@ section.artifact-group + section.artifact-group {
   background: var(--panel);
   box-shadow: 0 1px 3px var(--shadow);
   pointer-events: none;
+  z-index: 1; /* over the edge's line, which its ::after draws later */
 }
 
 .splitter-grip-dot {
@@ -13537,6 +13538,10 @@ button.quiet.danger-text {
 
 :root[data-phone] .rec-text {
   max-height: var(--adv, 42px);
+}
+
+:root[data-phone] .whole .rec-text {
+  max-height: none;
 }
 
 :root[data-phone] .waiting-panel > .splitter-top {

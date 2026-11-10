@@ -66,6 +66,28 @@ phone: 2). The height SHALL be kept in the browser, one value for every card.
 - **WHEN** a gate with no recommendation waits in the chat
 - **THEN** no splitter stands in the card, and the footer has a line of `--human` at 35 % above it
 
+### Requirement: The recommendation's splitter stands only with something to drag
+
+When the recommendation's whole text is a line, nothing to drag, its splitter SHALL not stand,
+and the footer SHALL have its line above it. The room the card has SHALL not count. Its grip
+SHALL lie over its line.
+
+#### Scenario: A recommendation of a line
+- **WHEN** a gate with a recommendation of one line waits in the chat
+- **THEN** no splitter stands in the card, and the footer has the line above it
+
+### Requirement: A choice gate's option is picked, then sent
+
+A choice gate's options SHALL be pills above the comment that a click picks and unpicks, the
+recommended one picked ahead with its ✓; Send SHALL answer the gate with the one picked and the
+comment, and SHALL be off with "Choose an answer first" until one is, so a slip of the pointer
+sends nothing.
+
+#### Scenario: A choice gate
+- **WHEN** a choice gate with the options ship and rework waits, the supervisor recommending
+  ship, and the human clicks rework
+- **THEN** rework is picked and nothing is sent; Send answers the gate `rework`
+
 ### Requirement: A question without choices shows its field at once
 
 A question with no choices that takes a free answer SHALL show its field at once, with the
@@ -158,11 +180,11 @@ field for an optional comment, and each of the three SHALL exclude the other two
 
 ### Requirement: A gate's tab answers the gate at once
 
-A gate's tab SHALL show its question, the note that led to it, its documents' chips, the
-comment for the next step with its files and its buttons (Approve / Reject, a choice gate's
-options, Continue / Cancel run at a loop limit),
-which SHALL answer the gate at once through `runs.answer`, with the comment and the files.
-The note SHALL have no band at its left. In a stopped session the
+A gate's tab SHALL show its question, the note that led to it (whole, no Show more), its
+documents' chips, the comment for the next step with its files and its buttons (Approve /
+Reject, Continue / Cancel run at a loop limit), which SHALL answer the gate at once through
+`runs.answer`, with the comment and the files (a choice gate's: picked, then sent). No band at
+the note's left. In a stopped session the
 buttons SHALL be off and the tab SHALL say "The session is stopped: resume it to answer."
 
 #### Scenario: Approve

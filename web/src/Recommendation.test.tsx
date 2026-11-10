@@ -114,6 +114,36 @@ test("a text longer than its box fades at its lower edge until it is scrolled to
   expect(text().classList.contains("has-more")).toBe(true);
 });
 
+// A wheel at `target`, `deltaY` down; whether something took it from the browser.
+function wheel(target: Element, deltaY: number, deltaMode = 0): boolean {
+  const event = new WheelEvent("wheel", { deltaY, deltaMode, bubbles: true, cancelable: true });
+  target.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+test("a wheel over the whole block scrolls its text, a box a line high hard to hit; at its end the wheel goes on", () => {
+  laidOut(300, 20);
+  show(rec());
+  const head = block().querySelector(".rec-head")!;
+  expect(wheel(head, 40)).toBe(true);
+  expect(text().scrollTop).toBe(40);
+  expect(wheel(block(), 2, WheelEvent.DOM_DELTA_LINE)).toBe(true); // 2 lines
+  expect(text().scrollTop).toBe(80);
+  expect(wheel(head, -100)).toBe(true);
+  expect(text().scrollTop).toBe(0);
+  expect(wheel(head, -10)).toBe(false); // at its top: the page's
+  expect(wheel(text(), 40)).toBe(false); // over the text the browser scrolls it
+  expect(text().scrollTop).toBe(0);
+  text().scrollTop = 280;
+  expect(wheel(head, 40)).toBe(false); // at its end
+});
+
+test("whole, a wheel over the block is the page's", () => {
+  laidOut(300, 20);
+  show(rec(), { whole: true });
+  expect(wheel(block().querySelector(".rec-head")!, 40)).toBe(false);
+});
+
 test("whole (Needs you, a run's page) its text never fades and is no stop of the Tab key", () => {
   laidOut(300, 82);
   show(rec(), { whole: true });

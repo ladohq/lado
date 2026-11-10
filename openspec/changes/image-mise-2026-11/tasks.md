@@ -15,7 +15,7 @@
   `test_mise_reads_the_version_files_of_go_java_python_and_ruby_alone` asserts
   `"idiomatic_version_file_ignore_minimum_versions" not in settings`, with a comment that mise
   2026.11.0 removed it and warns of it as an unknown field. Check: the test passes with `-n0`.
-- [ ] 2.2 `tests/container/test_toolchains.py` (container layer): keep the asserts as they are
+- [x] 2.2 `tests/container/test_toolchains.py` (container layer): keep the asserts as they are
   (no `WARN` from `go build` and `go version`, a minimum `go` line not read); adjust a comment
   only if it names the setting. Check: `make docker` and
   `uv run pytest -m container -n0 tests/container/test_toolchains.py` when Docker is available
@@ -32,6 +32,6 @@
 ## 4. Pull request and checks
 
 - [x] 4.1 `make lint`, `make test`, `openspec validate --specs --strict`.
-- [ ] 4.2 Once the pull request is open, comment on PR #277 that this pull request takes its
+- [x] 4.2 Once the pull request is open, comment on PR #277 that this pull request takes its
   bump with the fix of `docker/mise.toml`, and that Dependabot closes #277 when it is merged;
   do not close #277 by hand.

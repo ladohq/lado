@@ -28,7 +28,7 @@
 
 ## 3. End to end with the real CLI
 
-- [ ] 3.1 `tests/smoke/test_smoke.py` `test_the_session_s_model_reaches_the_cli`, Codex only: the
+- [x] 3.1 `tests/smoke/test_smoke.py` `test_the_session_s_model_reaches_the_cli`, Codex only: the
   smoke repo gets `.codex/config.toml` with `model = "smoke-model"` (a model the endpoint serves)
   before the start; the test asserts the endpoint is asked for `smoke-model-2` and never for
   `smoke-model` (design D4; AC-1). Written and run with `make test-smoke PROVIDER=codex` when Codex

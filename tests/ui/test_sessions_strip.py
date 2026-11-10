@@ -49,7 +49,7 @@ def test_the_list_collapses_to_a_strip_that_gives_the_session_room_and_opens_ses
     tip = page.get_by_role("tooltip")
     expect(tip).to_contain_text(asking)
     expect(tip).to_contain_text("Needs you: 1 question")
-    expect(tip).to_contain_text(str(repo))
+    expect(tip).not_to_contain_text(str(repo))  # the folder is in Details, not here (LAD-264)
     shot(page, "tooltip")
 
     icons.first.click()

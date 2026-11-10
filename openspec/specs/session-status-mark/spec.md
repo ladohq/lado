@@ -9,7 +9,7 @@ that none of them says something else about the same session.
 
 ### Requirement: A session's mark comes from one rule
 
-The session list's row, the session strip's icon, the session's card and the session's
+The session list's row, the session strip's icon, the icon's tooltip and the session's
 head SHALL take the session's mark and its words from one rule of the web UI, on the
 session's `SessionInfo` alone: `stopped`, `tmux_gone` or `loop_down` by its status; else
 `needs-you` when a gate, a question or an agent waits for the human; else `working` when an

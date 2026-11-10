@@ -2,6 +2,12 @@
 
 ## 0.45.1 (unreleased)
 
+### Improved
+
+- **Hovering a session no longer covers the chat.** A session in the list shows no card under
+  the pointer; an icon of the folded list shows only the session's name and state. The rest is
+  in the details that the session's title opens.
+
 ### Fixed
 
 - **Codex agents run on the model you chose.** A Codex agent runs on the model chosen in LADO or

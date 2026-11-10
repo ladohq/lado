@@ -102,7 +102,7 @@ const TASK_ABOUT = "The team gets this as its first message and answers in the c
 const MESSAGE_ABOUT = "The team gets this as a message once it resumes, and answers in the chat. You can leave it empty.";
 const RESUME_ABOUT = "The team continues where it stopped: its chat, tasks and work stay.";
 const NAME_ABOUT =
-  "How you find this session in the list. LADO makes it from the task; type your own, or clear the field to get LADO’s back.";
+  "How you find this session in the list. LADO takes it from a tracker key in the task (LAD-263), else from the place; type your own, or clear the field to get LADO’s back.";
 
 // A session of these statuses can be resumed; a running one only opened.
 const RESUMABLE = new Set<SessionInfo["status"]>(["stopped", "tmux_gone"]);

@@ -1,5 +1,5 @@
-// The session's name the New session window offers (sessionName.ts): the task's key, else its
-// words, else the place's name; numbered when taken; a typed name kept with its title.
+// The session's name the New session window offers (sessionName.ts): the task's tracker key,
+// else the place's name; numbered when taken; a typed name kept with its title.
 import { describe, expect, test } from "vitest";
 
 import { autoBase, freeName, nextFree, sessionName, slug } from "./sessionName";
@@ -16,39 +16,33 @@ describe("autoBase", () => {
     ["LAD-263: the codex model must win", "lad-263"],
     ["[LAD-263] the codex model", "lad-263"],
     ["LAD-7", "lad-7"],
-    ["  (LAD-263) a key in brackets", "lad-263"],
-    ["LAD-263 — the codex model", "lad-263"],
-    ["\n\n  LAD-263: on the first line with text", "lad-263"],
-    ["Fix LAD-263 in the doctor text", "fix-lad-263"],
-    ["HTTP-2 support for the proxy", "http-2-support"],
-    ["PEP-8 style everywhere", "pep-8-style"],
-    ["Fix the login redirect after the session expires", "fix-login-redirect"],
-    ["Please, we fix it: the login", "fix-login"],
-    ["Café menu prices", "cafe-menu-prices"],
-    ["Fix login\nLAD-263: on the second line", "fix-login"],
+    ["LAD-263 Fix the login", "lad-263"],
+    ["Fix LAD-263 in the doctor text", "lad-263"],
+    ["Fix login\nLAD-263: on the second line", "lad-263"],
+    ["Fix LAD-263, then LAD-264", "lad-263"],
+    ["(LAD-263) in brackets", "lad-263"],
+    ["HTTP-2 support for the proxy", "http-2"],
   ])("%j → %s", (task, base) => {
     expect(autoBase(task, "lado")).toBe(base);
   });
 
-  test("words are taken while they fit in 32 characters", () => {
-    expect(autoBase("Internationalization localization everything", null)).toBe("internationalization");
-    expect(autoBase("Refactor configuration loader", null)).toBe("refactor-configuration-loader");
+  test.each([
+    ["Fix the login redirect after the session expires"],
+    ["xLAD-263 glued to a word before"],
+    ["LAD-263a glued to a word after"],
+    ["lad-263 in small letters"],
+    ["L-1 one letter"],
+    ["Utf-8 not all capitals"],
+    ["Поправить вход"],
+    [""],
+    ["   \n "],
+  ])("no key in %j: the place's name", (task) => {
+    expect(autoBase(task, "lado")).toBe("lado");
   });
 
-  test("a first word longer than 32 characters is cut to 32", () => {
-    expect(autoBase("a".repeat(40) + " more", null)).toBe("a".repeat(32));
-  });
-
-  test("fewer than 3 characters, no Latin letters or no task: the place's name", () => {
-    expect(autoBase("Go", "lado")).toBe("lado");
-    expect(autoBase("Поправить вход", "lado")).toBe("lado");
-    expect(autoBase("", "lado")).toBe("lado");
-    expect(autoBase("   \n ", "webapp")).toBe("webapp");
-  });
-
-  test("no task and no place: no name", () => {
+  test("no key and no place: no name", () => {
     expect(autoBase("", null)).toBeNull();
-    expect(autoBase("Поправить", null)).toBeNull();
+    expect(autoBase("Fix the login", null)).toBeNull();
   });
 });
 
@@ -114,8 +108,8 @@ describe("sessionName", () => {
   });
 
   test("typed without a plain form: the automatic name with the text as its title", () => {
-    const named = sessionName({ ...base, mode: "custom", typed: "Вход после сессии", task: "Fix the login redirect" });
-    expect([named.id, named.title, named.taken]).toEqual(["fix-login-redirect", "Вход после сессии", false]);
+    const named = sessionName({ ...base, mode: "custom", typed: "Вход после сессии", task: "Fix LAD-263" });
+    expect([named.id, named.title, named.taken]).toEqual(["lad-263", "Вход после сессии", false]);
     expect(sessionName({ ...base, mode: "custom", typed: "Вход x" }).id).toBe("lado");
   });
 

@@ -39,16 +39,19 @@ on one line; "Kits" for the kits. Non-goals: see the proposal's Out of scope.
   Exports: `autoBase(task, placeBase)`, `freeName(base, taken)` (`base`, `base-2`, … as
   `runtime.free_name`), `slug(text)` (the core's `runtime.slug` without its `lado` fallback:
   empty for nothing left), `sessionName({mode, typed, task, placeBase, taken})` →
-  `{id, title, base, numbered, taken}`. A key counts only with an end of its own after it (`:`,
-  a closing bracket, a dash or the line's end): `HTTP-2 support` and `PEP-8 style` start with
-  the key's shape too, and are words.
+  `{id, title, base, numbered, taken}`. The key is the first match anywhere in the task of two
+  or more capital Latin letters, `-` and digits, as a word of its own (`xLAD-263`, `LAD-263a`,
+  `lad-263` are none); else the place's name. False keys (`UTF-8`, `HTTP-2`) are accepted: the
+  name shows and can be changed before the start. The human set this rule during review
+  (finding F2), in place of a key that starts the first line, else up to three of its words
+  without filler: `LAD-263 Fix the login` gave `lad-263-fix`, and a name from words said little
+  more than the place's.
 - **D2. `slug` cannot drift from the core's.** The browser's `slug` and `runtime.slug` are checked
   against one case file, `web/src/sessionSlug.cases.json` (input → slug), by vitest and by a
   pytest, as `closedRefusals.cases.json` is shared today. Cases: `Review Kao` → `review-kao`,
   `Front.End` → `front-end`, `lad_263` → `lad_263`, `--a--` → `a`, `Вход` → `` (the core then
   says `lado`, the browser takes the automatic name), `Ünïcode` → `n-code` (the core does not
-  fold accents; the browser's `slug` must not either; only `autoBase`'s words fold them, as the
-  spec's NFKD step says).
+  fold accents; the browser's `slug` must not either).
 - **D3. Taken names come from the live store**, `useLive().sessions`: every session's `name`,
   `status`, `repo`, already loaded and kept current by the feed, so a session started elsewhere
   numbers the name at once. Rejected: a `getSessions()` of its own on open and after a 409 (a

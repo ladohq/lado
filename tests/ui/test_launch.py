@@ -1077,20 +1077,20 @@ def test_scenario_1_a_new_session_beside_a_stopped_one_with_a_task(page: Page, s
         shot(page, f"a-{width}", full_page=False)
     page.set_viewport_size({"width": 1440, "height": 900})
 
-    task.fill("Add a contact form")
-    fresh = dialog.get_by_role("button", name="Start new session add-contact-form")
+    task.fill("LAD-12 Add a contact form")
+    fresh = dialog.get_by_role("button", name="Start new session lad-12")
     expect(fresh).to_have_class("primary")
     expect(dialog.locator(".place-line")).to_contain_text("· Session my-repo stopped here")
     shot(page, "a2")
     fresh.click()
-    expect(page).to_have_url(f"{server['url']}/sessions/add-contact-form/activity")
+    expect(page).to_have_url(f"{server['url']}/sessions/lad-12/activity")
     chat = page.get_by_role("log", name="Chat with the session")
     expect(chat.get_by_role("article", name="Message from you")).to_contain_text(
-        "Add a contact form"
+        "LAD-12 Add a contact form"
     )
-    idle("add-contact-form")
+    idle("lad-12")
     assert state.get_session("my-repo").stopped_at is not None
-    runtime.stop_session("add-contact-form")
+    runtime.stop_session("lad-12")
 
 
 def test_where_lists_recent_places_and_a_project_repository_starts_in_its_project(
@@ -1120,13 +1120,13 @@ def test_where_lists_recent_places_and_a_project_repository_starts_in_its_projec
     page.set_viewport_size({"width": 1440, "height": 900})
     where.press("Escape")
     expect(dialog).to_be_visible()  # the first Esc closes only the list
-    dialog.get_by_role("textbox", name="Task").fill("Fix the checkout")
-    expect(name_field(dialog)).to_have_value("fix-checkout")
+    dialog.get_by_role("textbox", name="Task").fill("SHOP-7: Fix the checkout")
+    expect(name_field(dialog)).to_have_value("shop-7")
     dialog.get_by_role("button", name="Start new session in Shop").click()
-    expect(page).to_have_url(f"{server['url']}/sessions/fix-checkout/activity")
-    assert state.get_session("fix-checkout").project == "shop"
-    idle("fix-checkout")
-    runtime.stop_session("fix-checkout")
+    expect(page).to_have_url(f"{server['url']}/sessions/shop-7/activity")
+    assert state.get_session("shop-7").project == "shop"
+    idle("shop-7")
+    runtime.stop_session("shop-7")
 
 
 def test_team_opens_with_permissions_in_words(page: Page, server, repo, shot):

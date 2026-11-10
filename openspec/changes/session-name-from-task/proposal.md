@@ -36,9 +36,10 @@ Options weighed (ui-design rounds 1 and 2):
   shown for a folder, a project's repository and a clone; Team no longer has it (neither the
   summary nor the opened fields). A new empty folder has no Name field: its Folder name is the
   session's name and says so (`Also the session’s name.`). Resume has none.
-- **The automatic name**: a tracker key at the start of the task's first line (`LAD-263: …`,
-  `[LAD-263] …`) gives `lad-263`; else up to three words of the first line without filler words
-  (`fix-login-redirect`, at most 32 characters); else the place's name. A taken name gets the
+- **The automatic name**: the first tracker key anywhere in the task (`LAD-263: …`, `Fix
+  LAD-263 …` give `lad-263`); else the place's name; the task's other words make no name. (The
+  human set this rule during review, finding F2, in place of a key at the start of the first
+  line, else up to three words of that line.) A taken name gets the
   next free number (`lad-263-2`), and a note says so. It follows the task (300 ms after the
   last keystroke), the place and the list of sessions until the human types in the field.
 - **A typed name is kept**: the task and the place no longer change it; it is checked again for

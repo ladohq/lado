@@ -22,32 +22,38 @@ SHALL fall between Task's info button and `Name`.
 - **WHEN** Where is New empty folder
 - **THEN** Task's label row has no Name field and Folder name notes `Also the session’s name.`
 
-### Requirement: LADO names the session from the task, else from the place
+### Requirement: LADO names the session from the task's tracker key, else from the place
 
-Until the human types in Name, the field SHALL hold the automatic name: the tracker key that
-starts the task's first line, in small letters; else up to three words of that line without
-filler words, joined by `-`, at most 32 characters; else the place's `default_name`; the next
+Until the human types in Name, the field SHALL hold the automatic name: the first tracker key
+anywhere in the task, in small letters; else the place's `default_name`. The task's other words
+SHALL NOT make a name. The next
 free number added when a session has it, with the note `Name: <base> exists already, so this
 one is <id>.` It SHALL follow the task 300 ms after the last keystroke, the place and the
 sessions.
 
-#### Scenario: A tracker key at the start
-- **WHEN** the human types `LAD-263: the codex model must win` or `[LAD-263] the codex model`
-  in Task
+#### Scenario: A tracker key
+- **WHEN** the human types `LAD-263: the codex model must win`, `[LAD-263] the codex model` or
+  `LAD-263 Fix the login` in Task
 - **THEN** Name reads `lad-263`
 
-#### Scenario: A key later in the line
-- **WHEN** the task's first line is `Fix LAD-263 in the doctor text`, or `HTTP-2 support for the
-  proxy`
-- **THEN** Name reads `fix-lad-263`, or `http-2-support`
+#### Scenario: A key anywhere in the task
+- **WHEN** the task is `Fix LAD-263 in the doctor text`, or `Fix the login` with `LAD-263` on its
+  second line, or `Fix LAD-263, then LAD-264`
+- **THEN** Name reads `lad-263`
 
-#### Scenario: Words of the task
-- **WHEN** the task's first line is `Fix the login redirect after the session expires`
-- **THEN** Name reads `fix-login-redirect`
+#### Scenario: Not a key
+- **WHEN** the task holds no word of two or more capital Latin letters, `-` and digits with no
+  letter or digit right before or after it (`xLAD-263 glued`, `LAD-263a`, `lad-263`, `L-1`), and
+  Where is the folder `webapp`
+- **THEN** Name reads `webapp`
 
-#### Scenario: No task, or no Latin letters
-- **WHEN** Task is empty, or reads `Поправить вход`, and Where is the project `lado`'s repository
-  `lado`
+#### Scenario: A word with a key's shape
+- **WHEN** the task is `HTTP-2 support for the proxy`
+- **THEN** Name reads `http-2`, which the human may change before the start
+
+#### Scenario: No key
+- **WHEN** Task is empty, or reads `Fix the login redirect after the session expires` or
+  `Поправить вход`, and Where is the project `lado`'s repository `lado`
 - **THEN** Name reads `lado`
 
 #### Scenario: The name taken
@@ -77,8 +83,8 @@ automatic name back.
 - **THEN** the start sends the automatic name as `name` and `Вход после сессии` as `title`
 
 #### Scenario: Cleared
-- **WHEN** the human empties Name while the task is `Fix the login redirect`
-- **THEN** the field shows `fix-login-redirect` as its placeholder, and holds it again once the
+- **WHEN** the human empties Name while the task is `LAD-263 Fix the login redirect`
+- **THEN** the field shows `lad-263` as its placeholder, and holds it again once the
   focus leaves the field
 
 #### Scenario: A typed name that is taken
@@ -235,7 +241,7 @@ stopped session, which the human resumes from its page or the session list.
   Claude Code and `CloudClaude`
 
 #### Scenario: A task names the session
-- **WHEN** `~/workspace/webapp` has the stopped session `webapp` and the human types `Fix the
-  login redirect` in Task
+- **WHEN** `~/workspace/webapp` has the stopped session `webapp` and the human types `LAD-263
+  Fix the login redirect` in Task
 - **THEN** the line under Where still says `Session webapp stopped here`, and the button reads
-  `Start new session fix-login-redirect`
+  `Start new session lad-263`

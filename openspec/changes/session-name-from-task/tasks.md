@@ -14,6 +14,9 @@
   table (AC-2, AC-3, AC-4). Check: `npx vitest run src/sessionName.test.ts`.
 - [x] 2.2 `web/src/sessionSlug.cases.json` read by vitest against `slug` and by
   `tests/test_session_slug_cases.py` against `runtime.slug` (D2). Check: both pass.
+- [x] 2.3 The rule as the human set it in review (F2): the first tracker key anywhere in the
+  task, else the place's name, no name from the task's words; `sessionName.test.ts` and the
+  window's tests first. Check: `npx vitest run src/sessionName.test.ts src/Launch.test.tsx`.
 
 ## 3. The window (web)
 

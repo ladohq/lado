@@ -1637,13 +1637,14 @@ connection, above).
   with `Name ⓘ` and a 30 px field, up to 300 px; at 760 px or less the field is at most 140 px,
   so the row's free room falls between `Task ⓘ` and `Name ⓘ`; below ~300 px it wraps under
   Task's label), for a folder, a project's repository and a clone; New empty folder and the
-  Resume window have none. Its info: `How you find this session in the list. LADO makes it
-  from the task; type your own, or clear the field to get LADO’s back.` Until the human types
-  in it, it holds LADO's name (`sessionName.ts`, a pure module): the tracker key that starts
-  the task's first line, followed by `:`, a bracket, a dash or the line's end (`LAD-263: …`,
-  `[LAD-263] …` → `lad-263`; `HTTP-2 support`, `Fix LAD-263` are words), else up to three
-  words of that line without filler words, joined by `-`, at most 32 characters and at least 3
-  (`fix-login-redirect`), else the place's `default_name` (none while the place is asked);
+  Resume window have none. Its info: `How you find this session in the list. LADO takes it
+  from a tracker key in the task (LAD-263), else from the place; type your own, or clear the
+  field to get LADO’s back.` Until the human types in it, it holds LADO's name
+  (`sessionName.ts`, a pure module): the first tracker key anywhere in the task, two or more
+  capital Latin letters, `-` and digits as a word of its own (`LAD-263: …`, `Fix LAD-263 …` →
+  `lad-263`; `xLAD-263`, `LAD-263a`, `lad-263` are none; `HTTP-2` counts, the human changes
+  it), else the place's `default_name` (none while the place is asked); the task's other words
+  make no name;
   numbered by `freeName` (`-2`, `-3`, … as `runtime.free_name`) against the names of the live
   store's sessions (`useLive().sessions`, not numbered while that list is not loaded; the
   409 still guards). It follows the task 300 ms after the last keystroke (at once when Task

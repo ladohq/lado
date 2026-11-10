@@ -9,9 +9,9 @@ Approved look: session artifacts `ui-design/new-session-dialog-2/spec` and `mock
 
 - The session's name is always in view, on the right of Task's label row, and one click edits
   it. Team no longer holds it.
-- The name says what the session is for: `lad-263` for a task that starts with `LAD-263:`,
-  `fix-login-redirect` for "Fix the login redirect after…", and only without a task the place's
-  name, which no longer repeats itself (`lado`, not `lado-lado`).
+- The name says what the session is for: `lad-263` for a task with the key `LAD-263` anywhere
+  in it, and without a key the place's name, which no longer repeats itself (`lado`, not
+  `lado-lado`).
 - A typed name is the human's: kept, shown as typed in the session list (its title), its plain
   form in links and branches. Emptying the field gives LADO's name back.
 - Where takes one line for every kind of place; Team says **Kits**, as the rest of LADO does.
@@ -25,7 +25,7 @@ Approved look: session artifacts `ui-design/new-session-dialog-2/spec` and `mock
    says `Name: lad-263 exists already, so this one is lad-263-2.`
 3. Click Name, type `Review Kao`: under Task `Name shown as “Review Kao” · in links and
    branches: review-kao`. Changing Task or Where no longer changes Name.
-4. Empty Name: `fix-login-redirect` (or whatever the task gives) shows grey as the placeholder;
+4. Empty Name: `lad-263` (or whatever the task gives) shows grey as the placeholder;
    on leaving the field it is the value again.
 5. Type a name a session has: Name turns red, `Name: a session named review-kao exists
    (stopped, in lado).` with `Use review-kao-2`, and the footer `To start: choose another name`.
@@ -58,11 +58,13 @@ The look is the mockups' (round 2's states, this run's option B on a phone).
 
 ## The rule, in plain words
 
-1. A tracker key that **starts** the task's first line (`LAD-263: …`, `[LAD-263] …`) → `lad-263`.
-   A key later in the line, `HTTP-2`, `PEP-8` are words.
-2. Else up to three words of the first line, small filler words left out (a an the to of for in
-   on at by with and or please pls we i you it is be this that our my), joined by `-`, at most
-   32 characters, at least 3.
+Changed by the human during review (finding F2): the key anywhere in the task, no name from
+its words.
+
+1. The first tracker key anywhere in the task (two or more capital Latin letters, `-`, digits,
+   a word of its own: `LAD-263: …`, `Fix LAD-263 …` → `lad-263`; `xLAD-263`, `LAD-263a`,
+   `lad-263` are none; `HTTP-2` counts, and the human changes it).
+2. (Dropped: up to three words of the task.)
 3. Else the place's name (`default_name` of the folder check, the project's repository or the
    clone target).
 4. Taken → the next free number (`-2`, `-3`, …).

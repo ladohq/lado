@@ -5,7 +5,8 @@
 ### New
 
 - **The session's name beside Task, made from the task.** New session names the session after
-  the task (`LAD-263: …` gives `lad-263`) until you type your own name, which is kept as typed
+  a tracker key in the task (`Fix LAD-263 …` gives `lad-263`), else after the place, until you
+  type your own name, which is kept as typed
   in the session list; empty the field to get LADO's name back.
 
 ### Improved

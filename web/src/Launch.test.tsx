@@ -595,7 +595,7 @@ test("Name stands on Task's label row, not in Team", async () => {
   fireEvent.click(within(head as HTMLElement).getByRole("button", { name: "About Name" }));
   expect(
     screen.getByText(
-      "How you find this session in the list. LADO makes it from the task; type your own, or clear the field to get LADO’s back.",
+      "How you find this session in the list. LADO takes it from a tracker key in the task (LAD-263), else from the place; type your own, or clear the field to get LADO’s back.",
     ),
   ).toBeTruthy();
   expect(teamSummary()).not.toContain("Name");
@@ -612,19 +612,22 @@ test("New empty folder has no Name: its Folder name is the session's", async () 
   expect(screen.getByText("Also the session’s name.")).toBeTruthy();
 });
 
-test("the task's key names the session 300 ms after the typing, at once on leaving Task", async () => {
+test("the task's key names the session 300 ms after the typing, at once on leaving Task; its words do not", async () => {
   await openLaunch();
   await ready("/src/app");
   setTask("LAD-263: the codex model must win");
   expect(nameField().value).toBe("app");
   await waitFor(() => expect(nameField().value).toBe("lad-263"));
+  setTask("Fix LAD-264 in the doctor text");
+  fireEvent.blur(taskField());
+  expect(nameField().value).toBe("lad-264");
   setTask("Fix the login redirect after the session expires");
   fireEvent.blur(taskField());
-  expect(nameField().value).toBe("fix-login-redirect");
+  expect(nameField().value).toBe("app");
   expect(nameNote()).toBe("");
 });
 
-test("another place names the session without a task, and keeps the task's name with one", async () => {
+test("another place names the session without a key, and keeps the task's key with one", async () => {
   await openLaunch();
   await ready("/src/app");
   await ready("/src/webapp");
@@ -632,10 +635,10 @@ test("another place names the session without a task, and keeps the task's name 
   setTask("Поправить вход");
   fireEvent.blur(taskField());
   expect(nameField().value).toBe("webapp");
-  setTask("Fix the login redirect");
+  setTask("LAD-7 Fix the login redirect");
   fireEvent.blur(taskField());
   await ready("/src/app");
-  expect(nameField().value).toBe("fix-login-redirect");
+  expect(nameField().value).toBe("lad-7");
 });
 
 test("a taken automatic name is numbered, and the note says so", async () => {
@@ -685,17 +688,17 @@ test("an edit of the automatic name is the human's; a plain name has no title", 
 });
 
 test("a typed name in another script is the title of the automatic name", async () => {
-  answers["POST /api/sessions"] = () => json({ session: session("fix-login-redirect", { repo: "/src/app" }), ...STARTED });
+  answers["POST /api/sessions"] = () => json({ session: session("lad-263", { repo: "/src/app" }), ...STARTED });
   await openLaunch();
   await ready("/src/app");
-  setTask("Fix the login redirect");
+  setTask("LAD-263 Fix the login redirect");
   fireEvent.blur(taskField());
   setName("Вход после сессии");
   await waitFor(() => expect(startButton().disabled).toBe(false));
   fireEvent.click(startButton());
-  await screen.findByRole("region", { name: "Session fix-login-redirect" });
+  await screen.findByRole("region", { name: "Session lad-263" });
   expect(calls.find((c) => c.method === "POST")!.body).toMatchObject({
-    name: "fix-login-redirect",
+    name: "lad-263",
     title: "Вход после сессии",
   });
 });
@@ -703,13 +706,13 @@ test("a typed name in another script is the title of the automatic name", async 
 test("an emptied Name shows the automatic name as its placeholder, and holds it again on leaving", async () => {
   await openLaunch();
   await ready("/src/app");
-  setTask("Fix the login redirect");
+  setTask("LAD-263 Fix the login redirect");
   fireEvent.blur(taskField());
   nameField().focus();
   setName("Review");
   setName("");
   expect(nameField().value).toBe("");
-  expect(nameField().placeholder).toBe("fix-login-redirect");
+  expect(nameField().placeholder).toBe("lad-263");
   setTask("LAD-9: another");
   fireEvent.blur(taskField());
   fireEvent.blur(nameField());
@@ -800,9 +803,9 @@ test("a task names the session beside a stopped one, and the button says so", as
   });
   await openLaunch(false);
   await screen.findByRole("button", { name: "Start new session webapp-2" });
-  setTask("Fix the login redirect");
+  setTask("LAD-263 Fix the login redirect");
   fireEvent.blur(taskField());
-  expect(screen.getByRole("button", { name: "Start new session fix-login-redirect" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Start new session lad-263" })).toBeTruthy();
   expect(document.querySelector(".place-line")!.textContent).toContain("Session webapp stopped here");
 });
 

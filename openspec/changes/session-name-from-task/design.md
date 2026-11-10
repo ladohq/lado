@@ -39,7 +39,9 @@ on one line; "Kits" for the kits. Non-goals: see the proposal's Out of scope.
   Exports: `autoBase(task, placeBase)`, `freeName(base, taken)` (`base`, `base-2`, … as
   `runtime.free_name`), `slug(text)` (the core's `runtime.slug` without its `lado` fallback:
   empty for nothing left), `sessionName({mode, typed, task, placeBase, taken})` →
-  `{id, title, base, numbered}`.
+  `{id, title, base, numbered, taken}`. A key counts only with an end of its own after it (`:`,
+  a closing bracket, a dash or the line's end): `HTTP-2 support` and `PEP-8 style` start with
+  the key's shape too, and are words.
 - **D2. `slug` cannot drift from the core's.** The browser's `slug` and `runtime.slug` are checked
   against one case file, `web/src/sessionSlug.cases.json` (input → slug), by vitest and by a
   pytest, as `closedRefusals.cases.json` is shared today. Cases: `Review Kao` → `review-kao`,

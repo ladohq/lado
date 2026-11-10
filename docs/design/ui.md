@@ -1535,19 +1535,26 @@ connection, above).
   sources of LAD-5, LAD-6, LAD-98 and LAD-137). `Launch.tsx`, a modal `<dialog>` opened by the
   rail's **New session** and the list's "+", holds the dialog, the requests and the footer;
   `LaunchWhere.tsx` the place, `LaunchTeam.tsx` the team, `LaunchSetup.tsx` a plain folder's
-  set-up, `InfoTip.tsx` the info buttons. Top to bottom: **Where**, **Task**, **Team**, then a
-  footer that never scrolls. The frame stands 40 px from the top and grows down
+  set-up, `InfoTip.tsx` the info buttons, `sessionName.ts` the session's name. Top to bottom:
+  **Where**, **Task** with **Name** on its label row, **Team**, then a footer that never
+  scrolls (change `session-name-from-task`, LAD-265: Name out of Team, Where on one line,
+  Kits). The frame stands 40 px from the top and grows down
   (`max-height: calc(100dvh - 64px)`, width `min(640px, 100vw - 32px)`), only its body
   scrolls; at 760 px or less it is a full-screen sheet (a 56 px head, the footer above
   `env(safe-area-inset-bottom)`, targets of 44 px). The window decides nothing the core
   decides: every check and text comes from the server.
 - **Where** is one combobox (an input `role="combobox"` with a listbox `Places`). Closed, it
-  shows the place's icon, name (a folder's last segment, a project repository's name) and its
-  path muted, or a project's badge `Project <title>`. ↓, Alt+↓, a click or a typed letter open
+  shows on one line the place's icon, name (a folder's last segment, a project repository's
+  name) and a muted secondary (`.place-sub`): a folder's path, a project repository's `in
+  project <title>`, New empty folder's target or the workspace, none for Clone from URL. The
+  secondary is cut first, down to `min(12ch, 45%)`, then the name; a pair that fits is never
+  cut; the box's tooltip is `<name> — <secondary>`, and Where's info button holds a folder's
+  whole path (a project repository's sentence, below). ↓, Alt+↓, a click or a typed letter open
   it; the arrows and Enter pick; the first Esc closes only the list (it is taken, so the window
   stays); Tab or a blur closes it. Its groups: **Recent**, the places of the latest started
   sessions (`GET /api/folders/recent`, at most 10, latest first; `RecentFolder.project` set
-  for a repository of the session's project, which shows with its badge; a folder gone is
+  for a repository of the session's project, which shows with `in project <title>`, each row
+  on one line as the box; a folder gone is
   left out, and inside LADO's `projects/` everything else is), each with the time of its last
   start or stop; then **Somewhere else**: **Other folder…**, **Clone from URL…**, **New empty
   folder…** and **Project…**. A typed letter filters Recent by name; a typed path (`/` or
@@ -1611,15 +1618,16 @@ connection, above).
 - **New empty folder…** shows **Folder name** (placeholder `Coffee shop site`, info `LADO
   creates it in <folder>.`), a quiet `folder <slug>` when the slug differs from the words
   (`lado.scratch.names`), the name's or the folder's refusal (`GET /api/scratch-target`) and
-  git's missing author with its hint and Copy. Team's Name is the slug, fixed. **Create and
-  start** sends `where: {kind: "scratch", path}` with the name and the title; a start refused
+  git's missing author with its hint and Copy, and always the note `Also the session’s name.`:
+  the window has no Name field for it. **Create and start** sends `where: {kind: "scratch", path}` with the name and the title; a start refused
   after the repository was made turns Where to it.
 - **Project…** shows `LaunchProject.tsx`: **Project** (by title, one whose folder is not
   found off, its line of repositories, sessions running and folder) and **Repository** (a
   `radiogroup`, `✓ Ready · branch X`), from `GET /api/project-launch?project=&repo=` (the last
   answer kept while a new choice is asked; `gone` said over the server's choice; `No
   repositories yet` with **Open <title>**, `No projects yet` with **Make one in Projects**).
-  A project repository picked from Recent shows no such fields, only its badge, its line and
+  A project repository picked from Recent shows no such fields, only `in project <title>` on
+  Where's line, its line and
   an info button `<repo> is a repository of the project <title>: the team works with
   <title>'s keys and settings.` The button names the project, **Start in <title>** (a quick
   click in another project would give the session another client's keys); it sends `where:
@@ -1629,22 +1637,49 @@ connection, above).
   leave it empty.` Its trimmed text goes as `prompt` of the start (after a clone or a set-up
   too) or the resume; white space sends none. Over `Limits.max_message` it reads `<n>
   characters, the limit is <limit>` (`aria-describedby`, `aria-invalid`) and the start is off.
-- **Team** is one line, `Setup <kits> · Agent <CLI title> · Permissions <mode's summary> ·
-  Name <name>` and, off the CLI's default model or with a warning, `Model <name> on <server>`
-  with `⚠ <few words>` or `! <few words>` (`LaunchModel.tsx`'s peek, never cut: the name and
-  the server give way), with **Change**, which opens (and reads **Hide**): **Session name**,
-  **Agent** (each CLI by its title and version; `<title> · not installed`, `<title> · not
-  logged in` off; `<name> · unknown` for a resumed session's CLI the list lacks), **Team
-  setup** (the kit chips, `+ Add setup`, the kits' descriptions under its info button),
+- **Name**, on the right of Task's label row (`.task-head`: `Task ⓘ`, then `.name-inline`
+  with `Name ⓘ` and a 30 px field, up to 300 px; at 760 px or less the field is at most 140 px,
+  so the row's free room falls between `Task ⓘ` and `Name ⓘ`; below ~300 px it wraps under
+  Task's label), for a folder, a project's repository and a clone; New empty folder and the
+  Resume window have none. Its info: `How you find this session in the list. LADO makes it
+  from the task; type your own, or clear the field to get LADO’s back.` Until the human types
+  in it, it holds LADO's name (`sessionName.ts`, a pure module): the tracker key that starts
+  the task's first line, followed by `:`, a bracket, a dash or the line's end (`LAD-263: …`,
+  `[LAD-263] …` → `lad-263`; `HTTP-2 support`, `Fix LAD-263` are words), else up to three
+  words of that line without filler words, joined by `-`, at most 32 characters and at least 3
+  (`fix-login-redirect`), else the place's `default_name` (none while the place is asked);
+  numbered by `freeName` (`-2`, `-3`, … as `runtime.free_name`) against the names of the live
+  store's sessions (`useLive().sessions`, not numbered while that list is not loaded; the
+  409 still guards). It follows the task 300 ms after the last keystroke (at once when Task
+  loses the focus, and at the start), the place and the sessions. A typed name is kept: the
+  task and the place no longer change it, the sessions only mark it taken; its plain form
+  (`slug`, the core's `runtime.slug`, checked against one table, `sessionSlug.cases.json`, by
+  vitest and pytest) is the name sent, the typed text the `title` when it differs; a text
+  with no plain form of 2 characters (`Вход`) is the title of LADO's name. An emptied field
+  shows LADO's name as its placeholder and holds it again once the focus leaves; the draft
+  keeps only a typed name. One note under Task (the field's `aria-describedby`): the core's
+  409 text after the press, or `Name: a session named <id> exists (<stopped|running>, in
+  <folder>).` for a typed name taken (`role="alert"`, `aria-invalid`, **Use <next free>**, no
+  Resume); `Name: at most <Limits.max_title> characters.`; `Name shown as “<title>” · in links
+  and branches: <id>`; `Name: <base> exists already, so this one is <id>.` for LADO's name
+  numbered.
+- **Team** is one line, `Kits <kits> · Agent <CLI title> · Permissions <mode's summary>`
+  and, off the CLI's default model or with a warning, `Model <name> on <server>` with `⚠ <few
+  words>` or `! <few words>` (`LaunchModel.tsx`'s peek, never cut: the name and the server
+  give way; at 760 px or less the line wraps under Team's head), with **Change**, which opens
+  (and reads **Hide**; one CSS chevron, down while folded): **Agent** (each CLI by its title
+  and version; `<title> · not installed`, `<title> · not logged in` off; `<name> · unknown`
+  for a resumed session's CLI the list lacks), **Kits** (the kit chips, `+ Add kit`, an info
+  button `Kits add roles, skills and ways of working to the team. Install more on the Kits
+  page.` then the chosen kits' descriptions),
   **Permissions** (radio rows titled by the provider's words, `ProviderInfo.mode_words`, the
   description under the chosen one and always under a risky one; a mode without words by its
   value; `No permission modes.` for a CLI without), **Model** (the one picker of LAD-207, its
   notes and refusals as before) and **Switch off** (the `--without` text field, its format
   under its info button; a refusal's `Switch off <name> of <kit>` buttons stand under it).
   Team's info says where its values come from: `As in the last session in this folder.`, else
-  `Agent as in your last session; setup and permissions are LADO's defaults.` (the
-  suggestion `last_any`), else `Setup and permissions are LADO's defaults.`; a name taken by
-  another session adds `"<name>" is taken by another session.` Kits and mode come from the
+  `Agent as in your last session; kits and permissions are LADO's defaults.` (the
+  suggestion `last_any`), else `Kits and permissions are LADO's defaults.` Kits and mode come from the
   place's last session (the folder's, a project repository's in the project), else LADO's
   defaults; the agent from the server's suggestion (`FolderInfo.provider`, the core's
   `suggested_provider`: the folder's last session's, else the latest session's anywhere,
@@ -1668,23 +1703,26 @@ connection, above).
   The Model list's foot reads `The default comes from Settings → Agent CLIs.` (LAD-238). A
   refusal of one of these fields opens Team and puts the focus there; an agent that cannot
   run opens it too.
-- **The name beside a stopped session**: every place's check gives `default_name`,
-  `free_name` (`runtime.free_name`: `<name>-2`, `-3`, … none has) and `name_state`. The
-  window names a new session by the free name unless the human typed one. With a stopped
-  session of the default name here (`stopped_here`; in a project only one of this project)
-  the line under Where reads `Session <name> stopped here <when>`, to say why, and the
-  footer's one button reads **Start new session <free name>** (in a project **Start new
-  session in <title>**), the primary. The window offers no Resume of that session (LAD-261:
+- **The name beside a stopped session**: every place's check gives `default_name` (a
+  project's repository's: `runtime.project_session_name`, the project and repository joined
+  without a repeat, `lado`/`lado` → `lado`), `free_name` (`runtime.free_name`: `<name>-2`,
+  `-3`, … none has) and `name_state`. Without a task Name numbers the place's name as the
+  free name does. With a stopped session of the default name here (`stopped_here`; in a
+  project only one of this project) the line under Where reads `Session <name> stopped here
+  <when>`, to say why, and the footer's one button reads **Start new session <name>**, the
+  session's name as Name holds it (a task's name too; in a project **Start new session in
+  <title>**), the primary. The window offers no Resume of that session (LAD-261:
   its Team is filled for the new session, from the place's last session and the
   suggestion, not from the stopped one); the human resumes it from its page or the session
   list, in the Resume window, on its own team. A name a running session or one of another
   folder has gives the free name and no line. A 409 `Taken` after the press (a
-  race) opens Team, shows the core's text under Session name (`aria-invalid`, the focus
-  there) and offers **Use <next>**.
+  race) shows the core's text under Task (`aria-invalid` on Name, the focus there) and offers
+  **Use <next>**; Team stays as it is.
 - **The footer**: while the main button is off, `To start: ` and what is missing as links
   that focus their field, opening Team when needed (choose a place, wait for the check, name
-  the folder, wait for the agent CLIs, choose an agent (also when their list failed), choose
-  a team setup, choose a smaller folder, choose another folder, tell git who you are, wait
+  the folder, name the session (no name yet: a clone before its URL), choose another name,
+  shorten the name, wait for the agent CLIs, choose an agent (also when their list failed),
+  choose a kit, choose a smaller folder, choose another folder, tell git who you are, wait
   for the count, fix the model, shorten the task, log in to `<CLI>`); Enter in a field does
   what the blue button does (beside a stopped session too, a new session); **Cancel** a
   text button (Cancel clone while a clone runs); the start button naming the place: **Start
@@ -1700,7 +1738,7 @@ connection, above).
   folder?") and a resume's `changes` show above the session's tabs until closed
   (`.started-notice`: 12 px under the top bar, 10 px above the tabs, which move down while it
   is open; LAD-42, 2026-10-14). No tmux attach.
-- **The draft**: Esc, ×, Cancel keep Where's choice, Task and Team's fields in
+- **The draft**: Esc, ×, Cancel keep Where's choice, Task, a typed Name and Team's fields in
   `LaunchProvider`'s state for the next opening (the Model field's choice too, for the agent
   CLI it was made for); a start
   clears them, a reload of the page loses them.

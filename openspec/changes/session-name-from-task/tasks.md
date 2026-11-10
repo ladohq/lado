@@ -37,11 +37,11 @@
 
 ## 5. Documents and regression
 
-- [ ] 5.1 `docs/design/ui.md` (Launch and session control), `docs/cli.md` (`lado start
+- [x] 5.1 `docs/design/ui.md` (Launch and session control), `docs/cli.md` (`lado start
   --project`'s name), `docs/design/modules.md` (`sessionName.ts`); grep `docs/` for `Session
   name`, `Team setup`, `Add setup`, the badge `Project <title>` and `<project>-<repo>` and fix
   every hit.
-- [ ] 5.2 CHANGELOG.md: `## 0.45.1 (unreleased)` becomes `## 0.46.0 (unreleased)`; New: the
+- [x] 5.2 CHANGELOG.md: `## 0.45.1 (unreleased)` becomes `## 0.46.0 (unreleased)`; New: the
   name beside Task, from the task, kept as typed; Changed: a project's default session name
   no longer repeats the project (resume an older one by its name), Where on one line, Kits
   (AC-10).

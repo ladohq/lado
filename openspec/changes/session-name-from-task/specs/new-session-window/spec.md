@@ -224,7 +224,8 @@ stopped session, which the human resumes from its page or the session list.
   and the footer shows Cancel and `Start new session webapp-2` as the primary, no `Resume webapp`
 
 #### Scenario: A new task
-- **WHEN** the human types a task and presses `Start new session webapp-2`
+- **WHEN** the human types a task without Latin words (`Добавить форму`) and presses `Start new
+  session webapp-2`
 - **THEN** the window starts `webapp-2` with the task, and `webapp` stays stopped
 
 #### Scenario: The last launch was on another CLI's model

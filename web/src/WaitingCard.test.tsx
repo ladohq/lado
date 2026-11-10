@@ -1465,6 +1465,21 @@ test("with no report the recommendation's splitter takes only what the feed can 
   expect(recSplitter()!.getAttribute("aria-valuemax")).toBe("122");
 });
 
+test("in the expanded card with no report the recommendation's splitter goes up to the whole text", () => {
+  columnWidth(null);
+  const noNote = { ...GATE_RECOMMENDED, note: "", note_body: "" };
+  show({ questions: [], gates: [noNote], chat: { feed: 200, loaded: true } });
+  fireEvent.click(iconButton("Expand the card"));
+  recLaidOut(400); // the feed is hidden: nothing to give, the panel's room is the card's
+  expect(recSplitter()!.getAttribute("aria-valuemax")).toBe("400");
+  cleanup();
+  columnWidth(null);
+  show({ questions: [], gates: [GATE_RECOMMENDED], chat: { feed: 200, loaded: true } });
+  fireEvent.click(iconButton("Expand the card"));
+  recLaidOut(900, 156); // with a report that fills the card, the room is what it gives
+  expect(recSplitter()!.getAttribute("aria-valuemax")).toBe("182");
+});
+
 test("no splitter without a given recommendation, nor on Needs you", () => {
   show({ questions: [], gates: [gate(1, "ship/x", "2026-10-03T12:00:06.000Z")], chat: IN_CHAT });
   expect(recSplitter()).toBeNull();

@@ -74,7 +74,7 @@ export type CardShape = {
   phone: boolean;
   fieldLines: [number, number]; // the lines a field opens with and grows to
   headId: string; // the head's, which names the panel
-  feedRoom: number | null; // what the chat's feed can give over its least (null: no feed)
+  feedRoom: number | null; // what the chat's feed can give over its least (null: not measured; Infinity: expanded, no feed)
   recHeight: number | null; // the recommendation's text, by its splitter (null: the default)
   setRecHeight: (height: number | null) => void;
   head: (element: HTMLElement | null) => void; // measured: the human's height leaves it whole
@@ -186,10 +186,11 @@ export function CardBody({
   // The room the text and the report share, less the report's least, and what the feed can
   // give past it: the card grows into the feed once the report is at its least.
   const fromReport = report ? (reportHeight === null ? null : Math.max(0, reportHeight - REPORT_MIN)) : 0;
-  const room =
-    boxHeight !== null && fromReport !== null
-      ? boxHeight + fromReport + Math.max(0, card.feedRoom ?? 0) // the feed not measured: nothing from it
-      : Infinity; // not laid out yet
+  // The feed not measured gives nothing; an expanded card has none (Infinity), and its report,
+  // which fills the card, is then the room the text takes from.
+  const feed = card.feedRoom ?? 0;
+  const fromFeed = report && !Number.isFinite(feed) ? 0 : Math.max(0, feed);
+  const room = boxHeight !== null && fromReport !== null ? boxHeight + fromReport + fromFeed : Infinity; // not laid out yet
   const most = Math.min(full, room);
   const max = Math.max(REC_MIN, Math.floor(Number.isFinite(most) ? most : asked));
   const height = card.recHeight === null ? null : Math.max(REC_MIN, Math.min(card.recHeight, max));

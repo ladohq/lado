@@ -484,7 +484,8 @@ export function WaitingCard({
     phone: phone !== null,
     fieldLines: CARD_FIELD_LINES,
     headId: `waiting-${session}-head`,
-    feedRoom: chat?.feed != null ? chat.feed - FEED_MIN : null,
+    // Expanded, the card fills the chat with the feed hidden: no feed's least to keep.
+    feedRoom: expanded ? Infinity : chat?.feed != null ? chat.feed - FEED_MIN : null,
     recHeight,
     setRecHeight: (next) => {
       setRecHeight(next);

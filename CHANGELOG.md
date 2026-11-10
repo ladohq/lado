@@ -16,6 +16,10 @@
   older `lado-lado` by its name.
 - **New session reads more easily.** Where shows each place on one line, and Team says Kits, as
   the Kits page does.
+- **The waiting card looks as in 0.44 again, with fewer words.** The question stands on top, only
+  the report scrolls, and the supervisor's recommendation shows a few lines you can make taller;
+  documents show their titles. Needs you and a run's page in Flows show the whole card. On a
+  choice gate a click picks an option and Send answers, so a slip sends nothing.
 - **Hovering a session no longer covers the chat.** A session in the list shows no card under
   the pointer; an icon of the folded list shows only the session's name and state. The rest is
   in the details that the session's title opens.

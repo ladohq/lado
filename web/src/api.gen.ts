@@ -2324,6 +2324,8 @@ export interface components {
             answer_attachments: components["schemas"]["AttachmentInfo"][];
             /** Problem */
             problem: string | null;
+            /** Note By */
+            note_by: string | null;
             recommendation: components["schemas"]["RecommendationInfo"] | null;
         };
         /**

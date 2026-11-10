@@ -65,6 +65,11 @@ const PAIRS = [
   ["muted", "raised"],
   ["on-action", "action"],
   ["human", "human-ground"],
+  // The waiting card: its question's head (the run page's kicker on it muted) and a tab's
+  // count on its badge.
+  ["ink", "human-head"],
+  ["muted", "human-head"],
+  ["count-ink", "raised"],
   ["done", "done-ground"],
   ["danger", "panel"],
   ["danger", "ground"],

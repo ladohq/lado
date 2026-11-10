@@ -20,6 +20,10 @@
   --action-ground: light-dark(#e8effc, #1c2840);
   --human: light-dark(#b4530f, #f0a25a);
   --human-ground: light-dark(#fdf1e6, #3a2a1c);
+  /* The waiting card's question head, a step deeper than its ground; never --human on it. */
+  --human-head: light-dark(#f8e0c9, #46321f);
+  /* A tab's count on its --raised badge. */
+  --count-ink: light-dark(#3d4350, #c9ced8);
   /* Work that went well: a run that ended, a step of a flow (the Flows tab). */
   --done: light-dark(#1e7a46, #5cc98a);
   --done-ground: light-dark(#e7f4ec, #18301f);

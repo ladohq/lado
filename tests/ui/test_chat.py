@@ -86,8 +86,8 @@ def test_the_supervisor_asks_twice_and_the_human_answers_both_in_one_tab(
     expect(send).to_be_disabled()
     ship.get_by_role("button", name="yes", exact=True).click()
     expect(card).to_contain_text("1 of 2 answered")
-    port.get_by_role("button", name="Other…").click()
-    port.get_by_role("textbox", name="Your own answer").fill("8123")
+    # A question without choices: its field at once.
+    port.get_by_role("textbox", name="Your answer to: Which port?").fill("8123")
     expect(send).to_be_enabled()
     shot(page, "open")
     send.click()
@@ -107,11 +107,11 @@ def test_the_supervisor_asks_twice_and_the_human_answers_both_in_one_tab(
     shot(page, "answered")
 
 
-def test_an_own_answer_field_grows_to_4_lines_in_the_card_and_8_in_the_expanded_card(
+def test_an_own_answer_field_grows_to_8_lines_in_the_card_and_in_the_expanded_card(
     page: Page, server, repo, shot
 ):
-    """Other…'s field opens 1 line high, grows with its text to 4 lines, then scrolls; its
-    lower edge stays within the card's footer and the window; expanded, it grows to 8."""
+    """Other…'s field opens 1 line high, grows with its text to 8 lines, then scrolls; its
+    lower edge stays within the card's footer and the window; expanded, the same."""
     session = running_session(repo)
     runtime.ask_human(session, "supervisor", "Ship it?", "Long details.\n" * 12, ["yes", "no"])
     log_in(page, server)
@@ -211,9 +211,10 @@ def test_a_workers_question_with_the_supervisors_recommendation_open_and_closed(
     page.goto(f"{server['url']}/sessions/{session}")
     card = waiting_card(page, session)
     item = card.get_by_role("tabpanel")
-    block = item.get_by_role("region", name="Supervisor's recommendation")
+    block = item.get_by_role("note", name="Supervisor's recommendation, disagrees with w1")
     expect(block).to_contain_text("Later: CI is red on the branch.")
-    expect(block.locator(".rec-differs")).to_have_text(" · disagrees with w1")
+    expect(block.locator(".rec-title")).to_have_text("supervisor recommends later")
+    expect(block.locator(".rec-warn")).to_be_visible()
     # The recommended choice is picked ahead, with its ✓: Send sends it as it is.
     later = item.get_by_role("button", name="later", exact=True)
     expect(later).to_have_attribute("aria-pressed", "true")
@@ -494,7 +495,10 @@ def test_many_tabs_stay_on_one_line_on_the_panel_and_scroll_sideways(
     panel = card.get_by_role("tabpanel")
 
     def check(shown):
-        tops = [tab.bounding_box()["y"] for tab in tabs.all()]
+        # In one frame: the card may still settle between one tab's box and the next's.
+        tops = row.evaluate(
+            "r => [...r.querySelectorAll('[role=tab]')].map(t => t.getBoundingClientRect().y)"
+        )
         assert max(tops) - min(tops) <= 1.5, tops  # one line (the shown tab 1 px lower)
         on, under = shown.bounding_box(), panel.bounding_box()
         assert abs(on["y"] + on["height"] - under["y"]) <= 1.5, (on, under)  # on the panel
@@ -568,8 +572,8 @@ def test_the_chat_looks_as_a_feed_in_light_and_dark(page: Page, server, repo, sh
 
 
 def test_the_cards_buttons_are_one_height_in_light_and_dark(page: Page, server, repo, shot):
-    """A question's choices, Other…, Skip question and Send, and a gate's Approve and Reject on its
-    tab: one height (docs/design/ui.md, The waiting card)."""
+    """A question's choices, Other…, Skip and Send, and a gate's Approve and Reject on its tab:
+    one height (docs/design/ui.md, The waiting card)."""
     session = gated_session(repo)
     runtime.ask_human(session, "supervisor", "Ship today?", None, ["yes, today", "after the tag"])
     page.set_viewport_size({"width": 1800, "height": 1000})  # the chat at its own width
@@ -578,7 +582,7 @@ def test_the_cards_buttons_are_one_height_in_light_and_dark(page: Page, server, 
     card = waiting_card(page, session)
 
     def heights() -> list:
-        buttons = card.locator(".waiting-option, .waiting-send button").all()  # with Skip question
+        buttons = card.locator(".waiting-option, .waiting-send button").all()  # with Skip
         assert buttons
         return [round(button.bounding_box()["height"]) for button in buttons]
 
@@ -953,9 +957,10 @@ def test_the_human_attaches_files_and_the_agent_gets_them(page: Page, server, re
 def test_the_human_answers_a_question_with_a_file_only_and_the_agent_gets_it(
     page: Page, server, repo, shot
 ):
-    """Other… takes a file by the paperclip and counts with no text; a drop on the feed
-    meanwhile goes nowhere: neither to the field nor to the composer, folded. The closed card
-    shows the preview and the chip, no text; the agent's line names the file."""
+    """A question without choices shows its field at once, which takes a file by the
+    paperclip and counts with no text; a drop on the feed meanwhile goes to the composer, not
+    to the field. The closed card shows the preview and the chip, no text; the agent's line
+    names the file."""
     session = running_session(repo)
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
@@ -964,11 +969,12 @@ def test_the_human_answers_a_question_with_a_file_only_and_the_agent_gets_it(
     field.press("Enter")
     card = waiting_card(page, session)
     item = card.get_by_role("tabpanel")
-    expect(item.get_by_role("button", name="Other…")).to_have_count(1)
+    own = item.get_by_role("textbox", name="Your answer to: Which screen?")
+    expect(own).to_have_attribute("placeholder", "Your answer")
+    expect(item.get_by_role("button", name="Other…")).to_have_count(0)
     agent_helpers.wait_for(
         lambda: state.get_agent(session, "supervisor").status == state.IDLE, "idle", session
     )
-    item.get_by_role("button", name="Other…").click()
     send = card.get_by_role("button", name="Send answer to supervisor")
     expect(send).to_be_disabled()
     item.locator("input[type=file]").set_input_files(
@@ -980,7 +986,8 @@ def test_the_human_answers_a_question_with_a_file_only_and_the_agent_gets_it(
     page.locator(".chat-feed").dispatch_event(
         "drop", {"dataTransfer": page.evaluate_handle(DRAGGED)}
     )
-    expect(page.locator(".composer .file-chip")).to_have_count(0)
+    # The composer is not folded on a computer: a drop on the feed goes to it, never to the field.
+    expect(page.locator(".composer .file-chip")).to_have_count(1)
     expect(item.locator(".file-chip")).to_have_count(1)
     shot(page, "open", full_page=False)
     send.click()
@@ -1034,7 +1041,7 @@ def settles_at(page: Page, locator, want: float, within: float = 2) -> None:
 def laid_out(edge) -> None:
     """Wait until the edge knows the room the card shares with the feed: before that its
     largest height is the card's own."""
-    expect(edge).not_to_have_attribute("aria-valuemax", re.compile(r"^(166|230)$"))
+    expect(edge).not_to_have_attribute("aria-valuemax", re.compile(r"^(166|300)$"))
 
 
 def drag_edge(page: Page, edge, by: float) -> None:
@@ -1106,9 +1113,9 @@ def test_the_card_minimizes_to_one_line_until_restored_or_a_new_gate_waits(
 def test_the_edge_above_the_card_sets_its_height_for_every_session_and_minimizes_at_the_bottom(
     page: Page, server, repo, shot
 ):
-    """The edge: dragged to 230 px, kept after a reload and in another session's chat; the
+    """The edge: dragged to 300 px, kept after a reload and in another session's chat; the
     keys; a double click gives the content's height; dragged to the bottom, the card
-    minimizes."""
+    minimizes. It has no tooltip, only its name."""
     session = gated_session(repo)
     other = running_session(repo)
     runtime.ask_human(other, "supervisor", "Which branch?", "No epic: main.", ["main", "epic"])
@@ -1119,10 +1126,11 @@ def test_the_edge_above_the_card_sets_its_height_for_every_session_and_minimizes
     expect(card.get_by_role("tabpanel")).to_contain_text("Build it as planned?")
     edge = card.get_by_role("separator", name="Resize the card")
     expect(edge).to_have_attribute("aria-orientation", "horizontal")
+    assert edge.get_attribute("title") is None
     laid_out(edge)
-    drag_edge(page, edge, height(card) - 230)
-    settles_at(page, card, 230)
-    # Its context scrolls inside, the buttons in view.
+    drag_edge(page, edge, height(card) - 300)
+    settles_at(page, card, 300)
+    # Its report scrolls inside, the buttons in view.
     approve = card.get_by_role("button", name="Approve", exact=True)
     expect(approve).to_be_in_viewport()
     assert approve.bounding_box()["y"] + approve.bounding_box()["height"] <= (
@@ -1135,26 +1143,26 @@ def test_the_edge_above_the_card_sets_its_height_for_every_session_and_minimizes
     page.emulate_media(color_scheme="light")
     page.reload()
     expect(card.get_by_role("tabpanel")).to_be_visible()
-    settles_at(page, card, 230)
+    settles_at(page, card, 300)
     page.goto(f"{server['url']}/sessions/{other}")
     other_card = waiting_card(page, other)
     expect(other_card.get_by_role("tabpanel")).to_contain_text("Which branch?")
-    settles_at(page, other_card, 230)
+    settles_at(page, other_card, 300)
     page.goto(f"{server['url']}/sessions/{session}")
     expect(card.get_by_role("tabpanel")).to_be_visible()
     # The keys move it by steps, after a click on the edge.
     laid_out(edge)
     edge.click()
     page.keyboard.press("ArrowUp")
-    settles_at(page, card, 270)
-    # A double click: the content's height, its title and context at most 40 % of the chat.
+    settles_at(page, card, 340)
+    # A double click: the content's height, at most half the chat.
     edge.dblclick()
     # It selects nothing: a selection under the next press would start the browser's own
     # drag, which cancels the edge's.
     assert page.evaluate("String(window.getSelection())") == ""
     chat = page.get_by_role("region", name="Chat", exact=True)
     expect(card).not_to_have_class(re.compile(r"\bsized\b"))
-    assert height(card.locator(".waiting-top")) <= height(chat) * 0.4 + 1
+    assert height(card) <= height(chat) * 0.5 + 1
     # Dragged down past its least height: minimized, its height kept for the restore.
     # The pointer is let go where the minimized card's line comes: the release restores
     # nothing.
@@ -1164,8 +1172,9 @@ def test_the_edge_above_the_card_sets_its_height_for_every_session_and_minimizes
 
 
 def test_a_height_lower_than_the_footer_leaves_the_footer_whole(page: Page, server, repo, shot):
-    """F18: the human's height is the whole card's, but the footer never gives way to it:
-    dragged to the least height, the card shows its tabs and footer whole, its top gone."""
+    """F18: the human's height is the whole card's, but the head and the footer never give way
+    to it: dragged to the least height, the card shows its tabs, head and footer whole, its
+    report at its least, 56 px."""
     session = gated_session(repo, LONG_NOTE)
     page.set_viewport_size({"width": 1400, "height": 900})
     log_in(page, server)
@@ -1177,9 +1186,10 @@ def test_a_height_lower_than_the_footer_leaves_the_footer_whole(page: Page, serv
     drag_edge(page, edge, height(card) - 170)
     expect(card).to_have_class(re.compile(r"\bsized\b"))
     foot = card.locator(".waiting-foot")
-    settles_at(page, card.locator(".waiting-top"), 0, within=60)
+    settles_at(page, card.locator(".waiting-scroll"), 56)
     in_sight(
         page,
+        card.get_by_role("heading", name="Build it as planned?"),
         card.get_by_role("textbox", name="Comment for the next step (optional)"),
         card.get_by_role("button", name="Approve", exact=True),
     )
@@ -1188,9 +1198,8 @@ def test_a_height_lower_than_the_footer_leaves_the_footer_whole(page: Page, serv
 
 
 def test_a_usual_gate_is_as_high_as_its_content_within_the_limit(page: Page, server, repo, shot):
-    """AC-2: at 1440×900 with the terminals open a gate's tabs, title and footer take the
-    206 px of frame g3-1440, whose context is cut at 86 px for a card of 292; the context here
-    is as high as its content, and the card has no empty room."""
+    """A gate with a short note at 1440×900: the card is as high as its content, within half
+    the chat, its report as high as the note, and the panel has no empty room."""
     session = gated_session(repo, "Split it in two, then ship.")
     page.set_viewport_size({"width": 1440, "height": 900})
     log_in(page, server)
@@ -1198,11 +1207,13 @@ def test_a_usual_gate_is_as_high_as_its_content_within_the_limit(page: Page, ser
     card = waiting_card(page, session)
     expect(card.get_by_role("tabpanel")).to_contain_text("Build it as planned?")
     chat = page.get_by_role("region", name="Chat", exact=True)
-    assert height(card.locator(".waiting-top")) <= height(chat) * 0.4 + 1
-    context = height(card.locator(".waiting-context-frame"))
-    assert height(card) - context <= 216, (height(card), context)
+    assert height(card) <= height(chat) * 0.5 + 1
+    report = card.locator(".waiting-scroll")
+    assert report.evaluate("r => r.scrollHeight <= r.clientHeight + 1")  # all of it shows
     panel = card.get_by_role("tabpanel")
-    parts = height(card.locator(".waiting-top")) + height(card.locator(".waiting-foot"))
+    parts = sum(
+        height(card.locator(name)) for name in (".waiting-head", ".waiting-scroll", ".waiting-foot")
+    )
     assert abs(height(panel) - parts - 2) <= 1  # no empty room: only its two borders
     shot(page, full_page=False)
 
@@ -1214,24 +1225,39 @@ def long_question(session: str, rows: int = 6) -> None:
     runtime.ask_human(session, "supervisor", title.strip(), "Its details.\n" * 30, choices)
 
 
-def test_a_title_of_more_than_two_lines_is_cut_and_stands_whole_in_the_context(
+def test_a_long_question_stands_on_one_line_of_the_head_and_whole_in_its_tooltip(
     page: Page, server, repo, shot
 ):
+    """The question is the card's head on --human-head, one line cut with "…", out of the
+    report's scroll; a hover or the keyboard's focus shows it whole in a tooltip; nothing
+    stands beside it, and the report does not repeat it."""
     session = running_session(repo)
     long_question(session, 2)
     page.set_viewport_size({"width": 800, "height": 900})
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
     card = waiting_card(page, session)
-    title = card.locator(".waiting-title-text")
+    head = card.locator(".waiting-head")
+    title = head.get_by_role("heading", level=3)
     expect(title).to_be_visible()
     line = title.evaluate("t => parseFloat(getComputedStyle(t).lineHeight)")
-    assert height(title) <= 2 * line + 1
-    expect(card.locator(".waiting-context .waiting-whole")).to_contain_text(
-        "Which way shall I take?"
+    assert height(title) <= line + 1
+    assert title.evaluate("t => t.scrollWidth > t.clientWidth")
+    expect(head).to_have_css("background-color", "rgb(248, 224, 201)")  # --human-head
+    expect(head).to_have_text(re.compile(r"^(Which way shall I take\? )+Which way shall I take\?$"))
+    expect(card.locator(".waiting-scroll")).not_to_contain_text("Which way shall I take?")
+    report = card.get_by_role("region", name="Context of the card")
+    report.evaluate("r => r.scrollTo(0, r.scrollHeight)")
+    assert head.bounding_box()["y"] < report.bounding_box()["y"]  # the scroll leaves it
+    title.hover()
+    expect(page.get_by_role("tooltip")).to_have_text(
+        "Which way shall I take? " * 7 + "Which way shall I take?"
     )
-    expect(card.locator(".waiting-meta")).to_have_text(re.compile(r"^#\d+$"))
     shot(page, full_page=False)
+    page.mouse.move(0, 0)
+    expect(page.get_by_role("tooltip")).to_have_count(0)
+    title.focus()
+    expect(page.get_by_role("tooltip")).to_be_visible()
 
 
 # Three choices and Other… take four rows.
@@ -1265,7 +1291,7 @@ def test_the_choices_stand_by_content_to_four_rows_then_scroll(
 
 def test_in_a_low_chat_the_footer_gives_way_and_the_buttons_stay(page: Page, server, repo, shot):
     """Six long choices in a chat 420 px high: the choices' area is at least one row and
-    scrolls inside, Send and Skip question are in sight."""
+    scrolls inside, Skip among them; Send is in sight."""
     session = running_session(repo)
     long_question(session)
     page.set_viewport_size({"width": 1440, "height": 560})
@@ -1277,11 +1303,10 @@ def test_in_a_low_chat_the_footer_gives_way_and_the_buttons_stay(page: Page, ser
     page.evaluate("h => { document.querySelector('.chat').style.flex = `0 0 ${h}px`; }", 420)
     settles_at(page, chat, 420)
     assert height(card.get_by_role("group", name="Choices")) >= 32
-    in_sight(
-        page,
-        card.get_by_role("button", name="Send answer to supervisor"),
-        card.get_by_role("button", name="Skip question"),
-    )
+    expect(
+        card.get_by_role("group", name="Choices").get_by_role("button", name="Skip", exact=True)
+    ).to_be_attached()
+    in_sight(page, card.get_by_role("button", name="Send answer to supervisor"))
     assert card.bounding_box()["y"] >= chat.bounding_box()["y"] - 1
     shot(page, full_page=False)
 
@@ -1305,8 +1330,9 @@ def test_a_field_that_grew_with_no_room_left_scrolls_inside(page: Page, server, 
 
 
 def test_several_questions_stand_in_the_context_and_send_stays(page: Page, server, repo, shot):
-    """The supervisor's tab holds three questions: they scroll in the context with no title,
-    and Send with its count stands in the footer."""
+    """The supervisor's tab holds three questions: they scroll in the report with no head, on
+    the card's ground, parted by two lines of the footer's line's width and tone; Send with its
+    count stands in the footer."""
     session = running_session(repo)
     for n in range(3):
         runtime.ask_human(session, "supervisor", f"Question {n}?", "Details.\n" * 12, ["yes", "no"])
@@ -1314,28 +1340,49 @@ def test_several_questions_stand_in_the_context_and_send_stays(page: Page, serve
     page.goto(f"{server['url']}/sessions/{session}")
     card = waiting_card(page, session)
     list_ = card.get_by_role("region", name="Context of the card").get_by_role("list")
-    expect(list_.get_by_role("listitem")).to_have_count(3)
-    expect(card.locator(".waiting-title")).to_have_count(0)
+    items = list_.get_by_role("listitem")
+    expect(items).to_have_count(3)
+    expect(card.locator(".waiting-head")).to_have_count(0)
     foot = card.locator(".waiting-foot")
     expect(foot.get_by_role("button", name="Send 3 answers to supervisor")).to_be_visible()
     expect(foot).to_contain_text("0 of 3 answered")
     in_sight(page, foot)
+    # The same line between questions as over the footer: the panel's width, --human at 35 %.
+    line = "e => [getComputedStyle(e).borderTopWidth, getComputedStyle(e).borderTopColor]"
+    assert items.nth(0).evaluate("e => getComputedStyle(e).borderTopStyle") == "none"
+    assert items.nth(1).evaluate(line) == foot.evaluate(line)
+    assert items.nth(2).evaluate(line) == foot.evaluate(line)
+    for one in (items.nth(1), foot):
+        box = one.bounding_box()
+        panel = card.locator(".waiting-panel").bounding_box()
+        assert (
+            abs(box["x"] - panel["x"] - 1) <= 1 and abs(box["width"] - panel["width"] + 2) <= 1
+        ), (box, panel)
+    expect(items.nth(0)).to_have_css("background-color", "rgba(0, 0, 0, 0)")  # no block of its own
     shot(page, full_page=False)
 
 
-def test_skip_question_is_a_text_button_and_goes_with_send(page: Page, server, repo, shot):
+def test_skip_is_a_pill_after_the_choices_and_goes_with_send(page: Page, server, repo, shot):
     session = running_session(repo)
     runtime.ask_human(session, "supervisor", "Ship it?", None, ["yes", "no"])
     page.set_viewport_size({"width": 1440, "height": 900})
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
     card = waiting_card(page, session)
-    skip = card.get_by_role("button", name="Skip question")
+    choices = card.get_by_role("group", name="Choices")
+    expect(choices.get_by_role("button")).to_have_text(["yes", "no", "Other…", "Skip"])
+    skip = choices.get_by_role("button", name="Skip", exact=True)
     send = card.get_by_role("button", name="Send answer to supervisor")
-    assert skip.evaluate("b => getComputedStyle(b).borderTopStyle") == "none"
-    assert skip.bounding_box()["x"] > send.bounding_box()["x"]  # beside Send
-    assert abs(skip.bounding_box()["y"] - send.bounding_box()["y"]) <= 1
+    other = choices.get_by_role("button", name="Other…")
+    # In the choices' style: a pill of their frame and height, on their row.
+    assert skip.evaluate("b => getComputedStyle(b).borderTopStyle") == "solid"
+    assert skip.evaluate("b => getComputedStyle(b).borderRadius") == other.evaluate(
+        "b => getComputedStyle(b).borderRadius"
+    )
+    assert abs(skip.bounding_box()["y"] - other.bounding_box()["y"]) <= 1
+    assert skip.bounding_box()["y"] < send.bounding_box()["y"]
     skip.click()
+    expect(skip).to_have_attribute("aria-pressed", "true")
     card.get_by_role("textbox", name="Why you skip it (optional)").fill("not now")
     shot(page, full_page=False)
     send.click()
@@ -1360,11 +1407,9 @@ def test_a_send_that_is_off_says_why_on_a_hover(page: Page, server, repo, shot):
     expect(card.locator(".waiting-send-off")).to_have_count(0)
 
 
-def test_the_composer_folds_while_an_own_answer_is_open_and_comes_back(
-    page: Page, server, repo, shot
-):
-    """The composer's words and the field's survive; the link closes the field and gives the
-    composer the focus."""
+def test_on_a_computer_an_own_answer_leaves_the_composer_as_it_is(page: Page, server, repo, shot):
+    """Other… open in a window 1440×900: the composer stays whole, with its words; the
+    phone's fold: test_phone.py."""
     session = running_session(repo)
     runtime.ask_human(session, "supervisor", "Ship it?", None, ["yes", "no"])
     page.set_viewport_size({"width": 1440, "height": 900})
@@ -1377,30 +1422,13 @@ def test_the_composer_folds_while_an_own_answer_is_open_and_comes_back(
     own = card.get_by_role("textbox", name="Your own answer")
     expect(own).to_be_focused()
     own.fill("keep the worker")
-    line = page.locator(".composer-fold")
-    expect(line).to_have_text(
-        f"Answering question #{asked_id(session)} above · Write to supervisor instead"
-    )
-    assert round(height(line)) == 40
-    assert line.evaluate("l => getComputedStyle(l).borderTopStyle") == "dashed"
-    expect(composer).to_be_hidden()
-    for theme in ("light", "dark"):
-        page.emulate_media(color_scheme=theme)
-        shot(page, f"{theme}-folded", full_page=False)
-    page.emulate_media(color_scheme="light")
-    line.get_by_role("button", name="Write to supervisor instead").click()
-    expect(composer).to_be_focused()
+    expect(page.locator(".composer-fold")).to_have_count(0)
+    expect(composer).to_be_visible()
     expect(composer).to_have_value("half a thought")
-    expect(own).to_have_count(0)
-    card.get_by_role("button", name="Other…").click()
-    expect(own).to_have_value("keep the worker")
+    shot(page, full_page=False)
 
 
-def asked_id(session: str) -> int:
-    return [m.id for m in state.list_messages(session) if m.kind == state.QUESTION][0]
-
-
-def test_a_quote_brings_the_folded_composer_back(page: Page, server, repo, shot):
+def test_a_quote_of_the_cards_report_goes_to_the_composer(page: Page, server, repo, shot):
     session = running_session(repo)
     runtime.ask_human(session, "supervisor", "Ship it?", "Words to quote.", ["yes", "no"])
     log_in(page, server)
@@ -1408,10 +1436,10 @@ def test_a_quote_brings_the_folded_composer_back(page: Page, server, repo, shot)
     card = waiting_card(page, session)
     card.get_by_role("button", name="Other…").click()
     composer = page.get_by_role("textbox", name="Write to the supervisor…")
-    expect(composer).to_be_hidden()
+    expect(composer).to_be_visible()  # on a computer nothing folds it
     page.evaluate(
         """() => {
-          const text = document.querySelector('.waiting-context .chat-body p').firstChild;
+          const text = document.querySelector('.waiting-scroll .chat-body p').firstChild;
           const range = document.createRange();
           range.setStart(text, 0);
           range.setEnd(text, 5);

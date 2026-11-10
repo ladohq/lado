@@ -150,22 +150,26 @@ lead SHALL get a request for each open gate whose recommendation is not `given`.
 
 ### Requirement: The card shows the recommendation as part of the gate or question
 
-The web UI SHALL show an open gate's or question's recommendation inside its card, and the
-human SHALL be able to answer in every state. On a run's page in Flows it SHALL be a block
-between the question's text and the answer: under the supervisor's small avatar and "Supervisor's
-recommendation", with its time, and "disagrees with <agent>" in orange when the lead disagrees,
-the whole text as Markdown.
+The web UI SHALL show an open gate's or question's recommendation inside its card, one block in
+the chat, on Needs you and on a run's page, and the human SHALL be able to answer in every state.
+The block SHALL stand over the answer, on `--panel` in a 1 px `--line` frame, no band at its left: the supervisor's small avatar and "supervisor recommends **<option>**" (as
+the card's button names it; "supervisor" alone without an option of the card's), its time at the
+right, then the text as Markdown.
 
 #### Scenario: A recommendation that disagrees
 - **WHEN** gate #7's note says "ready to merge" and the lead recommends `reject` with
   disagrees set
-- **THEN** the card shows the line "Supervisor recommends Reject · disagrees with reviewer:"
-  in orange and the text, and Reject is the primary button, Approve quiet
+- **THEN** the card shows "supervisor recommends Reject" in a block with an amber frame and the
+  text, and Reject is the primary button, Approve quiet
 
 #### Scenario: A long recommendation on a phone
-- **WHEN** a recommendation of ten lines waits on a phone and the human taps it
-- **THEN** it opens to 3 lines and the rest scrolls inside them, with a fade at the lower edge
+- **WHEN** a recommendation of ten lines waits on a phone
+- **THEN** its text shows 2 lines and the rest scrolls inside them, with a fade at the lower edge
   until the text is scrolled to its end
+
+#### Scenario: A recommendation without an option
+- **WHEN** the lead recommends on gate #9 with text only
+- **THEN** the block's head reads "supervisor" and the time, and the text under it
 
 ### Requirement: On a gate the recommended option is the primary button
 
@@ -190,8 +194,8 @@ SHALL pick its choice only in a question the human has not touched.
 #### Scenario: A question's recommended choice is picked ahead
 - **WHEN** w1 asks question #12 with the choices "yes" and "later", and the lead recommends
   "later"
-- **THEN** w1's tab shows the line over the choices and "✓ later" picked, and Send sends
-  "later" unless the human picks otherwise
+- **THEN** w1's tab shows the recommendation's block over the choices and "✓ later" picked, and
+  Send sends "later" unless the human picks otherwise
 
 #### Scenario: The human unpicks the recommended choice
 - **WHEN** the human clicks the picked "later" of question #12
@@ -200,17 +204,22 @@ SHALL pick its choice only in a question the human has not touched.
 #### Scenario: A recommendation without a choice
 - **WHEN** the lead recommends on question #13 with text only, or with a choice the
   question does not have
-- **THEN** the tab shows the line and picks nothing
+- **THEN** the tab shows the block and picks nothing
 
 ### Requirement: The card says when a recommendation is being prepared or missing
 
-While the recommendation is `asked`
-the card SHALL say "Supervisor is preparing a recommendation…", when `missing` "The
-supervisor gave no recommendation", and with none nothing.
+While the recommendation is `asked` the card SHALL say "Supervisor is preparing a
+recommendation…" in one muted italic line, with no block and no splitter. When it is `missing`,
+and when none was asked, the card SHALL show nothing of it: no block, no line and no splitter.
 
 #### Scenario: Still preparing
 - **WHEN** gate #8's recommendation is `asked`
 - **THEN** the card says "Supervisor is preparing a recommendation…" and its buttons work
+
+#### Scenario: Missing
+- **WHEN** gate #8's recommendation is `missing`
+- **THEN** the card shows no recommendation and no "The supervisor gave no recommendation", and
+  Approve is primary
 
 ### Requirement: A closed card shows the recommendation in one line
 
@@ -267,28 +276,51 @@ no recommendation." when `missing`.
 - **THEN** the output has "Supervisor is preparing a recommendation… (v shows it once it
   is given)"
 
-### Requirement: The waiting card's recommendation is one line
+### Requirement: A disagreement is a frame and a sign, its words for a screen reader
 
-In the waiting card (the chat's and Needs you's) the recommendation SHALL be one line above the
-answer, the avatar of 20 px then "**Supervisor recommends <option>:** <text>", or
-"**Supervisor's recommendation:** <text>" without an option of the card's, cut with "…" (on a
-phone 2 lines); " · disagrees with <agent>" in orange SHALL stand right after the option, so a cut
-never takes it.
+A recommendation given with `disagrees` SHALL show a 1 px `--warn` frame and a ⚠ of 16 px in
+`--warn` before the avatar, with no visible words about it. Its block's name SHALL be
+"Supervisor's recommendation, disagrees with the step's report" on a gate and "Supervisor's
+recommendation, disagrees with <agent>" on a question, and the ⚠ SHALL have the UI's tooltip
+with the same words. On a gate whose note the lead wrote itself no disagreement SHALL show.
 
-#### Scenario: A cut line that disagrees
-- **WHEN** a long recommendation of Reject that disagrees with reviewer waits in the card
-- **THEN** the line shows "Supervisor recommends Reject · disagrees with reviewer:" whole, and
-  its text is cut with "…"
+#### Scenario: A gate's recommendation that disagrees
+- **WHEN** gate #7's note by reviewer says "ready to merge" and the lead recommends `reject` with
+  disagrees set
+- **THEN** the block has an amber frame and ⚠, reads "supervisor recommends Reject" and no
+  "disagrees", and a screen reader names it "Supervisor's recommendation, disagrees with the
+  step's report"
 
-### Requirement: The waiting card's line opens to its text
+#### Scenario: The lead's own note
+- **WHEN** the supervisor wrote gate #8's note and recommends on it with disagrees set
+- **THEN** the block has the `--line` frame and no ⚠
 
-The line's tooltip SHALL hold the recommendation's whole text and time, and a click SHALL open it
-to 3 lines of Markdown that scroll inside; in the expanded card it SHALL show whole.
+### Requirement: A long recommendation scrolls in its own box in the chat
 
-#### Scenario: Opened by a click
-- **WHEN** the human clicks the line of a long recommendation
-- **THEN** its text shows as Markdown in 3 lines that scroll inside
+In the chat's card the recommendation's text SHALL stand in a box as high as the recommendation's
+splitter sets (by default 4 lines, a phone 2), which a shorter text SHALL not fill; a longer one
+SHALL scroll inside it, by the wheel, a finger or the keys with the focus on it, and SHALL fade at
+its lower edge until it is scrolled to its end; the expanded card keeps the box and its splitter.
+On Needs you, on a run's page and under each question of a tab of several it SHALL show whole.
 
-#### Scenario: The expanded card
-- **WHEN** the human expands the card in the chat
-- **THEN** the recommendation shows whole
+#### Scenario: A long recommendation
+- **WHEN** a recommendation of ten lines waits on a gate in the chat
+- **THEN** 4 lines show with a fade at the lower edge, and once the human scrolls the text to its
+  end the fade is gone
+
+#### Scenario: On a phone
+- **WHEN** the same gate waits on a phone 390×844
+- **THEN** 2 lines show with a fade
+
+#### Scenario: Whole on a phone's Needs you
+- **WHEN** the same gate waits on Needs you on a phone 390×844
+- **THEN** all its text shows, its block ending above the comment field
+
+### Requirement: A wheel over the recommendation's block scrolls its text
+
+In the chat's card a wheel anywhere over the recommendation's block SHALL scroll its text, as a
+box of a line is hard to hit; at the text's end the wheel SHALL go on to what is around it.
+
+#### Scenario: The wheel over its head
+- **WHEN** the box is a line high and the human turns the wheel over "supervisor recommends"
+- **THEN** the text scrolls; at its end the wheel scrolls what is around it

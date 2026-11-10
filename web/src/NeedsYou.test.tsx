@@ -40,6 +40,7 @@ function gate(id: number, more: Partial<GateInfo> = {}): GateInfo {
     closed_by_event: null,
     answer_attachments: [],
     problem: null,
+    note_by: null,
     recommendation: null,
     ...more,
   };
@@ -224,6 +225,18 @@ test("Needs you shows a card minimized in its chat whole, with no minimize icon 
   expect(within(lado).getByRole("tabpanel")).toBeTruthy();
   expect(within(lado).queryByRole("button", { name: /^(Minimize|Restore) the card$/ })).toBeNull();
   expect(within(lado).queryByRole("separator")).toBeNull();
+});
+
+test("Needs you shows the card whole: its recommendation with no splitter, nothing that scrolls inside", async () => {
+  localStorage.setItem("lado.recommendationHeight", "40");
+  const recommendation = { state: "given" as const, text: "Approve it.", choice: "approve", disagrees: false, by: "w1", at: null };
+  waiting = [waits.gate("lado", gate(1, { recommendation }))];
+  open();
+  const lado = await card("lado");
+  expect(lado.classList.contains("whole")).toBe(true);
+  expect(within(lado).queryByRole("separator", { name: "Resize the recommendation" })).toBeNull();
+  const text = within(lado).getByRole("note", { name: "Supervisor's recommendation" }).querySelector(".rec-text") as HTMLElement;
+  expect([text.hasAttribute("tabindex"), text.style.getPropertyValue("--adv")]).toEqual([false, ""]);
 });
 
 test("a titled session's line shows its title, then its name in grey; the links keep the name", async () => {

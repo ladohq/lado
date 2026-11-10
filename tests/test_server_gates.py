@@ -93,6 +93,8 @@ def test_an_open_gate_comes_with_its_note_and_the_artifacts_it_reads(client, ses
         "closed_by_event": None,
         "answer_attachments": [],
         "problem": None,
+        # Who reported that note: the tab's tooltip names it.
+        "note_by": "supervisor",
         # The lead is asked for its view when the gate opens.
         "recommendation": {
             "state": "asked",
@@ -130,6 +132,14 @@ def test_a_gate_never_asked_has_no_recommendation(client, session):
         db.execute("UPDATE gates SET recommendation_state = NULL WHERE id = ?", (gate.id,))
     [listed] = client.get(GATES).json()
     assert listed["recommendation"] is None
+
+
+def test_a_gate_with_no_note_names_no_author(client, session):
+    gate = at_gate()
+    with state.connect() as db:
+        db.execute("UPDATE gates SET note_id = NULL WHERE id = ?", (gate.id,))
+    [listed] = client.get(GATES).json()
+    assert listed["note_by"] is None
 
 
 def test_a_gate_whose_runs_flow_cannot_be_read_comes_without_its_reads(client, session):

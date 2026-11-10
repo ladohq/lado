@@ -152,8 +152,8 @@ In the phone layout the window SHALL not scroll as a page; each page's content S
 scroll by itself under the top bar. The app SHALL be as high as the part of the window
 the human sees, its bottom never cut by the browser's bars. In a session's chat the feed
 SHALL scroll by itself, and the waiting card and the composer SHALL stay whole at the
-chat's bottom; the card's title and context SHALL be at most 40 % of the chat's height, and its
-footer whole under them.
+chat's bottom; the card SHALL be at most half the chat's height, its head and footer whole and
+only its report giving way.
 
 #### Scenario: Writing with a gate waiting
 - **WHEN** a gate waits and the human opens the session's chat on a phone 390×844
@@ -283,15 +283,15 @@ it, and SHALL show again when it folds.
 ### Requirement: On a phone a field in focus keeps the card and folds what is around it
 
 In the phone layout, in a session's chat, while a field of the waiting card's footer has the
-focus, the card SHALL not expand: the session's tabs, the Team row, the card's context and the
-choices' area SHALL not be shown, and the composer SHALL be a line: on a gate's tab "Commenting
-on gate #<id> above", on a question's the line of capability chat-question-card. When the field
-loses the focus all of it SHALL show again.
+focus, the card SHALL not expand: the session's tabs, the Team row, the card's report, the
+recommendation's splitter and the choices' area SHALL not be shown, and the composer SHALL be a
+line: on a gate's tab "Commenting on gate #<id> above", on a question's the line of capability
+chat-question-card. When the field loses the focus all of it SHALL show again.
 
 #### Scenario: A gate's comment above the keyboard
 - **WHEN** a gate waits in the session's chat on a phone 402×874, the human taps the
   gate's comment field and the keyboard leaves 440 px of the window visible
-- **THEN** the card is not expanded, the session's tabs, the Team row and the context do not
+- **THEN** the card is not expanded, the session's tabs, the Team row and the report do not
   show, and the field, Approve, Reject and "Commenting on gate #1 above" lie within the
   visible 440 px
 
@@ -303,7 +303,7 @@ loses the focus all of it SHALL show again.
 
 #### Scenario: The keyboard closes
 - **WHEN** the human closes the keyboard and the field loses the focus
-- **THEN** the session's tabs, the context, the choices' area, the Team row and the composer
+- **THEN** the session's tabs, the report, the choices' area, the Team row and the composer
   show again, and the comment typed stays in the field
 
 ### Requirement: Only a phone's chat folds around a field
@@ -338,24 +338,24 @@ focus. An expanded card SHALL keep its context with a field in focus.
 
 With a field of the card in focus, the field, the buttons and the composer's line SHALL stay above
 the on-screen keyboard, by the order of capability chat-question-card, requirement "A footer
-taller than its room gives way in order"; the title's meta SHALL go before the title.
+taller than its room gives way in order"; the head SHALL go before the recommendation.
 
 #### Scenario: Less room than the frame
 - **WHEN** the keyboard leaves 350 px of the window visible and a gate's comment has the focus,
   under a recommendation of two lines
-- **THEN** the title's meta is gone or the title too, and the field, Approve, Reject and the
-  line lie within the visible 350 px
+- **THEN** the head is gone or cut, and the field, Approve, Reject and the line lie within the
+  visible 350 px
 
 #### Scenario: Six choices
 - **WHEN** the keyboard leaves 350 px of the window visible and Other… of a question of six
   choices has the focus
-- **THEN** the field, Send answer and Skip question lie within the visible 350 px
+- **THEN** the field and Send answer lie within the visible 350 px
 
 #### Scenario: Six choices under a recommendation
 - **WHEN** the keyboard leaves 340 px of the window visible and the field of Other… or Skip
-  question has the focus, on a question of six choices under a recommendation of two lines
-- **THEN** the choices' area does not show, and the recommendation, the field, Send answer and
-  Skip question lie whole within the visible 340 px
+  has the focus, on a question of six choices under a recommendation of two lines
+- **THEN** the choices' area does not show, and the recommendation, the field and Send answer
+  lie whole within the visible 340 px
 
 ### Requirement: On a phone a gate's and a question's tabs stand whole
 
@@ -368,13 +368,13 @@ an ellipsis before the row scrolls, and each SHALL keep its count.
 
 ### Requirement: On a phone the waiting card's targets are 44 px
 
-In the phone layout the card's tabs, Minimize and Expand (44×44), its fields, its chips and
-Approve, Reject, Send answer and Skip question SHALL be 44 px high. "↓ more" SHALL stay 24 px:
-Expand does the same.
+In the phone layout the card's tabs, Minimize and Expand (44×44), its fields, its chips, its
+choices, Other… and Skip, and Approve, Reject and Send answer SHALL be 44 px high, and the answer's
+buttons SHALL share the footer's width.
 
 #### Scenario: Measured
 - **WHEN** a question waits on a phone 390×844
-- **THEN** its tab, a choice, Send answer and Skip question are each 44 px high
+- **THEN** its tab, a choice, Skip and Send answer are each 44 px high
 
 ### Requirement: On a phone the top bar's title and link are easy to tap
 
@@ -389,3 +389,14 @@ sides, so that the title loses no width. What is drawn SHALL not change.
 #### Scenario: The link
 - **WHEN** the human taps 8 px beside the link's dot
 - **THEN** the System panel opens
+
+### Requirement: On a phone the recommendation's splitter is easy to take
+
+In the phone layout the recommendation's splitter of the chat's card SHALL take a touch 24 px
+high, drawn as on a computer, and SHALL not scroll the page while it is dragged. It SHALL not show
+while a field of the card has the focus.
+
+#### Scenario: Dragged by a finger
+- **WHEN** a gate with a long recommendation waits on a phone 390×844 and the human drags 8 px
+  above the splitter's line upward
+- **THEN** the recommendation's text grows and the feed does not scroll

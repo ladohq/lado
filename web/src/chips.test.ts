@@ -19,7 +19,7 @@ const OWNERS: Record<string, string[]> = {
   "source-chip": ["./Kits.tsx"],
   chip: ["./Attachments.tsx", "./GateCard.tsx"],
   "chip-name": ["./Attachments.tsx", "./GateCard.tsx"],
-  "chip-size": ["./Attachments.tsx", "./GateCard.tsx"],
+  "chip-size": ["./Attachments.tsx"], // the waiting card's chips show no size
 };
 
 // The files whose className strings name `name` as a whole class.

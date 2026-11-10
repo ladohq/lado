@@ -36,6 +36,7 @@ function gate(more: Partial<GateInfo> = {}): GateInfo {
     closed_by_event: null,
     answer_attachments: [],
     problem: null,
+    note_by: null,
     recommendation: null,
     ...more,
   };
@@ -202,10 +203,11 @@ test.each<[GateInfo["kind"], string[], string, string]>([
   ["approval", ["approve", "reject"], "Reject", "Rejection"],
   ["loop", ["continue", "cancel"], "Continue", "Answer"],
   ["loop", ["continue", "cancel"], "Cancel run", "Answer"],
-  ["choice", ["left", "right"], "left", "Answer"],
+  ["choice", ["left", "right"], "Send", "Answer"],
 ])("a %s gate's %s… %s without an answer says %s not confirmed, Retry off", async (kind, options, name, what) => {
   show(card({ kind, options }));
   server.down = true;
+  if (kind === "choice") fireEvent.click(button("left")); // picked, then sent
   await press(name);
   const alert = screen.getByRole("alert");
   expect(alert.textContent).toBe(`${what} not confirmedRetry`);
@@ -321,7 +323,7 @@ test("the same error shows wherever the gate shows, and survives a change of pag
   view.rerender(
     <LiveContext.Provider value={live}>
       <MemoryRouter>
-        <GateCard session="s" gate={open} stopped={false} compact />
+        <GateCard session="s" gate={open} stopped={false} />
       </MemoryRouter>
     </LiveContext.Provider>,
   );

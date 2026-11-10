@@ -1,11 +1,13 @@
-// The lead's recommendation in a gate's or a question's card (docs/design/ui.md, Flow
-// gates): the open block, the closed card's quiet line, and which option is the primary one.
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, expect, test } from "vitest";
+// The lead's recommendation in a gate's or a question's card (docs/design/ui.md, The
+// supervisor's recommendation): the block of an open card, the closed card's quiet line, and
+// which option is the primary one.
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, expect, test, vi } from "vitest";
 
 import type { RecommendationInfo } from "./api";
 import { clock } from "./ChatText";
-import { oneLine, primaryOf, Recommendation, RecommendationBar, RecommendationLine } from "./Recommendation";
+import { primaryOf, Recommendation, RecommendationLine } from "./Recommendation";
+import { TOOLTIP_DELAY_MS } from "./Tooltip";
 
 const AT = "2026-10-03T12:04:00.000Z";
 
@@ -13,43 +15,140 @@ function rec(more: Partial<RecommendationInfo> = {}): RecommendationInfo {
   return { state: "given", text: "Reject: **no** test.", choice: "reject", disagrees: false, by: "reviewer", at: AT, ...more };
 }
 
-afterEach(cleanup);
-
-const block = () => screen.getByRole("region", { name: "Supervisor's recommendation" });
-
-test("a given recommendation shows its head, its time and its whole text as Markdown", () => {
-  render(<Recommendation rec={rec()} />);
-  const shown = block();
-  expect(shown.className).toBe("rec");
-  expect(shown.querySelector(".rec-title")?.textContent).toBe("Supervisor's recommendation");
-  expect(shown.querySelector(".avatar.mini")?.textContent).toBe("S");
-  expect(shown.querySelector("time")?.textContent).toBe(clock(AT));
-  expect(shown.querySelector(".chat-body strong")?.textContent).toBe("no");
-  // The option is the blue button's to say, not the head's.
-  expect(shown.querySelector(".rec-head")?.textContent).not.toContain("reject");
-  expect(shown.querySelector(".rec-differs")).toBeNull();
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
 });
 
-test("a disagreement is an orange chip in the head and an orange band", () => {
-  render(<Recommendation rec={rec({ disagrees: true })} />);
-  expect(block().className).toBe("rec differs");
-  expect(block().querySelector(".rec-differs")?.textContent).toBe("disagrees with reviewer");
+const OPTIONS = ["approve", "reject"];
+const label = (option: string) => option.toUpperCase();
+const show = (given: RecommendationInfo | null, more: { kind?: "gate" | "question"; whole?: boolean; height?: number | null } = {}) =>
+  render(<Recommendation rec={given} options={OPTIONS} label={label} kind={more.kind ?? "gate"} whole={more.whole} height={more.height} />);
+const block = () => screen.getByRole("note");
+const text = () => block().querySelector(".rec-text") as HTMLElement;
+
+test("a given recommendation names its option as the card's button does, its time, and its text as Markdown", () => {
+  show(rec());
+  expect(block().className).toBe("rec");
+  expect(block().getAttribute("aria-label")).toBe("Supervisor's recommendation");
+  expect(block().querySelector(".avatar.mini")?.textContent).toBe("S");
+  expect(block().querySelector(".rec-head")?.textContent).toBe(`Ssupervisor recommends REJECT${clock(AT)}`);
+  expect(block().querySelector(".rec-head b")?.textContent).toBe("REJECT");
+  expect(text().querySelector(".chat-body strong")?.textContent).toBe("no");
+  // Nothing opens or closes it: its text scrolls in its box, which the keyboard reaches.
+  expect(block().querySelector("button")).toBeNull();
+  expect(text().getAttribute("tabindex")).toBe("0");
 });
 
-test.each([
-  ["asked", "Supervisor is preparing a recommendation…"],
-  ["missing", "The supervisor gave no recommendation"],
-] as const)("a recommendation %s is a muted line", (state, text) => {
-  render(<Recommendation rec={rec({ state, text: "", choice: null, at: null })} />);
-  expect(block().className).toBe("rec waiting");
-  expect(block().querySelector(".rec-title")?.textContent).toBe(text);
-  expect(block().querySelector(".chat-body")).toBeNull();
-  expect(block().querySelector("time")).toBeNull();
+test.each([[null], ["maybe"]])("with the choice %s the head names only the supervisor", (choice) => {
+  show(rec({ choice }));
+  expect(block().querySelector(".rec-title")?.textContent).toBe("supervisor");
 });
 
-test("none asked shows nothing", () => {
-  const { container } = render(<Recommendation rec={null} />);
-  expect(container.innerHTML).toBe("");
+test("a gate's disagreement is a frame and a sign, its words for a screen reader and the sign's tooltip", () => {
+  vi.useFakeTimers();
+  try {
+    show(rec({ disagrees: true }));
+    expect(block().className).toBe("rec against");
+    expect(block().getAttribute("aria-label")).toBe("Supervisor's recommendation, disagrees with the step's report");
+    expect(block().textContent).not.toContain("disagrees");
+    const sign = block().querySelector(".rec-warn") as HTMLElement;
+    fireEvent.mouseEnter(sign);
+    act(() => void vi.advanceTimersByTime(TOOLTIP_DELAY_MS));
+    expect(screen.getByRole("tooltip").textContent).toBe("Supervisor's recommendation, disagrees with the step's report");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("a question's disagreement names the agent who asked", () => {
+  show(rec({ disagrees: true, by: "developer" }), { kind: "question" });
+  expect(block().getAttribute("aria-label")).toBe("Supervisor's recommendation, disagrees with developer");
+});
+
+test("a gate whose report the lead wrote itself shows no disagreement", () => {
+  show(rec({ disagrees: true, by: "supervisor" }));
+  expect(block().className).toBe("rec");
+  expect(block().getAttribute("aria-label")).toBe("Supervisor's recommendation");
+  expect(block().querySelector(".rec-warn")).toBeNull();
+});
+
+test("while it is prepared, one muted line and no block; missing or never asked, nothing", () => {
+  const { container } = show(rec({ state: "asked", text: "", choice: null, at: null }));
+  expect(container.textContent).toBe("Supervisor is preparing a recommendation…");
+  expect(screen.queryByRole("note")).toBeNull();
+  cleanup();
+  expect(show(rec({ state: "missing", text: "", choice: null, at: null })).container.innerHTML).toBe("");
+  cleanup();
+  expect(show(null).container.innerHTML).toBe("");
+});
+
+test("its text box is as high as the splitter sets, by default the stylesheet's", () => {
+  show(rec(), { height: 140 });
+  expect(text().style.getPropertyValue("--adv")).toBe("140px");
+  cleanup();
+  show(rec());
+  expect(text().style.getPropertyValue("--adv")).toBe("");
+});
+
+// jsdom lays out nothing: the text as tall as `content`, its box `box` high.
+function laidOut(content: number, box: number) {
+  const tall = (element: HTMLElement, value: number) => (element.classList.contains("rec-text") ? value : 0);
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(function (this: HTMLElement) {
+    return tall(this, content);
+  });
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) {
+    return tall(this, box);
+  });
+}
+
+test("a text longer than its box fades at its lower edge until it is scrolled to its end", () => {
+  laidOut(300, 82);
+  show(rec());
+  expect(text().classList.contains("has-more")).toBe(true);
+  text().scrollTop = 218;
+  fireEvent.scroll(text());
+  expect(text().classList.contains("has-more")).toBe(false);
+  text().scrollTop = 100;
+  fireEvent.scroll(text());
+  expect(text().classList.contains("has-more")).toBe(true);
+});
+
+// A wheel at `target`, `deltaY` down; whether something took it from the browser.
+function wheel(target: Element, deltaY: number, deltaMode = 0): boolean {
+  const event = new WheelEvent("wheel", { deltaY, deltaMode, bubbles: true, cancelable: true });
+  target.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+test("a wheel over the whole block scrolls its text, a box a line high hard to hit; at its end the wheel goes on", () => {
+  laidOut(300, 20);
+  show(rec());
+  const head = block().querySelector(".rec-head")!;
+  expect(wheel(head, 40)).toBe(true);
+  expect(text().scrollTop).toBe(40);
+  expect(wheel(block(), 2, WheelEvent.DOM_DELTA_LINE)).toBe(true); // 2 lines
+  expect(text().scrollTop).toBe(80);
+  expect(wheel(head, -100)).toBe(true);
+  expect(text().scrollTop).toBe(0);
+  expect(wheel(head, -10)).toBe(false); // at its top: the page's
+  expect(wheel(text(), 40)).toBe(false); // over the text the browser scrolls it
+  expect(text().scrollTop).toBe(0);
+  text().scrollTop = 280;
+  expect(wheel(head, 40)).toBe(false); // at its end
+});
+
+test("whole, a wheel over the block is the page's", () => {
+  laidOut(300, 20);
+  show(rec(), { whole: true });
+  expect(wheel(block().querySelector(".rec-head")!, 40)).toBe(false);
+});
+
+test("whole (Needs you, a run's page) its text never fades and is no stop of the Tab key", () => {
+  laidOut(300, 82);
+  show(rec(), { whole: true });
+  expect(text().classList.contains("has-more")).toBe(false);
+  expect(text().hasAttribute("tabindex")).toBe(false);
 });
 
 test("a closed card's line names the option and opens the text on a click", () => {
@@ -80,103 +179,4 @@ test("the primary option is the recommended one, else the first", () => {
   expect(primaryOf(options, rec({ state: "asked", choice: null }))).toBe("approve");
   expect(primaryOf(options, rec({ choice: "maybe" }))).toBe("approve");
   expect(primaryOf(options, null)).toBe("approve");
-});
-
-// The waiting card's line (docs/design/ui.md, The waiting card).
-const OPTIONS = ["approve", "reject"];
-const label = (option: string) => option.toUpperCase();
-const bar = (given: RecommendationInfo | null, more: { whole?: boolean } = {}) =>
-  render(<RecommendationBar rec={given} options={OPTIONS} label={label} {...more} />);
-
-test("the card's line names the option as its button does, then the text on one line", () => {
-  bar(rec({ text: "Reject:\n\n**no** `test`, see [the log](http://x)." }));
-  const line = block().querySelector("button") as HTMLButtonElement;
-  expect(block().className).toBe("rec-bar");
-  expect(line.querySelector(".avatar.mini")?.textContent).toBe("S");
-  expect(line.querySelector(".rec-bar-name")?.textContent).toBe("Supervisor recommends REJECT:");
-  expect(line.querySelector(".rec-bar-text")?.textContent).toBe("Reject: no test, see the log.");
-  expect(line.getAttribute("aria-expanded")).toBe("false");
-});
-
-test("a disagreement stands right after the option, in orange, so a cut never takes it", () => {
-  bar(rec({ disagrees: true }));
-  expect(block().querySelector(".rec-bar-name")?.textContent).toBe("Supervisor recommends REJECT · disagrees with reviewer:");
-  expect(block().querySelector(".rec-bar-name .rec-differs")?.textContent).toBe(" · disagrees with reviewer");
-});
-
-test.each([[null], ["maybe"]])("with the choice %s the line has no option of the card's", (choice) => {
-  bar(rec({ choice }));
-  expect(block().querySelector(".rec-bar-name")?.textContent).toBe("Supervisor's recommendation:");
-});
-
-test("a click opens the line to its text as Markdown in a box that scrolls, a second closes it", () => {
-  bar(rec());
-  const line = block().querySelector("button") as HTMLButtonElement;
-  fireEvent.click(line);
-  expect(line.getAttribute("aria-expanded")).toBe("true");
-  const box = block().querySelector(".rec-bar-body") as HTMLElement;
-  expect(box.getAttribute("tabindex")).toBe("0");
-  expect(box.querySelector(".chat-body strong")?.textContent).toBe("no");
-  expect(block().querySelector(".rec-bar-text")).toBeNull();
-  fireEvent.click(line);
-  expect(block().querySelector(".rec-bar-body")).toBeNull();
-});
-
-test("in the expanded card the text is whole, with nothing to open", () => {
-  bar(rec(), { whole: true });
-  expect(block().className).toBe("rec-bar whole");
-  expect(block().querySelector("button")).toBeNull();
-  expect(block().querySelector(".rec-bar-body .chat-body strong")?.textContent).toBe("no");
-});
-
-test.each([
-  ["asked", "Supervisor is preparing a recommendation…"],
-  ["missing", "The supervisor gave no recommendation"],
-] as const)("a recommendation %s is a muted line in the card too", (state, text) => {
-  bar(rec({ state, text: "", choice: null, at: null }));
-  expect(block().className).toBe("rec-bar waiting");
-  expect(block().textContent).toContain(text);
-  expect(block().querySelector("button")).toBeNull();
-});
-
-test("none asked shows no line", () => {
-  const { container } = bar(null);
-  expect(container.innerHTML).toBe("");
-});
-
-test("a text on one line loses its Markdown's marks and its breaks", () => {
-  expect(oneLine("# Head\n\n- **a** and _b_\n> `c` [d](http://e) ![f](g.png)")).toBe("Head a and b c d f");
-});
-
-test.each([
-  ["set max_retries in test_chat.py", "set max_retries in test_chat.py"],
-  ["2*3 and 4*5 pages", "2*3 and 4*5 pages"],
-  ["see ~/.lado/lado.db", "see ~/.lado/lado.db"],
-  ["`max_retries` and `*.py` stay", "max_retries and *.py stay"],
-  ["**bold** _em_ *em* ~~gone~~", "bold em em gone"],
-])("a text on one line keeps what is no mark: %s", (text, line) => {
-  expect(oneLine(text)).toBe(line);
-});
-
-test.each([
-  ["**a** **b**", "a b"],
-  ["__a__ and __b__, ~~c~~ ~~d~~", "a and b, c d"],
-  ["***both***", "both"],
-  ["**Approve: `x.py` is green**", "Approve: x.py is green"],
-  ["_see `a_b`_ now", "see a_b now"],
-  ["[`x.py`](http://e) is it", "x.py is it"],
-])("a text on one line takes each pair of marks, around code too: %s", (text, line) => {
-  expect(oneLine(text)).toBe(line);
-});
-
-test.each([
-  ["call `arr[0](x)` first", "call arr[0](x) first"],
-  ["`**not bold**` stays", "**not bold** stays"],
-  ["``a`b`` stays", "a`b stays"],
-  ["run:\n```py\nfoo()\nbar()\n```\ndone", "run: foo() bar() done"],
-  ["~~~\n- a_b_\n~~~", "- a_b_"],
-  ["run:\n```\nfoo()", "run: foo()"],
-  ["```foo``` is wrong\nThe rest.", "foo is wrong The rest."],
-])("a text on one line keeps its code as it is: %s", (text, line) => {
-  expect(oneLine(text)).toBe(line);
 });

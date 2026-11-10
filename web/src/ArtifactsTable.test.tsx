@@ -87,6 +87,7 @@ function gate(more: Partial<GateInfo> = {}): GateInfo {
     closed_by_event: null,
     answer_attachments: [],
     problem: null,
+    note_by: null,
     recommendation: null,
     ...more,
   };
@@ -642,26 +643,25 @@ const REVIEW = artifact(
 // An open gate's tab in the waiting card.
 const gateCard = async () => (await screen.findByText("Approve the design?")).closest('[role="tabpanel"]') as HTMLElement;
 
-test("a gate shows its note with its chips, then the artifacts it reads by their latest records", async () => {
+test("a gate shows its note, then one row of chips: the note's, then the artifacts it reads by their latest records", async () => {
   serve({
     artifacts: [DESIGN, REVIEW, PLAN],
-    gates: [gate({ note_body: "No questions.", reads: ["feature/x/review", "feature/x/mockup"] })],
+    gates: [gate({ note_body: "No questions.", reads: ["feature/x/review", "feature/x/mockup", "feature/x/design"] })],
   });
   open("/sessions/lado/activity");
   const card = await gateCard();
   const chip = within(card).getByRole("button", { name: "Open artifact feature/x/design" });
   expect(chip.querySelector(".scope-part")).toBeNull();
-  expect(chip.textContent).toContain("design");
-  const reads = await within(card).findByRole("list", { name: "Artifacts it reads" });
-  expect(within(reads).getAllByRole("listitem").map((one) => one.textContent)).toEqual([
-    expect.stringMatching(/^review.*The review — looks fine$/),
-    "mockup: no record yet",
-  ]);
-  // The note, all of it, comes first; the artifacts it reads under it.
-  const order = [card.querySelector(".gate-note"), reads];
+  // By their titles, each once (the note's design is not read again), with no size.
+  await within(card).findByRole("button", { name: "Open artifact feature/x/review" });
+  const row = card.querySelector(".chips") as HTMLElement;
+  expect([...row.children].map((one) => one.textContent)).toEqual(["The design", "The review", "mockup: no record yet"]);
+  expect(row.querySelector(".chip-size")).toBeNull();
+  // The note, all of it, comes first; the chips under it.
+  const order = [card.querySelector(".gate-note"), row];
   expect(order[0]!.compareDocumentPosition(order[1]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(within(card).getByText("No questions.")).toBeTruthy();
-  fireEvent.click(within(reads).getByRole("button", { name: "Open artifact feature/x/review" }));
+  fireEvent.click(within(row).getByRole("button", { name: "Open artifact feature/x/review" }));
   expect(await screen.findByRole("dialog", { name: "Artifact feature/x/review" })).toBeTruthy();
   expect(address()).toBe("/sessions/lado/activity?view=v1");
 });
@@ -670,11 +670,11 @@ test("a write while the gate is open shows at once: a newer record, and its note
   serve({ artifacts: [DESIGN, REVIEW], gates: [gate({ reads: ["feature/x/review"] })] });
   open("/sessions/lado/activity");
   const card = await gateCard();
-  const reads = await within(card).findByRole("list", { name: "Artifacts it reads" });
-  expect(reads.textContent).toContain("looks fine");
+  await within(card).findByRole("button", { name: "Open artifact feature/x/review" });
   const review = artifact(REVIEW, { ...REVIEW.latest, id: "v2", hash: "hv2", summary: "two nits" });
   act(() => stream().send("change", { kind: "artifacts", session: "lado", key: "a4", op: "update", item: review }));
-  expect(await within(reads).findByText(/two nits/)).toBeTruthy();
+  fireEvent.click(within(card).getByRole("button", { name: "Open artifact feature/x/review" }));
+  await waitFor(() => expect(address()).toBe("/sessions/lado/activity?view=v2")); // the newer record
   expect(within(card).queryByText(/changed since/)).toBeNull();
   const design = artifact({}, { id: "r2", hash: "h2", created_at: "2026-10-07T14:00:00.000Z" });
   act(() => stream().send("change", { kind: "artifacts", session: "lado", key: "a1", op: "update", item: design }));
@@ -684,7 +684,10 @@ test("a write while the gate is open shows at once: a newer record, and its note
 test("a note in a run's history carries its chips", async () => {
   serve({ runs: [RUN], notes: [note(3)], gates: [gate()] });
   open("/sessions/lado/flows/feature%2Fx");
-  const chip = await screen.findByRole("button", { name: "Open artifact feature/x/design" });
+  // The gate's whole card carries the note's chip too.
+  const [inGate, chip] = await screen.findAllByRole("button", { name: "Open artifact feature/x/design" });
+  expect(inGate.closest(".waiting-panel")).toBeTruthy();
+  expect(chip.closest(".waiting-panel")).toBeNull();
   fireEvent.click(chip);
   expect(await screen.findByRole("dialog", { name: "Artifact feature/x/design" })).toBeTruthy();
 });

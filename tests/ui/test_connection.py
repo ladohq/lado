@@ -204,7 +204,8 @@ def test_what_waits_for_the_human_looks_as_ever_with_the_connection_fine(page: P
     pill = page.locator(".pill.waits").first
     expect(pill).to_have_css("cursor", "auto")
     expect(pill).to_have_css("display", "block")  # in its row of flex, not a flex of its own
-    expect(page.locator(".run-now.waits")).to_have_css("cursor", "auto")
+    # The run's now is its gate's whole card (LAD-266), no `.run-now.waits` around it.
+    expect(page.get_by_role("region", name="Build it as planned?")).to_have_css("cursor", "auto")
 
 
 def test_approve_as_the_server_goes_then_not_delivered_and_retry(

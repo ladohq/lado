@@ -15,7 +15,7 @@ import { AgentName } from "./Agents";
 import { Attachments } from "./Attachments";
 import { Body, clock, since } from "./ChatText";
 import { direction, OutcomeChip } from "./flowSteps";
-import { GateCard, gateTitle } from "./GateCard";
+import { GateCard } from "./GateCard";
 import { useLive, useLiveStore, type ListLoaded } from "./live";
 import { filterGroups, ListGroup, type Entry as ListEntry } from "./ListPage";
 import { FIND_PARAM, runPath, sessionPath } from "./paths";
@@ -425,8 +425,8 @@ function States({ run }: { run: RunInfo }) {
 }
 
 // What goes on now: who acts, as the core says it, and the visit; the gate the run waits at,
-// compact, or why it waits; or when it ended, the end's or cancel's detail and how long the
-// run took.
+// its whole card with "Waits for you" over its question, or why it waits; or when it ended,
+// the end's or cancel's detail and how long the run took.
 function Now({
   session,
   run,
@@ -441,20 +441,18 @@ function Now({
   lists: Lists;
 }) {
   if (run.status === "waiting") {
+    const kicker = `Waits for you · ${since(run.since)}`;
+    if (gate) {
+      return (
+        <section className="run-now-gate" aria-label="Now">
+          <GateCard session={session} gate={gate} stopped={stopped} kicker={kicker} />
+        </section>
+      );
+    }
     return (
       <section className="run-now waits" aria-label="Now">
-        <span className="now-head">Waits for you · {since(run.since)}</span>
-        {gate ? (
-          <article className="run-gate" aria-label={`Gate #${gate.id}`}>
-            <header className="gate-head">
-              <h4 className="gate-title">{gateTitle(gate)}</h4>
-              <time dateTime={gate.created_at}>{clock(gate.created_at)}</time>
-            </header>
-            <GateCard session={session} gate={gate} stopped={stopped} compact />
-          </article>
-        ) : (
-          <span className="now-text">{run.reason}</span>
-        )}
+        <span className="now-head">{kicker}</span>
+        <span className="now-text">{run.reason}</span>
       </section>
     );
   }

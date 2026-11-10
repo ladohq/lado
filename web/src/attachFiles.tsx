@@ -287,10 +287,10 @@ export function ClipButton({ limits, disabled, attach }: { limits: Limits | null
 // the text, which grows with it from CARD_LINES to MOST_LINES. Files are attached by the
 // paperclip, a paste while the focus is in it, or a drop on its frame, which is its own drop
 // zone; a file the limits refuse is named under it. `files` are kept by who shows it, and
-// the `limits` loaded with it, so a file attached as soon as the field shows is marked by
-// them.
+// them. `label` names it, and is its placeholder unless it has one of its own.
 export function AnswerBox({
   label,
+  placeholder = label,
   text,
   change,
   off,
@@ -302,6 +302,7 @@ export function AnswerBox({
   lines = [CARD_LINES, MOST_LINES],
 }: {
   label: string;
+  placeholder?: string;
   text: string;
   change: (value: string) => void;
   off: boolean; // the field and its files can not change (a stopped session)
@@ -347,7 +348,7 @@ export function AnswerBox({
             rows={lines[0]}
             autoFocus={autoFocus}
             aria-label={label}
-            placeholder={label}
+            placeholder={placeholder}
             value={text}
             disabled={off}
             onChange={(event) => change(event.target.value)}

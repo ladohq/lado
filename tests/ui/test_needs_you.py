@@ -10,7 +10,7 @@ import agent_helpers
 import pytest
 from playwright.sync_api import Page, expect
 from test_chat import asked_with_a_plan, on_top
-from test_gates import LONG_NOTE, gated_session
+from test_gates import LONG_NOTE, gated_session, recommended
 from test_main_screen import log_in, running_session
 
 from lado import runtime, state
@@ -81,9 +81,10 @@ def test_cards_taller_than_the_window_leave_the_page_at_its_top(page: Page, serv
 def test_a_long_note_on_needs_you_is_whole_and_the_page_scrolls_to_its_footer(
     page: Page, server, repo, shot, width
 ):
-    """No limit on the context, no fade, no ↓ more and no Expand: the page scrolls, and the
-    footer stands right under the context."""
+    """No limit on the report or the recommendation, no fade, no splitter and no Expand: the
+    page scrolls, and the footer stands right under the report."""
     session = gated_session(repo, LONG_NOTE)
+    recommended(session, "A reason to approve. " * 60, choice="approve")
     page.set_viewport_size({"width": width, "height": 900})
     log_in(page, server)
     page.goto(f"{server['url']}/needs-you")
@@ -91,31 +92,55 @@ def test_a_long_note_on_needs_you_is_whole_and_the_page_scrolls_to_its_footer(
     context = card.get_by_role("region", name="Context of the card")
     expect(context).to_contain_text("Point 19")
     assert context.evaluate("c => c.scrollHeight <= c.clientHeight + 1")
-    top = card.locator(".waiting-top")
-    assert top.bounding_box()["height"] > 360  # past 40 % of the window
-    expect(card.get_by_role("button", name="↓ more")).to_have_count(0)
+    assert context.bounding_box()["height"] > 450  # past half the window
+    text = card.get_by_role("note", name="Supervisor's recommendation").locator(".rec-text")
+    expect(text).to_be_attached()
+    for box in (context, text):
+        assert box.evaluate("b => getComputedStyle(b).maxHeight") == "none"
+        expect(box).not_to_have_class(re.compile(r"\bhas-more\b"))
+    assert text.evaluate("t => t.scrollHeight <= t.clientHeight + 1")  # all of it shows
+    expect(card.get_by_role("separator")).to_have_count(0)
     expect(card.get_by_role("button", name="Expand the card")).to_have_count(0)
     foot = card.locator(".waiting-foot").bounding_box()
-    assert abs(foot["y"] - top.bounding_box()["y"] - top.bounding_box()["height"]) <= 1
+    box = context.bounding_box()
+    assert abs(foot["y"] - box["y"] - box["height"]) <= 1
     approve = card.get_by_role("button", name="Approve", exact=True)
     approve.scroll_into_view_if_needed()
     expect(approve).to_be_in_viewport()
     shot(page, full_page=False)
 
 
-def test_a_narrow_windows_chat_keeps_the_limit_of_the_window(page: Page, server, repo, shot):
-    """In a chat with no height of its own the limit is 40 % of the window; the footer comes
-    right under the top."""
+def test_a_narrow_windows_chat_keeps_the_card_to_half_of_it(page: Page, server, repo, shot):
+    """In a window 800 px wide the card is at most half the chat; the footer comes right under
+    the report."""
     session = gated_session(repo, LONG_NOTE)
     page.set_viewport_size({"width": 800, "height": 900})
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
     card = page.get_by_role("region", name=f"What waits for you in {session}")
-    top = card.locator(".waiting-top")
-    expect(top).to_be_visible()
-    assert top.bounding_box()["height"] <= 360 + 1
-    foot = card.locator(".waiting-foot").bounding_box()
-    assert abs(foot["y"] - top.bounding_box()["y"] - top.bounding_box()["height"]) <= 1
+    report = card.locator(".waiting-scroll")
+    expect(report).to_be_visible()
+    # The footer as it stays: the gate's request for a recommendation handled.
+    agent_helpers.wait_for(
+        lambda: state.get_gate(1).recommendation_state == state.REC_MISSING,
+        "gate #1's request handled",
+        session,
+    )
+    expect(card.locator(".rec-asked")).to_have_count(0)
+    page.evaluate(
+        "() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))"
+    )
+    got = card.evaluate(
+        """c => {
+          const at = s => c.querySelector(s).getBoundingClientRect();
+          return {
+            card: c.getBoundingClientRect().height,
+            chat: c.closest('.chat').getBoundingClientRect().height,
+            gap: at('.waiting-foot').top - at('.waiting-scroll').bottom,
+          };
+        }"""
+    )
+    assert got["card"] <= got["chat"] / 2 + 1 and abs(got["gap"]) <= 1, got
     expect(card.get_by_role("button", name="Approve", exact=True)).to_be_visible()
     shot(page, full_page=False)
 

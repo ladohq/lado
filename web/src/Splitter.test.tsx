@@ -131,6 +131,12 @@ test("a splitter that resets itself calls onReset on a double click instead", ()
   expect([changed.mock.calls, reset.mock.calls.length]).toEqual([[], 1]);
 });
 
+test("without its hint a splitter has no tooltip, only its name", () => {
+  render(<Splitter label="Resize the card" edge="top" width={300} bounds={BOUNDS} onChange={() => {}} hint={false} grip />);
+  const edge = screen.getByRole("separator", { name: "Resize the card" });
+  expect(edge.hasAttribute("title")).toBe(false);
+});
+
 test("a top edge is horizontal: up makes its block taller, by the keys and by the pointer's y", () => {
   render(<Column edge="top" />);
   expect(splitter().getAttribute("aria-orientation")).toBe("horizontal");

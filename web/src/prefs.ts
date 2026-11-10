@@ -192,6 +192,21 @@ export function storeWaitingHeight(height: number | null): void {
   else write(WAITING_HEIGHT, String(height));
 }
 
+// The height of the recommendation's text in the waiting card, set by its splitter: one value
+// for every card (none: 4 lines, a phone's 2), at least a line.
+const REC_HEIGHT = "lado.recommendationHeight";
+export const REC_MIN = 20;
+
+export function storedRecommendationHeight(): number | null {
+  const height = Number(read(REC_HEIGHT) ?? NaN);
+  return Number.isFinite(height) && height >= REC_MIN ? height : null;
+}
+
+export function storeRecommendationHeight(height: number | null): void {
+  if (height === null) remove(REC_HEIGHT);
+  else write(REC_HEIGHT, String(height));
+}
+
 // The keys of the tabs a session's waiting card had when the human minimized it (none: not
 // minimized): it stays minimized while each tab it shows is one of them.
 const MINIMIZED = "lado.waitingMinimized.";

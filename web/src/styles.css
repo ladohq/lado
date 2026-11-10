@@ -7055,10 +7055,13 @@ button.locked:disabled,
   cursor: pointer;
 }
 
+/* As wide as the name (its size), not the row: the secondary follows it. */
 .field input.place-input.place-name {
   flex: 0 1 auto;
+  width: auto;
   min-width: 0;
   max-width: 100%;
+  field-sizing: content;
   font-size: 15px;
   font-weight: 600;
   text-overflow: ellipsis;

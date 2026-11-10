@@ -28,7 +28,7 @@
 
 ## 4. In a browser (UI e2e)
 
-- [ ] 4.1 `tests/ui/test_launch.py`, `tests/ui/test_launch_project.py`,
+- [x] 4.1 `tests/ui/test_launch.py`, `tests/ui/test_launch_project.py`,
   `tests/ui/launch_window.py`: existing texts follow; new tests of a task's key naming the
   session, a typed name with its title, the project `lado`/`lado`, the phone's label row (F8)
   and Where on one line at 390 px (AC-1, AC-2, AC-4, AC-6, AC-7, AC-9). Screenshots at 390, 768

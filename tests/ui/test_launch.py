@@ -10,7 +10,7 @@ import uuid
 import agent_helpers
 import pytest
 from launch_window import (
-    add_setup,
+    add_kit,
     agent,
     name_field,
     new_session,
@@ -197,32 +197,106 @@ def test_a_session_starts_from_the_new_session_window(page: Page, server, repo, 
 
 def test_a_session_starts_with_a_task(page: Page, server, repo, shot):
     """Task, a visible field, takes the human's first message; the session's chat shows it
-    as the human's (capability session-first-message)."""
+    as the human's (capability session-first-message). The tracker key that starts it names
+    the session (change session-name-from-task)."""
     log_in(page, server)
     dialog, where = other_folder(page)  # no sessions: New empty folder
     where.fill(str(repo))
     expect(dialog).to_contain_text("✓ Ready · branch main")
+    expect(name_field(dialog)).to_have_value("my-repo")
     agent(dialog).select_option("fake")
     field = dialog.get_by_role("textbox", name="Task")
     expect(field).to_be_visible()
     expect(field).to_have_attribute("placeholder", "What should the team do?")
-    field.fill("Take LAD-19 from the tracker.\nAsk me about the scope first.")
+    field.fill("LAD-19: take it from the tracker.\nAsk me about the scope first.")
+    expect(name_field(dialog)).to_have_value("lad-19")
     shot(page, "window")
 
     start_button(dialog).click()
-    expect(page).to_have_url(f"{server['url']}/sessions/my-repo/activity")
+    expect(page).to_have_url(f"{server['url']}/sessions/lad-19/activity")
     chat = page.get_by_role("log", name="Chat with the session")
     mine = chat.get_by_role("article", name="Message from you")
-    expect(mine).to_contain_text("Take LAD-19 from the tracker.")
+    expect(mine).to_contain_text("LAD-19: take it from the tracker.")
     expect(mine).to_contain_text("Ask me about the scope first.")
-    [message] = [m for m in state.list_messages("my-repo") if m.sender == state.HUMAN]
+    [message] = [m for m in state.list_messages("lad-19") if m.sender == state.HUMAN]
     assert message.summary == runtime.FIRST_MESSAGE
     agent_helpers.wait_for(
-        lambda: state.get_message("my-repo", message.id).state == state.DELIVERED,
+        lambda: state.get_message("lad-19", message.id).state == state.DELIVERED,
         "the first message delivered",
-        "my-repo",
+        "lad-19",
     )
     shot(page, "chat")
+
+
+def test_a_typed_name_starts_the_session_with_it_as_its_title(page: Page, server, repo, shot):
+    """A name the human types is kept over the task; the session takes its plain form as its
+    name and the text as its title (change session-name-from-task)."""
+    log_in(page, server)
+    dialog, where = other_folder(page)
+    where.fill(str(repo))
+    expect(dialog).to_contain_text("✓ Ready · branch main")
+    agent(dialog).select_option("fake")
+    name = name_field(dialog)
+    name.fill("Review Kao")
+    dialog.get_by_role("textbox", name="Task").fill("LAD-7: fix the thing")
+    expect(dialog.locator(".launch-task")).to_contain_text(
+        "Name shown as “Review Kao” · in links and branches: review-kao"
+    )
+    expect(name).to_have_value("Review Kao")
+    shot(page, "typed")
+    start_button(dialog).click()
+    expect(page).to_have_url(f"{server['url']}/sessions/review-kao/activity")
+    idle("review-kao")
+    assert state.get_session("review-kao").title == "Review Kao"
+    head = page.get_by_role("banner").locator(".session-head")
+    expect(head.get_by_role("heading", level=1)).to_have_text("Review Kao")
+    runtime.stop_session("review-kao")
+
+
+def _box(locator) -> dict:
+    box = locator.bounding_box()
+    assert box is not None, locator
+    return box
+
+
+@pytest.mark.parametrize("width", [390, 768, 1440])
+def test_names_label_row_at_each_width(page: Page, server, repo, shot, width):
+    """Task's label row with Name on its right: on a phone the free room falls between
+    `Task ⓘ` and `Name ⓘ` (F8, option B), and Name is no wider than 140 px; a taken
+    automatic name is numbered, a typed one noted; Team opened says Kits."""
+    runtime.start_session(str(repo), "my-repo", None, "fake")  # the folder's name, taken
+    idle("my-repo")
+    page.set_viewport_size({"width": width, "height": 900 if width > 760 else 844})
+    log_in(page, server)
+    dialog, where = other_folder(page)
+    where.fill(str(repo))
+    expect(dialog).to_contain_text("✓ Ready · branch main")
+    name = name_field(dialog)
+    expect(name).to_have_value("my-repo-2")
+    expect(dialog.locator(".launch-task")).to_contain_text(
+        "Name: my-repo exists already, so this one is my-repo-2."
+    )
+    head = dialog.locator(".task-head")
+    task_label = head.locator("> .field-label label")
+    task_tip = head.locator("> .field-label .info-tip")
+    name_label = head.locator(".name-inline .field-label label")
+    name_tip = head.locator(".name-inline .info-tip")
+    assert abs(_box(task_label)["y"] - _box(name_label)["y"]) < 4  # one row
+    inside = _box(task_tip)["x"] - (_box(task_label)["x"] + _box(task_label)["width"])
+    between = _box(name_label)["x"] - (_box(task_tip)["x"] + _box(task_tip)["width"])
+    inner = _box(name_tip)["x"] - (_box(name_label)["x"] + _box(name_label)["width"])
+    assert between > 2 * max(inside, inner, 1), (inside, between, inner)
+    if width <= 760:
+        assert _box(name)["width"] <= 140.5, _box(name)
+    shot(page, f"numbered-{width}", full_page=False)
+
+    name.fill("Review Kao")
+    expect(dialog.locator(".launch-task")).to_contain_text("Name shown as “Review Kao”")
+    shot(page, f"typed-{width}", full_page=False)
+
+    agent(dialog).select_option("fake")
+    expect(dialog.get_by_role("group", name=re.compile("^Kits"))).to_be_visible()
+    shot(page, f"team-{width}", full_page=False)
 
 
 def test_a_role_in_two_kits_is_switched_off_from_the_refusal(page: Page, server, repo, shot):
@@ -239,8 +313,8 @@ def test_a_role_in_two_kits_is_switched_off_from_the_refusal(page: Page, server,
     where.fill(str(repo))
     expect(dialog).to_contain_text("✓ Ready · branch main")
     agent(dialog).select_option("fake")
-    add_setup(dialog).select_option("kit-a")
-    add_setup(dialog).select_option("kit-b")
+    add_kit(dialog).select_option("kit-a")
+    add_kit(dialog).select_option("kit-b")
     start_button(dialog).click()
     expect(dialog.get_by_role("alert")).to_contain_text('agent "reviewer" is defined by two kits')
     dialog.get_by_role("button", name="Switch off reviewer of kit-b").click()
@@ -854,7 +928,7 @@ def test_a_clone_there_already_is_used_as_it_is(page: Page, server, tmp_path, sh
 
     dialog.get_by_role("button", name="Use this clone").click()
     expect(dialog.get_by_role("combobox", name="Where")).to_have_value("app")
-    expect(dialog.locator(".place-box .place-path")).to_have_text(str(into))
+    expect(dialog.locator(".place-box .place-sub")).to_have_text(str(into))
     expect(dialog).to_contain_text("✓ Ready · branch main")
 
 
@@ -904,7 +978,8 @@ def test_a_first_session_from_scratch(page: Page, projects, server, shot):
     expect(dialog.locator(".launch-body > *").first).to_contain_text("Where")  # no message above
     folder_name.fill("Сайт кофейни")
     expect(dialog).to_contain_text("folder sait-kofeini")
-    expect(dialog.locator(".team-sum")).to_contain_text("Name sait-kofeini")
+    expect(dialog).to_contain_text("Also the session’s name.")
+    expect(name_field(dialog)).to_have_count(0)
     agent(dialog).select_option("fake")
     create = dialog.get_by_role("button", name="Create and start")
     expect(create).to_be_enabled()
@@ -975,8 +1050,9 @@ def test_no_author_in_the_container(page: Page, projects, git_config, server_in_
 
 def test_scenario_1_a_new_session_beside_a_stopped_one_with_a_task(page: Page, server, repo, shot):
     """The latest session ran in the folder and is stopped: the window opens on it with one
-    button, Start new session, the main one, and no Resume (LAD-261); it starts `<name>-2`
-    with the task as its first message, and the stopped session stays stopped."""
+    button, Start new session, the main one, and no Resume (LAD-261); `<name>-2` until a
+    task names it, then the task's name, with the task as its first message, and the stopped
+    session stays stopped."""
     runtime.start_session(str(repo), "my-repo", None, "fake")
     idle("my-repo")
     agent_helpers.wait_for(lambda: loop.running("my-repo"), "the session loop", "my-repo")
@@ -993,7 +1069,8 @@ def test_scenario_1_a_new_session_beside_a_stopped_one_with_a_task(page: Page, s
     expect(dialog.locator(".launch-buttons button")).to_have_text(
         ["Cancel", "Start new session my-repo-2"]
     )
-    expect(dialog.locator(".team-sum")).to_contain_text("Name my-repo-2")
+    expect(name_field(dialog)).to_have_value("my-repo-2")
+    expect(dialog.locator(".team-sum")).not_to_contain_text("Name")
     shot(page, "a")
     for width in (1440, 390):
         page.set_viewport_size({"width": width, "height": 900 if width > 760 else 844})
@@ -1001,24 +1078,26 @@ def test_scenario_1_a_new_session_beside_a_stopped_one_with_a_task(page: Page, s
     page.set_viewport_size({"width": 1440, "height": 900})
 
     task.fill("Add a contact form")
+    fresh = dialog.get_by_role("button", name="Start new session add-contact-form")
     expect(fresh).to_have_class("primary")
+    expect(dialog.locator(".place-line")).to_contain_text("· Session my-repo stopped here")
     shot(page, "a2")
     fresh.click()
-    expect(page).to_have_url(f"{server['url']}/sessions/my-repo-2/activity")
+    expect(page).to_have_url(f"{server['url']}/sessions/add-contact-form/activity")
     chat = page.get_by_role("log", name="Chat with the session")
     expect(chat.get_by_role("article", name="Message from you")).to_contain_text(
         "Add a contact form"
     )
-    idle("my-repo-2")
+    idle("add-contact-form")
     assert state.get_session("my-repo").stopped_at is not None
-    runtime.stop_session("my-repo-2")
+    runtime.stop_session("add-contact-form")
 
 
 def test_where_lists_recent_places_and_a_project_repository_starts_in_its_project(
     page: Page, shop, server, repo, shot
 ):
     """A session of the project's repository and one of a folder: Where's Recent has both,
-    the project's with its badge; picking it starts in the project."""
+    the project's with `in project Shop`; picking it starts in the project."""
     runtime.start_session(None, "shop-frontend", None, "fake", project="shop", repo_name="frontend")
     idle("shop-frontend")
     runtime.stop_session("shop-frontend")
@@ -1028,7 +1107,7 @@ def test_where_lists_recent_places_and_a_project_repository_starts_in_its_projec
     expect(dialog.get_by_role("combobox", name="Where")).to_have_value(repo.name)
     pick_place(dialog, re.compile("^frontend"))  # opens the list, the project's item
     expect(dialog.get_by_role("combobox", name="Where")).to_have_value("frontend")
-    expect(dialog.locator(".place-box .place-badge")).to_have_text("Project Shop")
+    expect(dialog.locator(".place-box .place-sub")).to_have_text("in project Shop")
     expect(dialog.get_by_role("button", name="Start new session in Shop")).to_be_visible()
     expect(dialog.get_by_role("button", name="Resume shop-frontend")).to_have_count(0)
     where = dialog.get_by_role("combobox", name="Where")
@@ -1042,11 +1121,12 @@ def test_where_lists_recent_places_and_a_project_repository_starts_in_its_projec
     where.press("Escape")
     expect(dialog).to_be_visible()  # the first Esc closes only the list
     dialog.get_by_role("textbox", name="Task").fill("Fix the checkout")
+    expect(name_field(dialog)).to_have_value("fix-checkout")
     dialog.get_by_role("button", name="Start new session in Shop").click()
-    expect(page).to_have_url(f"{server['url']}/sessions/shop-frontend-2/activity")
-    assert state.get_session("shop-frontend-2").project == "shop"
-    idle("shop-frontend-2")
-    runtime.stop_session("shop-frontend-2")
+    expect(page).to_have_url(f"{server['url']}/sessions/fix-checkout/activity")
+    assert state.get_session("fix-checkout").project == "shop"
+    idle("fix-checkout")
+    runtime.stop_session("fix-checkout")
 
 
 def test_team_opens_with_permissions_in_words(page: Page, server, repo, shot):
@@ -1102,18 +1182,21 @@ def test_a_plain_folder_is_set_up_and_started(page: Page, git_config, server, tm
 def test_a_refused_start_leaves_the_focus_on_the_field_and_esc_gives_it_back(
     page: Page, server, repo, shot
 ):
-    """A start refused for its name puts the focus on Session name, never on the page's
-    body; Esc closes the window and gives the focus back to its opener."""
+    """A name a session has is refused beside Task before the press, and the footer's link
+    puts the focus on Name, never on the page's body; Esc closes the window and gives the
+    focus back to its opener."""
     taken = running_session(repo)
     log_in(page, server)
     dialog, where = other_folder(page)
     where.fill(str(repo))
     agent(dialog).select_option("fake")
-    name = dialog.get_by_role("textbox", name="Session name")
-    name.fill(taken)  # a race: the name a session has
-    start_button(dialog).click()
-    expect(name).to_be_focused()
+    name = name_field(dialog)
+    name.fill(taken)
     expect(name).to_have_attribute("aria-invalid", "true")
+    expect(dialog.locator(".launch-task")).to_contain_text(f"Name: a session named {taken} exists")
+    expect(start_button(dialog)).to_be_disabled()
+    dialog.get_by_role("button", name="choose another name").click()
+    expect(name).to_be_focused()
     assert page.evaluate("document.activeElement !== document.body")
     shot(page, "refused")
     page.keyboard.press("Escape")
@@ -1139,4 +1222,4 @@ def test_the_resume_window(page: Page, server, repo, shot):
     dialog.get_by_role("button", name="Start a new session instead").click()
     fresh = page.get_by_role("dialog", name="New session")
     expect(fresh.get_by_role("combobox", name="Where")).to_have_value(repo.name)
-    expect(fresh.locator(".team-sum")).to_contain_text("Name my-repo")
+    expect(name_field(fresh)).to_have_value("my-repo")

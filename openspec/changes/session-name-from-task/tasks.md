@@ -45,6 +45,6 @@
   name beside Task, from the task, kept as typed; Changed: a project's default session name
   no longer repeats the project (resume an older one by its name), Where on one line, Kits
   (AC-10).
-- [ ] 5.3 Regression: `make lint`, `make test`, `make web`, the UI run of 4.1, `openspec
+- [x] 5.3 Regression: `make lint`, `make test`, `make web`, the UI run of 4.1, `openspec
   validate session-name-from-task --strict`, `openspec validate --specs --strict` and the trial
   archive of the settings' Checks.

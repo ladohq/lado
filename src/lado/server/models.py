@@ -1235,7 +1235,7 @@ class ProjectLaunch(BaseModel):
     # the chosen repository's git root, links resolved: the folder its sessions have
     # (SessionInfo.repo, Taken.repo); its listed path may go through a link
     root: str | None
-    default_name: str | None  # <project>-<repo> as the core makes it
+    default_name: str | None  # runtime.project_session_name: <project>-<repo>, no repeat
     free_name: str | None = None  # as FolderInfo's
     name_state: "NameState | None"  # a session of the name in no or another project: elsewhere
     provider: "ProviderSuggestion | None"

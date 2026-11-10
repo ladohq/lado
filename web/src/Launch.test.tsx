@@ -351,8 +351,8 @@ const teamSummary = () => document.querySelector(".team-sum")?.textContent ?? ""
 
 // Team's fields, also while it is folded (hidden).
 const providerSelect = () => screen.getByRole("combobox", { name: "Agent", hidden: true }) as HTMLSelectElement;
-const nameField = () => screen.getByRole("textbox", { name: "Session name", hidden: true }) as HTMLInputElement;
-const kitsGroup = () => screen.getByRole("group", { name: /^Team setup/, hidden: true });
+const nameField = () => screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement;
+const kitsGroup = () => screen.getByRole("group", { name: /^Kits/, hidden: true });
 
 const modeChosen = () => (document.querySelector(".mode-list input:checked") as HTMLInputElement | null)?.value;
 
@@ -406,8 +406,11 @@ test("the window asks Where, then Task, then shows Team, with no source switch a
   open();
   fireEvent.click(within(rail()).getByRole("button", { name: "New session" }));
   const dialog = await screen.findByRole("dialog", { name: "New session" });
-  const labels = [...dialog.querySelectorAll(".launch-body > .field > .field-label, .launch-team .team-head .field-label")]
-    .map((one) => one.textContent?.trim());
+  const labels = [
+    ...dialog.querySelectorAll(
+      ".launch-body > .field > .field-label, .task-head > .field-label, .launch-team .team-head .field-label",
+    ),
+  ].map((one) => one.textContent?.trim());
   expect(labels).toEqual(["Where", "Task", "Team"]);
   expect(within(dialog).queryByRole("group", { name: "Source" })).toBeNull();
   expect(within(dialog).queryByText(/Advanced/)).toBeNull();
@@ -420,11 +423,22 @@ test("the window opens on the last place with the focus in Task, and the button 
   open();
   fireEvent.click(within(rail()).getByRole("button", { name: "New session" }));
   await waitFor(() => expect(placeBox().value).toBe("webapp"));
-  expect(screen.getByText(WEBAPP, { selector: ".place-path" })).toBeTruthy();
+  expect(screen.getByText(WEBAPP, { selector: ".place-sub" })).toBeTruthy();
   await screen.findByText("✓ Ready · branch main");
   await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Task" })));
   await waitFor(() => expect(startButton().textContent).toBe("Start in webapp"));
   expect(calls.some((c) => c.path === `/api/folders?path=${encodeURIComponent(WEBAPP)}`)).toBe(true);
+});
+
+test("Where's info gives a folder's whole path; New empty folder's line names the workspace", async () => {
+  recent = [recentFolder(WEBAPP)];
+  folders[WEBAPP] = folder(WEBAPP);
+  const dialog = await openLaunch(false);
+  await waitFor(() => expect(placeBox().value).toBe("webapp"));
+  fireEvent.click(within(dialog).getByRole("button", { name: "About Where" }));
+  expect(within(dialog).getByText(WEBAPP, { selector: ".info-pop, .info-pop *" })).toBeTruthy();
+  await pickPlace("New empty folder…");
+  expect(screen.getByText(HOME_WORKSPACE, { selector: ".place-text .place-sub" })).toBeTruthy();
 });
 
 test("the first session ever opens on New empty folder, with no message above Where", async () => {
@@ -434,7 +448,7 @@ test("the first session ever opens on New empty folder, with no message above Wh
   await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Folder name" })));
 });
 
-test("Where's list has Recent with a project's badge, then Somewhere else", async () => {
+test("Where's list has Recent with a project's repository in its project, then Somewhere else", async () => {
   recent = [
     recentFolder(WEBAPP),
     recentFolder("/ws/projects/shop/backend", { project: "shop" }, { id: "shop", title: "Shop", repo: "backend" }),
@@ -446,7 +460,7 @@ test("Where's list has Recent with a project's badge, then Somewhere else", asyn
   const list = await screen.findByRole("listbox", { name: "Places" });
   expect([...list.querySelectorAll(".place-group")].map((one) => one.textContent)).toEqual(["Recent", "Somewhere else"]);
   const options = within(list).getAllByRole("option").map((one) => one.querySelector(".place-text")!.textContent);
-  expect(options).toEqual([`webapp${WEBAPP}`, "backendProject Shop", "Other folder…", "Clone from URL…", "New empty folder…", "Project…"]);
+  expect(options).toEqual([`webapp${WEBAPP}`, "backendin project Shop", "Other folder…", "Clone from URL…", "New empty folder…", "Project…"]);
   expect(placeBox().getAttribute("aria-expanded")).toBe("true");
   expect(within(list).getAllByRole("option")[0].getAttribute("aria-selected")).toBe("true");
 });
@@ -489,11 +503,11 @@ test("a typed path lists Use folder first, then its parent's subfolders; Enter o
   expect(await screen.findByText("✓ Ready · branch main")).toBeTruthy();
 });
 
-test("a recent project repository opens on its project: the badge, the button names the project", async () => {
+test("a recent project repository opens on its project, named on Where's line; the button names the project", async () => {
   recent = [recentFolder("/ws/projects/shop/backend", { project: "shop" }, { id: "shop", title: "Shop", repo: "backend" })];
   await openLaunch(false);
   await waitFor(() => expect(placeBox().value).toBe("backend"));
-  expect(screen.getByText("Project Shop", { selector: ".place-text .place-badge" })).toBeTruthy();
+  expect(screen.getByText("in project Shop", { selector: ".place-text .place-sub" })).toBeTruthy();
   expect(calls.some((c) => c.path === "/api/project-launch?project=shop&repo=backend")).toBe(true);
   await waitFor(() => expect(startButton().textContent).toMatch(/Shop$/));
   fireEvent.click(screen.getByRole("button", { name: "About Where" }));
@@ -515,12 +529,13 @@ test("a stopped session of the place gives the free name and one start button, t
   const line = await screen.findByText(/stopped here/);
   expect(line.closest(".place-line")!.textContent).toBe("✓ Ready · branch main · Session webapp stopped here 2 d ago");
   const fresh = screen.getByRole("button", { name: "Start new session webapp-2" }) as HTMLButtonElement;
-  expect(teamSummary()).toContain("Name webapp-2");
+  expect(nameField().value).toBe("webapp-2");
   expect(fresh.className).toBe("primary");
   expect(screen.queryByRole("button", { name: "Resume webapp" })).toBeNull();
   const order = () => [...document.querySelectorAll(".launch-buttons button")].map((one) => one.textContent);
   expect(order()).toEqual(["Cancel", "Start new session webapp-2"]);
-  fireEvent.change(screen.getByRole("textbox", { name: "Task" }), { target: { value: "Add a contact form" } });
+  // A task without Latin words leaves the place's name.
+  fireEvent.change(screen.getByRole("textbox", { name: "Task" }), { target: { value: "Добавить форму" } });
   expect(fresh.className).toBe("primary");
   answers["POST /api/sessions"] = () => json({ session: session("webapp-2", { repo: WEBAPP }), ...STARTED });
   await waitFor(() => expect(fresh.disabled).toBe(false));
@@ -530,7 +545,7 @@ test("a stopped session of the place gives the free name and one start button, t
   expect(calls.find((c) => c.method === "POST")!.body).toMatchObject({
     where: { kind: "folder", path: WEBAPP },
     name: "webapp-2",
-    prompt: "Add a contact form",
+    prompt: "Добавить форму",
   });
 });
 
@@ -540,25 +555,258 @@ test("a name a running session has gives the free name and one button", async ()
   folders[WEBAPP] = folder(WEBAPP, { default_name: "webapp", free_name: "webapp-2", name_state: "running" });
   await openLaunch(false);
   await screen.findByText("✓ Ready · branch main");
-  expect(teamSummary()).toContain("Name webapp-2");
+  expect(nameField().value).toBe("webapp-2");
+  expect(nameNote()).toBe("Name: webapp exists already, so this one is webapp-2.");
   expect(screen.queryByRole("button", { name: "Resume webapp" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "About Team" }));
-  expect(document.body.textContent).toContain('"webapp" is taken by another session.');
+  expect(document.body.textContent).not.toContain("is taken by another session");
 });
 
-test("a 409 after the press opens Team, puts the focus on Session name and offers the next name", async () => {
+test("a 409 after the press says so under Task, puts the focus on Name, offers the next name and leaves Team", async () => {
   answers["POST /api/sessions"] = () =>
     json({ detail: { message: 'session "app" exists already (stopped, in /src/app)', status: "stopped", repo: "/src/app" } }, 409);
   await openLaunch();
   await ready("/src/app");
   fireEvent.click(startButton());
-  await screen.findByText('session "app" exists already (stopped, in /src/app)');
-  await waitFor(() => expect(teamIsOpen()).toBe(true));
+  const refusal = await screen.findByText('session "app" exists already (stopped, in /src/app)');
+  expect(refusal.closest(".launch-task")).toBeTruthy();
   await waitFor(() => expect(document.activeElement).toBe(nameField()));
+  expect(teamIsOpen()).toBe(false);
   expect(nameField().getAttribute("aria-invalid")).toBe("true");
-  expect(nameField().getAttribute("aria-describedby")).toBeTruthy();
+  expect(nameField().getAttribute("aria-describedby")).toBe(refusal.closest("[id]")!.id);
   fireEvent.click(screen.getByRole("button", { name: "Use app-2" }));
   expect(nameField().value).toBe("app-2");
+});
+
+// The session's name beside Task (change session-name-from-task)
+
+const taskField = () => screen.getByRole("textbox", { name: "Task" }) as HTMLTextAreaElement;
+const nameNote = () => document.getElementById(nameField().getAttribute("aria-describedby") ?? "")?.textContent ?? "";
+const setTask = (text: string) => fireEvent.change(taskField(), { target: { value: text } });
+const setName = (text: string) => fireEvent.change(nameField(), { target: { value: text } });
+
+test("Name stands on Task's label row, not in Team", async () => {
+  await openLaunch();
+  await ready("/src/app");
+  expect(nameField().value).toBe("app");
+  expect(nameField().closest(".task-head")).toBeTruthy();
+  const head = nameField().closest(".task-head")!;
+  expect([...head.querySelectorAll(".field-label")].map((one) => one.textContent?.trim())).toEqual(["Task", "Name"]);
+  fireEvent.click(within(head as HTMLElement).getByRole("button", { name: "About Name" }));
+  expect(
+    screen.getByText(
+      "How you find this session in the list. LADO takes it from a tracker key in the task (LAD-263), else from the place; type your own, or clear the field to get LADO’s back.",
+    ),
+  ).toBeTruthy();
+  expect(teamSummary()).not.toContain("Name");
+  fireEvent.click(screen.getByRole("button", { name: "About Team" }));
+  expect(screen.getByText("Kits and permissions are LADO's defaults.")).toBeTruthy();
+  openTeam();
+  expect(screen.queryByRole("textbox", { name: "Session name", hidden: true })).toBeNull();
+});
+
+test("New empty folder has no Name: its Folder name is the session's", async () => {
+  await openLaunch(false);
+  await screen.findByRole("textbox", { name: "Folder name" });
+  expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
+  expect(screen.getByText("Also the session’s name.")).toBeTruthy();
+});
+
+test("the task's key names the session 300 ms after the typing, at once on leaving Task; its words do not", async () => {
+  await openLaunch();
+  await ready("/src/app");
+  setTask("LAD-263: the codex model must win");
+  expect(nameField().value).toBe("app");
+  await waitFor(() => expect(nameField().value).toBe("lad-263"));
+  setTask("Fix LAD-264 in the doctor text");
+  fireEvent.blur(taskField());
+  expect(nameField().value).toBe("lad-264");
+  setTask("Fix the login redirect after the session expires");
+  fireEvent.blur(taskField());
+  expect(nameField().value).toBe("app");
+  expect(nameNote()).toBe("");
+});
+
+test("another place names the session without a key, and keeps the task's key with one", async () => {
+  await openLaunch();
+  await ready("/src/app");
+  await ready("/src/webapp");
+  expect(nameField().value).toBe("webapp");
+  setTask("Поправить вход");
+  fireEvent.blur(taskField());
+  expect(nameField().value).toBe("webapp");
+  setTask("LAD-7 Fix the login redirect");
+  fireEvent.blur(taskField());
+  await ready("/src/app");
+  expect(nameField().value).toBe("lad-7");
+});
+
+test("a taken automatic name is numbered, and the note says so", async () => {
+  sessions = [session("lad-263")];
+  await openLaunch();
+  await ready("/src/app");
+  setTask("LAD-263: the codex model");
+  fireEvent.blur(taskField());
+  await waitFor(() => expect(nameField().value).toBe("lad-263-2"));
+  expect(nameNote()).toBe("Name: lad-263 exists already, so this one is lad-263-2.");
+  expect(nameField().getAttribute("aria-invalid")).toBeNull();
+});
+
+test("a typed name is kept over the task and the place, and starts with its title", async () => {
+  answers["POST /api/sessions"] = () => json({ session: session("review-kao", { repo: "/src/app" }), ...STARTED });
+  await openLaunch();
+  await ready("/src/webapp");
+  setName("Review Kao");
+  expect(nameNote()).toBe("Name shown as “Review Kao” · in links and branches: review-kao");
+  setTask("LAD-1: something else");
+  fireEvent.blur(taskField());
+  await ready("/src/app");
+  expect(nameField().value).toBe("Review Kao");
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  fireEvent.click(startButton());
+  await screen.findByRole("region", { name: "Session review-kao" });
+  expect(calls.find((c) => c.method === "POST")!.body).toMatchObject({ name: "review-kao", title: "Review Kao" });
+});
+
+test("an edit of the automatic name is the human's; a plain name has no title", async () => {
+  answers["POST /api/sessions"] = () => json({ session: session("lad-263-docs", { repo: "/src/app" }), ...STARTED });
+  await openLaunch();
+  await ready("/src/app");
+  setTask("LAD-263: docs");
+  fireEvent.blur(taskField());
+  setName("lad-263-docs");
+  setTask("Fix the login redirect");
+  fireEvent.blur(taskField());
+  expect(nameField().value).toBe("lad-263-docs");
+  expect(nameNote()).toBe("");
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  fireEvent.click(startButton());
+  await screen.findByRole("region", { name: "Session lad-263-docs" });
+  const sent = calls.find((c) => c.method === "POST")!.body;
+  expect(sent).toMatchObject({ name: "lad-263-docs" });
+  expect(sent).not.toHaveProperty("title");
+});
+
+test("a typed name in another script is the title of the automatic name", async () => {
+  answers["POST /api/sessions"] = () => json({ session: session("lad-263", { repo: "/src/app" }), ...STARTED });
+  await openLaunch();
+  await ready("/src/app");
+  setTask("LAD-263 Fix the login redirect");
+  fireEvent.blur(taskField());
+  setName("Вход после сессии");
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  fireEvent.click(startButton());
+  await screen.findByRole("region", { name: "Session lad-263" });
+  expect(calls.find((c) => c.method === "POST")!.body).toMatchObject({
+    name: "lad-263",
+    title: "Вход после сессии",
+  });
+});
+
+test("an emptied Name shows the automatic name as its placeholder, and holds it again on leaving", async () => {
+  await openLaunch();
+  await ready("/src/app");
+  setTask("LAD-263 Fix the login redirect");
+  fireEvent.blur(taskField());
+  nameField().focus();
+  setName("Review");
+  setName("");
+  expect(nameField().value).toBe("");
+  expect(nameField().placeholder).toBe("lad-263");
+  setTask("LAD-9: another");
+  fireEvent.blur(taskField());
+  fireEvent.blur(nameField());
+  expect(nameField().value).toBe("lad-9");
+});
+
+test("a typed name a session has is refused under Task with the next free one, and no Resume", async () => {
+  sessions = [session("review-kao", { status: "stopped", repo: "/src/lado" }), session("review-kao-2")];
+  await openLaunch();
+  await ready("/src/app");
+  setName("review-kao");
+  expect(nameField().getAttribute("aria-invalid")).toBe("true");
+  expect(nameNote()).toContain("Name: a session named review-kao exists (stopped, in lado).");
+  expect(screen.queryByRole("button", { name: "Resume it" })).toBeNull();
+  expect(startButton().disabled).toBe(true);
+  await waitFor(() => expect(footerText()).toContain("To start: choose another name."));
+  fireEvent.click(screen.getByRole("button", { name: "choose another name" }));
+  expect(document.activeElement).toBe(nameField());
+  fireEvent.click(screen.getByRole("button", { name: "Use review-kao-3" }));
+  expect(nameField().value).toBe("review-kao-3");
+  expect(nameField().getAttribute("aria-invalid")).toBeNull();
+});
+
+test("a numbered name taken offers the next number, not a second one", async () => {
+  sessions = [session("webapp"), session("webapp-2")];
+  await openLaunch();
+  await ready("/src/app");
+  setName("webapp-2");
+  fireEvent.click(await screen.findByRole("button", { name: "Use webapp-3" }));
+  expect(nameField().value).toBe("webapp-3");
+});
+
+test("a race on a numbered automatic name offers the next number", async () => {
+  sessions = [session("webapp")];
+  folders[WEBAPP] = folder(WEBAPP, { provider: { name: "claude", reason: "only_installed" } });
+  answers["POST /api/sessions"] = () =>
+    json({ detail: { message: 'session "webapp-2" exists already (running, in /src/x)', status: "running", repo: "/src/x" } }, 409);
+  await openLaunch();
+  type(WEBAPP);
+  await screen.findByText(/✓ Ready · branch main/);
+  await waitFor(() => expect(nameField().value).toBe("webapp-2"));
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+  fireEvent.click(startButton());
+  fireEvent.click(await screen.findByRole("button", { name: "Use webapp-3" }));
+  expect(nameField().value).toBe("webapp-3");
+});
+
+test("a typed name over the title's limit keeps Start off", async () => {
+  answers["GET /api/limits"] = () => json(LIMITS);
+  await openLaunch();
+  await ready("/src/app");
+  setName("x".repeat(81));
+  await waitFor(() => expect(nameNote()).toBe("Name: at most 80 characters."));
+  expect(nameField().getAttribute("aria-invalid")).toBe("true");
+  expect(startButton().disabled).toBe(true);
+  await waitFor(() => expect(footerText()).toContain("shorten the name"));
+  setName("x".repeat(80));
+  await waitFor(() => expect(startButton().disabled).toBe(false));
+});
+
+test("a clone with no URL and no task asks for a name", async () => {
+  await openLaunch();
+  await pickPlace("Clone from URL…");
+  expect(nameField().value).toBe("");
+  await waitFor(() => expect(footerText()).toContain("name the session"));
+  fireEvent.click(screen.getByRole("button", { name: "name the session" }));
+  expect(document.activeElement).toBe(nameField());
+});
+
+test("the draft keeps a typed name, not the automatic one", async () => {
+  const dialog = await openLaunch();
+  await ready("/src/app");
+  setName("Review Kao");
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  fireEvent.click(within(rail()).getByRole("button", { name: "New session" }));
+  await screen.findByRole("dialog", { name: "New session" });
+  expect(nameField().value).toBe("Review Kao");
+});
+
+test("a task names the session beside a stopped one, and the button says so", async () => {
+  sessions = [session("webapp", { status: "stopped", repo: WEBAPP, stopped_at: ago(2 * 86400_000) })];
+  recent = [recentFolder(WEBAPP)];
+  folders[WEBAPP] = folder(WEBAPP, {
+    default_name: "webapp",
+    free_name: "webapp-2",
+    name_state: "stopped_here",
+    provider: { name: "claude", reason: "last_session" },
+  });
+  await openLaunch(false);
+  await screen.findByRole("button", { name: "Start new session webapp-2" });
+  setTask("LAD-263 Fix the login redirect");
+  fireEvent.blur(taskField());
+  expect(screen.getByRole("button", { name: "Start new session lad-263" })).toBeTruthy();
+  expect(document.querySelector(".place-line")!.textContent).toContain("Session webapp stopped here");
 });
 
 // Where: Other folder…
@@ -709,7 +957,7 @@ test("a recent folder's last session gives kits, agent and mode", async () => {
   await openLaunch(false);
   await waitFor(() => expect(placeBox().value).toBe("app"));
   await screen.findByText(/✓ Ready/);
-  await waitFor(() => expect(teamSummary()).toContain("Setup team"));
+  await waitFor(() => expect(teamSummary()).toContain("Kits team"));
   await waitFor(() => expect(providerSelect().value).toBe("kilo"));
   expect(teamSummary()).toContain("Agent Kilo CLI");
   expect(teamSummary()).toContain("Permissions Plan only");
@@ -785,10 +1033,10 @@ test("a workspace not made yet: its placeholders and no suggestions", async () =
 
 // Team (capability new-session-window)
 
-test("Team is one line; Change opens Session name, Agent, Team setup, Permissions, Model and Switch off", async () => {
+test("Team is one line; Change opens Agent, Kits, Permissions, Model and Switch off", async () => {
   await openLaunch();
   await ready("/src/lado");
-  expect(teamSummary()).toBe("Setup defaultAgent Claude CodePermissions Asks before changesName lado");
+  expect(teamSummary()).toBe("Kits defaultAgent Claude CodePermissions Asks before changes");
   const change = screen.getByRole("button", { name: "Change" });
   expect(change.getAttribute("aria-expanded")).toBe("false");
   fireEvent.click(change);
@@ -796,9 +1044,9 @@ test("Team is one line; Change opens Session name, Agent, Team setup, Permission
   expect(body.hidden).toBe(false);
   expect(screen.getByRole("button", { name: "Hide" }).getAttribute("aria-expanded")).toBe("true");
   expect([...body.querySelectorAll(".field-label, label, legend")].map((one) => one.textContent?.trim()).filter(Boolean)).toEqual(
-    expect.arrayContaining(["Session name", "Agent", "Team setup", "Permissions", "Model", "Switch off"]),
+    expect.arrayContaining(["Agent", "Kits", "Permissions", "Model", "Switch off"]),
   );
-  expect(nameField().value).toBe("lado");
+  expect(body.textContent).not.toContain("Session name");
 });
 
 test("Permissions are the agent's words: the chosen one's description and always the risky one's", async () => {
@@ -836,11 +1084,13 @@ test("kits start as the default kit; an invalid kit cannot be added and says why
   openTeam();
   const field = kitsGroup();
   expect(within(field).getByText("default")).toBeTruthy();
-  const add = (await within(field).findByRole("combobox", { name: "Add setup" })) as HTMLSelectElement;
+  const add = (await within(field).findByRole("combobox", { name: "Add kit" })) as HTMLSelectElement;
+  expect((within(add).getAllByRole("option")[0] as HTMLOptionElement).textContent).toBe("+ Add kit");
   const broken = within(add).getByRole("option", { name: /broken/ }) as HTMLOptionElement;
   expect(broken.disabled).toBe(true);
   expect(broken.textContent).toContain("invalid: run lado kits check broken");
-  fireEvent.click(screen.getByRole("button", { name: "About Team setup" }));
+  fireEvent.click(screen.getByRole("button", { name: "About Kits" }));
+  expect(screen.getByText("Kits add roles, skills and ways of working to the team. Install more on the Kits page.")).toBeTruthy();
   expect(screen.getByText("default: a supervisor that delegates")).toBeTruthy();
   fireEvent.change(add, { target: { value: "team" } });
   expect(within(field).getByText("team")).toBeTruthy();
@@ -855,7 +1105,9 @@ test("without a kit Start stays off and the footer says why", async () => {
   fireEvent.click(within(kitsGroup()).getByRole("button", { name: "Remove default" }));
   expect(await screen.findByText("a session needs at least one kit")).toBeTruthy();
   expect(startButton().disabled).toBe(true);
-  await waitFor(() => expect(footerText()).toContain("To start: choose a team setup."));
+  await waitFor(() => expect(footerText()).toContain("To start: choose a kit."));
+  fireEvent.click(screen.getByRole("button", { name: "choose a kit" }));
+  expect(document.activeElement).toBe(within(kitsGroup()).getByRole("combobox", { name: "Add kit" }));
 });
 
 test("providers show checking while their CLIs are asked, a missing one is off, a warning is shown", async () => {
@@ -887,7 +1139,7 @@ test("the folder's suggested agent is chosen; Team's info says where it comes fr
   await waitFor(() => expect(providerSelect().value).toBe("kilo"));
   expect(teamSummary()).toContain("Agent Kilo CLI");
   fireEvent.click(screen.getByRole("button", { name: "About Team" }));
-  expect(screen.getByText("Agent as in your last session; setup and permissions are LADO's defaults.")).toBeTruthy();
+  expect(screen.getByText("Agent as in your last session; kits and permissions are LADO's defaults.")).toBeTruthy();
   await waitFor(() => expect(startButton().disabled).toBe(false));
 });
 
@@ -1262,6 +1514,7 @@ const LIMITS = {
   image_limit: 500,
   image_max_side: 8000,
   max_message: 20,
+  max_title: 80,
 };
 const firstField = () => screen.getByRole("textbox", { name: /^(Task|Message)$/ }) as HTMLTextAreaElement;
 
@@ -1999,7 +2252,7 @@ test("Resume fills the window from the session, sends only what changed and show
   expect(within(dialog).getByRole("group", { name: "Where" }).querySelector(".where-fixed")!.textContent).toBe("lado /src/lado");
   expect(within(dialog).queryByRole("combobox", { name: "Where" })).toBeNull();
   expect(firstField().placeholder).toBe("What should the team do next?");
-  expect(teamSummary()).toBe("Setup teamAgent Kilo CLIPermissions Plan only");
+  expect(teamSummary()).toBe("Kits teamAgent Kilo CLIPermissions Plan only");
   await waitFor(() => expect(providerSelect().value).toBe("kilo"));
   expect(modeChosen()).toBe("plan");
   openTeam();
@@ -2036,7 +2289,7 @@ test("Start a new session instead turns the Resume window into New session on th
   fireEvent.click(within(dialog).getByRole("button", { name: "Start a new session instead" }));
   await screen.findByRole("dialog", { name: "New session" });
   await waitFor(() => expect(placeBox().value).toBe("lado"));
-  await waitFor(() => expect(teamSummary()).toContain("Name lado-2"));
+  await waitFor(() => expect(nameField().value).toBe("lado-2"));
   expect(await screen.findByRole("button", { name: "Start new session lado-2" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Resume lado" })).toBeNull();
 });
@@ -3121,8 +3374,9 @@ test("a name taken after the clone switches the window to Folder with the clone 
   fireEvent.click(cloneButton());
   expect((await within(dialog).findByRole("alert")).textContent).toContain('session "marketplace" exists already');
   expect(placeBox().value).toBe("marketplace");
-  expect(screen.getByText(INTO, { selector: ".place-path" })).toBeTruthy();
-  await waitFor(() => expect(teamIsOpen()).toBe(true));
+  expect(screen.getByText(INTO, { selector: ".place-sub" })).toBeTruthy();
+  await waitFor(() => expect(document.activeElement).toBe(nameField()));
+  expect(teamIsOpen()).toBe(false);
 });
 
 test("a poll that fails is asked again: the clone goes on, Cancel clone stays (F3)", async () => {
@@ -3183,11 +3437,11 @@ test("the clone's form does not take kits and mode from a folder typed before (F
   answers["GET /api/clone-target"] = () => json(target());
   answers["POST /api/remote-branches"] = remote();
   await openLaunch(false);
-  await waitFor(() => expect(teamSummary()).toContain("Setup team"));
+  await waitFor(() => expect(teamSummary()).toContain("Kits team"));
   await pickPlace("Clone from URL…");
   fireEvent.change(urlInput(), { target: { value: URL_ } });
   await screen.findByText("✓ Found");
-  await waitFor(() => expect(teamSummary()).toContain("Setup default"));
+  await waitFor(() => expect(teamSummary()).toContain("Kits default"));
   expect(modeChosen()).toBe("default");
 });
 
@@ -3207,7 +3461,7 @@ test("Cancel clone pressed as the clone ends starts no session; the clone is off
   await act(async () => release());
   expect(await screen.findByText(`the clone ended before Cancel clone; it is in ${INTO}`)).toBeTruthy();
   expect(placeBox().value).toBe("marketplace");
-  expect(screen.getByText(INTO, { selector: ".place-path" })).toBeTruthy();
+  expect(screen.getByText(INTO, { selector: ".place-sub" })).toBeTruthy();
   expect(calls.some((c) => c.method === "POST" && c.path === "/api/sessions")).toBe(false);
 });
 
@@ -3308,7 +3562,7 @@ test("a clone that ended while the window was away is offered as a folder, not r
   fireEvent.click(cloneButton());
   expect(await screen.findByText(`the clone ended while this window was away; it is in ${INTO}`)).toBeTruthy();
   expect(placeBox().value).toBe("marketplace");
-  expect(screen.getByText(INTO, { selector: ".place-path" })).toBeTruthy();
+  expect(screen.getByText(INTO, { selector: ".place-sub" })).toBeTruthy();
   expect(within(dialog).queryByRole("alert")).toBeNull();
 });
 
@@ -3344,18 +3598,18 @@ async function scratchReady(text = "Сайт кофейни") {
   return dialog;
 }
 
-test("the first window: New empty folder, the folder's name when it differs, and Team's Name", async () => {
+test("the first window: New empty folder, the folder's name when it differs, and no Name", async () => {
   const dialog = await openLaunch(false);
   await waitFor(() => expect(placeBox().value).toBe("New empty folder"));
   await waitFor(() => expect(footerText()).toContain("To start: name the folder"));
   fireEvent.change(scratchName(), { target: { value: "Сайт кофейни" } });
   expect(await within(dialog).findByText("folder sait-kofeini")).toBeTruthy();
-  await waitFor(() => expect(teamSummary()).toContain("Name sait-kofeini"));
-  expect(nameField().disabled).toBe(true);
+  expect(within(dialog).getByText("Also the session’s name.")).toBeTruthy();
+  expect(within(dialog).queryByRole("textbox", { name: "Name" })).toBeNull();
+  expect(teamSummary()).not.toContain("Name");
   await waitFor(() => expect(createButton().disabled).toBe(false));
   fireEvent.change(scratchName(), { target: { value: "shop" } });
-  await waitFor(() => expect(teamSummary()).toContain("Name shop"));
-  expect(within(dialog).queryByText(/^folder /)).toBeNull();
+  await waitFor(() => expect(within(dialog).queryByText(/^folder /)).toBeNull());
 });
 
 test("a developer's window opens on the last place, not New empty folder", async () => {
@@ -3469,7 +3723,7 @@ test("a start refused after the repository was made turns Where to it, with the 
   fireEvent.click(createButton());
   expect((await within(dialog).findByRole("alert")).textContent).toBe("the provider nosuch is not known");
   await waitFor(() => expect(placeBox().value).toBe("sait-kofeini"));
-  expect(screen.getByText(KOFEINI, { selector: ".place-path" })).toBeTruthy();
+  expect(screen.getByText(KOFEINI, { selector: ".place-sub" })).toBeTruthy();
 });
 
 test("a start refused before the repository was made keeps New empty folder", async () => {
@@ -3501,7 +3755,7 @@ test("Start from scratch here: an empty folder turns Where to New empty folder w
   expect(within(dialog).queryByText("git init")).toBeNull();
   fireEvent.click(within(dialog).getByRole("button", { name: "Start from scratch here" }));
   expect(placeBox().value).toBe("New empty folder");
-  expect(screen.getByText(empty, { selector: ".place-path" })).toBeTruthy();
+  expect(screen.getByText(empty, { selector: ".place-sub" })).toBeTruthy();
   expect(scratchName().value).toBe("coffee-site");
   await waitFor(() => expect(createButton().disabled).toBe(false));
   fireEvent.click(screen.getByRole("button", { name: "About Folder name" }));
@@ -3775,7 +4029,7 @@ test("Project chooses the last used repository and takes its last session's sett
   const dialog = await openProject();
   expect((within(dialog).getByRole("combobox", { name: "Project" }) as HTMLSelectElement).value).toBe("shop");
   expect(repoRadio(dialog, "backend").getAttribute("aria-checked")).toBe("true");
-  await waitFor(() => expect(teamSummary()).toContain("Setup team"));
+  await waitFor(() => expect(teamSummary()).toContain("Kits team"));
   await waitFor(() => expect(providerSelect().value).toBe("kilo"));
   expect(modeChosen()).toBe("plan");
   expect(await screen.findByRole("button", { name: "Start new session in Shop" })).toBeTruthy();
@@ -3891,7 +4145,7 @@ test("Folder's refusal of a project's repository turns Where to the project with
   expect(within(box).getByText(SHOP_HINT.command)).toBeTruthy(); // the command stays below
   fireEvent.click(within(box).getByRole("button", { name: "Start in the project Shop" }));
   await waitFor(() => expect(placeBox().value).toBe("frontend"));
-  expect(within(dialog).getByText("Project Shop", { selector: ".place-text .place-badge" })).toBeTruthy();
+  expect(within(dialog).getByText("in project Shop", { selector: ".place-text .place-sub" })).toBeTruthy();
   await waitFor(() => expect(nameField().value).toBe("shop-frontend"));
   expect(calls.some((c) => c.path === "/api/project-launch?project=shop&repo=frontend")).toBe(true);
 });

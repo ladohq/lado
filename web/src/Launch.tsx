@@ -4,7 +4,17 @@
 // that never scrolls, which says what is missing while its button is off. What a folder is,
 // which kits and providers there are and whether a name is taken all come from the server;
 // the window decides nothing the core decides.
-import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { useNavigate } from "react-router";
 
 import {
@@ -52,6 +62,7 @@ import {
   FolderHint,
   FolderNotes,
   FolderPathField,
+  projectSub,
   lastPart,
   PlaceBox,
   PlaceIcon,
@@ -65,6 +76,7 @@ import {
 import { useLive, useLiveStore, useLocked } from "./live";
 import { useModal } from "./modal";
 import { agentClisPath, projectPath, sessionPath } from "./paths";
+import { nextFree, sessionName, type NameMode } from "./sessionName";
 import { ActionProblem, Waits } from "./waitingParts";
 
 export { FolderHint };
@@ -73,6 +85,8 @@ export { FolderHint };
 export const DEBOUNCE = 200;
 // The same before it asks for the check of a typed model, which may run the CLI's list.
 export const MODEL_DEBOUNCE = 300;
+// The same before the session's name follows the task typed.
+export const NAME_DEBOUNCE = 300;
 // The same before it asks a remote for its branches, which goes to the network.
 export const BRANCHES_DEBOUNCE = 500;
 // Up to this many branches the Branch field is a list; more, a field that filters them.
@@ -87,6 +101,8 @@ const DEFAULT_KIT = "default";
 const TASK_ABOUT = "The team gets this as its first message and answers in the chat. You can leave it empty.";
 const MESSAGE_ABOUT = "The team gets this as a message once it resumes, and answers in the chat. You can leave it empty.";
 const RESUME_ABOUT = "The team continues where it stopped: its chat, tasks and work stay.";
+const NAME_ABOUT =
+  "How you find this session in the list. LADO takes it from a tracker key in the task (LAD-263), else from the place; type your own, or clear the field to get LADO’s back.";
 
 // A session of these statuses can be resumed; a running one only opened.
 const RESUMABLE = new Set<SessionInfo["status"]>(["stopped", "tmux_gone"]);
@@ -118,7 +134,7 @@ type Draft = {
   url: string;
   into: string | null;
   prompt: string;
-  name: string | null;
+  name: string | null; // the name typed; null: LADO's
   kits: string[];
   provider: string | null;
   permissionMode: string;
@@ -222,12 +238,6 @@ const elapsed = (seconds: number) => {
 export const defaultBranch = (remote: RemoteInfo) =>
   remote.default ?? ["main", "master"].find((one) => remote.branches.includes(one)) ?? remote.branches[0];
 
-// The name after a taken one, for a start a race refused: "webapp-2" after "webapp".
-const nextName = (name: string) => {
-  const numbered = /^(.*)-(\d+)$/.exec(name);
-  return numbered ? `${numbered[1]}-${Number(numbered[2]) + 1}` : `${name}-2`;
-};
-
 // A missing item of the footer's "To start:", and the field it leads to.
 type Missing = { text: string; focus: () => void };
 
@@ -263,14 +273,18 @@ function LaunchDialog({
   const taskRef = useRef<HTMLTextAreaElement>(null);
   const refusedRef = useRef<HTMLDivElement>(null);
   const actionRef = useRef<HTMLButtonElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
   const teamRefs = {
-    name: useRef<HTMLInputElement>(null),
     agent: useRef<HTMLSelectElement>(null),
     kits: useRef<HTMLSelectElement>(null),
   };
 
   const [path, setPath] = useState(resuming?.repo ?? draft?.path ?? asksPath ?? "");
-  const [name, setName] = useState<string | null>(resuming?.name ?? draft?.name ?? null); // null: the default
+  // The session's name: LADO's (sessionName.ts) until the human types one; emptied, the field
+  // shows LADO's as its placeholder until the focus leaves it.
+  const [nameMode, setNameMode] = useState<NameMode>(draft?.name ? "custom" : "auto");
+  const [typed, setTyped] = useState(draft?.name ?? "");
+  const [nameEmptied, setNameEmptied] = useState(false);
   const [kits, setKits] = useState<string[]>(resuming?.kits ?? draft?.kits ?? [DEFAULT_KIT]);
   // null: none chosen; a new session's comes from the place's suggestion (the core's rule)
   const [provider, setProvider] = useState<string | null>(resuming?.provider ?? draft?.provider ?? null);
@@ -281,6 +295,12 @@ function LaunchDialog({
   const [without, setWithout] = useState(resuming?.without.join(", ") ?? draft?.without ?? "");
   const [teamOpen, setTeamOpen] = useState(draft?.teamOpen ?? false);
   const [prompt, setPrompt] = useState(draft?.prompt ?? ""); // the task: the human's first message
+  // The task the name follows: the prompt once it rests, at once when Task loses the focus.
+  const [nameTask, setNameTask] = useState(prompt);
+  useEffect(() => {
+    const timer = setTimeout(() => setNameTask(prompt), NAME_DEBOUNCE);
+    return () => clearTimeout(timer);
+  }, [prompt]);
   const [touched, setTouched] = useState<Set<string>>(new Set(draft?.touched ?? []));
   const [fromLast, setFromLast] = useState(false);
   const [modeNote, setModeNote] = useState<string | null>(null);
@@ -467,7 +487,9 @@ function LaunchDialog({
   const providerList = useAsked(loginsOf, (project) => getProviders(project || null));
   const providers = valueOf(providerList);
   // Without the limits the server checks the task's length alone.
-  const maxMessage = valueOf(useOnce<Limits>(getLimits))?.max_message ?? null;
+  const limits = valueOf(useOnce<Limits>(getLimits));
+  const maxMessage = limits?.max_message ?? null;
+  const maxTitle = limits?.max_title ?? null;
   const promptText = prompt.trim();
   const promptOver = maxMessage !== null && promptText.length > maxMessage;
   const withPrompt = promptText ? { prompt: promptText } : {};
@@ -545,12 +567,18 @@ function LaunchDialog({
   }, [toFocus]);
 
   const named = cloning ? target : projecting ? shownProject : current;
-  // The session's name: the human's, else the place's free one (its default when free).
-  const shownName = scratching ? (fresh?.name ?? "") : (name ?? named?.free_name ?? named?.default_name ?? "");
-  const resumable = (sessionName: string) => {
-    const loaded = live.sessions;
-    return loaded && "sessions" in loaded ? loaded.sessions.find((one) => one.name === sessionName) : undefined;
-  };
+  const loadedSessions = live.sessions && "sessions" in live.sessions ? live.sessions.sessions : null;
+  const sessionNames = useMemo(() => new Set(loadedSessions?.map((one) => one.name) ?? []), [loadedSessions]);
+  const resumable = (name: string) => loadedSessions?.find((one) => one.name === name);
+  // The session's name, beside Task: a new empty folder's is its folder's, a resumed one's its
+  // own. The place's name is the answer for what Where holds now, none while it is asked.
+  const hasName = !resuming && !scratching;
+  const placeBase = (cloning ? target : projecting ? inProject : current)?.default_name ?? null;
+  const nameOf = (task: string) => sessionName({ mode: nameMode, typed, task, placeBase, taken: sessionNames });
+  const naming = nameOf(nameTask);
+  const nameId = hasName ? naming.id : null;
+  const nameOver = hasName && nameMode === "custom" && maxTitle !== null && typed.trim().length > maxTitle;
+  const nameReady = !hasName || (nameId !== null && !naming.taken && !nameOver);
   // A stopped session of the place's default name: the line under Where names it, to say why
   // the new session takes the free name; it is resumed from its page or the session list. In a
   // project only one of this project, as the core resumes none of another.
@@ -584,9 +612,9 @@ function LaunchDialog({
 
   // What each way needs beyond the team; the team's part holds in every way.
   const teamReady = canStart && modelReady && kits.length > 0 && !promptOver;
-  const folderReady = (resuming !== null || (current?.ok ?? false) || setupReady) && teamReady;
+  const folderReady = (resuming !== null || (current?.ok ?? false) || setupReady) && teamReady && nameReady;
   const cloneReady =
-    teamReady && remote !== null && target !== null && CAN_CLONE.has(target.state) && shownName !== "";
+    teamReady && remote !== null && target !== null && CAN_CLONE.has(target.state) && nameReady;
   const scratchReady =
     teamReady &&
     fresh !== null &&
@@ -595,20 +623,26 @@ function LaunchDialog({
     CAN_START.has(fresh.state) &&
     fresh.author === null &&
     fresh.name_state === "free";
-  const projectReady = teamReady && projectRepo !== null && shownName !== "";
+  const projectReady = teamReady && projectRepo !== null && nameReady;
   // Use this clone only turns Where to the clone that is there.
   const useClone = cloning && target?.state === "same_repo";
   const ready = useClone || (cloning ? cloneReady : scratching ? scratchReady : projecting ? projectReady : folderReady);
 
   // A new session in `where`, as the window's fields say; from scratch, its folder is made
-  // a repository first, and the session takes the name and title of the name typed.
+  // a repository first, and the session takes the name and title of the name typed. The
+  // name follows the task as it is now, typed a moment ago too.
   const startIn = (where: Launch["where"]) => {
     const off = splitWithout(without);
-    const scratchNames =
-      where.kind === "scratch" ? { name: fresh?.name, ...(fresh?.title ? { title: fresh.title } : {}) } : null;
+    const now = nameOf(prompt);
+    const names =
+      where.kind === "scratch"
+        ? { name: fresh?.name, ...(fresh?.title ? { title: fresh.title } : {}) }
+        : now.id
+          ? { name: now.id, ...(now.title ? { title: now.title } : {}) }
+          : {};
     return startSession({
       where,
-      ...(scratchNames ?? (shownName ? { name: shownName } : {})),
+      ...names,
       kits,
       ...(chosenProvider !== null ? { provider: chosenProvider } : {}),
       ...(permissionMode !== DEFAULT_MODE ? { permission_mode: permissionMode } : {}),
@@ -632,7 +666,7 @@ function LaunchDialog({
         url,
         into,
         prompt,
-        name,
+        name: nameMode === "custom" ? typed : null,
         kits,
         provider,
         permissionMode,
@@ -685,15 +719,15 @@ function LaunchDialog({
   };
 
   // A refused request: Team opens on a refusal of one of its fields, the focus goes to the
-  // field to fix, else to the refusal.
+  // field to fix (Name, beside Task, for a name taken), else to the refusal.
   const refuse = (error: unknown) => {
     const given = error instanceof ApiError ? error : new ApiError(0, String(error));
     setRefused(given);
     const taken = given.status === 409 && !isModelRefusal(given.detail);
     const switchOff = given.status === 400 && hasSwitchOff(given.detail);
-    if (taken || switchOff || isModelRefusal(given.detail)) setTeamOpen(true);
+    if (switchOff || isModelRefusal(given.detail)) setTeamOpen(true);
     focusNext(() => {
-      if (taken) teamRefs.name.current?.focus();
+      if (taken && nameRef.current) nameRef.current.focus();
       else if (isModelRefusal(given.detail)) model.focus();
       else refusedRef.current?.focus();
     });
@@ -863,6 +897,7 @@ function LaunchDialog({
   };
 
   const title = resuming ? "Resume session" : "New session";
+  const busyNow = busy !== null || waiting;
   const taken = refused?.status === 409 && modelRefusal === null ? refused : null;
   const detail = refused?.status === 400 ? refused.detail : null;
   const switchOff = hasSwitchOff(detail) ? (detail as Refused).switch_off : [];
@@ -872,13 +907,13 @@ function LaunchDialog({
   const shown: Shown = cloning
     ? { icon: "link", name: "Clone from URL" }
     : scratching
-      ? { icon: "plus", name: "New empty folder", path: scratchInto }
+      ? { icon: "plus", name: "New empty folder", sub: scratchInto ?? workspace?.path }
       : projecting
         ? projectPick || !projectRepo
           ? { icon: "project", name: "Project" }
-          : { icon: "project", name: projectRepo.name, badge: projectTitle }
+          : { icon: "project", name: projectRepo.name, sub: projectTitle && projectSub(projectTitle) }
         : path.trim()
-          ? { icon: "folder", name: placeName(path.trim()), path: path.trim() }
+          ? { icon: "folder", name: placeName(path.trim()), sub: path.trim() }
           : otherFolder
             ? { icon: "open", name: "Other folder" }
             : { icon: "folder", name: recentAsked === null ? "…" : "Choose a place" };
@@ -908,7 +943,7 @@ function LaunchDialog({
           : stopped
             ? projecting
               ? `Start new session in ${projectTitle}`
-              : `Start new session ${shownName}`
+              : `Start new session ${nameId}`
             : placeWord
               ? `Start in ${placeWord}`
               : "Start";
@@ -920,6 +955,7 @@ function LaunchDialog({
     focusNext(() => field.current?.focus());
   };
   const missing: Missing[] = [];
+  const toName = () => nameRef.current?.focus();
   if (!resuming) {
     const toWhere = () => (whereRef.current ?? pathRef.current)?.focus();
     if (scratching) {
@@ -945,13 +981,19 @@ function LaunchDialog({
       missing.push({ text: asking ? "wait for the check" : "choose a place", focus: toWhere });
     }
   }
+  if (hasName) {
+    // No name before a place to name it by: Where says what is missing.
+    if (nameId === null && (cloning || named !== null)) missing.push({ text: "name the session", focus: toName });
+    else if (naming.taken) missing.push({ text: "choose another name", focus: toName });
+    else if (nameOver) missing.push({ text: "shorten the name", focus: toName });
+  }
   if (providerList === null) missing.push({ text: "wait for the agent CLIs", focus: openTeam(teamRefs.agent) });
   else if (providers === null || (chosenProvider === null && !noLogin)) {
     // none chosen, or the list did not load: its error stands under Agent
     missing.push({ text: "choose an agent", focus: openTeam(teamRefs.agent) });
   }
   if (noLogin?.installed) missing.push({ text: `log in to ${noLogin.title}`, focus: openTeam(teamRefs.agent) });
-  if (kits.length === 0) missing.push({ text: "choose a team setup", focus: openTeam(teamRefs.kits) });
+  if (kits.length === 0) missing.push({ text: "choose a kit", focus: openTeam(teamRefs.kits) });
   if (model.blocked) {
     missing.push({
       text: "fix the model",
@@ -968,18 +1010,11 @@ function LaunchDialog({
   // Team's explanation: where its settings come from.
   const teamAbout = resuming
     ? "As when it stopped. A change takes effect from now on."
-    : [
-        fromLast
-          ? "As in the last session in this folder."
-          : suggested === "last_any"
-            ? "Agent as in your last session; setup and permissions are LADO's defaults."
-            : "Setup and permissions are LADO's defaults.",
-        named && (named.name_state === "running" || named.name_state === "taken_elsewhere") && named.default_name
-          ? `"${named.default_name}" is taken by another session.`
-          : "",
-      ]
-        .filter(Boolean)
-        .join(" ");
+    : fromLast
+      ? "As in the last session in this folder."
+      : suggested === "last_any"
+        ? "Agent as in your last session; kits and permissions are LADO's defaults."
+        : "Kits and permissions are LADO's defaults.";
 
   // The agent's notes: the list's state, a CLI that cannot run, a login missing.
   const providersNote =
@@ -1013,27 +1048,59 @@ function LaunchDialog({
     <span className="field-note warn">⚠ {providerInfo.warning}</span>
   ) : null;
 
-  const nameNote = taken ? (
+  // Name's note under Task, one at a time: a name taken (refused by the core after the
+  // press, or typed), too long, typed with another plain form, or LADO's numbered.
+  const typeName = (text: string) => {
+    setNameMode(text === "" ? "auto" : "custom");
+    setTyped(text);
+    setNameEmptied(text === "");
+    setRefused((now) => (now?.status === 409 && !isModelRefusal(now.detail) ? null : now));
+  };
+  // Use <next>: the first free name after a taken one, typed for the human.
+  const nextButton = (id: string) => {
+    const next = nextFree(id, sessionNames);
+    return (
+      <button type="button" className="quiet" disabled={busyNow} onClick={() => typeName(next)}>
+        {`Use ${next}`}
+      </button>
+    );
+  };
+  const holder = naming.taken && nameId ? resumable(nameId) : undefined;
+  const nameNote = !hasName ? null : taken && nameId ? (
     <>
       <span className="field-note bad" role="alert">
         {taken.message}
       </span>
-      <button
-        type="button"
-        className="quiet"
-        onClick={() => {
-          setName(nextName(shownName));
-          setRefused(null);
-        }}
-      >
-        {`Use ${nextName(shownName)}`}
-      </button>
+      {nextButton(nameId)}
     </>
+  ) : naming.taken && nameId ? (
+    <>
+      <span className="field-note bad" role="alert">
+        {"Name: a session named "}
+        <b>{nameId}</b>
+        {holder
+          ? ` exists (${RESUMABLE.has(holder.status) ? "stopped" : "running"}, in ${lastPart(holder.repo)}).`
+          : " exists."}
+      </span>
+      {nextButton(nameId)}
+    </>
+  ) : nameOver ? (
+    <span className="field-note bad">{`Name: at most ${maxTitle} characters.`}</span>
+  ) : naming.title !== null && nameId ? (
+    <span className="field-note">
+      {`Name shown as “${naming.title}” · in links and branches: `}
+      <b>{nameId}</b>
+    </span>
+  ) : nameMode === "auto" && naming.numbered && nameId ? (
+    <span className="field-note">
+      {`Name: ${naming.base} exists already, so this one is `}
+      <b>{nameId}</b>.
+    </span>
   ) : null;
+  const nameBad = hasName && (taken !== null || naming.taken || nameOver);
 
-  const generalRefusal = refused !== null && taken === null && modelRefusal === null;
+  const generalRefusal = refused !== null && (taken === null || !hasName) && modelRefusal === null;
   const notesId = `${ids}-place-notes`;
-  const busyNow = busy !== null || waiting;
 
   return (
     <dialog
@@ -1091,10 +1158,14 @@ function LaunchDialog({
           <div className="field launch-where" role="group" aria-labelledby={`${ids}-where-label`}>
             <span className="field-label" id={`${ids}-where-label`}>
               {resuming ? <span>Where</span> : <label htmlFor={`${ids}-where`}>Where</label>}
-              {projecting && projectRepo && chosenProject && !projectPick && (
+              {projecting && projectRepo && chosenProject && !projectPick ? (
                 <InfoTip about="Where">
                   {`${projectRepo.name} is a repository of the project ${projectTitle}: the team works with ${projectTitle}'s keys and settings.`}
                 </InfoTip>
+              ) : (
+                !resuming &&
+                source === "folder" &&
+                path.trim() && <InfoTip about="Where">{path.trim()}</InfoTip>
               )}
             </span>
             {resuming ? (
@@ -1303,10 +1374,33 @@ function LaunchDialog({
           </div>
 
           <div className="field launch-task">
-            <span className="field-label">
-              <label htmlFor={`${ids}-task`}>{resuming ? "Message" : "Task"}</label>{" "}
-              <InfoTip about={resuming ? "Message" : "Task"}>{resuming ? MESSAGE_ABOUT : TASK_ABOUT}</InfoTip>
-            </span>
+            <div className="task-head">
+              <span className="field-label">
+                <label htmlFor={`${ids}-task`}>{resuming ? "Message" : "Task"}</label>{" "}
+                <InfoTip about={resuming ? "Message" : "Task"}>{resuming ? MESSAGE_ABOUT : TASK_ABOUT}</InfoTip>
+              </span>
+              {hasName && (
+                <span className="name-inline">
+                  <span className="field-label">
+                    <label htmlFor={`${ids}-name`}>Name</label> <InfoTip about="Name">{NAME_ABOUT}</InfoTip>
+                  </span>
+                  <input
+                    ref={nameRef}
+                    id={`${ids}-name`}
+                    className="name-input"
+                    value={nameMode === "custom" ? typed : nameEmptied ? "" : (nameId ?? "")}
+                    placeholder={nameId ?? ""}
+                    autoComplete="off"
+                    spellCheck={false}
+                    disabled={busyNow}
+                    aria-invalid={nameBad || undefined}
+                    aria-describedby={nameNote ? `${ids}-name-note` : undefined}
+                    onChange={(event) => typeName(event.target.value)}
+                    onBlur={() => setNameEmptied(false)}
+                  />
+                </span>
+              )}
+            </div>
             <textarea
               ref={taskRef}
               id={`${ids}-task`}
@@ -1317,11 +1411,17 @@ function LaunchDialog({
               aria-invalid={promptOver || undefined}
               aria-describedby={promptOver ? `${ids}-task-note` : undefined}
               onChange={(event) => setPrompt(event.target.value)}
+              onBlur={() => setNameTask(prompt)}
             />
             {promptOver && (
               <span id={`${ids}-task-note`} className="field-note bad">
                 {promptText.length} characters, the limit is {maxMessage}
               </span>
+            )}
+            {nameNote && (
+              <div id={`${ids}-name-note`} className="place-notes">
+                {nameNote}
+              </div>
             )}
           </div>
 
@@ -1330,10 +1430,6 @@ function LaunchDialog({
             onOpen={setTeamOpen}
             about={teamAbout}
             modelPeek={model.peek}
-            name={resuming ? null : shownName}
-            onName={setName}
-            nameFixed={scratching}
-            nameNote={nameNote}
             kits={kits}
             onKits={(next) => {
               touch("kits");

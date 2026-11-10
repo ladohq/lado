@@ -2,8 +2,20 @@
 
 ## 0.46.0 (unreleased)
 
+### New
+
+- **The session's name beside Task, made from the task.** New session names the session after
+  a tracker key in the task (`Fix LAD-263 …` gives `lad-263`), else after the place, until you
+  type your own name, which is kept as typed
+  in the session list; empty the field to get LADO's name back.
+
 ### Improved
 
+- **A project's session name says a repeated name once.** The repository `lado` of the project
+  `lado` gives the session `lado`, not `lado-lado`, also for `lado start --project`; resume an
+  older `lado-lado` by its name.
+- **New session reads more easily.** Where shows each place on one line, and Team says Kits, as
+  the Kits page does.
 - **The waiting card looks as in 0.44 again, with fewer words.** The question stands on top, only
   the report scrolls, and the supervisor's recommendation shows a few lines you can make taller;
   documents show their titles. Needs you and a run's page in Flows show the whole card.

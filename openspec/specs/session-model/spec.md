@@ -217,7 +217,7 @@ Another agent CLI SHALL set the field to that CLI's default.
 
 #### Scenario: The window says agent CLI
 - **WHEN** the human opens Team
-- **THEN** the field before Team setup reads `Agent`, and its notes say `agent CLI` or the
+- **THEN** the field before Kits reads `Agent`, and its notes say `agent CLI` or the
   CLI's title, never `provider`
 
 #### Scenario: A key over http
@@ -289,7 +289,7 @@ ring.
 #### Scenario: The note under the focused field
 - **WHEN** the Model field has the focus and a refusal under it
 - **THEN** the note's top is at least 6 px below the field's bottom, as the note under
-  Session name is below its field, and the focus ring does not reach it
+  Agent is below its field, and the focus ring does not reach it
 
 #### Scenario: The field beside Provider
 - **WHEN** the window is wider than 760 px and Team is open

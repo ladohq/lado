@@ -359,7 +359,7 @@ without one), read from git when asked.
 `lado start --project <id> --repo <name>` SHALL start a session in the repository `<name>`
 of the project `<id>`, refer to the project in its record, and print `Started session
 "<session>" in <folder> (project <id>)`. Without `--name` the session SHALL be named the
-slug of `<id>-<name>`. Its other options SHALL work as for a folder. A session of that
+project's default session name. Its other options SHALL work as for a folder. A session of that
 name in the same project SHALL be resumed.
 
 #### Scenario: A first session in a project
@@ -372,6 +372,12 @@ name in the same project SHALL be resumed.
 #### Scenario: Started again
 - **WHEN** `shop-frontend` is stopped and the human runs the same command
 - **THEN** it is resumed, with its history and project
+
+#### Scenario: A repository named as its project
+- **WHEN** the project `lado` has the repository `lado` and the human runs `lado start
+  --project lado --repo lado --no-attach`
+- **THEN** the session `lado` runs in `<ws>/projects/lado/lado`; a stopped `lado-lado` of
+  before stays stopped
 
 ### Requirement: lado start --project --repo refuses what is no repository of the project
 
@@ -1664,8 +1670,8 @@ window with Where on this project (the Project way) and this project chosen.
 `POST /api/sessions` with `where: {kind: "project", project: <id>, repo: <name>}` and the
 change token SHALL start a new session as `lado start --project <id> --repo <name>` does,
 by the same core function (`runtime.start_session` with `project` and `repo_name`, no
-path), never a resume: its folder the repository, its default name `<id>-<name>`, its
-project `<id>`.
+path), never a resume: its folder the repository, its default name the project's default
+session name, its project `<id>`.
 
 #### Scenario: A start in a project
 - **WHEN** the UI posts `where: {kind: "project", project: "shop", repo: "frontend"}`
@@ -1700,14 +1706,19 @@ text for any other refusal of the core. `where` of kind `project` with a `path` 
 `GET /api/project-launch` with the optional `project` and `repo` SHALL answer, making
 nothing, `projects` (as `GET /api/projects`, sorted by title, the id without one, case
 aside; none without `lado.db`), the chosen `project`, its `repos`, the chosen `repo`, and
-for that repository `default_name` (`<project>-<repo>`), `name_state`, `free_name`,
-`provider` (as the folder check gives it) and `last`, its latest session of this project.
+for that repository `default_name` (the project's default session name), `name_state`,
+`free_name`, `provider` (as the folder check gives it) and `last`, its latest session of this
+project.
 
 #### Scenario: The window opens on Project
 - **WHEN** the latest started session in a project is `shop-backend` of `shop`, and the UI
   asks `GET /api/project-launch`
 - **THEN** `project` is `shop`, `repo` is `backend`, `default_name` is `shop-backend`,
   `free_name` is `shop-backend-2` when that session is stopped, and `last` is that session
+
+#### Scenario: A repository named as its project
+- **WHEN** the UI asks `GET /api/project-launch?project=lado&repo=lado`
+- **THEN** `default_name` is `lado`
 
 ### Requirement: The Project way chooses the project and repository last used
 
@@ -1753,11 +1764,11 @@ included, `project` SHALL be null. The refusal's text and hint SHALL stay the co
 
 ### Requirement: The New session window starts a session in a project
 
-The New session window SHALL offer a project's repository as a Recent item with its project's
-badge and as **Project…** in Where's group Somewhere else. Project… SHALL show a select of the
-projects (one whose folder is not found off, marked `folder not found`) and its repositories,
-each with its name, branch and remote, one chosen; the start SHALL send `where: {kind:
-"project", project, repo}` and open the session's page.
+The New session window SHALL offer a project's repository as a Recent item with `in project
+<title>` after its name and as **Project…** in Where's group Somewhere else. Project… SHALL show
+a select of the projects (one whose folder is not found off, marked `folder not found`) and its
+repositories, each with its name, branch and remote, one chosen; the start SHALL send `where:
+{kind: "project", project, repo}` and open the session's page.
 
 #### Scenario: Start in a project's repository
 - **WHEN** the human picks Project…, `Shop`, then `frontend`, and clicks `Start in Shop`
@@ -1765,7 +1776,7 @@ each with its name, branch and remote, one chosen; the start SHALL send `where: 
   showing `Shop` before its title
 
 #### Scenario: A project's repository from Recent
-- **WHEN** the human picks `backend` with the badge `Project Shop` in Where's Recent
+- **WHEN** the human picks `backend` with `in project Shop` in Where's Recent
 - **THEN** the start button reads `Start in Shop`, and the session starts in that repository
   of the project
 
@@ -1794,14 +1805,16 @@ one of the project's repositories: it SHALL NOT add, clone or make one.
 
 ### Requirement: The Project way takes the session's settings as Folder does
 
-For a project's repository, Team's Name SHALL be the default name, else the free name, until
-the human edits it; Team setup and Permissions SHALL come from the repository's last session,
-as for a folder, and Agent from the server's suggestion. The line `Session <name> stopped here`
-SHALL name only a stopped session of the name that is of this project.
+For a project's repository, Name SHALL be named as for any place, the project's default session
+name or its free name standing for the place; Kits and Permissions SHALL come from the
+repository's last session, as for a folder, and Agent from the server's suggestion. The line
+`Session <name> stopped here` SHALL name only a stopped session of the name that is of this
+project.
 
 #### Scenario: A taken name
-- **WHEN** a stopped `shop-frontend` of this repository exists and the window opens on it
-- **THEN** Team reads `Name shop-frontend-2`, and the footer shows one button, `Start new
+- **WHEN** a stopped `shop-frontend` of this repository exists, Task is empty and the window
+  opens on it
+- **THEN** Name reads `shop-frontend-2`, and the footer shows one button, `Start new
   session in Shop`, and no `Resume shop-frontend`, also when the workspace's path goes through a
   link
 
@@ -1832,8 +1845,8 @@ show `Open the project <title>` the same way.
 #### Scenario: A project's repository in Folder
 - **WHEN** the human types `<workspace>/projects/shop/frontend` in Other folder… and clicks
   `Start in the project Shop`
-- **THEN** Where shows `frontend` with the badge `Project Shop`, and Team's name is
-  `shop-frontend`
+- **THEN** Where shows `frontend` with `in project Shop`, and Name reads `shop-frontend` while
+  Task is empty
 
 #### Scenario: A folder of a project that is no repository
 - **WHEN** the human types `<workspace>/projects/shop/notes`, a folder without git
@@ -2264,3 +2277,24 @@ alike. `-h` or `--help` alone SHALL print the help, exit 0.
 #### Scenario: Help alone
 - **WHEN** the human runs `lado project set --help`
 - **THEN** it prints the command's help and exits 0
+
+### Requirement: A project's default session name does not repeat the project
+
+The default name of a session in the repository `<name>` of the project `<id>` SHALL be, of
+their slugs, the repository's when it equals the project's or starts with `<id>-`, the
+project's when it ends with `-<name>`, else `<id>-<name>`; the New session window and `lado
+start --project` SHALL take it from the core's one function. Sessions that exist SHALL keep
+their names.
+
+#### Scenario: The same name twice
+- **WHEN** the project `lado` has the repository `lado`
+- **THEN** the default name is `lado`, not `lado-lado`
+
+#### Scenario: A repository named after its project
+- **WHEN** the project `lado` has the repository `lado-site`, or the project `acme-web` the
+  repository `web`
+- **THEN** the default name is `lado-site`, or `acme-web`
+
+#### Scenario: Different names
+- **WHEN** the project `acme` has the repository `api`
+- **THEN** the default name is `acme-api`

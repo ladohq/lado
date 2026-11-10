@@ -1668,17 +1668,17 @@ connection, above).
   The Model list's foot reads `The default comes from Settings → Agent CLIs.` (LAD-238). A
   refusal of one of these fields opens Team and puts the focus there; an agent that cannot
   run opens it too.
-- **The name and Resume beside a new start**: every place's check gives `default_name`,
+- **The name beside a stopped session**: every place's check gives `default_name`,
   `free_name` (`runtime.free_name`: `<name>-2`, `-3`, … none has) and `name_state`. The
   window names a new session by the free name unless the human typed one. With a stopped
   session of the default name here (`stopped_here`; in a project only one of this project)
-  the footer has **Resume <name>** and **Start new session <free name>** (in a project
-  **Start new session in <title>**), side by side, never swapped: the primary is Resume while
-  Task is empty and Start new once it holds text. Resume posts `POST /api/sessions/{name}/
-  resume` with the task and only the Team fields the human changed (they came from the
-  place's last session and the suggestion, not from the stopped one: sent as they are they
-  would rewrite its settings). A name a running session or one of
-  another folder has gives the free name and one button. A 409 `Taken` after the press (a
+  the line under Where reads `Session <name> stopped here <when>`, to say why, and the
+  footer's one button reads **Start new session <free name>** (in a project **Start new
+  session in <title>**), the primary. The window offers no Resume of that session (LAD-261:
+  its Team is filled for the new session, from the place's last session and the
+  suggestion, not from the stopped one); the human resumes it from its page or the session
+  list, in the Resume window, on its own team. A name a running session or one of another
+  folder has gives the free name and no line. A 409 `Taken` after the press (a
   race) opens Team, shows the core's text under Session name (`aria-invalid`, the focus
   there) and offers **Use <next>**.
 - **The footer**: while the main button is off, `To start: ` and what is missing as links
@@ -1686,7 +1686,7 @@ connection, above).
   the folder, wait for the agent CLIs, choose an agent (also when their list failed), choose
   a team setup, choose a smaller folder, choose another folder, tell git who you are, wait
   for the count, fix the model, shorten the task, log in to `<CLI>`); Enter in a field does
-  what the blue button does (beside a stopped session with no task, Resume); **Cancel** a
+  what the blue button does (beside a stopped session too, a new session); **Cancel** a
   text button (Cancel clone while a clone runs); the start button naming the place: **Start
   in <folder>**, **Start in <title>**, **Clone and start in <folder>**, **Create and start**,
   **Set up and start in <folder>**. While it works the button keeps the focus (`aria-disabled`,

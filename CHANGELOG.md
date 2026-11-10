@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.45.1 (unreleased)
+
+### Fixed
+
+- **A stopped session resumes on its own agent CLI and model.** New session no longer offers
+  Resume beside a stopped session: it starts a new one; resume the stopped one from its page or
+  the session list.
+
 ## 0.45.0 (2026-11-09)
 
 ### New

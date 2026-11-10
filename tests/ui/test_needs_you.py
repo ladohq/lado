@@ -120,10 +120,27 @@ def test_a_narrow_windows_chat_keeps_the_card_to_half_of_it(page: Page, server, 
     card = page.get_by_role("region", name=f"What waits for you in {session}")
     report = card.locator(".waiting-scroll")
     expect(report).to_be_visible()
-    chat = page.get_by_role("region", name="Chat", exact=True).bounding_box()
-    assert card.bounding_box()["height"] <= chat["height"] / 2 + 1, (card.bounding_box(), chat)
-    foot = card.locator(".waiting-foot").bounding_box()
-    assert abs(foot["y"] - report.bounding_box()["y"] - report.bounding_box()["height"]) <= 1
+    # The footer as it stays: the gate's request for a recommendation handled.
+    agent_helpers.wait_for(
+        lambda: state.get_gate(1).recommendation_state == state.REC_MISSING,
+        "gate #1's request handled",
+        session,
+    )
+    expect(card.locator(".rec-asked")).to_have_count(0)
+    page.evaluate(
+        "() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))"
+    )
+    got = card.evaluate(
+        """c => {
+          const at = s => c.querySelector(s).getBoundingClientRect();
+          return {
+            card: c.getBoundingClientRect().height,
+            chat: c.closest('.chat').getBoundingClientRect().height,
+            gap: at('.waiting-foot').top - at('.waiting-scroll').bottom,
+          };
+        }"""
+    )
+    assert got["card"] <= got["chat"] / 2 + 1 and abs(got["gap"]) <= 1, got
     expect(card.get_by_role("button", name="Approve", exact=True)).to_be_visible()
     shot(page, full_page=False)
 

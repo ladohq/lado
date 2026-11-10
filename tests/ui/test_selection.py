@@ -234,8 +234,7 @@ def test_no_bar_for_an_own_answer_typed_in_the_waiting_card(page: Page, server, 
     log_in(page, server)
     page.goto(f"{server['url']}/sessions/{session}")
     card = page.get_by_role("region", name=f"What waits for you in {session}")
-    card.get_by_role("button", name="Other…").click()
-    own = card.get_by_role("textbox", name="Your own answer")
+    own = card.get_by_role("textbox", name="Your answer to: Which port?")  # no choices: at once
     own.fill("8123 for now")
     own.evaluate("f => { f.focus(); f.setSelectionRange(0, 4); }")
     page.wait_for_timeout(200)

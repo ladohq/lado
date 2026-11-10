@@ -54,7 +54,9 @@ def waiting_card(page: Page, session: str):
 
 def gated_session(repo, note: str = REVIEW) -> str:
     """A running session of the fake agent whose run ship/x waits at gate "check": review's
-    note before it (`note`) carries the artifact review, and the gate reads plan."""
+    note before it (`note`) carries the artifact review, and the gate reads plan. The gate's
+    request for a recommendation is handled (the fake supervisor gives none): the card's
+    footer no longer changes under a test that measures it or drags its edge."""
     kit = repo.parent / "kits" / "uiflow"
     (kit / "flows").mkdir(parents=True, exist_ok=True)
     (kit / "kit.yaml").write_text("name: uiflow\nversion: 1.0.0\n")
@@ -81,6 +83,12 @@ def gated_session(repo, note: str = REVIEW) -> str:
         "the plan is reviewed",
         note,
         attached=["ship/x/review"],
+    )
+    gate = state.open_gate(session, "ship/x")
+    agent_helpers.wait_for(
+        lambda: state.get_gate(gate.id).recommendation_state == state.REC_MISSING,
+        "the gate's request for a recommendation handled",
+        session,
     )
     return session
 
@@ -478,7 +486,14 @@ def narrow_session(page: Page, server, repo):
     card = waiting_card(page, session)
     approve = card.get_by_role("button", name="Approve", exact=True)
     expect(approve).to_be_visible()
-    # Laid out: its parts measured, so its report keeps to its limit.
+    # Its footer as it stays: the gate's request for a recommendation handled (its "preparing"
+    # line gone), and its parts measured, so the report keeps to its limit.
+    agent_helpers.wait_for(
+        lambda: state.get_gate(1).recommendation_state == state.REC_MISSING,
+        "gate #1's request handled",
+        session,
+    )
+    expect(card.locator(".rec-asked")).to_have_count(0)
     expect(card).to_have_attribute("style", re.compile(r"--waiting-rest"))
     page.evaluate(
         "() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))"
@@ -705,8 +720,8 @@ def line_ground(page: Page) -> str:
 def test_a_gates_tab_names_its_run_and_its_tooltip_the_step_and_the_reports_author(
     page: Page, server, repo, shot
 ):
-    """The tab reads the run's name and its count, a badge of --count-ink; its tooltip, on a
-    hover and on the focus, the step and who wrote the report."""
+    """The tab reads the run's name and its count, a badge of --count-ink; its tooltip on a
+    hover says the step and who wrote the report (on the focus: WaitingCard.test.tsx)."""
     session = gated_session(repo)
     reported_by("reviewer")
     log_in(page, server)
@@ -721,11 +736,6 @@ def test_a_gates_tab_names_its_run_and_its_tooltip_the_step_and_the_reports_auth
     shot(page, full_page=False)
     page.mouse.move(0, 0)
     expect(tip).to_have_count(0)
-    page.get_by_role("button", name="Expand the card").focus()
-    page.keyboard.press("Shift+Tab")
-    page.keyboard.press("Shift+Tab")
-    expect(tab).to_be_focused()
-    expect(tip.locator(".tooltip-line")).to_have_text(["step check", "report by reviewer"])
 
 
 # The text box of the recommendation: its height.

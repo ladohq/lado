@@ -495,7 +495,10 @@ def test_many_tabs_stay_on_one_line_on_the_panel_and_scroll_sideways(
     panel = card.get_by_role("tabpanel")
 
     def check(shown):
-        tops = [tab.bounding_box()["y"] for tab in tabs.all()]
+        # In one frame: the card may still settle between one tab's box and the next's.
+        tops = row.evaluate(
+            "r => [...r.querySelectorAll('[role=tab]')].map(t => t.getBoundingClientRect().y)"
+        )
         assert max(tops) - min(tops) <= 1.5, tops  # one line (the shown tab 1 px lower)
         on, under = shown.bounding_box(), panel.bounding_box()
         assert abs(on["y"] + on["height"] - under["y"]) <= 1.5, (on, under)  # on the panel

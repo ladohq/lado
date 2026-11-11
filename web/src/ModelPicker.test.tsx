@@ -248,6 +248,78 @@ test("a list read anew puts the active row back on the selected one: Enter never
   expect(props.onPick).toHaveBeenCalledWith(null); // the selected row: the CLI's settings
 });
 
+// The page's props of a picker whose list the test hands in, its `choices` kept as one object
+// across renders as useModelChoices keeps it when a request fails.
+const pickerProps = () => ({
+  cli: OPENCODE,
+  value: null,
+  where: "settings" as const,
+  own: [],
+  off: false,
+  lost: false,
+  health: {},
+  onOpen: vi.fn(),
+  onPick: vi.fn(),
+  onOther: vi.fn(),
+});
+const activeText = (field: HTMLElement) =>
+  document.getElementById(field.getAttribute("aria-activedescendant") ?? "")?.textContent;
+
+test("a failed read again keeps the highlight on its model: Enter picks it", () => {
+  const props = pickerProps();
+  const kept = choices();
+  const view = render(<ModelPicker {...props} list={list({ choices: kept })} />);
+  const field = screen.getByRole("combobox");
+  fireEvent.click(field);
+  fireEvent.keyDown(field, { key: "End" }); // `b/two`
+  view.rerender(<ModelPicker {...props} list={list({ choices: kept, reading: true })} />); // ↻
+  expect(activeText(field)).toBe("b/two");
+  const failed = "LADO's server does not answer: the list was not read.";
+  view.rerender(<ModelPicker {...props} list={list({ choices: kept, problem: failed })} />);
+  expect(screen.getByRole("option", { name: "Read again" })).toBeTruthy(); // a row above it
+  expect(activeText(field)).toBe("b/two");
+  fireEvent.keyDown(field, { key: "Enter" });
+  expect(props.onPick).toHaveBeenCalledWith({ builtin: "b/two" });
+});
+
+test("Read again that fails again leaves the highlight on Read again", () => {
+  const props = pickerProps();
+  const kept = choices();
+  const failed = "LADO's server does not answer: the list was not read.";
+  const view = render(<ModelPicker {...props} list={list({ choices: kept, problem: failed })} />);
+  const field = screen.getByRole("combobox");
+  fireEvent.click(field);
+  fireEvent.keyDown(field, { key: "ArrowDown" });
+  expect(activeText(field)).toBe("Read again");
+  fireEvent.keyDown(field, { key: "Enter" });
+  view.rerender(<ModelPicker {...props} list={list({ choices: kept, reading: true })} />);
+  expect(activeText(field)).toContain("OpenCode's settings"); // its row is gone: the selected one
+  view.rerender(<ModelPicker {...props} list={list({ choices: kept, problem: failed })} />);
+  expect(activeText(field)).toBe("Read again");
+});
+
+test("a list read anew after a move puts the highlight on the selected row", () => {
+  const props = { ...pickerProps(), value: builtin("a/one") };
+  const view = render(<ModelPicker {...props} list={list()} />);
+  const field = screen.getByRole("combobox");
+  fireEvent.click(field);
+  fireEvent.keyDown(field, { key: "End" });
+  expect(activeText(field)).toBe("b/two");
+  view.rerender(<ModelPicker {...props} list={list({ choices: choices({ models: ["z/zero", "a/one", "b/two"] }) })} />);
+  expect(activeText(field)).toContain("a/one");
+});
+
+test("a search starts at its first row, wherever the highlight was", () => {
+  const { field } = mount({ value: builtin("vendor/model-5"), read: list({ choices: choices({ models: many(11) }) }) });
+  fireEvent.click(field);
+  const search = screen.getByPlaceholderText(/^Search/);
+  fireEvent.change(search, { target: { value: "vendor" } });
+  const active = () => document.getElementById(search.getAttribute("aria-activedescendant") ?? "")?.textContent;
+  expect(active()).toBe("vendor/model-0");
+  fireEvent.keyDown(search, { key: "ArrowDown" });
+  expect(active()).toBe("vendor/model-1");
+});
+
 test("a list no reading can bring has no Read again", () => {
   const why = "Codex CLI gives no list of models for the model provider `azure`";
   const read = list({ choices: choices({ models: null, why, other_name: true, read_again: false }) });

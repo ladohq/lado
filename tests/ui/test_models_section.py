@@ -1195,6 +1195,61 @@ def test_a_model_named_by_its_id_shows_it_once(page: Page, clis, server, lms, sh
         shot(page, f"model-servers-{width}", full_page=False)
 
 
+def face(locator: Locator) -> str:
+    return locator.evaluate("e => getComputedStyle(e).fontFamily")
+
+
+def mono(locator: Locator) -> None:
+    assert face(locator).startswith('"IBM Plex Mono"'), face(locator)
+
+
+def sans(locator: Locator) -> None:
+    assert face(locator).startswith("Inter"), face(locator)
+
+
+def test_model_ids_are_in_the_mono_face_names_in_the_ui_s(
+    page: Page, clis, server, lms, shot, monkeypatch
+):
+    """In the picker a built-in model's row, a saved model's id under its name and the id on
+    the field are in the mono face, a model's name and the CLI's settings row in the UI's; in
+    Model servers so is a server's address in its head (openspec change
+    model-picker-ids-highlight)."""
+    listed = dict(fake.PROFILES["lmstudio"])
+    listed[("GET", fake.MODELS)] = fake.openai_list("qwen3-coder-30b")
+    monkeypatch.setitem(fake.PROFILES, "lmstudio", listed)
+    saved_server(lms)
+    coder = state.add_model("Рабочая Qwen", "kilo", "qwen3-coder-30b", "s1")
+    state.set_cli_default(state.ModelRef("kilo", coder.id, None))
+    page.set_viewport_size({"width": 1280, "height": 900})
+    open_clis(page, server)
+    field = picker(page, "Kilo CLI")
+    field.scroll_into_view_if_needed()
+    sans(field.locator(".mp-title"))  # Рабочая Qwen
+    mono(field.locator(".mp-id"))  # qwen3-coder-30b
+    field.click()
+    clis_page = agent_clis(page)
+    saved = clis_page.get_by_role("option", name=re.compile("^Рабочая Qwen, "))
+    sans(saved.locator(".mp-title"))
+    mono(saved.locator(".mp-sub"))
+    mono(clis_page.get_by_role("option", name="vendor/model-0", exact=True).locator(".mp-title"))
+    sans(clis_page.get_by_role("option", name="Kilo CLI's settings").locator(".mp-title"))
+    shot(page, "picker-mono", full_page=False)
+    clis_page.get_by_role("option", name="vendor/model-0", exact=True).click()
+    expect(field).to_have_text(re.compile("vendor/model-0"))
+    mono(field.locator(".mp-title"))
+    # A server that gives no list: its Model id field is in the mono face too.
+    for path in (fake.MODELS, fake.LMSTUDIO_MODELS):
+        listed[("GET", path)] = fake.Answer(500, {"error": "internal error"})
+    open_settings(page, server)
+    toggle(page, "LM Studio дома").click()
+    lm = source(page, "LM Studio дома")
+    mono(lm.locator(".mono", has_text=lms.url))
+    model_id = lm.get_by_role("textbox", name="Model id")
+    model_id.fill("qwen3-coder-30b")
+    mono(model_id)
+    shot(page, "model-servers-mono", full_page=False)
+
+
 def test_a_tick_at_the_page_s_end_stays_under_the_pointer(page: Page, clis, server, lms):
     """At the very end of the page the browser stops the scroll earlier by what went above:
     the anchor must not scroll by that again."""

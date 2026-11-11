@@ -22,6 +22,12 @@ code {
   font-size: 13px;
 }
 
+/* An id, an address or a name the human types as is: the one rule of the mono face. Only the
+   face: each place keeps its own size. */
+.mono {
+  font-family: var(--mono);
+}
+
 a {
   color: var(--action);
 }

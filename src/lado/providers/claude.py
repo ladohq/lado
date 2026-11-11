@@ -152,6 +152,7 @@ SERVER_BLANKS = (
 )
 # Read before the settings, so an empty value there does nothing: it goes empty in the launch.
 UNIX_SOCKET = "ANTHROPIC_UNIX_SOCKET"
+TEMP_ROOT = "CLAUDE_CODE_TMPDIR"  # the agent's own temporary folder (base.AgentSpec.temp_dir)
 # Off on a server: telemetry, which would leave for Anthropic; the betas that add
 # context_management and safeguards to a body a gateway may refuse; the attribution header,
 # LM Studio's own advice for its cache. With these 2.1.295's TUI still tried
@@ -347,6 +348,11 @@ class ClaudeProvider(base.Provider):
         if session.permission_mode == BYPASS:
             config["skipDangerousModePermissionPrompt"] = True
         env: dict[str, str] = {}
+        # Its own temporary root, where its scratchpad and its tools' files are, comes from
+        # this variable (else /tmp/claude-<uid>, one for every agent of the machine), not
+        # from TMPDIR (read in 2.1.295's code; LAD-247).
+        if spec.temp_dir is not None:
+            env[TEMP_ROOT] = str(spec.temp_dir)
         if spec.servers:  # one: its start model's (lado.model_settings.agent_servers)
             server = spec.servers[0]
             config.update(_server_settings(server))

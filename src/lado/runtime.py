@@ -268,6 +268,13 @@ content or file) writes one (a new version each time), read_artifact reads one, 
 list_artifacts lists them. Attach artifacts by name with the `artifacts` argument of \
 send_message, ask_human and flow_advance; read_messages names those attached to you.
 """
+# Where every agent keeps its temporary files, appended after MESSAGING: its own folder,
+# the TMPDIR its launch has (providers.base.make_temp_dir, LAD-247).
+TEMP_FILES = """\
+Temporary files: keep them in your own folder `$TMPDIR`, which LADO made for you alone; the \
+other agents of this machine share `/tmp`. Never write to a fixed path in `/tmp` (such as \
+`/tmp/pr.md`): another agent may use the same name.
+"""
 
 WORKTREES_EXCLUDE = "/.lado/worktrees/"
 # The first input of an agent whose CLI starts its session only then and that has nothing
@@ -3243,8 +3250,14 @@ def _spec(
         instructions += CONTAINER_INSTRUCTIONS + (
             CONTAINER_SUPERVISOR if agent.name == SUPERVISOR else CONTAINER_WORKER
         )
+    try:
+        temp_dir = providers.base.make_temp_dir(agent, base_env)
+    except (providers.base.UnsafeTempDir, OSError) as exc:
+        raise LadoError(
+            f'cannot make the temporary folder of agent "{agent.name}": {exc}'
+        ) from None
     return providers.AgentSpec(
-        prompt=f"{resolved.agent.body}\n\n{instructions}{MESSAGING}",
+        prompt=f"{resolved.agent.body}\n\n{instructions}{MESSAGING}{TEMP_FILES}",
         skills=skills,
         mcp={"lado": providers.base.mcp_server(agent), **resolved.mcp_servers(base_env)},
         read=read,
@@ -3253,6 +3266,7 @@ def _spec(
         model=start.launch_name(agent_cli) if start else None,
         model_source=start.source if start else state.SESSION,
         servers=servers,
+        temp_dir=temp_dir,
     )
 
 
@@ -3336,8 +3350,18 @@ def _launch_env(
     order, and the names of the last two and of what the CLI itself gives the processes it
     starts (Launch.cli_env), which a worker it spawns must not take over
     (agent_env.without_launch)."""
-    ours = {**providers.agent_env(agent), **launch.env}
+    ours = _ours(agent, base_env, launch)
     return {**base_env, **ours, agent_env.LAUNCH_VARS: ",".join(sorted({*ours, *launch.cli_env}))}
+
+
+def _ours(
+    agent: state.Agent, base_env: Mapping[str, str], launch: providers.Launch
+) -> dict[str, str]:
+    """The variables LADO and the provider set for the agent's launch, over every layer:
+    LADO's, the agent's own TMPDIR (its folder under the layers' TMPDIR,
+    providers.base.temp_path), then the provider's."""
+    temp_dir = providers.base.temp_path(agent, base_env)
+    return {**providers.agent_env(agent), "TMPDIR": str(temp_dir), **launch.env}
 
 
 def _layer_warnings(
@@ -3487,7 +3511,7 @@ def _before_window(
         lines += [line for line in (blocker.reason, blocker.warning) if line]
         return lines, _command(agent, base_env, launch)
     lines += [blocker.warning] if blocker.warning else []  # its reason: the window's, later
-    ours = sorted({**providers.agent_env(agent), **launch.env})
+    ours = sorted(_ours(agent, base_env, launch))
     file = providers.base.config_dir(agent) / "env.json"
     shell_login = {n: shell[n] for n in agent_cli.login_variables if n in shell}
     try:

@@ -1,6 +1,6 @@
 ## 1. The rule and the hint
 
-- [ ] 1.1 `runtime.py`: the rule as one constant, first in `SUPERVISOR_INSTRUCTIONS` after its
+- [x] 1.1 `runtime.py`: the rule as one constant, first in `SUPERVISOR_INSTRUCTIONS` after its
   name and first in `WORKER_INPUT`; the sentence "answer text typed straight into your window in
   this window" gone (design D1). Check: unit tests of the supervisor's and both workers'
   instructions in `tests/test_runtime.py`.

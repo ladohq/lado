@@ -962,13 +962,36 @@ def test_agents_are_told_to_keep_results_as_artifacts_and_attach_them(repo, fake
     assert "in a step of your own in a run, write and attach the run's artifacts" in supervisor
 
 
-def test_the_supervisor_is_told_to_answer_the_human_where_they_asked(repo, fake_tmux):
+HUMAN_REPLY_RULE = " ".join(runtime.HUMAN_REPLY_RULE.split())
+
+
+def test_the_human_reply_rule_says_the_terminal_is_unseen_and_how_to_answer():
+    assert "does not see your terminal" in HUMAN_REPLY_RULE
+    assert "text you write outside a tool call reaches nobody" in HUMAN_REPLY_RULE
+    assert 'Answer every message "[from human] ..." that needs an answer' in HUMAN_REPLY_RULE
+    assert 'send_message(to="human")' in HUMAN_REPLY_RULE and "ask_human" in HUMAN_REPLY_RULE
+    assert '(thanks, "not now") needs no reply' in HUMAN_REPLY_RULE
+    assert 'without "[from human]", is answered in the window' in HUMAN_REPLY_RULE
+
+
+def test_the_supervisor_is_told_the_human_reply_rule_right_after_its_name(repo, fake_tmux):
+    """A weak model answered the human in its terminal: the rule was one ambiguous
+    sentence in the middle of the instructions (LAD-274)."""
     runtime.start_session(str(repo), "s", None, provider="claude")
     supervisor = " ".join(_prompt(fake_tmux[0][-1]).split())
-    assert "The human talks to you in this window" not in supervisor
-    assert 'answer a message "[from human] ..." with send_message(to="human")' in supervisor
-    assert "ask with ask_human" in supervisor
-    assert "answer text typed straight into your window in this window" in supervisor
+    name = 'You are agent "supervisor" in LADO session "s".'
+    assert f"{name} {HUMAN_REPLY_RULE}" in supervisor
+    assert "answer text typed straight into your window in this window" not in supervisor
+
+
+def test_every_worker_is_told_the_human_reply_rule(repo, fake_tmux):
+    """The human may write to any agent, and every agent gets the hint on their line."""
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.spawn_worker("s", "task")
+    assert HUMAN_REPLY_RULE in " ".join(_prompt(fake_tmux[-1][-1]).split())
+    assert runtime.HUMAN_REPLY_RULE in runtime.WORKER_INPUT
+    assert runtime.WORKER_INSTRUCTIONS.endswith(runtime.WORKER_INPUT)
+    assert runtime.RUN_WORKER_INSTRUCTIONS.endswith(runtime.WORKER_INPUT)
 
 
 def test_the_supervisor_is_told_the_copy_of_the_humans_message_is_for_its_information(

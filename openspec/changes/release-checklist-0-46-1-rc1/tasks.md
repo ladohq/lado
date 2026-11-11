@@ -1,9 +1,9 @@
 ## 1. docs/releases/0.46.1.md
 
-- [ ] 1.1 The file as the proposal's text: the heading, the paragraph, `## 0.46.1rc1` with its
+- [x] 1.1 The file as the proposal's text: the heading, the paragraph, `## 0.46.1rc1` with its
   paragraph, Before you start and the items of each group, and "What covers the CHANGELOG's
   items" with the 8 items. Each top-level item's first line names its check alone.
-- [ ] 1.2 Every exact line the file quotes is checked against the code (`src/lado/loop.py`'s
+- [x] 1.2 Every exact line the file quotes is checked against the code (`src/lado/loop.py`'s
   `loop started` / `loop ended` lines and `STOPPED`, `src/lado/runtime.py`'s temporary folder's
   refusal and `stray_config_dirs`, `src/lado/providers/base.py`'s `UnsafeTempDir` texts,
   `src/lado/doctor.py`'s `Agent config folders`, `src/lado/cli.py`'s `lado ls` states,
@@ -20,10 +20,10 @@
 
 ## 3. The test
 
-- [ ] 3.1 `tests/test_rc_check.py`: the real-file test also runs `0.46.1rc1` on
+- [x] 3.1 `tests/test_rc_check.py`: the real-file test also runs `0.46.1rc1` on
   `docs/releases/0.46.1.md`, with the same asserts. Unit;
   `make test PYTEST_ARGS="-n0 tests/test_rc_check.py"` passes.
-- [ ] 3.2 `python3 scripts/rc_check.py` is not run (it installs from PyPI); the test of 3.1 is
+- [x] 3.2 `python3 scripts/rc_check.py` is not run (it installs from PyPI); the test of 3.1 is
   the check that its list prints without a warning.
 
 ## 4. The checks

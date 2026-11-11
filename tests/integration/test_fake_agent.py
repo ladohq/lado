@@ -9,6 +9,8 @@ import sys
 import fake_provider
 import pytest
 
+from lado import runtime
+
 pytestmark = pytest.mark.integration
 
 
@@ -22,12 +24,21 @@ def run_agent(
     return subprocess.CompletedProcess(agent.args, agent.returncode, stdout, stderr)
 
 
-def start_agent(tmp_path, lines: list[str], mcp: dict, env: dict | None = None) -> subprocess.Popen:
-    """The fake agent of run_agent, started: all its input is given at once."""
-    events = tmp_path / "events"
+def start_agent(
+    tmp_path, lines: list[str], mcp: dict, env: dict | None = None, hint: bool = False
+) -> subprocess.Popen:
+    """The fake agent of run_agent, started: all its input is given at once. Its hooks also
+    append their event and payload to a file (payloads); with `hint`, it knows the hint on
+    the human's line, as fake_provider tells it."""
+    events, payloads = tmp_path / "events", tmp_path / "payloads"
     (tmp_path / "skills").mkdir()
+    logged = "echo {e} >> '{events}'; (printf '{e} '; cat; echo) >> '{payloads}'"
     config = {
-        "hooks": {e: ["sh", "-c", f"echo {e} >> '{events}'"] for e in fake_provider.EVENTS},
+        "hooks": {
+            e: ["sh", "-c", logged.format(e=e, events=events, payloads=payloads)]
+            for e in fake_provider.EVENTS
+        },
+        "human_hint": runtime.HUMAN_REPLY_HINT if hint else "",
         "prompt": "",
         "skills": str(tmp_path / "skills"),
         "mcp": {"lado": mcp},
@@ -48,6 +59,12 @@ def start_agent(tmp_path, lines: list[str], mcp: dict, env: dict | None = None) 
     agent.stdin.close()
     agent.stdin = None  # else communicate() flushes the closed file: an error (seen on 3.12.13)
     return agent
+
+
+def payloads(tmp_path) -> list[dict]:
+    """Each hook's payload, in order, with its event."""
+    lines = (tmp_path / "payloads").read_text().splitlines()
+    return [{"event": e, **json.loads(p)} for e, _, p in (line.partition(" ") for line in lines)]
 
 
 def printed(agent: subprocess.Popen, line: str) -> None:
@@ -95,6 +112,29 @@ def test_a_pause_holds_the_turn_until_the_test_releases_it(tmp_path):
     assert events.read_text().split() == ["session_start", *turn, *turn, "prompt_submit"] + [
         "session_end"
     ]
+
+
+def test_the_hint_on_the_humans_line_is_no_part_of_the_command(tmp_path):
+    """LADO ends the human's line with a hint (runtime.HUMAN_REPLY_HINT): the command
+    before it is read as without it."""
+    line = "[from human] fail boom" + runtime.HUMAN_REPLY_HINT
+    agent = start_agent(tmp_path, [line, "exit"], {"command": ["false"], "env": {}}, hint=True)
+    agent.communicate(timeout=20)
+    [ended] = [p for p in payloads(tmp_path) if p["event"] == "turn_end"]
+    assert ended["error"] == "boom"
+
+
+def test_next_runs_its_command_on_the_next_input(tmp_path):
+    """As an agent answers the human only once LADO reminds it."""
+    lines = ["next lines 2", "the reminder", "exit"]
+    agent = start_agent(tmp_path, lines, {"command": ["false"], "env": {}})
+    stdout, _ = agent.communicate(timeout=20)
+    out = stdout.splitlines()
+    first, second = (
+        next(i for i, o in enumerate(out) if o.endswith(f"> {t!r}"))
+        for t in ("next lines 2", "the reminder")
+    )
+    assert "line 1" not in out[first:second] and "line 2" in out[second:]
 
 
 def test_the_agent_imports_no_mcp_package(tmp_path, lado_home):

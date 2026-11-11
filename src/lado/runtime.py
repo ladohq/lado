@@ -2822,6 +2822,12 @@ def _check_summary(summary: str, what: str = "summary", details: str = "body") -
         )
 
 
+# Ends the line of each message from the human that is no answer to a question: weak models
+# answered it in their terminal (LAD-274). Every line gets it, as each is confirmed by its own
+# text (state.confirm_sent).
+HUMAN_REPLY_HINT = ' (reply with send_message(to="human") or ask_human)'
+
+
 def format_message(message: state.Message) -> str:
     """The one line typed for a message; its body and artifacts are left for read_messages."""
     line = f"[from {message.sender}] {message.title}"
@@ -2832,9 +2838,11 @@ def format_message(message: state.Message) -> str:
     if message.attachments:
         n = message.attachments
         more.append(f"{n} artifact{'s' if n != 1 else ''}")
-    if not more:
-        return line
-    return f"{line} (#{message.id}, {', '.join(more)}: call read_messages)"
+    if more:
+        line = f"{line} (#{message.id}, {', '.join(more)}: call read_messages)"
+    if message.sender == state.HUMAN and message.reply_to is None:
+        line += HUMAN_REPLY_HINT
+    return line
 
 
 def format_messages(messages: list[state.Message]) -> str:

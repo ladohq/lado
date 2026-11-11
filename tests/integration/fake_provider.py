@@ -11,7 +11,7 @@ import sys
 import time
 from pathlib import Path
 
-from lado import cli, providers, state
+from lado import cli, providers, runtime, state
 from lado.providers import base, claude, codex, opencode_family
 
 LADO = Path(__file__).resolve()
@@ -91,6 +91,7 @@ class FakeProvider(base.Provider):
                 name: {"command": s.command, "env": s.env}
                 for name, s in {**spec.mcp, "lado": lado}.items()
             },
+            "human_hint": runtime.HUMAN_REPLY_HINT,
             "continue_on_turn_end": self.capabilities.deliver_on_turn_end,
             "says_continued": self.says_continued,
             "inputs": str(logs / "inputs.jsonl"),

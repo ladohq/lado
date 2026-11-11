@@ -24,7 +24,8 @@ def test_busy_and_background_are_green_and_pulse_and_background_is_half_filled(
 ):
     page.set_viewport_size({"width": 1440, "height": 900})
     session = with_worker(repo)
-    runtime.send_message(session, "human", "w1", "background")
+    # From LADO: the human's message would get a reminder, which ends w1's background.
+    runtime.send_message(session, "lado", "w1", "background")
     agent_helpers.wait_for(
         lambda: state.get_agent(session, "w1").status == state.BACKGROUND, "w1 background", session
     )

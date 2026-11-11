@@ -12,7 +12,7 @@ from pathlib import Path
 import agent_helpers
 import pytest
 
-from lado import artifacts, loop, runtime, state, tmux
+from lado import artifacts, hooks, loop, runtime, state, tmux
 
 pytestmark = pytest.mark.integration
 
@@ -40,10 +40,41 @@ def release(agent: str, n: int) -> None:
     agent_helpers.release(SESSION, agent, n)
 
 
-def inputs(agent: str) -> list[str]:
-    """What the fake agent got as input, in order."""
+# LADO's reminder of a human message the agent did not answer in the chat
+# (hooks.REPLY_REMINDER): the fake agent never answers the human, so it gets one after each
+# such message. The tests of delivery leave them out (inputs, the messages' columns); the
+# reminder's own tests are in test_human_messages.py.
+REMINDER = hooks.REPLY_REMINDER.partition("#")[0]
+
+
+def is_reminder(message: state.Message) -> bool:
+    return message.sender == state.LADO and message.summary.startswith(REMINDER)
+
+
+def inputs(agent: str) -> list:
+    """What the fake agent got as input, in order (a text, or what it logged for an input
+    of its own, e.g. {"answer": ...}), without LADO's reminders."""
     log = agent_helpers.fake_logs(SESSION, agent) / "inputs.jsonl"
-    return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+    got = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+    kept = []
+    for text in got:
+        if isinstance(text, str):
+            lines = text.split("\n")
+            text = "\n".join(x for x in lines if not x.startswith(f"[from lado] {REMINDER}"))
+        if text:
+            kept.append(text)
+    return kept
+
+
+def _column(column: str, recipient: str) -> list:
+    """`column` of each message to `recipient` but LADO's reminders, in order."""
+    messages = state.list_messages(SESSION)
+    return [getattr(m, column) for m in messages if m.recipient == recipient and not is_reminder(m)]
+
+
+def human(text: str) -> str:
+    """The line LADO types for the human's message `text` (runtime.format_message)."""
+    return f"[from human] {text}{runtime.HUMAN_REPLY_HINT}"
 
 
 def got_line(agent: str, line: str, since: int = 0) -> bool:
@@ -58,12 +89,7 @@ def seen(agent: str) -> dict:
 
 
 def message_states(recipient: str) -> list[str]:
-    with state.connect() as db:
-        rows = db.execute(
-            "SELECT state FROM messages WHERE session = ? AND recipient = ? ORDER BY id",
-            (SESSION, recipient),
-        ).fetchall()
-    return [r["state"] for r in rows]
+    return _column("state", recipient)
 
 
 def start(repo: Path, provider: str = "fake") -> None:
@@ -78,7 +104,7 @@ def test_a_message_sent_while_the_supervisor_starts_is_delivered(repo):
     reply = runtime.send_message(SESSION, "human", "supervisor", "hello")
     assert reply.startswith("queued; supervisor is starting")
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
-    assert inputs("supervisor") == ["[from human] hello"]
+    assert inputs("supervisor") == [human("hello")]
     wait_status("supervisor", state.IDLE)
     assert tmux.has_session(SESSION)
 
@@ -107,35 +133,31 @@ def test_message_to_idle_agent_is_pasted_and_confirmed(repo):
     assert runtime.send_message(SESSION, "human", "supervisor", "hello", "there\nagain") == "sent"
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
     wait_status("supervisor", state.IDLE)
-    assert inputs("supervisor") == ["[from human] hello (#1, 2 lines: call read_messages)"]
+    assert inputs("supervisor") == [human("hello (#1, 2 lines: call read_messages)")]
 
 
 def test_a_message_ending_in_a_backslash_is_submitted_and_confirmed(repo):
-    """The fake agent, like Claude Code, reads a backslash before Enter as a line break."""
+    """The fake agent, like Claude Code, reads a backslash before Enter as a line break.
+    From LADO: the human's line ends in the hint, not in the text."""
     start(repo, "fake-paste")
-    runtime.send_message(SESSION, "human", "supervisor", "what now?\\")
+    runtime.send_message(SESSION, "lado", "supervisor", "what now?\\")
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
     wait_status("supervisor", state.IDLE)
     # Queued while it is busy and typed in at its turn's end: the last line ends in `\\`.
-    runtime.send_message(SESSION, "human", "supervisor", "pause")
-    runtime.send_message(SESSION, "human", "supervisor", "hello", "the body")
-    runtime.send_message(SESSION, "human", "supervisor", "two\\\\")
+    runtime.send_message(SESSION, "lado", "supervisor", "pause")
+    runtime.send_message(SESSION, "lado", "supervisor", "hello", "the body")
+    runtime.send_message(SESSION, "lado", "supervisor", "two\\\\")
     release("supervisor", 1)
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 4, "delivery")
     assert inputs("supervisor") == [
-        "[from human] what now?\\ ",
-        "[from human] pause",
-        "[from human] hello (#3, 1 line: call read_messages)\n[from human] two\\\\ ",
+        "[from lado] what now?\\ ",
+        "[from lado] pause",
+        "[from lado] hello (#3, 1 line: call read_messages)\n[from lado] two\\\\ ",
     ]
 
 
 def channels(recipient: str) -> list[str | None]:
-    with state.connect() as db:
-        rows = db.execute(
-            "SELECT channel FROM messages WHERE session = ? AND recipient = ? ORDER BY id",
-            (SESSION, recipient),
-        ).fetchall()
-    return [r["channel"] for r in rows]
+    return _column("channel", recipient)
 
 
 @pytest.mark.parametrize("provider", ["fake", "fake-stop"])
@@ -160,20 +182,15 @@ def test_messages_in_the_turn_end_output_are_delivered_once_confirmed(
     wait_status("supervisor", state.IDLE)
     # One short line per message, the queued ones in one input.
     assert inputs("supervisor") == [
-        "[from human] pause",
-        "[from human] pause\n[from human] there",
-        "[from human] hello",
+        human("pause"),
+        f"{human('pause')}\n{human('there')}",
+        human("hello"),
     ]
     assert channels("supervisor") == [state.TYPED] + [state.HOOK_OUTPUT] * 3
 
 
 def message_attempts(recipient: str) -> list[int]:
-    with state.connect() as db:
-        rows = db.execute(
-            "SELECT attempts FROM messages WHERE session = ? AND recipient = ? ORDER BY id",
-            (SESSION, recipient),
-        ).fetchall()
-    return [r["attempts"] for r in rows]
+    return _column("attempts", recipient)
 
 
 def test_the_turn_that_goes_on_from_the_turn_end_output_reads_its_body(repo):
@@ -194,7 +211,7 @@ def test_the_turn_that_goes_on_from_the_turn_end_output_reads_its_body(repo):
     paused("supervisor", 3)  # the pause typed in again, alone
     release("supervisor", 3)
     wait_status("supervisor", state.IDLE)
-    assert inputs("supervisor")[-1] == "[from human] pause"
+    assert inputs("supervisor")[-1] == human("pause")
     assert message_states("supervisor")[1:] == [state.READ, state.DELIVERED]
     assert message_attempts("supervisor")[1] == 1
 
@@ -207,7 +224,7 @@ def test_a_turn_end_output_the_cli_drops_is_typed_in_once(repo, provider):
     release("supervisor", 1)
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 2, "delivery")
     wait_status("supervisor", state.IDLE)
-    assert inputs("supervisor") == ["[from human] lose", "[from human] hello"]
+    assert inputs("supervisor") == [human("lose"), human("hello")]
     assert channels("supervisor") == [state.TYPED, state.TYPED]
 
 
@@ -226,7 +243,7 @@ def test_a_slow_turn_that_goes_on_from_the_turn_end_output_gets_it_once(repo, fa
     release("supervisor", 2)
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 2, "delivery")
     wait_status("supervisor", state.IDLE)
-    assert inputs("supervisor") == ["[from human] pause"] * 2
+    assert inputs("supervisor") == [human("pause")] * 2
     assert channels("supervisor") == [state.TYPED, state.HOOK_OUTPUT]
     assert message_attempts("supervisor") == [1, 1]
 
@@ -244,7 +261,7 @@ def test_a_printed_turn_end_output_the_cli_drops_is_typed_in_once_after_the_back
     release("supervisor", 1)
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 2, "delivery")
     wait_status("supervisor", state.IDLE)
-    assert inputs("supervisor") == ["[from human] lose", "[from human] hello"]
+    assert inputs("supervisor") == [human("lose"), human("hello")]
     assert channels("supervisor") == [state.TYPED, state.TYPED]
     assert message_attempts("supervisor") == [1, 2]
 
@@ -260,10 +277,7 @@ def test_message_to_busy_agent_arrives_when_its_turn_ends(repo):
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 3, "delivery")
     wait_status("supervisor", state.IDLE)
     # One short line per message, the queued ones in one input.
-    assert inputs("supervisor") == [
-        "[from human] pause",
-        "[from human] hello\n[from human] there",
-    ]
+    assert inputs("supervisor") == [human("pause"), f"{human('hello')}\n{human('there')}"]
 
 
 def test_spawned_worker_reports_back_to_supervisor(repo):
@@ -407,7 +421,7 @@ def test_supervisor_runs_waits_for_a_command_typed_with_queued_messages(repo):
 
     threading.Thread(target=release_once_queued, daemon=True).start()
     supervisor_runs("sleep 0.1")  # queued too, typed with the one before
-    assert inputs("supervisor")[-1] == "[from human] sleep 0\n[from human] sleep 0.1"
+    assert inputs("supervisor")[-1] == f"{human('sleep 0')}\n{human('sleep 0.1')}"
 
 
 def test_the_model_a_cli_names_reaches_lado_db_list_agents_and_the_api(repo, monkeypatch):
@@ -448,7 +462,7 @@ def test_agent_that_switches_conversation_keeps_running(repo):
     release("supervisor", 1)  # it picked another conversation
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED], "delivery")
     wait_status("supervisor", state.IDLE)
-    assert "[from human] hello" in inputs("supervisor")[-1].splitlines()
+    assert human("hello") in inputs("supervisor")[-1].splitlines()
     statuses = [e.detail for e in state.list_events(SESSION) if e.kind == "status"]
     assert state.STOPPED not in statuses
 
@@ -546,15 +560,16 @@ def test_an_agent_whose_work_runs_on_after_its_turn_is_background_and_takes_mess
     repo, provider
 ):
     start(repo, provider)
-    assert runtime.send_message(SESSION, "human", "supervisor", "background") == "sent"
+    # From LADO: the human's message would get a reminder, typed in at once too.
+    assert runtime.send_message(SESSION, "lado", "supervisor", "background") == "sent"
     wait_status("supervisor", state.BACKGROUND)
     assert lado_cli("ls").stdout.splitlines()[1].split()[3] == state.BACKGROUND
     # Typed in at once and confirmed, as for an idle agent.
-    assert runtime.send_message(SESSION, "human", "supervisor", "sleep 0") == "sent"
+    assert runtime.send_message(SESSION, "lado", "supervisor", "sleep 0") == "sent"
     wait_for(lambda: message_states("supervisor") == [state.DELIVERED] * 2, "delivery")
     # That turn ends with no work left running: idle.
     wait_status("supervisor", state.IDLE)
-    assert inputs("supervisor") == ["[from human] background", "[from human] sleep 0"]
+    assert inputs("supervisor") == ["[from lado] background", "[from lado] sleep 0"]
     statuses = [
         e.detail
         for e in state.list_events(SESSION)
@@ -565,7 +580,7 @@ def test_an_agent_whose_work_runs_on_after_its_turn_is_background_and_takes_mess
 
 def test_an_answer_returns_an_agent_that_waited_from_background_to_background(repo):
     start(repo)
-    runtime.send_message(SESSION, "human", "supervisor", "background")
+    runtime.send_message(SESSION, "lado", "supervisor", "background")  # no reminder
     wait_status("supervisor", state.BACKGROUND)
     run_hook("supervisor", "waiting", "k1")  # e.g. a background subagent's dialog
     assert status("supervisor") == state.WAITING
@@ -729,7 +744,7 @@ def supervisor_runs(command: str) -> None:
     together with messages queued before (one line each): it is one line of an input."""
     before = len(inputs("supervisor"))
     runtime.send_message(SESSION, "human", "supervisor", command)
-    wait_for(lambda: got_line("supervisor", f"[from human] {command}", before), command)
+    wait_for(lambda: got_line("supervisor", human(command), before), command)
     wait_status("supervisor", state.IDLE)
 
 

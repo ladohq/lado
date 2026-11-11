@@ -626,7 +626,9 @@ CLOSED = "closed"
 QUESTION_STOPPED = "stopped"
 # Reply states of the human's message to an agent, set when the turn it started ends.
 REPLIED = "replied"
-MISSING = "missing"  # the agent wrote nothing to the human: it replied only in its terminal
+# The agent wrote nothing to the human and got one reminder; decided by the turn after it.
+REMINDED = "reminded"
+MISSING = "missing"  # nothing after the reminder either: it replied only in its terminal
 # States of the lead's recommendation on a gate or a question (RECOMMENDATION): LADO asked
 # for it, the lead gave it, or the lead's turn (or the lead) ended without it. None: never
 # asked.
@@ -3103,24 +3105,53 @@ def reply_to_questions(session: str, replies: Sequence[Reply]) -> list[int]:
     return ids
 
 
-def check_replies(session: str, agent: str) -> None:
+def check_replies(session: str, agent: str) -> list[int]:
     """At the end of the agent's turn: each message from the human it got and that is not
     checked yet is REPLIED when the agent wrote to the human after it got it (a message or
-    a question), else MISSING: it replied only in its terminal. Each one is checked once.
-    Answers and dismissals of the agent's questions need no reply.
+    a question), else REMINDED. Returns the ids that became REMINDED, for the reminder the
+    caller queues. A REMINDED message is decided at the first turn's end after the agent got
+    its reminder, while no message from LADO to it waits to be handed over or confirmed:
+    REPLIED as above, else MISSING, it replied only in its terminal. So each message gets one
+    reminder and one verdict. Answers and dismissals of the agent's questions need no reply.
 
     "After it got it" compares when each was handed over (sent_at), not ids: the human's
     message gets its id when queued, and the agent may write to the human before it is
     handed over. A message to the human is handed over when stored."""
+    wrote = (
+        "EXISTS (SELECT 1 FROM messages r WHERE r.session = messages.session"
+        " AND r.sender = messages.recipient AND r.recipient = ? AND r.sent_at > messages.sent_at)"
+    )
+    mine = "session = ? AND sender = ? AND recipient = ? AND state IN (?, ?) AND reply_to IS NULL"
+    args = (session, HUMAN, agent, DELIVERED, READ)
     with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        # The REMINDED ones first: the ones this call reminds have not got their reminder.
+        waiting = db.execute(
+            "SELECT 1 FROM messages WHERE session = ? AND sender = ? AND recipient = ?"
+            " AND state IN (?, ?)",
+            (session, LADO, agent, PENDING, SENT),
+        ).fetchone()
+        if waiting is None:
+            db.execute(
+                f"UPDATE messages SET reply_state = CASE WHEN {wrote} THEN ? ELSE ? END"
+                f" WHERE {mine} AND reply_state = ?",
+                (HUMAN, REPLIED, MISSING, *args, REMINDED),
+            )
         db.execute(
-            "UPDATE messages SET reply_state = CASE WHEN EXISTS (SELECT 1 FROM messages r"
-            " WHERE r.session = messages.session AND r.sender = messages.recipient"
-            " AND r.recipient = ? AND r.sent_at > messages.sent_at) THEN ? ELSE ? END"
-            " WHERE session = ? AND sender = ? AND recipient = ? AND state IN (?, ?)"
-            " AND reply_state IS NULL AND reply_to IS NULL",
-            (HUMAN, REPLIED, MISSING, session, HUMAN, agent, DELIVERED, READ),
+            f"UPDATE messages SET reply_state = ? WHERE {mine} AND reply_state IS NULL AND {wrote}",
+            (REPLIED, *args, HUMAN),
         )
+        reminded = [
+            row[0]
+            for row in db.execute(
+                f"SELECT id FROM messages WHERE {mine} AND reply_state IS NULL ORDER BY id", args
+            )
+        ]
+        db.executemany(
+            "UPDATE messages SET reply_state = ? WHERE id = ?", [(REMINDED, i) for i in reminded]
+        )
+        db.execute("COMMIT")
+    return reminded
 
 
 # What the lead's recommendation is on: a gate, or a question to the human (a message of

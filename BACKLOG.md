@@ -196,6 +196,19 @@ load average 54), which changed the test: the report is due only after the human
 `sleep 0` was submitted and its hooks ran, so no sweep pastes while the human types. The
 product side (a retry pasted into a line the human has started) is still open.
 
+## Flaky: integration test of a queue that waits for a late session start
+
+Size: S. Why here: under `-n auto` it fails often enough to turn `ci-ok` red at random.
+
+`tests/integration/test_session_loop.py::test_a_queue_waits_for_a_late_session_start_and_goes_in_once`
+failed 3 of 6 parallel runs of its file (`-n auto`): `attempts == 2`, expected 1
+(`assert state.get_message(session, task.id).attempts == 1`), so the task was typed in
+twice; 3 of 3 green alone (`-n0`). Not checked whether it fails on main too. Likely a retry
+of the sweep whose delay (`LADO_RETRY_DELAYS`, 2 s first) a slow hook under load outlasts.
+Wanted: the test (or the retry) holds under load; the cause found before it is changed.
+Found: 2026-11-11, review of hotfix/lad-153-stop-waits-for-loop (LAD-153), which did not
+touch the test; 8 parallel runs of the file afterwards on the fixed branch were green.
+
 ## Flaky UI test: a gate answered with `lado answer` loses the rail's "Needs you" count
 
 Size: S. Why here: a flaky test that turns `make check` red.

@@ -18,6 +18,9 @@
 - **Model ids in the mono face, and the model picker's highlight stays put.** Model ids and
   servers' addresses show in IBM Plex Mono as designed; after a failed read of the list the
   highlighted model stays highlighted, so Enter picks the one you pointed at (LAD-202).
+- **A session's scrolled tabs keep their tab in view.** When the tabs change width, as the
+  font arrives or the window is resized, the tab you reached with Tab, or the one shown, no
+  longer stays half under the fade with › showing (LAD-267).
 
 ## 0.46.0 (2026-11-11)
 

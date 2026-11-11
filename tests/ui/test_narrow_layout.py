@@ -234,7 +234,11 @@ def test_the_tabs_give_way_in_levels(page: Page, server, repo, shot):
     more = bar.get_by_role("button", name="More tabs")
     earlier = bar.get_by_role("button", name="Earlier tabs")
     expect(more).to_be_visible()
-    expect(earlier).to_have_count(0)
+    # Agents, the second tab and too wide for both fades now, keeps its start clear as the bar
+    # narrows, so the row has scrolled (LAD-267).
+    expect(earlier).to_be_visible()
+    shown = bar.get_by_role("link", name=re.compile("^Agents")).bounding_box()
+    assert shown["x"] >= row.bounding_box()["x"] + 56 - 1
     assert width_of(more) == 26
     assert width_of(page.locator(".session-tabs-more.end")) == 56
     more.click()
@@ -638,6 +642,57 @@ def test_the_tab_shown_stands_clear_of_the_bars_ends(page: Page, server, repo):
     page.wait_for_function(
         f"({CLEAR})(document.querySelector('.session-tabs [aria-current=page]'))"
     )
+
+
+def test_a_late_font_leaves_the_tab_reached_clear(page: Page, server, repo):
+    """LAD-267: the font arrives after Tab reached Artifacts and the tabs grow wider; the row
+    ends at Artifacts again. The fonts are held so the late font happens every time."""
+    held = []
+    page.route("**/*.woff2", lambda route: held.append(route))
+    size(page, 1440)
+    session = running_session(repo)
+    open_session(page, server, session)
+    bar = page.get_by_role("navigation", name="Session sections")
+    row = page.locator(".session-tabs-scroll")
+    page.add_style_tag(content=".session-tabs { width: 300px; }")
+    expect(bar).to_have_attribute("data-fit", "4")
+    tabs = bar.locator(".tab-item")
+    tabs.first.focus()
+    for number in (1, 2, 3):
+        page.keyboard.press("Tab")
+        expect(tabs.nth(number)).to_be_focused()
+        page.wait_for_function(
+            f"({CLEAR})(document.querySelectorAll('.session-tabs .tab-item')[{number}])"
+        )
+    assert held, "no font was asked for: the test no longer holds one back"
+    before = row.evaluate("e => e.scrollWidth")
+    for route in held:
+        route.continue_()
+    page.unroute("**/*.woff2")
+    page.wait_for_function("document.fonts.status === 'loaded'")
+    settled(page)
+    assert row.evaluate("e => e.scrollWidth") != before, "the font changed no width"
+    page.wait_for_function(f"({CLEAR})(document.querySelectorAll('.session-tabs .tab-item')[3])")
+    expect(bar.get_by_role("button", name="More tabs")).to_have_count(0)
+    expect(bar.get_by_role("button", name="Earlier tabs")).to_be_visible()
+
+
+def test_wider_tabs_keep_the_tab_shown_clear(page: Page, server, repo):
+    size(page, 1440)
+    session = running_session(repo)
+    open_session(page, server, session)
+    bar = page.get_by_role("navigation", name="Session sections")
+    row = page.locator(".session-tabs-scroll")
+    page.add_style_tag(content=".session-tabs { width: 300px; }")
+    expect(bar).to_have_attribute("data-fit", "4")
+    bar.get_by_role("link", name=re.compile("^Flows")).click()
+    shown = f"({CLEAR})(document.querySelector('.session-tabs [aria-current=page]'))"
+    page.wait_for_function(shown)
+    before = row.evaluate("e => e.scrollWidth")
+    page.add_style_tag(content=".session-tabs .tab-item { letter-spacing: 1px; }")
+    settled(page)
+    assert row.evaluate("e => e.scrollWidth") > before
+    page.wait_for_function(shown)
 
 
 def test_a_press_on_a_tab_leaves_the_row_until_the_click(page: Page, server, repo):

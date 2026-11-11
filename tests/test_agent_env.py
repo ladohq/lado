@@ -57,6 +57,18 @@ def test_the_callers_own_variables_do_not_reach_the_shell(shell, monkeypatch):
     assert env["HOME"] == os.environ["HOME"]
 
 
+def test_the_shell_does_not_start_from_what_lado_set_for_the_callers_launch(shell, monkeypatch):
+    """An agent's `lado mcp` that spawns a worker has the TMPDIR LADO gave the agent (its own
+    folder, named in LAUNCH_VARS): the worker's shell starts without it, so the worker's
+    folder is never inside its spawner's (LAD-247); the user's TMPDIR still reaches it."""
+    shell()
+    monkeypatch.setenv("TMPDIR", "/tmp/lado-1000/shop/supervisor")
+    monkeypatch.setenv(agent_env.LAUNCH_VARS, "LADO_AGENT,TMPDIR")
+    assert "TMPDIR" not in agent_env.resolve()
+    monkeypatch.setenv(agent_env.LAUNCH_VARS, "LADO_AGENT")
+    assert agent_env.resolve()["TMPDIR"] == "/tmp/lado-1000/shop/supervisor"
+
+
 def test_the_shells_own_bookkeeping_is_dropped(shell):
     shell()
     env = agent_env.resolve()

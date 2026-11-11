@@ -516,7 +516,8 @@ Sessions for now. The UI's texts are in English.
   orange in Needs you): the open row and the one under the pointer or focus get a stripe
   of their group's colour on the left. Each shows a line under its name: what waits, else
   its run time (Running, below) or its stopped text (Stopped); the status of a session whose tmux session is gone or whose loop does not
-  run, and on hover or keyboard focus of the row ⋯ with the entry's menu, Copy link and
+  run, in words in `--danger` after a full `--danger` dot, the dot of that trouble in the
+  session's head (LAD-229; it was `--muted` after a ring), and on hover or keyboard focus of the row ⋯ with the entry's menu, Copy link and
   Open in new tab; the session's own actions are in its head (Launch and session control,
   below). A row shows no tooltip on hover or keyboard focus (LAD-264, which removed the
   session's card of LAD-223: it covered the chat and repeated Details): the row shows the
@@ -3678,8 +3679,8 @@ history (#1E7A46 on #E7F4EC / #5CC98A on #18301F); since task feature/session-li
 green (`--done`) also means what works now, the session list's Running group, since
 task feature/flows-list-states (2026-10-07) the Flows overview's Active group, and since
 feature/session-head-topbar (2026-10-08) the dot of a session's head (since LAD-108 the
-list's working dot), where
-`--danger` marks a session that needs an action (tmux gone, loop down). (Kits, 2026-10-05) A quiet ground for the action
+list's working dot), and the status in words of a session list's row, where
+`--danger` marks a session that needs an action (tmux gone, loop down; the row since LAD-229). (Kits, 2026-10-05) A quiet ground for the action
 colour, a kit's mark (#E8EFFC / #1C2840). A kit's source dot: official `--done`, another
 marketplace `--action`, always beside the source's text. Every
 text colour has a contrast of at least 4.5:1 on its grounds in both themes; a unit test

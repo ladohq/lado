@@ -142,6 +142,18 @@ def lado_home(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def agents_tmp(tmp_path_factory, monkeypatch):
+    """The parent of the agents' temporary folders (providers.base.temp_path): the test's
+    own TMPDIR, outside tmp_path (which tests list), never the real /tmp; also where an
+    agent's environment has no TMPDIR (LADO_TEMP_PARENT): a fixed one of a unit test, or a
+    worker an agent's `lado mcp` spawns, whose spawner's TMPDIR is LADO's."""
+    folder = tmp_path_factory.mktemp("tmpdir")
+    monkeypatch.setenv("TMPDIR", str(folder))
+    monkeypatch.setenv("LADO_TEMP_PARENT", str(folder))
+    return folder
+
+
+@pytest.fixture(autouse=True)
 def _test_workspace(tmp_path, monkeypatch):
     """The default workspace (no LADO_REPOS) is in tmp_path, never the user's ~/workspace,
     which lado doctor would write a probe in; not made. A test of the ~/workspace default

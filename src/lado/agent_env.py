@@ -455,7 +455,10 @@ def from_shell() -> dict[str, str]:
         )
     script, begin, end = dump_script()
     argv = [shell, "-ilc", script]
-    base = {k: os.environ[k] for k in SHELL_BASE if k in os.environ}
+    # Not what LADO set for the launch of the agent this may run in (its `lado mcp`): its own
+    # TMPDIR would become the parent of the folder of the worker it spawns.
+    caller = without_launch(os.environ)
+    base = {k: caller[k] for k in SHELL_BASE if k in caller}
     base.update(PATH=base_path().path, TERM="dumb")
     command = shlex.join(argv)
     # stderr goes to a file: a program the startup files leave running in the background

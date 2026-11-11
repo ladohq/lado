@@ -4,6 +4,11 @@
 
 ### Fixed
 
+- **Each agent keeps its temporary files apart.** Every agent gets a temporary folder of its
+  own as `TMPDIR` (Claude Code's scratchpad too) and is told to keep its drafts there, so two
+  agents' files of one name no longer overwrite each other (LAD-247).
+- **A broken session stands out in the session list.** A session whose tmux session is gone or
+  whose loop does not run says so on its row in red after a red dot, as in its head, not in grey.
 - **The Mac installer waits for a Docker Desktop that is still quitting.** Run right after
   Docker Desktop's Quit, it starts Docker Desktop once it has quit and installs, instead of
   stopping after 2 minutes.

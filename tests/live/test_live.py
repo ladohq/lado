@@ -795,3 +795,27 @@ def test_an_agent_sees_the_image_the_human_attaches(live_repo, live_provider, de
         assert "SEEN" in ask_about_image("largest.png", largest, seen)
     check_supervisor_kept_still()
     runtime.stop_session(SESSION)
+
+
+TEMP_WORKER = (
+    'Run this shell command in your worktree: printf %s "$TMPDIR" > tmpdir.txt\n'
+    "Then report to the supervisor with send_message. Do nothing else."
+)
+
+
+def test_an_agent_s_shell_has_its_own_temporary_folder(live_repo, live_provider, agents_tmp):
+    """The real CLI hands the TMPDIR LADO gave the agent to the commands it runs (LAD-247):
+    its folder <parent>/lado-<uid>/<session>/<agent>, made for it alone, also under Codex's
+    sandbox."""
+    repo = live_repo
+    start_session(repo, live_provider)
+    worker = runtime.spawn_worker(SESSION, TEMP_WORKER, name="w1")
+    written = Path(worker.cwd) / "tmpdir.txt"
+    reported = answering(live_provider, "w1", lambda: messages("w1", "supervisor"))
+    wait_for(reported, "w1's report", 180)
+    expected = agents_tmp / f"lado-{os.getuid()}" / SESSION / "w1"
+    print(f"{live_provider}: TMPDIR {written.read_text()!r}")
+    assert written.read_text() == str(expected)
+    assert expected.is_dir()
+    check_supervisor_kept_still()
+    runtime.stop_session(SESSION)

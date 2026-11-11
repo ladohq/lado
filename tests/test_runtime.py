@@ -5758,6 +5758,28 @@ def test_in_a_container_every_agent_is_told_of_mise_and_who_sets_a_default(
     assert "ask the supervisor" in runtime.CONTAINER_WORKER
 
 
+@pytest.mark.parametrize("container", [False, True])
+def test_every_agent_is_told_to_keep_its_temporary_files_in_its_folder(
+    repo, fake_tmux, quiet_kit, monkeypatch, container
+):
+    """After the lines on messages, for a supervisor, a worker, a read-only worker and a
+    run's worker, in and out of LADO's container (LAD-247)."""
+    if container:
+        monkeypatch.setenv("LADO_CONTAINER", "1")
+    runtime.start_session(str(repo), "s", None, kit_names=["quiet"], provider="claude")
+    runtime.spawn_worker("s", "build", role="dev")
+    runtime.spawn_worker("s", "review", role="reviewer")
+    run = state.Run("s", "ship/x", "ship", "{}", {}, "Add x", "build", str(repo), "main")
+    runtime.spawn_worker("s", "build", role="dev", run=run, has_step=True)
+    windows = [c for c in fake_tmux if c[0] in ("new_session", "new_window")]
+    assert len(windows) == 4
+    for window in windows:
+        prompt = agent_helpers.claude_prompt(window[-1])
+        assert prompt.endswith(runtime.MESSAGING + runtime.TEMP_FILES)
+    assert "`$TMPDIR`" in runtime.TEMP_FILES
+    assert "Never write to a fixed path in `/tmp`" in runtime.TEMP_FILES
+
+
 def test_outside_a_container_no_agent_is_told_of_mise(repo, fake_tmux, quiet_kit):
     runtime.start_session(str(repo), "s", None, kit_names=["quiet"], provider="claude")
     runtime.spawn_worker("s", "build", role="dev")

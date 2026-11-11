@@ -23,6 +23,12 @@ its failures with the same text. The CLI (`cmd_stop`) prints nothing new on succ
 UI's `POST /api/sessions/{name}/stop` gets the wait and the error through `stop_session`
 (the error shows as the stop's error, as a failed kill does today). The timeout is
 `wait_stopped`'s default (three intervals, 6 s), the same as update and uninstall.
+`stop_session` and `stop_all` take `wait=False` for a caller that waits itself: `lado update`
+(`self_update.py`), which must put the session among the ones it stopped before a loop that
+does not end can fail it, or its resume after a failed update would leave that session stopped,
+and `lado uninstall`; both keep their own wait and its error text. The UI's Stop shows
+"Stopping…" for as long as its request runs, with no request timeout, so its wait of up to
+about 6 s shows as that.
 
 **D3. The loop ends without writing when lado.db is gone.** At the top of each pass, before
 `why_stop`, `loop.run` checks `(state.home_path() / "lado.db").exists()`; when it is missing it

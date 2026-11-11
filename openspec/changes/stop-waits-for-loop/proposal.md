@@ -52,6 +52,9 @@ Options weighed for 2:
 
 - `src/lado/runtime.py` (`stray_config_dirs`; `stop_session` and `stop_all` wait for the loop).
 - `src/lado/loop.py` (`run` ends without writing when `lado.db` is gone).
+- `src/lado/self_update.py`, `src/lado/uninstall.py`: their stops pass `wait=False` and keep
+  their own wait, so a loop that does not end cannot keep a stopped session from update's
+  resume, and both keep their error texts.
 - Tests: unit (`tests/test_doctor.py` or `tests/test_runtime.py`, `tests/test_loop.py`),
   integration with the fake agent (`tests/integration/test_session_loop.py`).
 - `docs/cli.md` (`lado stop`), `docs/design/agents.md` (the session loop), CHANGELOG.md under

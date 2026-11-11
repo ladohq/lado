@@ -1,3 +1,7 @@
+## Purpose
+When a stop of a session is over: `lado stop`, `lado stop --all` and the UI's Stop return only
+after the session's loop has ended, and the loop writes nothing into a LADO home that is gone.
+
 ## ADDED Requirements
 
 ### Requirement: A stop returns after the session's loop has ended

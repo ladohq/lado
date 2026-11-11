@@ -32,7 +32,7 @@
 - [x] 3.2 CHANGELOG.md, `## 0.46.1 (unreleased)`, Fixed: `lado stop` returns once the session's
   loop has ended, so a home deleted after it stays deleted and `lado stop s && lado start s`
   leaves one loop; `lado doctor` no longer takes `.DS_Store` for an agent's folder (LAD-153).
-- [ ] 3.3 Regression: `make lint`, `make test`, `uv run pytest -m integration -n auto
+- [x] 3.3 Regression: `make lint`, `make test`, `uv run pytest -m integration -n auto
   tests/integration/test_session_loop.py` and the integration files that stop sessions
   (`grep -l "lado stop\|stop_session\|stop_all" tests/integration/*.py`);
   `openspec validate stop-waits-for-loop --strict` and the trial archive of the settings'

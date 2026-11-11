@@ -302,6 +302,24 @@ def test_a_function_whose_body_is_already_empty_is_not_mutated():
 
 
 @pytest.mark.parametrize(
+    "code, log, verdict",
+    [
+        (None, "", "timeout"),
+        (0, "", "pseudo"),
+        (1, "", "killed"),
+        (2, "", "killed"),  # -x ended an xdist run, or a test module no longer imports
+        (4, "ImportError while loading conftest 'tests/conftest.py'.", "killed"),
+        (4, "ERROR: file or directory not found: tests/x.py", "error"),
+        (5, "no tests ran", "error"),
+    ],
+)
+def test_pytest_s_exit_says_whether_an_emptied_function_was_caught(code, log, verdict):
+    """An emptied function that runs at import (state's triggers) breaks conftest.py's import:
+    pytest exits 4, a usage error by its code, yet every test failed."""
+    assert test_audit.verdict(code, log) == verdict
+
+
+@pytest.mark.parametrize(
     "output, failed",
     [
         ("bringing up nodes...\n\n....s...", False),

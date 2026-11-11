@@ -450,6 +450,18 @@ CORE = ("runtime", "hooks", "state", "runs", "flows")
 KILLED = (1, 2)
 
 
+def verdict(code: int | None, log: str) -> str:
+    """What pytest's exit (None: ended at the timeout) and output say of an emptied function:
+    `pseudo` (no test failed), `killed`, `timeout` (counted killed) or `error`."""
+    if code is None:
+        return "timeout"
+    if code == 0:
+        return "pseudo"
+    if code in KILLED or (code == 4 and "ImportError while loading conftest" in log):
+        return "killed"  # 4: the function runs at import, and the package no longer imports
+    return "error"
+
+
 def run_pseudo(
     out: Path, *, repo: Path, modules: list[str], coverage: list[Path], timeout: float
 ) -> int:
@@ -514,16 +526,15 @@ def pseudo_module(copy: Path, env: dict, module: str, records: dict, timeout: fl
                 code = run_tests(copy, env, tests, timeout)
             finally:
                 path.write_text(source)
-            if code is None:
-                result["timeout"].append(name)
-            elif code == 0:
+            log = (copy.parent / "pseudo-tests.log").read_text()
+            found = verdict(code, log)
+            if found == "pseudo":
                 result["pseudo"][name] = tests
-            elif code in KILLED:
-                result["killed"].append(name)
-            else:
-                log = (copy.parent / "pseudo-tests.log").read_text()[-2000:]
-                result["errors"][name] = {"code": code, "log": log}
+            elif found == "error":
+                result["errors"][name] = {"code": code, "log": log[-2000:]}
                 print(f"pseudo: {name}: pytest exited {code}")
+            else:
+                result[found].append(name)
     finally:
         path.write_text(source)
 

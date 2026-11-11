@@ -4,9 +4,9 @@
 
 ### Fixed
 
-- **Each agent keeps its temporary files apart.** Every agent gets a temporary folder of its
-  own as `TMPDIR` (Claude Code's scratchpad too) and is told to keep its drafts there, so two
-  agents' files of one name no longer overwrite each other (LAD-247).
+- **Agents no longer overwrite each other's drafts.** Each agent keeps its temporary files in a
+  folder of its own, Claude Code's scratchpad too, so two agents that write a draft of one name
+  each keep their own.
 - **A broken session stands out in the session list.** A session whose tmux session is gone or
   whose loop does not run says so on its row in red after a red dot, as in its head, not in grey.
 - **The Mac installer waits for a Docker Desktop that is still quitting.** Run right after
@@ -14,18 +14,18 @@
   stopping after 2 minutes.
 - **The note under Model names the server model the field took.** In New session, a change of
   Agent to a CLI that is not logged in and takes its one server model no longer says the model
-  went back to the default (LAD-259).
+  went back to the default.
 - **Model ids in the mono face, and the model picker's highlight stays put.** Model ids and
   servers' addresses show in IBM Plex Mono as designed; after a failed read of the list the
-  highlighted model stays highlighted, so Enter picks the one you pointed at (LAD-202).
+  highlighted model stays highlighted, so Enter picks the one you pointed at.
 - **A session's scrolled tabs keep their tab in view.** When the tabs change width, as the
   font arrives or the window is resized, the tab you reached with Tab, or the one shown, no
-  longer stays half under the fade with › showing (LAD-267).
-- **`lado stop` returns once the session is fully stopped.** It waits for the session's
-  background loop to end, so LADO no longer makes a home deleted right after again, and
-  `lado stop s && lado start s` leaves one loop running, not the old one (LAD-153).
+  longer stays half under the fade with › showing.
+- **`lado stop` returns once the session has fully stopped.** `lado stop s && lado start s`
+  leaves the session running with one loop, and a LADO home deleted right after a stop stays
+  deleted.
 - **`lado doctor` no longer takes `.DS_Store` for an agent's folder.** Files and hidden names
-  under `~/.lado/agents/` are not listed as left by agents, nor offered for removal (LAD-153).
+  under `~/.lado/agents/` are not listed as left by agents, nor offered for removal.
 
 ## 0.46.0 (2026-11-11)
 

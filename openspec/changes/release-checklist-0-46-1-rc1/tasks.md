@@ -13,7 +13,7 @@
 
 ## 2. CHANGELOG.md
 
-- [ ] 2.1 `## 0.46.1 (unreleased)` as the proposal's text: no `(LAD-…)` left, the first and the
+- [x] 2.1 `## 0.46.1 (unreleased)` as the proposal's text: no `(LAD-…)` left, the first and the
   seventh item written anew, the other six unchanged but for their key; each item at most three
   lines. Check: `grep -n 'LAD-' CHANGELOG.md` finds nothing in the section, and
   `python3 scripts/release_notes.py v0.46.1rc1` prints the 8 items.

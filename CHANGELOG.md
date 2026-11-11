@@ -8,7 +8,7 @@
   terminal, and your message says how to answer it; an answer left in the terminal gets one
   reminder, and "replied only in its terminal" shows only if the reminder did not help.
 
-## 0.46.1 (unreleased)
+## 0.46.1 (2026-11-11)
 
 ### Fixed
 

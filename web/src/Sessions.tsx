@@ -896,6 +896,13 @@ function keepInView(tabs: HTMLElement, on: HTMLElement) {
   tabs.scrollLeft = tabScroll(view, { left: on.offsetLeft, width: on.offsetWidth }, TAB_ROOM);
 }
 
+// The tab the row keeps in view: the one the keyboard reached, else the one shown (a press's
+// focus is not :focus-visible, so it moves nothing). LAD-267.
+function tabToKeep(tabs: HTMLElement): HTMLElement | null {
+  const focused = tabs.querySelector<HTMLElement>(":focus-visible");
+  return focused ?? tabs.querySelector<HTMLElement>('[aria-current="page"]');
+}
+
 // What puts the focus back after a trial, which hides the form of the bar's tool that has it,
 // for a moment or for good: on that form while it shows, else on the other.
 function holdToolFocus(bar: HTMLElement): () => void {
@@ -911,7 +918,8 @@ function holdToolFocus(bar: HTMLElement): () => void {
 // The tab bar: the tabs, which give way by the levels above, and at its right end what stays
 // outside them (`children`, a tab's search). The level is chosen by trying each before the
 // paint, again when the tabs' row or a tab changes its width (the bar, the search coming, a
-// count, the font).
+// count, the font); each trial brings the tab kept in view (`tabToKeep`) clear of the fade
+// again, as the widths under the scroll have changed (LAD-267).
 function SessionTabs({
   name,
   tab,
@@ -934,6 +942,12 @@ function SessionTabs({
     const end = tabs.scrollLeft + tabs.clientWidth >= tabs.scrollWidth - 1;
     setEnds((now) => (now.start === start && now.end === end ? now : { start, end }));
   }, []);
+  const keepTabInView = useCallback(() => {
+    const tabs = row.current;
+    const on = tabs && tabToKeep(tabs);
+    if (tabs && on) keepInView(tabs, on);
+    lookAtEnds();
+  }, [lookAtEnds]);
   useLayoutEffect(() => {
     const box = bar.current;
     const tabs = row.current;
@@ -951,7 +965,7 @@ function SessionTabs({
       box.dataset.fit = String(level);
       putBack();
       setFit(level);
-      lookAtEnds();
+      keepTabInView();
     };
     choose();
     if (typeof ResizeObserver === "undefined") return;
@@ -959,17 +973,12 @@ function SessionTabs({
     observer.observe(tabs);
     for (const one of tabs.children) observer.observe(one);
     return () => observer.disconnect();
-  }, [lookAtEnds]);
-  // The tab shown stays in view.
-  useLayoutEffect(() => {
-    const tabs = row.current;
-    const on = tabs?.querySelector<HTMLElement>('[aria-current="page"]');
-    if (!tabs || !on) return;
-    keepInView(tabs, on);
-    lookAtEnds();
-  }, [tab, fit, lookAtEnds]);
-  // So does the tab the keyboard reaches; not a press's: the row moving under the pointer would
-  // lose the click.
+  }, [keepTabInView]);
+  // The tab kept stays in view when the tab shown or the level changes; the keyboard's wins, or
+  // a level changing right after Tab would bring the shown one back over it.
+  useLayoutEffect(keepTabInView, [tab, fit, keepTabInView]);
+  // The tab the keyboard reaches comes into view at once; not a press's: the row moving under
+  // the pointer would lose the click.
   const focused = (event: FocusEvent<HTMLDivElement>) => {
     if (event.target.matches(":focus-visible")) keepInView(event.currentTarget, event.target);
   };

@@ -1,6 +1,6 @@
 ## 1. The tab bar (web)
 
-- [ ] 1.1 `tests/ui/test_narrow_layout.py`: a failing test first,
+- [x] 1.1 `tests/ui/test_narrow_layout.py`: a failing test first,
   `test_a_late_font_leaves_the_tab_reached_clear`: the setup of
   `test_tab_brings_each_tab_clear_of_the_bars_ends` (1440 px, a running session, the bar
   300 px, `data-fit` 4), with `page.route("**/*.woff2", ...)` holding the font responses from
@@ -8,11 +8,11 @@
   routes continue, the test waits for `document.fonts.status === 'loaded'`, asserts the row's
   `scrollWidth` changed (the test reproduces), Artifacts is `CLEAR`, › has count 0 and ‹ is
   visible (AC-1, AC-3).
-- [ ] 1.2 `tests/ui/test_narrow_layout.py`: `test_wider_tabs_keep_the_tab_shown_clear`: the
+- [x] 1.2 `tests/ui/test_narrow_layout.py`: `test_wider_tabs_keep_the_tab_shown_clear`: the
   same setup, Flows shown by a click (not the keyboard), then a style tag
   `.session-tabs .tab-item { letter-spacing: 1px }`; the row's `scrollWidth` grows and Flows is
   `CLEAR` (AC-2).
-- [ ] 1.3 `web/src/Sessions.tsx` by D1–D3: `keepTabInView(row)` (the `:focus-visible` tab of
+- [x] 1.3 `web/src/Sessions.tsx` by D1–D3: `keepTabInView(row)` (the `:focus-visible` tab of
   the row, else `aria-current="page"`; `keepInView`, then `lookAtEnds`), called by `choose`
   after the level is set and by the `[tab, fit]` effect; update the comments of `SessionTabs`
   and of the effect. `make web` green; 1.1 and 1.2 pass.

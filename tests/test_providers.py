@@ -126,6 +126,9 @@ def test_a_provider_s_same_model_is_equality_by_default():
 def test_a_claude_session_start_keeps_the_alias_s_source(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     state.set_model("s", "supervisor", state.Choice("opus", state.SESSION), None)
+    # Its CLI has listed LADO's tools (lado.mcp_server's event): the hook does not wait for them.
+    instance = state.get_agent("s", "supervisor").instance
+    state.add_event("s", "supervisor", state.MCP_READY, instance)
     claude = providers.get("claude")
     event = claude.parse_event("SessionStart", json.dumps({"model": "claude-opus-5-5"}))
     hooks.handle(claude, event, "s", "supervisor")

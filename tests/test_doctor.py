@@ -50,6 +50,14 @@ def _versions(
 
 
 @pytest.fixture(autouse=True)
+def _no_real_clis(monkeypatch):
+    """`which=lambda cmd: cmd` finds no agent CLI on CI, but runs the `--version` of each one
+    installed here (0.1-0.4 s apiece); every test gets the tested versions unless it asks for
+    its own (`_versions`)."""
+    _versions(monkeypatch)
+
+
+@pytest.fixture(autouse=True)
 def _own_git_config(git_config):
     """The `git author` check reads the test's git config, never the user's."""
     return git_config

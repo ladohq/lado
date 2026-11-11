@@ -344,6 +344,8 @@ def test_the_plan_says_where_agents_resume_on_a_mac(
 
 
 def test_the_system_says_where_on_a_mac_and_nothing_elsewhere(client, monkeypatch):
+    # The agent CLIs installed here are not run for their versions: three asks, 1 s.
+    monkeypatch.setattr(doctor, "_tool_version", lambda path, flag, timeout=None: "v1")
     monkeypatch.setattr(gui_session.sys, "platform", "darwin")
     monkeypatch.setenv("LADO_MACOS_PLACE", "remote")
     monkeypatch.setattr(gui_session, "server_place", lambda socket: gui_session.Place.GUI)

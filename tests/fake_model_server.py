@@ -331,7 +331,10 @@ class Server:
         self.server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
         self.port = self.server.server_address[1]
         self.url = f"http://127.0.0.1:{self.port}{prefix}"
-        self._thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        # close() waits for the loop's next poll: 0.5 s by default, at each test's teardown.
+        self._thread = threading.Thread(
+            target=self.server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True
+        )
         self._thread.start()
 
     def answer_for(self, method: str, path: str, headers) -> Answer:

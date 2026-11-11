@@ -426,7 +426,7 @@ def test_the_agents_processes_are_taken_before_the_stop_and_waited_for(
 
         def hangup():
             # no agent.wait() here: it would hold Popen's lock, and poll() would answer None
-            time.sleep(1)
+            time.sleep(0.3)
             agent.terminate()
 
         threading.Thread(target=hangup, daemon=True).start()

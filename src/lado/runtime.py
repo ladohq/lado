@@ -3373,6 +3373,7 @@ def _layer_warnings(
     LADO or the provider sets for this launch, which keeps LADO's value (_launch_env)."""
     found = agent_env.outside()
     lines = list(found.unused) if files else []
+    # Not _ours: a layer's TMPDIR is used, as the parent of the agent's own folder.
     ours = {**providers.agent_env(agent), **launch.env}
     lines += [
         f"variable file {name} in {found.folder} not used: LADO sets {name} for {agent.provider}"

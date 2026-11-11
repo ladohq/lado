@@ -1,12 +1,12 @@
 ## 1. The note
 
-- [ ] 1.1 Vitest, failing first, in `web/src/Launch.test.tsx`: Kilo CLI with `kilo/large` picked,
+- [x] 1.1 Vitest, failing first, in `web/src/Launch.test.tsx`: Kilo CLI with `kilo/large` picked,
   then Agent to Claude Code (`login_missing`, `starts_on_server`, one saved model `CloudClaude`):
   the field holds `CloudClaude`; the text `kilo/large belongs to Kilo CLI. For this session
   only: Claude Code is not logged in, so it runs on your server's model.` stands under Model;
   neither `back to Claude Code's default` nor a second `For this session only` note is shown;
   the start sends `model: "CloudClaude"`. Then a change of Agent to a third CLI removes the line.
-- [ ] 1.2 `web/src/LaunchModel.tsx` by D1-D3: the lost pick kept as `{ name, from }`, the note
+- [x] 1.2 `web/src/LaunchModel.tsx` by D1-D3: the lost pick kept as `{ name, from }`, the note
   made at render. Check: 1.1 green, and the existing test "another agent CLI takes the field to
   its default, and says what went" still reads `… so the model is back to Claude Code's
   default.`; `make web` green.

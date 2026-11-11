@@ -99,8 +99,14 @@ set, when any of them is unset or its CLI is missing, so a run of skips proves n
 test-live` without them ends with no failure. E.g. `LADO_LIVE_ENDPOINT=https://openrouter.ai/api/v1
 LADO_LIVE_API_KEY=<key> LADO_LIVE_MODEL=<model> LADO_LIVE_IMAGE=1 make test-live PROVIDER=codex`.
 A local server can serve as the endpoint, when it has the APIs below. The models CI uses are
-in `live.yml`'s matrix, one per provider; the trial that chose them:
-`docs/superpowers/reports/2026-11-07-cloud-live-tests-trial.md`.
+in `live.yml`'s matrix, one per provider. A cell's model must be served on OpenRouter by more
+than one host (`https://openrouter.ai/api/v1/models/<model>/endpoints`), as one host's
+exhausted quota fails every run with a 429 (`qwen/qwen3.7-flash` in 0.46.1rc1), and declare
+tools and images; among those, one whose tool calls held in a trial of three runs per CLI and
+one of the cells at once, then the cheapest (a cheaper model that answers a tool call wrongly
+makes a cell red at random, as `openai/gpt-5-nano` did). Codex needs no OpenAI model there.
+The trial that chose them: `docs/superpowers/reports/2026-11-11-live-model-several-hosts-trial.md`
+(the earlier one, `2026-11-07-cloud-live-tests-trial.md`, is history).
 A paid model only with a limited key and the human's yes; the schedule in CI is that yes,
 given once by LAD-231.
 
@@ -414,7 +420,7 @@ evidence to `<out>` for the upload. A test ended by that limit keeps no evidence
 only the log and what the tests before it kept; a job killed before the redaction uploads
 nothing. The key is the secret `LADO_LIVE_API_KEY` of the environment `live`, which admits only
 `main` and tags `v*`, so no run of a pull request gets it, and only the test step names it.
-A run of the four cells costs about $0.07 (the trial's report). The key's limit, $10 a month, is
+A run of the four cells costs about $0.13 (the trial's report). The key's limit, $10 a month, is
 the hard stop: past it, or with no credits on the OpenRouter
 account behind it, a run goes red with a 402. A red run mails as any failed workflow does;
 rerun its failed cells by hand (`gh run rerun <id> --failed`), a pass on a rerun being a flake.

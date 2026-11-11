@@ -27,13 +27,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Each provider with its cheapest model that passed the trial
-        # (docs/superpowers/reports/2026-11-07-cloud-live-tests-trial.md).
+        # Each provider with a model OpenRouter serves from more than one host, with tools
+        # and images, whose tool calls held in a trial; then the cheapest
+        # (docs/testing.md; docs/superpowers/reports/2026-11-11-live-model-several-hosts-trial.md).
         include:
           - {provider: claude, model: anthropic/claude-haiku-5.5}
-          - {provider: codex, model: qwen/qwen3.7-flash}
-          - {provider: kilo, model: qwen/qwen3.7-flash}
-          - {provider: opencode, model: qwen/qwen3.7-flash}
+          - {provider: codex, model: anthropic/claude-haiku-5.5}
+          - {provider: kilo, model: anthropic/claude-haiku-5.5}
+          - {provider: opencode, model: anthropic/claude-haiku-5.5}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

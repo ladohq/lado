@@ -187,8 +187,8 @@ def run_durations(layer: str, out: Path, args: list[str]) -> int:
         return result.returncode or 1
     write_json(out / f"durations-{layer}.json", durations)
     print(f"durations: {len(durations['tests'])} tests, {durations['wall']} s by the clock")
-    for test, seconds_ in slow(durations):
-        print(f"  {seconds_:6.2f} s  {test}")
+    for test, took in slow(durations):
+        print(f"  {took:6.2f} s  {test}")
     return result.returncode
 
 
@@ -219,8 +219,8 @@ def run_flaky(out: Path, *, days: int, recent: int) -> int:
         return skip_flaky(out, "gh is not available on PATH")
     since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
     fields = "databaseId,attempt,createdAt,updatedAt,conclusion"
-    listed = gh("run", "list", "--workflow", "ci.yml", "--branch", "main", "--created",
-                f">={since}", "--limit", "1000", "--json", fields)  # fmt: skip
+    listing = ["--workflow", "ci.yml", "--branch", "main", "--created", f">={since}"]
+    listed = gh("run", "list", *listing, "--limit", "1000", "--json", fields)
     if listed is None:
         return skip_flaky(out, "gh run list failed (not logged in?)")
     runs, reruns, unread = [], [], []
@@ -229,8 +229,15 @@ def run_flaky(out: Path, *, days: int, recent: int) -> int:
         attempts = {}
         if newest or run["attempt"] > 1:
             for attempt in range(1, run["attempt"] + 1):
-                view = gh("run", "view", str(run["databaseId"]), "--attempt", str(attempt),
-                          "--json", "jobs")  # fmt: skip
+                view = gh(
+                    "run",
+                    "view",
+                    str(run["databaseId"]),
+                    "--attempt",
+                    str(attempt),
+                    "--json",
+                    "jobs",
+                )
                 if view is None:
                     unread.append(f"{run['databaseId']}/{attempt}")
                     print(f"flaky: gh run view {run['databaseId']} --attempt {attempt} failed")
@@ -238,13 +245,12 @@ def run_flaky(out: Path, *, days: int, recent: int) -> int:
                 attempts[attempt] = view["jobs"]
         if newest and run["attempt"] in attempts:
             last = attempts[run["attempt"]]
-            jobs = {job["name"]: seconds(job["startedAt"], job["completedAt"]) for job in last}
-            runs.append({
-                "id": run["databaseId"],
-                "clock_s": seconds(run["createdAt"], run["updatedAt"]),
-                "runner_min": round(sum(jobs.values()) / 60, 2),
-                "jobs": jobs,
-            })  # fmt: skip
+            jobs = {job["name"]: between(job["startedAt"], job["completedAt"]) for job in last}
+            clock = between(run["createdAt"], run["updatedAt"])
+            runner = round(sum(jobs.values()) / 60, 2)
+            runs.append(
+                {"id": run["databaseId"], "clock_s": clock, "runner_min": runner, "jobs": jobs}
+            )
         reruns += rerun_greens(run["databaseId"], attempts)
     result = {"days": days, "runs": runs, "reruns": reruns, "unread": unread}
     write_json(out / "flaky.json", result)
@@ -281,7 +287,9 @@ def gh(*args: str, tries: int = 3):
     return None
 
 
-def seconds(start: str, end: str) -> int:
+def between(start: str, end: str) -> int:
+    """The seconds between two of GitHub's timestamps."""
+
     def parse(stamp: str) -> datetime:
         return datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ")
 
@@ -451,8 +459,11 @@ def run_pseudo(
         # From `out`, not the copy: `-c` would put its cwd first on sys.path.
         where = subprocess.run(
             [sys.executable, "-c", "import lado; print(lado.__file__)"],
-            cwd=out, env=env, capture_output=True, text=True,
-        ).stdout.strip()  # fmt: skip
+            cwd=out,
+            env=env,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
         package = (copy / "src" / "lado").resolve()
         if not where or not Path(where).resolve().is_relative_to(package):
             print(f"pseudo: the copy imports lado from {where or 'nowhere'}, not from {package}")
@@ -591,7 +602,7 @@ def run_mutation(out: Path, modules: list[str], repo: Path = ROOT) -> int:
         log = out / "mutmut.log"
         with open(log, "w") as output:
             run = subprocess.run([str(mutmut), "run"], cwd=copy, stdout=output, stderr=output)
-        seconds_ = round(time.monotonic() - started)
+        took = round(time.monotonic() - started)
         listed = subprocess.run(
             [str(mutmut), "results", "--all", "true"], cwd=copy, capture_output=True, text=True
         )
@@ -613,15 +624,17 @@ def run_mutation(out: Path, modules: list[str], repo: Path = ROOT) -> int:
             result = {
                 "module": module,
                 "head": head,
-                "run_seconds": seconds_,
+                "run_seconds": took,
                 "mutant_seconds": round(sum(meta.get("durations_by_key", {}).values())),
                 "mutants": {name: mutants[name] for name in own},
                 "tests": {name: sorted(tests[name]) for name in of_module(tests, module)},
             }
             write_json(out / f"mutation-{module}.json", result)
-            print(f"mutation: {module}: {len(own)} mutants, score {score(result):.1%}, "
-                  f"{result['mutant_seconds']} s of mutants")  # fmt: skip
-        print(f"mutation: {seconds_} s in all")
+            spent = result["mutant_seconds"]
+            print(
+                f"mutation: {module}: {len(own)} mutants, {score(result):.1%}, {spent} s of mutants"
+            )
+        print(f"mutation: {took} s in all")
         return code
     finally:
         remove_copy(repo, copy)
@@ -672,8 +685,8 @@ def run_prove(
         failed = True
     gone = set(deleted.read_text().split()) if deleted else set()
     for module in sorted(before.keys() & after.keys()):
-        print(f"prove: {module}: {score(before[module]):.1%} before, "
-              f"{score(after[module]):.1%} after")  # fmt: skip
+        scores = score(before[module]), score(after[module])
+        print(f"prove: {module}: {scores[0]:.1%} before, {scores[1]:.1%} after")
         tests = before[module].get("tests", {})
         for line in prove(before[module], after[module]):
             failed = True
@@ -703,8 +716,8 @@ def run_prove(
 
 def remove_copy(repo: Path, copy: Path) -> None:
     if copy.exists():
-        subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(copy)],
-                       capture_output=True)  # fmt: skip
+        remove = ["git", "-C", str(repo), "worktree", "remove", "--force", str(copy)]
+        subprocess.run(remove, capture_output=True)
         shutil.rmtree(copy, ignore_errors=True)
     subprocess.run(["git", "-C", str(repo), "worktree", "prune"], capture_output=True)
 
@@ -775,9 +788,8 @@ def run_report(out: Path) -> int:
                 if status not in KILLS
             )
             most = ", ".join(f"{f} {n}" for f, n in survived.most_common(5))
-            seconds_ = result.get("mutant_seconds", result.get("seconds", ""))
-            count = len(result["mutants"])
-            rows.append(f"| {module} | {count} | {score(result):.1%} | {seconds_} | {most} |")
+            spent, count = result.get("mutant_seconds", ""), len(result["mutants"])
+            rows.append(f"| {module} | {count} | {score(result):.1%} | {spent} | {most} |")
         parts.append("\n".join(rows) + "\n")
 
     parts.append("## Pseudo-tested functions\n")

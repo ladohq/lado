@@ -77,8 +77,8 @@ def pseudo_command(tmp_path: Path, repo: Path, *extra: str) -> list[str]:
     coverage = tmp_path / "coverage-unit.json"
     coverage.write_text(json.dumps(COVERAGE))
     out = tmp_path / "out"
-    return [sys.executable, str(SCRIPT), "--out", str(out), "pseudo", "--repo", str(repo),
-            "--modules", "core", "--coverage", str(coverage), *extra]  # fmt: skip
+    audit = [sys.executable, str(SCRIPT), "--out", str(out), "pseudo", "--repo", str(repo)]
+    return [*audit, "--modules", "core", "--coverage", str(coverage), *extra]
 
 
 def clean(repo: Path) -> None:

@@ -65,6 +65,12 @@ def test_durations_without_a_summary_line_is_refused():
         test_audit.parse_durations("collected 0 items\n")
 
 
+def ci_run(id_, attempt, created, updated):
+    """A run as `gh run list --json` gives it, green."""
+    times = {"createdAt": created, "updatedAt": updated}
+    return {"databaseId": id_, "attempt": attempt, **times, "conclusion": "success"}
+
+
 def job(name, conclusion, start="2026-11-10T10:00:00Z", end="2026-11-10T10:02:00Z"):
     return {"name": name, "conclusion": conclusion, "startedAt": start, "completedAt": end}
 
@@ -98,11 +104,9 @@ else:
 
 def test_flaky_reads_reruns_from_gh(fake_gh, tmp_path):
     runs = [
-        {"databaseId": 2, "attempt": 2, "createdAt": "2026-11-10T10:00:00Z",
-         "updatedAt": "2026-11-10T10:20:00Z", "conclusion": "success"},
-        {"databaseId": 1, "attempt": 1, "createdAt": "2026-11-09T10:00:00Z",
-         "updatedAt": "2026-11-09T10:08:00Z", "conclusion": "success"},
-    ]  # fmt: skip
+        ci_run(2, 2, "2026-11-10T10:00:00Z", "2026-11-10T10:20:00Z"),
+        ci_run(1, 1, "2026-11-09T10:00:00Z", "2026-11-09T10:08:00Z"),
+    ]
     jobs = {
         "2/1": [job("unit (3.10)", "success"), job("ui (1)", "failure")],
         "2/2": [job("unit (3.10)", "success"), job("ui (1)", "success")],
@@ -124,8 +128,7 @@ def test_flaky_reads_reruns_from_gh(fake_gh, tmp_path):
 
 
 def test_a_run_gh_cannot_show_is_named_and_fails_the_command(fake_gh, tmp_path, capsys):
-    runs = [{"databaseId": 3, "attempt": 1, "createdAt": "2026-11-10T10:00:00Z",
-             "updatedAt": "2026-11-10T10:20:00Z", "conclusion": "success"}]  # fmt: skip
+    runs = [ci_run(3, 1, "2026-11-10T10:00:00Z", "2026-11-10T10:20:00Z")]
     fake_gh.write_text(json.dumps({"runs": runs, "jobs": {}}))  # `run view 3` fails
 
     assert test_audit.run_flaky(tmp_path / "out", days=30, recent=10) == 1
@@ -288,8 +291,8 @@ def test_mutmut_s_results_are_read_by_mutant():
 
 
 def test_the_score_counts_a_timeout_killed_and_a_mutant_without_tests_survived():
-    result = {"module": "runs", "mutants": {"a": "killed", "b": "timeout", "c": "no tests",
-                                            "d": "survived"}}  # fmt: skip
+    mutants = {"a": "killed", "b": "timeout", "c": "no tests", "d": "survived"}
+    result = {"module": "runs", "mutants": mutants}
     assert test_audit.score(result) == 0.5
 
 
@@ -364,10 +367,11 @@ def test_a_deleted_test_of_no_module_rests_on_the_checklist(tmp_path, capsys):
     deleted = tmp_path / "deleted.txt"
     deleted.write_text("tests/test_readme.py::test_headings\ntests/test_runs.py::test_go\n")
     coverage = tmp_path / "coverage-unit.json"
-    coverage.write_text(json.dumps({
+    records = {
         "tests/test_readme.py::test_headings": {},
         "tests/test_runs.py::test_go": {"src/lado/runs.py": [4]},
-    }))  # fmt: skip
+    }
+    coverage.write_text(json.dumps(records))
 
     code = test_audit.run_prove(
         tmp_path / "before", tmp_path / "after", deleted=deleted, coverage=[coverage]
@@ -448,10 +452,10 @@ def test_the_report_joins_what_was_measured(tmp_path):
     out.mkdir()
     durations = {"wall": 62.75, "tests": {"t.py::slow": 20.15, "t.py::fast": 0.01}}
     (out / "durations-unit.json").write_text(json.dumps(durations))
-    write_mutation(out, "runs", {"lado.runs.x_go__mutmut_1": "killed",
-                                 "lado.runs.x_go__mutmut_2": "survived"})  # fmt: skip
-    pseudo = {"pseudo": {"runs.go": ["t.py::a"]}, "not_covered": ["runs.stop"], "killed": [],
-              "timeout": [], "errors": {}}  # fmt: skip
+    mutants = {"lado.runs.x_go__mutmut_1": "killed", "lado.runs.x_go__mutmut_2": "survived"}
+    write_mutation(out, "runs", mutants)
+    pseudo = {"pseudo": {"runs.go": ["t.py::a"]}, "not_covered": ["runs.stop"]}
+    pseudo |= {"killed": [], "timeout": [], "errors": {}}
     (out / "pseudo.json").write_text(json.dumps(pseudo))
 
     assert test_audit.run_report(out) == 0

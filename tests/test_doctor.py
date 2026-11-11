@@ -900,6 +900,26 @@ def test_config_folders_of_agents_that_do_not_run_warn(repo, fake_tmux, lado_hom
     assert check.hint == f"remove them: rm -rf {left[1]} {left[0]}"
 
 
+def test_files_and_hidden_names_are_no_agent_config_folders(repo, fake_tmux, lado_home):
+    # macOS's Finder leaves .DS_Store in every folder it shows (LAD-153).
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    agents = lado_home / "agents"
+    for file in (agents / ".DS_Store", agents / "s" / ".DS_Store", agents / "notes"):
+        file.write_text("x")
+    (agents / ".hidden" / "x").mkdir(parents=True)
+    (agents / "s" / ".hidden").mkdir()
+    assert doctor.check_config_folders() == doctor.Check(
+        "Agent config folders", doctor.OK, "only those of running agents"
+    )
+    (agents / "old" / "x").mkdir(parents=True)
+    check = doctor.check_config_folders()
+    assert check.level == doctor.WARN
+    assert check.detail == (
+        f"left by agents that do not run (they may hold secrets): {agents / 'old'}"
+    )
+    assert check.hint == f"remove them: rm -rf {agents / 'old'}"
+
+
 def test_artifacts_show_the_stores_size_and_warn_only_of_old_orphans(lado_home):
     assert doctor.check_artifacts() == doctor.Check("Artifacts", doctor.OK, "none")
     assert not (lado_home / "lado.db").exists()  # not made by the check

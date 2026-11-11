@@ -1,6 +1,6 @@
 ## 1. doctor
 
-- [ ] 1.1 Unit (`tests/test_doctor.py`, beside `test_config_folders_of_agents_that_do_not_run_warn`),
+- [x] 1.1 Unit (`tests/test_doctor.py`, beside `test_config_folders_of_agents_that_do_not_run_warn`),
   failing first: the two scenarios of "Only folders count as agent config folders" (a
   `.DS_Store` file at the root and in a running session's folder, a hidden folder, a plain
   file, a stray folder beside them). Then `runtime.stray_config_dirs` skips entries that are

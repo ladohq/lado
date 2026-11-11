@@ -1399,7 +1399,9 @@ def stray_config_dirs() -> list[Path]:
     """The folders under the agents' config root that belong to no running agent: a
     session's folder when none of its agents runs, else an agent's. Left by an older LADO,
     which wrote kit MCP secrets there, or by a stop that could not kill the agents.
-    Without lado.db, every one; it is not made here."""
+    Without lado.db, every one; it is not made here. Only folders whose name does not start
+    with a dot count, at both levels: no session or agent name does, and macOS's Finder
+    leaves .DS_Store in every folder it shows."""
     root = providers.base.configs_root()
     if not root.is_dir():
         return []
@@ -1409,12 +1411,16 @@ def stray_config_dirs() -> list[Path]:
             if session_status(sess) in (SessionStatus.RUNNING, SessionStatus.LOOP_DOWN):
                 agents = state.list_agents(sess.name)
                 running[sess.name] = {a.name for a in agents if a.status != state.STOPPED}
+
+    def folders(parent: Path) -> list[Path]:
+        return [f for f in sorted(parent.iterdir()) if f.is_dir() and not f.name.startswith(".")]
+
     stray = []
-    for folder in sorted(root.iterdir()):
+    for folder in folders(root):
         if not running.get(folder.name):
             stray.append(folder)
-        elif folder.is_dir():
-            stray += [f for f in sorted(folder.iterdir()) if f.name not in running[folder.name]]
+        else:
+            stray += [f for f in folders(folder) if f.name not in running[folder.name]]
     return stray
 
 

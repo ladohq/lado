@@ -16,11 +16,13 @@ Standard library, but coverage and pytest-cov (dev dependencies) for `coverage`.
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -156,6 +158,125 @@ def load_coverage(path: Path) -> dict[str, dict[str, set[int]]]:
     }
 
 
+# --- durations and flakiness -----------------------------------------------------------
+
+DURATION = re.compile(r"^(\d+\.\d+)s (?:setup|call|teardown) +(\S.*)$")
+SUMMARY = re.compile(r"^(?:=+ )?\d+ (?:passed|failed|error).* in (\d+\.\d+)s")
+SLOW = 1.0  # seconds: a test this slow names why (docs/testing.md, Which tests we keep)
+
+
+def run_durations(layer: str, out: Path, args: list[str]) -> int:
+    command = pytest_command(layer, ["--durations=0", "--durations-min=0", "-q"] + args)
+    result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+    try:
+        durations = parse_durations(result.stdout)
+    except ValueError as error:
+        print(result.stdout[-4000:] + result.stderr[-4000:])
+        print(f"durations: {error}")
+        return result.returncode or 1
+    write_json(out / f"durations-{layer}.json", durations)
+    print(f"durations: {len(durations['tests'])} tests, {durations['wall']} s by the clock")
+    for test, seconds_ in slow(durations):
+        print(f"  {seconds_:6.2f} s  {test}")
+    return result.returncode
+
+
+def parse_durations(text: str) -> dict:
+    """`pytest --durations=0 -q`'s output: the wall time and each test's seconds (its setup,
+    call and teardown together)."""
+    tests: dict[str, float] = defaultdict(float)
+    wall = None
+    for line in text.splitlines():
+        if match := DURATION.match(line):
+            tests[match[2]] = round(tests[match[2]] + float(match[1]), 2)
+        elif match := SUMMARY.match(line):
+            wall = float(match[1])
+    if wall is None:
+        raise ValueError("no pytest summary line in the output")
+    return {"wall": wall, "tests": dict(tests)}
+
+
+def slow(durations: dict, limit: float = SLOW) -> list[tuple[str, float]]:
+    found = [(test, s) for test, s in durations["tests"].items() if s >= limit]
+    return sorted(found, key=lambda item: -item[1])
+
+
+def run_flaky(out: Path, *, days: int, recent: int) -> int:
+    """CI's runs of ci.yml on main of the last `days`: the clock and the runners' minutes of
+    the `recent` newest, and each job that was green only on a later attempt."""
+    if shutil.which("gh") is None:
+        return skip_flaky(out, "gh is not available on PATH")
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    fields = "databaseId,attempt,createdAt,updatedAt,conclusion"
+    listed = gh("run", "list", "--workflow", "ci.yml", "--branch", "main", "--created",
+                f">={since}", "--limit", "1000", "--json", fields)  # fmt: skip
+    if listed is None:
+        return skip_flaky(out, "gh run list failed (not logged in?)")
+    runs, reruns, unread = [], [], []
+    for index, run in enumerate(listed):
+        newest = index < recent
+        attempts = {}
+        if newest or run["attempt"] > 1:
+            for attempt in range(1, run["attempt"] + 1):
+                view = gh("run", "view", str(run["databaseId"]), "--attempt", str(attempt),
+                          "--json", "jobs")  # fmt: skip
+                if view is None:
+                    unread.append(f"{run['databaseId']}/{attempt}")
+                    print(f"flaky: gh run view {run['databaseId']} --attempt {attempt} failed")
+                    continue
+                attempts[attempt] = view["jobs"]
+        if newest and run["attempt"] in attempts:
+            last = attempts[run["attempt"]]
+            jobs = {job["name"]: seconds(job["startedAt"], job["completedAt"]) for job in last}
+            runs.append({
+                "id": run["databaseId"],
+                "clock_s": seconds(run["createdAt"], run["updatedAt"]),
+                "runner_min": round(sum(jobs.values()) / 60, 2),
+                "jobs": jobs,
+            })  # fmt: skip
+        reruns += rerun_greens(run["databaseId"], attempts)
+    result = {"days": days, "runs": runs, "reruns": reruns, "unread": unread}
+    write_json(out / "flaky.json", result)
+    print(f"flaky: {len(listed)} runs on main in {days} days, {len(reruns)} jobs green on a rerun")
+    return 1 if unread else 0
+
+
+def rerun_greens(run: int, attempts: dict[int, list[dict]]) -> list[dict]:
+    """The jobs that failed in an attempt and passed in a later one, with that attempt."""
+    found = []
+    failed: set[str] = set()
+    for attempt in sorted(attempts):
+        for job in attempts[attempt]:
+            if job["conclusion"] == "failure":
+                failed.add(job["name"])
+            elif job["conclusion"] == "success" and job["name"] in failed:
+                found.append({"run": run, "job": job["name"], "attempt": attempt})
+                failed.discard(job["name"])
+    return found
+
+
+def skip_flaky(out: Path, reason: str) -> int:
+    print(f"flaky: {reason}; skipped")
+    write_json(out / "flaky.json", {"skipped": reason})
+    return 0
+
+
+def gh(*args: str, tries: int = 3):
+    """`gh`'s JSON answer, or None when it fails `tries` times (GitHub's API fails at times)."""
+    for _ in range(tries):
+        result = subprocess.run(["gh", *args], capture_output=True, text=True)
+        if result.returncode == 0:
+            return json.loads(result.stdout)
+    return None
+
+
+def seconds(start: str, end: str) -> int:
+    def parse(stamp: str) -> datetime:
+        return datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ")
+
+    return int((parse(end) - parse(start)).total_seconds())
+
+
 # --- the command line ------------------------------------------------------------------
 
 
@@ -164,14 +285,28 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="test_audit.py", description=__doc__.splitlines()[0])
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     commands = parser.add_subparsers(dest="command", required=True)
-    cov = commands.add_parser("coverage", help="the lines each test runs")
-    cov.add_argument("--layer", choices=LAYERS, required=True)
-    cov.add_argument("--out", type=Path, default=argparse.SUPPRESS)
+
+    def command(name: str, help: str) -> argparse.ArgumentParser:
+        sub = commands.add_parser(name, help=help)
+        sub.add_argument("--out", type=Path, default=argparse.SUPPRESS)
+        return sub
+
+    command("coverage", "the lines each test runs").add_argument(
+        "--layer", choices=LAYERS, required=True
+    )
+    command("durations", "each test's time").add_argument("--layer", choices=LAYERS, required=True)
+    flaky = command("flaky", "CI's runs on main and the jobs green on a rerun")
+    flaky.add_argument("--days", type=int, default=30)
+    flaky.add_argument("--recent", type=int, default=10, help="runs whose jobs are timed")
     opts = parser.parse_args(args)
     out = opts.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     if opts.command == "coverage":
         return run_coverage(opts.layer, out, rest)
+    if opts.command == "durations":
+        return run_durations(opts.layer, out, rest)
+    if opts.command == "flaky":
+        return run_flaky(out, days=opts.days, recent=opts.recent)
     return 2
 
 

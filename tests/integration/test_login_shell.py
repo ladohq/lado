@@ -38,6 +38,8 @@ def login_shell(tmp_path, monkeypatch):
         **agent_helpers.no_maintenance_env({}),
         "PATH": os.environ["PATH"],
         "FROM_SHELL": "yes",
+        # Where the agents' temporary folders go with no TMPDIR (conftest.agents_tmp).
+        "LADO_TEMP_PARENT": os.environ["LADO_TEMP_PARENT"],
     }
     exports = " ".join(f"{k}={shlex.quote(v)}" for k, v in exports.items())
     shell = tmp_path / "login-shell"
@@ -71,6 +73,23 @@ def test_the_supervisor_and_a_spawned_worker_get_the_login_shells_environment(
     assert worker["FROM_SHELL"] == "yes"
     assert "ONLY_IN_CALLER" not in worker
     assert worker["LADO_AGENT"] == "worker"
+
+
+def test_a_worker_its_supervisor_spawns_has_its_own_temporary_folder(repo, login_shell, agents_tmp):
+    """The supervisor's `lado mcp` has the supervisor's TMPDIR; the worker it spawns gets a
+    folder of its own beside it, never one inside it (LAD-247). The login shell names the
+    tests' stand-in for /tmp, as it is all the worker's shell starts from."""
+    runtime.start_session(str(repo), SESSION, None, "fake")
+    root = agents_tmp / f"lado-{os.getuid()}" / SESSION
+    assert wait_environ("supervisor")["TMPDIR"] == str(root / "supervisor")
+    agent_helpers.wait_for(
+        lambda: state.get_agent(SESSION, "supervisor").status == state.IDLE,
+        "supervisor to be idle",
+        SESSION,
+    )
+    runtime.send_message(SESSION, "human", "supervisor", "spawn sleep 0")
+    assert wait_environ("worker")["TMPDIR"] == str(root / "worker")
+    assert (root / "worker").is_dir()
 
 
 def _profile_sets_path() -> bool:

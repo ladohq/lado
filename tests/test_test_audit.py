@@ -268,3 +268,172 @@ def test_a_function_whose_body_is_already_empty_is_not_mutated():
         "def a():\n    pass\n\n\ndef b():\n    return None\n\n\ndef c():\n    '''Doc.'''\n    ...\n"
     )
     assert test_audit.functions(source) == []
+
+
+# --- the mutation baseline and the proof ------------------------------------------------
+
+
+def test_mutmut_s_results_are_read_by_mutant():
+    text = (
+        "    lado.text.x_hidden__mutmut_1: killed\n"
+        "    lado.text.x_named__mutmut_5: survived\n"
+        "    lado.text.x_refusal__mutmut_1: no tests\n"
+    )
+    assert test_audit.parse_results(text) == {
+        "lado.text.x_hidden__mutmut_1": "killed",
+        "lado.text.x_named__mutmut_5": "survived",
+        "lado.text.x_refusal__mutmut_1": "no tests",
+    }
+
+
+def test_the_score_counts_a_timeout_killed_and_a_mutant_without_tests_survived():
+    result = {"module": "runs", "mutants": {"a": "killed", "b": "timeout", "c": "no tests",
+                                            "d": "survived"}}  # fmt: skip
+    assert test_audit.score(result) == 0.5
+
+
+def test_prove_passes_when_every_killed_mutant_stays_killed():
+    before = {"module": "runs", "mutants": {"m1": "killed", "m2": "survived"}}
+    after = {"module": "runs", "mutants": {"m1": "timeout", "m2": "survived"}}
+    assert test_audit.prove(before, after) == []
+
+
+def test_prove_names_a_lost_mutant():
+    before = {"module": "runs", "mutants": {"m1": "killed"}}
+    after = {"module": "runs", "mutants": {"m1": "survived"}}
+    assert test_audit.prove(before, after) == ["runs: m1 killed before, survived after"]
+
+
+def test_prove_names_a_mutant_missing_after():
+    before = {"module": "runs", "mutants": {"m1": "killed", "m2": "killed"}}
+    after = {"module": "runs", "mutants": {"m1": "killed"}}
+    assert test_audit.prove(before, after) == ["runs: m2 killed before, missing after"]
+
+
+def test_prove_refuses_other_modules():
+    with pytest.raises(ValueError, match="runs.*flows"):
+        test_audit.prove({"module": "runs", "mutants": {}}, {"module": "flows", "mutants": {}})
+
+
+def write_mutation(folder: Path, module: str, mutants: dict, tests: dict | None = None) -> None:
+    folder.mkdir(exist_ok=True)
+    data = {"module": module, "seconds": 1, "mutants": mutants, "tests": tests or {}}
+    (folder / f"mutation-{module}.json").write_text(json.dumps(data))
+
+
+def test_the_prove_command_fails_on_a_module_measured_on_one_side_only(tmp_path, capsys):
+    write_mutation(tmp_path / "before", "runs", {"m1": "killed"})
+    write_mutation(tmp_path / "before", "flows", {"f1": "killed"})
+    write_mutation(tmp_path / "after", "runs", {"m1": "killed"})
+
+    assert test_audit.run_prove(tmp_path / "before", tmp_path / "after") == 1
+    assert "flows: measured before only" in capsys.readouterr().out
+
+
+def test_the_prove_command_prints_each_module_s_scores(tmp_path, capsys):
+    write_mutation(tmp_path / "before", "runs", {"m1": "killed", "m2": "survived"})
+    write_mutation(tmp_path / "after", "runs", {"m1": "killed", "m2": "killed"})
+
+    assert test_audit.run_prove(tmp_path / "before", tmp_path / "after") == 0
+    assert "runs: 50.0% before, 100.0% after" in capsys.readouterr().out
+
+
+def test_the_prove_command_names_the_deleted_test_that_ran_a_lost_mutant(tmp_path, capsys):
+    tests = {"lado.runs.x_go": ["tests/test_runs.py::test_go", "tests/test_runs.py::test_kept"]}
+    write_mutation(tmp_path / "before", "runs", {"lado.runs.x_go__mutmut_1": "killed"}, tests)
+    write_mutation(tmp_path / "after", "runs", {"lado.runs.x_go__mutmut_1": "survived"})
+    deleted = tmp_path / "deleted.txt"
+    deleted.write_text("tests/test_runs.py::test_go\n")
+    coverage = tmp_path / "coverage-unit.json"
+    coverage.write_text(json.dumps({"tests/test_runs.py::test_go": {"src/lado/runs.py": [4]}}))
+
+    code = test_audit.run_prove(
+        tmp_path / "before", tmp_path / "after", deleted=deleted, coverage=[coverage]
+    )
+
+    assert code == 1
+    out = capsys.readouterr().out
+    assert "runs: lado.runs.x_go__mutmut_1 killed before, survived after" in out
+    assert "deleted tests that ran it: tests/test_runs.py::test_go\n" in out
+
+
+def test_a_deleted_test_of_no_module_rests_on_the_checklist(tmp_path, capsys):
+    write_mutation(tmp_path / "before", "runs", {"m1": "killed"})
+    write_mutation(tmp_path / "after", "runs", {"m1": "killed"})
+    deleted = tmp_path / "deleted.txt"
+    deleted.write_text("tests/test_readme.py::test_headings\ntests/test_runs.py::test_go\n")
+    coverage = tmp_path / "coverage-unit.json"
+    coverage.write_text(json.dumps({
+        "tests/test_readme.py::test_headings": {},
+        "tests/test_runs.py::test_go": {"src/lado/runs.py": [4]},
+    }))  # fmt: skip
+
+    code = test_audit.run_prove(
+        tmp_path / "before", tmp_path / "after", deleted=deleted, coverage=[coverage]
+    )
+
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "rests on the checklist: tests/test_readme.py::test_headings" in out
+
+
+def test_a_module_a_deleted_test_ran_must_be_measured(tmp_path, capsys):
+    write_mutation(tmp_path / "before", "runs", {"m1": "killed"})
+    write_mutation(tmp_path / "after", "runs", {"m1": "killed"})
+    deleted = tmp_path / "deleted.txt"
+    deleted.write_text("tests/test_flows.py::test_load\n")
+    coverage = tmp_path / "coverage-unit.json"
+    coverage.write_text(json.dumps({"tests/test_flows.py::test_load": {"src/lado/flows.py": [1]}}))
+
+    code = test_audit.run_prove(
+        tmp_path / "before", tmp_path / "after", deleted=deleted, coverage=[coverage]
+    )
+
+    assert code == 1
+    assert "flows: a deleted test ran it, but it was not measured" in capsys.readouterr().out
+
+
+def test_a_deleted_test_without_a_coverage_record_fails_the_proof(tmp_path, capsys):
+    write_mutation(tmp_path / "before", "runs", {"m1": "killed"})
+    write_mutation(tmp_path / "after", "runs", {"m1": "killed"})
+    deleted = tmp_path / "deleted.txt"
+    deleted.write_text("tests/test_new.py::test_x\n")
+    coverage = tmp_path / "coverage-unit.json"
+    coverage.write_text("{}")
+
+    code = test_audit.run_prove(
+        tmp_path / "before", tmp_path / "after", deleted=deleted, coverage=[coverage]
+    )
+
+    assert code == 1
+    assert "no coverage record: tests/test_new.py::test_x" in capsys.readouterr().out
+
+
+def test_one_mutmut_run_s_mutants_are_split_by_module():
+    names = [
+        "lado.runs.x_go__mutmut_1",
+        "lado.runs.xǁRunǁstep__mutmut_2",
+        "lado.providers.x_get__mutmut_1",
+        "lado.providers.claude.x_parse__mutmut_1",
+    ]
+    assert test_audit.of_module(names, "runs") == names[:2]
+    assert test_audit.of_module(names, "providers") == [names[2]]
+    assert test_audit.of_module(names, "providers.claude") == [names[3]]
+
+
+def test_mutmut_mutates_only_the_modules_named(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "docs").mkdir(parents=True)
+    (repo / "docs" / "a.md").write_text("a")
+    (repo / "Makefile").write_text("")
+    test_audit.git(repo, "init", "-q")
+    test_audit.git(repo, "add", ".")
+    config = test_audit.mutmut_config(repo, ["runs", "providers.claude"])
+    assert 'only_mutate = ["src/lado/runs.py", "src/lado/providers/claude.py"]' in config
+    assert 'also_copy = ["Makefile", "docs"]' in config
+
+
+def test_the_module_of_a_path():
+    assert test_audit.module_of("src/lado/runs.py") == "runs"
+    assert test_audit.module_of("src/lado/providers/claude.py") == "providers.claude"
+    assert test_audit.module_of("scripts/ci_ok.py") is None

@@ -530,6 +530,170 @@ def run_tests(copy: Path, env: dict, tests: list[str], timeout: float) -> int | 
             process.wait()
 
 
+# --- the mutation baseline and the proof -----------------------------------------------
+
+KILLS = ("killed", "timeout")
+RESULT = re.compile(r"^\s*(\S+): (.+)$")
+
+
+def module_path(module: str) -> str:
+    return "src/lado/" + module.replace(".", "/") + ".py"
+
+
+def module_of(path: str) -> str | None:
+    """The module of a path of `src/lado/`, `providers.claude` for its subfolders."""
+    if not path.startswith("src/lado/") or not path.endswith(".py"):
+        return None
+    return path[len("src/lado/") : -len(".py")].replace("/", ".")
+
+
+def mutmut_config(repo: Path, modules: list[str]) -> str:
+    """mutmut's section for `modules` with the unit tests (the default addopts), its copy
+    taking every tracked top-level entry the tests read (docs, docker/, openspec/, ...)."""
+    tracked = git(repo, "ls-files").splitlines()
+    own = {"src", "tests", "pyproject.toml", "uv.lock"}  # mutmut copies them itself
+    also = sorted({path.split("/", 1)[0] for path in tracked} - own)
+    return (
+        "\n[tool.mutmut]\n"
+        'source_paths = ["src/"]\n'
+        f"only_mutate = {json.dumps([module_path(module) for module in modules])}\n"
+        f"also_copy = {json.dumps(also)}\n"
+        'pytest_add_cli_args = ["-p", "no:xdist", "-p", "no:cacheprovider"]\n'
+        'pytest_add_cli_args_test_selection = ["tests/"]\n'
+    )
+
+
+def of_module(names, module: str) -> list[str]:
+    """The mutants (or mangled functions) of `module` among `names`: `lado.<module>.x...`."""
+    prefix = f"lado.{module}."
+    return [name for name in names if name.startswith(prefix) and "." not in name[len(prefix) :]]
+
+
+def run_mutation(out: Path, modules: list[str], repo: Path = ROOT) -> int:
+    """mutmut on `modules` in one run (its two passes of the whole unit layer are paid once),
+    in a copy of `repo` (its HEAD) under `out`: `mutation-<module>.json` each, with each
+    mutant's status, the tests of each function and the seconds its mutants took."""
+    mutmut = Path(sys.executable).with_name("mutmut")
+    copy = out / "mutmut-copy"
+    remove_copy(repo, copy)
+    git(repo, "worktree", "add", "--detach", "--quiet", str(copy), "HEAD")
+    try:
+        with open(copy / "pyproject.toml", "a") as config:
+            config.write(mutmut_config(repo, modules))
+        started = time.monotonic()
+        log = out / "mutmut.log"
+        with open(log, "w") as output:
+            run = subprocess.run([str(mutmut), "run"], cwd=copy, stdout=output, stderr=output)
+        seconds_ = round(time.monotonic() - started)
+        listed = subprocess.run(
+            [str(mutmut), "results", "--all", "true"], cwd=copy, capture_output=True, text=True
+        )
+        mutants = parse_results(listed.stdout)
+        if run.returncode != 0 or not mutants:
+            print(f"mutation: mutmut exited {run.returncode}; its log: {log}")
+            return 1
+        stats = json.loads((copy / "mutants" / "mutmut-stats.json").read_text())
+        tests = stats.get("tests_by_mangled_function_name", {})
+        head = git(repo, "rev-parse", "HEAD").strip()
+        code = 0
+        for module in modules:
+            own = of_module(mutants, module)
+            if not own:
+                print(f"mutation: {module}: no mutants")
+                code = 1
+                continue
+            meta = json.loads((copy / "mutants" / (module_path(module) + ".meta")).read_text())
+            result = {
+                "module": module,
+                "head": head,
+                "run_seconds": seconds_,
+                "mutant_seconds": round(sum(meta.get("durations_by_key", {}).values())),
+                "mutants": {name: mutants[name] for name in own},
+                "tests": {name: sorted(tests[name]) for name in of_module(tests, module)},
+            }
+            write_json(out / f"mutation-{module}.json", result)
+            print(f"mutation: {module}: {len(own)} mutants, score {score(result):.1%}, "
+                  f"{result['mutant_seconds']} s of mutants")  # fmt: skip
+        print(f"mutation: {seconds_} s in all")
+        return code
+    finally:
+        remove_copy(repo, copy)
+
+
+def parse_results(text: str) -> dict[str, str]:
+    """`mutmut results --all true`: each mutant's status."""
+    return {
+        match[1]: match[2].strip() for line in text.splitlines() if (match := RESULT.match(line))
+    }
+
+
+def score(result: dict) -> float:
+    """(killed + timeout) / all mutants; a mutant without tests counts as survived."""
+    mutants = result["mutants"].values()
+    return sum(status in KILLS for status in mutants) / (len(mutants) or 1)
+
+
+def prove(before: dict, after: dict) -> list[str]:
+    """Each mutant of the module that was killed before and is not after (or is gone)."""
+    if before["module"] != after["module"]:
+        raise ValueError(f"before is of {before['module']}, after of {after['module']}")
+    module = before["module"]
+    lost = []
+    for name, status in sorted(before["mutants"].items()):
+        now = after["mutants"].get(name, "missing")
+        if status in KILLS and now not in KILLS:
+            lost.append(f"{module}: {name} {status} before, {now} after")
+    return lost
+
+
+def load_mutations(path: Path) -> dict[str, dict]:
+    files = sorted(path.glob("mutation-*.json")) if path.is_dir() else [path]
+    results = [json.loads(file.read_text()) for file in files]
+    return {result["module"]: result for result in results}
+
+
+def run_prove(
+    before_path: Path, after_path: Path, *, deleted: Path | None = None, coverage=()
+) -> int:
+    """Exit 1 when a mutant killed before survives after, a module is measured on one side
+    only, or a module a deleted test ran is not measured; prints each module's scores."""
+    before, after = load_mutations(before_path), load_mutations(after_path)
+    failed = False
+    for module in sorted(before.keys() ^ after.keys()):
+        side = "before" if module in before else "after"
+        print(f"prove: {module}: measured {side} only")
+        failed = True
+    gone = set(deleted.read_text().split()) if deleted else set()
+    for module in sorted(before.keys() & after.keys()):
+        print(f"prove: {module}: {score(before[module]):.1%} before, "
+              f"{score(after[module]):.1%} after")  # fmt: skip
+        tests = before[module].get("tests", {})
+        for line in prove(before[module], after[module]):
+            failed = True
+            print(f"prove: {line}")
+            name = line.split()[1]
+            ran = sorted(gone & set(tests.get(name.partition("__mutmut_")[0], ())))
+            print(f"  deleted tests that ran it: {', '.join(ran) or 'none'}")
+    if gone:
+        records: dict[str, dict[str, set[int]]] = {}
+        for path in coverage:
+            records.update(load_coverage(path))
+        for test in sorted(gone):
+            if test not in records:
+                print(f"prove: no coverage record: {test}")
+                failed = True
+                continue
+            modules = {module_of(path) for path, lines in records[test].items() if lines}
+            modules.discard(None)
+            if not modules:
+                print(f"prove: runs no module of src/lado/, rests on the checklist: {test}")
+            for module in sorted(modules - (before.keys() & after.keys())):
+                print(f"prove: {module}: a deleted test ran it, but it was not measured ({test})")
+                failed = True
+    print("prove: " + ("FAILED" if failed else "proven: no killed mutant lost"))
+    return 1 if failed else 0
+
+
 def remove_copy(repo: Path, copy: Path) -> None:
     if copy.exists():
         subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(copy)],
@@ -571,6 +735,13 @@ def main(argv: list[str]) -> int:
     pseudo.add_argument("--modules", default=",".join(CORE), help="of src/lado/, by commas")
     pseudo.add_argument("--coverage", type=Path, action="append", help="default: the unit layer's")
     pseudo.add_argument("--timeout", type=float, default=60, help="seconds per function")
+    mutation = command("mutation", "mutmut's score of modules of src/lado/, by hand")
+    mutation.add_argument("modules", nargs="+", help="e.g. runs providers.claude")
+    proof = command("prove", "no mutant killed before survives after a batch")
+    proof.add_argument("before", type=Path, help="a folder of mutation-*.json, or one file")
+    proof.add_argument("after", type=Path)
+    proof.add_argument("--deleted", type=Path, help="the deleted tests' node ids, one a line")
+    proof.add_argument("--coverage", type=Path, action="append", default=[])
     opts = parser.parse_args(args)
     out = opts.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -588,6 +759,10 @@ def main(argv: list[str]) -> int:
         return run_pseudo(
             out, repo=opts.repo.resolve(), modules=modules, coverage=coverage, timeout=opts.timeout
         )
+    if opts.command == "mutation":
+        return run_mutation(out, opts.modules)
+    if opts.command == "prove":
+        return run_prove(opts.before, opts.after, deleted=opts.deleted, coverage=opts.coverage)
     return 2
 
 

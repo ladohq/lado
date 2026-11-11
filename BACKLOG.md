@@ -1885,14 +1885,6 @@ output holds the built-in kits' full paths. A worktree such as `.../task-lad-197
 it. Wanted: the test looks at the kits' names, not at the whole text.
 Found: 2026-11-06, branch lado/lad-197/task-lad-197-team-head (LAD-197).
 
-## Flaky: an OpenCode test of `LoginSheet.test.tsx` in a full vitest run
-
-Size: S. Why here: seen once, and a rerun passes, but a flake in `make web` costs a round.
-
-It failed once in a full run of `make web` and passed 3 times alone and in the next full run; the
-change under review did not touch the file. Wanted: its cause found and the test made stable.
-Found: 2026-11-06, review of branch lado/lad-197/task-lad-197-team-head (LAD-197).
-
 ## The rail's bottom items go past the edge with the keyboard open on a sideways iPad
 
 Size: S. Why here: only while the on-screen keyboard is open, and closing it brings them back.

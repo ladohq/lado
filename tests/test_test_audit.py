@@ -301,6 +301,22 @@ def test_a_function_whose_body_is_already_empty_is_not_mutated():
     assert test_audit.functions(source) == []
 
 
+@pytest.mark.parametrize(
+    "output, failed",
+    [
+        ("bringing up nodes...\n\n....s...", False),
+        ("bringing up nodes...\n\n..F.", True),
+        ("....E", True),  # an error in a fixture, or a module that no longer imports
+        ("....\nERROR collecting tests/test_x.py\n", False),  # exit 2 says it at the end
+        ("........ [ 52%]\n...", False),
+    ],
+)
+def test_a_failure_is_seen_in_pytest_s_progress(output, failed):
+    """xdist's -x stops only after the tests its workers run end, which may wait for long on
+    an emptied function: pseudo ends the run at the progress line's first F or E."""
+    assert test_audit.failed_already(output) is failed
+
+
 # --- the mutation baseline and the proof ------------------------------------------------
 
 

@@ -545,14 +545,30 @@ def run_tests(copy: Path, env: dict, tests: list[str], timeout: float) -> int | 
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
+    deadline = time.monotonic() + timeout
     try:
-        return process.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
+        while time.monotonic() < deadline:
+            try:
+                return process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                if failed_already((copy.parent / "pseudo-tests.log").read_text()):
+                    return 1
         return None
     finally:
         if process.poll() is None:
             os.killpg(process.pid, signal.SIGKILL)
             process.wait()
+
+
+PROGRESS = re.compile(r"^[.FEsxX]+(?: +\[ *\d+%\])?$")
+
+
+def failed_already(output: str) -> bool:
+    """Whether pytest's `-q` progress already shows a failed test (F) or an error (E): xdist's
+    `-x` waits for the tests its workers still run, which may hang on an emptied function."""
+    return any(
+        PROGRESS.match(line) and ("F" in line or "E" in line) for line in output.splitlines()
+    )
 
 
 # --- the mutation baseline and the proof -----------------------------------------------

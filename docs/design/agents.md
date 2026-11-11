@@ -838,7 +838,14 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   why to `LADO_HOME/loop.log`, when the
   session is stopped or gone (before each pass), its tmux session is gone (as above), or `lado.db` has another schema
   version than its own (`state.SchemaError` of any connection of a pass, so it never
-  migrates); an error in a pass is
+  migrates). It ends writing nothing when `LADO_HOME/lado.db` is gone (`loop.home_gone`,
+  before taking its lock, before each pass and before the statistics kick), so a home deleted
+  by hand or under a stop that timed out is not made again; a `lado.db` deleted in the middle
+  of a pass may still be made again once by that pass. `lado stop`, `--all` and the UI's Stop
+  return only after the loop has ended (`runtime.wait_for_loop`, `loop.wait_stopped`'s three
+  intervals; a loop that does not end fails the stop, the session staying stopped); `lado
+  update` and `lado uninstall` stop with `wait=False` and wait themselves, with their own
+  errors. An error in a pass is
   written there too with its traceback (and once to `errors.jsonl`, `telemetry.record`;
   a locked `lado.db`, `loop.is_locked`, only once it has failed the passes for
   `loop.LOCK_GRACE` seconds, 60), and the loop goes on. While the same error

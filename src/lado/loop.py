@@ -108,8 +108,8 @@ def running(session: str) -> bool:
 
 def wait_stopped(session: str, timeout: float | None = None) -> bool:
     """Whether the session's loop has ended within `timeout` seconds (three intervals by
-    default): after a stop it ends at its next pass. `lado update` waits for it, so no loop
-    of the old LADO is left."""
+    default): after a stop it ends at its next pass. Every stop waits for it
+    (runtime.wait_for_loop), `lado update` too, so no loop of the old LADO is left."""
     deadline = time.monotonic() + (3 * INTERVAL if timeout is None else timeout)
     while running(session):
         if time.monotonic() >= deadline:

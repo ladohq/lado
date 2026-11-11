@@ -26,10 +26,10 @@
 
 ## 3. Documents and regression
 
-- [ ] 3.1 `docs/cli.md` (`lado stop`: it returns after the loop ended, the failure of D2),
+- [x] 3.1 `docs/cli.md` (`lado stop`: it returns after the loop ended, the failure of D2),
   `docs/design/agents.md` (the session loop: the stop waits for it; it ends without writing
   when `lado.db` is gone), the docstrings of `stop_session`, `stop_all` and `loop.run`.
-- [ ] 3.2 CHANGELOG.md, `## 0.46.1 (unreleased)`, Fixed: `lado stop` returns once the session's
+- [x] 3.2 CHANGELOG.md, `## 0.46.1 (unreleased)`, Fixed: `lado stop` returns once the session's
   loop has ended, so a home deleted after it stays deleted and `lado stop s && lado start s`
   leaves one loop; `lado doctor` no longer takes `.DS_Store` for an agent's folder (LAD-153).
 - [ ] 3.3 Regression: `make lint`, `make test`, `uv run pytest -m integration -n auto

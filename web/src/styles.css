@@ -2165,16 +2165,10 @@ h3 {
   background: currentColor;
 }
 
-.status-stopped,
+/* A session in trouble, red after a full dot as in its head (LAD-229). */
 .status-tmux_gone,
 .status-loop_down {
-  color: var(--muted);
-}
-
-.status-tmux_gone::before,
-.status-loop_down::before {
-  background: transparent;
-  border: 1.5px solid currentColor;
+  color: var(--danger);
 }
 
 /* Needs you: what waits, by session, the cards as in the chat. */

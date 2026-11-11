@@ -2907,7 +2907,7 @@ def stop_preview(session: str) -> StopPreview:
 
 def stop_session(session: str, wait: bool = True) -> Stopped:
     """Kill the session's agents and mark it stopped, then wait for its loop to end
-    (wait_for_loop), so nothing of the session writes into LADO_HOME after the return. Its
+    (_wait_for_loop), so nothing of the session writes into LADO_HOME after the return. Its
     history, runs and gates stay until `lado start` resumes it or `lado forget` drops it;
     worktrees stay on disk. Without `wait` the caller waits for the loop itself (stop_all,
     `lado update`).
@@ -2943,11 +2943,11 @@ def stop_session(session: str, wait: bool = True) -> Stopped:
     # agent, so their end is LADO's and tells no one (agent_ended).
     stopped = _mark_stopped(session, gone=not alive, kill=alive)
     if wait:
-        wait_for_loop(session)
+        _wait_for_loop(session)
     return stopped
 
 
-def wait_for_loop(session: str) -> None:
+def _wait_for_loop(session: str) -> None:
     """Wait for the loop of the session just stopped to end, which it does at its next pass
     (lado.loop.wait_stopped, up to three intervals); a loop that does not end is a LadoError,
     the session staying stopped."""
@@ -2961,7 +2961,7 @@ def wait_for_loop(session: str) -> None:
 def stop_all(report: Callable[[str, Stopped], object], wait: bool = True) -> None:
     """Stop every session not stopped yet (also one whose tmux or loop is gone), by name,
     and `report` each one as soon as it is stopped; then wait for their loops, all of them
-    in about one interval (wait_for_loop; not without `wait`). On an older lado.db: kill
+    in about one interval (_wait_for_loop; not without `wait`). On an older lado.db: kill
     them all, wait for their loops, migrate, then mark them stopped, since this LADO's SQL
     needs the newer schema. A session that cannot be stopped does not keep the others
     running: the rest are stopped, then a LadoError names each failure, a loop that did not
@@ -2991,7 +2991,7 @@ def stop_all(report: Callable[[str, Stopped], object], wait: bool = True) -> Non
     if wait and pending is None:  # the migration waited for them already
         for name in stopped:
             try:
-                wait_for_loop(name)
+                _wait_for_loop(name)
             except LadoError as error:
                 failed.append(str(error))
     try:

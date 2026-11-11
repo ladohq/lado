@@ -842,7 +842,7 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   before taking its lock, before each pass and before the statistics kick), so a home deleted
   by hand or under a stop that timed out is not made again; a `lado.db` deleted in the middle
   of a pass may still be made again once by that pass. `lado stop`, `--all` and the UI's Stop
-  return only after the loop has ended (`runtime.wait_for_loop`, `loop.wait_stopped`'s three
+  return only after the loop has ended (`runtime.stop_session`, `loop.wait_stopped`'s three
   intervals; a loop that does not end fails the stop, the session staying stopped); `lado
   update` and `lado uninstall` stop with `wait=False` and wait themselves, with their own
   errors. An error in a pass is

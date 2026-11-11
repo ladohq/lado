@@ -479,6 +479,25 @@ def test_mutmut_mutates_only_the_modules_named(tmp_path):
     config = test_audit.mutmut_config(repo, ["runs", "providers.claude"])
     assert 'only_mutate = ["src/lado/runs.py", "src/lado/providers/claude.py"]' in config
     assert 'also_copy = ["Makefile", "docs"]' in config
+    assert 'pytest_add_cli_args = ["-p", "no:xdist", "-p", "no:cacheprovider"]' in config
+
+    config = test_audit.mutmut_config(repo, ["runs"], deselect=["tests/test_state.py::test_x"])
+    assert '"--deselect", "tests/test_state.py::test_x"]' in config
+
+
+def test_the_tests_that_fail_in_mutmut_s_copy_are_read_from_pytest_s_summary():
+    output = (
+        "=========================== short test summary info ============================\n"
+        "FAILED tests/test_state.py::test_only_the_predicate - AssertionError: assert [...]\n"
+        "ERROR tests/test_tmux.py::test_y[a b] - OSError\n"
+        "FAILED tests/test_z.py::test_w\n"
+        "1 failed, 5576 passed in 320.18s\n"
+    )
+    assert test_audit.failed_tests(output) == [
+        "tests/test_state.py::test_only_the_predicate",
+        "tests/test_tmux.py::test_y[a b]",
+        "tests/test_z.py::test_w",
+    ]
 
 
 def test_the_module_of_a_path():

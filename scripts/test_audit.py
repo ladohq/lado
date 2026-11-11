@@ -588,20 +588,41 @@ def module_of(path: str) -> str | None:
     return path[len("src/lado/") : -len(".py")].replace("/", ".")
 
 
-def mutmut_config(repo: Path, modules: list[str]) -> str:
-    """mutmut's section for `modules` with the unit tests (the default addopts), its copy
-    taking every tracked top-level entry the tests read (docs, docker/, openspec/, ...)."""
+def mutmut_config(repo: Path, modules: list[str], deselect=()) -> str:
+    """mutmut's section for `modules` with the unit tests (the default addopts) but those of
+    `deselect`, its copy taking every tracked top-level entry the tests read (docs, docker/,
+    openspec/, ...)."""
     tracked = git(repo, "ls-files").splitlines()
     own = {"src", "tests", "pyproject.toml", "uv.lock"}  # mutmut copies them itself
     also = sorted({path.split("/", 1)[0] for path in tracked} - own)
+    args = ["-p", "no:xdist", "-p", "no:cacheprovider"]
+    args += [arg for test in deselect for arg in ("--deselect", test)]
     return (
         "\n[tool.mutmut]\n"
         'source_paths = ["src/"]\n'
         f"only_mutate = {json.dumps([module_path(module) for module in modules])}\n"
         f"also_copy = {json.dumps(also)}\n"
-        'pytest_add_cli_args = ["-p", "no:xdist", "-p", "no:cacheprovider"]\n'
+        f"pytest_add_cli_args = {json.dumps(args)}\n"
         'pytest_add_cli_args_test_selection = ["tests/"]\n'
     )
+
+
+SUMMARY_LINE = re.compile(r"^(?:FAILED|ERROR) (.+?)(?: - .*)?$")
+
+
+def failed_tests(output: str) -> list[str]:
+    """The node ids of pytest's `FAILED ...` and `ERROR ...` summary lines."""
+    return [match[1] for line in output.splitlines() if (match := SUMMARY_LINE.match(line))]
+
+
+def failing_in_copy(copy: Path) -> list[str]:
+    """The unit tests that fail in mutmut's copy with no mutant active: those that read
+    LADO's source as text, which the copy holds rewritten with mutmut's trampolines."""
+    mutants = copy / "mutants"
+    env = {**os.environ, "MUTANT_UNDER_TEST": "", "PYTHONPATH": str(mutants / "src")}
+    command = [sys.executable, "-m", "pytest", "-q", "-rfE", "-p", "no:cacheprovider", "-n", "auto"]
+    result = subprocess.run(command, cwd=mutants, env=env, capture_output=True, text=True)
+    return failed_tests(result.stdout)
 
 
 def of_module(names, module: str) -> list[str]:
@@ -619,12 +640,21 @@ def run_mutation(out: Path, modules: list[str], repo: Path = ROOT) -> int:
     remove_copy(repo, copy)
     git(repo, "worktree", "add", "--detach", "--quiet", str(copy), "HEAD")
     try:
-        with open(copy / "pyproject.toml", "a") as config:
-            config.write(mutmut_config(repo, modules))
-        started = time.monotonic()
+        project = (copy / "pyproject.toml").read_text()
         log = out / "mutmut.log"
-        with open(log, "w") as output:
-            run = subprocess.run([str(mutmut), "run"], cwd=copy, stdout=output, stderr=output)
+        started = time.monotonic()
+        deselect: list[str] = []
+        for attempt in (1, 2):
+            (copy / "pyproject.toml").write_text(project + mutmut_config(repo, modules, deselect))
+            with open(log, "w") as output:
+                run = subprocess.run([str(mutmut), "run"], cwd=copy, stdout=output, stderr=output)
+            if run.returncode == 0 or attempt == 2 or not (copy / "mutants" / "src").is_dir():
+                break
+            # mutmut's own passes stop at the first failure: find them all at once.
+            deselect = failing_in_copy(copy)
+            if not deselect:
+                break
+            print(f"mutation: deselected, failing in mutmut's copy: {', '.join(deselect)}")
         took = round(time.monotonic() - started)
         listed = subprocess.run(
             [str(mutmut), "results", "--all", "true"], cwd=copy, capture_output=True, text=True
@@ -648,6 +678,7 @@ def run_mutation(out: Path, modules: list[str], repo: Path = ROOT) -> int:
                 "module": module,
                 "head": head,
                 "run_seconds": took,
+                "deselected": deselect,
                 "mutant_seconds": round(sum(meta.get("durations_by_key", {}).values())),
                 "mutants": {name: mutants[name] for name in own},
                 "tests": {name: sorted(tests[name]) for name in of_module(tests, module)},

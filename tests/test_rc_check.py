@@ -222,12 +222,13 @@ def test_checklist_warns_about_another_checkout():
     )
 
 
-@pytest.mark.parametrize("version", ["0.45.0rc1", "0.45.0rc2"])
-def test_the_repositorys_own_checklist_of_045_has_no_warning(version):
+@pytest.mark.parametrize("version", ["0.45.0rc1", "0.45.0rc2", "0.46.0rc1"])
+def test_the_repositorys_own_checklists_have_no_warning(version):
+    parsed = rc.parse(version)
     lines = rc.checklist(
-        rc.parse(version),
+        parsed,
         (ROOT / "docs" / "release.md").read_text(),
-        (ROOT / "docs" / "releases" / "0.45.0.md").read_text(),
+        (ROOT / rc.RELEASE_CHECKLIST.format(*parsed.release)).read_text(),
         f'version = "{version}"\n',
     )
     assert not [line for line in lines if not line.startswith("[ ] ")]

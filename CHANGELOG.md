@@ -12,6 +12,9 @@
 - **The Mac installer waits for a Docker Desktop that is still quitting.** Run right after
   Docker Desktop's Quit, it starts Docker Desktop once it has quit and installs, instead of
   stopping after 2 minutes.
+- **A session's scrolled tabs keep their tab in view.** When the tabs change width, as the
+  font arrives or the window is resized, the tab you reached with Tab, or the one shown, no
+  longer stays half under the fade with › showing (LAD-267).
 
 ## 0.46.0 (2026-11-11)
 

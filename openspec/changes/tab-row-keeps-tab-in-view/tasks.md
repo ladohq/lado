@@ -19,10 +19,10 @@
 
 ## 2. Documents and regression
 
-- [ ] 2.1 `docs/design/ui.md`, the session's tabs (`data-fit`, about line 3784): the tab
+- [x] 2.1 `docs/design/ui.md`, the session's tabs (`data-fit`, about line 3784): the tab
   reached by the keyboard, else the tab shown, stands clear again when the tabs or the bar
   change width (a late font, a resize) (LAD-267) (AC-4).
-- [ ] 2.2 CHANGELOG.md, `## 0.46.1 (unreleased)`, `### Fixed`: the session's tabs keep the tab
+- [x] 2.2 CHANGELOG.md, `## 0.46.1 (unreleased)`, `### Fixed`: the session's tabs keep the tab
   in view when their width changes, e.g. as the font arrives (AC-4).
 - [ ] 2.3 Repeat run under load (AC-3): `test_tab_brings_each_tab_clear_of_the_bars_ends` and
   the two new tests, each parametrized 48 times in a scratch file not committed, with

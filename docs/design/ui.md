@@ -3786,4 +3786,6 @@ at the bar's end goes (`data-short`), then 1 no icons, 2 no counts, 3 a tool wit
 takes it (`Yours | All` the icon; on a bar with no short form the level changes nothing, so
 Find stays), 4 they scroll behind a fade of 56 px with ‹ and ›. The tab shown and a tab reached
 by the keyboard stand clear of those 56 px at each end that has more (`tabScroll`), by the
-row's own scroll; a press's focus moves nothing, or the click would be lost (LAD-218).
+row's own scroll; a press's focus moves nothing, or the click would be lost (LAD-218). When the
+tabs or the bar change width (a late font, a resize), the trial brings the tab the keyboard
+reached, else the tab shown, clear again, and ‹ › follow the row's new ends (LAD-267).

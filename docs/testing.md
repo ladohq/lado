@@ -48,7 +48,10 @@ either. Tests never use the default
 `LADO_TMUX_SOCKET`, `TMUX`, `LADO_CONTAINER` and `LADO_REPOS` for the test run, so the
 tests run in an agent's shell (or LADO's image) as is,
 and sets `LADO_AGENT_ENV=inherit`: agents get the test run's environment, not the user's
-login shell (tests of the shell set their own `SHELL`). It also sets
+login shell (tests of the shell set their own `SHELL`). Its autouse `agents_tmp` gives each
+test its own `TMPDIR` and `LADO_TEMP_PARENT` (outside `tmp_path`): the agents' temporary
+folders (docs/design/agents.md) go there, also an agent's whose environment has no `TMPDIR`
+(a worker an agent's `lado mcp` spawns), never into the real `/tmp`. It also sets
 `LADO_NO_UPDATE_CHECK=1`, so no test looks on PyPI; the tests of the update check switch it
 on with the `published` fixture, a local index (`LADO_UPDATE_INDEX`). Likewise
 `LADO_TELEMETRY=0` (and no `DO_NOT_TRACK` or `LADO_TELEMETRY_URL`), so no test sends

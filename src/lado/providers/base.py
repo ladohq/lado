@@ -6,6 +6,7 @@ import re
 import shlex
 import shutil
 import signal
+import stat
 import subprocess
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Mapping
@@ -267,6 +268,9 @@ class AgentSpec:
     # server sit beside its own all of them, for a CLI of one model per process the one it
     # starts on; each key reaches the agent in its environment only.
     servers: tuple[ServerEntry, ...] = ()
+    # Its own temporary folder (make_temp_dir), the TMPDIR LADO gives it; for a CLI that
+    # keeps its own temporary files by another variable as well.
+    temp_dir: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -716,13 +720,88 @@ def state_path(agent: state.Agent) -> Path:
 
 
 def remove_agent_state(agent: state.Agent) -> None:
-    """Remove the agent's state folder, for an agent LADO forgets."""
-    shutil.rmtree(state_path(agent), ignore_errors=True)
+    """Remove the agent's state folder and its temporary folder, for an agent LADO
+    forgets."""
+    folder = state_path(agent)
+    if made := _made_temp_dir(folder):
+        shutil.rmtree(made, ignore_errors=True)
+    shutil.rmtree(folder, ignore_errors=True)
 
 
 def remove_session_state(session: str) -> None:
-    """Remove the state folders of all the session's agents, for a session LADO forgets."""
-    shutil.rmtree(state.home() / "agent-state" / session, ignore_errors=True)
+    """Remove the state folders of all the session's agents and their session's temporary
+    folders, for a session LADO forgets."""
+    folder = state.home() / "agent-state" / session
+    with contextlib.suppress(OSError):
+        for agent_state in folder.iterdir():
+            if made := _made_temp_dir(agent_state):
+                shutil.rmtree(made.parent, ignore_errors=True)
+    shutil.rmtree(folder, ignore_errors=True)
+
+
+# An agent's temporary folder (LAD-247). All agents of a machine run as one user with one
+# /tmp; each gets a folder of its own as TMPDIR (lado.runtime), so two agents' files of the
+# same name (a draft `pr.md`) never meet. It is no security boundary: an agent may still go
+# to another's folder on purpose. The parent is the TMPDIR of the agent's layers, else /tmp,
+# not LADO_HOME: the config folder is written anew at each launch, and in LADO's container
+# LADO_HOME is the home volume. `lado-<uid>` keeps the users of a shared host apart.
+DEFAULT_TEMP_PARENT = "/tmp"
+# Stands for /tmp in the tests (conftest.agents_tmp), which never write to the real one; in
+# the launching process's environment, as LADO_TMUX_SOCKET is.
+TEMP_PARENT_VAR = "LADO_TEMP_PARENT"
+# In the agent's state folder: a link to the temporary folder its launch made, so it goes
+# with the agent's state even when the parent is other by then.
+TEMP_RECORD = "temp-dir"
+
+
+class UnsafeTempDir(Exception):
+    """`lado-<uid>` is not a folder of the user's own: no agent gets a folder under it."""
+
+
+def temp_path(agent: state.Agent, env: Mapping[str, str]) -> Path:
+    """The agent's temporary folder, not made: `<parent>/lado-<uid>/<session>/<agent>`, the
+    parent `env`'s TMPDIR (the agent's layers merged), else /tmp (TEMP_PARENT_VAR)."""
+    parent = env.get("TMPDIR") or os.environ.get(TEMP_PARENT_VAR) or DEFAULT_TEMP_PARENT
+    return Path(parent) / f"lado-{os.getuid()}" / agent.session / agent.name
+
+
+def make_temp_dir(agent: state.Agent, env: Mapping[str, str]) -> Path:
+    """Make the agent's temporary folder (temp_path) when missing, each level for its owner
+    only (0700), and record it in its state folder; at each launch, so one deleted is made
+    again. Raises UnsafeTempDir when `lado-<uid>` is a link, not a folder, or another user's:
+    one made in a shared /tmp by someone else must not get the agents' files."""
+    path = temp_path(agent, env)
+    root = path.parent.parent
+    root.parent.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(FileExistsError):
+        root.mkdir(mode=0o700)
+    found = root.lstat()
+    if stat.S_ISLNK(found.st_mode):
+        raise UnsafeTempDir(f"{root} is a link")
+    if not stat.S_ISDIR(found.st_mode):
+        raise UnsafeTempDir(f"{root} is not a folder")
+    if found.st_uid != os.getuid():
+        raise UnsafeTempDir(f"{root} belongs to uid {found.st_uid}")
+    for level in (root, path.parent, path):
+        level.mkdir(mode=0o700, exist_ok=True)
+        level.chmod(0o700)
+    record = state_path(agent) / TEMP_RECORD
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.unlink(missing_ok=True)
+    record.symlink_to(path, target_is_directory=True)
+    return path
+
+
+def _made_temp_dir(agent_state: Path) -> Path | None:
+    """The temporary folder recorded in an agent's state folder, when the record names one
+    of that agent (`lado-<uid>/<session>/<agent>`): a record changed by hand removes nothing
+    else."""
+    try:
+        made = Path(os.readlink(agent_state / TEMP_RECORD))
+    except OSError:
+        return None
+    expected = (f"lado-{os.getuid()}", agent_state.parent.name, agent_state.name)
+    return made if (made.parent.parent.name, made.parent.name, made.name) == expected else None
 
 
 # Seconds a turn-end hook may run before its CLI kills it, given explicitly where the CLI

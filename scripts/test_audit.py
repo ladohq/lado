@@ -128,13 +128,17 @@ def run_coverage(layer: str, out: Path, args: list[str]) -> int:
 
 
 def export_coverage(data: Path) -> dict[str, dict[str, list[int]]]:
-    """The lines per test of pytest's processes (contexts `<node id>|setup|run|teardown`) and
-    of the child processes (context `<node id>`, empty outside a test: dropped)."""
+    """The lines per test of pytest's processes, of the test's call only (context `<node
+    id>|run`; its fixtures' setup and teardown are every test's, tests/conftest.py's autouse
+    ones), and of the child processes (context `<node id>`, empty outside a test: dropped)."""
     import coverage
 
     child = coverage.Coverage(data_file=str(data / "child" / ".coverage"), config_file=False)
-    child.combine([str(data / "child")], keep=False)
-    child.save()
+    if any((data / "child").glob(".coverage.*")):
+        child.combine([str(data / "child")], keep=False)
+        child.save()
+    else:  # combined by an earlier export
+        child.load()
     main = coverage.CoverageData(basename=str(data / "main" / ".coverage"))
     main.read()
 
@@ -146,9 +150,12 @@ def export_coverage(data: Path) -> dict[str, dict[str, list[int]]]:
                 continue
             for line, contexts in source.contexts_by_lineno(file).items():
                 for context in contexts:
-                    test = context.rpartition("|")[0] if pytest_own else context
-                    if test:
-                        records[test][rel].add(line)
+                    test, _, phase = context.rpartition("|") if pytest_own else (context, "", "")
+                    if not test:
+                        continue
+                    files = records[test]  # a test whose call ran none of our lines: {}
+                    if phase in ("run", ""):
+                        files[rel].add(line)
     return {
         test: {path: sorted(lines) for path, lines in sorted(files.items())}
         for test, files in sorted(records.items())

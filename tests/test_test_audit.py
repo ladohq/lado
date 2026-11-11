@@ -18,6 +18,33 @@ test_audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(test_audit)
 
 
+def test_a_test_s_record_is_its_body_s_lines_and_its_processes(tmp_path):
+    """pytest's process: the lines of the test's call only, not of its fixtures' setup and
+    teardown (tests/conftest.py's autouse fixtures run LADO's code for every test); a child
+    process: all its lines, under the test that started it, none outside a test."""
+    import coverage
+
+    runs = str(ROOT / "src" / "lado" / "runs.py")
+    (tmp_path / "main").mkdir()
+    (tmp_path / "child").mkdir()
+    main = coverage.CoverageData(basename=str(tmp_path / "main" / ".coverage"))
+    contexts = [("t.py::a|setup", [1]), ("t.py::a|run", [2]), ("t.py::a|teardown", [3])]
+    for context, lines in [*contexts, ("t.py::doc|setup", [1])]:
+        main.set_context(context)
+        main.add_lines({runs: lines})
+    main.write()
+    child = coverage.CoverageData(basename=str(tmp_path / "child" / ".coverage"), suffix="x.1")
+    for context, lines in [("t.py::a", [4]), ("", [5])]:
+        child.set_context(context)
+        child.add_lines({runs: lines})
+    child.write()
+
+    assert test_audit.export_coverage(tmp_path) == {
+        "t.py::a": {"src/lado/runs.py": [2, 4]},
+        "t.py::doc": {},  # its call ran none of our lines (a test of a document)
+    }
+
+
 def test_load_coverage_gives_each_test_s_lines_per_file_as_sets(tmp_path):
     path = tmp_path / "coverage-unit.json"
     path.write_text(json.dumps({"t.py::a": {"src/lado/runs.py": [3, 1, 2]}, "t.py::b": {}}))

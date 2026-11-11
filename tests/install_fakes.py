@@ -5,7 +5,12 @@ working folder and the `LADO_*`/`COMPOSE_*` of its environment to a JSON-lines f
 answers from the test's settings (a JSON file the test may change between runs).
 
 A command left out of `Host(..., without=...)` is not on PATH at all, as on a computer that
-lacks it. `sleep` answers at once, so no wait of the script is waited for real."""
+lacks it. `sleep` answers at once, so no wait of the script is waited for real.
+
+Docker Desktop on a Mac: `open_ignored` is how many `open ... Docker` calls start nothing
+at first, as while Docker Desktop is still quitting. With `info_after_open` set, `docker
+info` fails until an `open` that was not ignored, then that many more times (instead of
+`info_fails`)."""
 
 from __future__ import annotations
 
@@ -45,6 +50,12 @@ def count(key):
     return state[key]
 
 
+def seen_before(key):
+    """Whether `key` was ever counted."""
+    state = json.load(open(STATE)) if os.path.exists(STATE) else {}
+    return key in state
+
+
 def answer(out="", err="", code=0):
     sys.stdout.write(out)
     sys.stderr.write(err)
@@ -58,7 +69,10 @@ if NAME == "docker":
             answer(err="docker: 'compose' is not a docker command.\n", code=1)
         answer("Docker Compose version v2.30.0\n")
     if args[:1] == ["info"]:
-        if count("info") <= s.get("info_fails", 0):
+        after = s.get("info_after_open")
+        if after is not None and (not seen_before("started") or count("info_started") <= after):
+            answer(err=s.get("info_error", "Cannot connect to the Docker daemon\n"), code=1)
+        if after is None and count("info") <= s.get("info_fails", 0):
             answer(err=s.get("info_error", "Cannot connect to the Docker daemon\n"), code=1)
         answer("Server Version: 27.0.0\n")
     if args[:1] == ["ps"]:
@@ -99,6 +113,8 @@ if NAME == "uname":
 if NAME == "open":
     if args[:1] == ["-a"] and not s.get("docker_desktop", True):
         answer(err="Unable to find application named 'Docker'\n", code=1)
+    if "Docker" in args and count("open") > s.get("open_ignored", 0):
+        count("started")
     answer()
 if NAME == "scutil":
     answer(s.get("local_host_name", "ann-mbp") + "\n")

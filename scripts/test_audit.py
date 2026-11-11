@@ -24,7 +24,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import NamedTuple
@@ -708,6 +708,101 @@ def git(repo: Path, *args: str) -> str:
     ).stdout
 
 
+# --- the report ------------------------------------------------------------------------
+
+
+def function_of(mutant: str) -> str:
+    """`lado.runs.xǁRunǁstep__mutmut_2` -> `runs.Run.step`; `lado.runs.x_go__mutmut_1` ->
+    `runs.go` (mutmut's names)."""
+    mangled = mutant.partition("__mutmut_")[0].removeprefix("lado.")
+    module, _, name = mangled.rpartition(".")
+    name = name.removeprefix("x_") if name.startswith("x_") else name.removeprefix("x")
+    return f"{module}.{name.strip('ǁ').replace('ǁ', '.')}"
+
+
+def missing(command: str) -> str:
+    return f"not measured: `python scripts/test_audit.py {command}`\n"
+
+
+def run_report(out: Path) -> int:
+    """`report.md` under `out` from the JSON the other commands wrote there; a part not
+    measured says the command that measures it."""
+    parts = ["# Test audit\n", "## Tests and their time\n"]
+    rows = ["| Layer | Tests | Wall |", "|---|---|---|"]
+    slowest = []
+    for layer in LAYERS:
+        path = out / f"durations-{layer}.json"
+        if not path.exists():
+            parts.append(missing(f"durations --layer {layer}"))
+            continue
+        durations = json.loads(path.read_text())
+        rows.append(f"| {layer} | {len(durations['tests'])} | {durations['wall']} s |")
+        slowest += [f"| {test} | {s} s |" for test, s in slow(durations)]
+    parts += ["\n".join(rows) + "\n", f"Tests of {SLOW:g} s or more:\n"]
+    parts.append("\n".join(["| Test | Time |", "|---|---|", *slowest]) + "\n")
+
+    parts.append("## CI on main\n")
+    path = out / "flaky.json"
+    if not path.exists():
+        parts.append(missing("flaky"))
+    elif "skipped" in (flaky := json.loads(path.read_text())):
+        parts.append(f"skipped: {flaky['skipped']}\n")
+    else:
+        runs = ["| Run | Clock | Runner minutes |", "|---|---|---|"]
+        runs += [f"| {r['id']} | {r['clock_s']} s | {r['runner_min']} |" for r in flaky["runs"]]
+        parts.append("\n".join(runs) + "\n")
+        reruns = [f"- {r['job']} (run {r['run']}, attempt {r['attempt']})" for r in flaky["reruns"]]
+        parts.append(f"Jobs green only on a rerun, {flaky['days']} days:\n")
+        parts.append("\n".join(reruns or ["none"]) + "\n")
+
+    parts.append("## Mutation score\n")
+    mutations = load_mutations(out) if any(out.glob("mutation-*.json")) else {}
+    if not mutations:
+        parts.append(missing("mutation <module>..."))
+    else:
+        rows = ["| Module | Mutants | Score | Seconds | Survived most |", "|---|---|---|---|---|"]
+        for module, result in sorted(mutations.items()):
+            survived = Counter(
+                function_of(name)
+                for name, status in result["mutants"].items()
+                if status not in KILLS
+            )
+            most = ", ".join(f"{f} {n}" for f, n in survived.most_common(5))
+            seconds_ = result.get("mutant_seconds", result.get("seconds", ""))
+            count = len(result["mutants"])
+            rows.append(f"| {module} | {count} | {score(result):.1%} | {seconds_} | {most} |")
+        parts.append("\n".join(rows) + "\n")
+
+    parts.append("## Pseudo-tested functions\n")
+    path = out / "pseudo.json"
+    if not path.exists():
+        parts.append(missing("pseudo"))
+    else:
+        pseudo = json.loads(path.read_text())
+        listed = [f"- {f}: {', '.join(tests)}" for f, tests in sorted(pseudo["pseudo"].items())]
+        parts.append("\n".join(listed or ["none"]) + "\n")
+        parts.append("Not run by any test:\n")
+        parts.append("\n".join(f"- {f}" for f in pseudo["not_covered"]) or "none")
+        parts.append("\n")
+
+    parts.append("## Subset candidates\n")
+    path = out / "subsets.json"
+    if not path.exists():
+        parts.append(missing("subsets"))
+    else:
+        for layer, found in json.loads(path.read_text()).items():
+            parts.append(f"### {layer}: {len(found['candidates'])} of {found['tests']} tests\n")
+            rows = ["| Candidate | Its lines all run by |", "|---|---|"]
+            rows += [f"| {test} | {other} |" for test, other in found["candidates"]]
+            parts.append("\n".join(rows) + "\n")
+            parts.append(f"Running none of our code: {len(found['no_code'])}\n")
+            parts.append("\n".join(f"- {test}" for test in found["no_code"]) + "\n")
+
+    (out / "report.md").write_text("\n".join(parts))
+    print(f"report: {out / 'report.md'}")
+    return 0
+
+
 # --- the command line ------------------------------------------------------------------
 
 
@@ -742,6 +837,7 @@ def main(argv: list[str]) -> int:
     proof.add_argument("after", type=Path)
     proof.add_argument("--deleted", type=Path, help="the deleted tests' node ids, one a line")
     proof.add_argument("--coverage", type=Path, action="append", default=[])
+    command("report", "report.md from what the other commands measured")
     opts = parser.parse_args(args)
     out = opts.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -763,6 +859,8 @@ def main(argv: list[str]) -> int:
         return run_mutation(out, opts.modules)
     if opts.command == "prove":
         return run_prove(opts.before, opts.after, deleted=opts.deleted, coverage=opts.coverage)
+    if opts.command == "report":
+        return run_report(out)
     return 2
 
 

@@ -1,4 +1,4 @@
-.PHONY: help lint fmt test test-integration test-js test-live test-smoke test-ui test-container web web-types dist docker browser check _check _test-ui
+.PHONY: help lint fmt test test-integration test-js test-live test-smoke test-ui test-container test-audit web web-types dist docker browser check _check _test-ui _test-audit
 
 # Unit and integration tests run on one pytest worker per CPU (pytest-xdist). To debug a
 # test serially, with its output in order: make test PYTEST_ARGS=-n0 (or any pytest options).
@@ -75,6 +75,27 @@ docker: ## LADO's image $(LADO_IMAGE) from the working copy: the web UI's bundle
 	cd web && npm ci --no-audit --no-fund && npm run build
 	rm -rf dist && uv build --wheel
 	docker build $(DOCKER_BUILD_FLAGS) -f docker/Dockerfile -t $(LADO_IMAGE) .
+
+# The test audit (scripts/test_audit.py, docs/testing.md "Test audit"): not part of check or
+# CI. Its JSON and report.md go to OUT (default <temp dir>/lado-test-audit); a part that
+# fails does not stop the others, and the report names what was not measured. mutation and
+# prove run by hand: they take long and name their modules.
+AUDIT = $(strip uv run python scripts/test_audit.py $(if $(OUT),--out $(OUT)))
+
+test-audit: ## the test audit: lines, time and CI reruns per test, subset candidates, pseudo-tested core functions; report.md in OUT
+	$(LOCK) $(MAKE) --no-print-directory _test-audit
+
+_test-audit: web browser
+	-$(AUDIT) coverage --layer unit
+	-$(AUDIT) coverage --layer integration
+	-$(AUDIT) coverage --layer ui
+	-$(AUDIT) durations --layer unit
+	-$(AUDIT) durations --layer integration
+	-$(AUDIT) durations --layer ui
+	-$(AUDIT) flaky
+	-$(AUDIT) subsets
+	-$(AUDIT) pseudo
+	$(AUDIT) report
 
 browser: ## install Chromium for the UI tests (Playwright)
 	uv run playwright install chromium

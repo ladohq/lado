@@ -4,6 +4,7 @@ pytest across processes are tests/integration/test_test_audit_*.py."""
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -437,3 +438,78 @@ def test_the_module_of_a_path():
     assert test_audit.module_of("src/lado/runs.py") == "runs"
     assert test_audit.module_of("src/lado/providers/claude.py") == "providers.claude"
     assert test_audit.module_of("scripts/ci_ok.py") is None
+
+
+# --- the report and make ----------------------------------------------------------------
+
+
+def test_the_report_joins_what_was_measured(tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    durations = {"wall": 62.75, "tests": {"t.py::slow": 20.15, "t.py::fast": 0.01}}
+    (out / "durations-unit.json").write_text(json.dumps(durations))
+    write_mutation(out, "runs", {"lado.runs.x_go__mutmut_1": "killed",
+                                 "lado.runs.x_go__mutmut_2": "survived"})  # fmt: skip
+    pseudo = {"pseudo": {"runs.go": ["t.py::a"]}, "not_covered": ["runs.stop"], "killed": [],
+              "timeout": [], "errors": {}}  # fmt: skip
+    (out / "pseudo.json").write_text(json.dumps(pseudo))
+
+    assert test_audit.run_report(out) == 0
+
+    report = (out / "report.md").read_text()
+    assert "| unit | 2 | 62.75 s |" in report
+    assert "| t.py::slow | 20.15 s |" in report
+    assert "| runs | 2 | 50.0% |" in report
+    assert "runs.go: t.py::a" in report
+    assert "runs.stop" in report
+
+
+def test_the_report_marks_a_part_not_measured(tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+
+    assert test_audit.run_report(out) == 0
+
+    report = (out / "report.md").read_text()
+    assert "not measured: `python scripts/test_audit.py durations --layer integration`" in report
+    assert "not measured: `python scripts/test_audit.py flaky`" in report
+    assert "not measured: `python scripts/test_audit.py mutation <module>...`" in report
+    assert "not measured: `python scripts/test_audit.py pseudo`" in report
+    assert "not measured: `python scripts/test_audit.py subsets`" in report
+
+
+def make_dry_run(target: str) -> str:
+    """`make -n <target>`: its commands, not run."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("MAKE")}
+    result = subprocess.run(
+        ["make", "-n", "--no-print-directory", target],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def test_make_check_runs_no_audit():
+    assert "test_audit" not in make_dry_run("_check")
+
+
+def test_make_test_audit_measures_every_part_and_writes_the_report():
+    commands = make_dry_run("_test-audit")
+    for part in [
+        "coverage --layer unit",
+        "coverage --layer integration",
+        "coverage --layer ui",
+        "durations --layer unit",
+        "durations --layer integration",
+        "durations --layer ui",
+        "flaky",
+        "subsets",
+        "pseudo",
+        "report",
+    ]:
+        assert f"scripts/test_audit.py {part}" in commands
+    assert commands.rstrip().splitlines()[-1].endswith("scripts/test_audit.py report")

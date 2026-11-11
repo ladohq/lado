@@ -309,7 +309,9 @@ and about the phone after its warning (answer `y`); `/tmp/lado-rc-install/.env` 
 `LADO_VERSION=X.Y.ZrcN` and `COMPOSE_PROJECT_NAME=lado-lado-rc-install`; the link opens
 in the browser, the UI answers, and the link it prints for the phone opens on a phone of
 the same Wi-Fi. Run the same line again: it says the RC is installed, rewrites nothing and
-opens the same link. Then remove it:
+opens the same link. Then Docker Desktop → Quit, and run the line again at once, before
+Docker Desktop has fully quit: it waits, starts Docker Desktop once it has quit, says the
+RC is installed and opens the link. Then remove it:
 
 ```
 cd /tmp/lado-rc-install && docker compose down -v

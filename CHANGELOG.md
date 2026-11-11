@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.46.1 (unreleased)
+
+### Fixed
+
+- **The Mac installer waits for a Docker Desktop that is still quitting.** Run right after
+  Docker Desktop's Quit, it starts Docker Desktop once it has quit and installs, instead of
+  stopping after 2 minutes.
+
 ## 0.46.0 (2026-11-11)
 
 ### New

@@ -896,13 +896,6 @@ function keepInView(tabs: HTMLElement, on: HTMLElement) {
   tabs.scrollLeft = tabScroll(view, { left: on.offsetLeft, width: on.offsetWidth }, TAB_ROOM);
 }
 
-// The tab the row keeps in view: the one the keyboard reached, else the one shown (a press's
-// focus is not :focus-visible, so it moves nothing). LAD-267.
-function tabToKeep(tabs: HTMLElement): HTMLElement | null {
-  const focused = tabs.querySelector<HTMLElement>(":focus-visible");
-  return focused ?? tabs.querySelector<HTMLElement>('[aria-current="page"]');
-}
-
 // What puts the focus back after a trial, which hides the form of the bar's tool that has it,
 // for a moment or for good: on that form while it shows, else on the other.
 function holdToolFocus(bar: HTMLElement): () => void {
@@ -918,7 +911,7 @@ function holdToolFocus(bar: HTMLElement): () => void {
 // The tab bar: the tabs, which give way by the levels above, and at its right end what stays
 // outside them (`children`, a tab's search). The level is chosen by trying each before the
 // paint, again when the tabs' row or a tab changes its width (the bar, the search coming, a
-// count, the font); each trial brings the tab kept in view (`tabToKeep`) clear of the fade
+// count, the font); each trial brings the tab kept in view (`keepTabInView`) clear of the fade
 // again, as the widths under the scroll have changed (LAD-267).
 function SessionTabs({
   name,
@@ -942,9 +935,12 @@ function SessionTabs({
     const end = tabs.scrollLeft + tabs.clientWidth >= tabs.scrollWidth - 1;
     setEnds((now) => (now.start === start && now.end === end ? now : { start, end }));
   }, []);
+  // The tab the row keeps in view: the one the keyboard reached, else the one shown (a press's
+  // focus is not :focus-visible, so it moves nothing). LAD-267.
   const keepTabInView = useCallback(() => {
     const tabs = row.current;
-    const on = tabs && tabToKeep(tabs);
+    const on =
+      tabs?.querySelector<HTMLElement>(":focus-visible") ?? tabs?.querySelector<HTMLElement>('[aria-current="page"]');
     if (tabs && on) keepInView(tabs, on);
     lookAtEnds();
   }, [lookAtEnds]);

@@ -234,7 +234,11 @@ def test_the_tabs_give_way_in_levels(page: Page, server, repo, shot):
     more = bar.get_by_role("button", name="More tabs")
     earlier = bar.get_by_role("button", name="Earlier tabs")
     expect(more).to_be_visible()
-    expect(earlier).to_have_count(0)
+    # Agents, the second tab and too wide for both fades now, keeps its start clear as the bar
+    # narrows, so the row has scrolled (LAD-267).
+    expect(earlier).to_be_visible()
+    shown = bar.get_by_role("link", name=re.compile("^Agents")).bounding_box()
+    assert shown["x"] >= row.bounding_box()["x"] + 56 - 1
     assert width_of(more) == 26
     assert width_of(page.locator(".session-tabs-more.end")) == 56
     more.click()

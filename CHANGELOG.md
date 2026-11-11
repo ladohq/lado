@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.46.1 (unreleased)
+
+### Fixed
+
+- **A broken session stands out in the session list.** A session whose tmux session is gone or
+  whose loop does not run says so on its row in red after a red dot, as in its head, not in grey.
+
 ## 0.46.0 (2026-11-11)
 
 ### New

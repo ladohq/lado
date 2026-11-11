@@ -1893,16 +1893,6 @@ It failed once in a full run of `make web` and passed 3 times alone and in the n
 change under review did not touch the file. Wanted: its cause found and the test made stable.
 Found: 2026-11-06, review of branch lado/lad-197/task-lad-197-team-head (LAD-197).
 
-## A row's trouble status is grey where the design says red
-
-Size: S. Why here: a session that needs action does not stand out in the list, though its card
-says the trouble in red.
-
-`.status-tmux_gone, .status-loop_down` in `web/src/styles.css` give a row's status `--muted`, while
-the mockup of LAD-223 shows `status danger-text` and `docs/design/ui.md` (Look) says `--danger`
-marks a session that needs action. Older than LAD-223, which did not touch it. Wanted: the row's
-status in `--danger`, or the document changed if grey is the choice.
-Found: 2026-11-06, review of branch lado/lad-223/task-lad-223 (LAD-223).
 ## The rail's bottom items go past the edge with the keyboard open on a sideways iPad
 
 Size: S. Why here: only while the on-screen keyboard is open, and closing it brings them back.

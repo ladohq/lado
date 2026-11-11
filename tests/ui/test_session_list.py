@@ -1,13 +1,15 @@
 """The session list's groups in a browser (docs/design/ui.md, Structure: Sessions): each
 heading folds its group by a click, Enter or Space, remembered over a reload; the open
-session is seen in its folded group; a row shows no tooltip, a strip icon a short one, and
-not when the focus comes back to it with the tab."""
+session is seen in its folded group; a row in trouble says it in red; a row shows no
+tooltip, a strip icon a short one, and not when the focus comes back to it with the tab."""
 
 import re
+import time
 
 import agent_helpers
 import pytest
 from playwright.sync_api import Page, expect
+from test_layout import session_item
 from test_main_screen import log_in, running_session
 
 from lado import runtime, state
@@ -80,6 +82,42 @@ def test_a_notice_is_a_ground_and_an_icon_and_the_selected_session_keeps_its_str
         wanted = {"ground": True, "ink": True, "stripe": "0px", "icon": True}
         assert {key: look[key] for key in wanted} == wanted, look
     shot(page, f"notices-{theme}")
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_a_row_in_trouble_says_its_trouble_in_red_after_a_full_dot(page: Page, server, shot, theme):
+    since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    gate = {"gates": 1, "questions": 0, "agents": 0}
+    items = [
+        session_item("gone", status="tmux_gone"),
+        session_item("down", status="loop_down", waiting=gate, running_since=since),
+        session_item("calm", running_since=since),
+    ]
+    page.route(f"{server['url']}/api/sessions", lambda route: route.fulfill(json=items))
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.emulate_media(color_scheme=theme)
+    log_in(page, server)
+    page.goto(f"{server['url']}/sessions")
+    sessions = page.get_by_role("navigation", name="Sessions")
+    down = sessions.get_by_role("region", name="Needs you").get_by_role("link", name="down")
+    expect(down.locator(".status")).to_have_text("session loop not running")
+    gone = sessions.get_by_role("link", name="gone")
+    expect(gone.locator(".status")).to_have_text("tmux session is gone")
+    expect(sessions.get_by_role("link", name="calm").locator(".status")).to_have_count(0)
+    danger = page.evaluate(
+        """() => {
+          const probe = document.body.appendChild(document.createElement("i"));
+          probe.style.color = "var(--danger)";
+          return getComputedStyle(probe).color;
+        }"""
+    )
+    looks = (
+        "e => { const dot = getComputedStyle(e, '::before');"
+        " return [getComputedStyle(e).color, dot.backgroundColor, dot.borderStyle]; }"
+    )
+    for row in (gone, down):
+        assert row.locator(".status").evaluate(looks) == [danger, danger, "none"]
+    shot(page, f"trouble-{theme}")
 
 
 def test_each_group_folds_by_its_heading_remembered_and_the_open_session_stays_in_sight(

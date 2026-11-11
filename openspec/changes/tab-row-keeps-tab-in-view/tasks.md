@@ -24,11 +24,11 @@
   change width (a late font, a resize) (LAD-267) (AC-4).
 - [x] 2.2 CHANGELOG.md, `## 0.46.1 (unreleased)`, `### Fixed`: the session's tabs keep the tab
   in view when their width changes, e.g. as the font arrives (AC-4).
-- [ ] 2.3 Repeat run under load (AC-3): `test_tab_brings_each_tab_clear_of_the_bars_ends` and
+- [x] 2.3 Repeat run under load (AC-3): `test_tab_brings_each_tab_clear_of_the_bars_ends` and
   the two new tests, each parametrized 48 times in a scratch file not committed, with
   `-m ui -n 16` while 8 CPU-bound loops run; plus `tests/ui/test_narrow_layout.py` whole with
   `-m ui -n auto` three times. Report the counts in `build-report`.
-- [ ] 2.4 Regression: `make lint`, `make test`, `make web`, `uv run pytest -m ui
+- [x] 2.4 Regression: `make lint`, `make test`, `make web`, `uv run pytest -m ui
   tests/ui/test_narrow_layout.py tests/ui/test_tabs.py tests/ui/test_layout.py`,
   `openspec validate tab-row-keeps-tab-in-view --strict` and the trial archive of the
   settings' Checks.

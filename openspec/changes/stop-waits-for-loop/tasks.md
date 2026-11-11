@@ -8,7 +8,7 @@
 
 ## 2. The stop waits for the loop
 
-- [ ] 2.1 Unit (`tests/test_loop.py`), failing first: `loop.run` with LADO_HOME holding no
+- [x] 2.1 Unit (`tests/test_loop.py`), failing first: `loop.run` with LADO_HOME holding no
   `lado.db` returns 0 and leaves no `lado.db`, `loop.log` or LADO_HOME behind (a deleted
   `tmp_path` home). Then the check before each pass (D3).
 - [ ] 2.2 Unit (`tests/test_runtime.py`), failing first: `stop_session` raises the LadoError of

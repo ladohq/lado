@@ -1,4 +1,5 @@
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -134,6 +135,29 @@ def test_a_missing_tmux_is_an_error_of_the_pass(repo, tmux_server, monkeypatch, 
 def test_the_loop_stops_for_an_unknown_session(lado_home):
     state.list_sessions()  # the database exists
     assert loop.why_stop("s") == "the session is gone"
+
+
+def test_the_loop_writes_nothing_into_a_deleted_home(tmp_path, monkeypatch):
+    home = tmp_path / "gone"  # deleted, as `rm -rf LADO_HOME` right after `lado stop` leaves it
+    monkeypatch.setenv("LADO_HOME", str(home))
+    assert loop.run("s", interval=0) == 0
+    assert not home.exists()
+
+
+def test_the_loop_ends_without_writing_when_its_home_is_deleted_under_it(
+    repo, fake_tmux, monkeypatch, lado_home
+):
+    _session(repo)
+    passes = []
+
+    def sweep(session):
+        passes.append(session)
+        shutil.rmtree(lado_home)
+
+    monkeypatch.setattr(runtime, "sweep", sweep)
+    assert loop.run("s", interval=0) == 0
+    assert passes == ["s"]
+    assert not lado_home.exists()
 
 
 def test_the_loop_stops_on_another_schema_and_does_not_migrate_it(repo, fake_tmux, lado_home):

@@ -28,7 +28,11 @@ UI's `POST /api/sessions/{name}/stop` gets the wait and the error through `stop_
 `why_stop`, `loop.run` checks `(state.home_path() / "lado.db").exists()`; when it is missing it
 returns 0 without `log` (the line would make LADO_HOME again) and without `telemetry.kick`.
 This covers a home deleted while a loop still runs (a stop that timed out, a home removed by
-hand). The lock file is under the deleted home and goes with it.
+hand). The lock file is under the deleted home and goes with it. The same check runs before
+taking the lock (which would make `LADO_HOME/loop/` again) and after a pass, before the
+statistics kick (`telemetry.kick` makes LADO_HOME again). A `lado.db` deleted in the middle of
+a pass, not before it, may still be made again once by that pass's own connection or its
+`loop.log` line; the loop then ends at its next check.
 
 **D4. Tests.** doctor: unit (pure logic over a folder). The loop's check: unit, `loop.run` in
 the test's process with a fake tmux. The stop's wait and the deleted home: integration with

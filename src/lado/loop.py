@@ -8,7 +8,8 @@ session exits (after LOCK_WAIT) and `lado ls` sees a session without one; the lo
 with the process, and `lado start` or `lado attach` start a loop whose lock is free. A
 repeating error is written once with its traceback, then only counted. It ends by itself,
 writing why to LADO_HOME/loop.log, when its session stops, its tmux session is gone, or the
-database is no longer of its own schema.
+database is no longer of its own schema; and, writing nothing, when LADO_HOME holds no
+lado.db (home_gone). `lado stop` returns only after the loop has ended (wait_stopped).
 """
 
 import contextlib
@@ -141,14 +142,24 @@ def forget(session: str) -> None:
     lock_path(session).unlink(missing_ok=True)
 
 
+def home_gone() -> bool:
+    """Whether LADO_HOME holds no lado.db (deleted, by hand or by `lado uninstall`): the
+    loop then ends writing nothing, as a line or a connection would make it again."""
+    return not (state.home_path() / "lado.db").exists()
+
+
 def run(session: str, interval: float | None = None) -> int:
     """`lado loop <session>`: sweep the session every `interval` seconds (INTERVAL by
-    default) until why_stop, or until its tmux session is gone (tmux_gone)."""
+    default) until why_stop, or until its tmux session is gone (tmux_gone). Before each
+    pass, a home without lado.db (home_gone) ends it at once, writing nothing; a lado.db
+    deleted during a pass may still be made again once by that pass."""
     if interval is None:
         interval = INTERVAL
     # Imported here: lado.runtime starts the loop.
     from lado import runtime
 
+    if home_gone():
+        return 0  # taking the lock would make LADO_HOME again
     # `running()` holds the lock for a moment, so a loop starting then waits a little.
     deadline = time.monotonic() + LOCK_WAIT
     lock = take_lock(session)
@@ -163,6 +174,8 @@ def run(session: str, interval: float | None = None) -> int:
         missing: set[str] = set()  # the agents whose window the pass before did not find
         kicked: float | None = None  # when the loop last kicked the statistics sender
         while True:
+            if home_gone():
+                return 0
             try:
                 reason = why_stop(session)
                 if reason is None:
@@ -186,6 +199,8 @@ def run(session: str, interval: float | None = None) -> int:
                 errors.flush()
                 log(session, f"loop ended: {reason}")
                 return 0
+            if home_gone():
+                return 0  # deleted during the pass: the kick would make it again
             if kicked is None or time.monotonic() - kicked >= telemetry.KICK_EVERY:
                 telemetry.kick()  # cheap, never raises: the statistics sender when due
                 kicked = time.monotonic()

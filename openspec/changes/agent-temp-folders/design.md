@@ -33,8 +33,12 @@ The folder made, it is put in `AgentSpec.temp_dir`, so the provider sees it.
 
 `_launch_env` puts `TMPDIR=<folder>` among LADO's own variables (`ours`), so it wins over every
 layer and is named in `LADO_LAUNCH_VARS`: a worker that an agent's `lado mcp` launches does not
-nest its folder inside its spawner's. With `LADO_AGENT_ENV=inherit`, that worker's parent is
-then `/tmp`, not the user's own `TMPDIR` the spawner had; accepted: the folders still differ.
+nest its folder inside its spawner's. Both sources drop it: `LADO_AGENT_ENV=inherit` by
+`without_launch`, and the login shell, which `agent_env.from_shell` starts from the caller's
+variables without those of its launch (found in review: it took the spawner's `TMPDIR` among
+`SHELL_BASE`). That worker's parent is then the `TMPDIR` its shell's startup files export,
+else `/tmp`, not the user's own `TMPDIR` the spawner had (macOS's `/var/folders/…/T/` comes
+from the login session, not from the startup files); accepted: the folders still differ.
 Each CLI honours `TMPDIR` for its own and its commands' temporary files: Claude Code, Kilo and
 OpenCode through Node's `os.tmpdir()`, Codex through Rust's `std::env::temp_dir()` and the
 variables it hands its MCP servers (`TMPDIR` among them, `providers/codex.py`). Codex's sandbox

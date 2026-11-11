@@ -24,6 +24,10 @@
   two folders differ, exist, are 0700, lie under the test's parent (its own `TMPDIR`, never the
   real `/tmp`), and each `pr.md` is in its own. `finish_worker` of one removes its folder and
   leaves the other's. A run's worker's file survives `lado stop` and the resume.
+  Built as: the supervisor's and a worker's files survive the stop and the resume (a resume
+  starts no run's worker again; its supervisor spawns it, into the same folder). The spawn
+  through an agent's `lado mcp` with the login shell, where review found the worker's folder
+  nested in its spawner's: `tests/integration/test_login_shell.py`.
 
 ## 3. Real CLIs (live)
 

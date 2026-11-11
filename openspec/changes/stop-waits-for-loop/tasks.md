@@ -15,12 +15,12 @@
   D2 after marking the session stopped when `loop.wait_stopped` returns False (faked), and
   waits for it after the kill; `stop_all` waits for every loop after stopping them all and
   names the session whose loop did not end among its failures. Then the code (D2).
-- [ ] 2.3 Integration (`tests/integration/test_session_loop.py`, marker `integration`, fake
+- [x] 2.3 Integration (`tests/integration/test_session_loop.py`, marker `integration`, fake
   agent): a running session; `lado stop` returns with no loop running (`loop.running` False);
   LADO_HOME deleted at once; after several `LADO_LOOP_INTERVAL`s no LADO_HOME exists.
-- [ ] 2.4 Integration, same file: `lado stop s` then `lado start s` at once; exactly one loop
+- [x] 2.4 Integration, same file: `lado stop s` then `lado start s` at once; exactly one loop
   runs and `loop.log` has the first loop's `loop ended` before the second `loop started`.
-- [ ] 2.5 Integration, same file: LADO_HOME deleted under a running loop (the session not
+- [x] 2.5 Integration, same file: LADO_HOME deleted under a running loop (the session not
   stopped); the loop ends within a few intervals (its process gone) and LADO_HOME is not made
   again.
 

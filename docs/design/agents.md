@@ -602,14 +602,28 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   needed. `answered_by` of a `stopped` question holds that message's id: it is told once,
   and again only when the message was `dropped` (a failed resume, or a stop before the
   supervisor read it). A reply to a `stopped` question is refused, also while the session
-  is stopped (`question #<id> is stopped`). LADO's
-  instructions tell the supervisor to answer where the human asked: a `[from human]`
-  message with `send_message(to="human")` or `ask_human`, text typed into its window in the
-  window. At each turn's end, before the queue is handed over, the human's messages the
-  agent got (not answers or dismissals) are checked once: `replied` if it wrote to `human`
-  after it got them (by `sent_at`, when each was handed over, not by id), else `missing`,
-  which the chat shows as "replied only in its terminal". A turn that ended on an error
-  checks nothing: the next clean turn decides, as the agent has seen the message by then.
+  is stopped (`question #<id> is stopped`). Every agent is
+  told how to answer the human (`runtime.HUMAN_REPLY_RULE`, the supervisor's first after its
+  name, the workers' in `WORKER_INPUT`): the human does not see its terminal and text outside
+  a tool call reaches nobody; a `[from human]` message that needs an answer is answered with
+  `send_message(to="human")` or `ask_human`, one that needs none (thanks) gets no reply, and
+  only text typed into its window without `[from human]` is answered in the window. The
+  line of each message from the human that is no answer or dismissal ends with
+  `runtime.HUMAN_REPLY_HINT`, ` (reply with send_message(to="human") or ask_human)`, after its
+  `(#<id>, …: call read_messages)` part (`format_message`, which `confirm_sent` matches
+  too). Weak models (Kilo, OpenCode on small models) answered in their terminal, as their
+  CLIs' own prompts say text is shown to the user (LAD-274). At each turn's end, before the
+  queue is handed over, the human's messages the agent got (not answers or dismissals) are
+  checked (`state.check_replies`): `replied` if it wrote to `human` after it got them (by
+  `sent_at`, when each was handed over, not by id), else `reminded`, and the agent gets one
+  message from `lado`, `hooks.REPLY_REMINDER`: its answer to #<id> went only to its
+  terminal; if it needs one, use `send_message(to="human")` or `ask_human`, else do
+  nothing. A `reminded` message is decided at the first clean turn's end at which no
+  message from `lado` to the agent is `pending` or `sent` (the reminder was handed over and
+  confirmed): `replied` as above, else `missing`, which the chat shows as "replied only in
+  its terminal". So each message gets at most one reminder and one verdict; the API shows
+  `reminded` as no reply state. A turn that ended on an error checks nothing: the next clean
+  turn decides, as the agent has seen the message by then.
 - The lead recommends on each question to the human, a core mechanism of every kit and
   provider: when a flow gate opens (approval, choice, loop limit) or an agent other than
   the lead asks the human (`ask_human`), LADO asks the lead with one message from `lado`,

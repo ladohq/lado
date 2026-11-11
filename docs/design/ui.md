@@ -873,7 +873,8 @@ reaches the feed. LADO takes the model and builds it on what it has:
   hint "Gate #id waits: answer on its card" went with LAD-28: the waiting card stands
   there).
 - **A forgotten reply is caught, not hoped for**: when the supervisor ends a turn that a
-  human message started and wrote nothing to `human`, the feed says "replied only in its
+  human message started and wrote nothing to `human`, LADO reminds it once; when the turn
+  after the reminder writes nothing to `human` either, the feed says "replied only in its
   terminal" (the terminal is beside the feed).
 - **Layout**: the session page has the chat in the middle of Activity, the team (agents
   with their status) as chips above it, and the selected agent's terminal on the right
@@ -917,14 +918,19 @@ Built in the chat task (2026-10-03):
   (`runtime.close_worker`: finish, a run's end or cancel, a failed spawn), its open
   questions are `closed` in the same transaction; every stop of the session makes the
   session's open questions `stopped` (docs/design/agents.md).
-- **Where the human asked**: LADO's instructions to the supervisor say to answer
-  `[from human] …` with `send_message(to="human")` or `ask_human`, and text typed into its
-  window in the window. The forgotten-reply check: at a turn's end, before the queue is
-  handed over, each message from `human` to the agent in `delivered` or `read` that is not
-  an answer or dismissal and has no `reply_state` yet gets `replied` (the agent wrote to
-  `human` after it got it: compared by when each was handed over, `sent_at`, not by id, as
-  the human's message is queued before it is handed over) or `missing`; each one is checked
-  once.
+- **Where the human asked**: LADO's instructions to every agent say the human does not see
+  its terminal, to answer `[from human] …` that needs an answer with
+  `send_message(to="human")` or `ask_human`, and only text typed into its window without
+  `[from human]` in the window; the human's line itself ends with ` (reply with
+  send_message(to="human") or ask_human)` (LAD-274). The forgotten-reply check: at a turn's
+  end, before the queue is handed over, each message from `human` to the agent in
+  `delivered` or `read` that is not an answer or dismissal and has no `reply_state` yet gets
+  `replied` (the agent wrote to `human` after it got it: compared by when each was handed
+  over, `sent_at`, not by id, as the human's message is queued before it is handed over) or
+  `reminded`, with one reminder from `lado` to the agent; a `reminded` one becomes
+  `replied` or `missing` at the first clean turn's end after the reminder was handed over
+  and confirmed. The API gives `reminded` as `null`, so the chat shows no note until the
+  verdict.
 - **Schema 13**: `messages` gets `kind`, `choices`, `free_answer`, `question_state`,
   `answered_by`, `reply_to`, `choice`, `reply_state`; their changes reach the feed through
   the `messages` triggers.

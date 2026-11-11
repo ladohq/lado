@@ -746,6 +746,9 @@ def remove_session_state(session: str) -> None:
 # not LADO_HOME: the config folder is written anew at each launch, and in LADO's container
 # LADO_HOME is the home volume. `lado-<uid>` keeps the users of a shared host apart.
 DEFAULT_TEMP_PARENT = "/tmp"
+# Stands for /tmp in the tests (conftest.agents_tmp), which never write to the real one; in
+# the launching process's environment, as LADO_TMUX_SOCKET is.
+TEMP_PARENT_VAR = "LADO_TEMP_PARENT"
 # In the agent's state folder: a link to the temporary folder its launch made, so it goes
 # with the agent's state even when the parent is other by then.
 TEMP_RECORD = "temp-dir"
@@ -757,8 +760,8 @@ class UnsafeTempDir(Exception):
 
 def temp_path(agent: state.Agent, env: Mapping[str, str]) -> Path:
     """The agent's temporary folder, not made: `<parent>/lado-<uid>/<session>/<agent>`, the
-    parent `env`'s TMPDIR (the agent's layers merged), else /tmp."""
-    parent = env.get("TMPDIR") or DEFAULT_TEMP_PARENT
+    parent `env`'s TMPDIR (the agent's layers merged), else /tmp (TEMP_PARENT_VAR)."""
+    parent = env.get("TMPDIR") or os.environ.get(TEMP_PARENT_VAR) or DEFAULT_TEMP_PARENT
     return Path(parent) / f"lado-{os.getuid()}" / agent.session / agent.name
 
 

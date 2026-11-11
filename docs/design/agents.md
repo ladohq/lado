@@ -94,7 +94,8 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   before its window opens (`<path> is a link`, `<path> belongs to uid <n>`). LADO gives the
   folder as `TMPDIR` among its own variables (`runtime._ours`), so it is in
   `LADO_LAUNCH_VARS` and a worker an agent spawns gets its own, not one inside its
-  spawner's (under `LADO_AGENT_ENV=inherit` that worker's parent is then `/tmp`). Each CLI
+  spawner's (under `LADO_AGENT_ENV=inherit` that worker's parent is then `/tmp`, or the
+  tests' `LADO_TEMP_PARENT`, docs/testing.md). Each CLI
   honours `TMPDIR` for its commands' files; Claude Code keeps its own temporary root, where
   its scratchpad is, by `CLAUDE_CODE_TMPDIR` (else `/tmp/claude-<uid>`, one for all its
   agents), which `providers/claude.py` sets to the same folder (`AgentSpec.temp_dir`). The

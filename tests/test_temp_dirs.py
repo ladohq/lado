@@ -27,7 +27,16 @@ def test_the_folder_lies_under_the_parent_by_session_and_agent(tmp_path):
     assert not path.exists()  # only named
 
 
-def test_without_a_tmpdir_the_parent_is_tmp():
+def test_without_a_tmpdir_the_tests_parent_stands_for_tmp(tmp_path, monkeypatch):
+    """The tests' LADO_TEMP_PARENT (conftest.agents_tmp) keeps an agent whose layers have no
+    TMPDIR (a worker an agent's `lado mcp` spawns, D3) out of the real /tmp."""
+    monkeypatch.setenv(base.TEMP_PARENT_VAR, str(tmp_path))
+    assert base.temp_path(_agent(), {}) == tmp_path / f"lado-{UID}" / "s" / "w1"
+    assert base.temp_path(_agent(), {"TMPDIR": "/x"}).parent.parent.parent == base.Path("/x")
+
+
+def test_without_a_tmpdir_the_parent_is_tmp(monkeypatch):
+    monkeypatch.delenv(base.TEMP_PARENT_VAR)
     assert base.temp_path(_agent(), {}) == base.Path("/tmp", f"lado-{UID}", "s", "w1")
     assert base.temp_path(_agent(), {"TMPDIR": ""}).parent.parent.parent == base.Path("/tmp")
 

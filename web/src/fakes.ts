@@ -1,7 +1,7 @@
 // Fakes for the UI's unit tests (not part of the bundle: only tests import this file). jsdom
 // has no canvas for xterm.js, no server for WebSockets and no EventSource.
-import { act } from "@testing-library/react";
-import { vi } from "vitest";
+import { act, waitFor } from "@testing-library/react";
+import { expect, vi } from "vitest";
 
 import type { ArtifactInfo, AttachmentInfo, ProviderLogins } from "./api";
 
@@ -41,6 +41,13 @@ export class FakeSocket {
 }
 
 export const lastSocket = () => FakeSocket.all[FakeSocket.all.length - 1];
+
+// The n-th socket, once made: a login window makes its socket in an effect, after the window
+// is in the page, so a window opened by an answer of the server has none yet when it shows.
+export async function socketMade(n: number) {
+  await waitFor(() => expect(FakeSocket.all).toHaveLength(n));
+  return FakeSocket.all[n - 1];
+}
 
 // xterm.js's Terminal as far as the UI uses it.
 export class FakeXterm {

@@ -90,7 +90,7 @@ export function useLaunchModel({
   const field = useRef<HTMLButtonElement>(null);
   const [entries, setEntries] = useState<ModelSettings | null>(null);
   const [choice, setChoice] = useState<Choice>(() => draft?.choice ?? cameWith(resuming));
-  const [lostNote, setLostNote] = useState<string | null>(null);
+  const [lost, setLost] = useState<{ name: string; from: string } | null>(null); // a pick another CLI dropped
   const [other, setOther] = useState<string | null>(null); // Other name's field, with its text
   const [tries, setTries] = useState(0); // Check again asks anew
   const [again, setAgain] = useState<ModelRefusal | SessionModelCheck | null>(null);
@@ -200,10 +200,7 @@ export function useLaunchModel({
     // The first CLI known: a draft's choice holds only for the CLI it was made for.
     if (before === null && draft && draft.cli !== cli.name) setChoice(cameWith(resuming));
     if (before === null || before.name === cli.name) return;
-    const lost = value !== null && choice.kind !== "default";
-    setLostNote(
-      lost ? `${nameOf(value)} belongs to ${before.title}, so the model is back to ${cli.title}'s default.` : null,
-    );
+    setLost(value !== null && choice.kind !== "default" ? { name: nameOf(value), from: before.title } : null);
     setChoice(cli.name === resuming?.provider ? cameWith(resuming) : { kind: "default" });
     setMoved(false);
     setTookOne(false);
@@ -252,7 +249,7 @@ export function useLaunchModel({
     setChoice(next);
     setMoved(true);
     setTookOne(false);
-    setLostNote(null);
+    setLost(null);
     setOther(null);
     setAgain(null);
     onClearRefusal();
@@ -290,11 +287,16 @@ export function useLaunchModel({
 
   const title = cli?.title ?? "the agent CLI";
   const kept = choice.kind === "kept" && resuming !== null;
+  // The note is made from the facts, so it follows what the field holds now.
+  const onServerOnly = `For this session only: ${title} is not logged in, so it runs on your server's model.`;
+  const tookServer = choice.kind === "pick" && tookOne;
   const notes: ReactNode[] = [];
-  if (lostNote !== null) {
+  if (lost !== null) {
     notes.push(
       <span key="lost" className="field-note">
-        {lostNote}
+        {tookServer
+          ? `${lost.name} belongs to ${lost.from}. ${onServerOnly}`
+          : `${lost.name} belongs to ${lost.from}, so the model is back to ${title}'s default.`}
       </span>,
     );
   }
@@ -348,25 +350,25 @@ export function useLaunchModel({
       </span>,
     );
   } else {
-    if (lostNote === null && choice.kind === "pick" && tookOne) {
+    if (lost === null && tookServer) {
       notes.push(
         <span key="note" className="field-note">
-          {`For this session only: ${title} is not logged in, so it runs on your server's model.`}
+          {onServerOnly}
         </span>,
       );
-    } else if (lostNote === null && choice.kind === "default" && defaultValue !== null) {
+    } else if (lost === null && choice.kind === "default" && defaultValue !== null) {
       notes.push(
         <span key="note" className="field-note">
           {`${title}'s default model, from Settings → Agent CLIs.`}
         </span>,
       );
-    } else if (lostNote === null && choice.kind === "pick" && defaultValue !== null) {
+    } else if (lost === null && choice.kind === "pick" && defaultValue !== null) {
       notes.push(
         <span key="note" className="field-note">
           {`For this session only. ${title}'s default model is ${defaultValue.name}.`}
         </span>,
       );
-    } else if (lostNote === null && choice.kind === "settings" && defaultValue !== null) {
+    } else if (lost === null && choice.kind === "settings" && defaultValue !== null) {
       notes.push(
         <span key="note" className="field-note">
           {`For this session only: the agent CLI chooses, not ${defaultValue.name}.`}

@@ -1748,6 +1748,10 @@ connection, above).
   session whose field would open on such a value takes the CLI's one saved model by itself,
   once, with `For this session only: <CLI> is not logged in, so it runs on your server's
   model.`; with several it takes none, and a move of the field by the human is never undone.
+  After a change of Agent that dropped a pick, that one note reads `<name> belongs to <CLI>.
+  For this session only: …` in place of `… so the model is back to <CLI>'s default.`: the
+  note is made at render from the dropped pick and its CLI, so it follows what the field holds
+  (LAD-259).
   The Model list's foot reads `The default comes from Settings → Agent CLIs.` (LAD-238). A
   refusal of one of these fields opens Team and puts the focus there; an agent that cannot
   run opens it too.
@@ -2932,9 +2936,12 @@ core's why (`ProbeInfo.cannot`); the CLIs a tick can save a model of are `ProbeI
   counts, with ↻ unless reading again cannot help (`ModelChoices.read_again`); a list that could
   not be read says why above the rows and has a row `Read again` after the CLI's settings, as a
   read that failed has no foot to reach. A press inside the
-  list takes no focus; a read that changes the rows puts the active row back on the selected
-  one. A pick saves at once, by reference (`PUT /api/model-defaults/{cli}`), the focus back on
-  the field; a refusal shows under it and the value stays; a request that never reached LADO
+  list takes no focus. The active row (the highlight, what Enter picks) is a row, not a place:
+  rows that come or go without a new list (`Read again` after a failed request, gone while it
+  reads) leave it on its row; while its row is gone it stands on the selected one and comes back
+  with the row; a list read anew puts it on the selected row, a search on its first row. A pick
+  saves at once, by reference (`PUT /api/model-defaults/{cli}`), the focus back on the field;
+  a refusal shows under it and the value stays; a request that never reached LADO
   says so in its own words and blames no model server. YOUR MODELS are the core's once the list
   is read, the page's entries until then. `Other name…` opens a form under the picker with Use
   (Enter too) and Cancel; a typed name is read as `lado model default` reads it, not as a row:
@@ -3669,7 +3676,9 @@ Fonts (decided with the human 2026-10-07, task feature/chat-message-text, mockup
 `ui-font.html`, variant 1): **Inter** for the whole UI (`--sans`; `@fontsource/inter`, 400
 and 600, every subset, Cyrillic too) instead of IBM Plex Sans; **IBM Plex Mono** for code
 and terminals (`--mono`). Both are bundled, no font from the network; `make dist` checks
-that the wheel has Inter's 400.
+that the wheel has Inter's 400. The class `mono` is the one rule of the mono face for an id,
+an address or a name typed as is (a model's id, a server's address, a project's id): it sets
+the face only, each place keeps its own size.
 
 The dark theme (task 2): ground #111317, panels #181B21, lines #2A2F38, ink #E8EAEE, muted
 #9AA1AD, actions #6FA0FF (labels on them #111317), waiting for the human #F0A25A on #3A2A1C.

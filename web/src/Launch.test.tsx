@@ -1339,6 +1339,36 @@ test("a built-in default of a CLI without its login gives way to its one server 
   expect((await startedWith()).model).toBe("CloudClaude");
 });
 
+const LOST_TO_SERVER = `kilo/large belongs to Kilo CLI. ${ONE_MODEL}`;
+
+// kilo/large picked for Kilo CLI, then Agent to Claude Code, which takes its one server model.
+async function lostToServer() {
+  providers = async () => [...onServer(), provider("codex")];
+  modelEntries = { models: [cloud()], servers: [], defaults: [] };
+  sessionCheck = (asked) => ((asked as { cli: string }).cli === "claude" ? loginCheck(asked) : sessionCheckOk());
+  await kiloWindow();
+  await pickRow("kilo/large");
+  await waitFor(() => expect(modelField().textContent).toContain("kilo/large"));
+  fireEvent.change(providerSelect(), { target: { value: "claude" } });
+  await waitFor(() => expect(modelField().textContent).toContain("CloudClaude"));
+  await screen.findByText(LOST_TO_SERVER);
+}
+
+test("a pick lost to a CLI that takes its one server model says both, in one note", async () => {
+  await lostToServer();
+  expect(screen.queryByText(/back to Claude Code's default/)).toBeNull();
+  expect(screen.getAllByText(/For this session only/)).toHaveLength(1);
+  expect((await startedWith()).model).toBe("CloudClaude");
+});
+
+test("the note of a pick lost to the one server model goes at the next change of agent CLI", async () => {
+  await lostToServer();
+  fireEvent.change(providerSelect(), { target: { value: "codex" } });
+  await waitFor(() => expect(screen.queryByText(/^kilo\/large belongs to/)).toBeNull());
+  // what the field held then went too, and the window says so, as for any other value
+  expect(screen.getByText("CloudClaude belongs to Claude Code, so the model is back to Kilo CLI's default.")).toBeTruthy();
+});
+
 test("with several server models nothing is taken by itself, and the CLI's settings are refused", async () => {
   providers = async () => onServer();
   modelEntries = { models: [cloud(), cloud("CloudOpus")], servers: [], defaults: [] };

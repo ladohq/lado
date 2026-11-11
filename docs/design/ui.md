@@ -1748,6 +1748,10 @@ connection, above).
   session whose field would open on such a value takes the CLI's one saved model by itself,
   once, with `For this session only: <CLI> is not logged in, so it runs on your server's
   model.`; with several it takes none, and a move of the field by the human is never undone.
+  After a change of Agent that dropped a pick, that one note reads `<name> belongs to <CLI>.
+  For this session only: …` in place of `… so the model is back to <CLI>'s default.`: the
+  note is made at render from the dropped pick and its CLI, so it follows what the field holds
+  (LAD-259).
   The Model list's foot reads `The default comes from Settings → Agent CLIs.` (LAD-238). A
   refusal of one of these fields opens Team and puts the focus there; an agent that cannot
   run opens it too.

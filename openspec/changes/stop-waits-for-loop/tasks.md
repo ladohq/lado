@@ -11,7 +11,7 @@
 - [x] 2.1 Unit (`tests/test_loop.py`), failing first: `loop.run` with LADO_HOME holding no
   `lado.db` returns 0 and leaves no `lado.db`, `loop.log` or LADO_HOME behind (a deleted
   `tmp_path` home). Then the check before each pass (D3).
-- [ ] 2.2 Unit (`tests/test_runtime.py`), failing first: `stop_session` raises the LadoError of
+- [x] 2.2 Unit (`tests/test_runtime.py`), failing first: `stop_session` raises the LadoError of
   D2 after marking the session stopped when `loop.wait_stopped` returns False (faked), and
   waits for it after the kill; `stop_all` waits for every loop after stopping them all and
   names the session whose loop did not end among its failures. Then the code (D2).

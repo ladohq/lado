@@ -464,7 +464,7 @@ class _Uninstall:
             # Taken before the stop, which ends the panes: tmux kills a session at once, and
             # its agents end a moment later, some after their session-end hook.
             agents = _agents(self._sessions())
-            runtime.stop_all(lambda name, _: say(f'Stopped session "{name}"'))
+            runtime.stop_all(lambda name, _: say(f'Stopped session "{name}"'), wait=False)
             for sess in self._sessions():
                 if not loop.wait_stopped(sess.name):
                     raise runtime.LadoError(

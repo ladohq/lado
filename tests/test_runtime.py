@@ -4681,6 +4681,56 @@ def test_stop_all_goes_on_past_a_session_it_cannot_stop_and_names_it(
     assert [bool(state.get_session(n).stopped_at) for n in "abc"] == [True, False, True]
 
 
+def test_stop_returns_once_the_loop_has_ended(repo, fake_tmux, monkeypatch, lado_home):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    events = []
+    kill = tmux.kill_session
+    monkeypatch.setattr(tmux, "kill_session", lambda s: (events.append("kill"), kill(s)))
+
+    def wait_stopped(session, timeout=None):
+        events.append(("wait", session, bool(state.get_session(session).stopped_at)))
+        return False
+
+    monkeypatch.setattr(loop, "wait_stopped", wait_stopped)
+    with pytest.raises(runtime.LadoError) as failed:
+        runtime.stop_session("s")
+    assert events == ["kill", ("wait", "s", True)]  # marked, killed, then waited for
+    assert str(failed.value) == (
+        'session "s" is stopped, but its loop did not end (LADO_HOME/loop/s.lock is held); '
+        f"see {lado_home / 'loop.log'}"
+    )
+    assert state.get_session("s").stopped_at
+
+
+def test_a_stop_without_its_wait_leaves_the_loop_to_the_caller(repo, fake_tmux, monkeypatch):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    monkeypatch.setattr(loop, "wait_stopped", lambda session, timeout=None: pytest.fail("waited"))
+    runtime.stop_session("s", wait=False)
+    runtime.start_session(str(repo), "t", None, provider="claude")
+    runtime.stop_all(lambda name, stopped: None, wait=False)
+    assert state.get_session("s").stopped_at and state.get_session("t").stopped_at
+
+
+def test_stop_all_waits_for_the_loops_after_stopping_them_all(repo, fake_tmux, monkeypatch):
+    for name in ("a", "b", "c"):
+        runtime.start_session(str(repo), name, None, provider="claude")
+    events = []
+
+    def wait_stopped(session, timeout=None):
+        events.append(f"wait {session}")
+        return session != "b"
+
+    monkeypatch.setattr(loop, "wait_stopped", wait_stopped)
+    with pytest.raises(runtime.LadoError) as failed:
+        runtime.stop_all(lambda name, stopped: events.append(f"stopped {name}"))
+    assert events == [*(f"stopped {n}" for n in "abc"), *(f"wait {n}" for n in "abc")]
+    assert str(failed.value) == (
+        'session "b" is stopped, but its loop did not end (LADO_HOME/loop/b.lock is held); '
+        f'see {state.home() / "loop.log"}; stopped: "a", "b", "c"'
+    )
+    assert all(state.get_session(n).stopped_at for n in "abc")
+
+
 def _stop_all() -> list[str]:
     """The sessions stop_all stopped, in the order it reported them."""
     reported = []

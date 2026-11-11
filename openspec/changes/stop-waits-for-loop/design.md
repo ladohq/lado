@@ -32,7 +32,8 @@ hand). The lock file is under the deleted home and goes with it. The same check 
 taking the lock (which would make `LADO_HOME/loop/` again) and after a pass, before the
 statistics kick (`telemetry.kick` makes LADO_HOME again). A `lado.db` deleted in the middle of
 a pass, not before it, may still be made again once by that pass's own connection or its
-`loop.log` line; the loop then ends at its next check.
+`loop.log` line; the loop then ends at its next pass (no `lado.db`, or one without the
+session: "the session is gone").
 
 **D4. Tests.** doctor: unit (pure logic over a folder). The loop's check: unit, `loop.run` in
 the test's process with a fake tmux. The stop's wait and the deleted home: integration with

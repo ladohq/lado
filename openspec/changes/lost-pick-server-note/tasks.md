@@ -20,7 +20,7 @@
 
 ## 3. Regression
 
-- [ ] 3.1 `make lint`, `make web` (vitest, tsc, build), `uv run pytest -m ui
+- [x] 3.1 `make lint`, `make web` (vitest, tsc, build), `uv run pytest -m ui
   tests/ui/` for the launch window's files (`grep -l "New session\|launch" tests/ui/*.py`),
   `openspec validate lost-pick-server-note --strict` and the trial archive of the settings'
   Checks.

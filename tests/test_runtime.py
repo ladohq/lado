@@ -3245,6 +3245,16 @@ def test_hooks_from_an_earlier_launch_are_ignored(repo, fake_tmux, monkeypatch):
     assert state.get_agent("s", "supervisor").status == state.STARTING
 
 
+def test_a_hook_writes_nothing_into_a_deleted_home(repo, fake_tmux, monkeypatch, lado_home):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    instance = state.get_agent("s", "supervisor").instance
+    runtime.stop_session("s")
+    shutil.rmtree(lado_home)  # deleted right after `lado stop`, before the dying agent's hook
+    monkeypatch.setattr("sys.stdin.read", lambda: "{}")
+    assert hooks.main("SessionEnd", "s", "supervisor", instance) == 0
+    assert not lado_home.exists()
+
+
 def test_stop_session_keeps_worktrees_and_history(repo, fake_tmux):
     _session_with_worker(repo)
     runtime.send_message("s", "supervisor", "w1", "hi")  # w1 is starting: queued
@@ -4729,6 +4739,27 @@ def test_stop_all_waits_for_the_loops_after_stopping_them_all(repo, fake_tmux, m
         f'see {state.home() / "loop.log"}; stopped: "a", "b", "c"'
     )
     assert all(state.get_session(n).stopped_at for n in "abc")
+
+
+def test_a_wait_that_fails_does_not_cut_stop_all_short(repo, fake_tmux, monkeypatch):
+    for name in ("a", "b"):
+        runtime.start_session(str(repo), name, None, provider="claude")
+    ended = []
+    monkeypatch.setattr(runtime.logins, "end_windows", lambda: ended.append(True))
+
+    def wait_stopped(session, timeout=None):
+        if session == "a":
+            raise PermissionError("loop/a.lock")
+        return True
+
+    monkeypatch.setattr(loop, "wait_stopped", wait_stopped)
+    with pytest.raises(runtime.LadoError) as failed:
+        _stop_all()
+    assert str(failed.value) == (
+        'could not wait for the loop of session "a": PermissionError: loop/a.lock; '
+        'stopped: "a", "b"'
+    )
+    assert ended == [True]
 
 
 def _stop_all() -> list[str]:

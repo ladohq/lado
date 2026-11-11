@@ -150,9 +150,10 @@ def home_gone() -> bool:
 
 def run(session: str, interval: float | None = None) -> int:
     """`lado loop <session>`: sweep the session every `interval` seconds (INTERVAL by
-    default) until why_stop, or until its tmux session is gone (tmux_gone). Before each
-    pass, a home without lado.db (home_gone) ends it at once, writing nothing; a lado.db
-    deleted during a pass may still be made again once by that pass."""
+    default) until why_stop, or until its tmux session is gone (tmux_gone). A home without
+    lado.db (home_gone) ends it at once, writing nothing, before a pass and after one that
+    met it gone; while it runs, the process makes neither LADO_HOME nor lado.db again
+    (state.home_not_made)."""
     if interval is None:
         interval = INTERVAL
     # Imported here: lado.runtime starts the loop.
@@ -168,7 +169,7 @@ def run(session: str, interval: float | None = None) -> int:
         lock = take_lock(session)
     if lock is None:
         return 0  # the session has its loop
-    with lock:
+    with lock, state.home_not_made():
         log(session, f"loop started, pid {os.getpid()}, a pass every {interval:g} s")
         errors = RepeatedErrors(lambda text: log(session, text), session=session)
         missing: set[str] = set()  # the agents whose window the pass before did not find
@@ -192,15 +193,17 @@ def run(session: str, interval: float | None = None) -> int:
                 # is not the one the database is for now: end.
                 reason = str(exc)
             except Exception as exc:
+                if home_gone():
+                    return 0  # it failed on the deleted home: nothing to tell
                 reason = TMUX_GONE if tmux_gone(session, exc) else None
                 if reason is None:
                     errors.failed()
+            if home_gone():
+                return 0  # deleted during the pass: a line or the kick would make it again
             if reason:
                 errors.flush()
                 log(session, f"loop ended: {reason}")
                 return 0
-            if home_gone():
-                return 0  # deleted during the pass: the kick would make it again
             if kicked is None or time.monotonic() - kicked >= telemetry.KICK_EVERY:
                 telemetry.kick()  # cheap, never raises: the statistics sender when due
                 kicked = time.monotonic()

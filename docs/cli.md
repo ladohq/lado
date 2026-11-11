@@ -478,8 +478,8 @@ are free again; `lado log` keeps what they did), and messages they never got or 
 they never read are dropped, with the count in the output: new agents start fresh. Its
 open questions to the human are closed, also with their count (`; 1 open question closed`).
 It returns only after the session's loop (`lado loop`) has ended, which it does at its next
-pass, so nothing of the session writes into `LADO_HOME` afterwards (a home deleted right
-after stays deleted, and `lado stop s && lado start s` leaves one loop, the new one); a loop
+pass, so neither the loop nor the agents' hooks write into `LADO_HOME` afterwards (LADO does
+not make a home deleted right after again, and `lado stop s && lado start s` leaves one loop, the new one); a loop
 that has not ended within three intervals (about 6 s) leaves the session stopped and fails the
 stop (exit 1) with `session "<s>" is stopped, but its loop did not end
 (LADO_HOME/loop/<s>.lock is held); see <LADO_HOME>/loop.log`. The UI's Stop waits the same way.

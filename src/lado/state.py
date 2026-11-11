@@ -1398,9 +1398,28 @@ Close = tuple[str, str, str, int | None]
 Attached = list[tuple[str, str]] | tuple[()]
 
 
+_not_made = False  # set by home_not_made
+
+
+@contextmanager
+def home_not_made() -> Iterator[None]:
+    """Within it, this process makes neither LADO_HOME (home() gives it as it is) nor
+    lado.db (a connection opens only one that is there; one gone is a
+    sqlite3.OperationalError), so a home deleted under it stays deleted. The session
+    loop's (lado.loop.run)."""
+    global _not_made
+    before, _not_made = _not_made, True
+    try:
+        yield
+    finally:
+        _not_made = before
+
+
 def home() -> Path:
+    """LADO_HOME, made when it is not there (not within home_not_made)."""
     path = home_path()
-    path.mkdir(parents=True, exist_ok=True)
+    if not _not_made:
+        path.mkdir(parents=True, exist_ok=True)
     return path
 
 
@@ -1415,7 +1434,11 @@ class SchemaError(RuntimeError):
 
 
 def _open() -> sqlite3.Connection:
-    conn = sqlite3.connect(home() / "lado.db", timeout=10, isolation_level=None)
+    if _not_made:
+        uri = f"{(home_path() / 'lado.db').absolute().as_uri()}?mode=rw"
+        conn = sqlite3.connect(uri, uri=True, timeout=10, isolation_level=None)
+    else:
+        conn = sqlite3.connect(home() / "lado.db", timeout=10, isolation_level=None)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")

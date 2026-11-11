@@ -839,9 +839,12 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   session is stopped or gone (before each pass), its tmux session is gone (as above), or `lado.db` has another schema
   version than its own (`state.SchemaError` of any connection of a pass, so it never
   migrates). It ends writing nothing when `LADO_HOME/lado.db` is gone (`loop.home_gone`,
-  before taking its lock, before each pass and before the statistics kick), so a home deleted
-  by hand or under a stop that timed out is not made again; a `lado.db` deleted in the middle
-  of a pass may still be made again once by that pass. `lado stop`, `--all` and the UI's Stop
+  before taking its lock, before each pass, after a pass that failed and before the statistics
+  kick), so a home deleted by hand or under a stop that timed out is not made again. While it
+  runs, `state.home_not_made` keeps its process from making LADO_HOME or `lado.db` again: a
+  home deleted in the middle of a pass fails the rest of it, and the loop ends silently. A hook
+  likewise exits 0 writing nothing when `lado.db` is gone (`hooks.main`: the session-end hook
+  of an agent killed by a stop may come after the home was deleted). `lado stop`, `--all` and the UI's Stop
   return only after the loop has ended (`runtime.stop_session`, `loop.wait_stopped`'s three
   intervals; a loop that does not end fails the stop, the session staying stopped); `lado
   update` and `lado uninstall` stop with `wait=False` and wait themselves, with their own

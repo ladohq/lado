@@ -2994,6 +2994,11 @@ def stop_all(report: Callable[[str, Stopped], object], wait: bool = True) -> Non
                 _wait_for_loop(name)
             except LadoError as error:
                 failed.append(str(error))
+            except Exception as error:
+                failed.append(
+                    f'could not wait for the loop of session "{name}": '
+                    f"{type(error).__name__}: {error}"
+                )
     try:
         logins.end_windows()  # the login windows go with LADO's sessions (lado.logins)
     except Exception as error:

@@ -36,10 +36,19 @@ returns 0 without `log` (the line would make LADO_HOME again) and without `telem
 This covers a home deleted while a loop still runs (a stop that timed out, a home removed by
 hand). The lock file is under the deleted home and goes with it. The same check runs before
 taking the lock (which would make `LADO_HOME/loop/` again) and after a pass, before the
-statistics kick (`telemetry.kick` makes LADO_HOME again). A `lado.db` deleted in the middle of
-a pass, not before it, may still be made again once by that pass's own connection or its
-`loop.log` line; the loop then ends at its next pass (no `lado.db`, or one without the
-session: "the session is gone").
+statistics kick (`telemetry.kick` makes LADO_HOME again). A home deleted in the middle of a
+pass, not before it, was made again by that pass's own connection, its `loop.log` line or
+its journal line (the review's F2, seen in the integration test under load): while the loop
+runs, `state.home_not_made` keeps its process from making either, `state.home()` making no
+folder and a connection opening only a `lado.db` that is there (sqlite `mode=rw`). The rest of
+the pass then fails, and the loop, finding the home gone after a failed pass, ends without a
+line. A folder a pass makes below the home with `mkdir(parents=True)` would still make it; no
+pass of the loop does so in the deleted-home case the tests cover.
+
+**D3a. A hook writes nothing into a deleted home** (the review's F1). The session-end hook of
+an agent the stop killed may run after `lado stop` returned and the home was deleted; `stop`
+does not wait for the agents' processes. `hooks.main` exits 0 at once when `lado.db` is gone,
+before any connection (`state.get_agent` would make it) or `hooks.log` line.
 
 **D4. Tests.** doctor: unit (pure logic over a folder). The loop's check: unit, `loop.run` in
 the test's process with a fake tmux. The stop's wait and the deleted home: integration with

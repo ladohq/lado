@@ -166,6 +166,26 @@ def test_the_loop_ends_without_writing_when_its_home_is_deleted_under_it(
     assert not lado_home.exists()
 
 
+@pytest.mark.parametrize("touch", ["read", "fail"])
+def test_a_pass_that_meets_its_home_deleted_makes_nothing_again(
+    repo, fake_tmux, monkeypatch, lado_home, touch
+):
+    """The home deleted in the middle of a pass: the rest of the pass reads the database, or
+    fails on what is gone; neither makes lado.db, loop.log or the journal again."""
+    _session(repo)
+
+    def sweep(session):
+        shutil.rmtree(lado_home)
+        if touch == "read":
+            state.get_session(session)
+        raise RuntimeError("the pass meets what is gone")
+
+    monkeypatch.setattr(runtime, "sweep", sweep)
+    assert loop.run("s", interval=0) == 0
+    assert not lado_home.exists()
+    assert state.get_session("s") is None  # the test's own connections make it as before
+
+
 def test_the_loop_stops_on_another_schema_and_does_not_migrate_it(repo, fake_tmux, lado_home):
     _session(repo)
     previous_schema()

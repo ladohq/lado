@@ -28,6 +28,8 @@
 
 ## 4. Checks
 
-- [ ] 4.1 `make lint`, `make test`, `openspec validate docker-desktop-quitting --strict`, and
+- [x] 4.1 `make lint`, `make test`, `openspec validate docker-desktop-quitting --strict`, and
   a trial archive in a copy (`.lado/sdlc.md`, Checks).
 - [ ] 4.2 The human's check on a Mac (3.1's scenario) before the merge.
+  Not yet: it needs a Mac with Docker Desktop, which the build's container lacks; the human
+  runs it before the merge.

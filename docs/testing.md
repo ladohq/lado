@@ -1,8 +1,8 @@
 # Testing
 
 The test infrastructure (parallel runs, the lock, the fake agent, the live, smoke and
-container tests, CI, the Windows probe) and the test layers. Moved from AGENTS.md's
-Commands and Testing (LAD-82).
+container tests, CI, the Windows probe), the test layers, the test audit and which tests we
+keep. Moved from AGENTS.md's Commands and Testing (LAD-82).
 
 ## Test infrastructure
 
@@ -506,3 +506,75 @@ Seven layers; each change gets tests at the lowest layer that can catch its bugs
 What must be green before a release (CI, `live.yml`): [docs/release.md](release.md).
 The Windows probe is not a release step: it runs weekly, and a red run is fixed as any
 other regression.
+
+## Test audit
+
+`scripts/test_audit.py` measures what each test checks and whether it can fail (openspec
+capability `test-audit`). It is not part of `make check` or CI: it measures, it gates
+nothing. Every command writes JSON to `--out` (default `<temp dir>/lado-test-audit`),
+outside the tree; arguments after `--` go to pytest. `make test-audit OUT=<dir>` runs, under
+the check lock, every part but the mutation ones and ends with `<dir>/report.md`, which
+names the command of a part not measured; a part that fails does not stop the others.
+
+- `coverage --layer unit|integration|ui`: the lines of `src/lado/` and `scripts/` each test
+  ran, `{node id: {path: [lines]}}`. pytest's own processes are measured by pytest-cov
+  (`--cov-context=test`); the processes a test starts (hooks, `lado mcp`, the CLI, the UI
+  server) by coverage started through `COVERAGE_PROCESS_START` and a `sitecustomize.py`
+  under `--out`, which `scripts/test_audit_plugin.py` puts on PYTHONPATH while a test runs.
+  Their context is `LADO_TEST_ID` (tests/conftest.py), so a hook's lines are its test's. A
+  process started with `-I` or an environment of its own is not measured.
+- `durations --layer ...`: each test's seconds (setup, call and teardown) and the layer's wall
+  time; the tests of 1 s or more.
+- `flaky [--days 30] [--recent 10]`: CI's runs of `ci.yml` on main: the clock and runners'
+  minutes of the newest, and each job green only on a later attempt. Needs `gh`; without it
+  the part says it was skipped, and a run `gh` cannot show fails the command.
+- `subsets`: each test whose lines are all among one other test's of its layer, with the
+  closest such test; cases of one parametrized function are not compared, and a test that
+  runs none of our code is listed apart. A candidate is for the human to decide, never a
+  deletion.
+- `pseudo [--modules runtime,hooks,state,runs,flows] [--timeout 300]`: in a `git worktree`
+  copy of HEAD under `--out`, each function's body becomes `return None` (a generator's,
+  `return` and an unreachable `yield`) and the tests that ran it run with `-x`; a function
+  none of them fails for is pseudo-tested, a function no test ran is not covered. The copy
+  is removed at the end and on Ctrl-C; the command refuses to start when the copy's `lado`
+  is not its own `src/lado`.
+- `mutation <module>...` (by hand): mutmut on the named modules of `src/lado/` in one run,
+  with the unit layer, in a copy under `--out`; `mutation-<module>.json` holds each mutant's
+  status and the tests of each function. A mutant only the integration or UI layer kills
+  counts as survived, the same before and after a batch. Its two passes of the whole unit
+  layer, serially, take about 13 minutes before the first mutant.
+
+**Proving a batch.** A pull request that deletes or moves tests measures each module a
+deleted test ran (its coverage record names them): `mutation` on the target branch
+(`--out before`), then on the branch (`--out after`), then `prove before after --deleted
+<ids file> --coverage before/coverage-unit.json`. It fails when a mutant killed before is not
+killed after (naming the deleted tests that ran it), when a module is measured on one side
+only, when a deleted test ran a module that was not measured, or when a deleted test has no
+coverage record; a deleted test that ran no module of `src/lado/` rests on the checklist
+below, and `prove` names it. The pull request carries both results.
+
+## Which tests we keep
+
+The policy each batch of the audit and each new test follows (the human's answer #6081 in
+LAD-275):
+
+- **A test checks behaviour:** what a user, an agent or another program sees, not the way the
+  code gets there.
+- **An exact phrase is checked only when it is a contract:** a name or a marker another
+  program reads (an MCP tool's name, a hook's event, a marker the CLI parses, a command line
+  flag, a permission in a workflow), or a safety rule. Any other phrase of a prompt, a skill
+  or a document is not tested word for word: test the behaviour it causes, or nothing.
+- **A meta-test is kept when it guards a rule of `openspec/specs/`** (e.g. `ci-ok` needs every
+  job, capability `continuous-integration`) or the security of a workflow; tests of README's
+  or a document's headings and phrases are not kept.
+- **One check, one layer:** the lowest that can catch the bug (Test layers above); an upper
+  test keeps only what the lower layer cannot show, e.g. the delivery across processes.
+- **A test that executes code must be able to fail on it:** a function no test fails for when
+  its body is emptied is pseudo-tested (`pseudo`); its test gets an assertion or goes.
+- **No real waits:** a unit test does not sleep for a timeout; it shortens the timeout or
+  records the event it waits for. A test of 1 s or more names why.
+- **A deletion is proven:** mutmut on each touched module before and after, no killed mutant
+  lost (`prove`, above); a test of no module rests on the rules above, named in the pull
+  request.
+- **Parametrize with purpose:** cases of one function differ in what they check, not only in
+  data that runs the same lines.

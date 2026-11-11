@@ -1,16 +1,23 @@
 """The test audit: what each test checks and whether it can fail (openspec capability
 test-audit, docs/testing.md "Test audit").
 
-    python scripts/test_audit.py coverage --layer unit|integration|ui [--out DIR] [-- ARGS]
+    python scripts/test_audit.py [--out DIR] <command> [options] [-- ARGS]
 
 Every command writes JSON to `--out` (default `<temp dir>/lado-test-audit`), outside the
-repository; ARGS after `--` go to pytest (node ids, `-n0`, `-k`).
+repository; ARGS after `--` go to pytest (node ids, `-n0`, `-k`). The commands, each in
+full in docs/testing.md:
 
-- `coverage`: the lines of `src/lado/` and `scripts/` each test of a layer ran, also in the
-  processes it started (scripts/test_audit_plugin.py), as `coverage-<layer>.json`:
+- `coverage --layer L`: the lines of `src/lado/` and `scripts/` each test of a layer ran,
+  also in the processes it started (scripts/test_audit_plugin.py): `coverage-<L>.json`,
   `{node id: {path: [line, ...]}}`, paths relative to the repository.
+- `durations --layer L`, `flaky`: each test's time; CI's runs on main and their reruns.
+- `subsets`, `pseudo`: tests whose lines are another's; functions no test fails for when
+  emptied, in a copy of the repository.
+- `mutation <module>...`, `prove BEFORE AFTER`: mutmut's score, in a copy; whether a batch
+  of deleted tests lost a killed mutant.
+- `report`: `report.md` from all of it.
 
-Standard library, but coverage and pytest-cov (dev dependencies) for `coverage`.
+Standard library, but coverage, pytest-cov and mutmut (dev dependencies).
 """
 
 import argparse

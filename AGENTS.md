@@ -31,6 +31,7 @@ make test-live          # uv run pytest -m live: real agent CLIs and models; PRO
 make test-smoke         # uv run pytest -m smoke: real agent CLIs, a local endpoint instead of a model; PROVIDER=...
 make docker             # LADO's image lado:local from the working copy: the web UI's bundle, one wheel, docker build
 make test-container     # uv run pytest -m container -n0: the image with real Docker, no model (make docker first)
+make test-audit         # scripts/test_audit.py: each test's lines, time, subsets, pseudo-tested code; not in check
 ```
 
 The web UI needs Node (npm) to build; users of the wheel do not. `make browser` (part of
@@ -74,8 +75,7 @@ One line per module; each module's behaviour in detail: [docs/design/modules.md]
   - `text.py`: the one rule of a line of visible text.
   - `terminal.py`: an agent's terminal for the UI.
   - `kits.py`: kits (roles, skills, MCP servers, flows), lookup, install, resolve; `builtin_kits/`.
-  - `gitcache.py`: the git cache of kits and packs; all git commands for kits.
-  - `marketplaces.py`: kit marketplaces.
+  - `gitcache.py`: kits' and packs' git cache, all their git commands; `marketplaces.py`: marketplaces.
   - `flows.py`: the flow format and its validator; `runs.py`: flow runs, steps, gates.
   - `mcp_server.py`: the MCP tools agents use (`lado mcp`).
   - `artifacts.py`: artifacts, a session's named documents; `artifacts_local.py` its store;
@@ -94,8 +94,8 @@ One line per module; each module's behaviour in detail: [docs/design/modules.md]
 - `tests/`: unit tests; `integration/` (fake agent), `ui/` (browser), `live/` (real CLIs),
   `smoke/` (real CLIs, no model), `container/` (the image), `js/` (the plugin);
   `agent_helpers.py`, `real_clis.py`, `fake_endpoint.py`, `leftovers.py` shared helpers.
-- `scripts/`: the test-run lock and groups, CI's smoke and container cells, release checks,
-  the secret field's font.
+- `scripts/`: the test-run lock and groups, the test audit, CI's smoke and container cells,
+  release checks, the secret field's font.
 - `docker/`: LADO's image (`Dockerfile`, `compose.yaml`, entrypoint), `install.sh`/`.ps1`.
 - `npm/`: placeholder npm package that only reserves the name. Leave it alone.
 
@@ -190,8 +190,8 @@ Vulnerability reports: [SECURITY.md](SECURITY.md).
 - [docs/design/agents.md](docs/design/agents.md): how agents talk (environment, status,
   turns, messages, the session loop, read-only roles).
 - [docs/design/modules.md](docs/design/modules.md): each module and folder in detail.
-- [docs/testing.md](docs/testing.md): the test infrastructure, CI, the Windows probe and
-  the test layers in full.
+- [docs/testing.md](docs/testing.md): the test infrastructure, CI, the Windows probe, the
+  test layers in full, the test audit and which tests we keep.
 - [docs/cli.md](docs/cli.md): how the `lado` commands behave.
 - [docs/design/ui.md](docs/design/ui.md): the web UI and its server.
 - [docs/design/artifacts.md](docs/design/artifacts.md): artifacts.

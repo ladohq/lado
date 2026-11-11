@@ -1388,6 +1388,11 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   `tests/agent_helpers.py`: isolation guard and polling shared by integration and live tests.
 - `scripts/check_lock.py`: the Makefile's machine-wide test-run lock (docs/testing.md).
   `scripts/check_groups.py`: `make check`'s test groups, one after another (docs/testing.md).
+  `scripts/test_audit.py`: the test audit's commands (`make test-audit`; docs/testing.md,
+  Test audit): per-test coverage, durations, CI's reruns, subset candidates, pseudo-tested
+  functions, mutmut's score and the proof of a batch of deletions; standard library but
+  coverage, pytest-cov and mutmut. `scripts/test_audit_plugin.py`: its pytest plugin, which
+  measures the processes a test starts.
   `scripts/smoke_ci.py`: a cell of CI's job `smoke` and of the Windows probe's smoke
   (`run`), a cell of CI's job `container` (`container`), and the CLIs' pins (docs/testing.md);
   standard library only.

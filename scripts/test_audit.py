@@ -829,7 +829,8 @@ def main(argv: list[str]) -> int:
     pseudo.add_argument("--repo", type=Path, default=ROOT)
     pseudo.add_argument("--modules", default=",".join(CORE), help="of src/lado/, by commas")
     pseudo.add_argument("--coverage", type=Path, action="append", help="default: the unit layer's")
-    pseudo.add_argument("--timeout", type=float, default=60, help="seconds per function")
+    # A function of state.py is run by most of the unit layer: about a minute with -n auto.
+    pseudo.add_argument("--timeout", type=float, default=300, help="seconds per function")
     mutation = command("mutation", "mutmut's score of modules of src/lado/, by hand")
     mutation.add_argument("modules", nargs="+", help="e.g. runs providers.claude")
     proof = command("prove", "no mutant killed before survives after a batch")

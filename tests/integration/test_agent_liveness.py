@@ -288,7 +288,7 @@ def test_the_human_writes_to_a_worker_while_the_supervisor_is_stopped(session):
     wait_status("supervisor", state.STOPPED)
     runtime.write_as_human(SESSION, "sleep 0", to="w1")
     wait_for(lambda: message_to("w1").state == state.DELIVERED, "w1 to get it")
-    assert "[from human] sleep 0" in inputs("w1")
+    assert "[from human] sleep 0" + runtime.HUMAN_REPLY_HINT in inputs("w1")
     assert from_lado("supervisor") == []
 
 

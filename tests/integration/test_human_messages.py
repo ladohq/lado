@@ -78,28 +78,91 @@ def chat(api) -> list[dict]:
 def test_the_humans_message_reaches_the_agent_and_its_reply_the_human(api, session):
     sent = api.post(f"/api/sessions/{SESSION}/messages", json={"text": "send human got it"})
     assert sent.status_code == 200
-    wait_for(lambda: "[from human] send human got it" in inputs(), "the human's line", SESSION)
+    line = "[from human] send human got it" + runtime.HUMAN_REPLY_HINT
+    wait_for(lambda: line in inputs(), "the human's line", SESSION)
     mine, reply = wait_for(lambda: len(chat(api)) == 2 and chat(api), "the reply", SESSION)
     assert (reply["from"], reply["to"], reply["summary"]) == ("supervisor", "human", "got it")
     assert mine["state"] == "delivered"
     wait_for(lambda: chat(api)[0]["reply_state"] == "replied", "the reply checked", SESSION)
+    assert reminders() == []
 
 
-def test_a_turn_without_a_reply_is_flagged_in_the_feed(api, server, session):
+def reminders() -> list[state.Message]:
+    """LADO's reminders to the supervisor of a message from the human it did not answer."""
+    return [
+        m
+        for m in state.list_messages(SESSION)
+        if (m.sender, m.recipient) == (state.LADO, "supervisor")
+        and m.summary.startswith("your answer to the human's message #")
+    ]
+
+
+def reply_states(stream: EventStream, message: int) -> list:
+    """The reply states the feed brought for `message` until it was decided."""
+    changes = stream.until(
+        lambda e: (
+            e.event == "change"
+            and e.data["kind"] == "messages"
+            and (e.data["item"] or {}).get("id") == message
+            and e.data["item"]["reply_state"] is not None
+        ),
+        timeout=30,
+    )
+    return [
+        e.data["item"]["reply_state"]
+        for e in changes
+        if e.event == "change"
+        and e.data["kind"] == "messages"
+        and (e.data["item"] or {}).get("id") == message
+        and e.data["item"]["reply_state"] is not None
+    ]
+
+
+def test_an_answer_left_in_the_terminal_gets_one_reminder_then_the_flag(api, server, session):
+    """LAD-274: the agent learns of it once; the feed flags it only after the reminder's
+    turn, and the reminder makes no loop."""
     stream = EventStream(f"{server}/api/events", auth.token())
     try:
         stream.next()  # reset
         api.post(f"/api/sessions/{SESSION}/messages", json={"text": "sleep 0.1"})
-        flagged = stream.until(
-            lambda e: (
-                e.event == "change"
-                and e.data["kind"] == "messages"
-                and (e.data["item"] or {}).get("reply_state") == "missing"
-            )
-        )[-1]
-        assert flagged.data["item"]["summary"] == "sleep 0.1"
+        [mine] = [m for m in state.list_messages(SESSION) if m.sender == state.HUMAN]
+        assert reply_states(stream, mine.id)[-1] == "missing"
+        [reminder] = reminders()
+        assert f"#{mine.id} went only to your terminal" in reminder.summary
+        assert f"[from lado] {reminder.summary}" in "\n".join(inputs())
+        wait_for(
+            lambda: state.get_agent(SESSION, "supervisor").status == state.IDLE, "idle", SESSION
+        )
+        assert len(reminders()) == 1  # nothing more after the verdict
+        assert state.get_message(SESSION, mine.id).reply_state == state.MISSING
     finally:
         stream.close()
+
+
+def test_an_answer_after_the_reminder_is_a_reply(api, server, session):
+    stream = EventStream(f"{server}/api/events", auth.token())
+    try:
+        stream.next()  # reset
+        api.post(f"/api/sessions/{SESSION}/messages", json={"text": "next send human hello"})
+        [mine] = [m for m in state.list_messages(SESSION) if m.sender == state.HUMAN]
+        assert reply_states(stream, mine.id) == ["replied"]  # never flagged on the way
+        assert len(reminders()) == 1
+        [reply] = [m for m in chat(api) if m["from"] == "supervisor"]
+        assert reply["summary"] == "hello"
+    finally:
+        stream.close()
+
+
+def test_a_turn_that_ended_on_an_error_reminds_of_nothing(api, session):
+    api.post(f"/api/sessions/{SESSION}/messages", json={"text": "fail APIError: it broke"})
+    wait_for(
+        lambda: [e for e in state.list_events(SESSION) if e.kind == state.TURN_ERROR],
+        "the failed turn",
+        SESSION,
+    )
+    [mine] = [m for m in state.list_messages(SESSION) if m.sender == state.HUMAN]
+    assert state.get_message(SESSION, mine.id).reply_state is None
+    assert reminders() == []
 
 
 def test_the_agents_question_is_answered_through_the_api(api, session):
@@ -193,8 +256,9 @@ def test_a_stop_as_the_message_is_typed_refuses_it_and_spares_a_session_of_a_lon
         stop_as_it_types(monkeypatch)
         assert "can't find session" in refused_by_the_stop(repo)
         runtime.write_as_human(other, "for you")
-        wait_for(lambda: "[from human] for you" in inputs(session=other), "the line", other)
-        assert "[from human] merge it" not in inputs(session=other)
+        line = "[from human] for you" + runtime.HUMAN_REPLY_HINT
+        wait_for(lambda: line in inputs(session=other), "the line", other)
+        assert not [i for i in inputs(session=other) if "[from human] merge it" in i]
     finally:
         runtime.stop_session(other)
 
@@ -301,7 +365,7 @@ def test_the_humans_image_reaches_the_agent_which_reads_it_as_an_image(api, sess
     assert sent.status_code == 200
     [message] = [m for m in chat(api) if m["from"] == "human"]
     line = f"[from human] read (#{message['id']}, 1 artifact: call read_messages)"
-    wait_for(lambda: line in inputs(), "the human's line", SESSION)
+    wait_for(lambda: line + runtime.HUMAN_REPLY_HINT in inputs(), "the human's line", SESSION)
     [read] = wait_for(lambda: seen().get("read"), "read_messages", SESSION)
     assert read["artifacts"] == [
         {

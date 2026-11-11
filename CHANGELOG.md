@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.46.2 (unreleased)
+
+### Fixed
+
+- **Agents on weak models answer you in the chat.** Every agent is told you do not see its
+  terminal, and your message says how to answer it; an answer left in the terminal gets one
+  reminder, and "replied only in its terminal" shows only if the reminder did not help.
+
 ## 0.46.1 (2026-11-11)
 
 ### Fixed

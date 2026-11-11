@@ -866,7 +866,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     record refers to is removed by `remove_session` only after `ORPHAN_AGE`, an hour).
     Nothing else touches the artifact tables or that folder.
   - `hooks.py`: neutral hook logic: agent status, handing over queued messages and, at a
-    turn's end, the forgotten-reply check; first of all the model an event names
+    turn's end, the forgotten-reply check (`state.check_replies`, which decides each human
+    message once and returns those to remind; one `REPLY_REMINDER` from `lado` each, queued
+    before the queue is handed over); first of all the model an event names
     (`state.report_model`, with the provider's `same_model`; docs/design/agents.md).
   - `model_check.py`: the one check of a model chosen for a session (`lado start
     --model`, the launch window): `check(provider, model, env)` reads the CLI's
@@ -1001,7 +1003,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     (`agents.seen_at`). From schema 13 a message has a `kind` (`message` or `question`),
     a question its `choices`, `free_answer`, `question_state` and `answered_by`, an answer
     or dismissal its `reply_to` and `choice`, and the human's message to an agent its
-    `reply_state` (docs/design/agents.md). The `events`
+    `reply_state`: `replied`, `reminded` (one reminder sent, the verdict waits for its turn)
+    or `missing`, set by `check_replies` (docs/design/agents.md). The `events`
     table records what each agent did (`spawned`, `status` changes via `set_status`,
     `mcp_ready`, `finished`, `turn_error` with the error, `ended` with why its process
     ended by itself, `blocked` with what its CLI asks the human before any hook) and what happened to each flow run (`flow_start`, `flow` transitions,

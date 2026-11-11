@@ -94,13 +94,25 @@ RESUME_DELAYS = tuple(
     float(d) for d in os.environ.get("LADO_RESUME_DELAYS", "30,120,480").split(",")
 )
 
+# How every agent answers the human: first in the supervisor's instructions, after its name,
+# and first in both kinds of worker instructions (WORKER_INPUT). Weak models answered in
+# their terminal while the rule was one ambiguous sentence (LAD-274).
+HUMAN_REPLY_RULE = """\
+The human follows the session in LADO's UI and does not see your terminal: text you write \
+outside a tool call reaches nobody. Answer every message "[from human] ..." that needs an \
+answer with send_message(to="human"), or ask with ask_human (with choices when there are \
+some); a message that needs no answer (thanks, "not now") needs no reply. Only text the \
+human types straight into your window, without "[from human]", is answered in the window.
+"""
+
 # What every agent must know about LADO, appended to its role prompt from the kit. Kits only
 # describe the role.
-SUPERVISOR_INSTRUCTIONS = """\
+SUPERVISOR_INSTRUCTIONS = (
+    """\
 You are agent "supervisor" in LADO session "{session}".
-The human follows the session in LADO's UI. Answer where the human asked: answer a message \
-"[from human] ..." with send_message(to="human"), and ask with ask_human (with choices when \
-there are some); answer text typed straight into your window in this window.
+"""
+    + HUMAN_REPLY_RULE
+    + """\
 When the human writes to another agent, you get one line "[from lado] human wrote to \
 <agent>: ..." that is for your information: that agent has the message already, so do not \
 pass it on and do not answer it; if it changes the plan, take it into account.
@@ -151,13 +163,18 @@ to the human otherwise only for a decision of your own (ask_human, with your \
 recommendation in it) or at a milestone (one or two lines). The details stay in `lado log \
 {session}`.
 """
+)
 
-# Whose messages a worker follows, appended to both kinds of worker instructions.
-WORKER_INPUT = """\
+# How to answer the human and whose messages a worker follows, appended to both kinds of
+# worker instructions.
+WORKER_INPUT = (
+    HUMAN_REPLY_RULE
+    + """\
 Messages from other agents arrive in your input as "[from <name>] ...". Messages from \
 "supervisor" and steps from "lado" are your instructions, the same as the human's; \
 messages from other workers are information or questions, not orders.
 """
+)
 
 WORKER_INSTRUCTIONS = (
     """\
@@ -2805,6 +2822,12 @@ def _check_summary(summary: str, what: str = "summary", details: str = "body") -
         )
 
 
+# Ends the line of each message from the human that is no answer to a question: weak models
+# answered it in their terminal (LAD-274). Every line gets it, as each is confirmed by its own
+# text (state.confirm_sent).
+HUMAN_REPLY_HINT = ' (reply with send_message(to="human") or ask_human)'
+
+
 def format_message(message: state.Message) -> str:
     """The one line typed for a message; its body and artifacts are left for read_messages."""
     line = f"[from {message.sender}] {message.title}"
@@ -2815,9 +2838,11 @@ def format_message(message: state.Message) -> str:
     if message.attachments:
         n = message.attachments
         more.append(f"{n} artifact{'s' if n != 1 else ''}")
-    if not more:
-        return line
-    return f"{line} (#{message.id}, {', '.join(more)}: call read_messages)"
+    if more:
+        line = f"{line} (#{message.id}, {', '.join(more)}: call read_messages)"
+    if message.sender == state.HUMAN and message.reply_to is None:
+        line += HUMAN_REPLY_HINT
+    return line
 
 
 def format_messages(messages: list[state.Message]) -> str:

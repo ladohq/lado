@@ -496,6 +496,7 @@ def test_worker_does_a_task_reports_and_gets_a_message(
     check_turn_end_output()
     wait_for(lambda: status("w1") == state.IDLE, "w1 to be idle after the follow-up", 120)
     check_human()
+    check_hello()
     check_terminal(viewing)
     check_log(live_provider, summary)
     check_clear(live_provider)
@@ -549,6 +550,22 @@ def check_human() -> None:
         "the human's message to be marked replied",
         60,
     )
+
+
+def check_hello() -> None:
+    """A "hello" with no word on how to answer it: the supervisor's answer reaches the chat,
+    by itself or after LADO's one reminder, and the message ends replied. Weak models
+    answered it only in their terminal (LAD-274)."""
+    before = len(messages("supervisor", "human"))
+    runtime.write_as_human(SESSION, "hello")
+    [hello] = [m for m in state.list_messages(SESSION) if m.sender == "human"][-1:]
+    wait_for(
+        lambda: state.get_message(SESSION, hello.id).reply_state in (state.REPLIED, state.MISSING),
+        "the supervisor's answer to hello to be decided",
+        180,
+    )
+    assert state.get_message(SESSION, hello.id).reply_state == state.REPLIED
+    assert len(messages("supervisor", "human")) > before
 
 
 def check_terminal(term: terminal.Terminal) -> None:

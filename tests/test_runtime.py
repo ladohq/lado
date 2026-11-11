@@ -869,6 +869,7 @@ def test_an_opencode_family_supervisor_gets_the_fixed_line_not_the_text(repo, fa
     _, argv = agent_helpers.launched(fake_tmux[0])
     assert argv[argv.index("--prompt") + 1] == (
         f"[from human] {runtime.FIRST_MESSAGE} (#{m.id}, 2 lines: call read_messages)"
+        + runtime.HUMAN_REPLY_HINT
     )
     assert not [a for a in argv if "LAD-19" in a or "secret" in a]
     assert (m.state, m.channel) == (state.SENT, state.TYPED)
@@ -883,6 +884,7 @@ def test_a_resumed_opencode_family_supervisor_gets_lados_line_and_the_humans(rep
     assert argv[argv.index("--prompt") + 1] == (
         "[from lado] session resumed: 0 open runs\n"
         f"[from human] {runtime.FIRST_MESSAGE} (#{m.id}, 1 line: call read_messages)"
+        + runtime.HUMAN_REPLY_HINT
     )
 
 
@@ -895,7 +897,8 @@ def test_an_agent_that_starts_at_its_first_input_takes_the_humans_message(
     _, argv = agent_helpers.launched(fake_tmux[0])
     assert argv == [
         "firstinput",
-        f"[from human] {runtime.FIRST_MESSAGE} (#{m.id}, 1 line: call read_messages)",
+        f"[from human] {runtime.FIRST_MESSAGE} (#{m.id}, 1 line: call read_messages)"
+        + runtime.HUMAN_REPLY_HINT,
     ]
 
 
@@ -962,13 +965,58 @@ def test_agents_are_told_to_keep_results_as_artifacts_and_attach_them(repo, fake
     assert "in a step of your own in a run, write and attach the run's artifacts" in supervisor
 
 
-def test_the_supervisor_is_told_to_answer_the_human_where_they_asked(repo, fake_tmux):
+HUMAN_REPLY_RULE = " ".join(runtime.HUMAN_REPLY_RULE.split())
+
+
+def test_the_human_reply_rule_says_the_terminal_is_unseen_and_how_to_answer():
+    assert "does not see your terminal" in HUMAN_REPLY_RULE
+    assert "text you write outside a tool call reaches nobody" in HUMAN_REPLY_RULE
+    assert 'Answer every message "[from human] ..." that needs an answer' in HUMAN_REPLY_RULE
+    assert 'send_message(to="human")' in HUMAN_REPLY_RULE and "ask_human" in HUMAN_REPLY_RULE
+    assert '(thanks, "not now") needs no reply' in HUMAN_REPLY_RULE
+    assert 'without "[from human]", is answered in the window' in HUMAN_REPLY_RULE
+
+
+def test_the_supervisor_is_told_the_human_reply_rule_right_after_its_name(repo, fake_tmux):
+    """A weak model answered the human in its terminal: the rule was one ambiguous
+    sentence in the middle of the instructions (LAD-274)."""
     runtime.start_session(str(repo), "s", None, provider="claude")
     supervisor = " ".join(_prompt(fake_tmux[0][-1]).split())
-    assert "The human talks to you in this window" not in supervisor
-    assert 'answer a message "[from human] ..." with send_message(to="human")' in supervisor
-    assert "ask with ask_human" in supervisor
-    assert "answer text typed straight into your window in this window" in supervisor
+    name = 'You are agent "supervisor" in LADO session "s".'
+    assert f"{name} {HUMAN_REPLY_RULE}" in supervisor
+    assert "answer text typed straight into your window in this window" not in supervisor
+
+
+HINT = ' (reply with send_message(to="human") or ask_human)'
+
+
+def test_the_humans_line_says_how_to_answer_it():
+    hello = state.Message(id=3, sender=state.HUMAN, summary="hello")
+    assert runtime.format_message(hello) == "[from human] hello" + HINT
+
+
+def test_the_hint_comes_after_the_body_part_of_the_humans_line():
+    hello = state.Message(id=3, sender=state.HUMAN, summary="hello", body="one\ntwo")
+    assert runtime.format_message(hello) == (
+        "[from human] hello (#3, 2 lines: call read_messages)" + HINT
+    )
+
+
+def test_an_answer_to_a_question_and_another_agents_line_get_no_hint():
+    answer = state.Message(id=6, sender=state.HUMAN, summary="yes", reply_to=5)
+    assert runtime.format_message(answer) == "[from human] yes"
+    report = state.Message(id=7, sender="w1", summary="done")
+    assert runtime.format_message(report) == "[from w1] done"
+
+
+def test_every_worker_is_told_the_human_reply_rule(repo, fake_tmux):
+    """The human may write to any agent, and every agent gets the hint on their line."""
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    runtime.spawn_worker("s", "task")
+    assert HUMAN_REPLY_RULE in " ".join(_prompt(fake_tmux[-1][-1]).split())
+    assert runtime.HUMAN_REPLY_RULE in runtime.WORKER_INPUT
+    assert runtime.WORKER_INSTRUCTIONS.endswith(runtime.WORKER_INPUT)
+    assert runtime.RUN_WORKER_INSTRUCTIONS.endswith(runtime.WORKER_INPUT)
 
 
 def test_the_supervisor_is_told_the_copy_of_the_humans_message_is_for_its_information(
@@ -4827,7 +4875,12 @@ def test_the_humans_text_reaches_the_supervisor_as_a_message(repo, fake_tmux):
     _session_with_worker(repo)
     state.set_status("s", "supervisor", state.IDLE)
     assert runtime.write_as_human("s", "  merge w1, please\t\n") == "sent"
-    assert fake_tmux[-1] == ("send_text", "s", "supervisor", "[from human] merge w1, please")
+    assert fake_tmux[-1] == (
+        "send_text",
+        "s",
+        "supervisor",
+        "[from human] merge w1, please" + runtime.HUMAN_REPLY_HINT,
+    )
     [message] = state.list_messages("s")
     assert (message.sender, message.recipient, message.body) == ("human", "supervisor", "")
 
@@ -4874,7 +4927,12 @@ def test_a_stopped_supervisor_gets_no_copy_and_the_worker_its_message(repo, fake
     assert runtime.write_as_human("s", "use the other port", to="w1") == "sent"
     [mine] = state.list_messages("s")
     assert (mine.recipient, mine.state) == ("w1", state.SENT)
-    assert fake_tmux[-1] == ("send_text", "s", "w1", "[from human] use the other port")
+    assert fake_tmux[-1] == (
+        "send_text",
+        "s",
+        "w1",
+        "[from human] use the other port" + runtime.HUMAN_REPLY_HINT,
+    )
 
 
 def test_the_copy_of_a_long_text_stays_one_short_line(repo, fake_tmux):
@@ -5512,11 +5570,68 @@ def _reply_state(message):
     return state.get_message("s", message.id).reply_state
 
 
-def test_a_turn_that_wrote_nothing_to_the_human_is_flagged(repo, fake_tmux):
+def _reminders(agent="supervisor"):
+    return [
+        m
+        for m in state.list_messages("s")
+        if m.sender == state.LADO and m.recipient == agent and m.summary.startswith("your answer")
+    ]
+
+
+def test_a_turn_that_wrote_nothing_to_the_human_gets_one_reminder(repo, fake_tmux):
+    """A weak model answered the human in its terminal, and never learnt it (LAD-274)."""
+    _session_with_worker(repo)
+    mine = _human_writes()
+    output = _hook("Stop", "supervisor")
+    assert _reply_state(mine) == state.REMINDED
+    [reminder] = _reminders()
+    assert reminder.summary == (
+        f"your answer to the human's message #{mine.id} went only to your terminal, which"
+        ' the human does not see. If it needs an answer, use send_message(to="human") or'
+        " ask_human; else do nothing."
+    )
+    assert len(reminder.summary) <= state.SUMMARY_LIMIT and not reminder.body
+    assert output["reason"] == runtime.format_message(reminder)  # handed over at once
+
+
+def test_an_answer_after_the_reminder_is_a_reply(repo, fake_tmux):
+    _session_with_worker(repo)
+    mine = _human_writes()
+    _hook("Stop", "supervisor")  # the reminder in its output
+    runtime.send_message("s", "supervisor", "human", "merged")
+    _hook("Stop", "supervisor", CONTINUED)
+    assert _reply_state(mine) == state.REPLIED
+    assert len(_reminders()) == 1
+
+
+def test_silence_after_the_reminder_is_flagged_and_reminded_no_more(repo, fake_tmux):
     _session_with_worker(repo)
     mine = _human_writes()
     _hook("Stop", "supervisor")
+    assert _hook("Stop", "supervisor", CONTINUED) is None  # nothing more to hand over
     assert _reply_state(mine) == state.MISSING
+    assert len(_reminders()) == 1
+
+
+def test_a_turn_that_ends_before_the_reminder_is_handed_over_decides_nothing(repo, fake_tmux):
+    """The reminder waits in the queue (its agent failed, or got it typed in later): a turn
+    that ends meanwhile has not seen it."""
+    _session_with_worker(repo)
+    mine = _human_writes()
+    _hook("Stop", "supervisor")  # the reminder is handed over in this output, not confirmed
+    [reminder] = _reminders()
+    for waiting in (state.SENT, state.PENDING):
+        with state.connect() as db:
+            db.execute("UPDATE messages SET state = ? WHERE id = ?", (waiting, reminder.id))
+        assert state.check_replies("s", "supervisor") == []  # a turn's end meanwhile
+        assert _reply_state(mine) == state.REMINDED
+
+
+def test_no_reminder_on_a_turn_that_ended_on_an_error(repo, fake_tmux):
+    _session_with_worker(repo)
+    _human_writes()
+    _turn_fails()
+    assert _reminders() == []
 
 
 @pytest.mark.parametrize(
@@ -5530,8 +5645,8 @@ def test_a_turn_that_wrote_to_the_human_is_not_flagged(repo, fake_tmux, reply):
     _session_with_worker(repo)
     mine = _human_writes()
     reply()
-    _hook("Stop", "supervisor")
-    assert _reply_state(mine) == state.REPLIED
+    assert _hook("Stop", "supervisor") is None
+    assert _reply_state(mine) == state.REPLIED and _reminders() == []
 
 
 def _turn_fails():
@@ -5560,15 +5675,15 @@ def test_the_next_turn_after_an_error_does_not_reply(repo, fake_tmux):
     mine = _human_writes()
     _turn_fails()
     _hook("Stop", "supervisor")
-    assert _reply_state(mine) == state.MISSING
+    assert _reply_state(mine) == state.REMINDED and len(_reminders()) == 1
 
 
-def test_a_body_read_in_a_turn_without_a_reply_is_flagged(repo, fake_tmux):
+def test_a_body_read_in_a_turn_without_a_reply_is_reminded(repo, fake_tmux):
     _session_with_worker(repo)
     mine = _human_writes("merge w1?\nthen tag it")
     assert [m.id for m in state.read_messages("s", "supervisor")] == [mine.id]
     _hook("Stop", "supervisor")
-    assert _reply_state(mine) == state.MISSING
+    assert _reply_state(mine) == state.REMINDED
 
 
 def test_an_answer_to_a_question_needs_no_reply(repo, fake_tmux):
@@ -5585,7 +5700,7 @@ def test_a_message_handed_over_at_the_turn_end_is_checked_at_the_next_one(repo, 
     _hook("UserPromptSubmit", "supervisor")  # busy
     runtime.write_as_human("s", "merge w1?")
     mine = state.list_messages("s")[-1]
-    assert _hook("Stop", "supervisor")["reason"] == "[from human] merge w1?"
+    assert _hook("Stop", "supervisor")["reason"] == "[from human] merge w1?" + HINT
     assert _reply_state(mine) is None
     runtime.send_message("s", "supervisor", "human", "merged")
     _hook("Stop", "supervisor", CONTINUED)
@@ -5602,17 +5717,18 @@ def test_what_the_agent_wrote_before_it_got_the_message_is_no_reply_to_it(repo, 
     runtime.send_message("s", "supervisor", "human", "a report written meanwhile")
     _hook("Stop", "supervisor")  # hands the human's message over
     _hook("Stop", "supervisor", CONTINUED)  # that turn wrote nothing to the human
-    assert _reply_state(mine) == state.MISSING
+    assert _reply_state(mine) == state.REMINDED
 
 
-def test_a_message_is_checked_once(repo, fake_tmux):
+def test_a_message_is_decided_once(repo, fake_tmux):
     _session_with_worker(repo)
     mine = _human_writes()
     _hook("Stop", "supervisor")
+    _hook("Stop", "supervisor", CONTINUED)  # the reminder's turn
     runtime.send_message("s", "supervisor", "human", "merged, late")
     _hook("UserPromptSubmit", "supervisor")
     _hook("Stop", "supervisor")
-    assert _reply_state(mine) == state.MISSING
+    assert _reply_state(mine) == state.MISSING and len(_reminders()) == 1
 
 
 def test_only_an_agent_is_told_it_may_write_to_the_human(repo, fake_tmux):

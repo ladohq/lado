@@ -112,7 +112,8 @@ def test_a_failed_turn_marks_no_message_and_the_next_clean_turn_decides(repo, se
     mine = human_says("fail APIError: the server broke")
     assert reply_state(mine) is None
     human_says("sh true")
-    assert reply_state(mine) == state.MISSING
+    # Reminded at that turn's end; decided at the end of the reminder's turn.
+    agent_helpers.wait_for(lambda: reply_state(mine) == state.MISSING, "the verdict", SESSION)
 
 
 REFUSAL = json.dumps(

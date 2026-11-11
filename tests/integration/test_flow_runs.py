@@ -12,6 +12,7 @@ from agent_helpers import install_kit
 from test_agents import (
     SESSION,
     inputs,
+    is_reminder,
     lado_cli,
     paused,
     release,
@@ -168,7 +169,7 @@ def test_a_run_goes_from_worker_to_supervisor_to_its_end(repo, flow_kit):
     from_lado = [
         m.summary
         for m in state.list_messages(SESSION)
-        if (m.sender, m.recipient) == ("lado", "supervisor")
+        if (m.sender, m.recipient) == ("lado", "supervisor") and not is_reminder(m)
     ]
     assert from_lado == [f"flow {name}: step merge"]
     wait_status("supervisor", state.IDLE)
@@ -177,7 +178,8 @@ def test_a_run_goes_from_worker_to_supervisor_to_its_end(repo, flow_kit):
     supervisor_runs(f"advance {name} merged")
     ended = f"flow {name}: ended at end; worktree and branch removed"
     assert seen("supervisor")["advance"]["notices"] == [ended]
-    assert [m.summary for m in state.list_messages(SESSION) if m.sender == "lado"] == [
+    lado = [m for m in state.list_messages(SESSION) if m.sender == "lado" and not is_reminder(m)]
+    assert [m.summary for m in lado] == [
         f"flow {name}: step build",  # the worker's, at its spawn
         f"flow {name}: step merge",
     ]

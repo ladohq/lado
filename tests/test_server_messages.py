@@ -72,6 +72,21 @@ def test_the_chat_lists_the_messages_with_the_human(client, session):
     assert (thanks["from"], thanks["to"], thanks["summary"]) == ("human", "supervisor", "thanks")
 
 
+@pytest.mark.parametrize(
+    ("reply_state", "shown"),
+    [(state.REPLIED, "replied"), (state.MISSING, "missing"), (state.REMINDED, None)],
+)
+def test_a_reminded_message_has_no_reply_state_in_the_chat(client, session, reply_state, shown):
+    """Reminded: the verdict waits for the reminder's turn, so no "replied only in its
+    terminal" shows yet (LAD-274)."""
+    runtime.write_as_human("s", "hello")
+    [mine] = state.list_messages("s")
+    with state.connect() as db:
+        db.execute("UPDATE messages SET reply_state = ? WHERE id = ?", (reply_state, mine.id))
+    [item] = client.get(MESSAGES, params={"with": "human"}).json()["items"]
+    assert item["reply_state"] == shown
+
+
 def test_the_chat_of_an_unknown_session_is_404(client, session):
     assert client.get("/api/sessions/x/messages", params={"with": "human"}).status_code == 404
 

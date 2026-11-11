@@ -948,6 +948,7 @@ def test_the_human_attaches_files_and_the_agent_gets_them(page: Page, server, re
     expect(files).to_have_count(0)
     [message] = [m for m in state.list_messages(session) if m.sender == "human"]
     line = f"[from human] read (#{message.id}, 3 artifacts: call read_messages)"
+    line += runtime.HUMAN_REPLY_HINT
     agent_helpers.wait_for(lambda: line in inputs(session), "the agent's line", session)
     shot(page, "sent")
     preview.click()

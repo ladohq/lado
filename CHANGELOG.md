@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.46.1 (unreleased)
+
+### Fixed
+
+- **Each agent keeps its temporary files apart.** Every agent gets a temporary folder of its
+  own as `TMPDIR` (Claude Code's scratchpad too) and is told to keep its drafts there, so two
+  agents' files of one name no longer overwrite each other (LAD-247).
+
 ## 0.46.0 (2026-11-11)
 
 ### New

@@ -85,6 +85,25 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `TERM_PROGRAM(_VERSION)`, `TMUX` and `TMUX_PANE`, and execs the agent's CLI, found on the
   resolved `PATH`. `lado doctor` shows the source and how long the shell takes (a warning
   above 2 s).
+- Each agent has a temporary folder of its own (LAD-247): all agents of a machine run as one
+  user with one `/tmp`, where two agents' files of one name (a draft `pr.md`) met. At each
+  launch `providers.base.make_temp_dir` makes `<parent>/lado-<uid>/<session>/<agent>`, each
+  level 0700; `<parent>` is the `TMPDIR` of the agent's merged layers (login shell, outside
+  folder, project), else `/tmp`, so a user's own `TMPDIR` is the parent and is named in no
+  warning. A `lado-<uid>` that is a link, not a folder, or another user's refuses the launch
+  before its window opens (`<path> is a link`, `<path> belongs to uid <n>`). LADO gives the
+  folder as `TMPDIR` among its own variables (`runtime._ours`), so it is in
+  `LADO_LAUNCH_VARS` and a worker an agent spawns gets its own, not one inside its
+  spawner's (under `LADO_AGENT_ENV=inherit` that worker's parent is then `/tmp`). Each CLI
+  honours `TMPDIR` for its commands' files; Claude Code keeps its own temporary root, where
+  its scratchpad is, by `CLAUDE_CODE_TMPDIR` (else `/tmp/claude-<uid>`, one for all its
+  agents), which `providers/claude.py` sets to the same folder (`AgentSpec.temp_dir`). The
+  folder stays over a stop and a resume and goes with the agent's state
+  (`remove_agent_state`: `finish_worker`, a spawn undone; `remove_session_state`: `lado
+  forget`, the session's folder with it), found by a link `temp-dir` in its state folder.
+  Every agent's instructions end with `runtime.TEMP_FILES`: temporary files in `$TMPDIR`,
+  never at a fixed path in `/tmp`. It keeps agents from colliding by name; it is no security
+  boundary, as every agent is the same user.
 - An agent's status (busy / idle / background / waiting) comes from its hooks, never from
   screen scraping. Only the end of its process marks it `stopped`. A CLI command that leaves
   the conversation for another one in the same process (Claude Code's `/clear` and

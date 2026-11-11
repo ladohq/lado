@@ -138,6 +138,8 @@ check_docker() {
     esac
 }
 
+# A Docker Desktop still quitting counts as running, so `open` starts nothing then: the wait
+# asks again in the background every 10 seconds, and the ask after it has quit starts it.
 start_docker_desktop() {
     open -a Docker >/dev/null 2>&1 ||
         die "Docker does not answer and Docker Desktop does not start: install it ($DESKTOP), start it, then run this again"
@@ -149,6 +151,9 @@ start_docker_desktop() {
             return 0
         fi
         tries=$((tries + 1))
+        if [ $((tries % 5)) -eq 0 ] && [ $tries -lt 60 ]; then
+            open -g -a Docker >/dev/null 2>&1 || true
+        fi
     done
     die "Docker Desktop did not answer in 2 minutes: start it from Applications, wait until it runs, then run this again"
 }

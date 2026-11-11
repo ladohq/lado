@@ -251,7 +251,17 @@ def test_docker_desktop_that_never_answers_stops(tmp_path):
     done = fails(install(host))
     assert "Docker Desktop" in done.err
     assert len(host.calls("sleep")) == 60  # every 2 s up to 120 s
+    again = [c for c in host.calls("open") if c["args"] == ["-g", "-a", "Docker"]]
+    assert len(again) == 11  # after sleeps 5, 10, ..., 55
     nothing_made(host)
+
+
+def test_docker_desktop_still_quitting_is_started_again(tmp_path, shell):
+    host = Host(tmp_path / "host", os="Darwin", open_ignored=1, info_after_open=2)
+    done = install(host, shell=shell)
+    assert done.code == 0, done.text
+    assert "Waiting for Docker Desktop" in done.out
+    assert [c["args"] for c in host.calls("open")] == [["-a", "Docker"], ["-g", "-a", "Docker"]]
 
 
 def test_no_docker_desktop_app_names_its_download(tmp_path):
@@ -519,9 +529,13 @@ def test_a_failed_up_names_the_port(host):
 
 
 def opened(host: Host) -> list[list[str]]:
-    """What the openers were given: not `open -a Docker` nor `cmd.exe /c hostname`."""
+    """What the openers were given: not `open [-g] -a Docker` nor `cmd.exe /c hostname`."""
     calls = [c for name in ("open", "xdg-open", "wslview", "cmd.exe") for c in host.calls(name)]
-    return [c["args"] for c in calls if c["args"][:1] != ["-a"] and "hostname" not in c["args"]]
+    return [
+        c["args"]
+        for c in calls
+        if c["args"][-2:] != ["-a", "Docker"] and "hostname" not in c["args"]
+    ]
 
 
 def test_the_link_is_printed_and_opened_on_macos(tmp_path):

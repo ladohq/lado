@@ -1,6 +1,7 @@
 """The session loop as a process: started by `lado start`, one per session, ended with it."""
 
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -89,6 +90,48 @@ def test_the_loop_ends_when_its_tmux_session_is_gone(repo, session):
     wait_for(lambda: not loops(session), "the loop to end", session)
     assert f"{session}: loop ended: its tmux session is gone" in logged(session)
     assert not loop.running(session)
+
+
+def several_passes() -> None:
+    """Wait as long as several passes of a loop that would still run take."""
+    time.sleep(8 * loop.INTERVAL)  # the integration tests' interval, set per test (conftest)
+
+
+def test_a_home_deleted_right_after_lado_stop_stays_deleted(repo, session, lado_home):
+    start(repo, session)
+    wait_for(lambda: loops(session), "the loop", session)
+    assert lado_cli("stop", session).returncode == 0
+    assert not loop.running(session) and not loops(session)
+    shutil.rmtree(lado_home)
+    several_passes()
+    assert not lado_home.exists()
+
+
+def test_stop_then_start_leaves_one_loop_the_new_one(repo, session):
+    start(repo, session)
+    wait_for(lambda: loops(session), "the loop", session)
+    stopped = lado_cli("stop", session)
+    assert stopped.returncode == 0, stopped.stderr
+    start(repo, session)  # resumed at once
+    wait_for(lambda: len(loops(session)) == 1, "one loop", session)
+    first, ended, second = [
+        line.split(f" {session}: ", 1)[1]
+        for line in logged(session).splitlines()
+        if f" {session}: loop " in line
+    ]
+    assert first.startswith("loop started") and second.startswith("loop started")
+    assert ended in [f"loop ended: {reason}" for reason in (loop.STOPPED, loop.TMUX_GONE)]
+    several_passes()
+    assert loops(session) == [second.split("pid ")[1].split(",")[0]]  # the second one
+
+
+def test_a_home_deleted_under_a_running_loop_is_not_made_again(repo, session, lado_home):
+    start(repo, session)
+    wait_for(lambda: loops(session), "the loop", session)
+    shutil.rmtree(lado_home)
+    wait_for(lambda: not loops(session), "the loop to end", session)
+    several_passes()
+    assert not lado_home.exists()
 
 
 def test_the_loop_types_a_swallowed_message_again(repo, session):

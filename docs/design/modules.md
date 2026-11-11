@@ -42,7 +42,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     line.
     `Agent config folders` warns about each folder under `LADO_HOME/agents/` that no
     running agent uses (`runtime.stray_config_dirs`), with its `rm -rf`: an older LADO wrote
-    kit MCP secrets there. The UI's system panel (`GET /api/system`) takes its facts from
+    kit MCP secrets there. Files and names starting with `.` (Finder's `.DS_Store`) are no
+    agent's folder, at either level. The UI's system panel (`GET /api/system`) takes its facts from
     `doctor.system_info` (version, OS, installer, home, schema, tmux, git's version or
     `not installed` / `does not run`, never its path, providers, kits,
     session counts, on a Mac where it and LADO's tmux server run, `gui_places`, also

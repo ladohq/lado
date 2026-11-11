@@ -176,6 +176,12 @@ def test_mcp_schema_error_is_not_journaled(repo, fake_tmux, lado_home):
 # The session loop.
 
 
+def _stop(session):
+    """`lado stop` from inside a pass of the loop run here, which holds the loop's lock: a
+    stop that waited for the loop would wait for itself."""
+    runtime.stop_session(session, wait=False)
+
+
 def test_loop_journals_a_repeated_error_once(repo, fake_tmux, monkeypatch, lado_home):
     runtime.start_session(str(repo), "s", None, provider="claude")
     passes = []
@@ -183,7 +189,7 @@ def test_loop_journals_a_repeated_error_once(repo, fake_tmux, monkeypatch, lado_
     def sweep(session):
         passes.append(session)
         if len(passes) == 6:
-            runtime.stop_session(session)
+            _stop(session)
         elif len(passes) == 3:
             return  # works once: the error after it is new again
         else:
@@ -206,7 +212,7 @@ def _locked_passes(monkeypatch, failing: int, then_works: bool):
         if len(passes) <= failing:
             raise sqlite3.OperationalError("database is locked")
         if not then_works or len(passes) > failing + 1:
-            runtime.stop_session(session)
+            _stop(session)
 
     monkeypatch.setattr(runtime, "sweep", sweep)
 
@@ -241,7 +247,7 @@ def test_loop_journals_another_error_at_its_first_pass(repo, fake_tmux, monkeypa
         passes.append(session)
         if len(passes) == 1:
             raise sqlite3.OperationalError("database table is locked")
-        runtime.stop_session(session)
+        _stop(session)
 
     monkeypatch.setattr(runtime, "sweep", sweep)
     assert loop.run("s", interval=0) == 0

@@ -299,6 +299,11 @@ def main(event: str, session: str, agent: str, instance: str) -> int:
     provider_name, where = None, event  # for the journal: the neutral event once known
     try:
         payload = sys.stdin.read()
+        if not (state.home_path() / "lado.db").exists():
+            # LADO_HOME deleted, e.g. right after `lado stop`, before this dying agent's
+            # session-end hook: no agent to tell, and a connection or a log line would
+            # make it again.
+            return 0
         current = state.get_agent(session, agent)
         if current is None or current.instance != instance:
             return 0  # an earlier launch of this agent, e.g. exiting after `lado stop`

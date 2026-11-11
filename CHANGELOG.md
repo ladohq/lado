@@ -21,6 +21,11 @@
 - **A session's scrolled tabs keep their tab in view.** When the tabs change width, as the
   font arrives or the window is resized, the tab you reached with Tab, or the one shown, no
   longer stays half under the fade with › showing (LAD-267).
+- **`lado stop` returns once the session is fully stopped.** It waits for the session's
+  background loop to end, so LADO no longer makes a home deleted right after again, and
+  `lado stop s && lado start s` leaves one loop running, not the old one (LAD-153).
+- **`lado doctor` no longer takes `.DS_Store` for an agent's folder.** Files and hidden names
+  under `~/.lado/agents/` are not listed as left by agents, nor offered for removal (LAD-153).
 
 ## 0.46.0 (2026-11-11)
 

@@ -8,7 +8,8 @@ session exits (after LOCK_WAIT) and `lado ls` sees a session without one; the lo
 with the process, and `lado start` or `lado attach` start a loop whose lock is free. A
 repeating error is written once with its traceback, then only counted. It ends by itself,
 writing why to LADO_HOME/loop.log, when its session stops, its tmux session is gone, or the
-database is no longer of its own schema.
+database is no longer of its own schema; and, writing nothing, when LADO_HOME holds no
+lado.db (home_gone). `lado stop` returns only after the loop has ended (wait_stopped).
 """
 
 import contextlib
@@ -107,8 +108,8 @@ def running(session: str) -> bool:
 
 def wait_stopped(session: str, timeout: float | None = None) -> bool:
     """Whether the session's loop has ended within `timeout` seconds (three intervals by
-    default): after a stop it ends at its next pass. `lado update` waits for it, so no loop
-    of the old LADO is left."""
+    default): after a stop it ends at its next pass. Every stop waits for it
+    (runtime.stop_session), `lado update` too, so no loop of the old LADO is left."""
     deadline = time.monotonic() + (3 * INTERVAL if timeout is None else timeout)
     while running(session):
         if time.monotonic() >= deadline:
@@ -141,14 +142,25 @@ def forget(session: str) -> None:
     lock_path(session).unlink(missing_ok=True)
 
 
+def home_gone() -> bool:
+    """Whether LADO_HOME holds no lado.db (deleted, by hand or by `lado uninstall`): the
+    loop then ends writing nothing, as a line or a connection would make it again."""
+    return not (state.home_path() / "lado.db").exists()
+
+
 def run(session: str, interval: float | None = None) -> int:
     """`lado loop <session>`: sweep the session every `interval` seconds (INTERVAL by
-    default) until why_stop, or until its tmux session is gone (tmux_gone)."""
+    default) until why_stop, or until its tmux session is gone (tmux_gone). A home without
+    lado.db (home_gone) ends it at once, writing nothing, before a pass and after one that
+    met it gone; while it runs, the process makes neither LADO_HOME nor lado.db again
+    (state.home_not_made)."""
     if interval is None:
         interval = INTERVAL
     # Imported here: lado.runtime starts the loop.
     from lado import runtime
 
+    if home_gone():
+        return 0  # taking the lock would make LADO_HOME again
     # `running()` holds the lock for a moment, so a loop starting then waits a little.
     deadline = time.monotonic() + LOCK_WAIT
     lock = take_lock(session)
@@ -157,12 +169,14 @@ def run(session: str, interval: float | None = None) -> int:
         lock = take_lock(session)
     if lock is None:
         return 0  # the session has its loop
-    with lock:
+    with lock, state.home_not_made():
         log(session, f"loop started, pid {os.getpid()}, a pass every {interval:g} s")
         errors = RepeatedErrors(lambda text: log(session, text), session=session)
         missing: set[str] = set()  # the agents whose window the pass before did not find
         kicked: float | None = None  # when the loop last kicked the statistics sender
         while True:
+            if home_gone():
+                return 0
             try:
                 reason = why_stop(session)
                 if reason is None:
@@ -179,9 +193,13 @@ def run(session: str, interval: float | None = None) -> int:
                 # is not the one the database is for now: end.
                 reason = str(exc)
             except Exception as exc:
+                if home_gone():
+                    return 0  # it failed on the deleted home: nothing to tell
                 reason = TMUX_GONE if tmux_gone(session, exc) else None
                 if reason is None:
                     errors.failed()
+            if home_gone():
+                return 0  # deleted during the pass: a line or the kick would make it again
             if reason:
                 errors.flush()
                 log(session, f"loop ended: {reason}")

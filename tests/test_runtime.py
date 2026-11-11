@@ -3245,6 +3245,16 @@ def test_hooks_from_an_earlier_launch_are_ignored(repo, fake_tmux, monkeypatch):
     assert state.get_agent("s", "supervisor").status == state.STARTING
 
 
+def test_a_hook_writes_nothing_into_a_deleted_home(repo, fake_tmux, monkeypatch, lado_home):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    instance = state.get_agent("s", "supervisor").instance
+    runtime.stop_session("s")
+    shutil.rmtree(lado_home)  # deleted right after `lado stop`, before the dying agent's hook
+    monkeypatch.setattr("sys.stdin.read", lambda: "{}")
+    assert hooks.main("SessionEnd", "s", "supervisor", instance) == 0
+    assert not lado_home.exists()
+
+
 def test_stop_session_keeps_worktrees_and_history(repo, fake_tmux):
     _session_with_worker(repo)
     runtime.send_message("s", "supervisor", "w1", "hi")  # w1 is starting: queued
@@ -4679,6 +4689,77 @@ def test_stop_all_goes_on_past_a_session_it_cannot_stop_and_names_it(
         'could not stop session "b": OperationalError: database is locked; stopped: "a", "c"'
     )
     assert [bool(state.get_session(n).stopped_at) for n in "abc"] == [True, False, True]
+
+
+def test_stop_returns_once_the_loop_has_ended(repo, fake_tmux, monkeypatch, lado_home):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    events = []
+    kill = tmux.kill_session
+    monkeypatch.setattr(tmux, "kill_session", lambda s: (events.append("kill"), kill(s)))
+
+    def wait_stopped(session, timeout=None):
+        events.append(("wait", session, bool(state.get_session(session).stopped_at)))
+        return False
+
+    monkeypatch.setattr(loop, "wait_stopped", wait_stopped)
+    with pytest.raises(runtime.LadoError) as failed:
+        runtime.stop_session("s")
+    assert events == ["kill", ("wait", "s", True)]  # marked, killed, then waited for
+    assert str(failed.value) == (
+        'session "s" is stopped, but its loop did not end (LADO_HOME/loop/s.lock is held); '
+        f"see {lado_home / 'loop.log'}"
+    )
+    assert state.get_session("s").stopped_at
+
+
+def test_a_stop_without_its_wait_leaves_the_loop_to_the_caller(repo, fake_tmux, monkeypatch):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    monkeypatch.setattr(loop, "wait_stopped", lambda session, timeout=None: pytest.fail("waited"))
+    runtime.stop_session("s", wait=False)
+    runtime.start_session(str(repo), "t", None, provider="claude")
+    runtime.stop_all(lambda name, stopped: None, wait=False)
+    assert state.get_session("s").stopped_at and state.get_session("t").stopped_at
+
+
+def test_stop_all_waits_for_the_loops_after_stopping_them_all(repo, fake_tmux, monkeypatch):
+    for name in ("a", "b", "c"):
+        runtime.start_session(str(repo), name, None, provider="claude")
+    events = []
+
+    def wait_stopped(session, timeout=None):
+        events.append(f"wait {session}")
+        return session != "b"
+
+    monkeypatch.setattr(loop, "wait_stopped", wait_stopped)
+    with pytest.raises(runtime.LadoError) as failed:
+        runtime.stop_all(lambda name, stopped: events.append(f"stopped {name}"))
+    assert events == [*(f"stopped {n}" for n in "abc"), *(f"wait {n}" for n in "abc")]
+    assert str(failed.value) == (
+        'session "b" is stopped, but its loop did not end (LADO_HOME/loop/b.lock is held); '
+        f'see {state.home() / "loop.log"}; stopped: "a", "b", "c"'
+    )
+    assert all(state.get_session(n).stopped_at for n in "abc")
+
+
+def test_a_wait_that_fails_does_not_cut_stop_all_short(repo, fake_tmux, monkeypatch):
+    for name in ("a", "b"):
+        runtime.start_session(str(repo), name, None, provider="claude")
+    ended = []
+    monkeypatch.setattr(runtime.logins, "end_windows", lambda: ended.append(True))
+
+    def wait_stopped(session, timeout=None):
+        if session == "a":
+            raise PermissionError("loop/a.lock")
+        return True
+
+    monkeypatch.setattr(loop, "wait_stopped", wait_stopped)
+    with pytest.raises(runtime.LadoError) as failed:
+        _stop_all()
+    assert str(failed.value) == (
+        'could not wait for the loop of session "a": PermissionError: loop/a.lock; '
+        'stopped: "a", "b"'
+    )
+    assert ended == [True]
 
 
 def _stop_all() -> list[str]:

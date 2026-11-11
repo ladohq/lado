@@ -1399,7 +1399,9 @@ def stray_config_dirs() -> list[Path]:
     """The folders under the agents' config root that belong to no running agent: a
     session's folder when none of its agents runs, else an agent's. Left by an older LADO,
     which wrote kit MCP secrets there, or by a stop that could not kill the agents.
-    Without lado.db, every one; it is not made here."""
+    Without lado.db, every one; it is not made here. Only folders whose name does not start
+    with a dot count, at both levels: no session or agent name does, and macOS's Finder
+    leaves .DS_Store in every folder it shows."""
     root = providers.base.configs_root()
     if not root.is_dir():
         return []
@@ -1409,12 +1411,16 @@ def stray_config_dirs() -> list[Path]:
             if session_status(sess) in (SessionStatus.RUNNING, SessionStatus.LOOP_DOWN):
                 agents = state.list_agents(sess.name)
                 running[sess.name] = {a.name for a in agents if a.status != state.STOPPED}
+
+    def folders(parent: Path) -> list[Path]:
+        return [f for f in sorted(parent.iterdir()) if f.is_dir() and not f.name.startswith(".")]
+
     stray = []
-    for folder in sorted(root.iterdir()):
+    for folder in folders(root):
         if not running.get(folder.name):
             stray.append(folder)
-        elif folder.is_dir():
-            stray += [f for f in sorted(folder.iterdir()) if f.name not in running[folder.name]]
+        else:
+            stray += [f for f in folders(folder) if f.name not in running[folder.name]]
     return stray
 
 
@@ -2899,9 +2905,12 @@ def stop_preview(session: str) -> StopPreview:
     )
 
 
-def stop_session(session: str) -> Stopped:
-    """Kill the session's agents and mark it stopped. Its history, runs and gates stay
-    until `lado start` resumes it or `lado forget` drops it; worktrees stay on disk.
+def stop_session(session: str, wait: bool = True) -> Stopped:
+    """Kill the session's agents and mark it stopped, then wait for its loop to end
+    (_wait_for_loop), so nothing of the session writes into LADO_HOME after the return. Its
+    history, runs and gates stay until `lado start` resumes it or `lado forget` drops it;
+    worktrees stay on disk. Without `wait` the caller waits for the loop itself (stop_all,
+    `lado update`).
 
     On an older lado.db this LADO cannot mark it without migrating first: refused while
     another session runs (`lado stop --all` stops them all), else it kills the session,
@@ -2932,20 +2941,37 @@ def stop_session(session: str) -> Stopped:
     alive = tmux.has_session(session)
     # Marked stopped first, then killed: the session-end hooks of the dying agents find no
     # agent, so their end is LADO's and tells no one (agent_ended).
-    return _mark_stopped(session, gone=not alive, kill=alive)
+    stopped = _mark_stopped(session, gone=not alive, kill=alive)
+    if wait:
+        _wait_for_loop(session)
+    return stopped
 
 
-def stop_all(report: Callable[[str, Stopped], object]) -> None:
+def _wait_for_loop(session: str) -> None:
+    """Wait for the loop of the session just stopped to end, which it does at its next pass
+    (lado.loop.wait_stopped, up to three intervals); a loop that does not end is a LadoError,
+    the session staying stopped."""
+    if not loop.wait_stopped(session):
+        raise LadoError(
+            f'session "{session}" is stopped, but its loop did not end '
+            f"(LADO_HOME/loop/{session}.lock is held); see {state.home_path() / 'loop.log'}"
+        )
+
+
+def stop_all(report: Callable[[str, Stopped], object], wait: bool = True) -> None:
     """Stop every session not stopped yet (also one whose tmux or loop is gone), by name,
-    and `report` each one as soon as it is stopped. On an older lado.db: kill them all,
-    wait for their loops, migrate, then mark them stopped, since this LADO's SQL needs the
-    newer schema. A session that cannot be stopped does not keep the others running: the
-    rest are stopped, then a LadoError names each failure and the sessions stopped. Sees
-    the sessions of this LADO_TMUX_SOCKET only."""
+    and `report` each one as soon as it is stopped; then wait for their loops, all of them
+    in about one interval (_wait_for_loop; not without `wait`). On an older lado.db: kill
+    them all, wait for their loops, migrate, then mark them stopped, since this LADO's SQL
+    needs the newer schema. A session that cannot be stopped does not keep the others
+    running: the rest are stopped, then a LadoError names each failure, a loop that did not
+    end too, and the sessions stopped. Sees the sessions of this LADO_TMUX_SOCKET only."""
     pending = state.pending_migration()
     if pending is None:
         names = [s.name for s in state.list_sessions() if not s.stopped_at]
-        stop = stop_session
+
+        def stop(name: str) -> Stopped:
+            return stop_session(name, wait=False)
     else:
         names = pending[1]
         alive = _kill_for_migration(names)
@@ -2954,19 +2980,32 @@ def stop_all(report: Callable[[str, Stopped], object]) -> None:
         def stop(name: str) -> Stopped:
             return _mark_stopped(name, gone=not alive[name])
 
-    stopped, failed = [], []
+    stopped: list[str] = []
+    failed: list[str] = []
     for name in names:
         try:
             report(name, stop(name))
-            stopped.append(f'"{name}"')
+            stopped.append(name)
         except Exception as error:
             failed.append(f'could not stop session "{name}": {type(error).__name__}: {error}')
+    if wait and pending is None:  # the migration waited for them already
+        for name in stopped:
+            try:
+                _wait_for_loop(name)
+            except LadoError as error:
+                failed.append(str(error))
+            except Exception as error:
+                failed.append(
+                    f'could not wait for the loop of session "{name}": '
+                    f"{type(error).__name__}: {error}"
+                )
     try:
         logins.end_windows()  # the login windows go with LADO's sessions (lado.logins)
     except Exception as error:
         failed.append(f"could not end the login windows: {type(error).__name__}: {error}")
     if failed:
-        raise LadoError("; ".join([*failed, f"stopped: {', '.join(stopped) or 'none'}"]))
+        names_stopped = ", ".join(f'"{name}"' for name in stopped) or "none"
+        raise LadoError("; ".join([*failed, f"stopped: {names_stopped}"]))
 
 
 AT_START = "at the container's start"

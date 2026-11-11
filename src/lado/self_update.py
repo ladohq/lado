@@ -548,7 +548,9 @@ class _Update:
         try:
             for sess in self.plan.sessions:
                 say(f"Stopping session {sess.name}...", end=" ", flush=True)
-                dropped = runtime.stop_session(sess.name).dropped
+                # Its loop waited for here, not by the stop: a loop that does not end must not
+                # keep the stopped session from the resume of a failed update.
+                dropped = runtime.stop_session(sess.name, wait=False).dropped
                 stopped.append(sess)
                 if not loop.wait_stopped(sess.name):
                     say()

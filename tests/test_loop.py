@@ -1,4 +1,5 @@
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -13,6 +14,12 @@ from lado import loop, runtime, state, tmux
 
 def _session(repo):
     runtime.start_session(str(repo), "s", None, provider="claude")
+
+
+def _stop(session):
+    """`lado stop` from inside a pass of the loop run here, which holds the loop's lock: a
+    stop that waited for the loop would wait for itself."""
+    runtime.stop_session(session, wait=False)
 
 
 def test_the_loop_goes_on_while_the_session_runs(repo, fake_tmux):
@@ -136,6 +143,49 @@ def test_the_loop_stops_for_an_unknown_session(lado_home):
     assert loop.why_stop("s") == "the session is gone"
 
 
+def test_the_loop_writes_nothing_into_a_deleted_home(tmp_path, monkeypatch):
+    home = tmp_path / "gone"  # deleted, as `rm -rf LADO_HOME` right after `lado stop` leaves it
+    monkeypatch.setenv("LADO_HOME", str(home))
+    assert loop.run("s", interval=0) == 0
+    assert not home.exists()
+
+
+def test_the_loop_ends_without_writing_when_its_home_is_deleted_under_it(
+    repo, fake_tmux, monkeypatch, lado_home
+):
+    _session(repo)
+    passes = []
+
+    def sweep(session):
+        passes.append(session)
+        shutil.rmtree(lado_home)
+
+    monkeypatch.setattr(runtime, "sweep", sweep)
+    assert loop.run("s", interval=0) == 0
+    assert passes == ["s"]
+    assert not lado_home.exists()
+
+
+@pytest.mark.parametrize("touch", ["read", "fail"])
+def test_a_pass_that_meets_its_home_deleted_makes_nothing_again(
+    repo, fake_tmux, monkeypatch, lado_home, touch
+):
+    """The home deleted in the middle of a pass: the rest of the pass reads the database, or
+    fails on what is gone; neither makes lado.db, loop.log or the journal again."""
+    _session(repo)
+
+    def sweep(session):
+        shutil.rmtree(lado_home)
+        if touch == "read":
+            state.get_session(session)
+        raise RuntimeError("the pass meets what is gone")
+
+    monkeypatch.setattr(runtime, "sweep", sweep)
+    assert loop.run("s", interval=0) == 0
+    assert not lado_home.exists()
+    assert state.get_session("s") is None  # the test's own connections make it as before
+
+
 def test_the_loop_stops_on_another_schema_and_does_not_migrate_it(repo, fake_tmux, lado_home):
     _session(repo)
     previous_schema()
@@ -195,7 +245,7 @@ def test_the_loop_sweeps_until_its_session_stops(repo, fake_tmux, monkeypatch, l
         if len(passes) == 1:
             raise RuntimeError("database is locked")
         if len(passes) == 3:
-            runtime.stop_session(session)
+            _stop(session)
 
     monkeypatch.setattr(runtime, "sweep", sweep)
     assert loop.run("s", interval=0) == 0
@@ -237,7 +287,7 @@ def test_a_loop_waits_for_a_lock_held_for_a_moment(repo, fake_tmux, monkeypatch)
 
     def sweep(session):
         passes.append(session)
-        runtime.stop_session(session)
+        _stop(session)
 
     monkeypatch.setattr(runtime, "sweep", sweep)
     held = loop.take_lock("s")  # as `loop.running()` from `lado ls` does
@@ -253,7 +303,7 @@ def test_a_repeating_error_is_logged_once(repo, fake_tmux, monkeypatch, lado_hom
     def sweep(session):
         passes.append(session)
         if len(passes) == 1000:
-            runtime.stop_session(session)
+            _stop(session)
         elif len(passes) >= 600:
             raise ValueError("another error")
         elif len(passes) != 500:
@@ -284,7 +334,7 @@ def test_a_repeating_error_gets_a_short_line_now_and_then(repo, fake_tmux, monke
     def sweep(session):
         passes.append(session)
         if len(passes) == 4:
-            runtime.stop_session(session)
+            _stop(session)
             return
         raise RuntimeError("tmux not found")
 
@@ -303,7 +353,7 @@ def test_a_stop_during_a_repeating_error_is_no_recovery(repo, fake_tmux, monkeyp
     def sweep(session):
         passes.append(session)
         if len(passes) == 3:
-            runtime.stop_session(session)
+            _stop(session)
         raise RuntimeError("tmux not found")
 
     monkeypatch.setattr(runtime, "sweep", sweep)
@@ -331,7 +381,7 @@ def test_each_pass_looks_at_the_windows_with_what_the_one_before_missed(
     def check_windows(session, missing):
         looks.append(set(missing))
         if len(looks) == 3:
-            runtime.stop_session(session)
+            _stop(session)
         return {f"gone-{len(looks)}"}
 
     monkeypatch.setattr(runtime, "check_windows", check_windows)
@@ -347,7 +397,7 @@ def test_the_windows_are_looked_at_before_the_sweep(repo, fake_tmux, monkeypatch
 
     def sweep(session):
         calls.append("sweep")
-        runtime.stop_session(session)
+        _stop(session)
 
     monkeypatch.setattr(runtime, "sweep", sweep)
     loop.run("s", interval=0)
@@ -394,7 +444,7 @@ def test_the_loop_sweeps_every_interval_and_logs_it(repo, fake_tmux, monkeypatch
     _session(repo)
     monkeypatch.setattr(loop, "INTERVAL", 0.01)
     sleeps = []
-    monkeypatch.setattr(runtime, "sweep", runtime.stop_session)
+    monkeypatch.setattr(runtime, "sweep", _stop)
     monkeypatch.setattr(loop.time, "sleep", sleeps.append)
     assert loop.run("s") == 0
     assert sleeps == [0.01]
@@ -428,7 +478,7 @@ def test_the_loop_kicks_the_statistics_sender_every_interval(
     def sweep(session):
         passes.append(session)
         if len(passes) == 4:
-            runtime.stop_session(session)
+            _stop(session)
 
     monkeypatch.setattr(runtime, "sweep", sweep)
     monkeypatch.setattr(telemetry, "kick", lambda: kicked.append(1))

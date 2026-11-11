@@ -13,7 +13,7 @@
 
 ## 2. Docs
 
-- [ ] 2.1 `docs/design/ui.md`, Launch and session control: after the sentence on the one saved
+- [x] 2.1 `docs/design/ui.md`, Launch and session control: after the sentence on the one saved
   model taken by itself, the note after a change of Agent that dropped a pick (`<name> belongs
   to <CLI>. For this session only: …`). CHANGELOG.md under `## 0.46.1 (unreleased)`, Fixed: the
   note under Model names the server model the field took after a change of Agent (LAD-259).

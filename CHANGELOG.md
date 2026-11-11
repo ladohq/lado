@@ -12,6 +12,9 @@
 - **The Mac installer waits for a Docker Desktop that is still quitting.** Run right after
   Docker Desktop's Quit, it starts Docker Desktop once it has quit and installs, instead of
   stopping after 2 minutes.
+- **The note under Model names the server model the field took.** In New session, a change of
+  Agent to a CLI that is not logged in and takes its one server model no longer says the model
+  went back to the default (LAD-259).
 
 ## 0.46.0 (2026-11-11)
 

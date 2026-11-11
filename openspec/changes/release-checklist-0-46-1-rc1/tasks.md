@@ -28,6 +28,6 @@
 
 ## 4. The checks
 
-- [ ] 4.1 `make lint`, `make test`, `openspec validate release-checklist-0-46-1-rc1 --strict`,
+- [x] 4.1 `make lint`, `make test`, `openspec validate release-checklist-0-46-1-rc1 --strict`,
   and the trial archive with `--skip-specs` in a copy of `openspec/` followed by `openspec
   validate --specs --strict`; all green.

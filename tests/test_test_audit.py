@@ -479,10 +479,11 @@ def test_the_report_marks_a_part_not_measured(tmp_path):
 
 
 def make_dry_run(target: str) -> str:
-    """`make -n <target>`: its commands, not run."""
+    """`make -n <target>`: its commands, not run, without the OUT of a make that runs these
+    tests (make test-audit OUT=...)."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("MAKE")}
     result = subprocess.run(
-        ["make", "-n", "--no-print-directory", target],
+        ["make", "-n", "--no-print-directory", target, "OUT="],
         cwd=ROOT,
         env=env,
         capture_output=True,

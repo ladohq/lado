@@ -180,7 +180,8 @@ export function ModelPicker({
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState<Place | null>(null);
   const [search, setSearch] = useState("");
-  const [active, setActive] = useState(0);
+  // The highlighted row, the one Enter picks, by its key: null is the first row.
+  const [activeKey, setActiveKey] = useState<string | null>(null);
   const typedAhead = useRef({ text: "", at: 0 });
 
   const { choices } = list;
@@ -282,6 +283,12 @@ export function ModelPicker({
     ...(otherRow ? [otherRow] : []),
   ];
   const shownModels = yours.length + builtins.length;
+  // Its place follows from the rows of this render, so a row that comes or goes above it moves
+  // it to no other row; while its row is gone it stands on the selected one, and the key, kept,
+  // takes it back when the row comes again.
+  const keyAt = activeKey === null ? 0 : rows.findIndex((row) => row.key === activeKey);
+  const active = keyAt >= 0 ? keyAt : Math.max(0, rows.findIndex((row) => row.selected));
+  const setActive = (at: number) => setActiveKey(rows[at]?.key ?? null);
 
   const close = useCallback(
     (refocus: boolean) => {
@@ -300,11 +307,11 @@ export function ModelPicker({
     setOpen(true);
   };
 
-  // On the selected row once the list is open, and again when a read changes the rows: an
-  // index kept from the old rows would land on another row; a search starts at its first row.
+  // On the selected row once the list is open, and again when a list is read anew; rows that
+  // come or go without one (Read again after a failed request) leave it on its row.
   useLayoutEffect(() => {
     if (!open) return;
-    setActive(Math.max(0, rows.findIndex((row) => row.selected)));
+    setActiveKey(rows.find((row) => row.selected)?.key ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- when it opens and at each read
   }, [open, choices]);
 
@@ -463,7 +470,7 @@ export function ModelPicker({
       event.stopPropagation();
       if (search) {
         setSearch("");
-        setActive(0);
+        setActiveKey(null);
       } else close(true);
     } else if (event.key === "Tab") {
       if (!intoFoot(event)) close(true); // the search goes with the list: Tab goes on from the field
@@ -604,7 +611,7 @@ export function ModelPicker({
               value={search}
               onChange={(event) => {
                 setSearch(event.target.value);
-                setActive(0);
+                setActiveKey(null); // a search starts at its first row
               }}
               onKeyDown={onSearchKey}
             />

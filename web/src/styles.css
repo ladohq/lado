@@ -23,8 +23,10 @@ code {
 }
 
 /* An id, an address or a name the human types as is: the one rule of the mono face. Only the
-   face: each place keeps its own size. */
-.mono {
+   face: each place keeps its own size. `.field input` inherits its font, so a field's input
+   is named again to outweigh it. */
+.mono,
+.field input.mono {
   font-family: var(--mono);
 }
 

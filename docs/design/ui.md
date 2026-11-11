@@ -2935,8 +2935,9 @@ core's why (`ProbeInfo.cannot`); the CLIs a tick can save a model of are `ProbeI
   list takes no focus. The active row (the highlight, what Enter picks) is a row, not a place:
   rows that come or go without a new list (`Read again` after a failed request, gone while it
   reads) leave it on its row; while its row is gone it stands on the selected one and comes back
-  with the row; a list read anew puts it on the selected row, a search on its first row. A pick saves at once, by reference (`PUT /api/model-defaults/{cli}`), the focus back on
-  the field; a refusal shows under it and the value stays; a request that never reached LADO
+  with the row; a list read anew puts it on the selected row, a search on its first row. A pick
+  saves at once, by reference (`PUT /api/model-defaults/{cli}`), the focus back on the field;
+  a refusal shows under it and the value stays; a request that never reached LADO
   says so in its own words and blames no model server. YOUR MODELS are the core's once the list
   is read, the page's entries until then. `Other name…` opens a form under the picker with Use
   (Enter too) and Cancel; a typed name is read as `lado model default` reads it, not as a row:

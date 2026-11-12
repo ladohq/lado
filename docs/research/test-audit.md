@@ -350,18 +350,22 @@ How to read it:
   `test_providers.py` 153 of 179, `test_cli.py` 125 of 219, `test_codex.py` 123 of 155.
 
 **What the measurements found besides.**
-- Locally (macOS, Python 3.14) 12 tests fail on main, every time, serially too; CI runs on
-  Ubuntu only and does not see them. Unit: `test_clone` and `test_server_clones` (a folder
-  that cannot be read), `test_login_status::test_claude_api_key_of_its_own_login` (the
-  keychain), `test_runtime::test_an_agent_s_state_outlives_a_resume_and_goes_with_its_session`
-  (`FileExistsError`), `test_server_launch` and `test_setup` (a name not in UTF-8: APFS
-  refuses it). Integration: 5 of `test_leftover_processes`,
-  `test_session_loop::test_the_loop_types_a_swallowed_message_again`. UI: 4 layout tests
-  (`test_narrow_layout` 2, `test_team_head` 2) fail serially too. A task of its own, not
-  this audit's.
+- Locally (macOS 27, Python 3.14) 15 tests failed on main, every time, that pass in CI,
+  which ran on Ubuntu with Python 3.10 and 3.13 only. Fixed in PR #295 (branch
+  `fix/python-3.14-and-macos-tests`): a real bug of `clone.check_target` on Python 3.14
+  (`Path.exists()` no longer raises for a folder that cannot be read, 2 tests); a test that
+  read the developer's `~/.local/state/opencode` (every unit test now has an
+  `XDG_STATE_HOME` of its own); a test that did not pin its platform; 2 tests of names that
+  are no UTF-8, which APFS refuses (skipped there); the 5 tests of
+  `test_leftover_processes`: macOS 27 shows no process's environment, so the leftover
+  check found nothing, silently (now said once per run, and those tests skip). CI's unit
+  tests run on 3.10 and 3.14 since. Not fixed: 4 UI layout tests that expect exact text
+  widths fail on macOS fonts, serially too (stage 5).
 - Load makes tests flaky: of the 20 UI tests that failed with 8 workers, 16 passed serially;
-  under coverage 1 more unit and 3 more integration tests failed. CI's 2 UI workers are not
-  a whim.
+  under coverage 1 more unit and 3 more integration tests failed;
+  `test_session_loop::test_the_loop_types_a_swallowed_message_again` and
+  `test_model_servers::test_a_post_that_never_answers_is_neither_proven_nor_missing` fail
+  now and then under load and pass alone. CI's 2 UI workers are not a whim.
 - Coverage costs ~75% more time (unit: 5 min 10 s instead of 2 min 57 s) and a 163 MB
   database.
 

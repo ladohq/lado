@@ -16,6 +16,7 @@ import re
 import select
 import shutil
 import signal
+import stat
 import subprocess
 import tempfile
 import threading
@@ -176,9 +177,13 @@ def _check_target(url: str, path: str, project: str | None) -> Target:
     if not projects.adds_to(project, path) and (refused := projects.refusal(path, url=url)):
         return Target(path, "in_project", str(refused), hint=refused.hint)
     folder = Path(path)
-    if not folder.exists():
+    # stat, not exists() and is_dir(): from Python 3.14 on they answer False for a folder
+    # LADO may not look into, where the clone must be refused as no_access.
+    try:
+        mode = folder.stat().st_mode
+    except (FileNotFoundError, NotADirectoryError):
         return Target(path, "new", "a new folder")
-    if not folder.is_dir():
+    if not stat.S_ISDIR(mode):
         return Target(path, "not_folder", f"{path} is a file, not a folder")
     if not any(folder.iterdir()):
         return Target(path, "empty", "an empty folder")

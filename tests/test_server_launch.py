@@ -1063,7 +1063,7 @@ def test_a_name_text_cannot_carry_is_a_refusal_not_a_server_error(client, git_co
     notes = tmp_path / "notes"
     notes.mkdir()
     (notes / "a.txt").write_text("hello")
-    (notes / os.fsdecode(b".env\xff")).write_text("s")
+    agent_helpers.bytes_name(notes, b".env\xff")
     setup = folder(client, notes)["setup"]
     assert (setup["refusal"]["kind"], setup["refusal"]["line"]) == ("odd_name", ".env\\udcff")
     assert setup["left_out"] == []

@@ -6,6 +6,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import agent_helpers
 import pytest
 
 from lado import setup
@@ -280,7 +281,7 @@ def test_a_left_out_name_that_is_not_utf8_is_refused_with_a_name_that_can_be_sho
     folder = workspace / "bytes"
     folder.mkdir()
     (folder / "a.txt").write_text("a")
-    (folder / os.fsdecode(b".env\xff")).write_text("s")
+    agent_helpers.bytes_name(folder, b".env\xff")
     refusal = setup.preview(str(folder)).refusal
     assert (refusal.kind, refusal.line) == ("odd_name", ".env\\udcff")
     refusal.line.encode()  # shown as text: it encodes

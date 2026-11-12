@@ -79,6 +79,12 @@ def pytest_runtest_protocol(item, nextitem):
         os.environ.pop("LADO_TEST_ID", None)
 
 
+def pytest_report_header(config):
+    if not leftovers.readable():
+        return f"leftover processes: {leftovers.UNREADABLE}"
+    return None
+
+
 def pytest_sessionstart(session):
     # The controller of an xdist run, or a run without workers; the workers start with it.
     if not hasattr(session.config, "workerinput"):
@@ -102,6 +108,11 @@ def pytest_sessionfinish(session):
         session.config.workeroutput["leftovers"] = leftovers.describe(leftovers.own_left())
         return (yield)
     result = yield
+    if not leftovers.readable():
+        reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+        if reporter:
+            reporter.write_sep("=", f"not checked: {leftovers.UNREADABLE}", yellow=True)
+        return result
     left = [leftovers.describe(leftovers.own_left()), *_LEFT_BY_WORKERS]
     if any(left):
         reporter = session.config.pluginmanager.get_plugin("terminalreporter")
@@ -342,6 +353,16 @@ def codex_home(tmp_path, monkeypatch):
     reads its config.toml (lado.providers.codex)."""
     folder = tmp_path / "codex-home"
     monkeypatch.setenv("CODEX_HOME", str(folder))
+    return folder
+
+
+@pytest.fixture(autouse=True)
+def user_state(tmp_path, monkeypatch):
+    """The user's XDG_STATE_HOME, never the user's ~/.local/state; not made. An OpenCode or
+    Kilo agent starts from the user's /model memory there (lado.providers.opencode_family),
+    and a test on a machine with one of them used would start from that machine's."""
+    folder = tmp_path / "user-state"
+    monkeypatch.setenv("XDG_STATE_HOME", str(folder))
     return folder
 
 

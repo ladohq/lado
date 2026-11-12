@@ -1,6 +1,7 @@
 import os
 
 import leftovers
+import pytest
 
 
 def proc_entry(root, pid, environ: bytes, cmdline: bytes = b"sleep\x0060\x00"):
@@ -82,9 +83,42 @@ def test_the_macos_reader_leaves_out_its_own_ps_and_what_ended_meanwhile():
 def test_marked_names_the_processes_with_the_value_but_the_caller(monkeypatch):
     processes = leftovers.from_ps(PS_E, PS)
     monkeypatch.setattr(leftovers, "processes", lambda: processes)
+    monkeypatch.setattr(leftovers, "readable", lambda: True)
     monkeypatch.setattr(os, "getpid", lambda: 103)
 
     assert [p.pid for p in leftovers.marked("LADO_HOME", "/t/home")] == [101]
+
+
+def test_where_no_environment_shows_nothing_is_marked(monkeypatch):
+    monkeypatch.setattr(leftovers, "processes", lambda: leftovers.from_ps(PS_E, PS))
+    monkeypatch.setattr(leftovers, "readable", lambda: False)
+    assert leftovers.marked("LADO_HOME", "/t/home") == []
+
+
+@pytest.mark.parametrize("shown", [True, False])
+def test_readable_is_whether_a_childs_environment_shows(monkeypatch, shown):
+    """macOS 27's `ps -E` gives the command alone."""
+
+    def processes():
+        (child,) = started
+        environ = f"sleep 10 {leftovers.PROBE}=probe-{os.getpid()}" if shown else "sleep 10"
+        return [leftovers.Process(child.pid, "sleep 10", environ, " ")]
+
+    started = []
+    real = leftovers.subprocess.Popen
+
+    def popen(*args, **kwargs):
+        started.append(real(*args, **kwargs))
+        return started[-1]
+
+    monkeypatch.setattr(leftovers, "processes", processes)
+    monkeypatch.setattr(leftovers.subprocess, "Popen", popen)
+    leftovers.readable.cache_clear()
+    try:
+        assert leftovers.readable() is shown
+    finally:
+        leftovers.readable.cache_clear()
+    assert started[0].returncode is not None
 
 
 def test_describe_names_the_test_that_started_a_process_and_only_pid_and_command_without_it():

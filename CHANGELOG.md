@@ -7,6 +7,8 @@
 - **Agents on weak models answer you in the chat.** Every agent is told you do not see its
   terminal, and your message says how to answer it; an answer left in the terminal gets one
   reminder, and "replied only in its terminal" shows only if the reminder did not help.
+- **A clone into a folder LADO may not look into is refused on Python 3.14 too.** There it was
+  taken for a new folder, and the clone failed later.
 
 ## 0.46.1 (2026-11-11)
 

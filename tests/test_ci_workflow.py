@@ -67,7 +67,7 @@ def pytest_runs(job: dict) -> list[str]:
 def test_unit_tests_with_lint_on_each_python(workflow):
     unit = workflow["jobs"]["unit"]
     assert unit["name"] == "unit (${{ matrix.python-version }})"
-    assert unit["strategy"]["matrix"] == {"python-version": ["3.10", "3.13"]}
+    assert unit["strategy"]["matrix"] == {"python-version": ["3.10", "3.14"]}
     runs = [s["run"] for s in unit["steps"] if "run" in s]
     assert runs[-3:] == ["uv run ruff format --check", "uv run ruff check", "uv run pytest -n auto"]
 

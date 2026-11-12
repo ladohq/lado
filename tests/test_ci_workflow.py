@@ -69,7 +69,29 @@ def test_unit_tests_with_lint_on_each_python(workflow):
     assert unit["name"] == "unit (${{ matrix.python-version }})"
     assert unit["strategy"]["matrix"] == {"python-version": ["3.10", "3.14"]}
     runs = [s["run"] for s in unit["steps"] if "run" in s]
-    assert runs[-3:] == ["uv run ruff format --check", "uv run ruff check", "uv run pytest -n auto"]
+    assert runs[-3:] == ["uv run ruff format --check", "uv run ruff check", JUNIT_UNIT]
+
+
+JUNIT_UNIT = "uv run pytest -n auto --junitxml=junit.xml"
+
+
+@pytest.mark.parametrize(
+    ("job", "name"),
+    [
+        ("unit", "junit-unit-${{ matrix.python-version }}"),
+        ("integration", "junit-integration-${{ matrix.python-version }}-${{ matrix.shard }}"),
+        ("ui", "junit-ui-${{ matrix.shard }}"),
+    ],
+)
+def test_the_test_jobs_keep_their_junit_report_also_when_red(workflow, job, name):
+    """The test audit reads durations and failures over weeks (docs/research/test-audit.md):
+    each cell's report, uploaded right after its pytest run whatever its result."""
+    steps = workflow["jobs"][job]["steps"]
+    upload = step_using(steps, "actions/upload-artifact")
+    assert steps.index(upload) == len(steps) - 1
+    assert steps[-2]["run"].endswith(" --junitxml=junit.xml")
+    assert upload["if"] == "always()"
+    assert upload["with"] == {"name": name, "path": "junit.xml", "retention-days": 90}
 
 
 def test_integration_tests_in_three_shards_per_python_each_in_one_process(workflow):
@@ -82,7 +104,7 @@ def test_integration_tests_in_three_shards_per_python_each_in_one_process(workfl
         "matrix": {"python-version": ["3.10", "3.13"], "shard": [1, 2, 3]},
     }
     assert pytest_runs(integration) == [
-        "uv run pytest -m integration -n0 --shard ${{ matrix.shard }}/3"
+        "uv run pytest -m integration -n0 --shard ${{ matrix.shard }}/3 --junitxml=junit.xml"
     ]
 
 
@@ -92,7 +114,9 @@ def test_ui_tests_in_four_shards_on_two_workers_each_building_only_the_bundle(wo
     ui = workflow["jobs"]["ui"]
     assert ui["name"] == "ui (${{ matrix.shard }})"
     assert ui["strategy"] == {"fail-fast": False, "matrix": {"shard": [1, 2, 3, 4]}}
-    assert pytest_runs(ui) == ["uv run pytest -m ui -n 2 --shard ${{ matrix.shard }}/4"]
+    assert pytest_runs(ui) == [
+        "uv run pytest -m ui -n 2 --shard ${{ matrix.shard }}/4 --junitxml=junit.xml"
+    ]
     bundle = step_named(ui["steps"], "web UI bundle")
     assert "if" not in bundle
     assert bundle["run"] == "cd web && npm ci --no-audit --no-fund && npm run build"
@@ -158,7 +182,8 @@ def test_the_browser_is_saved_after_its_install_and_before_the_tests(ui_steps):
     """Saved before the tests: a red test does not lose main's cache."""
     labels = [s.get("name") or s.get("uses", "").split("@")[0] or s["run"] for s in ui_steps]
     order = ["uv sync --locked", "Browser cache key", "actions/cache/restore", "Browser"]
-    order += ["actions/cache/save", "uv run pytest -m ui -n 2 --shard ${{ matrix.shard }}/4"]
+    order += ["actions/cache/save"]
+    order += ["uv run pytest -m ui -n 2 --shard ${{ matrix.shard }}/4 --junitxml=junit.xml"]
     positions = [labels.index(label) for label in order]
     assert positions == sorted(positions)
 

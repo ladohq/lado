@@ -492,6 +492,26 @@ def test_one_mutmut_run_s_mutants_are_split_by_module():
     assert test_audit.of_module(names, "providers.claude") == [names[3]]
 
 
+def deadline_run(tmp_path, mutant: str) -> subprocess.CompletedProcess:
+    (tmp_path / "test_wait.py").write_text(
+        "import time\n\n\ndef test_wait():\n    time.sleep(1.5)\n"
+    )
+    env = {**os.environ, "PYTHONPATH": str(ROOT / "scripts"), "LADO_AUDIT_TEST_SECONDS": "0.3"}
+    env["MUTANT_UNDER_TEST"] = mutant
+    command = [sys.executable, "-m", "pytest", "-q", "-p", "test_audit_deadline", "-p", "no:xdist"]
+    command += ["-p", "no:cacheprovider", "-c", os.devnull, str(tmp_path / "test_wait.py")]
+    return subprocess.run(command, cwd=tmp_path, env=env, capture_output=True, text=True)
+
+
+def test_a_mutant_whose_test_waits_past_the_deadline_is_a_timeout(tmp_path):
+    assert deadline_run(tmp_path, "lado.runs.x_go__mutmut_1").returncode == 36
+
+
+def test_without_a_mutant_the_deadline_lets_a_test_run(tmp_path):
+    result = deadline_run(tmp_path, "")
+    assert result.returncode == 0, result.stdout
+
+
 def test_mutmut_mutates_only_the_modules_named(tmp_path):
     repo = tmp_path / "repo"
     (repo / "docs").mkdir(parents=True)
@@ -502,7 +522,10 @@ def test_mutmut_mutates_only_the_modules_named(tmp_path):
     config = test_audit.mutmut_config(repo, ["runs", "providers.claude"])
     assert 'only_mutate = ["src/lado/runs.py", "src/lado/providers/claude.py"]' in config
     assert 'also_copy = ["Makefile", "docs"]' in config
-    assert 'pytest_add_cli_args = ["-p", "no:xdist", "-p", "no:cacheprovider"]' in config
+    deadline = '"-p", "test_audit_deadline"'
+    assert (
+        f'pytest_add_cli_args = ["-p", "no:xdist", "-p", "no:cacheprovider", {deadline}]' in config
+    )
 
     config = test_audit.mutmut_config(repo, ["runs"], deselect=["tests/test_state.py::test_x"])
     assert '"--deselect", "tests/test_state.py::test_x"]' in config

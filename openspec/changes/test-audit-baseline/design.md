@@ -62,6 +62,15 @@ killed / (killed + survived), a timeout counting as killed and a mutant without 
 Baseline in this pull request: the five core modules; each later batch measures its own touched
 modules before (on its target) and after.
 
+Changed in the build (the first baseline run lost eight hours of results): the modules run one
+after another in one copy (`mutmut run 'lado.<module>.*'`, mutmut's two passes paid once), each
+module's result written as soon as it is done and kept by a rerun at the same HEAD; an interrupted
+module is written with `"stopped"`, its mutants not checked left out of the score. mutmut limits a
+mutant's CPU time only, and a test waiting on a timeout of its own spends none (up to 2 146 s for
+one mutant of `state.py`): under a mutant, a test still running after `--test-seconds` (60) ends
+with mutmut's exit code for a timeout (`scripts/test_audit_deadline.py`), which counts as killed,
+before as after a batch.
+
 **D7. "Touched module" from the coverage, not from imports.** The modules of a batch are those
 with a line that any deleted test executed (D3's records). A deleted test that executed none (a
 test of README or a workflow file) rests on the checklist's rule, and the proof names it so.

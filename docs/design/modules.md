@@ -1395,7 +1395,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   Test audit): per-test coverage, durations, CI's reruns, subset candidates, pseudo-tested
   functions, mutmut's score and the proof of a batch of deletions; standard library but
   coverage, pytest-cov and mutmut. `scripts/test_audit_plugin.py`: its pytest plugin, which
-  measures the processes a test starts.
+  measures the processes a test starts; `scripts/test_audit_deadline.py`: the one that ends a
+  test under a mutant after `--test-seconds`, as mutmut's timeout.
   `scripts/smoke_ci.py`: a cell of CI's job `smoke` and of the Windows probe's smoke
   (`run`), a cell of CI's job `container` (`container`), and the CLIs' pins (docs/testing.md);
   standard library only.

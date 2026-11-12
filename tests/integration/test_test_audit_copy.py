@@ -191,6 +191,49 @@ def test_an_interrupted_mutation_keeps_what_it_measured(tmp_path):
     clean(repo)
 
 
+WAIT = """\
+def waited():
+    return True
+"""
+
+WAIT_TESTS = """\
+import time
+
+from lado.wait import waited
+
+
+def test_waited():
+    while not waited():  # emptied, it sleeps for ever: no CPU for mutmut's limit
+        time.sleep(0.1)
+"""
+
+
+def test_mutation_measures_one_module_after_another_and_keeps_them(tmp_path):
+    repo = tiny_repo(tmp_path)
+    (repo / "src" / "lado" / "wait.py").write_text(WAIT)
+    (repo / "tests" / "test_wait.py").write_text(WAIT_TESTS)
+    (repo / "pyproject.toml").write_text('[project]\nname = "lado"\nversion = "0"\n')
+    git(repo, "add", ".")
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "wait")
+    out = tmp_path / "out"
+    command = [sys.executable, str(SCRIPT), "--out", str(out), "mutation", "core", "wait"]
+    command += ["--repo", str(repo), "--test-seconds", "2"]
+
+    first = subprocess.run(command, capture_output=True, text=True, timeout=300)
+    assert first.returncode == 0, first.stdout + first.stderr
+    assert "mutation: core: " in first.stdout and "mutation: wait: " in first.stdout
+    core = json.loads((out / "mutation-core.json").read_text())
+    assert core["stopped"] is None
+    assert all(name.startswith("lado.core.") for name in core["mutants"])
+    wait = json.loads((out / "mutation-wait.json").read_text())
+    assert "timeout" in wait["mutants"].values()  # ended by the deadline, counted killed
+
+    again = subprocess.run(command, capture_output=True, text=True, timeout=60)
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert "mutation: core: kept" in again.stdout and "mutation: wait: kept" in again.stdout
+    clean(repo)
+
+
 def test_a_copy_whose_lado_is_another_s_is_refused(tmp_path):
     repo = tiny_repo(tmp_path, package="lado")  # no src/: the copy would import LADO's lado
     result = subprocess.run(

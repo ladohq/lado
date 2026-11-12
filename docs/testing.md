@@ -538,13 +538,16 @@ names the command of a part not measured; a part that fails does not stop the ot
   none of them fails for is pseudo-tested, a function no test ran is not covered. The copy
   is removed at the end and on Ctrl-C; the command refuses to start when the copy's `lado`
   is not its own `src/lado`.
-- `mutation <module>...` (by hand): mutmut on the named modules of `src/lado/` in one run,
-  with the unit layer, in a copy under `--out`; `mutation-<module>.json` holds each mutant's
-  status and the tests of each function. A mutant only the integration or UI layer kills
-  counts as survived, the same before and after a batch. Its two passes of the whole unit
-  layer, serially, take about 13 minutes before the first mutant. Ctrl-C (or `timeout -s INT`)
-  stops it and keeps what it checked: each file says `"stopped"`, and its mutants not checked
-  are marked so and left out of the score.
+- `mutation <module>...` (by hand): mutmut on the named modules of `src/lado/`, one after
+  another in one copy under `--out`, with the unit layer; `mutation-<module>.json`, written
+  as soon as the module is done, holds each mutant's status and the tests of each function,
+  and a rerun at the same HEAD keeps it. Under a mutant a test still running after
+  `--test-seconds` (60) is a timeout (`scripts/test_audit_deadline.py`): mutmut limits only
+  CPU time, and a test waiting for its own timeout spends none. A mutant only the
+  integration or UI layer kills counts as survived, the same before and after a batch. Its
+  two passes of the whole unit layer, serially, take about 13 minutes before the first
+  mutant. Ctrl-C (or `timeout -s INT`) stops it and keeps what it checked: the module it was
+  on says `"stopped"`, and its mutants not checked are marked so and left out of the score.
 
 **Proving a batch.** A pull request that deletes or moves tests measures each module a
 deleted test ran (its coverage record names them): `mutation` on the target branch

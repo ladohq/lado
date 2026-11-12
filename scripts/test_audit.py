@@ -22,6 +22,7 @@ Standard library, but coverage, pytest-cov and mutmut (dev dependencies).
 
 import argparse
 import ast
+import contextlib
 import json
 import os
 import re
@@ -585,6 +586,7 @@ def failed_already(output: str) -> bool:
 # --- the mutation baseline and the proof -----------------------------------------------
 
 KILLS = ("killed", "timeout")
+UNCHECKED = "not checked"
 RESULT = re.compile(r"^\s*(\S+): (.+)$")
 
 
@@ -655,25 +657,30 @@ def run_mutation(out: Path, modules: list[str], repo: Path = ROOT) -> int:
         log = out / "mutmut.log"
         started = time.monotonic()
         deselect: list[str] = []
-        for attempt in (1, 2):
-            (copy / "pyproject.toml").write_text(project + mutmut_config(repo, modules, deselect))
-            with open(log, "w") as output:
-                run = subprocess.run([str(mutmut), "run"], cwd=copy, stdout=output, stderr=output)
-            if run.returncode == 0 or attempt == 2 or not (copy / "mutants" / "src").is_dir():
-                break
-            # mutmut's own passes stop at the first failure: find them all at once.
-            deselect = failing_in_copy(copy)
-            if not deselect:
-                break
-            print(f"mutation: deselected, failing in mutmut's copy: {', '.join(deselect)}")
+        stopped, returncode = None, None
+        try:
+            for attempt in (1, 2):
+                config = mutmut_config(repo, modules, deselect)
+                (copy / "pyproject.toml").write_text(project + config)
+                returncode = run_mutmut(mutmut, copy, log)
+                if returncode == 0 or attempt == 2 or not (copy / "mutants" / "src").is_dir():
+                    break
+                # mutmut's own passes stop at the first failure: find them all at once.
+                deselect = failing_in_copy(copy)
+                if not deselect:
+                    break
+                print(f"mutation: deselected, failing in mutmut's copy: {', '.join(deselect)}")
+        except KeyboardInterrupt:
+            # A run too long to wait for (design.md, Risks) is stopped: keep what it checked.
+            stopped = "interrupted"
         took = round(time.monotonic() - started)
         listed = subprocess.run(
             [str(mutmut), "results", "--all", "true"], cwd=copy, capture_output=True, text=True
         )
         mutants = parse_results(listed.stdout)
-        if run.returncode != 0 or not mutants:
-            print(f"mutation: mutmut exited {run.returncode}; its log: {log}")
-            return 1
+        if (returncode != 0 and not stopped) or not mutants:
+            print(f"mutation: mutmut exited {returncode}; its log: {log}")
+            return 130 if stopped else 1
         stats = json.loads((copy / "mutants" / "mutmut-stats.json").read_text())
         tests = stats.get("tests_by_mangled_function_name", {})
         head = git(repo, "rev-parse", "HEAD").strip()
@@ -690,6 +697,7 @@ def run_mutation(out: Path, modules: list[str], repo: Path = ROOT) -> int:
                 "head": head,
                 "run_seconds": took,
                 "deselected": deselect,
+                "stopped": stopped,
                 "mutant_seconds": round(sum(meta.get("durations_by_key", {}).values())),
                 "mutants": {name: mutants[name] for name in own},
                 "tests": {name: sorted(tests[name]) for name in of_module(tests, module)},
@@ -699,10 +707,31 @@ def run_mutation(out: Path, modules: list[str], repo: Path = ROOT) -> int:
             print(
                 f"mutation: {module}: {len(own)} mutants, {score(result):.1%}, {spent} s of mutants"
             )
-        print(f"mutation: {took} s in all")
-        return code
+        print(f"mutation: {took} s in all" + (f", {stopped}" if stopped else ""))
+        return 130 if stopped else code
     finally:
         remove_copy(repo, copy)
+
+
+def run_mutmut(mutmut: Path, copy: Path, log: Path) -> int:
+    """`mutmut run` in `copy`, in its own group: interrupted, the group (its forked mutants
+    too) is stopped before the copy is read and removed."""
+    with open(log, "w") as output:
+        run = subprocess.Popen(
+            [str(mutmut), "run"], cwd=copy, stdout=output, stderr=output, start_new_session=True
+        )
+        try:
+            return run.wait()
+        except KeyboardInterrupt:
+            for sig in (signal.SIGINT, signal.SIGKILL):
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(run.pid, sig)
+                with contextlib.suppress(subprocess.TimeoutExpired):
+                    run.wait(timeout=10)
+                    break
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(run.pid, signal.SIGKILL)  # mutants left after mutmut itself ended
+            raise
 
 
 def parse_results(text: str) -> dict[str, str]:
@@ -713,8 +742,9 @@ def parse_results(text: str) -> dict[str, str]:
 
 
 def score(result: dict) -> float:
-    """(killed + timeout) / all mutants; a mutant without tests counts as survived."""
-    mutants = result["mutants"].values()
+    """(killed + timeout) / the mutants checked; a mutant without tests counts as survived,
+    one a stopped run did not check is left out."""
+    mutants = [status for status in result["mutants"].values() if status != UNCHECKED]
     return sum(status in KILLS for status in mutants) / (len(mutants) or 1)
 
 
@@ -850,10 +880,13 @@ def run_report(out: Path) -> int:
             survived = Counter(
                 function_of(name)
                 for name, status in result["mutants"].items()
-                if status not in KILLS
+                if status not in (*KILLS, UNCHECKED)
             )
             most = ", ".join(f"{f} {n}" for f, n in survived.most_common(5))
             spent, count = result.get("mutant_seconds", ""), len(result["mutants"])
+            if stopped := result.get("stopped"):
+                checked = sum(status != UNCHECKED for status in result["mutants"].values())
+                count = f"{checked} of {count} ({stopped})"
             rows.append(f"| {module} | {count} | {score(result):.1%} | {spent} | {most} |")
         parts.append("\n".join(rows) + "\n")
 
@@ -917,6 +950,7 @@ def main(argv: list[str]) -> int:
     pseudo.add_argument("--timeout", type=float, default=300, help="seconds per function")
     mutation = command("mutation", "mutmut's score of modules of src/lado/, by hand")
     mutation.add_argument("modules", nargs="+", help="e.g. runs providers.claude")
+    mutation.add_argument("--repo", type=Path, default=ROOT)
     proof = command("prove", "no mutant killed before survives after a batch")
     proof.add_argument("before", type=Path, help="a folder of mutation-*.json, or one file")
     proof.add_argument("after", type=Path)
@@ -941,7 +975,7 @@ def main(argv: list[str]) -> int:
             out, repo=opts.repo.resolve(), modules=modules, coverage=coverage, timeout=opts.timeout
         )
     if opts.command == "mutation":
-        return run_mutation(out, opts.modules)
+        return run_mutation(out, opts.modules, repo=opts.repo.resolve())
     if opts.command == "prove":
         return run_prove(opts.before, opts.after, deleted=opts.deleted, coverage=opts.coverage)
     if opts.command == "report":

@@ -133,6 +133,64 @@ def test_an_interrupted_pseudo_leaves_it_clean(tmp_path):
     assert not (tmp_path / "out" / "pseudo-copy").exists()
 
 
+SLOW_TESTS = """\
+import time
+
+from lado.core import checked, slow
+
+
+def test_checked():
+    assert checked(1) == 2
+
+
+def test_slow():
+    time.sleep(3)
+    assert slow(2, 3) == 6
+"""
+
+
+def test_an_interrupted_mutation_keeps_what_it_measured(tmp_path):
+    repo = tiny_repo(tmp_path)
+    core = CORE + "\n\ndef slow(a, b):\n    return a * b if a > 0 and b > 0 else a + b\n"
+    (repo / "src" / "lado" / "core.py").write_text(core)
+    (repo / "tests" / "test_core.py").write_text(SLOW_TESTS)
+    (repo / "pyproject.toml").write_text('[project]\nname = "lado"\nversion = "0"\n')
+    git(repo, "add", ".")
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "slow")
+    out = tmp_path / "out"
+    audit = subprocess.Popen(
+        [sys.executable, str(SCRIPT), "--out", str(out), "mutation", "core", "--repo", str(repo)],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    meta = out / "mutmut-copy" / "mutants" / "src" / "lado" / "core.py.meta"
+    try:
+        deadline = time.monotonic() + 90
+        while time.monotonic() < deadline:  # until mutmut has checked a mutant
+            try:
+                if any(
+                    code is not None
+                    for code in json.loads(meta.read_text())["exit_code_by_key"].values()
+                ):
+                    break
+            except (OSError, ValueError, KeyError):
+                pass
+            time.sleep(0.2)
+        os.kill(audit.pid, signal.SIGINT)  # the script only, not mutmut's group
+        assert audit.wait(timeout=60) == 130
+    finally:
+        if audit.poll() is None:
+            audit.kill()
+
+    result = json.loads((out / "mutation-core.json").read_text())
+    assert result["stopped"] == "interrupted"
+    statuses = set(result["mutants"].values())
+    assert statuses & {"killed", "survived"}  # what it measured is kept
+    assert "not checked" in statuses  # and what it did not is named
+    assert not (out / "mutmut-copy").exists()
+    clean(repo)
+
+
 def test_a_copy_whose_lado_is_another_s_is_refused(tmp_path):
     repo = tiny_repo(tmp_path, package="lado")  # no src/: the copy would import LADO's lado
     result = subprocess.run(

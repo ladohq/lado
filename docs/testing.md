@@ -542,7 +542,9 @@ names the command of a part not measured; a part that fails does not stop the ot
   with the unit layer, in a copy under `--out`; `mutation-<module>.json` holds each mutant's
   status and the tests of each function. A mutant only the integration or UI layer kills
   counts as survived, the same before and after a batch. Its two passes of the whole unit
-  layer, serially, take about 13 minutes before the first mutant.
+  layer, serially, take about 13 minutes before the first mutant. Ctrl-C (or `timeout -s INT`)
+  stops it and keeps what it checked: each file says `"stopped"`, and its mutants not checked
+  are marked so and left out of the score.
 
 **Proving a batch.** A pull request that deletes or moves tests measures each module a
 deleted test ran (its coverage record names them): `mutation` on the target branch

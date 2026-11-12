@@ -357,6 +357,11 @@ def test_the_score_counts_a_timeout_killed_and_a_mutant_without_tests_survived()
     assert test_audit.score(result) == 0.5
 
 
+def test_the_score_of_a_stopped_run_leaves_out_the_mutants_it_did_not_check():
+    mutants = {"a": "killed", "b": "survived", "c": "not checked", "d": "not checked"}
+    assert test_audit.score({"module": "runs", "mutants": mutants}) == 0.5
+
+
 def test_prove_passes_when_every_killed_mutant_stays_killed():
     before = {"module": "runs", "mutants": {"m1": "killed", "m2": "survived"}}
     after = {"module": "runs", "mutants": {"m1": "timeout", "m2": "survived"}}
@@ -546,6 +551,22 @@ def test_the_report_joins_what_was_measured(tmp_path):
     assert "| runs | 2 | 50.0% |" in report
     assert "runs.go: t.py::a" in report
     assert "runs.stop" in report
+
+
+def test_the_report_names_a_stopped_mutation_run(tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    mutants = {"lado.runs.x_go__mutmut_1": "killed", "lado.runs.x_go__mutmut_2": "survived"}
+    mutants["lado.runs.x_stop__mutmut_1"] = "not checked"
+    write_mutation(out, "runs", mutants)
+    data = json.loads((out / "mutation-runs.json").read_text())
+    (out / "mutation-runs.json").write_text(json.dumps(data | {"stopped": "interrupted"}))
+
+    assert test_audit.run_report(out) == 0
+
+    report = (out / "report.md").read_text()
+    assert "| runs | 2 of 3 (interrupted) | 50.0% |" in report
+    assert "x_stop" not in report  # not checked is not survived
 
 
 def test_the_report_marks_a_part_not_measured(tmp_path):

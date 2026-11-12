@@ -83,6 +83,12 @@ results.
 - **WHEN** every mutant of the touched modules killed before the batch is killed after it
 - **THEN** the proof passes and prints each module's score before and after
 
+#### Scenario: A mutation run stopped in the middle
+
+- **WHEN** the mutation command is interrupted after mutmut checked some of the mutants
+- **THEN** each module's result is still written, says that the run was stopped, marks the
+  mutants not checked and leaves them out of the score, and the copy is removed
+
 #### Scenario: A deleted test of no module
 
 - **WHEN** a deleted test executed no line of `src/lado/` or `scripts/` (a test of a document)

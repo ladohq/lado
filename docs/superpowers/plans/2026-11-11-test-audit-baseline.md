@@ -139,13 +139,17 @@ integration files with `-m integration`, and CI's `ci-ok` on the pull request.
 
 ```python
 def test_a_test_inside_another_is_a_candidate():
-    cov = {"t.py::a": {"src/lado/runs.py": set(range(10, 21))},
-           "t.py::b": {"src/lado/runs.py": set(range(1, 41))}}
+    cov = {
+        "t.py::a": {"src/lado/runs.py": set(range(10, 21))},
+        "t.py::b": {"src/lado/runs.py": set(range(1, 41))},
+    }
     assert subset_candidates(cov) == [("t.py::a", "t.py::b")]
+
 
 def test_cases_of_one_function_are_not_compared():
     lines = {"src/lado/runs.py": {1, 2}}
     assert subset_candidates({"t.py::f[x]": lines, "t.py::f[y]": dict(lines)}) == []
+
 
 def test_equal_sets_are_listed_once():
     lines = {"src/lado/runs.py": {1, 2}}
@@ -188,10 +192,12 @@ def test_prove_passes_when_every_killed_mutant_stays_killed():
     after = {"module": "runs", "mutants": {"m1": "timeout", "m2": "survived"}}
     assert prove(before, after) == []
 
+
 def test_prove_names_a_lost_mutant():
     before = {"module": "runs", "mutants": {"m1": "killed"}}
     after = {"module": "runs", "mutants": {"m1": "survived"}}
     assert prove(before, after) == ["runs: m1 killed before, survived after"]
+
 
 def test_prove_refuses_other_modules():
     with pytest.raises(ValueError, match="runs.*flows"):

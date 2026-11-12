@@ -342,6 +342,7 @@ def test_the_humans_message_carries_uploaded_files_to_the_supervisor(session):
     assert (message.sender, message.recipient) == ("human", "supervisor")
     assert runtime.format_message(message) == (
         f"[from human] look at this (#{message.id}, 1 artifact: call read_messages)"
+        + runtime.HUMAN_REPLY_HINT
     )
     [read] = _call(session, "supervisor", "read_messages")
     assert read["artifacts"] == [

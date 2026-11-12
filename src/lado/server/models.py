@@ -1804,7 +1804,8 @@ def message_info(message: state.Message) -> MessageInfo:
         answered_by=message.answered_by,
         reply_to=message.reply_to,
         choice=message.choice,
-        reply_state=message.reply_state,
+        # Reminded: the verdict waits for the reminder's turn (state.check_replies).
+        reply_state=None if message.reply_state == state.REMINDED else message.reply_state,
         attachments=attachment_infos(state.message_attachments(message.id))
         if message.attachments
         else [],

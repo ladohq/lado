@@ -45,7 +45,10 @@ def test_a_session_starts_with_the_humans_first_message(repo):
         wait_for(lambda: delivered("s"), "the human's first message delivered", "s")
         [message] = humans("s")
         assert (message.recipient, message.body) == ("supervisor", "Take LAD-19\nAsk first")
-        line = f"[from human] {runtime.FIRST_MESSAGE} (#{message.id}, 2 lines: call read_messages)"
+        line = (
+            f"[from human] {runtime.FIRST_MESSAGE} (#{message.id}, 2 lines: call read_messages)"
+            + runtime.HUMAN_REPLY_HINT
+        )
         assert line in inputs("s")[0].splitlines()  # its first input
         assert not [text for text in inputs("s") if "LAD-19" in text]  # the body is not typed
     finally:
@@ -66,7 +69,8 @@ def test_a_resumed_session_gets_the_humans_message_after_lados(repo):
         first = next(t for t in inputs("s") if "session resumed" in t).splitlines()
         assert first == [
             "[from lado] session resumed: 0 open runs",
-            f"[from human] {runtime.FIRST_MESSAGE} (#{message.id}, 1 line: call read_messages)",
+            f"[from human] {runtime.FIRST_MESSAGE} (#{message.id}, 1 line: call read_messages)"
+            + runtime.HUMAN_REPLY_HINT,
         ]
     finally:
         runtime.stop_session("s")
@@ -162,7 +166,8 @@ def test_an_approved_proposal_starts_an_independent_session_with_the_brief(repo)
         runtime.stop_session("a")
         assert tmux.has_session("b")
         assert loop.running("b")
-        assert idle("b")
+        # After its reminder of the human's last message, which it answered in no chat.
+        wait_for(lambda: idle("b"), "b's supervisor idle", "b")
     finally:
         for session in ("a", "b"):
             sess = state.get_session(session)

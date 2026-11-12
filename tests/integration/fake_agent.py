@@ -8,7 +8,10 @@ pasted into its terminal. In its first input (a worker's task, a resumed supervi
 messages), a line from "lado" that has more to read makes it call read_messages and work on
 the body of each message from "lado" it gets, as an agent reads its task and does it; the
 bodies of later messages, and of other senders, it only reads when told to (`read`).
-Every input line is a command, after an optional "[from <name>] ":
+Every input line is a command, after an optional "[from <name>] " and without the config's
+"human_hint" at its end (the hint LADO ends the human's line with):
+    next <command>     run <command> on the next input, before that input's own commands, as
+                       an agent that answers the human only once LADO reminds it
     send <to> <summary>[ | <body>][ --artifacts <name>,<name>...]  call the LADO MCP tool
                        send_message; "\\n" in the body is a line break; "seen" gets the
                        text of the latest one's result ("send_text")
@@ -330,13 +333,20 @@ turn_error = ""  # the error the turn ends on (`fail`)
 always_error = ""  # the error every turn ends on (`failing`)
 lose_output = False  # drop what the turn-end hook prints (`lose`)
 in_background = False  # work goes on after this turn (`background`)
+later: list[str] = []  # the commands to run on the next input (`next`)
 
 
 def work(text: str) -> bool:
     """Act on the commands in `text`. Returns True for exit."""
-    global holds, turn_error, always_error, lose_output, in_background
-    for line in text.splitlines():
-        command = re.sub(r"^\[from [^\]]*\] ", "", line.strip()).split(" ", 2)
+    global holds, turn_error, always_error, lose_output, in_background, later
+    lines, later = [*later, *text.splitlines()], []
+    for line in lines:
+        line = line.strip().removesuffix(config.get("human_hint", ""))
+        line = re.sub(r"^\[from [^\]]*\] ", "", line)
+        command = line.split(" ", 2)
+        if command[0] == "next":
+            later.append(line.partition(" ")[2])
+            continue
         if command[0] == "exit":
             return True
         if command[0] == "die":

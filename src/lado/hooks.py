@@ -32,6 +32,14 @@ BASELINE = "read-only-baseline.json"
 # sweep after the fingerprint.
 STARTUP_RESERVE = 0.5
 QUEUE_RESERVE = 1.0
+# LADO's one reminder for a message from the human the agent's turn did not answer in the
+# chat (state.check_replies). "Else do nothing" keeps needless replies to a thanks rare: the
+# text measured in the experiment of LAD-274.
+REPLY_REMINDER = (
+    "your answer to the human's message #{id} went only to your terminal, which the human"
+    ' does not see. If it needs an answer, use send_message(to="human") or ask_human; else'
+    " do nothing."
+)
 
 
 def deadline(provider: providers.Provider, native: str, started: float) -> float | None:
@@ -213,11 +221,15 @@ def handle(
             state.confirm_channel(session, agent, state.HOOK_OUTPUT)
         else:
             state.output_not_taken(session, agent)
-        # The human's messages this turn got: did it write to the human? Before the inbox is
-        # handed over, so what the next turn gets is checked when that one ends. A turn that
-        # ended on an error decides nothing: the next clean turn does.
+        # The human's messages this turn got: did it write to the human? If not, one
+        # reminder each, which the inbox hands over below. Before the inbox is handed over,
+        # so what the next turn gets is checked when that one ends. A turn that ended on an
+        # error decides nothing: the next clean turn does.
         if not event.error:
-            state.check_replies(session, agent)
+            for unanswered in state.check_replies(session, agent):
+                state.queue_message(
+                    session, state.LADO, agent, REPLY_REMINDER.format(id=unanswered)
+                )
         # Before the agent is idle: a resume planned for it holds while it stays idle, and
         # is dropped when the queue makes it busy now (state.schedule_resume).
         if event.error:

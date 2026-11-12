@@ -807,6 +807,7 @@ def test_a_codex_supervisor_with_a_first_message_gets_no_first_input(repo, fake_
     _, argv = agent_helpers.launched(fake_tmux[0])
     assert argv[-1] == (
         f"[from human] {runtime.FIRST_MESSAGE} (#{first.id}, 1 line: call read_messages)"
+        + runtime.HUMAN_REPLY_HINT
     )
     assert not [a for a in argv if "LAD-19" in a]
 

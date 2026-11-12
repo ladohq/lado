@@ -17,8 +17,12 @@ environment is the one mark all of them keep.
 
 A process's environment is read from `/proc` on Linux and from `ps -E` on macOS (the
 environment it started with, which is what its parent gave it); standard library only.
+macOS 27 shows no other process's environment, to `ps -E` or to sysctl: `readable()` says
+whether this system does, and where it does not nothing is found, said once per run
+(`UNREADABLE`, tests/conftest.py), and the tests of this module's mechanism are skipped.
 """
 
+import functools
 import os
 import re
 import shutil
@@ -117,12 +121,33 @@ def processes() -> list[Process]:
     raise RuntimeError(f"tests/leftovers.py cannot read processes' environment on {sys.platform}")
 
 
+UNREADABLE = (
+    "this system shows no process's environment (macOS 27 and later): the processes a "
+    "test leaves are not found, killed or named"
+)
+PROBE = "LADO_LEFTOVERS_PROBE"
+
+
+@functools.cache
+def readable() -> bool:
+    """Whether processes() shows the environment of a process this one starts."""
+    mark = f"probe-{os.getpid()}"
+    child = subprocess.Popen(["sleep", "10"], env={**os.environ, PROBE: mark})
+    try:
+        return any(p.pid == child.pid and p.has(PROBE, mark) for p in processes())
+    finally:
+        child.kill()
+        child.wait()
+
+
 def _run(argv: list[str]) -> str:
     return subprocess.run(argv, capture_output=True, text=True, check=True).stdout
 
 
 def marked(name: str, value: str) -> list[Process]:
     """The processes whose environment has `name=value`, the caller left out."""
+    if not readable():
+        return []
     me = os.getpid()
     return [p for p in processes() if p.pid != me and p.has(name, value)]
 
@@ -170,7 +195,9 @@ def reap_dead_runs() -> list[Process]:
     answers on; the killed processes. A living run's processes are never touched; a pid
     reused by another process makes a dead run look alive, and its leftovers wait for a
     later run."""
-    dead = [p for p in processes() if p.pid != os.getpid() and _dead_owner(p.get("LADO_TEST_PID"))]
+    me = os.getpid()
+    running = processes() if readable() else []
+    dead = [p for p in running if p.pid != me and _dead_owner(p.get("LADO_TEST_PID"))]
     _kill(dead)
     if shutil.which("tmux"):
         folder = tmux_folder()

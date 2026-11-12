@@ -17,6 +17,9 @@ pytestmark = pytest.mark.integration
 
 IGNORES_HUP = ["sh", "-c", 'trap "" HUP; sleep 60']
 
+# What a test left is found by its environment; where the system shows none, not at all.
+needs_environ = pytest.mark.skipif(not leftovers.readable(), reason=leftovers.UNREADABLE)
+
 
 def start(argv: list[str], **env: str) -> subprocess.Popen:
     """`argv` with `env` added to the test's environment, once it runs (exec'd, so its
@@ -45,6 +48,7 @@ def test_a_sweep_with_nothing_left_returns_at_once(tmp_path):
     assert time.monotonic() - started < 1
 
 
+@needs_environ
 def test_a_sweep_kills_and_names_what_outlives_the_wait_and_leaves_other_homes(tmp_path):
     mine, other = tmp_path / "home", tmp_path / "home-2"
     stubborn = start(IGNORES_HUP, LADO_HOME=str(mine))
@@ -66,6 +70,7 @@ def test_a_sweep_kills_and_names_what_outlives_the_wait_and_leaves_other_homes(t
         stop(stubborn, neighbour)
 
 
+@needs_environ
 def test_a_dead_runs_processes_are_reaped_and_a_living_runs_are_not():
     gone = subprocess.Popen(["true"])
     gone.wait()
@@ -150,6 +155,7 @@ def test_leaves_a_sleep():
 """
 
 
+@needs_environ
 @pytest.mark.parametrize("workers", ["0", "2"])
 def test_a_run_names_the_test_that_left_a_process(tmp_path, workers):
     # A scratch run with the suite's conftest as a plugin, in a folder of its own: its
@@ -173,6 +179,7 @@ def test_a_run_names_the_test_that_left_a_process(tmp_path, workers):
     assert agent_helpers.gone(pid)
 
 
+@needs_environ
 def test_a_process_of_the_run_left_at_its_end_is_killed_and_named():
     left_behind = start(["sleep", "60"])
     try:

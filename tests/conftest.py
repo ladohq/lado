@@ -79,6 +79,12 @@ def pytest_runtest_protocol(item, nextitem):
         os.environ.pop("LADO_TEST_ID", None)
 
 
+def pytest_report_header(config):
+    if not leftovers.readable():
+        return f"leftover processes: {leftovers.UNREADABLE}"
+    return None
+
+
 def pytest_sessionstart(session):
     # The controller of an xdist run, or a run without workers; the workers start with it.
     if not hasattr(session.config, "workerinput"):
@@ -102,6 +108,11 @@ def pytest_sessionfinish(session):
         session.config.workeroutput["leftovers"] = leftovers.describe(leftovers.own_left())
         return (yield)
     result = yield
+    if not leftovers.readable():
+        reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+        if reporter:
+            reporter.write_sep("=", f"not checked: {leftovers.UNREADABLE}", yellow=True)
+        return result
     left = [leftovers.describe(leftovers.own_left()), *_LEFT_BY_WORKERS]
     if any(left):
         reporter = session.config.pluginmanager.get_plugin("terminalreporter")

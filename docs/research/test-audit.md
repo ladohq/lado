@@ -149,7 +149,9 @@ No single method is enough; they work as a funnel:
 
 ## 4. The staged plan
 
-Status: stage 0 not started; the others wait for its numbers.
+Status: stage 0 in progress (durations, CI reports, unit coverage done; the coverage of
+the integration and UI layers' subprocesses and of vitest open, see section 6); the others
+wait for its numbers.
 
 ### Stage 0. Baseline measurements (no test changes)
 
@@ -170,6 +172,28 @@ Status: stage 0 not started; the others wait for its numbers.
 
 **Risk.** None for the product; coverage slows the runs it measures, so it is not added to
 `make check`.
+
+**How to measure** (the numbers of section 6 come from these). A coverage config of its own
+outside the repository, e.g. `$DIR/rc`:
+
+```ini
+[run]
+branch = true
+source_pkgs = lado
+parallel = true
+data_file = $DIR/.coverage
+patch = subprocess
+core = ctrace
+```
+
+`core = ctrace` (or `COVERAGE_CORE=ctrace`) is required: from Python 3.14 coverage.py's
+default core is `sysmon`, which records no per-test contexts. Then
+`COVERAGE_CORE=ctrace uv run pytest -n auto --cov --cov-config=$DIR/rc --cov-context=test
+--cov-report=` (with `-m integration` for that layer), and
+`uv run python scripts/test_audit.py $DIR/.coverage --functions`. Durations:
+`pytest --durations=0 --junitxml=...`. Before the UI layer, rebuild the bundle
+(`cd web && npm run build`): `src/lado/server/static` from an older `web/src` fails a
+third of the browser tests.
 
 ### Stage 1. Quick wins: speed and empty tests
 
@@ -275,7 +299,81 @@ When unsure, keep the test, mark it in the log and come back with mutation data.
 One entry per stage: date, pull request, what was done, numbers before and after, the
 decisions taken, what changed in the plan.
 
-_No entries yet._
+### Stage 0, part 1 (2026-11-12, branch `chore/test-audit-stage-0`)
+
+Measured on a MacBook Air (8 CPU, macOS, Python 3.14), main at `02767b42`.
+
+**Done.**
+- CI keeps each unit, integration and UI cell's junit report for 90 days, also of a red
+  run (artifacts `junit-unit-*`, `junit-integration-*`, `junit-ui-*`).
+- `scripts/test_audit.py`: the numbers below from a coverage database measured per test;
+  `pytest-cov` in the dev dependencies.
+
+**Durations** (`-n auto`, 8 workers):
+
+| Layer | Tests | Wall time | Sum of the tests' times | Where the time goes |
+|---|---|---|---|---|
+| Unit | 6162 | 2 min 57 s | 1 269 s | spread: top 50 tests 12%, top 300 33%; 1863 tests under 10 ms |
+| Integration | 297 | 4 min 43 s | 2 152 s | top 10 15%, top 30 31%; the slowest 69 s (a secret canary) |
+| UI | 628 | 14 min 46 s | 7 030 s | median 10.3 s a test, top 100 only 28%: each test's own setup costs, not a few slow ones |
+
+The slowest unit tests: one of 20 s (`test_providers::test_a_claude_session_start_keeps_the_alias_s_source`),
+`test_install_sh` 129 s in all. The costliest UI files: `test_phone` (76 tests, 965 s),
+`test_session_head` (663 s), `test_launch` (656 s), `test_narrow_layout` (43 tests, 499 s):
+the phone and narrow layouts alone are ~1 500 s.
+
+**Unit coverage per test** (branches, the cases of a parametrized test as one test):
+
+| | Value |
+|---|---|
+| Coverage of `src/lado` (lines and branches) | 96%; lowest `terminal.py` 55%, `server/run.py` 81%, `images.py` 81% |
+| Test functions | 4 361 (6 167 cases) |
+| Branches run | 26 364 |
+| A greedy cover of every branch | 1 205 functions (28%) |
+| Functions with no branch no other runs | 3 502 (80%) |
+| Groups of identical footprints | 187 groups, 1 055 functions |
+
+How to read it:
+- The suite covers the code densely and overlaps itself heavily: a quarter of the test
+  functions run every branch the whole suite runs. Running a branch is not checking it, so
+  this is where the overlap is, not how much can go; mutation testing (stage 3) decides.
+- One "identical" group is 581 functions that run almost nothing of `src/lado`: the tests
+  of `scripts/`, workflows, the Dockerfile and the installers (`test_docker` 94,
+  `test_install_sh` 81, `test_rc_check` 69, `test_smoke_ci` 48, `test_ci_workflow` 36,
+  `test_windows_shell_workflow` 34, ...). Coverage of `lado` cannot judge them; they are
+  stage 2's.
+- The other 186 groups (474 functions) are the first real candidates: tests that take the
+  very same branches, e.g. `test_codex.py` (12 functions in one group, 8 in two others),
+  `test_cli.py::test_source_commands_are_not_under_kits` and 7 more.
+- Most functions with no unique branch are in the big files (stage 4): `test_runtime.py`
+  405 of 480, `test_state.py` 194 of 204, `test_model_settings.py` 173 of 198,
+  `test_providers.py` 153 of 179, `test_cli.py` 125 of 219, `test_codex.py` 123 of 155.
+
+**What the measurements found besides.**
+- Locally (macOS, Python 3.14) 12 tests fail on main, every time, serially too; CI runs on
+  Ubuntu only and does not see them. Unit: `test_clone` and `test_server_clones` (a folder
+  that cannot be read), `test_login_status::test_claude_api_key_of_its_own_login` (the
+  keychain), `test_runtime::test_an_agent_s_state_outlives_a_resume_and_goes_with_its_session`
+  (`FileExistsError`), `test_server_launch` and `test_setup` (a name not in UTF-8: APFS
+  refuses it). Integration: 5 of `test_leftover_processes`,
+  `test_session_loop::test_the_loop_types_a_swallowed_message_again`. UI: 4 layout tests
+  (`test_narrow_layout` 2, `test_team_head` 2) fail serially too. A task of its own, not
+  this audit's.
+- Load makes tests flaky: of the 20 UI tests that failed with 8 workers, 16 passed serially;
+  under coverage 1 more unit and 3 more integration tests failed. CI's 2 UI workers are not
+  a whim.
+- Coverage costs ~75% more time (unit: 5 min 10 s instead of 2 min 57 s) and a 163 MB
+  database.
+
+**Open in stage 0.**
+- The integration layer's coverage: only 5 639 lines ran in pytest's own process; `lado
+  mcp`, hooks and the session loop run in agents' processes whose environment comes from
+  the login shell, so coverage's variables never reach them. Its numbers (79% no unique
+  line) say nothing yet. Needs the coverage variables passed into the agents' environment
+  for the measurement.
+- The UI layer's coverage (`lado server` as a subprocess) and vitest's
+  (`@vitest/coverage-v8`).
+- `scripts/` and the test helpers are not measured (`source_pkgs = lado`).
 
 ## 7. Sources
 

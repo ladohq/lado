@@ -345,6 +345,16 @@ def codex_home(tmp_path, monkeypatch):
     return folder
 
 
+@pytest.fixture(autouse=True)
+def user_state(tmp_path, monkeypatch):
+    """The user's XDG_STATE_HOME, never the user's ~/.local/state; not made. An OpenCode or
+    Kilo agent starts from the user's /model memory there (lado.providers.opencode_family),
+    and a test on a machine with one of them used would start from that machine's."""
+    folder = tmp_path / "user-state"
+    monkeypatch.setenv("XDG_STATE_HOME", str(folder))
+    return folder
+
+
 class CodexSandbox:
     """What the probe of Codex's sandbox answers in a test (codex._sandbox_error): no `codex`
     runs; the sandbox starts unless `error` is set (the line the probe would give). `calls`

@@ -144,7 +144,8 @@ agent started on the file made stale so it refreshes it (a running Codex keeps i
 memory and reads the file again only when its own tokens need a refresh): only with `LADO_LIVE_CODEX_HOME` naming a Codex home the human
 logged in to (`CODEX_HOME=<dir> codex login --device-auth`), else it skips.
 Unit tests get a `CODEX_HOME` of their own (`codex_home`, `tests/conftest.py`), never the
-user's `~/.codex`. If Claude Code's workspace trust dialog shows in a live test, the test
+user's `~/.codex`, and an `XDG_STATE_HOME` of their own (`user_state`), never the user's
+`~/.local/state`, where an OpenCode or Kilo agent's /model memory starts from. If Claude Code's workspace trust dialog shows in a live test, the test
 fails with LADO's reason. Every test gets a Claude config of its
 own (`claude_config` in `tests/conftest.py`, autouse, `CLAUDE_CONFIG_DIR` outside
 `tmp_path`), which trusts the `repo` fixture's folder, never the user's: LADO writes the

@@ -1,7 +1,9 @@
 # Test audit: research and staged plan
 
 Started 2026-11-12 on the human's request: are all of LADO's tests useful, which ones can be
-removed, merged or made cheaper, and how other projects answer the same question. This file
+removed or merged, and how other projects answer the same question. The goal is fewer
+tests that check as much: the number of tests, not their speed; a faster run is a side
+effect. This file
 is living: the research (sections 2-3) stays as written, the plan (section 4) and the log
 (section 6) are updated after each stage with its status, its numbers and the decisions
 taken. Each stage is its own pull request and leaves `make check` green.
@@ -149,7 +151,9 @@ No single method is enough; they work as a funnel:
 
 ## 4. The staged plan
 
-Status: stage 0 done (2026-11-13, section 6); stage 1 next.
+Status: stage 0 done (2026-11-13, section 6); stage 1 next. Reordered after stage 0 on the
+human's word (2026-11-13): every stage cuts the number of tests, starting where stage 0's
+numbers already name the candidates; speed is no stage of its own.
 
 ### Stage 0. Baseline measurements (no test changes)
 
@@ -218,65 +222,72 @@ Durations: `pytest --durations=0 --junitxml=...`; vitest:
 the bundle (`cd web && npm run build`): `src/lado/server/static` from an older `web/src`
 fails a third of the browser tests.
 
-### Stage 1. Quick wins: speed and empty tests
+### Stage 1. Tests with identical footprints
 
-**Why.** The slowest few percent of the tests usually take most of the time; making them
-fast helps every run of every agent at once.
+**Why.** Stage 0 found 201 groups of unit test functions (514 functions) that take exactly
+the same branches of `src/lado` and `scripts/`: the most direct list of copies, and the
+safest place to start cutting.
 
-**What.**
-- The top 20 slowest tests from stage 0: replace sleeps with waiting on an event, narrow
-  timeouts, share heavy setup (`scope="module"`/`"session"` fixtures) where tests stay
-  independent.
-- Tests without assertions or with assertions that cannot fail, and tests with no unique
-  coverage: review each; remove those that check nothing another test does not.
+**What.** Group by group, biggest first (`test_codex.py`, `test_cli.py`,
+`test_agent_env.py`, ...), one or two test files per pull request. For each group read the
+tests: those that check the same thing on the same path become one test, or one
+`parametrize`d test when they differ only in data; those that check different results of
+the same path stay, the reason in the log. Section 5's rules apply to each removal.
 
-**Result.** Time per layer before and after; the list of removed tests with a reason each.
+**Result.** Per pull request: test functions and lines before and after, branch coverage
+before and after (must not drop), the groups kept and why.
 
-### Stage 2. Tests of file texts
+### Stage 2. Tests of files that are not Python
 
-**Why.** Tests that copy the wording of a document or a workflow file break on every edit
-of it and rarely find a bug: they are change detectors (2.4).
+**Why.** 408 unit test functions run no code of `src/lado` or `scripts/` of their own: they
+check the Dockerfile, the installers, the workflows and documents, often by their exact
+text. Such tests break on every edit of the file and rarely find a bug: they are change
+detectors (2.4).
 
-**What.** Go through the ~51 unit test files that read documents, workflows, Dockerfiles
-and installers. Sort each test into:
+**What.** File by file, biggest first (`test_docker.py` 88, `test_install_sh.py` 80,
+`test_ci_workflow.py` 36, `test_windows_shell_workflow.py` 32, `test_smoke_ci.py` 25, ...).
+Sort each test into:
 - **keep**: it guards an invariant (AGENTS.md's 200 lines, a CI step that must exist, a
   security setting of the image, a link that must resolve);
-- **rewrite**: the invariant is real but checked through exact text; check the property
-  instead (parse the YAML, check the key, not the line);
+- **merge or rewrite**: the invariant is real but checked through exact text or spread
+  over several tests; one test checks the property (parse the YAML, check the key, not the
+  line);
 - **remove**: it only repeats the file.
 
-**Result.** The count of each kind; a rule for docs/testing.md on what such tests may check.
+**Result.** Per file: the count of each kind, tests before and after; a rule for
+docs/testing.md on what such tests may check.
 
 ### Stage 3. Mutation testing pilot
 
-**Why.** To learn what mutation testing costs here and what it finds before relying on it
-in stages 4-5.
+**Why.** Most unit tests with no unique branch are in the big files (`test_state.py`: 194 of
+204). Coverage cannot say which of them catch a bug; mutation testing can, and stage 4
+needs that to cut safely.
 
-**What.** `mutmut` on one or two modules of pure logic with fast unit tests (candidates:
-`text.py`, `flows.py`). Record: run time, the number of mutants, the share killed, the
-survivors worth a test, the tests that kill nothing unique. Decide whether to use it in
-stage 4, and how (per file, on changed lines, nightly).
+**What.** `mutmut` on one module whose tests overlap most, `state.py` first (or a smaller
+one of pure logic if `state.py` proves too slow). Record: run time, mutants, the share
+killed, which tests kill no mutant another test does not. Remove those tests where
+section 5 allows, and decide how stage 4 uses mutation testing (per file, on changed lines).
 
-**Result.** The pilot's numbers and the decision, in section 6. New tests only for
-survivors that show a real gap.
+**Result.** The pilot's numbers, the tests removed, the decision, in section 6.
 
 ### Stage 4. Consolidating the big unit files, one per pull request
 
 **Why.** The five largest files hold a third of the unit test code; they are where copies
 and near-copies collect.
 
-**What.** In order: `test_runtime.py`, `test_cli.py`, `test_state.py`, `test_providers.py`,
-`test_model_settings.py`. For each: merge tests that differ only in data into
-`parametrize`, remove the tests that stage 0 and, where affordable, mutation testing
-show to add nothing (section 5), move shared setup to fixtures, split the file by topic if
-it helps navigation.
+**What.** In order of stage 0's overlap: `test_runtime.py` (416 of 489 functions with no
+unique branch), `test_state.py` (unless stage 3 did it), `test_model_settings.py`,
+`test_providers.py`, `test_cli.py`, `test_codex.py`. For each: remove the tests that
+mutation testing shows to kill nothing another does not (section 5), merge tests that differ
+only in data into `parametrize`.
 
 **Result.** Per file: tests and lines before and after, branch coverage and killed mutants
 before and after (both must not drop).
 
 ### Stage 5. The browser layer and the pyramid
 
-**Why.** The browser tests are the most expensive layer (4 shards of up to 25 minutes).
+**Why.** 628 browser tests beside 1 914 vitest tests of the same components; a browser test
+that checks what vitest already does is a copy at the highest price.
 
 **What.** Map the 628 UI tests to the vitest tests of the same components. A browser test
 that only checks the rendering or the logic of one component, already checked by vitest,
@@ -295,11 +306,11 @@ unit twin.
 - docs/testing.md: when a new test is not needed (an existing one already fails on the
   bug), `parametrize` over copies, remove the test a change makes redundant, what tests of
   file texts may check (stage 2).
-- A time budget per layer in CI that warns when it is exceeded.
+- A count of the tests per layer in CI's summary, so that growth shows in every run.
 - Optionally, mutation testing of the changed modules (nightly or on demand), if stage 3
   shows it is affordable.
 
-**Result.** The rules merged; the budget in CI.
+**Result.** The rules merged; the count in CI.
 
 ## 5. Rules for removing a test
 

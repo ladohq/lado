@@ -39,7 +39,15 @@ jobs:
       - run: uv sync --locked
       - run: uv run ruff format --check
       - run: uv run ruff check
-      - run: uv run pytest -n auto
+      - run: uv run pytest -n auto --junitxml=junit.xml
+      # The test results for the test audit (docs/research/test-audit.md): durations and
+      # failures over weeks, also of a red run.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: junit-unit-${{ matrix.python-version }}
+          path: junit.xml
+          retention-days: 90
 
   # The integration tests in three shards per Python (tests/shard.py: by a stable hash of
   # each test's node id), each on a runner of its own.
@@ -61,7 +69,15 @@ jobs:
       - run: uv sync --locked
       # One process: on this 4-vCPU runner, -n auto's four integration tests at once (each
       # its own tmux, agents and session loop) starve each other past LADO's short test timers.
-      - run: uv run pytest -m integration -n0 --shard ${{ matrix.shard }}/3
+      - run: uv run pytest -m integration -n0 --shard ${{ matrix.shard }}/3 --junitxml=junit.xml
+      # The test results for the test audit (docs/research/test-audit.md): durations and
+      # failures over weeks, also of a red run.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: junit-integration-${{ matrix.python-version }}-${{ matrix.shard }}
+          path: junit.xml
+          retention-days: 90
 
   # The web UI: its stale-types check, types, unit tests and build (make web), the bundle in
   # both the sdist and the wheel (make dist); and the Node tests of the OpenCode-family
@@ -155,7 +171,15 @@ jobs:
           key: ${{ steps.browser-key.outputs.key }}
       # Two workers: a Chromium and a lado server each, on this 4-vCPU runner; -n auto's
       # four starve LADO's short test timers.
-      - run: uv run pytest -m ui -n 2 --shard ${{ matrix.shard }}/4
+      - run: uv run pytest -m ui -n 2 --shard ${{ matrix.shard }}/4 --junitxml=junit.xml
+      # The test results for the test audit (docs/research/test-audit.md): durations and
+      # failures over weeks, also of a red run.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: junit-ui-${{ matrix.shard }}
+          path: junit.xml
+          retention-days: 90
 
   # Whether this run needs the smoke (scripts/smoke_ci.py needed): always but on a pull
   # request whose every changed file is on this skip list. No path here may be or hold one

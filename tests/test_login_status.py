@@ -113,7 +113,8 @@ def test_claude_api_key_from_a_variable(answers):
     )
 
 
-def test_claude_api_key_of_its_own_login(answers):
+def test_claude_api_key_of_its_own_login(answers, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
     data = {"loggedIn": True, "authMethod": "api_key", "apiKeySource": "/login managed key"}
     assert _claude(answers, {**data, **CONFIG}) == LoginStatus(
         YES,

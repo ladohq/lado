@@ -149,9 +149,7 @@ No single method is enough; they work as a funnel:
 
 ## 4. The staged plan
 
-Status: stage 0 in progress (durations, CI reports, unit coverage done; the coverage of
-the integration and UI layers' subprocesses and of vitest open, see section 6); the others
-wait for its numbers.
+Status: stage 0 done (2026-11-13, section 6); stage 1 next.
 
 ### Stage 0. Baseline measurements (no test changes)
 
@@ -173,27 +171,52 @@ wait for its numbers.
 **Risk.** None for the product; coverage slows the runs it measures, so it is not added to
 `make check`.
 
-**How to measure** (the numbers of section 6 come from these). A coverage config of its own
-outside the repository, e.g. `$DIR/rc`:
+**How to measure** (the numbers of section 6 come from these). Two coverage configs of
+their own outside the repository: `$DIR/rc` for pytest's own processes, and `$DIR/sub.rc`
+for every process they start (`lado mcp`, hooks, the session loop, `lado server`, the
+fake agent, a script run as a command), which coverage.py's `.pth` hook reads at each
+start where `COVERAGE_PROCESS_START` names it:
 
 ```ini
+# $DIR/rc
 [run]
 branch = true
 source_pkgs = lado
+source = scripts
 parallel = true
 data_file = $DIR/.coverage
-patch = subprocess
 core = ctrace
+
+# $DIR/sub.rc: the same, but
+data_file = $DIR/sub/.coverage
+sigterm = true
+context = ${LADO_TEST_ID}
 ```
 
-`core = ctrace` (or `COVERAGE_CORE=ctrace`) is required: from Python 3.14 coverage.py's
-default core is `sysmon`, which records no per-test contexts. Then
-`COVERAGE_CORE=ctrace uv run pytest -n auto --cov --cov-config=$DIR/rc --cov-context=test
---cov-report=` (with `-m integration` for that layer), and
-`uv run python scripts/test_audit.py $DIR/.coverage --functions`. Durations:
-`pytest --durations=0 --junitxml=...`. Before the UI layer, rebuild the bundle
-(`cd web && npm run build`): `src/lado/server/static` from an older `web/src` fails a
-third of the browser tests.
+- `core = ctrace` (and `COVERAGE_CORE=ctrace`) is required: from Python 3.14 coverage.py's
+  default core is `sysmon`, which records no per-test contexts.
+- `context = ${LADO_TEST_ID}`: a subprocess's static context is the test that started it
+  (tests/conftest.py puts the test's node id in the environment while it runs); without it
+  everything the subprocesses ran counts for no test. `patch = subprocess` is not enough:
+  it hands the subprocesses the parent's context, the empty one.
+- `sigterm = true` keeps a process stopped by SIGTERM; one killed otherwise (tmux's
+  kill-server) leaves an empty file, skipped.
+
+Then:
+
+```sh
+COVERAGE_CORE=ctrace COVERAGE_PROCESS_START=$DIR/sub.rc uv run pytest -n auto \
+  --cov --cov-config=$DIR/rc --cov-context=test --cov-report=   # -m integration, -m ui
+cp $DIR/.coverage $DIR/sub/.coverage.main
+uv run coverage combine --data-file=$DIR/sub/.coverage $DIR/sub
+uv run python scripts/test_audit.py $DIR/sub/.coverage --functions
+```
+
+Durations: `pytest --durations=0 --junitxml=...`; vitest:
+`npm install --no-save @vitest/coverage-v8@<vitest's version>`, then
+`npx vitest run --coverage --reporter=junit --outputFile=...`. Before the UI layer, rebuild
+the bundle (`cd web && npm run build`): `src/lado/server/static` from an older `web/src`
+fails a third of the browser tests.
 
 ### Stage 1. Quick wins: speed and empty tests
 
@@ -369,15 +392,55 @@ How to read it:
 - Coverage costs ~75% more time (unit: 5 min 10 s instead of 2 min 57 s) and a 163 MB
   database.
 
-**Open in stage 0.**
-- The integration layer's coverage: only 5 639 lines ran in pytest's own process; `lado
-  mcp`, hooks and the session loop run in agents' processes whose environment comes from
-  the login shell, so coverage's variables never reach them. Its numbers (79% no unique
-  line) say nothing yet. Needs the coverage variables passed into the agents' environment
-  for the measurement.
-- The UI layer's coverage (`lado server` as a subprocess) and vitest's
-  (`@vitest/coverage-v8`).
-- `scripts/` and the test helpers are not measured (`source_pkgs = lado`).
+### Stage 0, part 2 (2026-11-13): the subprocesses, the UI, vitest, `scripts/`
+
+Part 1's numbers missed what tests run in other processes: those ran under the empty
+context and counted for no test. Measured again with the subprocesses' context set to their
+test (`context = ${LADO_TEST_ID}`, the method above), `scripts/` included. Coverage of
+Python per test, by test function:
+
+| Layer | Functions | Coverage of `src/lado` (+ `scripts/`) | Branches run | Greedy cover | No unique branch | Identical groups |
+|---|---|---|---|---|---|---|
+| Unit | 4 374 | 95% | 33 956 | 1 307 (30%) | 3 434 (79%) | 202 groups, 922 functions |
+| Integration | 286 | 65% | 25 398 | 144 (50%) | 159 (56%) | 8 groups, 22 functions |
+| UI (server side only) | 491 | 57% | 23 049 | 111 (23%) | 414 (84%) | 36 groups, 109 functions |
+
+vitest: 1 914 tests, all passed, 4 min 31 s of tests in 1 min 51 s; coverage of `web/src`
+96% of statements, 92% of branches (lowest `SelectionBar.tsx` 58%, `waiting.ts` 63%).
+`Launch.test.tsx` alone takes 107 s of the 270 (40%). v8 coverage gives no per-test
+contexts, so vitest's overlap is not measured.
+
+How to read it:
+- **Unit holds the overlap.** With the subprocesses counted the numbers hardly move (30%
+  of the functions run every branch; 79% run none of their own). The biggest files are
+  where it is: `test_runtime.py` 416 of 489 functions with no unique branch,
+  `test_state.py` 194 of 204, `test_model_settings.py` 173 of 198, `test_providers.py`
+  153 of 179, `test_cli.py` 125 of 219, `test_codex.py` 123 of 155. Stage 4's order holds.
+- **Integration earns its keep.** Half its functions take a branch no other does, and only
+  22 functions share a footprint. Its candidates are few: `test_session_loop.py` (14 of
+  15 with no unique branch), `test_agents.py` (20 of 30).
+- **The UI numbers are about the server only.** A browser test checks mostly React code,
+  which Python coverage does not see; 84% with no unique server branch says the server
+  side of the UI tests overlaps, not that the tests do. Comparing UI tests needs coverage
+  of the bundle in the browser (an instrumented build), stage 5's to decide.
+- **408 unit functions run no code of `src/lado` or `scripts/` of their own** (one
+  identical group): they check files that are not Python. `test_docker.py` 88,
+  `test_install_sh.py` 80, `test_ci_workflow.py` 36, `test_windows_shell_workflow.py` 32,
+  `test_smoke_ci.py` 25, `test_install_ps1.py` 15, `test_release_workflow.py` 15,
+  `test_workflow_security.py` 12, ... Stage 2's list.
+- **The other 201 identical groups (514 functions)** are stage 1's and 4's candidates: e.g.
+  `test_codex.py` (12 functions in one group, 8 in two others), `test_cli.py` (8),
+  `test_agent_env.py` (7).
+- **Code no test runs**: `terminal.py` 55%, `server/run.py` 81%, `images.py` 81% in unit;
+  `scripts/secret_dots_font.py` 0%, `smoke_ci.py` 60%, `release_check.py` 61%.
+- Under coverage with 8 workers 42 UI tests failed (586 passed): the UI layer is the most
+  sensitive to load.
+
+**Open after stage 0.**
+- The UI tests' coverage of the bundle in the browser, per test (stage 5).
+- vitest per test: v8 gives none; if stage 5 needs it, one run per test file.
+- The junit history from CI: from the merge of this branch on; stage 1 reads it when weeks
+  have passed.
 
 ## 7. Sources
 

@@ -2,6 +2,7 @@
 `launched`, `cut_off` and `stop_while_typing` also for unit tests."""
 
 import atexit
+import errno
 import hashlib
 import json
 import os
@@ -20,6 +21,20 @@ import pytest
 import yaml
 
 from lado import interpreter, log, loop, runtime, state, tmux
+
+
+def bytes_name(folder: Path, raw: bytes, text: str = "s") -> Path:
+    """A file whose name is `raw`, bytes that are no UTF-8, written in `folder`; the test
+    is skipped where the file system takes no such name (macOS's APFS: EILSEQ), as no user
+    there can have one."""
+    path = folder / os.fsdecode(raw)
+    try:
+        path.write_text(text)
+    except OSError as error:
+        if error.errno != errno.EILSEQ:
+            raise
+        pytest.skip(f"the file system takes no name that is not UTF-8: {error.strerror}")
+    return path
 
 
 def cut_off(recipient: str) -> str:

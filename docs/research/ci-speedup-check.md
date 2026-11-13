@@ -35,11 +35,11 @@ new flaky UI test `test_layout.py::test_the_session_list_and_session_windows_giv
 
 | When (UTC) | Change | Commit / PR |
 |---|---|---|
-| 2026-11-06 to 11-08 | New smoke tests: Claude Code and OpenCode/Kilo on fake model servers, refusals held to each CLI's repeats (LAD-217, LAD-220, LAD-230) | `d0b1f31a`, `ba156044`, `30a68301` and after |
-| 2026-11-09 12:30 | LAD-248: time limit on every job; UI in four shards; `make dist` and the Node tests in a job `web`; Chromium and its system packages from a cache saved by `main`; container tests in two shards per architecture | PR #262 (`65d836cb`, `298ee7c0`, `c328f6f1`, `01922c18`) |
-| 2026-11-09 | LAD-249: the image's layers from GitHub's cache (`type=gha`), written by `main` and the daily run only, from shard 1; the wheel in the image's last layer | `581b7689`, `4e8d8783` |
+| 2026-11-06 to 11-07 | New smoke tests: Claude Code and OpenCode/Kilo on fake model servers, Codex on a fake Responses server, refusals held to each CLI's repeats (LAD-217, LAD-220, LAD-230); merged by 11-07 20:01, first run on the smoke's cells on 11-08 | `d0b1f31a`, `ba156044`, `30a68301` and after |
+| 2026-11-09 11:00 | LAD-248: time limit on every job; UI in four shards; `make dist` and the Node tests in a job `web`; Chromium and its system packages from a cache saved by `main`; container tests in two shards per architecture | PR #263 (`8589a2e6`: `65d836cb`, `298ee7c0`, `c328f6f1`, `01922c18`) |
+| 2026-11-09 12:25 | LAD-249: the image's layers from GitHub's cache (`type=gha`), written by `main` and the daily run only, from shard 1; the wheel in the image's last layer | PR #262 (`958dede7`: `581b7689`, `4e8d8783`) |
 | 2026-11-09 | The organisation moved to GitHub Team (concurrent jobs 20 → 60; macOS stays 5 by GitHub's table) | settings, no commit |
-| 2026-11-09 17:04 | LAD-236: the stop-as-typed integration test ends the session loop first | PR #265 (`aea2ae56`) |
+| 2026-11-09 13:04 | LAD-236: the stop-as-typed integration test ends the session loop first | PR #265 (`fc7ddcfd`: `aea2ae56`) |
 | 2026-11-11 13:08 | LAD-246: the LoginSheet vitest waits for the login window's socket | PR #287 (`87a4d7bd`) |
 | 2026-11-11 to 11-12 | Unit tests on Python 3.10 and 3.14 (was 3.13); every test cell keeps its junit report 90 days; `ci-rerun.yml` also restarts runs stuck in GitHub's queue (LAD-274) | `4814cf0c`, `3bbd1b70`, `8cd84886` |
 
@@ -51,8 +51,11 @@ per cell; `ci-rerun.yml` restarted no run in the window "after".
 
 Windows: **before** 2026-11-05 21:00 to 2026-11-09 12:30 UTC (the baseline's "last 3.4
 days"), runs of the old job set (`ui (1)`, `ui (2)`, no `web`): 169 pull request, 38 push,
-3 schedule runs; 11 runs left out (10 of the new job set, PR #262's branch, and 1 of
-neither). **After**
+3 schedule runs; 11 runs left out (10 of the new job set and 1 of neither). The 10 are
+the LAD-248 branch's runs (`workflow_dispatch` 42597082362 and its pull request runs),
+pull request runs of the LAD-249 branch made after LAD-248's merge, and `main` after PR
+#263's merge at 11:00 (push 42605436802 and 42616933850, the daily run 42614836191): 6
+pull request, 1 `workflow_dispatch`, 2 push and 1 schedule run. **After**
 2026-11-09 12:30 to 2026-11-13 00:00 UTC, runs of the new job set (`ui (1..4)` and `web`,
 design D2): 78 pull request, 39 push, 3 schedule runs; 3 runs of neither job set left out. Commands (`--cache-dir` keeps GitHub's answers for a rerun):
 
@@ -97,7 +100,8 @@ Every number below comes from these three outputs; n is the sample.
 requests and `ui (1)` 88 + `ui (2)` 43 of 141 runs as last jobs; the script gives 13.0 /
 20.6 (n=108) and 99 of 108. The differences (0.2 min, a few runs) come from the window's
 end (the baseline was cut when it was fetched on 2026-11-09, the script at 12:30), from
-leaving out PR #262's runs, and from counting only pull requests in point 2. Job durations
+leaving out the 10 runs of the new job set made before 12:30 (LAD-248's branch and `main`
+after its merge at 11:00), and from counting only pull requests in point 2. Job durations
 and the step `Image` (76 / 66 s) agree to 0.1 min and 1 s. The browser p90 differs (329 s
 against 171-438 s per shard) because the script pools both shards. The queue by load
 agrees in kind (20-29 running: 160 s against 113 s median) but not exactly: the baseline
@@ -133,8 +137,8 @@ and stays below the UI and the smoke.
 
 **Is the Team plan needed? Yes.** 23.8 % of jobs were created while 20 or more jobs ran
 (design D6's threshold is 5 %). On Free (the window "before"), a Linux job created at
-20-29 running waited 160 s at the median and 70.6 % waited over a minute; now 0 %
-below 40 running. Going back to Free would bring that queue back for about a quarter of
+20-29 running waited 160 s at the median and 70.6 % waited over a minute; now 0 % at
+10-39 running and 0.4 % (7 jobs) at 0-9. Going back to Free would bring that queue back for about a quarter of
 the jobs, on top of the 8-minute wait. A queue remains above 40 running jobs (198 jobs,
 p90 118 s), near the plan's 60. The macOS queue is GitHub's runner supply, which Team does
 not change: p90 223 s before, 219 s after; the measured macOS peak (13 before, 9 after)

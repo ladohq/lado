@@ -17,6 +17,12 @@ database measured per test (docs/research/test-audit.md, stage 0):
   the module, and the node ids of `--also`, for the tests that only read such a value
   (the import itself counts for no test).
 
+With `--judge <test file>` a run answers only what `removable` on that file needs: that
+file's tests run in full, and the others, up to the first that fails (`pytest -x`), only
+for a mutant one of the file's tests killed. A mutant none of the file's tests runs is
+"skipped", one none of them kills "untouched": neither keeps a test of the file. A module
+that most of the suite runs (`runtime.py`) costs hours instead of days.
+
 Each mutant runs in a copy of `src/` of its own (one per job), so the working copy is never
 touched; `PYTHONPATH` puts the copy first. A run that never imported the mutant is an
 error: in the audit's first runs a mutant some tests killed "survived" a later run of the
@@ -197,8 +203,11 @@ def chooser(by_line: dict[int, set[str]], also: set[str]):
     return tests
 
 
-def run_one(work: Path, repo: Path, rel: Path, source: str, tests: list[str], timeout: int):
-    """One mutant in the copy `work`: its status and the tests that failed. The module's
+def run_one(
+    work: Path, repo: Path, rel: Path, source: str, tests: list[str], timeout: int, first=False
+):
+    """One mutant in the copy `work`: its status and the tests that failed (with `first`,
+    the first test that failed, `pytest -x`). The module's
     compiled files go first, and a run that compiled none never imported the mutant (a
     stale .pyc, the copy gone, another `lado` first on the path): an error, never
     "survived"."""
@@ -214,7 +223,8 @@ def run_one(work: Path, repo: Path, rel: Path, source: str, tests: list[str], ti
     try:
         run = subprocess.run(
             [sys.executable, "-m", "pytest", "-q", "-n0", "-p", "no:cacheprovider",
-             "-p", "no:randomly", f"--junitxml={junit}", "-o", "addopts=", *tests],
+             "-p", "no:randomly", f"--junitxml={junit}", "-o", "addopts=",
+             *(["-x"] if first else []), *tests],
             cwd=repo,
             env={**environ, "PYTHONPATH": str(work / "src")},
             capture_output=True,
@@ -233,6 +243,29 @@ def run_one(work: Path, repo: Path, rel: Path, source: str, tests: list[str], ti
                 failed.append(f"{where}::{case.get('name')}")
     status = "killed" if failed else ("survived" if run.returncode == 0 else "error")
     return {"status": status, "killed_by": failed, "seconds": round(time.monotonic() - started, 2)}
+
+
+def judged(work, repo, rel, source, tests: list[str], timeout: int, judge: str | None):
+    """With `judge` (a test file), only what decides whether a test of that file can go:
+    its tests run in full, and only when one of them kills the mutant do the others run, up
+    to the first that fails (is there another killer). A mutant no test of the file runs
+    is skipped, one none of them kills is "untouched": neither keeps a test of the file."""
+    if not judge:
+        return run_one(work, repo, rel, source, tests, timeout)
+    own = [t for t in tests if t.startswith(judge)]
+    rest = [t for t in tests if not t.startswith(judge)]
+    if not own:
+        return {"status": "skipped", "killed_by": [], "seconds": 0}
+    mine = run_one(work, repo, rel, source, own, timeout)
+    if mine["status"] == "survived":
+        return mine | {"status": "untouched"}
+    if mine["status"] != "killed" or not rest:
+        return mine
+    others = run_one(work, repo, rel, source, rest, timeout, first=True)
+    return mine | {
+        "killed_by": mine["killed_by"] + others["killed_by"],
+        "seconds": mine["seconds"] + others["seconds"],
+    }
 
 
 def plan(module: Path, coverage: str, also: set[str], kinds: set[str] | None) -> list[dict]:
@@ -290,8 +323,8 @@ def run(args) -> None:
             while todo or running:
                 while todo and free:
                     m, work = todo.pop(0), free.pop()
-                    job = (work, repo, rel, m["source"], m["tests"], args.timeout)
-                    running[pool.submit(run_one, *job)] = (m, work)
+                    job = (work, repo, rel, m["source"], m["tests"], args.timeout, args.judge)
+                    running[pool.submit(judged, *job)] = (m, work)
                 done, _ = cf.wait(running, return_when=cf.FIRST_COMPLETED)
                 for future in done:
                     m, work = running.pop(future)
@@ -391,6 +424,9 @@ def main() -> None:
     one.add_argument("--timeout", type=int, default=300)
     one.add_argument("--kinds", help="only these kinds of mutant, comma-separated")
     one.add_argument("--also", help="node ids, one a line, run on import-time mutants too")
+    one.add_argument(
+        "--judge", help="a test file: its tests in full, the others up to the first that fails"
+    )
     one.set_defaults(go=run)
     two = commands.add_parser("removable", help="the tests of one file that can go")
     two.add_argument("prefix", help="a test file, e.g. tests/test_codex.py")

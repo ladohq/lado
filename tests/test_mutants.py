@@ -171,3 +171,37 @@ def test_a_run_that_never_imports_the_mutant_is_an_error_not_a_survivor(tmp_path
         work, repo, Path("pkg/m.py"), "X = 1\n", ["tests/test_other.py"], timeout=60
     )
     assert (result["status"], result["why"]) == ("error", "mutant not imported")
+
+
+def test_with_a_judge_only_what_decides_a_test_of_the_file_runs(tmp_path):
+    """The judged file's killers all count; of the others the first is enough, and they run
+    only for a mutant the file's tests kill."""
+    repo = tmp_path.resolve()
+    work = repo / "work"
+    (work / "src" / "pkg").mkdir(parents=True)
+    (work / "src" / "pkg" / "__init__.py").write_text("")
+    (repo / "tests").mkdir()
+    ran = repo / "others-ran"
+    for name in ("test_m", "test_n"):
+        (repo / "tests" / f"{name}.py").write_text(
+            "from pathlib import Path\n"
+            "from pkg.m import X\n\n"
+            f"def test_a():\n    Path({str(ran)!r}).touch() if {name == 'test_n'} else None\n"
+            "    assert X == 1\n\n"
+            "def test_b():\n    assert X == 1\n"
+        )
+    tests = [f"tests/{f}.py::{t}" for f in ("test_m", "test_n") for t in ("test_a", "test_b")]
+    rel = Path("pkg/m.py")
+
+    def judge(source, tests=tests):
+        return mutants.judged(work, repo, rel, source, tests, 60, "tests/test_m.py")
+
+    result = judge("X = 2\n")
+    assert (result["status"], result["killed_by"]) == (
+        "killed",
+        ["tests/test_m.py::test_a", "tests/test_m.py::test_b", "tests/test_n.py::test_a"],
+    )
+    ran.unlink()
+    assert judge("X = 1\n")["status"] == "untouched"
+    assert not ran.exists()
+    assert judge("X = 2\n", tests[2:])["status"] == "skipped"

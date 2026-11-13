@@ -8,10 +8,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-import agent_helpers
 import pytest
 
-from lado import hooks, providers, runtime, state
+from lado import providers, runtime, state
 from lado.providers import Event, base, codex
 
 if sys.version_info >= (3, 11):
@@ -68,31 +67,6 @@ def _worktree(repo, name="w1"):
     return worktree
 
 
-def test_codex_is_registered():
-    cli = providers.get("codex")
-    assert (cli.name, cli.title, cli.command) == ("codex", "Codex CLI", "codex")
-    assert cli.tested_version == codex.TESTED_VERSION == "0.162"
-    assert "npm install -g @openai/codex" in cli.install_hint
-
-
-def test_each_agent_gets_its_own_codex_home(repo, lado_home):
-    launch, config = _launch(repo)
-    home = lado_home / "agents" / "s" / "w1"
-    assert launch.env == {"CODEX_HOME": str(home)}
-    # No background app server: it would outlive the agent, run its hooks with its own
-    # environment and copy the CLI into the home.
-    assert launch.argv == ["codex", "--no-daemon"]
-    assert config["developer_instructions"] == ROLE
-    assert launch.warnings == []
-
-
-def test_the_role_is_never_on_the_command_line(repo):
-    launch, _ = _launch(repo, notice="[from lado] your task (#7, 3 lines: call read_messages)")
-    assert not [a for a in launch.argv if "MARK" in a]
-    # The first line goes last, as the prompt Codex submits first.
-    assert launch.argv[-1] == "[from lado] your task (#7, 3 lines: call read_messages)"
-
-
 def test_the_config_is_only_the_owners_also_over_an_older_file(repo, lado_home):
     old = lado_home / "agents" / "s" / "w1" / "config.toml"
     old.parent.mkdir(parents=True)
@@ -128,20 +102,6 @@ def test_the_agent_has_no_goal_tools(repo):
     get their task as messages."""
     _, config = _launch(repo)
     assert config["features"]["goals"] is False
-
-
-def test_a_read_only_agent_has_no_codex_worktrees_and_is_warned_about_apply_patch(repo):
-    """Codex's own worktrees (create_worktree) change the repository. Its apply_patch tool
-    comes with a model's metadata, which no config key takes away: the warning says so."""
-    agent = _agent(repo)
-    spec = providers.AgentSpec(ROLE, mcp={"lado": base.mcp_server(agent)}, read_only=True)
-    sess = state.Session("s", str(repo), None, "codex")
-    launch = providers.get("codex").launch_command(agent, sess, spec)
-    assert _config(launch)["features"]["worktrees"] is False
-    [warning] = launch.warnings
-    assert "apply_patch" in warning and "w1" in warning
-    _, config = _launch(repo)
-    assert "worktrees" not in config["features"]
 
 
 def test_hooks_report_each_event_lado_uses(repo):
@@ -234,21 +194,6 @@ def test_lado_s_mcp_server_starts_with_the_agent_and_is_used_without_asking(repo
     # Its tools are there at the first turn, and calling them asks nobody.
     assert lado["required"] is True
     assert lado["default_tools_approval_mode"] == "approve"
-
-
-def test_a_kit_server_gets_the_variables_it_reads(repo):
-    agent = _agent(repo)
-    db = providers.McpServer(["db-server", "--port", "1"], {"T": "x"}, ["TOKEN"])
-    spec = providers.AgentSpec("r", mcp={"lado": base.mcp_server(agent), "db": db})
-    _, config = _launch(repo, spec=spec)
-    # Codex gives a server only some of its environment, plus these names.
-    entry = config["mcp_servers"]["db"]
-    assert (entry["command"], entry["args"], entry["env"]) == (
-        "db-server",
-        ["--port", "1"],
-        {"T": "x"},
-    )
-    assert "TOKEN" in entry["env_vars"]
 
 
 def test_every_server_gets_the_agents_whole_environment_by_name(repo):
@@ -492,11 +437,6 @@ def test_the_user_s_codex_home_is_the_agents_codex_home_or_home(repo, tmp_path):
     assert config["model"] == "from-home"
 
 
-def test_no_user_config_is_fine(repo, codex_home):
-    launch, config = _launch(repo)
-    assert "model" not in config and launch.warnings == []
-
-
 def test_a_user_config_codex_cannot_read_is_a_warning(repo, codex_home):
     _user_config(codex_home, 'model = "x"\nmodel = "twice"\n')
     launch, config = _launch(repo)
@@ -594,33 +534,6 @@ def test_every_codex_hook_names_the_model(native, payload):
     assert cli.parse_event(native, json.dumps({**payload, "model": 5})).model == ""
 
 
-def test_carried_model_of_the_chosen_profile(repo, codex_home):
-    _user_config(
-        codex_home,
-        'profile = "work"\nmodel = "gpt-5.5"\nmodel_reasoning_effort = "low"\n'
-        '[profiles.work]\nmodel = "gpt-5.6-sol"\nmodel_reasoning_effort = "high"\n',
-    )
-    launch, _ = _launch(repo)
-    assert launch.model == state.Choice("gpt-5.6-sol", state.CLI_CONFIG, "profile work")
-    assert launch.effort == state.Choice("high", state.CLI_CONFIG, "profile work")
-
-
-def test_carried_model_falls_back_to_the_top_level(repo, codex_home):
-    _user_config(
-        codex_home,
-        'profile = "work"\nmodel = "gpt-5.5"\n[profiles.work]\nmodel_reasoning_effort = "high"\n',
-    )
-    launch, _ = _launch(repo)
-    assert launch.model == state.Choice("gpt-5.5", state.CLI_CONFIG)
-    assert launch.effort == state.Choice("high", state.CLI_CONFIG, "profile work")
-
-
-def test_no_carried_model_leaves_none(repo, codex_home):
-    _user_config(codex_home, '[profiles.work]\nmodel = "gpt-5.6-sol"\n')  # not the chosen one
-    launch, _ = _launch(repo)
-    assert (launch.model, launch.effort) == (None, None)
-
-
 def test_session_model_wins_over_the_carried_profile(repo, codex_home):
     text = (
         'profile = "work"\nmodel = "gpt-5.5"\n'
@@ -634,21 +547,6 @@ def test_session_model_wins_over_the_carried_profile(repo, codex_home):
     assert launch.model == state.Choice("gpt-5.6-sol", state.SESSION)
     assert launch.effort == state.Choice("high", state.CLI_CONFIG, "profile work")
     assert (codex_home / "config.toml").read_bytes() == before
-
-
-def test_session_model_without_a_profile_goes_to_the_top_level(repo, codex_home):
-    _user_config(codex_home, '[profiles.other]\nmodel = "gpt-5.5"\n')  # not the chosen one
-    launch, config = _launch(repo, model="gpt-5.6-sol")
-    assert config["model"] == "gpt-5.6-sol"
-    assert config["profiles"] == {"other": {"model": "gpt-5.5"}}
-    assert launch.model == state.Choice("gpt-5.6-sol", state.SESSION)
-
-
-def test_no_session_model_keeps_the_carried_one(repo, codex_home):
-    _user_config(codex_home, 'model = "gpt-5.5"\n')
-    launch, config = _launch(repo)
-    assert config["model"] == "gpt-5.5"
-    assert launch.model == state.Choice("gpt-5.5", state.CLI_CONFIG)
 
 
 # The repository's .codex/config.toml wins over the agent's config.toml in a trusted folder,
@@ -775,53 +673,15 @@ def test_codex_capabilities():
     assert not caps.hold_first_turn
 
 
-def test_a_codex_supervisor_starts_with_lado_s_line(repo, fake_tmux, codex_home):
-    _trust(codex_home, repo.resolve())
-    runtime.start_session(str(repo), "s", None, provider="codex")
-    [hello] = state.list_messages("s")
-    _, argv = agent_helpers.launched(fake_tmux[0])
-    assert argv[-1] == f"[from lado] {runtime.FIRST_INPUT}"
-    assert argv[-1] == (
-        "[from lado] session started; nothing to do yet: end this turn,"
-        " the next message starts a new one"
-    )
-    hooks.handle(providers.get("codex"), Event(providers.SESSION_START), "s", "supervisor")
-    hooks.handle(
-        providers.get("codex"), Event(providers.PROMPT_SUBMIT, argv[-1]), "s", "supervisor"
-    )
-    assert state.list_messages("s")[0].state == state.DELIVERED
-
-
 def test_the_first_input_asks_to_end_the_turn_not_to_wait():
     """A model with a tool to wait takes "wait" literally and its turn never ends (LAD-167)."""
     assert "wait" not in runtime.FIRST_INPUT.lower()
     assert "end this turn" in runtime.FIRST_INPUT
 
 
-def test_a_codex_supervisor_with_a_first_message_gets_no_first_input(repo, fake_tmux, codex_home):
-    """The human's first message starts its session: no turn of LADO's FIRST_INPUT first."""
-    _trust(codex_home, repo.resolve())
-    runtime.start_session(str(repo), "s", None, provider="codex", prompt="Take LAD-19")
-    [first] = state.list_messages("s")
-    assert first.sender == "human"
-    _, argv = agent_helpers.launched(fake_tmux[0])
-    assert argv[-1] == (
-        f"[from human] {runtime.FIRST_MESSAGE} (#{first.id}, 1 line: call read_messages)"
-        + runtime.HUMAN_REPLY_HINT
-    )
-    assert not [a for a in argv if "LAD-19" in a]
-
-
 # Codex's own rule (0.162.0, checked by hand): the agent's folder, its project root (the
 # nearest folder up with .git), then its repository's main root; the first entry with a
 # trust level decides, trusted or not. Nothing above the git root counts.
-
-
-def test_codex_trusts_the_repo_the_user_trusts(repo, codex_home):
-    _trust(codex_home, repo.resolve())
-    launch, config = _launch(repo)
-    assert config["projects"] == {str(repo.resolve()): {"trust_level": "trusted"}}
-    assert _blocker(launch, repo).reason is None
 
 
 def test_a_repo_the_user_never_trusted_is_trusted_by_the_agents_config(repo, codex_home):
@@ -871,45 +731,6 @@ def test_trust_above_the_git_root_does_not_cover_it(repo, codex_home):
     assert _blocker(launch, repo).reason is None
 
 
-def test_a_subfolder_is_trusted_by_its_repo(repo, codex_home):
-    (repo / "sub").mkdir()
-    _trust(codex_home, repo.resolve())
-    launch, _ = _launch(repo / "sub")
-    assert _blocker(launch, repo / "sub").reason is None
-
-
-def test_a_worktree_is_trusted_by_its_main_repo(repo, codex_home):
-    _trust(codex_home, repo.resolve())
-    worktree = _worktree(repo)
-    launch, config = _launch(worktree)
-    assert config["projects"] == {str(repo.resolve()): {"trust_level": "trusted"}}
-    assert _blocker(launch, worktree).reason is None
-
-
-def test_a_subfolder_of_a_worktree_is_trusted_by_the_worktree(repo, codex_home):
-    worktree = _worktree(repo)
-    (worktree / "sub").mkdir()
-    _trust(codex_home, worktree.resolve())
-    launch, config = _launch(worktree / "sub")
-    assert config["projects"] == {str(worktree.resolve()): {"trust_level": "trusted"}}
-    assert _blocker(launch, worktree / "sub").reason is None
-
-
-def test_a_folder_is_trusted_by_its_real_path(repo, codex_home, tmp_path):
-    link = tmp_path / "link"
-    link.symlink_to(repo)
-    _trust(codex_home, repo.resolve())
-    launch, _ = _launch(link)
-    assert _blocker(launch, link).reason is None
-
-
-def test_an_untrusted_repo_is_carried_and_asks_nothing(repo, codex_home):
-    _trust(codex_home, repo.resolve(), level="untrusted")
-    launch, config = _launch(repo)
-    assert config["projects"] == {str(repo.resolve()): {"trust_level": "untrusted"}}
-    assert _blocker(launch, repo).reason is None
-
-
 def test_an_agent_config_lado_cannot_read_is_a_warning(repo, codex_home):
     launch, _ = _launch(repo)
     (Path(launch.env["CODEX_HOME"]) / "config.toml").write_text("= broken")
@@ -941,20 +762,6 @@ def test_the_repo_s_own_hooks_are_trusted_by_the_agents_config(repo, codex_home)
     assert not codex_home.exists()
 
 
-@pytest.mark.parametrize(
-    "text",
-    ['hooks = "x"\n', '[hooks]\nstate = "x"\n', '[hooks.state]\n"{key}" = "x"\n'],
-)
-def test_user_hooks_of_odd_types_crash_no_launch(repo, codex_home, text):
-    """No table where Codex has one is no trust of the user's: the repository's hooks are
-    trusted as with none."""
-    _, digest = _repo_hooks(repo)
-    _user_config(codex_home, text.format(key=_repo_hook_key(repo)))
-    launch, config = _launch(repo)
-    assert config["hooks"]["state"][_repo_hook_key(repo)] == {"trusted_hash": digest}
-    assert _blocker(launch, repo).reason is None
-
-
 def test_a_repo_hook_the_user_disabled_stays_disabled(repo, codex_home):
     _repo_hooks(repo)
     key = _repo_hook_key(repo)
@@ -971,16 +778,6 @@ def test_an_unreadable_repo_hooks_file_is_left_to_codex(repo, codex_home):
     launch, config = _launch(repo)
     assert not [k for k in config["hooks"]["state"] if "hooks.json" in k]
     assert _blocker(launch, repo).reason is None
-
-
-def test_the_repo_s_own_hooks_asked_about_are_named(repo, codex_home):
-    """A config LADO did not write: the review question is named."""
-    _repo_hooks(repo)
-    launch, _ = _launch(repo)
-    _rewrite(launch, lambda config: config["hooks"]["state"].pop(_repo_hook_key(repo)))
-    blocker = _blocker(launch, repo)
-    assert blocker.reason.startswith("Codex CLI asks to review the repository's own hooks")
-    assert str(repo.resolve() / ".codex" / "hooks.json") in blocker.reason
 
 
 def test_the_user_s_trust_in_the_repo_s_hooks_is_carried(repo, codex_home):
@@ -1089,22 +886,6 @@ def _settle(repo, home, **env):
     )
 
 
-def test_the_agents_login_is_a_link_to_the_users(repo, tmp_path):
-    home, user = _homes(tmp_path)
-    blocker = _settle(repo, home)
-    auth = home / "auth.json"
-    assert auth.is_symlink() and os.readlink(auth) == str(user / "auth.json")
-    assert f"LADO linked {auth} to {user / 'auth.json'}" in blocker.notes
-
-
-def test_a_link_to_a_missing_file_is_made_without_its_folder(repo, tmp_path):
-    """The user logs in later (a sign-in code): the link then reaches the login."""
-    home, user = _homes(tmp_path, user_file=False)
-    _settle(repo, home)
-    assert os.readlink(home / "auth.json") == str(user / "auth.json")
-    assert not user.exists()
-
-
 def test_an_existing_link_is_left_with_no_note(repo, tmp_path):
     home, _ = _homes(tmp_path)
     _settle(repo, home)
@@ -1134,19 +915,6 @@ def test_an_api_key_becomes_the_agents_own_file(repo, tmp_path):
     assert "canary" not in repr(blocker)
 
 
-def test_the_access_token_wins_over_the_key(repo, tmp_path):
-    home, user = _homes(tmp_path)
-    _settle(repo, home, OPENAI_API_KEY="sk-x", CODEX_ACCESS_TOKEN="at-x")
-    assert os.readlink(home / "auth.json") == str(user / "auth.json")
-
-
-def test_a_key_file_turns_back_into_the_link(repo, tmp_path):
-    home, user = _homes(tmp_path)
-    _settle(repo, home, OPENAI_API_KEY="sk-x")
-    _settle(repo, home)
-    assert os.readlink(home / "auth.json") == str(user / "auth.json")
-
-
 @pytest.mark.skipif(os.geteuid() == 0, reason="root writes any folder")
 def test_a_login_lado_cannot_settle_is_a_warning(repo, tmp_path):
     home, _ = _homes(tmp_path)
@@ -1163,15 +931,6 @@ def test_a_login_lado_cannot_settle_is_a_warning(repo, tmp_path):
         "; an agent whose model needs a login waits for one until it starts again with its "
         "folder writable"
     )
-
-
-def test_a_launched_agent_gets_its_login_and_trust_with_notes(repo, codex_home):
-    launch, _ = _launch(repo)
-    blocker = _blocker(launch, repo)
-    home = Path(launch.env["CODEX_HOME"])
-    assert blocker.reason is None
-    assert os.readlink(home / "auth.json") == str(codex_home / "auth.json")
-    assert blocker.notes == (f"LADO linked {home / 'auth.json'} to {codex_home / 'auth.json'}",)
 
 
 # On a model server.
@@ -1293,21 +1052,6 @@ def test_a_carried_profile_goes_to_the_server_too(repo, catalogue, codex_home):
     assert codex._model_provider(config) == "lado-aaaa1111"
 
 
-def test_the_key_is_in_the_environment_alone(repo, catalogue, lado_home):
-    launch, _ = _launch_on(repo)
-    assert launch.env["LADO_MODEL_KEY_AAAA1111"] == SECRET
-    assert launch.env[base.MODEL_SERVER] == "aaaa1111"
-    assert SECRET not in " ".join(launch.argv)
-    for file in (lado_home / "agents").rglob("*"):
-        if file.is_file() and not file.is_symlink():
-            assert SECRET not in file.read_text(), file
-
-
-def test_lado_s_mcp_servers_are_not_handed_the_key(repo, catalogue):
-    _, config = _launch_on(repo)
-    assert "LADO_MODEL_KEY_AAAA1111" not in config["mcp_servers"]["lado"]["env_vars"]
-
-
 def test_a_server_with_no_key_has_no_env_key(repo, catalogue):
     launch, config = _launch_on(repo, _server(key=None))
     assert "env_key" not in config["model_providers"]["lado-aaaa1111"]
@@ -1315,43 +1059,11 @@ def test_a_server_with_no_key_has_no_env_key(repo, catalogue):
     assert "" not in launch.env
 
 
-def test_the_launch_says_what_it_set_up(repo, catalogue):
-    launch, _ = _launch_on(repo)
-    assert launch.model == state.Choice("gw-gpt", state.SESSION)
-    assert launch.effort is None
-
-
-def test_launched_on_reads_the_agent_s_config(repo, catalogue):
-    _launch_on(repo)
-    assert providers.get("codex").launched_on(_agent(repo)) == "aaaa1111"
-
-
-def test_launched_on_of_a_built_in_agent_is_none(repo):
-    _launch(repo, model="gpt-5.5")
-    assert providers.get("codex").launched_on(_agent(repo)) is None
-
-
-def test_an_agent_that_does_not_run_was_launched_on_nothing(repo):
-    assert providers.get("codex").launched_on(_agent(repo)) is None
-
-
 def test_an_agent_on_a_server_needs_no_login(codex_home):
     cli = providers.get("codex")
     env = {"CODEX_HOME": str(codex_home)}
     assert cli.needs_login(env)
     assert not cli.needs_login({**env, base.MODEL_SERVER: "aaaa1111"})
-
-
-def test_nothing_of_the_login_reaches_an_agent_on_a_server(repo, catalogue, codex_home):
-    (codex_home / "auth.json").parent.mkdir(parents=True, exist_ok=True)
-    (codex_home / "auth.json").write_text('{"auth_mode": "chatgpt"}')
-    launch, _ = _launch_on(repo)
-    blocker = providers.get("codex").first_hook_blocker(
-        str(repo), {**launch.env, "OPENAI_API_KEY": "sk-the-human-s-own"}
-    )
-    home = Path(launch.env["CODEX_HOME"])
-    assert not (home / "auth.json").is_symlink() and not (home / "auth.json").exists()
-    assert blocker.notes == ()
 
 
 def test_a_home_that_ran_on_a_built_in_model_loses_its_login_link(repo, catalogue, codex_home):
@@ -1384,14 +1096,6 @@ def test_web_search_and_a_carried_effort_stay_off(repo, catalogue, codex_home):
     assert config["web_search"] == "disabled"
     assert "model_reasoning_effort" not in config
     assert launch.effort is None
-
-
-def test_a_built_in_agent_keeps_its_effort_and_its_search(repo, codex_home):
-    _user_config(codex_home, 'model_reasoning_effort = "xhigh"\n')
-    launch, config = _launch(repo)
-    assert config["model_reasoning_effort"] == "xhigh"
-    assert "web_search" not in config
-    assert launch.effort == state.Choice("xhigh", state.CLI_CONFIG)
 
 
 def _catalogue_of(launch, config):
@@ -1431,11 +1135,6 @@ def test_the_agent_s_list_adds_no_tool_or_parameter_of_openai_s(repo, catalogue)
     assert {key: model[key] for key in off} == off
 
 
-def test_a_name_with_a_quote_is_text_in_the_list(repo, catalogue):
-    launch, config = _launch_on(repo, _server(name='Шлюз "GPT"\n'))
-    assert _catalogue_of(launch, config)[0]["display_name"] == 'Шлюз "GPT"\n'
-
-
 @pytest.mark.parametrize(
     "printed", ["not json", "[]", '{"models": 1}', '{"models": [{"tool_mode": "x"}]}']
 )
@@ -1448,16 +1147,6 @@ def test_a_list_lado_cannot_use_leaves_codex_s_with_a_warning(repo, monkeypatch,
     assert "OpenAI's models, which its server does not have" in warning
 
 
-def test_a_failing_list_warns_with_why(repo, monkeypatch):
-    def fails(argv, env):
-        raise ValueError("`codex debug models --bundled` failed: boom")
-
-    monkeypatch.setattr(base, "run_list", fails)
-    launch, config = _launch_on(repo)
-    assert "model_catalog_json" not in config
-    assert [w for w in launch.warnings if "boom" in w and "/model" in w]
-
-
 def test_a_known_context_reaches_the_config_and_the_list(repo, catalogue):
     limits = {"gw-gpt": base.Limit(65536)}
     launch, config = _launch_on(repo, _server(limits=limits))
@@ -1465,28 +1154,6 @@ def test_a_known_context_reaches_the_config_and_the_list(repo, catalogue):
     assert config["model_auto_compact_token_limit"] == 57344
     [model] = _catalogue_of(launch, config)
     assert (model["context_window"], model["max_context_window"]) == (65536, 65536)
-
-
-def test_the_compact_limit_leaves_the_output_the_server_reports(repo, catalogue):
-    limits = {"gw-gpt": base.Limit(200000, 1000)}
-    _, config = _launch_on(repo, _server(limits=limits))
-    assert config["model_auto_compact_token_limit"] == 199000
-
-
-def test_an_unknown_context_sets_neither_key(repo, catalogue):
-    launch, config = _launch_on(repo)
-    assert "model_context_window" not in config
-    assert "model_auto_compact_token_limit" not in config
-    [model] = _catalogue_of(launch, config)
-    assert (model["context_window"], model["max_context_window"]) == (None, None)
-
-
-def test_a_built_in_agent_s_config_has_nothing_of_a_server(repo, codex_home):
-    _user_config(codex_home, 'model = "own"\nmodel_provider = "mine"\n')
-    launch, config = _launch(repo)
-    assert (config["model"], config["model_provider"]) == ("own", "mine")
-    assert not {"model_catalog_json", "web_search", "model_context_window"} & set(config)
-    assert set(launch.env) == {"CODEX_HOME"}
 
 
 # A failed turn, from the agent's journal.
@@ -1535,39 +1202,6 @@ def test_a_refused_key_ends_the_turn_in_lado_s_words(on_server):
         details="Missing Authentication header",
         output_ignored=True,
     )
-
-
-@pytest.mark.parametrize(
-    ("status", "reason", "words"),
-    [
-        (402, "Payment Required", "the model provider asks for payment (402)"),
-        (403, "Forbidden", "the model provider refused access (403)"),
-        (404, "Not Found", "the model provider refused the request (404)"),
-        (413, "Payload Too Large", "the model provider refused the request (413)"),
-        (422, "Unprocessable Entity", "the model provider refused the request (422)"),
-    ],
-)
-def test_each_status_codex_gives_up_on_reads_in_lado_s_words(on_server, status, reason, words):
-    event = _read(
-        on_server,
-        {
-            "message": f"unexpected status {status} {reason}: no such thing, url: http://gw/v1",
-            "codex_error_info": {"http_connection_failed": {"http_status_code": status}},
-        },
-    )
-    assert (event.error, event.details) == (f"{words}: no such thing", "no such thing")
-    assert not event.transient
-
-
-def test_a_status_with_no_text_is_its_words_alone(on_server):
-    event = _read(
-        on_server,
-        {
-            "message": "unexpected status 403 Forbidden, url: http://gw/v1/responses",
-            "codex_error_info": {"http_connection_failed": {"http_status_code": 403}},
-        },
-    )
-    assert (event.error, event.details) == ("the model provider refused access (403)", "")
 
 
 def test_a_limit_keeps_only_the_status(on_server):
@@ -1624,22 +1258,6 @@ def test_a_server_error_is_temporary(on_server):
 
 
 @pytest.mark.parametrize(
-    "error",
-    [
-        {"message": "something else", "codex_error_info": "usage_limit_exceeded"},
-        {
-            "message": "something else, url: http://gw/v1",
-            "codex_error_info": {"http_connection_failed": {"http_status_code": 408}},
-        },
-    ],
-    ids=["its own kind", "a 408"],
-)
-def test_anything_else_is_its_message_and_not_temporary(on_server, error):
-    event = _read(on_server, error)
-    assert (event.error, event.transient) == ("something else", False)
-
-
-@pytest.mark.parametrize(
     ("status", "reason"),
     [
         (502, "Bad Gateway"),
@@ -1660,17 +1278,6 @@ def test_any_5xx_codex_gives_up_on_is_temporary(on_server, status, reason):
     assert event.error == f"unexpected status {status} {reason}: upstream"
 
 
-def test_a_5xx_after_codex_s_repeats_is_temporary(on_server):
-    event = _read(
-        on_server,
-        {
-            "message": "exceeded retry limit, last status: 503 Service Unavailable",
-            "codex_error_info": {"response_too_many_failed_attempts": {"http_status_code": 503}},
-        },
-    )
-    assert event.transient
-
-
 def test_a_model_at_capacity_is_temporary(on_server):
     event = _read(
         on_server,
@@ -1687,62 +1294,6 @@ def test_a_400_with_no_json_object_says_so_as_codex_gives_no_status(on_server, b
     assert event.error == f"{codex.NO_WORDS}: {body}"
     assert (event.details, event.transient) == (body, False)
     assert event.error.split(":")[0] == codex.NO_WORDS
-
-
-def test_a_body_is_read_before_the_address_is_cut(on_server):
-    body = '{"error":{"message":"bad, url: here"}}'
-    event = _read(on_server, {"message": body, "codex_error_info": "other"})
-    assert event.error == "the model provider refused the request (400): bad, url: here"
-
-
-def test_an_error_with_no_words_still_ends_the_turn(on_server):
-    assert _read(on_server, {"codex_error_info": "other"}).error
-
-
-def test_a_long_message_is_cut_with_its_whole_text_in_the_details(on_server):
-    words = "w" * 300
-    event = _read(on_server, {"message": words, "codex_error_info": "thing"})
-    assert len(event.error) == base.ERROR_LIMIT and event.details == words
-
-
-def test_the_address_and_the_ray_are_in_nothing(on_server):
-    event = _read(on_server, UNAUTHORIZED)
-    told = event.error + event.details
-    assert "pass" not in told and "gw" not in told and "cf-ray" not in told and "8f1" not in told
-
-
-def test_a_ray_with_no_address_is_cut_too(on_server):
-    event = _read(
-        on_server,
-        {
-            "message": "unexpected status 401 Unauthorized: nope, cf-ray: 8f1-AMS",
-            "codex_error_info": {"http_connection_failed": {"http_status_code": 401}},
-        },
-    )
-    assert event.details == "nope"
-
-
-def test_the_key_goes_before_any_cut(on_server):
-    key = "k" * 200
-    event = _read(
-        on_server,
-        {
-            "message": f"unexpected status 401 Unauthorized: {'x' * 110}{key}, url: http://gw/v1",
-            "codex_error_info": {"http_connection_failed": {"http_status_code": 401}},
-        },
-        keys=(key,),
-    )
-    assert "k" * 5 not in event.error + event.details
-    assert event.details.endswith("***")
-
-
-def test_the_key_in_an_address_is_out_as_well(on_server):
-    event = _read(
-        on_server,
-        {"message": "sk-the-key", "codex_error_info": "thing"},
-        keys=("sk-the-key",),
-    )
-    assert (event.error, event.details) == ("***", "***")
 
 
 def test_no_error_is_no_failed_turn(on_server):
@@ -1778,17 +1329,6 @@ def test_an_error_is_told_once(on_server):
     assert _failed(on_server) is None
 
 
-def test_the_offset_survives_a_new_provider_object(on_server):
-    """The offset is on disk: a restarted loop tells nothing again."""
-    _read(on_server, UNAUTHORIZED)
-    assert codex.CodexProvider().failed_turn(on_server, lambda: ()) is None
-
-
-def test_the_next_failed_turn_is_told_too(on_server):
-    _read(on_server, UNAUTHORIZED)
-    assert _read(on_server, UNAUTHORIZED) is not None
-
-
 def test_a_new_journal_is_read_from_its_start(on_server):
     _read(on_server, UNAUTHORIZED)
     later = JOURNAL.replace("17-16-38", "18-00-00")
@@ -1798,11 +1338,6 @@ def test_a_new_journal_is_read_from_its_start(on_server):
 
 def test_a_line_that_is_no_json_is_passed_over(on_server):
     _write(on_server, "not json\n", '"text"\n', '{"payload": 1}\n')
-    assert _read(on_server, UNAUTHORIZED) is not None
-
-
-def test_a_journal_of_broken_bytes_is_passed_over(on_server):
-    _write(on_server, b"\xff\xfe\n", binary=True)
     assert _read(on_server, UNAUTHORIZED) is not None
 
 

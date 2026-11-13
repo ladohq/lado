@@ -318,12 +318,12 @@ def measure(gh: GitHub, args: argparse.Namespace) -> None:
     events = Counter(run["event"] for run in runs)
     print(table(["Event", "Runs measured"], [[e, n] for e, n in events.most_common()]))
     if left_out:
-        print("\nLeft out for their job set (D2):")
+        print("\nLeft out for their job set:")
         print(table(["Event", "Job set", "Runs"], [[e, k, n] for (e, k), n in left_out.items()]))
 
     # 1. The wait for a green first attempt.
     print("\n## 1. Wait for a green first attempt (minutes)\n")
-    rows, ends, green = [], [], {}
+    rows, green = [], {}
     smoke_split = defaultdict(list)
     for event in ["pull_request", "push", "schedule"]:
         waits = []
@@ -357,7 +357,6 @@ def measure(gh: GitHub, args: argparse.Namespace) -> None:
         last = max(done, key=lambda job: job["completed_at"])
         last_jobs[last["name"]] += 1
         durations[last["name"]].append(seconds(last["started_at"], last["completed_at"]))
-        ends.append(last["name"])
     total = sum(last_jobs.values())
     print(
         table(
@@ -368,7 +367,9 @@ def measure(gh: GitHub, args: argparse.Namespace) -> None:
             ],
         )
     )
-    by_family = Counter(family(name) for name in ends)
+    by_family = Counter()
+    for name, n in last_jobs.items():
+        by_family[family(name)] += n
     print(
         "\nBy job family: "
         + ", ".join(f"{k} {share(n, total)}" for k, n in by_family.most_common())

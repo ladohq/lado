@@ -151,9 +151,12 @@ No single method is enough; they work as a funnel:
 
 ## 4. The staged plan
 
-Status: stage 0 done (2026-11-13, section 6); stage 1 next. Reordered after stage 0 on the
-human's word (2026-11-13): every stage cuts the number of tests, starting where stage 0's
-numbers already name the candidates; speed is no stage of its own.
+Status: stage 0 done (2026-11-13), stage 1 under way (section 6). Reordered after stage 0 on
+the human's word (2026-11-13): every stage cuts the number of tests, starting where stage 0's
+numbers already name the candidates; speed is no stage of its own. Reordered again the same
+day: mutation testing first, module by module, because only it tells a copy from a test
+that checks another result of the same path (stage 0 found both among identical
+footprints); the tests that stay are then merged into tables (stage 2).
 
 ### Stage 0. Baseline measurements (no test changes)
 
@@ -222,27 +225,49 @@ Durations: `pytest --durations=0 --junitxml=...`; vitest:
 the bundle (`cd web && npm run build`): `src/lado/server/static` from an older `web/src`
 fails a third of the browser tests.
 
-### Stage 1. Tests with identical footprints
+### Stage 1. Mutation testing, module by module
+
+**Why.** Coverage says which tests run a line, not which of them would notice it broken:
+stage 0's identical footprints are copies in some files and tests of different results in
+others (the Codex config tests read different keys of one config). Mutation testing (2.2)
+answers it: a test that catches no bug some other test does not catch is a copy, whatever
+it runs.
+
+**What.** `scripts/mutants.py run` on one module of `src/` (the module's docstring has the
+mutants and how each one's tests are chosen), then `scripts/mutants.py removable` on its
+test file: the tests that go one by one, the weakest first, with no killed mutant and no
+branch losing its last test. Section 5 then applies to each: a test written for a bug
+(its task in the tracker is a bug) stays, a test written with a feature goes on the
+mutation data. Modules in the order of stage 0's overlap: `providers/codex.py` first, then
+`runtime.py`, `state.py`, `model_settings.py`, `cli.py`. After the removal, every mutant a
+removed test killed is run again against the tests that remain.
+
+**Result.** Per module: mutants, killed, survived; tests of the file before and after; the
+tests kept for a bug; the recheck.
+
+**Cost.** A mutant in a function's body runs a few tests, seconds; one at import time (a
+constant) runs every test of the module, minutes. `providers/codex.py` (967 mutants) took
+about four hours on four to six jobs.
+
+### Stage 2. Tables of the checks that stay
 
 **Why.** Stage 0 found 201 groups of unit test functions (514 functions) that take exactly
-the same branches of `src/lado` and `scripts/`: the most direct list of copies, and the
-safest place to start cutting.
+the same branches. After stage 1 those left check different results; many still differ only
+in data and read best as one table.
 
-**What.** Group by group, biggest first (`test_codex.py`, `test_cli.py`,
-`test_agent_env.py`, ...), one or two test files per pull request. For each group read the
-tests: those that check the same thing on the same path become one test, or one
-`parametrize`d test when they differ only in data; those that check different results of
-the same path stay, the reason in the log. Section 5's rules apply to each removal.
+**What.** Group by group, after the module's stage 1: tests that differ only in their input
+and expected result become one `parametrize`d test; tests that check different things on
+the same path stay as they are. The count of test functions drops; the checks do not.
 
 **Result.** Per pull request: test functions and lines before and after, branch coverage
-before and after (must not drop), the groups kept and why.
+and killed mutants before and after (neither may drop).
 
-### Stage 2. Tests of files that are not Python
+### Stage 3. Tests of files that are not Python
 
 **Why.** 408 unit test functions run no code of `src/lado` or `scripts/` of their own: they
 check the Dockerfile, the installers, the workflows and documents, often by their exact
 text. Such tests break on every edit of the file and rarely find a bug: they are change
-detectors (2.4).
+detectors (2.4). Mutation testing cannot judge them: they run no code.
 
 **What.** File by file, biggest first (`test_docker.py` 88, `test_install_sh.py` 80,
 `test_ci_workflow.py` 36, `test_windows_shell_workflow.py` 32, `test_smoke_ci.py` 25, ...).
@@ -257,29 +282,16 @@ Sort each test into:
 **Result.** Per file: the count of each kind, tests before and after; a rule for
 docs/testing.md on what such tests may check.
 
-### Stage 3. Mutation testing pilot
-
-**Why.** Most unit tests with no unique branch are in the big files (`test_state.py`: 194 of
-204). Coverage cannot say which of them catch a bug; mutation testing can, and stage 4
-needs that to cut safely.
-
-**What.** `mutmut` on one module whose tests overlap most, `state.py` first (or a smaller
-one of pure logic if `state.py` proves too slow). Record: run time, mutants, the share
-killed, which tests kill no mutant another test does not. Remove those tests where
-section 5 allows, and decide how stage 4 uses mutation testing (per file, on changed lines).
-
-**Result.** The pilot's numbers, the tests removed, the decision, in section 6.
-
-### Stage 4. Consolidating the big unit files, one per pull request
+### Stage 4. The big unit files
 
 **Why.** The five largest files hold a third of the unit test code; they are where copies
-and near-copies collect.
+and near-copies collect, and stage 1 reaches them module by module.
 
-**What.** In order of stage 0's overlap: `test_runtime.py` (416 of 489 functions with no
-unique branch), `test_state.py` (unless stage 3 did it), `test_model_settings.py`,
-`test_providers.py`, `test_cli.py`, `test_codex.py`. For each: remove the tests that
-mutation testing shows to kill nothing another does not (section 5), merge tests that differ
-only in data into `parametrize`.
+**What.** What stage 1 and 2 leave in `test_runtime.py` (416 of 489 functions with no
+unique branch), `test_state.py`, `test_model_settings.py`, `test_providers.py`,
+`test_cli.py`: the tests of several modules at once, which one module's mutants do not
+judge. Run `scripts/mutants.py` on each module they reach, join the kill matrices, then
+`removable`.
 
 **Result.** Per file: tests and lines before and after, branch coverage and killed mutants
 before and after (both must not drop).
@@ -307,7 +319,7 @@ unit twin.
   bug), `parametrize` over copies, remove the test a change makes redundant, what tests of
   file texts may check (stage 2).
 - A count of the tests per layer in CI's summary, so that growth shows in every run.
-- Optionally, mutation testing of the changed modules (nightly or on demand), if stage 3
+- Optionally, mutation testing of the changed modules (nightly or on demand), if stage 1
   shows it is affordable.
 
 **Result.** The rules merged; the count in CI.
@@ -320,7 +332,9 @@ A test is removed only when all of these hold:
    are covered elsewhere) and, where mutation testing ran, by the module's killed mutants
    staying the same without it.
 2. It does not guard a reported bug that the remaining tests would miss; check `git log`
-   of the test for a task id (LAD-...) and read the task.
+   of the test for a task id (LAD-...) and read the task. A test whose task is a bug
+   stays even when mutation testing finds it a copy: its mutants are a sample, the bug was
+   real. A test written with a feature has no such claim.
 3. It does not check a property stated in docs/design or openspec/specs that no other test
    checks.
 4. The pull request lists each removed test with its reason, and the numbers before and
@@ -452,6 +466,59 @@ How to read it:
 - vitest per test: v8 gives none; if stage 5 needs it, one run per test file.
 - The junit history from CI: from the merge of this branch on; stage 1 reads it when weeks
   have passed.
+
+### Stage 1, part 1 (2026-11-13, branch `chore/test-audit-stage-1`): `providers/codex.py`
+
+**Mutants.** `scripts/mutants.py run src/lado/providers/codex.py` with the unit coverage of
+stage 0: 967 mutants; 811 killed, 116 survived, 24 timeouts, 3 errors (the module's own
+Python version check, which no import survives), 13 on lines no test runs. Killed of killed
+and survived: 87%.
+
+**Removable.** Of the 155 test functions of `tests/test_codex.py`, 2 kill no mutant;
+`removable` lists 68 that can go one by one. Rule 2 (section 5) keeps 15 of them, each
+written for a bug in the tracker:
+
+- LAD-263 (the repo's `.codex/config.toml` silently overrode the model): 7 tests;
+- LAD-152 with LAD-166 (Codex asked to trust the folder at each resume): 5;
+- LAD-151 (the sandbox in the container): 2;
+- LAD-167 (Codex hung on "Waiting for agents"): 1.
+
+The other tests of the list reference only feature tasks (LAD-230, LAD-166, LAD-169,
+LAD-174, LAD-19) or no task. **53 test functions removed** (and `USER_CONFIG`, no longer
+used); the list is in the pull request. `tests/test_codex.py`: 155 → 102 test functions,
+1 832 → 1 367 lines. Unit tests: 6 130 passed.
+
+Most of those removed are variations of one scenario that a stronger test beside them
+checks too: 14 of reading Codex's errors and its journal (one status after another, where a
+table test checks them all), 8 of the login and the key, 8 of the trust of a repo, a
+worktree, their subfolders and the repo's hooks, 5 of the carried and the session's model;
+the other 18 of the launch and of a model server's list.
+
+**Rechecks.**
+- Every mutant a removed test killed (381 mutants) was run again against the tests that
+  remain: all killed.
+- The 46 mutants the remaining tests do not kill were run against the removed tests alone:
+  none killed. Removing them loses nothing; these are the module's real gaps (below).
+
+**A false survivor, and what it changed.** The first runs of the prototype gave 72
+removable, not 68. A later run of the 168 import-time mutants found 61 that the first run
+had killed "surviving", the later ones nearly all: its tests passed without loading the
+mutant, from about the 50th mutant on (a temporary copy of `src/` cleaned mid-run, or a
+stale `.pyc`; not settled). Taking that run over the first lost four tests' only kills;
+joining the runs instead (`removable` joins the killers of every run) keeps them:
+`test_a_model_at_capacity_is_temporary`, `test_a_server_error_is_temporary`,
+`test_the_agent_s_list_adds_no_tool_or_parameter_of_openai_s`,
+`test_the_user_s_model_settings_are_carried_and_nothing_else`. Since then
+`scripts/mutants.py` deletes the module's `.pyc` before each mutant, and a run that
+compiled none is an error, never a survivor.
+
+**Gaps found** (mutants no test kills, a list for new tests, not for this stage): the names
+of the hook events and of their keys (`PreToolUse`, `pre_compact`, ...), the
+`model_catalog_json`, `model_context_window` and `model_auto_compact_token_limit` keys, the
+escapes of a TOML string, the labels of the sandbox modes, the default context limit 2 500.
+
+**Time.** About four hours of runs on four to six jobs (an import-time mutant runs some 425
+tests), the rechecks two more. The next modules start with `scripts/mutants.py`.
 
 ## 7. Sources
 

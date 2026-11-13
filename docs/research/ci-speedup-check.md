@@ -27,7 +27,7 @@ the median), reruns halved (6.7 % → 3.3 % of runs). The Docker layer cache doe
 it saves 14-16 s of a job that ends the run in 1.5 % of pull requests, and takes 7.0 GB,
 which puts the repository's Actions cache at 11.06 GB, over its 10 GB.
 
-Proposed (section 5, drafts until the human's "yes, create"): **A** remove the Docker
+Proposed (section 5; the human said "yes, create" to all three: LAD-279, LAD-280, LAD-281): **A** remove the Docker
 layer cache; **B** bring the smoke step back off the critical path; **C** a task for the
 new flaky UI test `test_layout.py::test_the_session_list_and_session_windows_give_the_focus_back`.
 
@@ -109,7 +109,7 @@ measured three weeks, the script 3.4 days.
 |---|---|---|
 | `tests/smoke/test_smoke.py::test_a_provider_s_refusal_ends_the_turn_within_the_cli_s_repeats[429-kilo]` | smoke macOS kilo, PR run 43007535491, passed on rerun | LAD-270 (Backlog) |
 | `ui (1)`/`ui (2)` hung to 30 min, no log | PR runs 42890628200, 43005984528, passed on rerun | LAD-271 (Backlog) |
-| `tests/ui/test_layout.py::test_the_session_list_and_session_windows_give_the_focus_back` | `ui (2)` of push run 42968074369 on `main`, not rerun; the next push was green | none: proposed task C |
+| `tests/ui/test_layout.py::test_the_session_list_and_session_windows_give_the_focus_back` | `ui (2)` of push run 42968074369 on `main`, not rerun; the next push was green | none: LAD-281 (task C) |
 | `web/src/LoginSheet.test.tsx` (LAD-246) | PR run 42848370463, a commit without the fix | closed task, fixed after |
 | `test_human_messages.py::test_a_stop_as_the_message_is_typed...` (LAD-236) | push run 42620194203, 15 min before the fix's merge | closed task, fixed after |
 
@@ -149,24 +149,24 @@ pull request build found Docker layers. Without the Docker layers the cache is a
 
 ## 5. Proposed tasks
 
-Drafts; none is created without the human's "yes, create" (AC-6). Titles in Russian, as
-the tracker's.
+The human answered "yes, create" to all three (2026-11-13); each is in the tracker,
+labelled `component lado` and derived from LAD-252. Titles in Russian, as the tracker's.
 
-**A. «CI: убрать кэш слоёв Docker из контейнерных заданий»** (S). Return the step `Image`
+**A. LAD-279 «CI: убрать кэш слоёв Docker из контейнерных заданий»** (S). Return the step `Image`
 to a plain `make docker` (no buildx, no `type=gha`), keep the wheel as the image's last
 layer; update the comment in ci.yml, `docs/testing.md` and `tests/test_ci_workflow.py`.
 Why: 14-16 s saved per container cell, 0 s on the wait (a container cell ends 1.5 % of
 runs); 7.0 GB of 11.06 GB of the cache; the daily build 2× longer. Check: the cache under
 10 GB a week later; the wait's median unchanged.
 
-**B. «CI: смоук-тесты на macOS — вернуть их с критического пути»** (M). Find what in the
+**B. LAD-280 «CI: смоук-тесты на macOS — вернуть их с критического пути»** (M). Find what in the
 smoke's test step grew from ~90 s to ~400 s on 2026-11-08 (durations per test in the junit
 reports or `--durations`), then speed it up or split the slow cases into a second cell per
 provider, with the same tests on every pull request that needs the smoke. Why: the macOS
 smoke ends 69 % of green pull request runs at 7.3-7.5 min; without it the wait is 6.7 min
 at the median (19 runs), so up to ~1.5 min per run, ×4 runs per pull request.
 
-**C. «Flaky UI-тест: test_layout.py — фокус не возвращается к списку сессий»** (S).
+**C. LAD-281 «Flaky UI-тест: test_layout.py — фокус не возвращается к списку сессий»** (S).
 `tests/ui/test_layout.py::test_the_session_list_and_session_windows_give_the_focus_back`
 failed in `ui (2)` of push run 42968074369 on `main` (2026-11-11), not rerun, the next
 push green. Find the cause, fix the test or the code, no retries. Why: point 8, no open

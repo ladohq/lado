@@ -29,7 +29,7 @@
   artifact exists and its numbers match the report.
 - [x] 3.2 Post a Russian comment on LAD-252 with the before/after table, the conclusions
   and the proposed tasks (AC-5). Check: the comment by its id in the task.
-- [ ] 3.3 Ask the human once (`ask_human`, the drafts in its details) for "yes, create" on
+- [x] 3.3 Ask the human once (`ask_human`, the drafts in its details) for "yes, create" on
   the proposed tasks; create only those, each with the label `component lado`, linked to
   LAD-252 as `derived` (AC-6). Check: each new task by its key; with a "no", the build
   report says so and nothing is created.

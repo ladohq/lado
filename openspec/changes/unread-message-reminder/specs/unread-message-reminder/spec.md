@@ -5,7 +5,7 @@ That an agent which ended its turn without reading the text of a message it got 
 
 ### Requirement: A text left unread gets one reminder
 
-At the end of an agent's turn that ended without an error, of any provider, LADO SHALL queue the agent one message from `lado`, `you have not read message #<id> from <sender>: call read_messages to get its text; if it asks nothing of you, do nothing.`, naming each message to that agent that is `delivered`, has a body or artifacts, is not `read` and was never reminded, and SHALL mark each named one reminded; with none, nothing.
+At the end of an agent's turn that ended without an error, of any provider, LADO SHALL queue the agent one message from `lado`, `you have not read message #<id> from <sender>: call read_messages to get its text; if it asks nothing of you, do nothing.`, naming each message to that agent that is `delivered`, has a body or artifacts, is not `read` and was never reminded (as many as fit one line, the rest counted), and SHALL mark each named one reminded; with none, nothing.
 
 #### Scenario: The agent answers without reading
 

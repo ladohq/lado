@@ -1,6 +1,6 @@
 ## 1. The mark and the check
 
-- [x] 1.1 `state.py`: the column `read_reminded` (D1), `SCHEMA_VERSION = 40`, `MIGRATIONS[40]`
+- [x] 1.1 `state.py`: the column `read_reminded` (D1), `SCHEMA_VERSION = 40`, `MIGRATIONS[39]`
   (add it, set 1 on every existing row), the table in `SCHEMA`, `tests/agent_helpers.previous_schema`.
   Check: the migration test of `tests/test_state.py` from version 39; `make test`.
 - [x] 1.2 `state.check_unread` (D2). Check: unit tests of each state (`pending`, `sent`,
@@ -20,9 +20,9 @@
 
 ## 3. Docs and CHANGELOG
 
-- [ ] 3.1 `docs/design/agents.md` (the check at a turn's end, next to the forgotten-reply
+- [x] 3.1 `docs/design/agents.md` (the check at a turn's end, next to the forgotten-reply
   check), `docs/design/modules.md` (`state.check_unread`, `hooks`).
-- [ ] 3.2 CHANGELOG.md: `## 0.46.3 (unreleased)` becomes `## 0.47.0 (unreleased)` (a schema
+- [x] 3.2 CHANGELOG.md: `## 0.46.3 (unreleased)` becomes `## 0.47.0 (unreleased)` (a schema
   migration); under Fixed: an agent that leaves a message's text unread gets one reminder to
   read it.
 

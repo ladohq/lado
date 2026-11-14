@@ -624,6 +624,21 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   its terminal". So each message gets at most one reminder and one verdict; the API shows
   `reminded` as no reply state. A turn that ended on an error checks nothing: the next clean
   turn decides, as the agent has seen the message by then.
+- A text left unread gets one reminder, for every provider and role (LAD-234): a weak model
+  may answer a message's line without calling `read_messages` and end its turn, and the
+  body (a flow step, the human's request, a report) is lost to it. At a clean turn's end,
+  right after the forgotten-reply check, so after the hook output's batch is confirmed and
+  before this hook's hand-over, `state.check_unread` takes the agent's messages from any
+  sender that are `delivered` with something to read (a body or artifacts), not `read` and
+  never reminded (`messages.read_reminded`), and marks them reminded in the same
+  transaction; with any, the agent gets one message from `lado`,
+  `hooks.unread_reminder`: `you have not read message #<id> from <sender>: call
+  read_messages to get its text; if it asks nothing of you, do nothing.` (several:
+  `messages #3 from w1, #5 from w2 … their text`, as many as fit one line, the rest
+  counted). A `sent` message is not checked: the agent has not had its turn with it yet. So
+  each message gets at most one reminder; a turn that ended on an error checks nothing. The
+  migration to schema 40 marks every message there reminded: one left unread before the
+  update is not reminded.
 - The lead recommends on each question to the human, a core mechanism of every kit and
   provider: when a flow gate opens (approval, choice, loop limit) or an agent other than
   the lead asks the human (`ask_human`), LADO asks the lead with one message from `lado`,

@@ -9,7 +9,7 @@ check of the same shape, for a text the agent got and never read, for messages f
 
 **D1. A new column `messages.read_reminded`, schema 39 → 40.** `INTEGER NOT NULL DEFAULT 0`;
 the migration adds it and sets it to 1 on every existing row (the requirement "Texts left unread
-before the update are not reminded"). `SCHEMA_VERSION`, `MIGRATIONS[40]`, the table's `CREATE`
+before the update are not reminded"). `SCHEMA_VERSION`, `MIGRATIONS[39]` (the step from 39), the table's `CREATE`
 in `SCHEMA` and `tests/agent_helpers.previous_schema` follow AGENTS.md's rule. Why: the mark
 "reminded once" must outlive the turn and the process; `reply_state` (LAD-274's column) means a
 reply to the human and is shown by the API, and a human's message can need both marks at once.
@@ -34,6 +34,8 @@ text)` for the whole list, the text from `hooks.UNREAD_REMINDER`, a constant nex
   asks nothing of you, do nothing.`
 - several: `you have not read messages #3 from w1, #5 from w2: call read_messages to get their
   text; if it asks nothing of you, do nothing.`
+- too many for one line (`state.SUMMARY_LIMIT`, as LADO's other lines): as many as fit, then
+  `… (<n> more)`; `read_messages` returns them all anyway (`hooks.unread_reminder`).
 
 Why one message: one short turn, whatever the count. "If it asks nothing of you, do nothing"
 follows LAD-274's measured "else do nothing", which kept needless replies rare. The reminder has
@@ -49,7 +51,7 @@ agent does (LAD-274's reminder does so); `read_reminded` is not given by the API
 
 ## Test layers
 
-- Unit (`tests/test_state.py`, `tests/test_hooks.py`): `check_unread` for each state, with and
+- Unit (`tests/test_state.py`, and `tests/test_runtime.py` beside LAD-274's hook tests): `check_unread` for each state, with and
   without a body or artifacts, once only; the migration from 39 sets existing rows reminded; the
   hook queues one reminder with the exact texts of D3, none on an error turn, and checks after
   the hook output's confirmation and before the hand-over.

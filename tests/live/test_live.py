@@ -864,6 +864,9 @@ def test_a_worker_commits_unless_its_task_says_not_to(live_repo, live_provider):
         return bool(messages("w1", "supervisor") and messages("w2", "supervisor"))
 
     wait_for(both_reported, "w1's and w2's reports", 180)
+    # A worker may commit after its report, in the same turn: look at the branches only once
+    # both turns have ended.
+    wait_for(lambda: status("w1") == status("w2") == state.IDLE, "w1 and w2 to be idle", 120)
     assert runtime.git(str(repo), "rev-parse", w1.branch) == head
     assert (Path(w1.cwd) / "hello.txt").read_text().strip() == "OK"
     assert runtime.git(w1.cwd, "status", "--porcelain", "--", "hello.txt") == "?? hello.txt"

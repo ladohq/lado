@@ -10,6 +10,8 @@
 - **New session no longer takes the focus away from you.** When the recent places come late,
   a field or button you already moved to keeps the focus, and what you type stays there; Where
   still shows the last place.
+- **A worker told not to commit leaves its work uncommitted.** Workers still commit on their
+  branch by default, but a task that says "Do not commit" now wins over that.
 
 ## 0.46.2 (2026-11-12)
 

@@ -107,6 +107,14 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   Every agent's instructions end with `runtime.TEMP_FILES`: temporary files in `$TMPDIR`,
   never at a fixed path in `/tmp`. It keeps agents from colliding by name; it is no security
   boundary, as every agent is the same user.
+- A worker's instructions, in its own worktree (`runtime.WORKER_INSTRUCTIONS`) or a flow
+  run's (`RUN_WORKER_INSTRUCTIONS`), tell it to commit its work on its branch by one shared
+  sentence, `runtime.COMMIT_RULE`: a default its task can switch off, as an explicit
+  instruction of the task (not to commit, to leave the branch as it is) wins over it
+  (LAD-173). They go in the system prompt and the task comes as a message, so without the
+  exception a model ranked the rule over a task's "Do not commit". Only this rule yields to
+  the task; the report and a read-only role's limits do not. A worker that left its work
+  uncommitted is refused by `lado finish` / `finish_worker` as always.
 - An agent's status (busy / idle / background / waiting) comes from its hooks, never from
   screen scraping. Only the end of its process marks it `stopped`. A CLI command that leaves
   the conversation for another one in the same process (Claude Code's `/clear` and

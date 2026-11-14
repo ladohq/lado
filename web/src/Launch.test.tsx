@@ -3765,6 +3765,18 @@ test("a start refused before the repository was made keeps New empty folder", as
   expect(placeBox().value).toBe("New empty folder");
 });
 
+test("a kit's refusal before the folder is made keeps New empty folder as typed, Team open", async () => {
+  const message = 'kit "sdlc" expects skill "tracker", which no kit of the session provides';
+  answers["POST /api/sessions"] = () => json({ detail: { message, switch_off: [] } }, 400);
+  const dialog = await scratchReady();
+  fireEvent.click(createButton());
+  expect((await within(dialog).findByRole("alert")).textContent).toContain(message);
+  await waitFor(() => expect(teamIsOpen()).toBe(true));
+  await waitFor(() => expect(createButton().disabled).toBe(false));
+  expect(placeBox().value).toBe("New empty folder");
+  expect(scratchName().value).toBe("Сайт кофейни");
+});
+
 test("Start from scratch here: an empty folder turns Where to New empty folder with it", async () => {
   const empty = "/home/ann/Documents/coffee-site";
   folders[empty] = folder(empty, {

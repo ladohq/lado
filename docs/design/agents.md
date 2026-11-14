@@ -489,7 +489,7 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   worker by its own provider, both in
   `runtime.agents_env` over `runtime.agent_layers(project)`, the environment the agent would start from, so a project's
   secret that logs the CLI in counts; `lado start <git-url>`, `--new` and the UI's From
-  scratch check before the clone or the folder (`runtime.check_start_login`). Only `no`
+  scratch check before the clone or the folder (`runtime.check_new_session`). Only `no`
   refuses; an unreadable login goes on as below.
 - An agent LADO resumes by itself whose CLI needs a login waits for it before anything else, as does a new
   one whose login went between the check and its launch: before its window starts, once

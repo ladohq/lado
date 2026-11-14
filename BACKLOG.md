@@ -171,8 +171,9 @@ Found: 2026-10-05, run feature/session-head (developer, reviewer).
 Seen again 2026-10-07, verify of fix/integration-fix2, load average 75–108: 4 UI tests
 failed, all passed on rerun: test_launch::test_stop_from_the_session_head (tooltip 'Stop
 session…' not in 5 s), test_chat::test_the_human_writes_and_the_supervisor_gets_it_and_replies
-(test_chat.py:35, value ''), test_layout::test_many_tabs_stay_on_one_line… (click 'Open
-terminal' 30 s timeout), test_launch::test_a_session_starts_from_the_new_session_window
+(test_chat.py:35, value ''), test_chat::test_many_tabs_stay_on_one_line… (then in
+test_layout; click 'Open terminal' 30 s timeout, the load; its own measurement race, boxes
+from two layouts, fixed by LAD-283), test_launch::test_a_session_starts_from_the_new_session_window
 (provider select disabled: `/api/providers` slower than 30 s, since the CLIs' `--version`
 are slow under load; failed twice, passed the third time).
 

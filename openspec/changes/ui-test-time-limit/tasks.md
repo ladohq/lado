@@ -28,12 +28,12 @@
 
 ## 2. CI
 
-- [ ] 2.1 `.github/workflows/ci.yml`, job `ui`: the pytest step gets `timeout-minutes: 12`
+- [x] 2.1 `.github/workflows/ci.yml`, job `ui`: the pytest step gets `timeout-minutes: 12`
   (its p90 is ~5 min) and a comment: a step past its limit ends red with its log kept and
   the junit upload still runs, which a job cancelled by its own limit loses; each test has
   its own 120 s (`tests/ui/conftest.py`). The job keeps `timeout-minutes: 25`; the upload
   keeps `if: always()`. Check: `make test`.
-- [ ] 2.2 `tests/test_ci_workflow.py`: a test that the `ui` job's pytest step has a
+- [x] 2.2 `tests/test_ci_workflow.py`: a test that the `ui` job's pytest step has a
   `timeout-minutes` and it is under the job's (12 < 25), and that the junit upload is
   `if: always()` (AC-3); the module docstring names it. Check: `make test`; the test fails
   with the step's limit removed (try it, then restore).

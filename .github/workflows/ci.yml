@@ -170,8 +170,12 @@ jobs:
             ~/.cache/lado-apt
           key: ${{ steps.browser-key.outputs.key }}
       # Two workers: a Chromium and a lado server each, on this 4-vCPU runner; -n auto's
-      # four starve LADO's short test timers.
+      # four starve LADO's short test timers. Each test has its own 120 s
+      # (tests/ui/conftest.py); the step's limit, under the job's, ends a hang outside a test
+      # red with its log kept and the junit upload still run, which a job cancelled by its own
+      # limit loses (LAD-271). The step takes ~5 minutes.
       - run: uv run pytest -m ui -n 2 --shard ${{ matrix.shard }}/4 --junitxml=junit.xml
+        timeout-minutes: 12
       # The test results for the test audit (docs/research/test-audit.md): durations and
       # failures over weeks, also of a red run.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

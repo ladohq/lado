@@ -1,6 +1,7 @@
 """.github/workflows/ci.yml: every job's time limit; the pytest commands of jobs `unit`,
-`integration` and `ui` and their shards; job `web`, make dist and the Node tests; the UI
-jobs' browser from a cache only runs outside a pull request save; job `smoke`, the smoke
+`integration` and `ui` and their shards; the `ui` pytest step's limit under its job's; job
+`web`, make dist and the Node tests; the UI jobs' browser from a cache only runs outside a
+pull request save; job `smoke`, the smoke
 tests on Linux and macOS for every provider, where job `changes` says a run needs it (every
 push to main, the daily schedule, a manual dispatch, a pull request beyond the skip list);
 job `container`, LADO's image built and tested in two shards on amd64 and arm64 on every
@@ -120,6 +121,16 @@ def test_ui_tests_in_four_shards_on_two_workers_each_building_only_the_bundle(wo
     assert bundle["run"] == "cd web && npm ci --no-audit --no-fund && npm run build"
     runs = [s.get("run", "") for s in ui["steps"]]
     assert not [r for r in runs if "make dist" in r or "make web" in r or "npm test" in r]
+
+
+def test_the_ui_tests_step_ends_before_its_job_so_its_log_and_junit_stay(workflow):
+    """A job cancelled by its own limit keeps neither the log nor the junit report (LAD-271):
+    the pytest step has a shorter one, and the upload runs after it whatever its end."""
+    ui = workflow["jobs"]["ui"]
+    (step,) = [s for s in ui["steps"] if s.get("run", "").startswith("uv run pytest")]
+    assert step["timeout-minutes"] == 12
+    assert step["timeout-minutes"] < ui["timeout-minutes"] == 25
+    assert step_using(ui["steps"], "actions/upload-artifact")["if"] == "always()"
 
 
 # The UI jobs' browser: Chromium and the packages --with-deps downloads, from a cache.

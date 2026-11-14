@@ -35,9 +35,9 @@
 
 ## 4. Checks
 
-- [ ] 4.1 `make lint`, `make test`, `openspec validate container-build-without-cache
+- [x] 4.1 `make lint`, `make test`, `openspec validate container-build-without-cache
   --strict` and the trial archive (`.lado/sdlc.md`, Checks).
-- [ ] 4.2 The pull request's CI: the four container cells green; quote in the build report
+- [x] 4.2 The pull request's CI: the four container cells green; quote in the build report
   the step `Image`'s time per architecture and that its log has no `CACHED` layer (AC-2).
 - [ ] 4.3 After the merge (not blocking the pull request): a week later, `measure.py
   --caches` shows the Actions cache under 10 GB with no `container-*` entry, and the

@@ -26,10 +26,10 @@
 
 ## 4. Docs and CHANGELOG
 
-- [ ] 4.1 `docs/cli.md` (`--new`: checked whole first, the late removal line; the clone:
+- [x] 4.1 `docs/cli.md` (`--new`: checked whole first, the late removal line; the clone:
   checked whole first), `docs/design/ui.md` (New empty folder: a refusal before the folder
   keeps Where), `docs/design/modules.md` (`runtime.check_new_session`, `scratch.remove_unused`).
-- [ ] 4.2 CHANGELOG.md under `## 0.47.0 (unreleased)`, Fixed: a refused new session from an
+- [x] 4.2 CHANGELOG.md under `## 0.47.0 (unreleased)`, Fixed: a refused new session from an
   empty folder, a set-up or a clone in the terminal leaves no folder or repository behind.
 - [ ] 4.3 Regression run: `make lint`, `make test`, `openspec validate scratch-checks-first
   --strict`, the trial archive of `.lado/sdlc.md`'s Checks.

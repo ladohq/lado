@@ -1674,8 +1674,11 @@ connection, above).
   creates it in <folder>.`), a quiet `folder <slug>` when the slug differs from the words
   (`lado.scratch.names`), the name's or the folder's refusal (`GET /api/scratch-target`) and
   git's missing author with its hint and Copy, and always the note `Also the session’s name.`:
-  the window has no Name field for it. **Create and start** sends `where: {kind: "scratch", path}` with the name and the title; a start refused
-  after the repository was made turns Where to it.
+  the window has no Name field for it. **Create and start** sends `where: {kind: "scratch", path}` with the name and the title. The server checks
+  the new session whole before it makes the folder, so a refusal (a kit's too, with Team
+  open) keeps Where on New empty folder with the name as typed; a start refused after the
+  repository was made turns Where to it when the repository stays (the server removes it
+  while unused).
 - **Project…** shows `LaunchProject.tsx`: **Project** (by title, one whose folder is not
   found off, its line of repositories, sessions running and folder) and **Repository** (a
   `radiogroup`, `✓ Ready · branch X`), from `GET /api/project-launch?project=&repo=` (the last

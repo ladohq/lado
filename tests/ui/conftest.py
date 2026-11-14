@@ -4,6 +4,9 @@ server of each test's own). Run them with `make test-ui` (marker `ui`).
 
 Each test saves a screenshot of every screen it checks to <temp dir>/lado-ui-shots/, outside
 the tree, for the reviewer: `shot(page, name)`.
+
+Each test has a time limit of 120 s, its fixtures included (tests/time_limit.py): a test
+past it fails, its worker's stacks in the log, and the run goes on.
 """
 
 import os
@@ -18,6 +21,10 @@ import agent_helpers
 import leftovers
 import pytest
 from agent_helpers import refuse_unless_isolated
+
+# Each test under tests/ui/ (this conftest's folder only) gets the time limit and the
+# stacks before it, in `make test-ui` and in CI alike.
+from time_limit import pytest_itemcollected, stacks_before_the_limit  # noqa: F401
 
 # The fake agent's provider lives beside the integration tests.
 sys.path.insert(0, str(Path(__file__).parent.parent / "integration"))

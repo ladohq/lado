@@ -17,7 +17,7 @@ from pathlib import Path
 from shlex import quote
 from typing import Literal
 
-from lado import projects, runtime
+from lado import projects, runtime, state
 from lado import text as visible
 
 
@@ -175,15 +175,10 @@ def _refusal(target: Target) -> ScratchError:
 FIRST_COMMIT = "Start from scratch"
 
 
-def make(path: str, name: str, project: str | None = None) -> str:
-    """Make the folder `path` (a full path) a git repository with one empty commit, for the
-    session `name`; its root. The checks first, again (the name as `runtime.check_name`, the
-    target, the author), then the folder and the folders above it when it is new, `git
-    init`, the branch of git's `init.defaultBranch` (else `main`) and the commit: no file,
-    no signing, no hooks, no prompt. A failed step removes what this call made (the
-    folders it created, or the `.git` of an empty folder it was given): a ScratchError
-    `git_failed` with git's line. With `project` it adds a repository to that project
-    (`check_target`'s `project`), and no session's name is asked: none is made."""
+def check(path: str, name: str, project: str | None = None) -> None:
+    """Refuse a fresh start of the folder `path` (a full path) for the session `name` as
+    `make` would, making nothing: the name as `runtime.check_name`, the target, the author.
+    With `project` no session's name is asked (`make`)."""
     if project is None:
         runtime.check_name(name, path)
     target = check_target(path, project)
@@ -191,6 +186,27 @@ def make(path: str, name: str, project: str | None = None) -> str:
         raise _refusal(target)
     if (problem := author_problem(path)) is not None:
         raise problem
+
+
+@dataclass(frozen=True)
+class Made:
+    """What `make` made: the repository's root, and the topmost folder it created (None:
+    it was given an empty folder, and made only its `.git`)."""
+
+    root: str
+    created: Path | None
+
+
+def make(path: str, name: str, project: str | None = None) -> Made:
+    """Make the folder `path` (a full path) a git repository with one empty commit, for the
+    session `name`; what it made. The checks first, again (`check`), then the folder and the
+    folders above it when it is new, `git init`, the branch of git's `init.defaultBranch`
+    (else `main`) and the commit: no file, no signing, no hooks, no prompt. A failed step
+    removes what this call made (the folders it created, or the `.git` of an empty folder
+    it was given): a ScratchError `git_failed` with git's line. With `project` it adds a
+    repository to that project (`check_target`'s `project`), and no session's name is
+    asked: none is made."""
+    check(path, name, project)
     folder = Path(path)
     made = None if folder.exists() else _topmost_missing(folder)
     try:
@@ -203,13 +219,47 @@ def make(path: str, name: str, project: str | None = None) -> str:
             *("-c", "commit.gpgsign=false", "-c", f"core.hooksPath={os.devnull}"),
             *("commit", "--allow-empty", "--no-verify", "--quiet", "-m", FIRST_COMMIT),
         )
-        return _git(path, "rev-parse", "--show-toplevel")
+        return Made(_git(path, "rev-parse", "--show-toplevel"), made)
     except (OSError, _GitFailed) as error:
         shutil.rmtree(made or folder / ".git", ignore_errors=True)
         line = (isinstance(error, OSError) and error.strerror) or str(error)
         raise ScratchError(
             "git_failed", f"git could not make {path} a repository: {line}"
         ) from None
+
+
+def remove_unused(made: Made) -> bool:
+    """Undo `made` after a start refused once the repository was there: remove the folders
+    `make` created, or the `.git` it made in an empty folder, and say so (True). Only while
+    nothing touched them: the root holds nothing but `.git` and Finder's file, its history
+    is the one commit FIRST_COMMIT, git sees no change, no session of lado.db has the
+    folder, and each folder created above it holds only the next one down. Otherwise it
+    keeps all, and says False; a removal must never take the human's work or a session's
+    folder."""
+    root = Path(made.root)
+    try:
+        if any(entry.name not in (".git", FINDER) for entry in root.iterdir()):
+            return False
+        if made.created is not None:
+            # The root is a real path (git's), the folder created the one given.
+            top, below = Path(os.path.realpath(made.created)), root
+            while below != top:
+                if below == below.parent:
+                    return False
+                if [entry.name for entry in below.parent.iterdir()] != [below.name]:
+                    return False
+                below = below.parent
+        commits = _git(made.root, "log", "--all", "--format=%s").splitlines()
+        # Untracked can only be Finder's file here: the entries were looked at above.
+        changes = _git(made.root, "status", "--porcelain", "--untracked-files=no")
+        if commits != [FIRST_COMMIT] or changes:
+            return False
+    except (OSError, _GitFailed):
+        return False
+    if state.last_session(made.root) is not None:
+        return False
+    shutil.rmtree(made.created or root / ".git", ignore_errors=True)
+    return True
 
 
 class _GitFailed(Exception):

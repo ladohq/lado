@@ -1,10 +1,10 @@
 ## 1. The pre-check
 
-- [ ] 1.1 `runtime.check_new_session` (D1) and `start_session` on it (D2). Check: unit tests
+- [x] 1.1 `runtime.check_new_session` (D1) and `start_session` on it (D2). Check: unit tests
   of each refusal before the folder exists (no kits, a kit that lacks a skill, a name of
   another folder, a taken name, a bad title, a permission mode, a missing command, no login,
   a model refused), and the existing `start_session` tests green.
-- [ ] 1.2 Remove `runtime.check_start_login`; `cli._start_new`, `cli._start_clone` and
+- [x] 1.2 Remove `runtime.check_start_login`; `cli._start_new`, `cli._start_clone` and
   `app.start` (scratch, setup) call `check_new_session` before they change anything (D3).
   Check: unit tests: `lado start --new <folder> --kit <kit without its skill>` exits 1 and the
   folder does not exist; `lado start <git-url> --kit …` clones nothing (clone stubbed);
@@ -12,7 +12,7 @@
 
 ## 2. A late refusal of a fresh start
 
-- [ ] 2.1 `scratch.make` returns what it made; `scratch.remove_unused` (D4); `cli._start_new`
+- [x] 2.1 `scratch.make` returns what it made; `scratch.remove_unused` (D4); `cli._start_new`
   prints `lado: removed <folder>, which this start made` or keeps `the repository stays in
   <folder>`; `app.start` removes it too. Check: unit tests with real git: removed after a late
   refusal (an empty folder given: only `.git` goes); kept with a file in it, a second commit,

@@ -28,6 +28,6 @@
 
 ## 4. Checks
 
-- [ ] 4.1 `make lint`, `make test`, the integration files of 2.2 with `-m integration`,
+- [x] 4.1 `make lint`, `make test`, the integration files of 2.2 with `-m integration`,
   `openspec validate unread-message-reminder --strict`, `openspec validate --specs --strict` and
   the trial archive of the settings' Checks.

@@ -375,14 +375,17 @@ failed attempt but the last, a `::warning::` annotation in the run's summary nam
 provider and the attempt, then `npm uninstall` and a fresh install; the third failure is a
 red cell with no test run. Then it runs `uv run pytest -m smoke -n 3 --dist worksteal -v -k
 <provider>` into `<out>/smoke-<provider>.log`: three workers, a worker that ends its share
-taking tests still queued for another, as each smoke test is isolated (its own `HOME`,
-CLI config, `LADO_HOME`, tmux server and fake endpoint) and mostly waits on its CLI, so
-the step lasts about its longest test (claude's refusal case, ~155 s) rather than their
-sum; `make test-smoke` stays serial (`-n0`) to debug one CLI by hand. The cell passes
-only on exit 0 with a test passed and none skipped; a failing cell's evidence goes to `<out>/evidence` (the artifact
-`smoke-<os>-<provider>`). `smoke_ci.py`'s `PINS` is the one place a CLI's version is
-written for CI: its providers are exactly `lado.providers`' and each pin's version parts are
-its provider's `TESTED_VERSION` (`tests/test_smoke_ci.py`); the matrix is the same list
+taking tests still queued for another, as each smoke test is isolated (its own `HOME`, CLI
+config, `LADO_HOME`, tmux server and fake endpoint) and mostly waits on its CLI. The step
+is then bound by the longest test plus each worker's cold start of the CLI rather than by
+the sum: on macOS, claude's `[401]` refusal case takes ~160 s and a worker's first test
+~40 s, and the step 252-284 s against 409 s serially (LAD-280's trial; the runners' speed
+varies by up to half on the same code). `make test-smoke` stays serial (`-n0`) to debug
+one CLI by hand. The cell passes only on exit 0 with a test passed and none skipped; a
+failing cell's evidence goes to `<out>/evidence` (the artifact `smoke-<os>-<provider>`).
+`smoke_ci.py`'s `PINS` is the one place a CLI's version is written for CI: its providers
+are exactly `lado.providers`' and each pin's version parts are its provider's
+`TESTED_VERSION` (`tests/test_smoke_ci.py`); the matrix is the same list
 (`tests/test_ci_workflow.py`). No secret anywhere.
 A job GitHub finds no hosted runner for is cancelled before any step, with no runner and
 GitHub's annotation "The job was not acquired by Runner of type hosted even after multiple

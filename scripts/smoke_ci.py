@@ -15,7 +15,8 @@ and the attempt, uninstalls the package and installs again; after the third the 
 and runs no test. Then it runs `uv run pytest -m smoke -n 3 --dist worksteal -v -k
 <provider>`: the tests of `make test-smoke PROVIDER=<provider>`, which runs them one at a
 time (`-n0`), on three workers that take each other's queued tests; each test is isolated
-and mostly waits on its CLI, so the cell's step is about its longest test. Its output goes
+and mostly waits on its CLI, so the cell's step is bound by its longest test plus each
+worker's cold start of the CLI, not by the sum (docs/testing.md). Its output goes
 to the terminal and to `<out>/smoke-<provider>.log`. The cell passes only when pytest exits
 0 and its last summary line has a `passed` and no `skipped` (a missing CLI skips). A
 failing cell copies the test's evidence into `<out>/evidence`.

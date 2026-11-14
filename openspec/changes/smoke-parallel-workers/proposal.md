@@ -71,8 +71,10 @@ Out of scope:
   with the same number of tests passed per cell as on `main` (claude 21, codex 16,
   opencode 14, kilo 14) and no skip.
 - AC-3: in those runs, the test step of each macOS smoke cell takes at most 270 s at the
-  median of the three, and each run under 396 s (the fastest of `main`'s serial steps,
-  396-424 s). Set by the human on 2026-11-14 after the first trial runs, in place of "at
+  median of the three, and each run under 396 s (the low end of 396-424 s, the serial
+  macOS step of the cells on the critical path, claude and opencode, in LAD-252's
+  measurement; kilo's and codex's serial steps are shorter, 251 s and 260 s in the table
+  below). Set by the human on 2026-11-14 after the first trial runs, in place of "at
   most 3.5 minutes" (210 s): claude's cell cannot reach it, as each worker's first test
   starts the CLI cold (~42 s) and the `[401]` refusal case alone takes ~160 s; and the
   macOS runners' speed varies by half on the same code (opencode 251 s in one run, 373 s in

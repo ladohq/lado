@@ -31,5 +31,5 @@
   keeps Where), `docs/design/modules.md` (`runtime.check_new_session`, `scratch.remove_unused`).
 - [x] 4.2 CHANGELOG.md under `## 0.47.0 (unreleased)`, Fixed: a refused new session from an
   empty folder, a set-up or a clone in the terminal leaves no folder or repository behind.
-- [ ] 4.3 Regression run: `make lint`, `make test`, `openspec validate scratch-checks-first
+- [x] 4.3 Regression run: `make lint`, `make test`, `openspec validate scratch-checks-first
   --strict`, the trial archive of `.lado/sdlc.md`'s Checks.

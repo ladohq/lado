@@ -35,3 +35,5 @@
   live.yml` on main, all four cells green within 25 minutes, the flow test's time per
   provider (its `flow: Ns` line) noted in the closing report (AC-6). Before the merge the
   pull request's own CI must be green as usual (`ci-ok`; it does not run live tests).
+  Not checked at the archive: it runs only after the merge, when the integrator starts
+  `live.yml` on main as the human asked at `merge_ok`.

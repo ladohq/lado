@@ -175,3 +175,49 @@ def test_a_loop_not_ended_by_lado_stop_fails_the_check(lado_home, logged):
     loop.log("s", logged)
     with pytest.raises(pytest.fail.Exception, match="s: "):
         agent_helpers.check_loop_ended_by_stop("s")
+
+
+SECRET = "smoke-refused-key-0123456789"
+
+
+def test_the_db_scan_passes_without_side_files_and_with_a_clean_lado_db(tmp_path):
+    (tmp_path / "lado.db").write_bytes(b"rows without the key")
+    agent_helpers.check_no_secret_in_db(tmp_path, SECRET)
+
+
+def test_the_db_scan_fails_without_lado_db(tmp_path):
+    (tmp_path / "lado.db-wal").write_bytes(b"pages")
+    with pytest.raises(FileNotFoundError, match="lado.db"):
+        agent_helpers.check_no_secret_in_db(tmp_path, SECRET)
+
+
+@pytest.mark.parametrize("name", ["lado.db-wal", "lado.db-shm", "lado.db"])
+def test_the_db_scan_fails_naming_the_file_that_holds_the_secret(tmp_path, name):
+    for file in ("lado.db-wal", "lado.db-shm", "lado.db"):
+        (tmp_path / file).write_bytes(b"clean")
+    (tmp_path / name).write_bytes(f"page with {SECRET} in it".encode())
+    with pytest.raises(AssertionError, match=f"{name}$"):
+        agent_helpers.check_no_secret_in_db(tmp_path, SECRET)
+
+
+def test_the_db_scan_reads_the_wal_checkpointed_away_mid_scan_through_lado_db(
+    tmp_path, monkeypatch
+):
+    # The last connection closes as the scan starts: SQLite moves the WAL into lado.db and
+    # deletes lado.db-wal and lado.db-shm, so the WAL's read fails and its key is in lado.db.
+    db, wal, shm = (tmp_path / n for n in ("lado.db", "lado.db-wal", "lado.db-shm"))
+    db.write_bytes(b"clean")
+    wal.write_bytes(f"page with {SECRET}".encode())
+    shm.write_bytes(b"index")
+    read_bytes = type(db).read_bytes
+
+    def checkpointed(path):
+        if path.name == "lado.db-wal" and wal.exists():
+            db.write_bytes(read_bytes(db) + read_bytes(wal))
+            wal.unlink()
+            shm.unlink()
+        return read_bytes(path)
+
+    monkeypatch.setattr(type(db), "read_bytes", checkpointed)
+    with pytest.raises(AssertionError, match="lado.db$"):
+        agent_helpers.check_no_secret_in_db(tmp_path, SECRET)

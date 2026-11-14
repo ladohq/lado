@@ -256,6 +256,22 @@ def database() -> bytes:
     return path.read_bytes()
 
 
+def check_no_secret_in_db(home: Path, secret: str) -> None:
+    """`secret` is in none of the bytes of lado.db and its side files in `home`, read while
+    the session's processes may still use them. When the last connection closes, SQLite moves
+    the WAL into lado.db and deletes lado.db-wal and lado.db-shm: so the side files are read
+    first, one that is gone is skipped (no check before the read, which would only move the
+    race), and lado.db, which then holds the WAL's pages, last; it must exist."""
+    for name in ("lado.db-wal", "lado.db-shm", "lado.db"):
+        try:
+            data = (home / name).read_bytes()
+        except FileNotFoundError:
+            if name == "lado.db":
+                raise
+            continue
+        assert secret.encode() not in data, f"the secret is in {home / name}"
+
+
 def previous_schema() -> None:
     """Turn the LADO_HOME database back to SCHEMA_VERSION - 1, as an older LADO left it.
     Undoes the last step of state.MIGRATIONS: change it with each new migration."""

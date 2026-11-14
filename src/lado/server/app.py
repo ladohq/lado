@@ -1090,10 +1090,9 @@ def create_app(
     def set_login_variable(name: str, variable: str, given: SecretValue) -> ProviderLogins:
         """Keep one of the provider's login variables as LADO's secret, in place of its
         others there: one login per layer, so the one saved is the login. The agents started
-        after it, and those that wait for a login, get it. Spaces and line breaks around the
-        pasted value are dropped: no token or key has them."""
+        after it, and those that wait for a login, get it."""
         provider = provider_named(name)
-        value = given.value.strip()
+        value = given.value.strip()  # a pasted line break or space: no token or key has one
         try:
             logins.check_secret(provider, variable, value)
             project_secrets.write_lado(variable, value)

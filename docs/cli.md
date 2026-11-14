@@ -13,7 +13,8 @@ uses it as it is; LADO never fetches into or switches a folder that exists), and
 session is checked whole before the clone (`runtime.check_new_session`: the kits and the
 skills they expect, a name a session of another folder has, the provider, which must be
 given when it cannot be chosen, the permission mode, the kits' commands, the model and the
-login), so a refusal clones nothing. git's
+login), so a refusal clones nothing; a stopped session of that name and folder (the folder
+gone) is not checked so, and the start resumes it in the clone, as for `--new`. git's
 progress goes to stderr; Ctrl-C ends git's process group, removes the temporary folder and
 exits 130 (`lado: clone cancelled`), a SIGTERM or SIGHUP the same way with 128 + its
 number; a start refused after the clone says `the clone stays

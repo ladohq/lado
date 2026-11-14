@@ -251,7 +251,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     messages to them. A new session or worker of a CLI that needs a login and has none is
     refused first (`check_login`, `NotLoggedIn`), in `agents_env(agent_layers(project), agent_cli)`, the environment the agent starts from; a resumed agent
     waits for it instead (`_held_for_login`). `check_new_session` is every check of a new
-    session that needs no repository (the kits not empty, the name, the title, a taken name,
+    session that needs no repository (the kits not empty, a folder of LADO's projects/
+    without a project, the name, the title, a taken name,
     the provider, the permission mode, `kits.resolve`, the kits' commands, the model, the
     login), for a folder that may not exist yet; it returns a `NewSession`, which
     `start_session` goes on with, and a fresh start, a set-up and `lado start <git-url>`

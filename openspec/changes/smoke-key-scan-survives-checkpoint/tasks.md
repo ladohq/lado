@@ -16,6 +16,6 @@
 
 - [x] 2.1 `make lint` and `make test` pass (AC-3);
   `openspec validate smoke-key-scan-survives-checkpoint --strict` passes.
-- [ ] 2.2 The pull request's CI is green, with the smoke cells of kilo, opencode and claude
+- [x] 2.2 The pull request's CI is green, with the smoke cells of kilo, opencode and claude
   that run `check_refusal` (AC-4); the smoke runs because the diff touches `tests/` outside
   ci.yml's skip list. A smoke cell red on this test again: the build report names the run.

@@ -30,10 +30,10 @@
 
 ## 3. Docs and checks
 
-- [ ] 3.1 `docs/design/ui.md`, the login sheet: Save refuses a value that is not of the
+- [x] 3.1 `docs/design/ui.md`, the login sheet: Save refuses a value that is not of the
   choice's format (Claude Code: the subscription token's and the API key's prefixes), drops
   spaces and line breaks around a value, and the refusal shows under the choices.
-- [ ] 3.2 CHANGELOG.md under `## 0.47.0 (unreleased)` → `### Fixed`: "**Claude Code's login
+- [x] 3.2 CHANGELOG.md under `## 0.47.0 (unreleased)` → `### Fixed`: "**Claude Code's login
   checks what you paste.**" — a string that is no subscription token or API key, or one of
   the other kind, is refused with what to paste instead, rather than shown as logged in.
 - [ ] 3.3 `make lint`, `make test`, `uv run pytest -m ui

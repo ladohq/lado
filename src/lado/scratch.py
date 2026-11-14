@@ -234,8 +234,8 @@ def remove_unused(made: Made) -> bool:
     nothing touched them: the root holds nothing but `.git` and Finder's file, its history
     is the one commit FIRST_COMMIT, git sees no change, no session of lado.db has the
     folder, and each folder created above it holds only the next one down. Otherwise it
-    keeps all, and says False; a removal must never take the human's work or a session's
-    folder."""
+    keeps all, and says False, as it does when the removal fails part way; a removal must
+    never take the human's work or a session's folder."""
     root = Path(made.root)
     try:
         if any(entry.name not in (".git", FINDER) for entry in root.iterdir()):
@@ -258,7 +258,10 @@ def remove_unused(made: Made) -> bool:
         return False
     if state.last_session(made.root) is not None:
         return False
-    shutil.rmtree(made.created or root / ".git", ignore_errors=True)
+    try:
+        shutil.rmtree(made.created or root / ".git")
+    except OSError:
+        return False  # what is left stays, and is said to stay
     return True
 
 

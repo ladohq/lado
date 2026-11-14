@@ -765,7 +765,8 @@ def check_new_session(
     project: str | None = None,
 ) -> NewSession:
     """Every check of a new session in the folder `path` (a full path) that needs no
-    repository there, in start_session's order: the kits not empty, the name (another
+    repository there, in start_session's order: the kits not empty, a folder of LADO's
+    projects/ without `project` (projects.refusal), the name (another
     folder's session; `name` None: the folder's), the title, a taken name, the provider
     (given, else suggested as start_session suggests it), the permission mode, the kits
     resolved, the commands they expect, the model and the login. start_session calls it for
@@ -773,8 +774,12 @@ def check_new_session(
     make a folder, a repository or a clone, so that a refusal leaves the disk as it was.
     The folder may not exist: its repository's root will be its real path. Stores and
     makes nothing."""
+    from lado import projects  # lado.projects builds on this module
+
     if kit_names is not None and not kit_names:
         raise LadoError("a session needs at least one kit")  # not silently the default
+    if project is None and (refused := projects.refusal(path)):
+        raise refused
     repo = os.path.realpath(path)
     session = slug(name or Path(repo).name)
     old = state.get_session(session)

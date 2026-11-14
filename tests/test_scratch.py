@@ -475,6 +475,19 @@ def test_a_fresh_repository_that_changed_stays(git_config, tmp_path, changed):
     assert runtime.check_repo(str(path)) == os.path.realpath(path)
 
 
+def test_a_removal_that_fails_says_so(git_config, tmp_path, monkeypatch):
+    path = tmp_path / "shop"
+    made = scratch.make(str(path), "shop")
+
+    def refused(target, ignore_errors=False, **kwargs):
+        if not ignore_errors:  # as rmtree: errors ignored leave the folder silently
+            raise PermissionError(13, "Permission denied", str(target))
+
+    monkeypatch.setattr(scratch.shutil, "rmtree", refused)
+    assert scratch.remove_unused(made) is False
+    assert runtime.check_repo(str(path)) == os.path.realpath(path)
+
+
 def test_a_folder_made_above_it_that_holds_more_stays(git_config, tmp_path):
     path = tmp_path / "work" / "shop"
     made = scratch.make(str(path), "shop")

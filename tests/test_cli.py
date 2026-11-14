@@ -2492,6 +2492,18 @@ def test_a_start_refused_after_the_clone_keeps_the_clone(tmp_path, fake_tmux, ca
     assert _branch_of(folder) == "main"
 
 
+def test_a_clone_into_the_gone_folder_of_a_stopped_session_resumes_it(tmp_path, fake_tmux, capsys):
+    url = agent_helpers.bare_remote(tmp_path)
+    folder = tmp_path / "app"
+    assert main(["start", url, str(folder), "--provider", "kilo", "--no-attach"]) == 0
+    runtime.stop_session("app")
+    shutil.rmtree(folder)
+    capsys.readouterr()
+    assert main(["start", url, str(folder), "--no-attach"]) == 0
+    assert f'Resumed session "app" in {os.path.realpath(folder)}' in capsys.readouterr().out
+    assert _branch_of(folder) == "main"
+
+
 def test_a_git_url_without_the_login_is_refused_before_the_clone(
     tmp_path, fake_tmux, capsys, monkeypatch, cli_logins
 ):
@@ -2910,6 +2922,18 @@ def test_new_with_a_kit_that_lacks_a_skill_makes_no_folder(
     assert 'kit "sdlc" expects skill "tracker"' in capsys.readouterr().err
     assert not (tmp_path / "lado").exists()
     assert state.list_sessions() == []
+
+
+def test_new_in_the_gone_folder_of_a_stopped_session_resumes_it(
+    tmp_path, git_config, fake_tmux, capsys
+):
+    folder = tmp_path / "shop"
+    assert main(["start", "--new", str(folder), "--provider", "kilo", "--no-attach"]) == 0
+    runtime.stop_session("shop")
+    shutil.rmtree(folder)
+    capsys.readouterr()
+    assert main(["start", "--new", str(folder), "--no-attach"]) == 0
+    assert f'Resumed session "shop" in {os.path.realpath(folder)}' in capsys.readouterr().out
 
 
 def test_new_with_a_provider_it_does_not_know_makes_no_folder(

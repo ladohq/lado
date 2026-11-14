@@ -226,7 +226,11 @@ def _cloned(
 def _check_new(args: argparse.Namespace, folder: str) -> None:
     """Refuse the new session `args` would start in `folder` (which may not exist) as its
     start would (runtime.check_new_session), before a clone or a fresh start changes the
-    disk."""
+    disk. A stopped session of that name and folder (the folder gone) is no new session:
+    `lado start <folder>` resumes it once the folder is there, as it always did."""
+    old = state.get_session(runtime.slug(args.name or Path(folder).name))
+    if old is not None and old.repo == os.path.realpath(folder):
+        return
     try:
         runtime.check_new_session(
             folder,

@@ -1226,6 +1226,15 @@ def shop(tmp_path, monkeypatch, git_config):
 IN_SHOP = "{} belongs to the project Shop: start a session in the project"
 
 
+def test_a_setup_in_a_project_is_refused_before_its_repository(client, shop, fake_tmux):
+    notes = shop / "notes"
+    notes.mkdir()
+    (notes / "a.txt").write_text("hello")
+    answer = start_setup(client, notes, provider="kilo")
+    assert (answer.status_code, answer.json()["detail"]) == (400, IN_SHOP.format(notes))
+    assert os.listdir(notes) == ["a.txt"]
+
+
 def test_a_folder_in_a_project_is_refused_before_git(client, shop):
     (shop / "frontend" / "src").mkdir()
     path = shop / "frontend"

@@ -9,6 +9,7 @@ import re
 import agent_helpers
 import pytest
 from playwright.sync_api import Browser, Page, expect
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from test_artifacts_tab import MANY, MEASURE_TABLES
 from test_flows_tab import BACK, FORWARD, STAY, read_out, reviewed_session, tone, tooltip_lines
 from test_gates import (
@@ -473,6 +474,24 @@ def test_an_artifact_from_the_expanded_card_shows_over_it_and_esc_closes_the_top
         expect(card.get_by_role("button", name="myself")).to_have_attribute("aria-pressed", "true")
 
 
+def settle(page: Page, *parts) -> None:
+    """Wait until the boxes of `parts` are the same in two animation frames in a row."""
+    page.evaluate("() => { delete window.__ladoSettled }")  # no frame of an earlier wait
+    try:
+        page.wait_for_function(
+            """parts => {
+                const now = JSON.stringify(parts.map(e => e.getBoundingClientRect().toJSON()));
+                const same = window.__ladoSettled === now;
+                window.__ladoSettled = now;
+                return same;
+            }""",
+            arg=[part.element_handle() for part in parts],
+            polling="raf",
+        )
+    except PlaywrightTimeoutError as error:
+        raise AssertionError("the waiting card did not settle: its boxes kept moving") from error
+
+
 def test_many_tabs_stay_on_one_line_on_the_panel_and_scroll_sideways(
     page: Page, server, repo, shot
 ):
@@ -494,26 +513,31 @@ def test_many_tabs_stay_on_one_line_on_the_panel_and_scroll_sideways(
     expand = card.get_by_role("button", name="Expand the card")
     panel = card.get_by_role("tabpanel")
 
-    def check(shown):
-        # In one frame: the card may still settle between one tab's box and the next's.
-        tops = row.evaluate(
-            "r => [...r.querySelectorAll('[role=tab]')].map(t => t.getBoundingClientRect().y)"
+    def check(shown) -> float:
+        """Assert on one layout of the settled card; return the expand button's x."""
+        # After a tab click the card takes the new question's height over several of the
+        # page's tasks (LAD-283): wait until it stops moving, then read every box at once,
+        # as two reads may each catch another layout.
+        settle(page, card, shown, panel)
+        tops, on, under, seen, button = page.evaluate(
+            """([row, shown, panel, expand]) => [
+                [...row.querySelectorAll('[role=tab]')].map(t => t.getBoundingClientRect().y),
+                ...[shown, panel, row, expand].map(e => e.getBoundingClientRect().toJSON()),
+            ]""",
+            [one.element_handle() for one in (row, shown, panel, expand)],
         )
         assert max(tops) - min(tops) <= 1.5, tops  # one line (the shown tab 1 px lower)
-        on, under = shown.bounding_box(), panel.bounding_box()
         assert abs(on["y"] + on["height"] - under["y"]) <= 1.5, (on, under)  # on the panel
-        seen = row.bounding_box()
         assert seen["x"] - 1 <= on["x"] and on["x"] + on["width"] <= seen["x"] + seen["width"] + 1
-        assert seen["x"] + seen["width"] <= expand.bounding_box()["x"]
+        assert seen["x"] + seen["width"] <= button["x"]
+        return button["x"]
 
-    check(tabs.nth(0))
+    right = check(tabs.nth(0))
     assert row.evaluate("e => e.scrollWidth > e.clientWidth")  # it scrolls sideways
-    right = expand.bounding_box()["x"]
     shot(page, "first")
     tabs.nth(4).click()
     expect(tabs.nth(4)).to_have_attribute("aria-selected", "true")
-    check(tabs.nth(4))
-    assert expand.bounding_box()["x"] == right
+    assert check(tabs.nth(4)) == right
     page.emulate_media(color_scheme="dark")
     shot(page, "last-dark")
 

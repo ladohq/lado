@@ -15,16 +15,18 @@
 
 ## 2. The endpoint
 
-- [ ] 2.1 `src/lado/server/app.py` `set_login_variable`: strip the value before
+- [x] 2.1 `src/lado/server/app.py` `set_login_variable`: strip the value before
   `check_secret` and `write_lado` (D2). Unit tests in `tests/test_server_providers.py`: a
   value of no format answers 400 with AC-1's text and writes no file; a valid token with
   `"\n"` and spaces around it is saved stripped (file content checked), the row "Logged in";
   spaces only answer "needs a value" (AC-1, AC-5).
-- [ ] 2.2 Existing tests that save Claude's login variables with made-up values
+- [x] 2.2 Existing tests that save Claude's login variables with made-up values
   (`tests/test_server_providers.py` "c-5", "canary-1", "canary-tok", "canary-key", the 64 KiB
   and UTF-8 cases; `tests/ui/test_providers_section.py` "canary-ui-token") use values of
   the right format (the canary text after the prefix), every assertion kept; the size and
   encoding cases still get their own refusals, since the hook runs after them.
+  `tests/ui/test_providers_section.py` stays as it is: its "canary-ui-token" is saved
+  through the fake agent's sheet, not Claude Code's, which the hook does not check.
 
 ## 3. Docs and checks
 

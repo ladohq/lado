@@ -45,8 +45,10 @@ short, `LADO_LOOP_INTERVAL=0.25` and `LADO_RETRY_DELAYS=2,0.5,0.5`, set for each
 hook's confirmation under `-n auto`, the comment there says by how much); only tests set
 either. Tests never use the default
 `lado` tmux socket. `tests/conftest.py` clears `LADO_AGENT`, `LADO_SESSION`, `LADO_HOME`,
-`LADO_TMUX_SOCKET`, `TMUX`, `LADO_CONTAINER` and `LADO_REPOS` for the test run, so the
-tests run in an agent's shell (or LADO's image) as is,
+`LADO_TMUX_SOCKET`, `TMUX`, `LADO_CONTAINER`, `LADO_REPOS`, `LADO_ENV_DIR`, `LADO_LISTEN`
+and `LADO_PUBLIC_HOST` for the test run, and `LADO_LAUNCH_VARS` with every name it lists
+but `TMPDIR` (what the launch of the agent whose shell it is set, such as
+`CLAUDE_CODE_TMPDIR`), so the tests run in an agent's shell (or LADO's image) as is,
 and sets `LADO_AGENT_ENV=inherit`: agents get the test run's environment, not the user's
 login shell (tests of the shell set their own `SHELL`). Its autouse `agents_tmp` gives each
 test its own `TMPDIR` and `LADO_TEMP_PARENT` (outside `tmp_path`): the agents' temporary

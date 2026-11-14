@@ -5720,6 +5720,119 @@ def test_what_the_agent_wrote_before_it_got_the_message_is_no_reply_to_it(repo, 
     assert _reply_state(mine) == state.REMINDED
 
 
+def _got(sender="supervisor", agent="w1", summary="one last note", body="Reply with ACK"):
+    """A message to the idle agent, typed in and confirmed by its prompt: delivered."""
+    state.set_status("s", agent, state.IDLE)
+    runtime.send_message("s", sender, agent, summary, body)
+    message = state.list_messages("s")[-1]
+    _hook("UserPromptSubmit", agent, {"prompt": runtime.format_message(message)})
+    return message
+
+
+def _unread_reminders(agent="w1"):
+    return [
+        m
+        for m in state.list_messages("s")
+        if m.sender == state.LADO and m.recipient == agent and m.summary.startswith("you have not")
+    ]
+
+
+def test_a_turn_that_left_a_text_unread_gets_one_reminder(repo, fake_tmux):
+    """A weak model answered without reading the text, and never learnt it (LAD-234)."""
+    _session_with_worker(repo)
+    note = _got()
+    output = _hook("Stop", "w1")
+    [reminder] = _unread_reminders()
+    assert reminder.summary == (
+        f"you have not read message #{note.id} from supervisor: call read_messages to get"
+        " its text; if it asks nothing of you, do nothing."
+    )
+    assert not reminder.body and reminder.attachments == 0
+    assert output["reason"] == runtime.format_message(reminder)  # handed over at once
+
+
+def test_texts_left_unread_get_one_reminder_naming_each(repo, fake_tmux):
+    _session_with_worker(repo)
+    runtime.spawn_worker("s", "task", name="w2")
+    agent_helpers.forget_tasks("s")
+    _hook("UserPromptSubmit", "supervisor")  # busy: both wait for its turn's end
+    runtime.send_message("s", "w1", "supervisor", "report", "the details")
+    runtime.send_message("s", "w2", "supervisor", "report", "the details")
+    w1, w2 = state.list_messages("s")[-2:]
+    _hook("Stop", "supervisor")  # hands them over in its output
+    _hook("Stop", "supervisor", CONTINUED)
+    [reminder] = _unread_reminders("supervisor")
+    assert reminder.summary == (
+        f"you have not read messages #{w1.id} from w1, #{w2.id} from w2: call read_messages"
+        " to get their text; if it asks nothing of you, do nothing."
+    )
+
+
+def test_a_long_list_of_unread_texts_fits_one_line(repo, fake_tmux):
+    _session_with_worker(repo)
+    _hook("UserPromptSubmit", "w1")  # busy
+    for n in range(9):
+        runtime.send_message("s", "supervisor", "w1", f"note {n}", "the text")
+    _hook("Stop", "w1")
+    _hook("Stop", "w1", CONTINUED)
+    [reminder] = _unread_reminders()
+    assert len(reminder.summary) <= state.SUMMARY_LIMIT
+    assert re.search(r"from supervisor, … \(\d more\): call read_messages", reminder.summary)
+
+
+def test_an_attached_artifact_left_unread_is_reminded(repo, fake_tmux):
+    _session_with_worker(repo)
+    _hook("UserPromptSubmit", "w1")  # busy: the report waits for its turn's end
+    state.queue_message("s", "w2", "w1", "the report", attachments=[("a1", "r1")])
+    report = state.list_messages("s")[-1]
+    _hook("Stop", "w1")  # hands it over in its output
+    _hook("Stop", "w1", CONTINUED)
+    [reminder] = _unread_reminders()
+    assert f"#{report.id} from w2" in reminder.summary
+
+
+@pytest.mark.parametrize("body", ["", "Reply with ACK"])
+def test_a_text_read_or_nothing_to_read_gets_no_reminder(repo, fake_tmux, body):
+    _session_with_worker(repo)
+    _got(body=body)
+    state.read_messages("s", "w1")
+    assert _hook("Stop", "w1") is None
+    assert _unread_reminders() == []
+
+
+def test_a_text_is_reminded_once_also_when_the_reminder_is_ignored(repo, fake_tmux):
+    _session_with_worker(repo)
+    _got()
+    _hook("Stop", "w1")  # the reminder in its output
+    assert _hook("Stop", "w1", CONTINUED) is None  # still unread: nothing more
+    _got(body="")  # a later turn, nothing more to read
+    _hook("Stop", "w1")
+    assert len(_unread_reminders()) == 1
+
+
+def test_a_turn_that_ended_on_an_error_reminds_of_no_unread_text(repo, fake_tmux):
+    _session_with_worker(repo)
+    _got()
+    event = providers.Event(providers.TURN_END, error="APIError: 429 Too Many Requests")
+    hooks.handle(providers.get("claude"), event, "s", "w1")
+    assert _unread_reminders() == []
+    _hook("Stop", "w1")  # the next clean turn's end checks it
+    assert len(_unread_reminders()) == 1
+
+
+def test_a_text_handed_over_at_the_turn_end_is_checked_at_the_next_one(repo, fake_tmux):
+    _session_with_worker(repo)
+    _hook("UserPromptSubmit", "w1")  # busy
+    runtime.send_message("s", "supervisor", "w1", "one last note", "Reply with ACK")
+    note = state.list_messages("s")[-1]
+    output = _hook("Stop", "w1")
+    assert output["reason"] == runtime.format_message(note)
+    assert _unread_reminders() == []  # sent in this output, not seen yet
+    _hook("Stop", "w1", CONTINUED)  # the turn that got it ended without reading it
+    [reminder] = _unread_reminders()
+    assert f"#{note.id} from supervisor" in reminder.summary
+
+
 def test_a_message_is_decided_once(repo, fake_tmux):
     _session_with_worker(repo)
     mine = _human_writes()

@@ -151,7 +151,8 @@ def test_a_loose_openspec_pin_is_named():
 def wheel_too_early(text: str) -> list[str]:
     """The lines of `text` that put LADO's wheel before an install it must follow: its COPY
     and its `uv tool install` come after every agent CLI's and openspec's npm install, so a
-    build with the CI cache rebuilds only the layers from the run's wheel on. Each install
+    build that reuses the earlier layers (a developer's own Docker) rebuilds only the layers
+    from the wheel on. Each install
     after the wheel's first line is named; a missing wheel line too."""
     found = lines(text)
     wheel = [i for i, line in enumerate(found) if "lado-*.whl" in line]
@@ -161,7 +162,8 @@ def wheel_too_early(text: str) -> list[str]:
 
 
 def test_the_wheel_is_copied_and_installed_after_the_clis_and_openspec():
-    """D1 of container-layer-cache: the run's wheel changes on every pull request."""
+    """The wheel changes with every commit: a build that reuses the earlier layers (a
+    developer's own Docker) rebuilds only from it on."""
     assert wheel_too_early(DOCKERFILE) == []
     found = lines()
     [copy] = [i for i, line in enumerate(found) if line.startswith("COPY") and ".whl" in line]

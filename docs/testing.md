@@ -339,7 +339,10 @@ layer, so a developer's own Docker rebuilds only that one; the release (`release
 builds without any cache too. And
 `ci-ok`, the one check the ruleset of main requires. Every job has a `timeout-minutes`,
 about twice its p90 (a test refuses a job without one): a hung job ends red instead of
-running GitHub's six hours. A UI job takes Chromium and the `.deb` files `playwright install
+running GitHub's six hours. A job cancelled by its own limit keeps neither its log nor
+its junit report, so the pytest step of a `ui` job has 12 minutes, under the job's 25 (the
+step takes ~5): a hang outside a test ends the step red with its log kept, and the junit
+upload still runs (LAD-271). A UI job takes Chromium and the `.deb` files `playwright install
 --with-deps` downloads (fonts, from an Ubuntu mirror that is sometimes slow or hangs) from a
 GitHub cache keyed by Playwright's version and the runner image's (`$ImageOS`,
 `$ImageVersion`): on a hit it installs them with `dpkg -i` and runs `playwright install
@@ -478,7 +481,10 @@ Seven layers; each change gets tests at the lowest layer that can catch its bugs
    `lado server` on a free port, with sessions of the fake agent, isolated like the
    integration tests; only what needs a browser. Each test saves a screenshot of every
    screen it checks to `<temp dir>/lado-ui-shots/<test>.png` (the `shot` fixture), outside
-   the tree, for the reviewer. In `make check` and in CI (four shards; `make dist` in the
+   the tree, for the reviewer. Each test has 120 s, its fixtures included
+   (`TEST_TIMEOUT` in `tests/ui/conftest.py`, pytest-timeout), locally and in CI alike: a
+   test past it fails with the stack of where it waited, and the run goes on; no other
+   layer has a per-test limit. In `make check` and in CI (four shards; `make dist` in the
    job `web`).
 5. **Smoke** (`make test-smoke`, marker `smoke`): each provider's real CLI with real tmux,
    hooks, `lado mcp` and SQLite, and a local endpoint that answers 401 instead of a model

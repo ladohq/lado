@@ -40,7 +40,7 @@
 
 ## 3. Docs
 
-- [ ] 3.1 `docs/testing.md`: in the UI e2e layer, each UI test has 120 s, fixtures
+- [x] 3.1 `docs/testing.md`: in the UI e2e layer, each UI test has 120 s, fixtures
   included (`tests/ui/conftest.py`, pytest-timeout), and a test past it fails with its
   stack; in the CI paragraph, the `ui` pytest step's 12 minutes under the job's 25 and why
   (a cancelled job keeps no log or junit). Check: read against `ci.yml` and the conftest.

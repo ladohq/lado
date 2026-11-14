@@ -83,6 +83,26 @@ def unreceived(session: str, agent: str) -> int:
         ).fetchone()[0]
 
 
+def settled(session: str, agent: str) -> bool:
+    """Whether the agent is idle and every message to it has left LADO's queue (none
+    pending or sent): its turn is over and so is all the turn owes it. Wait for this, not
+    for idle, before a human command that follows another turn, or before reading "the
+    last message" to the agent. Idle alone is not enough: at a turn's end the hook queues
+    the reminder of a human message answered in no chat before it marks the agent idle,
+    and the reminder makes it busy again a moment later. The fake agent runs only what is
+    typed into its window: a command that reaches it mid-turn, in a LADO tool's result, is
+    text to it and never runs (LAD-284). A delivered message whose body was never read is
+    taken: the fake agent reads bodies only when told to."""
+    found = state.get_agent(session, agent)
+    if found is None or found.status != state.IDLE:
+        return False
+    with state.connect() as db:
+        return not db.execute(
+            "SELECT 1 FROM messages WHERE session = ? AND recipient = ? AND state IN (?, ?)",
+            (session, agent, state.PENDING, state.SENT),
+        ).fetchone()
+
+
 def launched(call: tuple) -> tuple[dict[str, str], list[str]]:
     """The environment and the command of an agent's window, from a recorded
     `tmux.new_session` or `tmux.new_window` call (the `fake_tmux` fixture)."""

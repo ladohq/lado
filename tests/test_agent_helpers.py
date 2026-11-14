@@ -159,6 +159,42 @@ def test_a_timed_out_wait_says_what_it_waited_for_and_the_last_state(failed_sess
     assert "messages: w1 → supervisor [pending] 'done'" in first
 
 
+@pytest.fixture
+def worker(lado_home):
+    """Session "s" with an idle worker w1 and the supervisor."""
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    w1 = state.Agent("s", "w1", "worker", "/r", "lado/s/w1", "t", state.IDLE, provider="claude")
+    state.add_agent(w1)
+    state.add_agent(dataclasses.replace(w1, name="supervisor"))
+    return "w1"
+
+
+def test_an_idle_agent_with_no_messages_is_settled(worker):
+    assert agent_helpers.settled("s", worker)
+
+
+def test_a_busy_agent_is_not_settled(worker):
+    state.set_status("s", worker, state.BUSY)
+    assert not agent_helpers.settled("s", worker)
+
+
+@pytest.mark.parametrize("mark", [state.PENDING, state.SENT])
+def test_an_idle_agent_with_a_message_still_to_come_is_not_settled(worker, mark):
+    # A turn-end reminder is queued before the agent turns idle; a typed one is sent until
+    # the next turn's hook confirms it.
+    state.queue_message("s", state.LADO, worker, "your answer went only to your terminal", mark=mark)
+    assert not agent_helpers.settled("s", worker)
+
+
+def test_an_idle_agent_whose_messages_were_all_taken_is_settled(worker):
+    state.queue_message("s", "human", worker, "advance r done", mark=state.DELIVERED)
+    state.queue_message("s", "supervisor", worker, "read it", "a body", mark=state.DELIVERED)
+    state.queue_message("s", "supervisor", worker, "done", "read", mark=state.READ)
+    # Messages to others do not count.
+    state.queue_message("s", state.LADO, "supervisor", "a step")
+    assert agent_helpers.settled("s", worker)
+
+
 @pytest.mark.parametrize("reason", [loop.STOPPED, loop.TMUX_GONE])
 def test_a_loop_ended_by_lado_stop_ends_with_either_stop_reason(lado_home, reason):
     # `lado stop` kills the tmux session, then marks the session stopped: the loop may see

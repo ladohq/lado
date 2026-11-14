@@ -267,12 +267,6 @@ BROKEN = (
 )
 
 
-def _whole(variable: str, value: str) -> bool:
-    """Whether `value` is a login of `variable`'s format, its prefix included."""
-    found = PREFIXES[variable].match(value)
-    return bool(found and LOGIN_CHARACTERS.fullmatch(value, found.end()))
-
-
 class ClaudeProvider(base.Provider):
     name = "claude"
     title = "Claude Code"
@@ -545,8 +539,8 @@ class ClaudeProvider(base.Provider):
     def login_value_problem(self, variable: str, value: str) -> str | None:
         if variable not in PREFIXES:
             return None
-        if PREFIXES[variable].match(value):
-            return None if _whole(variable, value) else BROKEN
+        if own := PREFIXES[variable].match(value):
+            return None if LOGIN_CHARACTERS.fullmatch(value, own.end()) else BROKEN
         other = next(v for v in PREFIXES if v != variable)
         if PREFIXES[other].match(value):
             choice = next(c for c in self.login_choices if c.variable == other)

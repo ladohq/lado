@@ -12,7 +12,7 @@
   and before `_idle` (D3). Check: unit tests of the hook: the one and several texts exactly, no
   reminder on an error turn, a batch confirmed by `continued` is checked, the hook's own
   hand-over is not.
-- [ ] 2.2 Integration with the fake agent (a new file
+- [x] 2.2 Integration with the fake agent (a new file
   `tests/integration/test_unread_reminder.py`): a worker ends its turn without `read_messages` → one
   reminder from `lado`, the worker reads, no second reminder; a turn ending on an error → none;
   a read message → none. Integration tests whose counts of messages change by the reminder are

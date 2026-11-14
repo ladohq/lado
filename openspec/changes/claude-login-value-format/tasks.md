@@ -36,6 +36,6 @@
 - [x] 3.2 CHANGELOG.md under `## 0.47.0 (unreleased)` → `### Fixed`: "**Claude Code's login
   checks what you paste.**" — a string that is no subscription token or API key, or one of
   the other kind, is refused with what to paste instead, rather than shown as logged in.
-- [ ] 3.3 `make lint`, `make test`, `uv run pytest -m ui
+- [x] 3.3 `make lint`, `make test`, `uv run pytest -m ui
   tests/ui/test_providers_section.py`, `openspec validate claude-login-value-format
   --strict` and the trial archive pass (AC-7).

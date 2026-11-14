@@ -868,7 +868,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   - `hooks.py`: neutral hook logic: agent status, handing over queued messages and, at a
     turn's end, the forgotten-reply check (`state.check_replies`, which decides each human
     message once and returns those to remind; one `REPLY_REMINDER` from `lado` each, queued
-    before the queue is handed over); first of all the model an event names
+    before the queue is handed over), then the unread-text check (`state.check_unread`;
+    one `unread_reminder` from `lado` for all the texts left unread); first of all the model an event names
     (`state.report_model`, with the provider's `same_model`; docs/design/agents.md).
   - `model_check.py`: the one check of a model chosen for a session (`lado start
     --model`, the launch window): `check(provider, model, env)` reads the CLI's
@@ -1004,7 +1005,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     a question its `choices`, `free_answer`, `question_state` and `answered_by`, an answer
     or dismissal its `reply_to` and `choice`, and the human's message to an agent its
     `reply_state`: `replied`, `reminded` (one reminder sent, the verdict waits for its turn)
-    or `missing`, set by `check_replies` (docs/design/agents.md). The `events`
+    or `missing`, set by `check_replies` (docs/design/agents.md). From schema 40 a message
+    has `read_reminded`, set once `check_unread` reminded its recipient of its text left
+    unread (and by the migration on every message there). The `events`
     table records what each agent did (`spawned`, `status` changes via `set_status`,
     `mcp_ready`, `finished`, `turn_error` with the error, `ended` with why its process
     ended by itself, `blocked` with what its CLI asks the human before any hook) and what happened to each flow run (`flow_start`, `flow` transitions,

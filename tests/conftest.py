@@ -7,7 +7,7 @@ from pathlib import Path
 
 import leftovers
 import pytest
-from agent_helpers import init_repo, no_maintenance_env, write_index
+from agent_helpers import init_repo, no_maintenance_env, without_agent_launch, write_index
 
 # `--shard K/N`: CI's integration and UI shards (tests/shard.py).
 from shard import pytest_addoption, pytest_collection_modifyitems, pytest_configure  # noqa: F401
@@ -15,23 +15,12 @@ from shard import pytest_addoption, pytest_collection_modifyitems, pytest_config
 # Tests never use the user's LADO tmux server (socket "lado").
 TEST_SOCKET = f"lado-test-{uuid.uuid4().hex[:8]}"
 
-# An agent's shell has these set (its session, its LADO home, its tmux): the tests run there
-# as is, and nothing of theirs reaches the agent's LADO, also not from a subprocess. LADO's
-# image sets LADO_CONTAINER, LADO_REPOS and LADO_ENV_DIR, compose LADO_LISTEN and
-# LADO_PUBLIC_HOST: a test that wants one sets it itself.
-for _var in (
-    "LADO_AGENT",
-    "LADO_SESSION",
-    "LADO_HOME",
-    "LADO_TMUX_SOCKET",
-    "TMUX",
-    "LADO_CONTAINER",
-    "LADO_REPOS",
-    "LADO_ENV_DIR",
-    "LADO_LISTEN",
-    "LADO_PUBLIC_HOST",
-):
-    os.environ.pop(_var, None)
+# The tests run in an agent's shell as is: nothing of that agent (its session, LADO home,
+# tmux, what its launch set) reaches the agent's LADO or the agents the tests start, which
+# get the test run's environment; its TMPDIR stays, the agent's own temporary folder
+# (agent_helpers.without_agent_launch).
+for _var in os.environ.keys() - without_agent_launch(os.environ).keys():
+    os.environ.pop(_var)
 
 # No git command of the test run (the tests', LADO's, the agents') starts background gc or
 # maintenance, which would still be writing in a repo while a test copies or removes it.

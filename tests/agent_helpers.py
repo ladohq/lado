@@ -15,12 +15,13 @@ import sys
 import tempfile
 import time
 import zipfile
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
 import yaml
 
-from lado import interpreter, log, loop, runtime, state, tmux
+from lado import agent_env, interpreter, log, loop, runtime, state, tmux
 
 
 def bytes_name(folder: Path, raw: bytes, text: str = "s") -> Path:
@@ -124,6 +125,36 @@ def no_maintenance_env(environ: dict[str, str]) -> dict[str, str]:
         count += 1
     env["GIT_CONFIG_COUNT"] = str(count)
     return env
+
+
+# An agent's shell has these set (its session, its LADO home, its tmux): the tests run there
+# as is, and nothing of theirs reaches the agent's LADO, also not from a subprocess. LADO's
+# image sets LADO_CONTAINER, LADO_REPOS and LADO_ENV_DIR, compose LADO_LISTEN and
+# LADO_PUBLIC_HOST: a test that wants one sets it itself.
+AGENT_SHELL = (
+    "LADO_AGENT",
+    "LADO_SESSION",
+    "LADO_HOME",
+    "LADO_TMUX_SOCKET",
+    "TMUX",
+    "LADO_CONTAINER",
+    "LADO_REPOS",
+    "LADO_ENV_DIR",
+    "LADO_LISTEN",
+    "LADO_PUBLIC_HOST",
+)
+
+
+def without_agent_launch(environ: Mapping[str, str]) -> dict[str, str]:
+    """`environ` without AGENT_SHELL, and without what the launch of the agent whose shell
+    the tests run in set (agent_env.LAUNCH_VARS, the list included) but its TMPDIR. The test
+    run's environment reaches the agents the tests start: one would take the outer agent's
+    variables for its own (a Claude agent's CLAUDE_CODE_TMPDIR, a model server's key), and
+    agent_env.without_launch would drop a TMPDIR a test sets. TMPDIR stays: the run's
+    temporary files belong in the agent's own temporary folder."""
+    launch = {*environ.get(agent_env.LAUNCH_VARS, "").split(","), agent_env.LAUNCH_VARS}
+    dropped = (set(AGENT_SHELL) | launch) - {"TMPDIR"}
+    return {k: v for k, v in environ.items() if k not in dropped}
 
 
 PRIVATE_URL = "https://example.invalid/acme/private"  # reached only through private_access
@@ -266,6 +297,7 @@ def schema_before(version: int) -> None:
     """Turn the LADO_HOME database back to the version before `version` (13 at the oldest),
     undoing the steps of state.MIGRATIONS from the latest on. Step 22 changes only data that
     cannot come back (the needs it drops): undoing it sets the version alone."""
+    assert state.MIGRATIONS[39] == [state.MESSAGES_READ_REMINDED, state.OLD_MESSAGES_READ_REMINDED]
     assert state.MIGRATIONS[38] == state.MODELS_BY_ID
     assert state.MIGRATIONS[37] == [state.MODEL_SERVERS_TABLE, state.MODELS_TABLE_38]
     assert state.MIGRATIONS[36] == [state.SESSIONS_POWER]
@@ -298,8 +330,12 @@ def schema_before(version: int) -> None:
     assert state.MIGRATIONS[14] == state.NOTES_STEP
     assert state.MIGRATIONS[13] == state.EVENTS_JOURNAL
     assert state.MIGRATIONS[12] == state.MESSAGES_HUMAN
-    assert 13 <= version <= state.SCHEMA_VERSION == 39
+    assert 13 <= version <= state.SCHEMA_VERSION == 40
     with state.connect() as db:
+        db.execute("ALTER TABLE messages DROP COLUMN read_reminded")
+        if version == 40:
+            db.execute("PRAGMA user_version = 39")
+            return
         db.execute("DROP TABLE cli_defaults")
         db.execute("ALTER TABLE models RENAME TO models_39")
         db.execute(state.MODELS_TABLE_38)

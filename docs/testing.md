@@ -45,8 +45,10 @@ short, `LADO_LOOP_INTERVAL=0.25` and `LADO_RETRY_DELAYS=2,0.5,0.5`, set for each
 hook's confirmation under `-n auto`, the comment there says by how much); only tests set
 either. Tests never use the default
 `lado` tmux socket. `tests/conftest.py` clears `LADO_AGENT`, `LADO_SESSION`, `LADO_HOME`,
-`LADO_TMUX_SOCKET`, `TMUX`, `LADO_CONTAINER` and `LADO_REPOS` for the test run, so the
-tests run in an agent's shell (or LADO's image) as is,
+`LADO_TMUX_SOCKET`, `TMUX`, `LADO_CONTAINER`, `LADO_REPOS`, `LADO_ENV_DIR`, `LADO_LISTEN`
+and `LADO_PUBLIC_HOST` for the test run, and `LADO_LAUNCH_VARS` with every name it lists
+but `TMPDIR` (what the launch of the agent whose shell it is set, such as
+`CLAUDE_CODE_TMPDIR`), so the tests run in an agent's shell (or LADO's image) as is,
 and sets `LADO_AGENT_ENV=inherit`: agents get the test run's environment, not the user's
 login shell (tests of the shell set their own `SHELL`). Its autouse `agents_tmp` gives each
 test its own `TMPDIR` and `LADO_TEMP_PARENT` (outside `tmp_path`): the agents' temporary
@@ -371,12 +373,19 @@ GitHub mails a red scheduled run to whoever last changed its cron line. A cell i
 an optional dependency that failed to install, a CLI's native binary, and exits 0): after a
 failed attempt but the last, a `::warning::` annotation in the run's summary names the
 provider and the attempt, then `npm uninstall` and a fresh install; the third failure is a
-red cell with no test run. Then it runs `uv run pytest -m smoke -n0 -v -k <provider>` into
-`<out>/smoke-<provider>.log`, and passes only on exit 0 with a test passed and none skipped;
-a failing cell's evidence goes to `<out>/evidence` (the artifact
-`smoke-<os>-<provider>`). `smoke_ci.py`'s `PINS` is the one place a CLI's version is
-written for CI: its providers are exactly `lado.providers`' and each pin's version parts are
-its provider's `TESTED_VERSION` (`tests/test_smoke_ci.py`); the matrix is the same list
+red cell with no test run. Then it runs `uv run pytest -m smoke -n 3 --dist worksteal -v -k
+<provider>` into `<out>/smoke-<provider>.log`: three workers, a worker that ends its share
+taking tests still queued for another, as each smoke test is isolated (its own `HOME`, CLI
+config, `LADO_HOME`, tmux server and fake endpoint) and mostly waits on its CLI. The step
+is then bound by the longest test plus each worker's cold start of the CLI rather than by
+the sum: on macOS, claude's `[401]` refusal case takes ~160 s and a worker's first test
+~40 s, and the step 252-284 s against 409 s serially (LAD-280's trial; the runners' speed
+varies by up to half on the same code). `make test-smoke` stays serial (`-n0`) to debug
+one CLI by hand. The cell passes only on exit 0 with a test passed and none skipped; a
+failing cell's evidence goes to `<out>/evidence` (the artifact `smoke-<os>-<provider>`).
+`smoke_ci.py`'s `PINS` is the one place a CLI's version is written for CI: its providers
+are exactly `lado.providers`' and each pin's version parts are its provider's
+`TESTED_VERSION` (`tests/test_smoke_ci.py`); the matrix is the same list
 (`tests/test_ci_workflow.py`). No secret anywhere.
 A job GitHub finds no hosted runner for is cancelled before any step, with no runner and
 GitHub's annotation "The job was not acquired by Runner of type hosted even after multiple

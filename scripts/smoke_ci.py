@@ -12,11 +12,14 @@ then on) and checks that `<cli> --version` runs, in up to three attempts: npm dr
 optional dependency that failed to install (a CLI's native binary) and still exits 0.
 After a failed attempt but the last it prints a GitHub `::warning::` naming the provider
 and the attempt, uninstalls the package and installs again; after the third the cell is red
-and runs no test. Then it runs `uv run pytest -m smoke -n0 -v -k <provider>`, as `make
-test-smoke PROVIDER=<provider>` does. Its output goes to the terminal and to
-`<out>/smoke-<provider>.log`. The cell passes only when pytest exits 0 and its last summary
-line has a `passed` and no `skipped` (a missing CLI skips). A failing cell copies the
-test's evidence into `<out>/evidence`.
+and runs no test. Then it runs `uv run pytest -m smoke -n 3 --dist worksteal -v -k
+<provider>`: the tests of `make test-smoke PROVIDER=<provider>`, which runs them one at a
+time (`-n0`), on three workers that take each other's queued tests; each test is isolated
+and mostly waits on its CLI, so the cell's step is bound by its longest test plus each
+worker's cold start of the CLI, not by the sum (docs/testing.md). Its output goes
+to the terminal and to `<out>/smoke-<provider>.log`. The cell passes only when pytest exits
+0 and its last summary line has a `passed` and no `skipped` (a missing CLI skips). A
+failing cell copies the test's evidence into `<out>/evidence`.
 
 `live` is a cell of live.yml: `run`'s install and pass rule on `uv run pytest -m live -n0 -v -k
 <provider>`, without tests/live/test_codex_login.py (a person's login: its skip would fail
@@ -123,7 +126,8 @@ def run(provider: str, out: Path) -> int:
     env = install(provider)
     if env is None:
         return 1
-    tests = ["uv", "run", "pytest", "-m", "smoke", "-n0", "-v", "-k", provider]
+    tests = ["uv", "run", "pytest", "-m", "smoke", "-n", "3", "--dist", "worksteal"]
+    tests += ["-v", "-k", provider]
     return cell(tests, out / f"smoke-{provider}.log", out, f"smoke {provider}", env)
 
 

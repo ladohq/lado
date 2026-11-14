@@ -40,15 +40,19 @@ def release(agent: str, n: int) -> None:
     agent_helpers.release(SESSION, agent, n)
 
 
-# LADO's reminder of a human message the agent did not answer in the chat
-# (hooks.REPLY_REMINDER): the fake agent never answers the human, so it gets one after each
-# such message. The tests of delivery leave them out (inputs, the messages' columns); the
-# reminder's own tests are in test_human_messages.py.
-REMINDER = hooks.REPLY_REMINDER.partition("#")[0]
+# LADO's reminders of a human message the agent did not answer in the chat
+# (hooks.REPLY_REMINDER) and of a text it left unread (hooks.UNREAD_REMINDER): the fake agent
+# never answers the human and reads a body only when told to, so it gets them after such
+# messages. The tests of delivery leave them out (inputs, the messages' columns); the
+# reminders' own tests are in test_human_messages.py and test_unread_reminder.py.
+REMINDERS = (
+    hooks.REPLY_REMINDER.partition("#")[0],
+    hooks.UNREAD_REMINDER.partition("{")[0],
+)
 
 
 def is_reminder(message: state.Message) -> bool:
-    return message.sender == state.LADO and message.summary.startswith(REMINDER)
+    return message.sender == state.LADO and message.summary.startswith(REMINDERS)
 
 
 def inputs(agent: str) -> list:
@@ -60,7 +64,8 @@ def inputs(agent: str) -> list:
     for text in got:
         if isinstance(text, str):
             lines = text.split("\n")
-            text = "\n".join(x for x in lines if not x.startswith(f"[from lado] {REMINDER}"))
+            reminded = tuple(f"[from lado] {r}" for r in REMINDERS)
+            text = "\n".join(x for x in lines if not x.startswith(reminded))
         if text:
             kept.append(text)
     return kept

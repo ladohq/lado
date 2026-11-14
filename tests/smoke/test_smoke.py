@@ -537,8 +537,7 @@ def check_refusal(status_code: int, key: str, requests) -> None:
     print(f"refusal: turn errors {[e.detail for e in events('supervisor', state.TURN_ERROR)]}")
     assert len(told()) == 1
     assert len(events("supervisor", state.TURN_ERROR)) == 1
-    for file in state.home().glob("lado.db*"):
-        assert key.encode() not in file.read_bytes()
+    agent_helpers.check_no_secret_in_db(state.home(), key)
     hooks_log = state.home() / "hooks.log"
     assert not hooks_log.exists() or key not in hooks_log.read_text()
 

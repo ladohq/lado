@@ -562,6 +562,13 @@ class Provider(ABC):
         Capabilities.needs_login."""
         return self.capabilities.needs_login
 
+    def login_value_problem(self, variable: str, value: str) -> str | None:
+        """Why `value`, pasted for `variable`, one of login_variables, cannot be the CLI's
+        login, as a sentence for the human that quotes no part of it; None when it may be.
+        Asked before the value is kept as LADO's secret (lado.logins.check_secret). By
+        default None."""
+        return None
+
     def login_status(self, env: dict[str, str]) -> LoginStatus:
         """Whether the CLI, started with `env`, is logged in, as its own status command says
         (run_status); a failure, a timeout or output it cannot read is UNKNOWN with why,

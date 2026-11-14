@@ -223,12 +223,15 @@ def check_variable(provider: base.Provider, name: str) -> None:
 
 def check_secret(provider: base.Provider, name: str, value: str) -> None:
     """ValueError unless `value` may be kept as LADO's secret `name`: one of `provider`'s
-    login variables, not empty, and a value the agents get (agent_env.value_problem), so
-    Settings never shows as set what no agent gets."""
+    login variables, not empty, a value the agents get (agent_env.value_problem), so
+    Settings never shows as set what no agent gets, and one the provider takes as its
+    login (Provider.login_value_problem, e.g. the format of Claude Code's token)."""
     check_variable(provider, name)
     if not value:
         raise ValueError(f"{name} needs a value")
     if problem := agent_env.value_problem(name, value):
+        raise ValueError(problem)
+    if problem := provider.login_value_problem(name, value):
         raise ValueError(problem)
 
 

@@ -10,6 +10,9 @@
 - **New session no longer takes the focus away from you.** When the recent places come late,
   a field or button you already moved to keeps the focus, and what you type stays there; Where
   still shows the last place.
+- **Claude Code's login checks what you paste.** A string that is no subscription token or API
+  key, or one of the other kind, is refused with what to paste instead, rather than shown as
+  logged in until an agent fails.
 
 ## 0.46.2 (2026-11-12)
 

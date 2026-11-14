@@ -2816,8 +2816,13 @@ provider-login-layers, providers-section-and-start-screens and settings-pages; b
   a login of another layer. LADO runs no login command of Claude Code: the human brings a
   ready token or key; `claude auth logout` in a terminal removes the login of Claude Code's
   own file. For a CLI that logs in by its own command only (OpenCode, Kilo) the sheet is its
-  login window at once, with "Log out of one…" in its head while logged in. A value the
-  agents could not get (a NUL, over 64 KiB) is refused. LADO's secrets go to
+  login window at once, with "Log out of one…" in its head while logged in. Save drops the
+  spaces and line breaks around a pasted value. A value the agents could not get (a NUL,
+  over 64 KiB) is refused, and so is one the provider says cannot be its login
+  (`Provider.login_value_problem`; Claude Code: a subscription token starts with
+  `sk-ant-oat01-` and an API key with `sk-ant-api03-`, any version digits, then letters,
+  digits, `-` and `_` only; a value of the other kind names the other choice); the
+  refusal shows under the choices, quotes no part of the value, and the sheet stays open. LADO's secrets go to
   `<LADO_HOME>/secrets/`, a layer of every agent between the outside folder and a project's.
 - **The login window**: "Log in: <CLI>" and Close (which ends the command), the terminal of
   the CLI's command (a tmux session of its own, `lado-login-<provider>`, labelled; one per

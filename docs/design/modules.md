@@ -523,7 +523,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `run_status`, with a time limit, unknown with why on any failure, `LoginStatus.choice`
     and `file_words`; `login_actions`, the login windows' commands (OpenCode's, Kilo's;
     none of Claude Code's); `login_question` and `login_choices` (`LoginChoice`: a value of
-    one login variable to paste, Claude Code's two); `login_variables`, `login_note`,
+    one login variable to paste, Claude Code's two); `login_value_problem`, why a pasted
+    value cannot be the login (Claude Code's by the prefixes of its token and key, the
+    others' none), asked by `logins.check_secret`; `login_variables`, `login_note`,
     `Capabilities.needs_login`), each
     provider parsing its own CLI's output, `CLI_VARIABLES`,
     the names LADO sets for the agent CLIs, reserved from project variables and kept in

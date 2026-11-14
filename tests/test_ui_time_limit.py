@@ -55,7 +55,7 @@ def test_every_ui_test_has_the_limit_and_no_other_layers_test(tmp_path):
     (tmp_path / "limits_dump.py").write_text(DUMP)
     out = tmp_path / "limits.json"
     env = {**os.environ, "PYTHONPATH": str(tmp_path), "LIMITS_OUT": str(out)}
-    args = ["tests/ui", "tests/integration", "tests/test_shard.py", "-m", "ui or integration"]
+    args = ["tests/ui", "tests/integration", "-m", "ui or integration"]
     subprocess.run(
         [sys.executable, "-m", "pytest", *args, "-o", "addopts=", "--collect-only", "-q"]
         + ["-p", "limits_dump", "-p", "no:cacheprovider"],

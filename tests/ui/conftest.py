@@ -5,8 +5,8 @@ server of each test's own). Run them with `make test-ui` (marker `ui`).
 Each test saves a screenshot of every screen it checks to <temp dir>/lado-ui-shots/, outside
 the tree, for the reviewer: `shot(page, name)`.
 
-Each test has TEST_TIMEOUT (120 s), its fixtures included (pytest-timeout): a test past it
-fails with the stack of where it waited, and the run goes on.
+Each test has a time limit of 120 s, its fixtures included (tests/time_limit.py): a test
+past it fails, its worker's stacks in the log, and the run goes on.
 """
 
 import os
@@ -22,6 +22,10 @@ import leftovers
 import pytest
 from agent_helpers import refuse_unless_isolated
 
+# Each test under tests/ui/ (this conftest's folder only) gets the time limit and the
+# stacks before it, in `make test-ui` and in CI alike.
+from time_limit import pytest_itemcollected, stacks_before_the_limit  # noqa: F401
+
 # The fake agent's provider lives beside the integration tests.
 sys.path.insert(0, str(Path(__file__).parent.parent / "integration"))
 import fake_provider  # noqa: E402
@@ -31,17 +35,6 @@ from lado.server import auth  # noqa: E402
 from lado.server import run as server_run  # noqa: E402
 
 SHOTS = Path(tempfile.gettempdir()) / "lado-ui-shots"
-
-# Seconds. A hung test fails with its stack instead of hanging its CI cell until the job's
-# own limit cancels it, which keeps neither the log nor the junit report (LAD-271); the
-# longest UI test takes ~13 s in CI.
-TEST_TIMEOUT = 120
-
-
-def pytest_itemcollected(item):
-    """Each test under tests/ui/ (this conftest's folder only) gets the time limit, in
-    `make test-ui` and in CI alike; no other layer has one."""
-    item.add_marker(pytest.mark.timeout(TEST_TIMEOUT))
 
 
 @pytest.fixture(autouse=True)

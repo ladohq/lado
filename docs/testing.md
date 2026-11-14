@@ -482,9 +482,14 @@ Seven layers; each change gets tests at the lowest layer that can catch its bugs
    integration tests; only what needs a browser. Each test saves a screenshot of every
    screen it checks to `<temp dir>/lado-ui-shots/<test>.png` (the `shot` fixture), outside
    the tree, for the reviewer. Each test has 120 s, its fixtures included
-   (`TEST_TIMEOUT` in `tests/ui/conftest.py`, pytest-timeout), locally and in CI alike: a
-   test past it fails with the stack of where it waited, and the run goes on; no other
-   layer has a per-test limit. In `make check` and in CI (four shards; `make dist` in the
+   (`TEST_TIMEOUT` in `tests/time_limit.py`, which `tests/ui/conftest.py` imports;
+   pytest-timeout), locally and in CI alike; no other layer has a per-test limit. A test
+   past it ends its process (method `thread`: `signal` would raise into Playwright's event
+   loop and hang the page's teardown), so xdist names it ("worker 'gw0' crashed while
+   running …", an error in the junit report) and a new worker goes on; the hung test's
+   teardown does not run. 5 s before the limit every thread's stack goes to the log
+   (Python's faulthandler): a wait in plain Python shows the test's line, a wait inside
+   Playwright only Playwright's event loop. In `make check` and in CI (four shards; `make dist` in the
    job `web`).
 5. **Smoke** (`make test-smoke`, marker `smoke`): each provider's real CLI with real tmux,
    hooks, `lado mcp` and SQLite, and a local endpoint that answers 401 instead of a model

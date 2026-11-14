@@ -171,7 +171,7 @@ jobs:
           key: ${{ steps.browser-key.outputs.key }}
       # Two workers: a Chromium and a lado server each, on this 4-vCPU runner; -n auto's
       # four starve LADO's short test timers. Each test has its own 120 s
-      # (tests/ui/conftest.py); the step's limit, under the job's, ends a hang outside a test
+      # (tests/time_limit.py); the step's limit, under the job's, ends a hang outside a test
       # red with its log kept and the junit upload still run, which a job cancelled by its own
       # limit loses (LAD-271). The step takes ~5 minutes.
       - run: uv run pytest -m ui -n 2 --shard ${{ matrix.shard }}/4 --junitxml=junit.xml

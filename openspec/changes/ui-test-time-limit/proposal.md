@@ -20,11 +20,20 @@ change makes the next hang name its test and stack.
 ## Options
 
 1. **pytest-timeout with a limit per UI test, and a limit on the pytest step** (chosen).
-   A UI test (its fixtures' setup and teardown included) that runs past 120 s fails with
-   the stack of where it waits; the shard's other tests run on and the junit report is
-   written and uploaded. The step's own `timeout-minutes: 12` catches a hang outside a
-   test (pytest itself, xdist), and a step timeout keeps the log. Long-term cost: one dev
-   dependency, none in LADO's package.
+   A UI test (its fixtures included) that runs past 120 s fails, named in the log and the
+   junit report; the shard's other tests run on and the report is uploaded. The method is
+   pytest-timeout's `thread`, which ends the test's xdist worker (xdist names the test and
+   starts a new worker): its `signal` raises into whatever runs, which in a wait of
+   Playwright is Playwright's event loop, and the page's teardown then hangs with no limit
+   (found in review). The stacks go to the log through Python's faulthandler, into the
+   stderr pytest's own faulthandler keeps, 5 s before the limit: pytest-timeout's own dump
+   goes to the worker's terminal, which xdist drops. A wait inside Playwright shows
+   Playwright's event loop there, not the test's line (the test waits in another greenlet);
+   a wait in plain Python shows the test's line. An ended worker runs no teardown, so the
+   hung test's lado server and tmux server stay behind (a CI runner is thrown away). The
+   step's own `timeout-minutes: 12` catches a hang outside a test (pytest itself, xdist),
+   and a step timeout keeps the log. Long-term cost: one dev dependency, none in LADO's
+   package, and a reach into pytest's private `fault_handler_stderr_fd_key`.
 2. **Python's faulthandler only** (pytest's built-in `faulthandler_timeout`) with the
    step's limit: no dependency, but the hung test is never ended: the stack is printed,
    the shard waits out the step's 12 minutes, the rest of its tests never run, and no
@@ -35,13 +44,16 @@ change makes the next hang name its test and stack.
 ## What Changes
 
 - `pyproject.toml` (dev group) and `uv.lock`: `pytest-timeout`.
-- `tests/ui/conftest.py`: one constant, 120 s, the time limit of each UI test, given to
-  every test collected under `tests/ui/`, in `make test-ui` and in CI alike.
+- `tests/time_limit.py`: one constant, 120 s, the time limit of each UI test, its
+  collection hook and the fixture that dumps the stacks; `tests/ui/conftest.py` imports
+  them, so every test collected under `tests/ui/` has the limit, in `make test-ui` and in
+  CI alike. The limit lives in that module, not in the conftest, so its tests run the same
+  code with a short limit (the conftest brings in the browser tests' fixtures).
 - `.github/workflows/ci.yml`, job `ui`: the pytest step gets `timeout-minutes: 12`, with a
   comment saying why (a step timeout keeps the log, and the junit upload still runs).
   The job's 25 minutes stay.
 - `tests/test_ci_workflow.py`: the pytest step of `ui` has a limit shorter than its job's.
-  A unit test of the UI limit (see `tasks.md`).
+  A unit test of the UI limit and a UI test of a hang inside Playwright (see `tasks.md`).
 - `docs/testing.md`: the UI layer and the CI paragraph name both limits.
 - The living spec `continuous-integration`: a requirement that a hung UI test ends as a
   failed test that names itself.
@@ -49,10 +61,13 @@ change makes the next hang name its test and stack.
 ## Acceptance criteria
 
 - AC-1: Every test collected under `tests/ui/` carries a time limit of 120 s, set in one
-  place (`tests/ui/conftest.py`); a unit test fails when a UI test is collected without it.
-- AC-2: A UI-style test that runs past its limit under `-n 2` fails with a traceback of
-  where it waited, its name appears in the report and the junit file, and the test after it
-  in the same run still runs and passes (shown by a unit test with a short limit).
+  place (`tests/time_limit.py`, given by `tests/ui/conftest.py`); a unit test fails when a
+  UI test is collected without it.
+- AC-2: A test that runs past its limit under `-n 2` fails, its name appears in the report
+  and the junit file, the stacks of its process's threads are in the log (with the test's
+  line for a wait in plain Python), and the other tests of the run still run and pass;
+  shown with a short limit by a unit test (a sleep) and by a UI test (a wait inside
+  Playwright, with a real browser).
 - AC-3: In ci.yml the job `ui`'s pytest step has `timeout-minutes: 12`, under the job's 25;
   the junit upload step keeps `if: always()`; a unit test fails when the step's limit is
   missing or not under the job's.
@@ -63,9 +78,9 @@ change makes the next hang name its test and stack.
 
 ## Scope
 
-- `pyproject.toml`, `uv.lock`, `tests/ui/conftest.py`, `.github/workflows/ci.yml` (job
-  `ui`), `tests/test_ci_workflow.py`, a unit test of the limit, `docs/testing.md`, the
-  living spec `continuous-integration`.
+- `pyproject.toml`, `uv.lock`, `tests/time_limit.py`, `tests/ui/conftest.py`,
+  `.github/workflows/ci.yml` (job `ui`), `tests/test_ci_workflow.py`, a unit test and a UI
+  test of the limit, `docs/testing.md`, the living spec `continuous-integration`.
 
 ## Out of scope
 

@@ -47,8 +47,8 @@
 
 ## 4. Checks
 
-- [ ] 4.1 `make lint`, `make test`, `uv run pytest -m ui -n 2 <changed ui files>` (none
+- [x] 4.1 `make lint`, `make test`, `uv run pytest -m ui -n 2 <changed ui files>` (none
   but the conftest: run `tests/ui/test_tabs.py`), `openspec validate ui-test-time-limit
   --strict` and the trial archive (`.lado/sdlc.md`, Checks).
-- [ ] 4.2 The pull request's CI: the four `ui (<k>)` cells green; from their junit
+- [x] 4.2 The pull request's CI: the four `ui (<k>)` cells green; from their junit
   artifacts, name the longest UI test and its time in the build report (AC-4).

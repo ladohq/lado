@@ -1,15 +1,15 @@
 ## 1. The check
 
-- [ ] 1.1 `src/lado/providers/base.py`: `Provider.login_value_problem(variable, value) ->
+- [x] 1.1 `src/lado/providers/base.py`: `Provider.login_value_problem(variable, value) ->
   str | None`, `None` by default, with a docstring (D1). Unit test in
   `tests/test_providers.py`: a provider without an override returns `None` (AC-6).
-- [ ] 1.2 `src/lado/providers/claude.py`: the two formats next to `TOKEN` and
+- [x] 1.2 `src/lado/providers/claude.py`: the two formats next to `TOKEN` and
   `login_value_problem` by D3's order with the exact texts of AC-1..AC-4. Unit tests in
   `tests/test_providers.py`, one per branch: a valid token and key (also `oat02`/`api04`),
   a key under `TOKEN`, a token under `ANTHROPIC_API_KEY`, no prefix under each, a right
   prefix with a space / a line break / `+` inside, another variable name (`None`); each
   refusal is checked not to contain the value's part after its prefix (AC-1..AC-5).
-- [ ] 1.3 `src/lado/logins.py`: `check_secret` calls the hook last and raises `ValueError`
+- [x] 1.3 `src/lado/logins.py`: `check_secret` calls the hook last and raises `ValueError`
   with its text; docstring updated (D1). Unit test in `tests/test_logins.py` (refused for
   Claude, a Codex value accepted as before) (AC-6).
 

@@ -238,6 +238,39 @@ ENV_NAME = re.compile(r"[A-Z][A-Z0-9_]*")
 # The ways to pay that Settings offers (login_choices), and the token of a subscription.
 SUBSCRIPTION, USAGE = "subscription", "usage"
 TOKEN = "CLAUDE_CODE_OAUTH_TOKEN"
+# What a pasted login looks like (login_value_problem): a subscription token (`claude
+# setup-token`) and an API key (console.anthropic.com), each a prefix with its version
+# (oat01 and api03 today; any other version is taken), then letters, digits, - and _. Their
+# lengths are not documented, so not checked.
+PREFIXES = {
+    TOKEN: re.compile(r"sk-ant-oat\d+-"),
+    "ANTHROPIC_API_KEY": re.compile(r"sk-ant-api\d+-"),
+}
+LOGIN_CHARACTERS = re.compile(r"[A-Za-z0-9_-]+")
+# Why a value cannot be the login of its variable; none quotes a part of the value.
+NOT_OF_KIND = {
+    TOKEN: "This is not a Claude subscription token: a token starts with sk-ant-oat01-. Run "
+    "claude setup-token and paste the whole token it prints.",
+    "ANTHROPIC_API_KEY": "This is not an Anthropic API key: a key starts with sk-ant-api03-. "
+    "Create one at console.anthropic.com → API keys and paste it whole.",
+}
+# A value of the other variable's kind; the other choice's title ends the sentence.
+OTHER_KIND = {
+    TOKEN: "This is an API key (sk-ant-api03-…), not a subscription token: to pay per use "
+    "with it, ",
+    "ANTHROPIC_API_KEY": "This is a subscription token (sk-ant-oat01-…), not an API key: to "
+    "use your subscription, ",
+}
+BROKEN = (
+    "This token or key has characters it cannot have (a space or a line break?): copy it "
+    "again as one line."
+)
+
+
+def _whole(variable: str, value: str) -> bool:
+    """Whether `value` is a login of `variable`'s format, its prefix included."""
+    found = PREFIXES[variable].match(value)
+    return bool(found and LOGIN_CHARACTERS.fullmatch(value, found.end()))
 
 
 class ClaudeProvider(base.Provider):
@@ -508,6 +541,17 @@ class ClaudeProvider(base.Provider):
 
     def needs_login(self, env: Mapping[str, str]) -> bool:
         return not env.get(base.MODEL_SERVER) and super().needs_login(env)
+
+    def login_value_problem(self, variable: str, value: str) -> str | None:
+        if variable not in PREFIXES:
+            return None
+        if PREFIXES[variable].match(value):
+            return None if _whole(variable, value) else BROKEN
+        other = next(v for v in PREFIXES if v != variable)
+        if PREFIXES[other].match(value):
+            choice = next(c for c in self.login_choices if c.variable == other)
+            return OTHER_KIND[variable] + f"choose “{choice.title}”."
+        return NOT_OF_KIND[variable]
 
     def login_status(self, env: dict[str, str]) -> base.LoginStatus:
         # `claude auth status --json` (2.1.295, about 0.1 s): loggedIn, authMethod

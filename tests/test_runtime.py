@@ -1019,6 +1019,25 @@ def test_every_worker_is_told_the_human_reply_rule(repo, fake_tmux):
     assert runtime.RUN_WORKER_INSTRUCTIONS.endswith(runtime.WORKER_INPUT)
 
 
+def test_every_worker_commits_unless_its_task_says_otherwise(repo, fake_tmux, quiet_kit):
+    """A worker in its own worktree and a run's worker hold the same rule on commits, whose
+    exception is the task (LAD-173)."""
+    rule = (
+        "Commit your work on that branch, unless your task says otherwise: an explicit "
+        "instruction of your task (not to commit, to leave the branch as it is) wins over "
+        "this default."
+    )
+    runtime.start_session(str(repo), "s", None, kit_names=["quiet"], provider="claude")
+    runtime.spawn_worker("s", "build", role="dev")
+    worker = " ".join(agent_helpers.claude_prompt(fake_tmux[-1][-1]).split())
+    run = state.Run("s", "ship/x", "ship", "{}", {}, "Add x", "build", str(repo), "main")
+    runtime.spawn_worker("s", "build", role="dev", run=run, has_step=True)
+    run_worker = " ".join(agent_helpers.claude_prompt(fake_tmux[-1][-1]).split())
+    for prompt in (worker, run_worker):
+        assert rule in prompt
+        assert "Commit your work on that branch." not in prompt
+
+
 def test_the_supervisor_is_told_the_copy_of_the_humans_message_is_for_its_information(
     repo, fake_tmux
 ):

@@ -10,6 +10,8 @@
 - **New session no longer takes the focus away from you.** When the recent places come late,
   a field or button you already moved to keeps the focus, and what you type stays there; Where
   still shows the last place.
+- **A worker told not to commit leaves its work uncommitted.** Workers still commit on their
+  branch by default, but a task that says "Do not commit" now wins over that.
 - **A refused new session leaves no empty folder behind.** New empty folder, Set up, `lado
   start --new` and a clone in the terminal check the whole session (its kits too) before they
   make a folder, a repository or a clone; a late refusal removes the unused folder it made.

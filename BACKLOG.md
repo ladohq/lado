@@ -1961,6 +1961,17 @@ Found: 2026-11-14, branch hotfix/lad-284-tests-wait-for-turn-end (LAD-284).
 
 # P3: maybe never
 
+## A read-only worker is told to commit, then told not to
+
+Size: S. Why here: no harm is known, as the read-only paragraph that follows wins, but the
+model gets two rules that contradict each other in a row.
+
+A read-only role's worker (a run's reviewer) gets `runtime.WORKER_INSTRUCTIONS` or
+`RUN_WORKER_INSTRUCTIONS` with `COMMIT_RULE` ("Commit your work on that branch, unless your
+task says otherwise …"), then `READ_ONLY_INSTRUCTIONS` ("no commits"). Wanted: no
+`COMMIT_RULE` for a read-only worker, with a unit test of its prompt.
+Found: 2026-11-14, branch lado/lado/task-lad-173 (LAD-173 review, round 1).
+
 ## A session's chat address with a broken %-code blanks the app
 
 Size: S. Why here: only a hand-made or damaged link hits it, but then the whole page goes white.

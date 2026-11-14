@@ -872,3 +872,41 @@ def test_an_agent_s_shell_has_its_own_temporary_folder(live_repo, live_provider,
     assert expected.is_dir()
     check_supervisor_kept_still()
     runtime.stop_session(SESSION)
+
+
+NO_COMMIT_WORKER = (
+    "Create a file hello.txt containing exactly OK. Do not commit. "
+    "Then report to the supervisor with send_message."
+)
+COMMIT_WORKER = (
+    "Create a file hello.txt containing exactly OK. Then report to the supervisor with "
+    "send_message."
+)
+
+
+def test_a_worker_commits_unless_its_task_says_not_to(live_repo, live_provider):
+    """LADO's rule on commits is a default the task can switch off (LAD-173): w1, told not
+    to commit, leaves its branch at its start and hello.txt untracked; w2, told nothing of
+    commits, commits it."""
+    repo = live_repo
+    start_session(repo, live_provider)
+    head = runtime.git(str(repo), "rev-parse", "HEAD")
+    w1 = runtime.spawn_worker(SESSION, NO_COMMIT_WORKER, name="w1")
+    w2 = runtime.spawn_worker(SESSION, COMMIT_WORKER, name="w2")
+
+    def both_reported() -> bool:
+        answer_dialogs(live_provider, SESSION, "w1")
+        answer_dialogs(live_provider, SESSION, "w2")
+        return bool(messages("w1", "supervisor") and messages("w2", "supervisor"))
+
+    wait_for(both_reported, "w1's and w2's reports", 180)
+    # A worker may commit after its report, in the same turn: look at the branches only once
+    # both turns have ended.
+    wait_for(lambda: status("w1") == status("w2") == state.IDLE, "w1 and w2 to be idle", 120)
+    assert runtime.git(str(repo), "rev-parse", w1.branch) == head
+    assert (Path(w1.cwd) / "hello.txt").read_text().strip() == "OK"
+    assert runtime.git(w1.cwd, "status", "--porcelain", "--", "hello.txt") == "?? hello.txt"
+    assert runtime.git(str(repo), "rev-list", "--count", f"{head}..{w2.branch}") != "0"
+    assert runtime.git(str(repo), "show", f"{w2.branch}:hello.txt").strip() == "OK"
+    check_supervisor_kept_still()
+    runtime.stop_session(SESSION)

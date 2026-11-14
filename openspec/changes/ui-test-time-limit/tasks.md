@@ -1,8 +1,8 @@
 ## 1. The limit of a UI test
 
-- [ ] 1.1 `pyproject.toml`, dev group: add `pytest-timeout` (the version `uv add --dev`
+- [x] 1.1 `pyproject.toml`, dev group: add `pytest-timeout` (the version `uv add --dev`
   picks, as a `>=` floor like the other entries); `uv lock`. Check: `uv sync --locked`.
-- [ ] 1.2 `tests/ui/conftest.py`: a constant `TEST_TIMEOUT = 120` (seconds) with a comment
+- [x] 1.2 `tests/ui/conftest.py`: a constant `TEST_TIMEOUT = 120` (seconds) with a comment
   (LAD-271: a hang fails the test with its stack instead of the CI job's cancel; the
   longest UI test takes ~13 s in CI), given to every item collected under `tests/ui/` as
   `pytest.mark.timeout(TEST_TIMEOUT)` by a collection hook of that conftest (scoped to its
@@ -10,7 +10,7 @@
   layer gets it. pytest-timeout's default method (`signal` on Linux and macOS) and its
   default of counting fixtures. The module docstring names the limit. Check:
   `uv run pytest -m ui -n 2 tests/ui/test_tabs.py` green.
-- [ ] 1.3 A unit test, `tests/test_ui_time_limit.py` (`pytest_plugins = "pytester"`, as
+- [x] 1.3 A unit test, `tests/test_ui_time_limit.py` (`pytest_plugins = "pytester"`, as
   `tests/test_shard.py`):
   - `test_every_ui_test_has_the_limit`: collects the real `tests/ui` with `-m ui --collect-only`
     (in a subprocess when an in-process collection clashes with the running session) and

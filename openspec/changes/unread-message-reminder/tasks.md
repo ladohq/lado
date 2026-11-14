@@ -8,7 +8,7 @@
 
 ## 2. The reminder
 
-- [ ] 2.1 `hooks.py`: `UNREAD_REMINDER` and its use at a clean `TURN_END` after the reply check
+- [x] 2.1 `hooks.py`: `UNREAD_REMINDER` and its use at a clean `TURN_END` after the reply check
   and before `_idle` (D3). Check: unit tests of the hook: the one and several texts exactly, no
   reminder on an error turn, a batch confirmed by `continued` is checked, the hook's own
   hand-over is not.

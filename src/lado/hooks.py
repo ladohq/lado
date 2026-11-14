@@ -40,6 +40,28 @@ REPLY_REMINDER = (
     ' does not see. If it needs an answer, use send_message(to="human") or ask_human; else'
     " do nothing."
 )
+# LADO's one reminder of the messages whose text the agent's turn left unread
+# (state.check_unread), as many named as fit one line (unread_reminder).
+UNREAD_REMINDER = (
+    "you have not read {messages}: call read_messages to get {its} text; if it asks nothing"
+    " of you, do nothing."
+)
+
+
+def unread_reminder(unread: list[state.Message]) -> str:
+    """UNREAD_REMINDER for `unread`, naming as many as fit state.SUMMARY_LIMIT and counting
+    the rest: read_messages returns them all anyway."""
+    names = [f"#{m.id} from {m.sender}" for m in unread]
+    one = len(names) == 1
+    for shown in range(len(names), 0, -1):
+        rest = len(names) - shown
+        listed = ", ".join(names[:shown]) + (f", … ({rest} more)" if rest else "")
+        text = UNREAD_REMINDER.format(
+            messages=f"{'message' if one else 'messages'} {listed}", its="its" if one else "their"
+        )
+        if len(text) <= state.SUMMARY_LIMIT:
+            return text
+    return runtime.cut_summary(text)
 
 
 def deadline(provider: providers.Provider, native: str, started: float) -> float | None:
@@ -230,6 +252,11 @@ def handle(
                 state.queue_message(
                     session, state.LADO, agent, REPLY_REMINDER.format(id=unanswered)
                 )
+            # Messages it got with a text it never read: one reminder for them all, once
+            # each. Not those handed over below: it has not had its turn with them yet.
+            unread = state.check_unread(session, agent)
+            if unread:
+                state.queue_message(session, state.LADO, agent, unread_reminder(unread))
         # Before the agent is idle: a resume planned for it holds while it stays idle, and
         # is dropped when the queue makes it busy now (state.schedule_resume).
         if event.error:

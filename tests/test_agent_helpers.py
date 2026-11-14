@@ -51,6 +51,27 @@ def test_test_repos_never_run_git_maintenance(tmp_path, monkeypatch):
     assert _config(other, "maintenance.auto") == "false"
 
 
+def test_a_run_in_an_agents_shell_drops_what_the_launch_set_but_its_tmpdir():
+    launch = "CLAUDE_CODE_TMPDIR,LADO_AGENT,TMPDIR,LADO_MODEL_KEY_GW"
+    agent = {
+        "LADO_LAUNCH_VARS": launch,
+        "CLAUDE_CODE_TMPDIR": "/t/claude",
+        "LADO_AGENT": "w1",
+        "TMPDIR": "/t/w1",
+        "LADO_MODEL_KEY_GW": "secret",
+        "LADO_CONTAINER": "1",
+        "TMUX": "/tmp/tmux-1/lado,1,0",
+        "FOO": "bar",
+    }
+    assert agent_helpers.without_agent_launch(agent) == {"TMPDIR": "/t/w1", "FOO": "bar"}
+
+
+def test_a_run_outside_an_agent_drops_only_lados_own_names():
+    # CI: no launch, so a variable a launch would set stays as the user set it.
+    user = {"LADO_HOME": "/h", "TMUX": "/tmp/tmux-1/default,1,0", "CLAUDE_CODE_TMPDIR": "/c"}
+    assert agent_helpers.without_agent_launch(user) == {"CLAUDE_CODE_TMPDIR": "/c"}
+
+
 @pytest.fixture
 def failed_session(lado_home, monkeypatch):
     """Session "s" as a live test leaves it when it fails: w1 busy, its report queued, a hook
@@ -213,3 +234,49 @@ def test_a_loop_not_ended_by_lado_stop_fails_the_check(lado_home, logged):
     loop.log("s", logged)
     with pytest.raises(pytest.fail.Exception, match="s: "):
         agent_helpers.check_loop_ended_by_stop("s")
+
+
+SECRET = "smoke-refused-key-0123456789"
+
+
+def test_the_db_scan_passes_without_side_files_and_with_a_clean_lado_db(tmp_path):
+    (tmp_path / "lado.db").write_bytes(b"rows without the key")
+    agent_helpers.check_no_secret_in_db(tmp_path, SECRET)
+
+
+def test_the_db_scan_fails_without_lado_db(tmp_path):
+    (tmp_path / "lado.db-wal").write_bytes(b"pages")
+    with pytest.raises(FileNotFoundError, match="lado.db"):
+        agent_helpers.check_no_secret_in_db(tmp_path, SECRET)
+
+
+@pytest.mark.parametrize("name", ["lado.db-wal", "lado.db-shm", "lado.db"])
+def test_the_db_scan_fails_naming_the_file_that_holds_the_secret(tmp_path, name):
+    for file in ("lado.db-wal", "lado.db-shm", "lado.db"):
+        (tmp_path / file).write_bytes(b"clean")
+    (tmp_path / name).write_bytes(f"page with {SECRET} in it".encode())
+    with pytest.raises(AssertionError, match=f"{name}$"):
+        agent_helpers.check_no_secret_in_db(tmp_path, SECRET)
+
+
+def test_the_db_scan_reads_the_wal_checkpointed_away_mid_scan_through_lado_db(
+    tmp_path, monkeypatch
+):
+    # The last connection closes as the scan starts: SQLite moves the WAL into lado.db and
+    # deletes lado.db-wal and lado.db-shm, so the WAL's read fails and its key is in lado.db.
+    db, wal, shm = (tmp_path / n for n in ("lado.db", "lado.db-wal", "lado.db-shm"))
+    db.write_bytes(b"clean")
+    wal.write_bytes(f"page with {SECRET}".encode())
+    shm.write_bytes(b"index")
+    read_bytes = type(db).read_bytes
+
+    def checkpointed(path):
+        if path.name == "lado.db-wal" and wal.exists():
+            db.write_bytes(read_bytes(db) + read_bytes(wal))
+            wal.unlink()
+            shm.unlink()
+        return read_bytes(path)
+
+    monkeypatch.setattr(type(db), "read_bytes", checkpointed)
+    with pytest.raises(AssertionError, match="lado.db$"):
+        agent_helpers.check_no_secret_in_db(tmp_path, SECRET)

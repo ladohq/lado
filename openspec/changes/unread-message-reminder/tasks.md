@@ -1,9 +1,9 @@
 ## 1. The mark and the check
 
-- [ ] 1.1 `state.py`: the column `read_reminded` (D1), `SCHEMA_VERSION = 40`, `MIGRATIONS[40]`
+- [x] 1.1 `state.py`: the column `read_reminded` (D1), `SCHEMA_VERSION = 40`, `MIGRATIONS[40]`
   (add it, set 1 on every existing row), the table in `SCHEMA`, `tests/agent_helpers.previous_schema`.
   Check: the migration test of `tests/test_state.py` from version 39; `make test`.
-- [ ] 1.2 `state.check_unread` (D2). Check: unit tests of each state (`pending`, `sent`,
+- [x] 1.2 `state.check_unread` (D2). Check: unit tests of each state (`pending`, `sent`,
   `delivered`, `read`), a line without a body, artifacts only, and no message returned twice.
 
 ## 2. The reminder

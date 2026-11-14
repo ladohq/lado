@@ -22,7 +22,7 @@ from lado.flows import IDENTIFIER
 
 # `lado update` of a later LADO reads this line from this release's wheel to learn the schema
 # it knows (update.release_schema): keep its form, `SCHEMA_VERSION = <N>` on a line of its own.
-SCHEMA_VERSION = 39
+SCHEMA_VERSION = 40
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -1047,6 +1047,14 @@ MODELS_BY_ID = [
     CLI_DEFAULTS_TABLE,
 ]
 MIGRATIONS[38] = MODELS_BY_ID
+
+# Whether LADO reminded the recipient once of the message's text it left unread
+# (check_unread). The migration marks every message there reminded: one left unread under an
+# older LADO is not reminded after the update.
+MESSAGES_READ_REMINDED = "ALTER TABLE messages ADD COLUMN read_reminded INTEGER NOT NULL DEFAULT 0"
+OLD_MESSAGES_READ_REMINDED = "UPDATE messages SET read_reminded = 1"
+SCHEMA += MESSAGES_READ_REMINDED + ";\n"
+MIGRATIONS[39] = [MESSAGES_READ_REMINDED, OLD_MESSAGES_READ_REMINDED]
 
 # Where an agent's model or effort came from. Each later way of choosing one adds a token;
 # a token this LADO does not know (a newer LADO's row) is shown as itself (source_words).
@@ -3152,6 +3160,25 @@ def check_replies(session: str, agent: str) -> list[int]:
         )
         db.execute("COMMIT")
     return reminded
+
+
+def check_unread(session: str, agent: str) -> list[Message]:
+    """At the end of the agent's turn: its messages confirmed (DELIVERED) with something to
+    read (TO_READ) that it has not read and was never reminded of, oldest first, marked
+    reminded in the same transaction, for the one reminder the caller queues. So each gets at
+    most one. A SENT one is not checked: the agent has not had its turn with it yet."""
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        rows = db.execute(
+            f"SELECT {MESSAGE_COLUMNS} FROM messages WHERE session = ? AND recipient = ?"
+            f" AND state = ? AND read_reminded = 0 AND {TO_READ} ORDER BY id",
+            (session, agent, DELIVERED),
+        ).fetchall()
+        db.executemany(
+            "UPDATE messages SET read_reminded = 1 WHERE id = ?", [(r["id"],) for r in rows]
+        )
+        db.execute("COMMIT")
+    return [_message(r) for r in rows]
 
 
 # What the lead's recommendation is on: a gate, or a question to the human (a message of

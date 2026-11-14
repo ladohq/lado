@@ -656,6 +656,72 @@ def test_the_migration_gives_sessions_no_power(lado_home):
     assert state.get_session("s").power is None
 
 
+def _unread_session() -> None:
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "idle", "claude"))
+
+
+def _unread(mark: str, body: str = "the text", attachments=()) -> int:
+    """A message to w1 with something to read (or not), in state `mark`."""
+    return state.queue_message(
+        "s", "supervisor", "w1", "a note", body, mark=mark, attachments=attachments
+    )
+
+
+def test_check_unread_marks_a_delivered_text_reminded_once(lado_home):
+    _unread_session()
+    first = _unread(state.DELIVERED)
+    second = _unread(state.DELIVERED, body="", attachments=[("a1", "r1")])
+    assert [m.id for m in state.check_unread("s", "w1")] == [first, second]
+    assert state.check_unread("s", "w1") == []  # each one once
+    assert state.get_message("s", first).state == state.DELIVERED  # still unread
+
+
+@pytest.mark.parametrize("mark", [state.PENDING, state.SENT, state.READ, state.DROPPED])
+def test_check_unread_leaves_a_text_not_delivered_or_already_read(lado_home, mark):
+    _unread_session()
+    _unread(mark)
+    assert state.check_unread("s", "w1") == []
+
+
+def test_check_unread_reminds_a_sent_text_once_it_is_delivered(lado_home):
+    _unread_session()
+    sent = _unread(state.SENT)
+    assert state.check_unread("s", "w1") == []
+    with state.connect() as db:
+        db.execute("UPDATE messages SET state = ? WHERE id = ?", (state.DELIVERED, sent))
+    assert [m.id for m in state.check_unread("s", "w1")] == [sent]
+
+
+def test_check_unread_leaves_a_line_with_nothing_to_read(lado_home):
+    _unread_session()
+    _unread(state.DELIVERED, body="")
+    assert state.check_unread("s", "w1") == []
+
+
+def test_check_unread_looks_at_the_agents_own_messages_only(lado_home):
+    _unread_session()
+    state.add_agent(state.Agent("s", "w2", "worker", "/r", None, None, "idle", "claude"))
+    state.queue_message("s", "supervisor", "w2", "a note", "the text", mark=state.DELIVERED)
+    assert state.check_unread("s", "w1") == []
+
+
+def test_the_migration_marks_the_messages_there_reminded(lado_home):
+    """Left unread under an older LADO: not reminded after the update."""
+    _unread_session()
+    _unread(state.DELIVERED)
+    agent_helpers.schema_before(40)
+    db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
+    columns = _message_columns(db)
+    db.close()
+    assert "read_reminded" not in columns
+    migrated = state.migrate()
+    assert (migrated.before, migrated.after) == (39, state.SCHEMA_VERSION)
+    assert state.check_unread("s", "w1") == []
+    later = _unread(state.DELIVERED)
+    assert [m.id for m in state.check_unread("s", "w1")] == [later]
+
+
 def test_a_launch_records_a_source_with_no_name(lado_home):
     state.add_session(state.Session("s", "/r", None, provider="codex"))
     state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "claude"))
@@ -1278,6 +1344,10 @@ def _session_columns(db: sqlite3.Connection) -> list[str]:
     return [row[1] for row in db.execute("PRAGMA table_info(sessions)")]
 
 
+def _message_columns(db: sqlite3.Connection) -> list[str]:
+    return [row[1] for row in db.execute("PRAGMA table_info(messages)")]
+
+
 def _tables(db: sqlite3.Connection) -> list[str]:
     return [row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")]
 
@@ -1302,8 +1372,8 @@ def test_migrate_backs_up_the_older_schema_first(lado_home):
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(backup)) as db:
         assert db.execute("SELECT name FROM sessions").fetchall() == [("s",)]
-        tables = _tables(db)
-    assert "cli_defaults" not in tables  # the content before the migration
+        columns = _message_columns(db)
+    assert "read_reminded" not in columns  # the content before the migration
     assert _schema(lado_home / "lado.db") == state.SCHEMA_VERSION
 
 
@@ -1355,7 +1425,7 @@ def test_a_failing_step_leaves_the_schema_and_keeps_the_backup(lado_home, monkey
     assert _schema(lado_home / "lado.db") == old
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
-        assert "cli_defaults" not in _tables(db)  # rolled back
+        assert "read_reminded" not in _message_columns(db)  # rolled back
 
 
 def test_no_pending_migration_without_a_database(lado_home):
@@ -2932,7 +3002,7 @@ def test_the_migration_adds_empty_model_tables_as_a_new_database_has_them(lado_h
     assert db.execute(MODEL_TABLES).fetchall() == []
     db.close()
     migrated = state.migrate()
-    assert (migrated.before, migrated.after) == (37, 39)
+    assert (migrated.before, migrated.after) == (37, state.SCHEMA_VERSION)
     with state.connect() as db:
         assert sorted(tuple(row) for row in db.execute(MODEL_TABLES)) == fresh
     assert (state.model_servers(), state.models(), state.cli_defaults()) == ([], [], [])
@@ -3068,7 +3138,7 @@ def test_the_lists_are_sorted_ignoring_case(lado_home):
 def _schema_38_with_models(lado_home):
     """lado.db at schema 38 holding a model on a server and one without."""
     _server()
-    agent_helpers.previous_schema()
+    agent_helpers.schema_before(39)
     db = sqlite3.connect(lado_home / "lado.db")  # not state.connect(): it refuses an older schema
     db.execute(
         "INSERT INTO models (folded, name, cli, model, server, created_at)"
@@ -3086,7 +3156,7 @@ def _schema_38_with_models(lado_home):
 def test_the_migration_keeps_a_model_on_a_server_and_drops_one_without(lado_home):
     _schema_38_with_models(lado_home)
     migrated = state.migrate()
-    assert (migrated.before, migrated.after) == (38, 39)
+    assert (migrated.before, migrated.after) == (38, state.SCHEMA_VERSION)
     (kept,) = state.models()
     assert (kept.name, kept.cli, kept.model, kept.server, kept.created_at) == (
         "Локальная Qwen",

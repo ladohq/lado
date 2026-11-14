@@ -70,7 +70,24 @@ Out of scope:
 - AC-2: three CI runs of the branch in a row run every smoke cell green (8 cells each),
   with the same number of tests passed per cell as on `main` (claude 21, codex 16,
   opencode 14, kilo 14) and no skip.
-- AC-3: in those runs, the test step of each macOS smoke cell takes at most 3.5 minutes.
+- AC-3: in those runs, the test step of each macOS smoke cell takes at most 270 s at the
+  median of the three, and each run under 396 s (the fastest of `main`'s serial steps,
+  396-424 s). Set by the human on 2026-11-14 after the first trial runs, in place of "at
+  most 3.5 minutes" (210 s): claude's cell cannot reach it, as each worker's first test
+  starts the CLI cold (~42 s) and the `[401]` refusal case alone takes ~160 s; and the
+  macOS runners' speed varies by half on the same code (opencode 251 s in one run, 373 s in
+  the next, every test ~1.5 times slower), so one run's number measures the runner, not
+  the change.
+
+  The trial (PR #300, CI runs 43616898366, 43617987703, 43618895867), the step `Smoke test`
+  of each macOS cell in seconds, against `main`'s serial run 43399183470:
+
+  | Cell | Run 1 | Run 2 | Run 3 | Median | `main` |
+  |---|---|---|---|---|---|
+  | claude | 252 | 262 | 284 | 262 | 409 |
+  | opencode | 251 | 373 | 141 | 251 | 433 |
+  | kilo | 208 | 130 | 230 | 208 | 251 |
+  | codex | 136 | 137 | 136 | 136 | 260 |
 - AC-4: `make test-smoke` still runs serially; `docs/testing.md` and the script's
   docstring state both commands.
 

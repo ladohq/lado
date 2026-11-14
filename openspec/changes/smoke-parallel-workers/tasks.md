@@ -13,11 +13,12 @@
 
 ## 2. Trial in CI
 
-- [ ] 2.1 Push and open the pull request; then push two empty commits, one after the
+- [x] 2.1 Push and open the pull request; then push two empty commits, one after the
   other's run ended, so three runs of the branch exist (no `gh run rerun` of a whole run). Check
   (AC-2): every smoke cell green each time, tests passed per cell 21 / 16 / 14 / 14, no skip.
-- [ ] 2.2 Record each macOS cell's test step duration of the three runs in the build
-  report. Check (AC-3): each at most 210 s. If a run is red on a smoke test that passes
-  serially, or a step exceeds 210 s, try `-n 2` once (1.1-1.3 changed alike); if that
-  fails too, stop and report `redesign` with the numbers.
-- [ ] 2.3 `openspec validate smoke-parallel-workers --strict` passes.
+- [x] 2.2 Record each macOS cell's test step duration of the three runs in the build
+  report. Check (AC-3, as the human set it on 2026-11-14): per macOS cell, the median of
+  the three at most 270 s and each under 396 s. If a run is red on a smoke test that
+  passes serially, or AC-3 is not met, stop and bring the numbers to the human; the code
+  is not changed on its own (`-n 2` is not tried: fewer workers cannot shorten the step).
+- [x] 2.3 `openspec validate smoke-parallel-workers --strict` passes.

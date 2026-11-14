@@ -1,6 +1,7 @@
 """Two short scenarios per real agent CLI: a worker does a tiny task, reports, gets a message
 and is finished after its branch is merged; and a flow run's worker does its step and
-reports the outcome, which ends the run."""
+reports the outcome, the human approves the run's gate with a comment, and the worker gets
+the next step as a message, does what the comment says and reports, which ends the run."""
 
 import asyncio
 import json
@@ -60,11 +61,14 @@ git commands, no file edits.
 """
 
 
-# One worker step, then the end. The test plays the supervisor's part (start the run, spawn
-# its worker) itself; the worker reports the outcome with flow_advance.
+# A worker step, the human's gate, a second step of the same worker, then the end. The test
+# plays the supervisor's part (start the run, spawn its worker) and the human's (answer the
+# gate) itself; the worker reports each outcome with flow_advance. The second step needs a
+# word only the human's comment at the gate names (GATE_WORD), so it shows the comment
+# reached the model.
 TINY_FLOW = """\
 name: tiny
-description: One worker step, then the end; for the live test.
+description: A worker step, a gate, a second worker step, then the end; for the live test.
 start: step
 states:
   step:
@@ -72,10 +76,22 @@ states:
     do: >-
       Create a file flow.txt containing exactly OK and commit it on your branch. Then call
       flow_advance with the outcome done. Do nothing else.
+    outcomes: {done: ok}
+  ok:
+    gate: approval
+    ask: Go on to the second step?
+    outcomes: {approved: after, rejected: end}
+  after:
+    agent: worker
+    do: >-
+      The note of the previous step holds the human's comment, which names one word. Create
+      a file gate.txt containing exactly that word and commit it on your branch. Then call
+      flow_advance with the outcome done. Do nothing else.
     outcomes: {done: end}
   end:
     end: true
 """
+GATE_WORD = "MARIGOLD"
 
 
 # The passive supervisor's MCP server: it writes the token it got next to itself, then
@@ -670,9 +686,13 @@ def finish_worker(repo, worker: state.Agent) -> None:
 
 def test_a_flow_run_moves_on_when_its_worker_reports(live_repo, live_provider, live_model):
     """The run's worker gets its step as its task, does it and reports the outcome with
-    flow_advance; the run ends. Its branch is not merged yet, so LADO keeps the worktree,
-    the branch and the worker and tells the supervisor; finishing the worker after the
-    merge removes them."""
+    flow_advance; the run waits at its gate. The human approves with a comment
+    (runs.answer_text, as every surface of the human), and the human's answer reaches the
+    real CLI as the next step, a message from LADO: the worker writes the word the comment
+    names and reports; the run ends. The lead's recommendation on the gate is the model's
+    choice: the test neither waits for it nor requires it. The run's branch is not merged
+    yet, so LADO keeps the worktree, the branch and the worker and tells the supervisor;
+    finishing the worker after the merge removes them."""
     repo = live_repo
     started, since = time.monotonic(), time.time()
     start_session(repo, live_provider)
@@ -683,20 +703,35 @@ def test_a_flow_run_moves_on_when_its_worker_reports(live_repo, live_provider, l
     assert worker.cwd == run.worktree
     check_lado_tools_loaded(live_provider, worker.cwd, since)
 
+    def at_gate():
+        r = state.get_run(SESSION, run.name)
+        return r.status == state.WAITING and r.state == "ok" and state.open_gate(SESSION, r.name)
+
+    wait_for(answering(live_provider, "w1", at_gate), "the run's gate to open", 240)
+    check_first_input("w1", f"flow {run.name}: step step")
+    answered = runs.answer_text(SESSION, run.name, "approve", f"The word is {GATE_WORD}.")
+    print(f"gate: {answered}")
+
     ended = wait_for(
         answering(
             live_provider,
             "w1",
             lambda: (r := state.get_run(SESSION, run.name)).status == state.ENDED and r,
         ),
-        "the run to end",
+        "the run to end after the gate",
         240,
     )
     assert ended.state == "end"
-    check_first_input("w1", f"flow {run.name}: step step")
     moves = [(e.agent, e.detail) for e in state.list_events(SESSION) if e.kind == state.FLOW]
-    assert moves == [("w1", "step -done-> end")]
+    assert moves == [
+        ("w1", "step -done-> ok"),
+        (runs.HUMAN, "ok -approved-> after"),
+        ("w1", "after -done-> end"),
+    ]
+    # The step after the gate came as a message with the human's answer as its note.
+    assert (f"flow {run.name}: step after", state.READ) in messages(state.LADO, "w1")
     assert runtime.git(str(repo), "show", f"{run.branch}:flow.txt").strip() == "OK"
+    assert runtime.git(str(repo), "show", f"{run.branch}:gate.txt").strip() == GATE_WORD
     # w1's MCP server stores the end first and tells the supervisor after its git checks.
     kept = f"flow {run.name}: ended at end; kept its worktree and branch"
     wait_for(

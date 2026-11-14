@@ -1092,9 +1092,10 @@ def create_app(
         others there: one login per layer, so the one saved is the login. The agents started
         after it, and those that wait for a login, get it."""
         provider = provider_named(name)
+        value = given.value.strip()  # a pasted line break or space: no token or key has one
         try:
-            logins.check_secret(provider, variable, given.value)
-            project_secrets.write_lado(variable, given.value)
+            logins.check_secret(provider, variable, value)
+            project_secrets.write_lado(variable, value)
             for other in provider.login_variables:
                 if other != variable:
                     project_secrets.remove_lado(other)

@@ -146,7 +146,9 @@ def test_the_page_answers_at_once_and_only_a_post_starts_a_check(
 def test_a_saved_token_starts_a_check(client, cli_logins, windows, monkeypatch):
     started = []
     monkeypatch.setattr(provider_check, "start", lambda: started.append(1) or True)
-    row = client.put(f"/api/providers/claude/variables/{TOKEN}", json={"value": "c-5"}).json()
+    row = client.put(
+        f"/api/providers/claude/variables/{TOKEN}", json={"value": "sk-ant-oat01-c-5"}
+    ).json()
     assert started == [1]
     # The row is kept at once: the section shows it before the check ends.
     assert _row(client.get("/api/providers/logins").json(), "claude") == row
@@ -174,11 +176,12 @@ def test_a_cli_not_installed_is_unknown_with_why(client, monkeypatch, windows):
 
 
 def test_a_saved_token_is_lados_secret_and_never_given_back(client, cli_logins, windows):
-    answer = client.put(f"/api/providers/claude/variables/{TOKEN}", json={"value": "canary-1"})
+    body = {"value": "sk-ant-oat01-canary-1"}
+    answer = client.put(f"/api/providers/claude/variables/{TOKEN}", json=body)
     assert answer.status_code == 200, answer.text
     assert "canary-1" not in answer.text
     folder = state.home() / "secrets"
-    assert (folder / TOKEN).read_text() == "canary-1"
+    assert (folder / TOKEN).read_text() == "sk-ant-oat01-canary-1"
     assert (folder / TOKEN).stat().st_mode & 0o777 == 0o600
     assert folder.stat().st_mode & 0o777 == 0o700
     row = answer.json()
@@ -189,7 +192,7 @@ def test_a_saved_token_is_lados_secret_and_never_given_back(client, cli_logins, 
     page = client.get("/api/providers/logins")
     assert "canary-1" not in page.text
     # The status command got it, as every agent would.
-    assert any(env.get(TOKEN) == "canary-1" for argv, env in cli_logins.calls)
+    assert any(env.get(TOKEN) == "sk-ant-oat01-canary-1" for argv, env in cli_logins.calls)
     # One variable alone is not removed: Log out removes the provider's login.
     assert client.delete(f"/api/providers/claude/variables/{TOKEN}").status_code == 405
     assert project_secrets.lado_names() == [TOKEN]
@@ -203,9 +206,12 @@ def test_a_saved_key_replaces_lados_token_and_beats_the_outside_folders(
     (outside / TOKEN).write_text("canary-out")
     monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(outside))
     monkeypatch.setattr(provider_check, "start", lambda: True)
-    client.put(f"/api/providers/claude/variables/{TOKEN}", json={"value": "canary-tok"})
+    client.put(
+        f"/api/providers/claude/variables/{TOKEN}", json={"value": "sk-ant-oat01-canary-tok"}
+    )
     cli_logins.logged_in("api_key")
-    answer = client.put(f"/api/providers/claude/variables/{KEY}", json={"value": "canary-key"})
+    body = {"value": "sk-ant-api03-canary-key"}
+    answer = client.put(f"/api/providers/claude/variables/{KEY}", json=body)
     assert answer.status_code == 200, answer.text
     assert project_secrets.lado_names() == [KEY]  # one login in LADO's secrets
     row = answer.json()
@@ -217,7 +223,7 @@ def test_a_saved_key_replaces_lados_token_and_beats_the_outside_folders(
     # The status command, as every agent, got the key and not the outside folder's token.
     assert {argv[0] for argv, _ in cli_logins.calls} == {"claude"}
     _, env = cli_logins.calls[-1]
-    assert env[KEY] == "canary-key" and TOKEN not in env
+    assert env[KEY] == "sk-ant-api03-canary-key" and TOKEN not in env
     assert "canary" not in answer.text
 
 
@@ -264,8 +270,8 @@ def test_only_a_login_variable_may_be_set(client, windows):
 @pytest.mark.parametrize(
     ("value", "why"),
     [
-        pytest.param("canary\0x", "is not UTF-8 text", id="nul"),
-        pytest.param("x" * (64 * 1024 + 1), "is larger than 64 KiB", id="too-large"),
+        pytest.param("sk-ant-oat01-canary\0x", "is not UTF-8 text", id="nul"),
+        pytest.param("sk-ant-oat01-" + "x" * 64 * 1024, "is larger than 64 KiB", id="too-large"),
     ],
 )
 def test_a_value_the_agents_could_not_get_is_refused(client, value, why):
@@ -275,6 +281,29 @@ def test_a_value_the_agents_could_not_get_is_refused(client, value, why):
     assert answer.json()["detail"] == f"the value of {TOKEN} {why}"
     assert "canary" not in answer.text
     assert project_secrets.lado_names() == []
+
+
+def test_claude_codes_sheet_refuses_a_value_that_is_no_token(client):
+    answer = client.put(f"/api/providers/claude/variables/{TOKEN}", json={"value": "canary" * 15})
+    assert answer.status_code == 400
+    assert answer.json()["detail"] == (
+        "This is not a Claude subscription token: a token starts with sk-ant-oat01-. Run "
+        "claude setup-token and paste the whole token it prints."
+    )
+    assert "canary" not in answer.text
+    assert not (state.home() / "secrets").exists()
+
+
+def test_a_token_is_saved_without_the_spaces_around_it(client, cli_logins, windows):
+    body = {"value": "  sk-ant-oat01-canary-5\n"}
+    answer = client.put(f"/api/providers/claude/variables/{TOKEN}", json=body)
+    assert answer.status_code == 200, answer.text
+    assert (state.home() / "secrets" / TOKEN).read_text() == "sk-ant-oat01-canary-5"
+    assert answer.json()["login"]["state"] == "yes"
+    answer = client.put(f"/api/providers/claude/variables/{KEY}", json={"value": " \n "})
+    assert answer.status_code == 400
+    assert answer.json()["detail"] == f"{KEY} needs a value"
+    assert project_secrets.lado_names() == [TOKEN]
 
 
 @pytest.mark.parametrize("body", [{"secret": "canary-3"}, {"value": 5}, {"value": ["canary-3"]}])
@@ -370,7 +399,9 @@ def test_the_row_names_waiting_and_running_agents_and_projects(
     assert agent["status_reason"] == logins.wait_reason(providers.get("claude"))
     # Logged in, the row names no agent that waits, though its window has not looked yet.
     cli_logins.logged_in()
-    row = client.put(f"/api/providers/claude/variables/{TOKEN}", json={"value": "c-6"}).json()
+    row = client.put(
+        f"/api/providers/claude/variables/{TOKEN}", json={"value": "sk-ant-oat01-c-6"}
+    ).json()
     assert row["login"]["state"] == "yes" and row["waiting"] == []
     assert state.get_agent("s", "supervisor").status == state.WAITING
     assert _row(_page(client), "claude")["waiting"] == []

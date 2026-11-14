@@ -7434,24 +7434,121 @@ def test_no_keychain_warning_for_an_agent_on_a_server(repo, fake_tmux, monkeypat
     assert started.warnings == []
 
 
+def _check_new(path, name=None, mode=None, provider="claude", kits=None, title=None, model=None):
+    """runtime.check_new_session for the folder `path`, which may not exist."""
+    return runtime.check_new_session(str(path), name, mode, provider, kits, None, title, model)
+
+
 def test_a_clone_for_a_session_on_a_server_is_not_refused_for_the_login(
-    cli_logins, fake_clis, monkeypatch
+    cli_logins, fake_clis, monkeypatch, tmp_path
 ):
     _claude_on_server(monkeypatch)
     cli_logins.logged_out()
-    runtime.check_start_login("claude", None, "Шлюз Qwen")
+    _check_new(tmp_path / "app", model="Шлюз Qwen")
     with pytest.raises(runtime.NotLoggedIn):
-        runtime.check_start_login("claude", None, "opus")
+        _check_new(tmp_path / "app", model="opus")
     with pytest.raises(runtime.NotLoggedIn):
-        runtime.check_start_login("claude", None)
+        _check_new(tmp_path / "app")
 
 
 def test_a_clone_on_the_default_model_of_a_server_is_not_refused_for_the_login(
-    cli_logins, fake_clis, monkeypatch
+    cli_logins, fake_clis, monkeypatch, tmp_path
 ):
     _default(_claude_on_server(monkeypatch))
     cli_logins.logged_out()
-    runtime.check_start_login("claude", None)
+    _check_new(tmp_path / "app")
+
+
+# A new session checked whole before its folder is made (openspec change scratch-checks-first).
+
+
+def test_a_new_session_is_checked_whole_before_its_folder_exists(repo, fake_tmux, tmp_path):
+    _expecting_kits(repo)
+    folder = tmp_path / "work" / "shop"
+    checked = _check_new(folder, "Shop", kits=["sdlc", "tracker"], title="Кофейня")
+    assert (checked.sess.name, checked.sess.repo, checked.sess.title) == (
+        "shop",
+        os.path.realpath(folder),
+        "Кофейня",
+    )
+    assert (checked.sess.provider, checked.sess.kits, checked.chosen) == (
+        "claude",
+        ["sdlc", "tracker"],
+        None,
+    )
+    assert not (tmp_path / "work").exists()
+    assert state.list_sessions() == [] and fake_tmux == []
+
+
+def test_a_new_sessions_provider_is_chosen_before_its_folder_exists(
+    fake_tmux, monkeypatch, fake_clis, tmp_path
+):
+    only = tmp_path / "only-kilo"
+    only.mkdir()
+    (only / "kilo").symlink_to(fake_clis / "kilo")
+    _shell(monkeypatch, {"PATH": str(only)})
+    checked = _check_new(tmp_path / "shop", provider=None)
+    assert (checked.sess.provider, checked.chosen) == (
+        "kilo",
+        runtime.Suggestion("kilo", runtime.ONLY_INSTALLED),
+    )
+    _shell(monkeypatch, {"PATH": str(fake_clis)})
+    with pytest.raises(runtime.LadoError, match="which agent CLI should the session run"):
+        _check_new(tmp_path / "shop", provider=None)
+    assert not (tmp_path / "shop").exists()
+
+
+@pytest.mark.parametrize(
+    ("given", "refused"),
+    [
+        ({"kits": []}, "a session needs at least one kit"),
+        ({"kits": ["sdlc"]}, 'kit "sdlc" expects skill "tracker", which no kit'),
+        ({"name": "taken"}, 'session "taken" was started in'),
+        ({"title": "a\nb"}, "a title is one line"),
+        ({"provider": "nope"}, 'unknown provider "nope"'),
+        ({"provider": "kilo", "mode": "dontAsk"}, 'permission mode "dontAsk"'),
+    ],
+)
+def test_a_new_session_is_refused_before_its_folder_exists(
+    repo, fake_tmux, tmp_path, given, refused
+):
+    _expecting_kits(repo)
+    runtime.start_session(str(repo), "taken", None, provider="claude")
+    folder = tmp_path / "shop"
+    with pytest.raises((runtime.LadoError, kits.KitError), match=re.escape(refused)):
+        _check_new(folder, **given)
+    assert not folder.exists()
+    assert [s.name for s in state.list_sessions()] == ["taken"]
+
+
+def test_a_new_session_of_a_taken_name_in_that_folder_is_refused_as_existing(repo, fake_tmux):
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    with pytest.raises(runtime.SessionExists):
+        _check_new(repo, "s")
+
+
+def test_a_new_session_whose_kits_expect_a_command_not_there_is_refused_first(
+    repo, fake_tmux, agents_bin, tmp_path
+):
+    _commanding_kits(repo)
+    with pytest.raises(runtime.LadoError, match='kit "sdlc" expects commands "openspec"'):
+        _check_new(tmp_path / "shop", kits=["sdlc"])
+    assert not (tmp_path / "shop").exists()
+
+
+def test_a_new_session_without_the_login_or_with_a_model_refused_is_refused_first(
+    repo, fake_tmux, tmp_path, cli_logins, monkeypatch
+):
+    cli_logins.logged_out()
+    with pytest.raises(runtime.NotLoggedIn):
+        _check_new(tmp_path / "shop")
+    cli_logins.logged_in()
+    _on_server()
+    _models(monkeypatch, "opencode", "opencode/big-pickle")
+    _silent(monkeypatch)
+    with pytest.raises(runtime.ModelRefused):
+        _check_new(tmp_path / "shop", provider="opencode", model="Локальная Qwen")
+    assert not (tmp_path / "shop").exists() and fake_tmux == []
 
 
 # A turn no hook ends (Provider.failed_turn).

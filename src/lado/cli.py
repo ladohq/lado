@@ -162,9 +162,9 @@ def _read_prompt(args: argparse.Namespace) -> str | None:
 
 
 def _start_clone(args: argparse.Namespace) -> int:
-    """`lado start <git-url> [<folder>] [--branch NAME]`: check the folder, the name and
-    the login of the provider when it is known (runtime.check_start_login), clone, then
-    start in the clone as `lado start <folder>` does."""
+    """`lado start <git-url> [<folder>] [--branch NAME]`: check the folder and the new
+    session whole (runtime.check_new_session), clone, then start in the clone as `lado
+    start <folder>` does."""
     url = args.path
     folder = runtime.full_path(args.folder) if args.folder else str(clone.default_folder(url))
     target = clone.check_target(url, folder)
@@ -175,8 +175,7 @@ def _start_clone(args: argparse.Namespace) -> int:
         if target.state == "same_repo":
             print(f"lado: To start a session in it as it is: lado start {folder}", file=sys.stderr)
         return 1
-    runtime.check_name(runtime.slug(args.name or Path(folder).name), folder)
-    runtime.check_start_login(args.provider, None, args.model)
+    _check_new(args, folder)
     cancelled = _cloned(
         url, folder, args.branch, lambda shown: clone.clone(url, folder, args.branch, shown)
     )
@@ -224,21 +223,51 @@ def _cloned(
     return None
 
 
+def _check_new(args: argparse.Namespace, folder: str) -> None:
+    """Refuse the new session `args` would start in `folder` (which may not exist) as its
+    start would (runtime.check_new_session), before a clone or a fresh start changes the
+    disk. A stopped session of that name and folder (the folder gone) is no new session:
+    `lado start <folder>` resumes it once the folder is there, as it always did."""
+    old = state.get_session(runtime.slug(args.name or Path(folder).name))
+    if old is not None and old.repo == os.path.realpath(folder):
+        return
+    try:
+        runtime.check_new_session(
+            folder,
+            args.name,
+            args.permission_mode,
+            args.provider,
+            args.kit,
+            args.without,
+            None,
+            args.model,
+        )
+    except Exception as exc:
+        _sources_warning(unless_in=str(exc))  # as cmd_start says it
+        raise
+
+
 def _start_new(args: argparse.Namespace) -> int:
     """`lado start --new [<folder>]`: make a new or empty folder a repository with an empty
-    first commit (lado.scratch), then start in it as `lado start <folder>` does; refused
-    first, as the clone is, for a provider without its login."""
+    first commit (lado.scratch), then start in it as `lado start <folder>` does; the new
+    session is checked whole first, as before a clone."""
     if clone.is_url(args.path) or args.folder or args.branch:
         args.start_parser.error("--new takes a folder, not a git URL or a second folder")
     folder = os.path.abspath(os.path.expanduser(args.path))
-    runtime.check_start_login(args.provider, None, args.model)
-    scratch.make(folder, runtime.slug(args.name or Path(folder).name))
+    name = runtime.slug(args.name or Path(folder).name)
+    scratch.check(folder, name)  # the folder's own refusals first, as before
+    _check_new(args, folder)
+    made = scratch.make(folder, name)
     print(f"Made {folder} a git repository with an empty first commit")
     args.path, args.new = folder, False
     try:
         return cmd_start(args)
     except Exception as exc:
-        exc.__notes__ = [*getattr(exc, "__notes__", []), f"the repository stays in {folder}"]
+        if scratch.remove_unused(made):
+            note = f"removed {folder}, which this start made"
+        else:
+            note = f"the repository stays in {folder}"
+        exc.__notes__ = [*getattr(exc, "__notes__", []), note]
         raise
 
 

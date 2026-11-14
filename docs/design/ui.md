@@ -1614,8 +1614,10 @@ connection, above).
   `~`) lists `Use folder <path>` and its parent's subfolders (`GET /api/folders`). The list
   is fixed under the field above 760 px, so the body's scroll does not cut it, and in the flow
   below. The window **opens on the last place**, the first recent one, with the focus in
-  Task; with none on New empty folder, the focus in Folder name, with no message above Where;
-  the project's page's New session… and a repository's Start session open it on that project
+  Task; with none on New empty folder, the focus in Folder name, with no message above Where.
+  The focus moves there when the recent places come, and only from where the window put it at
+  opening (or the page's body): a focus the human moved meanwhile (Tab, a click) stays; the
+  project's page's New session… and a repository's Start session open it on that project
   (`useLaunch()({kind: "new", project, repo})`), Resume's Start a new session instead on the
   session's folder (`{kind: "new", path}`). A place picked or typed by the human is kept.
   Under Where stand the way's own fields and the place's notes, which are its input's

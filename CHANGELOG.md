@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.46.3 (unreleased)
+
+### Fixed
+
+- **New session no longer takes the focus away from you.** When the recent places come late,
+  a field or button you already moved to keeps the focus, and what you type stays there; Where
+  still shows the last place.
+
 ## 0.46.2 (2026-11-12)
 
 ### Fixed

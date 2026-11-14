@@ -142,7 +142,8 @@ is left to the human's daily use of LADO: the keychain and the macOS graphical s
 itself with its limits, as the endpoint stands between.
 
 The passive supervisor of the live kit is
-read-only (no command tools; LADO's run messages to it name the human's ways), and every
+read-only (no command tools; LADO's run messages to it name the human's ways; its role lets
+it answer the human with `send_message` and use no other tool), and every
 live test fails when a `repo_changed` event names it; the test merges only while it is idle.
 No Codex agent asks whether to trust the test's repo: LADO's config of each agent trusts
 it, and the test fails if Codex asks. `tests/live/test_codex_login.py` runs a Codex session

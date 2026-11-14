@@ -48,7 +48,8 @@ WHILE_BUSY = "No reply needed to this line"
 # supervisor role merges what a worker reports and may then finish the worker. Read-only:
 # models follow LADO's lines over a role's text, so it has no tool to act with
 # (check_supervisor_tools), and a change it makes in the repository fails the test
-# (check_supervisor_kept_still).
+# (check_supervisor_kept_still). It may answer the human, as check_hello expects; the role
+# says nothing on how, so check_hello tests LADO's hint and reminder (LAD-285).
 PASSIVE_SUPERVISOR = """\
 ---
 name: passive
@@ -56,8 +57,8 @@ description: Only acknowledges messages; for the live test.
 read_only: true
 ---
 You are a passive supervisor in an automated test. When a message arrives, reply with the
-single word ACK. Never use any tool: no spawn_worker, finish_worker or send_message, no
-git commands, no file edits.
+single word ACK. Use no tool but send_message to the human: no spawn_worker or
+finish_worker, no send_message to an agent, no git commands, no file edits.
 """
 
 

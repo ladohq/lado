@@ -2493,6 +2493,58 @@ def test_every_login_variable_of_claude_code_is_blanked():
     assert set(claude_provider.LOGINS) <= set(claude_provider.SERVER_BLANKS)
 
 
+def test_a_provider_finds_no_problem_in_a_login_value_by_default():
+    codex = providers.get("codex")
+    for variable in codex.login_variables:
+        assert codex.login_value_problem(variable, "anything at all") is None
+
+
+NOT_A_TOKEN = (
+    "This is not a Claude subscription token: a token starts with sk-ant-oat01-. Run claude "
+    "setup-token and paste the whole token it prints."
+)
+NOT_A_KEY = (
+    "This is not an Anthropic API key: a key starts with sk-ant-api03-. Create one at "
+    "console.anthropic.com → API keys and paste it whole."
+)
+KEY_AS_TOKEN = (
+    "This is an API key (sk-ant-api03-…), not a subscription token: to pay per use with it, "
+    "choose “Pay per use — API billing”."
+)
+TOKEN_AS_KEY = (
+    "This is a subscription token (sk-ant-oat01-…), not an API key: to use your subscription, "
+    "choose “Subscription — Claude Pro or Max”."
+)
+BROKEN = (
+    "This token or key has characters it cannot have (a space or a line break?): copy it "
+    "again as one line."
+)
+
+
+@pytest.mark.parametrize(
+    ("variable", "value", "problem"),
+    [
+        (claude_provider.TOKEN, "sk-ant-oat01-canary_Tail-9", None),
+        (claude_provider.TOKEN, "sk-ant-oat02-canaryTail", None),
+        ("ANTHROPIC_API_KEY", "sk-ant-api03-canary_Tail-9", None),
+        ("ANTHROPIC_API_KEY", "sk-ant-api04-canaryTail", None),
+        (claude_provider.TOKEN, "sk-ant-api03-canaryTail", KEY_AS_TOKEN),
+        (claude_provider.TOKEN, "sk-ant-api03-canary Tail", KEY_AS_TOKEN),
+        ("ANTHROPIC_API_KEY", "sk-ant-oat01-canaryTail", TOKEN_AS_KEY),
+        (claude_provider.TOKEN, "canaryTail" * 9, NOT_A_TOKEN),
+        ("ANTHROPIC_API_KEY", "canaryTail" * 9, NOT_A_KEY),
+        (claude_provider.TOKEN, "sk-ant-oat01-canary Tail", BROKEN),
+        (claude_provider.TOKEN, "sk-ant-oat01-canary\nTail", BROKEN),
+        ("ANTHROPIC_API_KEY", "sk-ant-api03-canary+Tail", BROKEN),
+        ("OTHER", "canaryTail", None),
+    ],
+)
+def test_claude_code_checks_the_format_of_a_pasted_login(variable, value, problem):
+    found = providers.get("claude").login_value_problem(variable, value)
+    assert found == problem
+    assert "canary" not in (found or "")
+
+
 def test_a_claude_agent_on_a_built_in_model_has_nothing_of_a_server(repo, lado_home):
     launch, settings = _claude_launch(repo, (), "opus")
     assert launch.env == {}

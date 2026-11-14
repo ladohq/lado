@@ -12,6 +12,9 @@
   still shows the last place.
 - **A worker told not to commit leaves its work uncommitted.** Workers still commit on their
   branch by default, but a task that says "Do not commit" now wins over that.
+- **Claude Code's login checks what you paste.** A string that is no subscription token or API
+  key, or one of the other kind, is refused with what to paste instead, rather than shown as
+  logged in until an agent fails.
 
 ## 0.46.2 (2026-11-12)
 

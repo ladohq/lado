@@ -208,6 +208,15 @@ def test_only_a_login_variable_may_be_lados_secret():
     logins.check_variable(providers.get("codex"), "OPENAI_API_KEY")
 
 
+def test_a_secret_is_checked_by_its_provider_last():
+    with pytest.raises(ValueError, match="not a Claude subscription token"):
+        logins.check_secret(CLAUDE, "CLAUDE_CODE_OAUTH_TOKEN", "canary-tok")
+    with pytest.raises(ValueError, match="needs a value"):
+        logins.check_secret(CLAUDE, "CLAUDE_CODE_OAUTH_TOKEN", "")
+    logins.check_secret(CLAUDE, "CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-canary-tok")
+    logins.check_secret(providers.get("codex"), "OPENAI_API_KEY", "canary-key")
+
+
 OPENCODE = providers.get("opencode")
 
 

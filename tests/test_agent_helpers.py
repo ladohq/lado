@@ -182,7 +182,9 @@ def test_a_busy_agent_is_not_settled(worker):
 def test_an_idle_agent_with_a_message_still_to_come_is_not_settled(worker, mark):
     # A turn-end reminder is queued before the agent turns idle; a typed one is sent until
     # the next turn's hook confirms it.
-    state.queue_message("s", state.LADO, worker, "your answer went only to your terminal", mark=mark)
+    state.queue_message(
+        "s", state.LADO, worker, "your answer went only to your terminal", mark=mark
+    )
     assert not agent_helpers.settled("s", worker)
 
 

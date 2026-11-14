@@ -552,6 +552,19 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
+## A LADO agent's `make test` is red on a temp-dir test: `LADO_LAUNCH_VARS` leaks in
+
+Size: S. Why here: every developer agent that runs the unit tests inside LADO sees one red
+test with no cause in its work, and must stop to prove it.
+
+`tests/test_temp_dirs.py::test_the_users_tmpdir_is_the_parent_and_not_warned_of[shell]`
+fails in an agent's shell (`expected .../own-tmp/lado-1000/s/supervisor`, got
+`.../tmpdirNNN/...`) and passes with `env -u LADO_LAUNCH_VARS`: the agent's own
+`LADO_LAUNCH_VARS` (holding `TMPDIR`) reaches the test, as `tests/conftest.py` does not
+clear it with LADO's other variables. Red on origin/main 85dafa79 too; CI has no such
+variable. Wanted: conftest clears `LADO_LAUNCH_VARS`, with that test green inside an agent.
+Found: 2026-11-14, branch lado/cd-cd-speedup/task-lad-279 (LAD-279).
+
 ## Flaky: the New session window's Cancel by the keyboard may miss the focus
 
 Size: S. Why here: a red UI run with no real error; the same race may move a human's focus

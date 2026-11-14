@@ -330,15 +330,13 @@ retry) and `docker history lado:local` (each layer's
 size, so a new layer's is the image's growth), then `scripts/smoke_ci.py container <out>
 K/2` (its shard of the container tests with the smoke cell's pass rule, so a skip or an
 empty shard is red; the artifact `container-<arch>-<k>`), on every run whatever it changes,
-pushing nothing anywhere. Its build takes the layers from GitHub's Actions cache, scope
-`container-<arch>`, through a BuildKit builder of its own (`docker/setup-buildx-action`;
-`--load` puts the image into the runner's Docker) and `make docker DOCKER_BUILD_FLAGS=...`:
-a pull request reads main's cache and writes none; a push to main reads and writes it
-(`mode=min`); the schedule and a dispatch build from nothing (`--no-cache`) and write it
-anew, so a broken outside source (Debian, gh's repository, npm) shows within a day. Only
-shard 1 of each architecture writes, so two cells never write one scope at once. LADO's
-wheel is the Dockerfile's last layer, so a pull request rebuilds only that one; the release
-(`release.yml`) builds without any cache. And
+pushing nothing anywhere. Each cell builds the image from nothing on the runner's own
+Docker, with no layer cache, so a broken outside source (Debian, gh's repository, npm) shows
+in the next run: LAD-252's measurement (`docs/research/ci-speedup-check.md`) found a cache
+in GitHub's Actions cache saved 14-16 s of a cell that ends 1.5 % of green pull request
+runs and took 7 GB of the repository's 10 GB. LADO's wheel stays the Dockerfile's last
+layer, so a developer's own Docker rebuilds only that one; the release (`release.yml`)
+builds without any cache too. And
 `ci-ok`, the one check the ruleset of main requires. Every job has a `timeout-minutes`,
 about twice its p90 (a test refuses a job without one): a hung job ends red instead of
 running GitHub's six hours. A UI job takes Chromium and the `.deb` files `playwright install

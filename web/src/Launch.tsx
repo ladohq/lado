@@ -470,8 +470,16 @@ function LaunchDialog({
       setOpened("task");
     }
   }, [recentAsked]);
+  // What showModal() focused: a late answer moves the focus only from there (or a lost one),
+  // never from where the human put it meanwhile (LAD-281).
+  const openingFocus = useRef<Element | null>(null);
+  useEffect(() => {
+    openingFocus.current = document.activeElement;
+  }, []);
   useEffect(() => {
     if (opened === null || resuming) return;
+    const at = document.activeElement;
+    if (at !== openingFocus.current && at !== document.body) return;
     (opened === "scratch" ? scratchRef : taskRef).current?.focus();
   }, [opened, resuming]);
   useEffect(() => {

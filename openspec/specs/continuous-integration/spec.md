@@ -465,43 +465,16 @@ network timeout. Only a run not of a pull request SHALL save the cache.
 - **THEN** the key misses, the packages are installed with `--with-deps`, and the next
   run outside a pull request saves them for that image
 
-### Requirement: The image's layers come from a cache that only main writes
-
-A CI cell `container (<arch>)` SHALL build LADO's image with BuildKit's GitHub Actions cache
-in the scope `container-<arch>`: on a pull request it SHALL read the cache and MUST NOT
-write it; on a push to `main` it SHALL read and write it; on the daily schedule and a manual
-dispatch it SHALL build without reading the cache and write it anew.
-
-#### Scenario: A pull request after a run of main
-
-- **WHEN** a pull request changes `src/lado/cli.py` and `main`'s last push run wrote the cache
-- **THEN** the cell takes the layers before the wheel from the cache, builds the wheel's
-  layer from the pull request's wheel, and writes no cache
-
-#### Scenario: A push to main
-
-- **WHEN** a pull request is merged and CI runs on `main`
-- **THEN** each architecture's cell reads the cache and writes its scope
-
-#### Scenario: The daily run
-
-- **WHEN** the schedule starts CI on `main`
-- **THEN** each cell builds every layer anew, reading no cache, and writes its scope
-
-#### Scenario: A pull request's build writes the cache
-
-- **WHEN** the step `Image` passes `--cache-to` on a `pull_request` event
-- **THEN** the unit tests fail
-
 ### Requirement: The run's code changes only the image's last layers
 
 A CI cell `container (<arch>)` SHALL test an image built from the run's own wheel, and
 `docker/Dockerfile` SHALL copy and install that wheel after every agent CLI and openspec,
-so a cached build rebuilds only the layers from the wheel on.
+so a build that reuses earlier layers (a developer's own Docker) rebuilds only the layers
+from the wheel on.
 
 #### Scenario: A pull request's wheel in the image
 
-- **WHEN** a pull request changes LADO's version and the earlier layers come from the cache
+- **WHEN** a pull request changes LADO's version
 - **THEN** `lado --version` in the tested image is the pull request's version
 
 #### Scenario: The wheel's layer moves up
@@ -517,4 +490,24 @@ cache that CI writes: no `cache-from`, `cache-to` or `type=gha` in it.
 #### Scenario: A cache in the release
 
 - **WHEN** someone adds `--cache-from type=gha` to the release's build
+- **THEN** the unit tests fail
+
+### Requirement: The container cells build the image without a layer cache
+
+A CI cell `container (<arch>)` SHALL build LADO's image with a plain `make docker` on the
+runner's own Docker, on every event, and MUST NOT read or write a layer cache: the job
+`container` in `.github/workflows/ci.yml` has no BuildKit builder of its own
+(`docker/setup-buildx-action`), no `crazy-max/ghaction-github-runtime`, and no
+`type=gha`, `cache-from`, `cache-to` or `--builder`.
+
+#### Scenario: A pull request's container cell
+
+- **WHEN** a pull request's run reaches the step `Image` of a container cell
+- **THEN** it runs `make docker` and `docker history lado:local`, builds every layer from
+  nothing, and writes no entry to the Actions cache
+
+#### Scenario: A layer cache comes back into the job
+
+- **WHEN** someone adds `--cache-from type=gha` or `docker/setup-buildx-action` to the job
+  `container`
 - **THEN** the unit tests fail

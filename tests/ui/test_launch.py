@@ -6,6 +6,7 @@ Forget, Forget stopped sessions from the Stopped band and Stop and forget. The s
 import re
 import subprocess
 import uuid
+from collections.abc import Callable
 
 import agent_helpers
 import pytest
@@ -18,7 +19,7 @@ from launch_window import (
     pick_place,
     start_button,
 )
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Locator, Page, expect
 from test_layout import BUILD
 
 from lado import loop, runs, runtime, state
@@ -1127,6 +1128,50 @@ def test_where_lists_recent_places_and_a_project_repository_starts_in_its_projec
     assert state.get_session("shop-7").project == "shop"
     idle("shop-7")
     runtime.stop_session("shop-7")
+
+
+def opened_with_the_recent_places_held(page: Page, server) -> tuple[Locator, Callable[[], None]]:
+    """The New session window opened while the recent places are held back, and what gives
+    them: a late answer, as on a loaded machine (LAD-281)."""
+    held = []
+    page.route("**/api/folders/recent", lambda route: held.append(route))
+    log_in(page, server)
+    page.get_by_role("navigation", name="Sections").get_by_role(
+        "button", name="New session"
+    ).click()
+    dialog = page.get_by_role("dialog", name="New session")
+    expect(dialog).to_be_visible()
+
+    def give() -> None:
+        while not held:  # the route's handler runs only while Playwright is called
+            page.wait_for_timeout(20)
+        for route in held:
+            route.continue_()
+
+    return dialog, give
+
+
+def test_a_focus_moved_before_the_recent_places_come_stays(page: Page, server, repo, shot):
+    """The human moved the focus to Cancel before the recent places came: Where shows the
+    last place, the focus stays on Cancel and Enter closes the window."""
+    stopped_session(repo)
+    dialog, give = opened_with_the_recent_places_held(page, server)
+    cancel = dialog.get_by_role("button", name="Cancel")
+    cancel.focus()
+    give()
+    expect(dialog.get_by_role("combobox", name="Where")).to_have_value(repo.name)
+    expect(cancel).to_be_focused()
+    shot(page, "late")
+    page.keyboard.press("Enter")
+    expect(dialog).to_have_count(0)
+
+
+def test_an_untouched_focus_goes_to_task_when_the_recent_places_come(page: Page, server, repo):
+    stopped_session(repo)
+    dialog, give = opened_with_the_recent_places_held(page, server)
+    give()
+    expect(dialog.get_by_role("combobox", name="Where")).to_have_value(repo.name)
+    expect(dialog.get_by_role("textbox", name="Task")).to_be_focused()
 
 
 def test_team_opens_with_permissions_in_words(page: Page, server, repo, shot):

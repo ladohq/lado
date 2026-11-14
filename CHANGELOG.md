@@ -1,9 +1,12 @@
 # Changelog
 
-## 0.46.3 (unreleased)
+## 0.47.0 (unreleased)
 
 ### Fixed
 
+- **An agent that skips a message's text is told so once.** An agent that ends its turn
+  without reading the text of a message it got (a step, your request, a report) gets one
+  reminder from LADO to read it, so a weak model does not lose what it was asked.
 - **New session no longer takes the focus away from you.** When the recent places come late,
   a field or button you already moved to keeps the focus, and what you type stays there; Where
   still shows the last place.

@@ -373,9 +373,13 @@ GitHub mails a red scheduled run to whoever last changed its cron line. A cell i
 an optional dependency that failed to install, a CLI's native binary, and exits 0): after a
 failed attempt but the last, a `::warning::` annotation in the run's summary names the
 provider and the attempt, then `npm uninstall` and a fresh install; the third failure is a
-red cell with no test run. Then it runs `uv run pytest -m smoke -n0 -v -k <provider>` into
-`<out>/smoke-<provider>.log`, and passes only on exit 0 with a test passed and none skipped;
-a failing cell's evidence goes to `<out>/evidence` (the artifact
+red cell with no test run. Then it runs `uv run pytest -m smoke -n 3 --dist worksteal -v -k
+<provider>` into `<out>/smoke-<provider>.log`: three workers, a worker that ends its share
+taking tests still queued for another, as each smoke test is isolated (its own `HOME`,
+CLI config, `LADO_HOME`, tmux server and fake endpoint) and mostly waits on its CLI, so
+the step lasts about its longest test (claude's refusal case, ~155 s) rather than their
+sum; `make test-smoke` stays serial (`-n0`) to debug one CLI by hand. The cell passes
+only on exit 0 with a test passed and none skipped; a failing cell's evidence goes to `<out>/evidence` (the artifact
 `smoke-<os>-<provider>`). `smoke_ci.py`'s `PINS` is the one place a CLI's version is
 written for CI: its providers are exactly `lado.providers`' and each pin's version parts are
 its provider's `TESTED_VERSION` (`tests/test_smoke_ci.py`); the matrix is the same list

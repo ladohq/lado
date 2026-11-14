@@ -1,12 +1,12 @@
 ## 1. The smoke cell's command
 
-- [ ] 1.1 In `tests/test_smoke_ci.py`, a test that `smoke_ci.run(<provider>, out)` (install
+- [x] 1.1 In `tests/test_smoke_ci.py`, a test that `smoke_ci.run(<provider>, out)` (install
   and `cell` replaced, as the live cell's tests do) hands `cell` exactly `["uv", "run",
   "pytest", "-m", "smoke", "-n", "3", "--dist", "worksteal", "-v", "-k", <provider>]`.
   Check: it fails on today's code (`-n0`).
-- [ ] 1.2 `scripts/smoke_ci.py`: `run` uses that command; its docstring says it (and that
+- [x] 1.2 `scripts/smoke_ci.py`: `run` uses that command; its docstring says it (and that
   `make test-smoke` stays serial). Check: 1.1 passes; `make lint`; `make test`.
-- [ ] 1.3 `docs/testing.md`: the CI smoke cell's command and why it runs on three workers
+- [x] 1.3 `docs/testing.md`: the CI smoke cell's command and why it runs on three workers
   (each test isolated; the step mostly waits on CLIs); `make test-smoke` serial. Check: a
   grep of `docs/` and `openspec/specs/` for `pytest -m smoke` finds no stale `-n0` for the
   cell.

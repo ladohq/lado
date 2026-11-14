@@ -121,6 +121,16 @@ def test_redact_without_a_key_changes_nothing(tmp_path):
     assert (tmp_path / "log").read_bytes() == b"text"
 
 
+def test_a_smoke_cell_runs_its_tests_on_three_workers(tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(smoke_ci, "install", lambda provider: dict(os.environ))
+    monkeypatch.setattr(smoke_ci, "cell", lambda tests, *args, **kwargs: seen.append(tests) or 0)
+    assert smoke_ci.run("kilo", tmp_path) == 0
+    assert seen == [
+        ["uv", "run", "pytest", "-m", "smoke", "-n", "3", "--dist", "worksteal", "-v", "-k", "kilo"]
+    ]
+
+
 @pytest.fixture
 def live_cell(monkeypatch):
     """`live` with its install replaced; `seen` holds each pytest command `cell` gets."""
@@ -383,8 +393,8 @@ def test_a_cell_installs_the_pinned_cli_then_runs_its_smoke_test(tmp_path):
     package, version, _ = smoke_ci.PINS["opencode"]
     home = tmp_path / "home"
     assert f"npm install -g --prefix {home}/.local {package}@{version}\n" in ran
-    # As `make test-smoke PROVIDER=opencode`, nothing deselected.
-    assert "uv run pytest -m smoke -n0 -v -k opencode\n" in ran
+    # The tests of `make test-smoke PROVIDER=opencode`, nothing deselected, on three workers.
+    assert "uv run pytest -m smoke -n 3 --dist worksteal -v -k opencode\n" in ran
     # The installed CLI is first on PATH for the tests.
     assert f"{home}/.local/bin/opencode\n" in ran
     assert "opencode 9.9.9" in done.stdout
@@ -400,7 +410,7 @@ def test_every_provider_has_a_cell(tmp_path, provider):
     assert done.returncode == 0, done.stdout + done.stderr
     package, version, _ = smoke_ci.PINS[provider]
     assert f"{package}@{version}\n" in ran
-    assert f"uv run pytest -m smoke -n0 -v -k {provider}\n" in ran
+    assert f"uv run pytest -m smoke -n 3 --dist worksteal -v -k {provider}\n" in ran
 
 
 def test_a_cell_whose_install_fails_is_red_and_runs_no_test(tmp_path):
@@ -433,7 +443,7 @@ def test_an_install_that_failed_once_is_redone_and_the_cell_passes(tmp_path, fai
     [warning] = warnings(done)
     assert warning.startswith("::warning::codex: attempt 1 of 3: "), warning
     assert warning.endswith("; reinstalling")
-    assert "uv run pytest -m smoke -n0 -v -k codex\n" in ran
+    assert "uv run pytest -m smoke -n 3 --dist worksteal -v -k codex\n" in ran
 
 
 def test_a_cli_that_never_runs_is_red_after_three_installs(tmp_path):

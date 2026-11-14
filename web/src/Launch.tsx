@@ -741,8 +741,9 @@ function LaunchDialog({
     });
   };
 
-  // Make the folder a repository and start there; a start refused after the repository
-  // was made leaves the window on the folder with the refusal, as after a clone.
+  // Make the folder a repository and start there. The server checks the new session whole
+  // before it makes the folder, so a refusal (a kit's too) keeps New empty folder as typed;
+  // only a start refused after the repository was made, and kept, turns Where to it.
   const createAndStart = async () => {
     if (fresh?.path == null) return;
     const where = fresh.path;

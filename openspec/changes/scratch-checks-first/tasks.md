@@ -20,7 +20,7 @@
 
 ## 3. The window
 
-- [ ] 3.1 vitest of `Launch`: Create and start answered 400 with the folder not made → Where
+- [x] 3.1 vitest of `Launch`: Create and start answered 400 with the folder not made → Where
   stays on New empty folder with Folder name, the refusal shown (D5); fix the comment above
   `createAndStart`. Check: `make web`.
 

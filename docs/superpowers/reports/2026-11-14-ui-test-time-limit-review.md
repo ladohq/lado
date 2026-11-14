@@ -1,7 +1,7 @@
 # LAD-271 ui-test-time-limit: review report
 
 Pull request #303 `fix/lad-271-ui-test-time-limit` → `main`. Scale: tweak, depth precision.
-Head reviewed: `dcb501b5`. A CI cell `ui (<k>)` sometimes hung until GitHub cancelled the whole
+Head reviewed: `f659d7c2` (the code as of `dcb501b5`, then the archive and a merge of `main`). A CI cell `ui (<k>)` sometimes hung until GitHub cancelled the whole
 job, which kept neither the pytest log nor the junit report, so nobody knew which test hung. Each
 UI test now has a limit of 120 s (pytest-timeout, method `thread`, with faulthandler's thread
 stacks written 5 s before it) set in `tests/time_limit.py` for `tests/ui/` alone, and the `ui`
@@ -14,6 +14,10 @@ job's pytest step has `timeout-minutes: 12` under the job's 25.
 3. External 1, Claude Code GitHub Action (request 18:39:41Z, "Claude finished" 18:40:37Z). It
    read every code and test file, `ci.yml`, `pyproject.toml` and `docs/testing.md`; not
    `uv.lock` or the openspec files (checked locally).
+4. Local, precision, over the archive `28bc7ae8` and the merge of `main` `f659d7c2`: the conflict in
+   the living spec `continuous-integration` kept both requirements whole (this one and "A smoke
+   cell runs its tests on three workers"), only the markers removed (`git show --remerge-diff`);
+   no code, test or CI change since round 3. Nothing new.
 
 External rounds used: 1 of 1. Stand-ins: 0.
 
@@ -34,7 +38,7 @@ exists in pytest 9.2.0 of `uv.lock`; the hook and fixture act only under `tests/
 
 ## Metrics
 
-Rounds: 2 local, 1 external, 0 stand-ins. Findings: local 3 confirmed (1 important, 2 minor),
+Rounds: 3 local, 1 external, 0 stand-ins. Findings: local 3 confirmed (1 important, 2 minor),
 0 refuted; external 3 confirmed (all minor, one only partly), all declined; findings in code
 changed by the developer's cleanup: 0.
 
@@ -45,11 +49,13 @@ changed by the developer's cleanup: 0.
 - `uv run pytest -m ui -n 2 tests/ui/test_time_limit.py tests/ui/test_tabs.py`: 3 passed.
 - `openspec validate ui-test-time-limit --strict`: valid.
 - CI on `dcb501b5`: 27 of 27 checks pass, the four `ui` cells and the smoke among them.
+- Round 4: `openspec validate --specs --strict`: 84 passed; `uv lock --check`: ok; CI on
+  `f659d7c2`: 27 of 27 pass.
 
 ## Residual risk
 
 - The full UI suite and `make test` were not run locally by the reviewer; CI covers them (the
-  developer reports 6120 passed and 1 known failure, LAD-282).
+  integrator reports 6142 passed, 0 failed, after the merge of `main`).
 - A hang inside Playwright shows only Playwright's event loop in the stacks, not the test's line;
   the test's name is in the log and junit.
 - A hung test's teardown does not run.

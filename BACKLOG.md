@@ -1943,6 +1943,22 @@ Size: S. Why here: only a failed kill prints them, and only a session already go
 both hints print `=<session>:=<worker>` and `=<session>`, as `tmux.py`'s own calls do.
 Found: 2026-11-07, review of branch hotfix/lad-227-stopped-session-delivery (LAD-227).
 
+## Integration tests send a human command before the agent's turn and its reminder are over
+
+Size: M. Why here: each such test is a flake that looks like a timeout under load, and a
+rerun hides it.
+
+A test that sends the fake agent a human command while it is still in a turn, or while its
+turn-end reminder of a human message answered in no chat (LAD-274) is still to come, races:
+a command that reaches it mid-turn, in a LADO tool's result, is text to the fake agent and
+never runs, and "the last message to the agent" can be the reminder. LAD-284 fixed the two
+that failed: `test_session_start.py`'s approved-proposal test (CI run 43622349434) and
+`test_flow_runs.py`'s `to_the_gate` (Windows probe run 43622342944). About 64 human
+commands in 20 files of `tests/integration/` were not checked; most wait for idle or for
+the agent's tool call. Wanted: each command that follows another turn, and each read of the
+last message, waits for `agent_helpers.settled` (docs/testing.md).
+Found: 2026-11-14, branch hotfix/lad-284-tests-wait-for-turn-end (LAD-284).
+
 # P3: maybe never
 
 ## A session's chat address with a broken %-code blanks the app

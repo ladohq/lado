@@ -38,7 +38,12 @@ message: in its first input, a line from `lado` with more to read makes it call
 reads when told to). `FAKE_AGENT_CRASH_AT_START=1` in its environment makes it exit before
 its first hook. A test keeps it busy with its `pause` command
 and ends that pause itself (`agent_helpers.release`), never with a `sleep` it must act
-within. They use a temp `LADO_HOME` and their own tmux server
+within. The fake agent runs only what is typed into its window: a command that reaches it
+mid-turn, in a LADO tool's result, is text to it and never runs. So a test sends a human
+command that follows another turn, or reads "the last message" to an agent, once the agent
+is settled (`agent_helpers.settled`: idle, and no message to it pending or sent), not just
+idle: at a turn's end the hook queues the reminder of a human message answered in no chat
+before it marks the agent idle, and that reminder starts one more turn (LAD-284). They use a temp `LADO_HOME` and their own tmux server
 (`LADO_TMUX_SOCKET=lado-test-...`), and refuse to run otherwise. They run LADO's timers
 short, `LADO_LOOP_INTERVAL=0.25` and `LADO_RETRY_DELAYS=2,0.5,0.5`, set for each test in
 `tests/integration/conftest.py` (docs/design/agents.md; the first delay outlasts a prompt-submit

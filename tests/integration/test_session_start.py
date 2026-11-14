@@ -4,7 +4,7 @@ agent's MCP server, through real tmux, the session loop and the new supervisor's
 import json
 
 import pytest
-from agent_helpers import fake_logs, install_kit, wait_for
+from agent_helpers import fake_logs, install_kit, settled, wait_for
 
 from lado import kits, loop, runtime, state, tmux
 
@@ -112,6 +112,9 @@ def test_an_approved_proposal_starts_an_independent_session_with_the_brief(repo)
             None,
         )
         wait_for(lambda: "artifact_write" in seen("a"), "the brief written", "a")
+        # Each command after the turn of another, and its reminder, is over: a command that
+        # reaches the fake agent mid-turn is text to it (agent_helpers.settled).
+        wait_for(lambda: settled("a", "supervisor"), "a's supervisor settled", "a")
         runtime.send_message(
             "a", "human", "supervisor", f"askhuman Start b? | {choice}, No --artifacts brief-b"
         )
@@ -121,6 +124,7 @@ def test_an_approved_proposal_starts_an_independent_session_with_the_brief(repo)
             "a",
         )
         runtime.answer_question("a", question.id, choice, "the log is attached too")
+        wait_for(lambda: settled("a", "supervisor"), "a's supervisor settled", "a")
         runtime.send_message("a", "human", "supervisor", f"start_session b {question.id}")
         wait_for(lambda: "start_session" in seen("a"), "start_session's result", "a")
         assert seen("a")["start_session"]["session"] == "b", seen("a")["start_session_text"]
@@ -154,7 +158,7 @@ def test_an_approved_proposal_starts_an_independent_session_with_the_brief(repo)
         assert seen("b")["artifact_read"]["content"] == "# Fix the login bug\n"
 
         # One approval starts one session.
-        wait_for(lambda: idle("a"), "a's supervisor idle", "a")
+        wait_for(lambda: settled("a", "supervisor"), "a's supervisor settled", "a")
         runtime.send_message("a", "human", "supervisor", f"start_session b {question.id}")
         wait_for(
             lambda: "exists already" in " ".join(seen("a")["start_session_text"]),

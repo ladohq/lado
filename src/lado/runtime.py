@@ -777,9 +777,11 @@ def check_new_session(
         raise LadoError("a session needs at least one kit")  # not silently the default
     repo = os.path.realpath(path)
     session = slug(name or Path(repo).name)
-    check_name(session, path)
+    old = state.get_session(session)
+    if old and old.repo != repo:
+        raise _elsewhere(old, repo)
     stored_title = check_title(title, session)
-    if old := state.get_session(session):
+    if old:
         raise SessionExists(old, session_status(old))
     layers, chosen = None, None
     if not provider:

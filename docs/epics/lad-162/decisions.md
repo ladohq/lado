@@ -9,3 +9,6 @@
 | 2026-11-15 | intake, #7068 q4 | Documentation | each step documents itself, step 4 writes the plain guide; all in step 4 | each step plus the guide (lead) | as recommended (human) | yes |
 | 2026-11-15 | intake, #7068 q5 | Removal and rollback | a removed server's host works as today; `GH_TOKEN` and `gh`'s login are kept on migration, so a rollback to 0.47 breaks nothing | as listed (lead) | as recommended (human) | yes |
 | 2026-11-15 | intake, #7068 q6 | Step 5, kit sdlc's GitLab example (other repository) | in this epic; Later, task created on the human's yes after steps 1–3 | Later (lead) | Later (human) | yes |
+| 2026-11-15 | plan, plan-review P2, P3 | Split S1 and S2 now or at design | at design; in the plan | in the plan (critic) | S1a/S1b and S2a/S2b in the plan; S1a adds `lado git-server` so the list is usable before the screen (lead) | yes |
+| 2026-11-15 | plan, plan-review P6 | A github.com entry before S3 | accept it, with a rule which source wins; refuse it until S3 | refuse until S3 (lead) | pending plan_ok | — |
+| 2026-11-15 | plan, plan-review P10 | Where the human checks | release candidate carrying S5; `make docker` from main | the release candidate (lead) | pending plan_ok | — |

@@ -7,7 +7,7 @@
 
 ## 2. The Model field
 
-- [ ] 2.1 `web/src/styles.css`: in `.model-pick`, the name whole and the server's mark giving way
+- [x] 2.1 `web/src/styles.css`: in `.model-pick`, the name whole and the server's mark giving way
   first, down to its icon (D3); the list's rows unchanged. Check: the UI test of 4.2.
 - [x] 2.2 `web/src/ModelPicker.tsx` and `styles.css`: the field's server mark of a refused model
   on a silent server draws the refusal's round `!`, one class shared with `.field-note.bad`'s
@@ -17,19 +17,19 @@
 
 ## 3. The sheet's targets
 
-- [ ] 3.1 `web/src/styles.css`, the launch window's `@media (max-width: 760px)` block (D1): the
+- [x] 3.1 `web/src/styles.css`, the launch window's `@media (max-width: 760px)` block (D1): the
   window's `input`, `select` and the Model field 44 px high, Name's field left at 30 px; the
   notes' `.chip-button` and Switch off's offers at least 44 px; a kit chip 32 px, its × 32×32
   with a 44×44 hit area by `::after` (D2); `+ Add kit` 44 px. Check: the UI test of 4.1.
 
 ## 4. Browser tests
 
-- [ ] 4.1 `tests/ui/test_launch.py`: a test at 390×844, Team open, on Other folder…, then on
+- [x] 4.1 `tests/ui/test_launch.py`: a test at 390×844, Team open, on Other folder…, then on
   Clone from URL…, New empty folder… and Project…: every visible `input`, `select` and
   `button` of the dialog's body but Name's field and the info buttons is at least 44 px high;
   a press 5 px right of the kit's drawn × removes the kit (scenario "A kit's ×"). Screenshot
   `targets`. Check: `uv run pytest -m ui tests/ui/test_launch.py`.
-- [ ] 4.2 `tests/ui/test_launch_model.py`: a test at 390×844 with `Локальная Qwen` the default
+- [x] 4.2 `tests/ui/test_launch_model.py`: a test at 390×844 with `Локальная Qwen` the default
   on its server: `.mp-title` has `scrollWidth` ≤ `clientWidth`, `default` and the server's icon
   are inside the field (scenario "A short name on a phone"); screenshot `name-whole`.
   `test_a_start_refused_at_a_phone_s_width_comes_into_sight`: no `Not started` text, the

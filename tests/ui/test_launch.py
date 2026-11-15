@@ -1302,3 +1302,54 @@ def test_on_a_phone_a_folders_path_is_cut_before_its_name(page: Page, server, re
     assert text <= room, (text, room)  # a fraction of a pixel short shows an ellipsis
     assert sub.evaluate("span => span.scrollWidth > span.clientWidth")  # the path is cut
     shot(page, "folder", full_page=False)
+
+
+# What the sheet's targets miss: each visible field and button of the window's body lower
+# than 44 px, but Name's field on Task's label row (30 px by LAD-265's decision), the info
+# buttons (a hit area of their own), a kit's × (below) and the radio buttons of Permissions
+# (their 44 px rows are the targets).
+SHORT_TARGETS = """dialog => [...dialog.querySelectorAll(
+    ".launch-body input, .launch-body select, .launch-body button")]
+  .filter(el => el.getClientRects().length > 0)
+  .filter(el => !el.closest(".name-inline, .info-tip, .kits-box-chip"))
+  .filter(el => el.type !== "radio")
+  .map(el => {
+    // Where's input stands in its box: the box is the field.
+    const box = (el.closest(".place-box") ?? el).getBoundingClientRect();
+    const name = el.getAttribute("aria-label") || el.labels?.[0]?.textContent.trim() || el.textContent.trim();
+    return [name || el.className, Math.round(box.height)];
+  })
+  .filter(([, height]) => height < 44)"""
+
+
+def test_on_a_phone_every_field_and_button_of_the_window_is_a_44_px_target(
+    page: Page, server, repo, shot
+):
+    """Team open at 390x844, on each way of Where (capability new-session-window, "The sheet's
+    fields and buttons", "A kit's ×")."""
+    page.set_viewport_size({"width": 390, "height": 844})
+    log_in(page, server)
+    dialog, where = other_folder(page)
+    where.fill(str(repo))
+    expect(dialog).to_contain_text("✓ Ready · branch main")
+    agent(dialog).select_option("fake")
+    expect(dialog.get_by_role("combobox", name="Model")).to_be_visible()
+    assert dialog.evaluate(SHORT_TARGETS) == []
+    assert name_field(dialog).bounding_box()["height"] == 30
+    shot(page, "targets")
+    for way in ("Clone from URL…", "New empty folder…", "Project…"):
+        pick_place(dialog, way)
+        expect(dialog.get_by_role("combobox", name="Where")).to_have_value(way.rstrip("…"))
+        assert dialog.evaluate(SHORT_TARGETS) == [], way
+
+    # A kit's ×: a 32 px look, a 44 px target; a press 5 px right of the drawn × removes the kit.
+    pick_place(dialog, "Other folder…")
+    chip = dialog.locator(".kits-box-chip", has_text="default")
+    assert chip.bounding_box()["height"] == 32
+    drawn = chip.get_by_role("button", name="Remove default").bounding_box()
+    assert (drawn["width"], drawn["height"]) == (32, 32)
+    page.mouse.click(drawn["x"] + drawn["width"] + 5, drawn["y"] + drawn["height"] / 2)
+    expect(chip).to_have_count(0)
+    # Now `+ Add kit` offers it back.
+    assert add_kit(dialog).bounding_box()["height"] == 44
+    shot(page, "kit-removed")

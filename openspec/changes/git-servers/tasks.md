@@ -57,6 +57,6 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-15-git-servers.
 
 - [x] 8.1 `docs/cli.md`, `docs/design/modules.md`, `docs/design/agents.md`,
   `docs/install.md`, AGENTS.md's Layout, CHANGELOG.md (the design doc's "Docs").
-- [ ] 8.2 The pull request's manual check (the plan's task 8).
+- [x] 8.2 The pull request's manual check (the plan's task 8).
 - [x] 8.3 Regression: `make lint`, `make test`, the integration files of the plan's task 8,
   `openspec validate git-servers --strict` and the trial archive.

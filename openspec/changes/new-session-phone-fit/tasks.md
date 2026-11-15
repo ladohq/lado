@@ -38,11 +38,11 @@
 
 ## 5. Docs and CHANGELOG
 
-- [ ] 5.1 `docs/design/ui.md`, New session: the sheet's targets (fields 44 px but Name, notes'
+- [x] 5.1 `docs/design/ui.md`, New session: the sheet's targets (fields 44 px but Name, notes'
   buttons 44, a kit's × 32 px with a 44 px hit area, `+ Add kit` 44); Team's Model: the name
   whole, the server's mark giving way first, its round `!` when refused; a start refused for
   its model has no second notice.
-- [ ] 5.2 `CHANGELOG.md` under `## 0.47.0 (unreleased)`, Fixed: on a phone New session's fields
+- [x] 5.2 `CHANGELOG.md` under `## 0.47.0 (unreleased)`, Fixed: on a phone New session's fields
   and buttons are easy to tap and a model's name is no longer cut; a refused model is said once.
 
 ## 6. Checks

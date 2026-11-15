@@ -935,8 +935,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     first, its id kept), `variables` (per server an empty `credential.<origin>.helper`, then
     `helper_command`, then three `url.<root>/.insteadOf` of its ssh forms, numbered after
     the environment's own `GIT_CONFIG_COUNT`; nothing for no server), `server_for` (the
-    saved server a remote reaches) and `check_git` (`GitTooOld`'s words for a git below
-    `runtime.GIT_MIN` on a given PATH). The HTTP client is imported by `probe` alone: hooks
+    saved server a remote reaches) and `check_git` (a `Refused` naming the version for a git
+    below `runtime.GIT_MIN` on a given PATH). The HTTP client is imported by `probe` alone: hooks
     and launches import this module.
   - `git_credential.py`: LADO's git credential helper, run by git with LADO's Python
     (`interpreter.run_module`) and its arguments (`--home`, `--server`, `--user`,

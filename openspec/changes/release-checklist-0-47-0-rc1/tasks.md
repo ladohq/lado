@@ -1,12 +1,12 @@
 ## 1. docs/releases/0.47.0.md
 
-- [ ] 1.1 The file as the proposal's text: the heading, the paragraph, `## 0.47.0rc1` with its
+- [x] 1.1 The file as the proposal's text: the heading, the paragraph, `## 0.47.0rc1` with its
   paragraph, Before you start, the items of "Your own LADO after the upgrade (4.2)", "The New
   session window on a phone", "The New session window's focus", "A refused new session leaves
   no folder", "Claude Code's login check", "The reminder to read a message" and "Going back
   (4.4)", and "What covers the CHANGELOG's items" with its 7 items. Each top-level item's first
   line names its check alone.
-- [ ] 1.2 Every exact line the file quotes is checked against the code (`src/lado/runtime.py`'s
+- [x] 1.2 Every exact line the file quotes is checked against the code (`src/lado/runtime.py`'s
   upgrade line, `scripts/rc_check.py`'s `Kept a copy`, `src/lado/hooks.py`'s `UNREAD_REMINDER`,
   `src/lado/providers/claude.py`'s refusals and choice titles, `src/lado/kits.py`'s expected
   skill, `src/lado/self_update.py`'s warning, `Sessions not in that copy` and `Restored

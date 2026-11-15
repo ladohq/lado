@@ -43,8 +43,9 @@ Facts the section rests on (checked on `511d0c3d`, main):
   of LAD-209's review) and on Android if at hand; its focus in Safari and Firefox;
   Claude Code's real login sheet (the browser test runs a fake provider); an agent on a weak model
   that skips a message's text (the live tests run strong models since LAD-273). LAD-173's live
-  test `test_a_worker_commits_unless_its_task_says_not_to` was written but never run: `live.yml`
-  on the RC runs it first.
+  test `test_a_worker_commits_unless_its_task_says_not_to` already passed on all four CLIs in
+  `live.yml` on main after LAD-285 (#312; runs 43642033390 and 43642039014), and `live.yml` on
+  the RC runs it again.
 
 The human approved the task's draft (LAD-286) with this list of hand checks, and the draft of
 this change (answer #6947, through the supervisor): the phone's checks on the iPhone in Safari
@@ -204,7 +205,8 @@ Fixed:
    `tests/ui/test_launch.py`).
 4. A worker told not to commit leaves its work uncommitted: nothing by hand (unit
    `tests/test_runtime.py`; live `tests/live/test_live.py`'s worker commit test on every
-   provider, first run in `live.yml` on this RC).
+   provider, green in `live.yml` on main since LAD-285, runs 43642033390 and 43642039014,
+   and run again on this RC).
 5. A refused new session leaves no empty folder behind: the refused session's checks (unit
    `tests/test_runtime.py`, `tests/test_scratch.py`, `tests/test_cli.py`,
    `tests/test_server_launch.py`; vitest `web/src/Launch.test.tsx`).

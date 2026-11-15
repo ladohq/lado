@@ -1316,8 +1316,8 @@ SHORT_TARGETS = """dialog => [...dialog.querySelectorAll(
   .map(el => {
     // Where's input stands in its box: the box is the field.
     const box = (el.closest(".place-box") ?? el).getBoundingClientRect();
-    const name = el.getAttribute("aria-label") || el.labels?.[0]?.textContent.trim() || el.textContent.trim();
-    return [name || el.className, Math.round(box.height)];
+    const label = el.getAttribute("aria-label") || el.labels?.[0]?.textContent.trim();
+    return [label || el.textContent.trim() || el.className, Math.round(box.height)];
   })
   .filter(([, height]) => height < 44)"""
 

@@ -368,7 +368,9 @@ def test_a_short_name_stays_whole_at_a_phone_s_width(
     shown = title.bounding_box()
     default = model.locator(".mc-default").bounding_box()
     icon = model.locator(".srv svg").bounding_box()
-    assert shown["x"] + shown["width"] <= default["x"] < default["x"] + default["width"] <= icon["x"]
+    assert (
+        shown["x"] + shown["width"] <= default["x"] < default["x"] + default["width"] <= icon["x"]
+    )
     assert icon["x"] + icon["width"] <= right
     shot(page, "name-whole")
     context.close()

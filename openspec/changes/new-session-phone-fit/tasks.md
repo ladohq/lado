@@ -47,7 +47,7 @@
 
 ## 6. Checks
 
-- [ ] 6.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui tests/ui/test_launch.py
+- [x] 6.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui tests/ui/test_launch.py
   tests/ui/test_launch_model.py tests/ui/test_phone.py`, `openspec validate new-session-phone-fit
   --strict`, the trial archive. Screenshots of the changed screens (390 px: Team open with a
   refused model; the field with `Локальная Qwen`) as run artifacts.

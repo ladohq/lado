@@ -11557,7 +11557,6 @@ section.artifact-group + section.artifact-group {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .mp-id {
@@ -11567,7 +11566,6 @@ section.artifact-group + section.artifact-group {
   color: var(--muted);
   font-size: 12px;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .model-pick .srv {

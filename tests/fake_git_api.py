@@ -39,7 +39,8 @@ GITHUB_USER = Answer(200, {"id": 7, "login": LOGIN, "type": "User"})
 GITLAB_401 = Answer(401, {"message": "401 Unauthorized"})
 GITHUB_401 = Answer(401, {"message": "Bad credentials", "status": "401"})
 GITLAB_SCOPE = Answer(
-    403, {"error": "insufficient_scope", "error_description": "The request requires higher privileges"}
+    403,
+    {"error": "insufficient_scope", "error_description": "The request requires higher privileges"},
 )
 HANG = Answer(0)  # no answer: the request waits for the server's end
 

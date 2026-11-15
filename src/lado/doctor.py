@@ -214,25 +214,20 @@ def check_tmux(which: Callable[[str], str | None]) -> Check:
     return check
 
 
-def _git_numbers(version: str) -> tuple[int, int] | None:
-    """(major, minor) of `git version X.Y[.Z]...` (Apple's suffix and all); None else."""
-    found = re.match(r"git version (\d+)\.(\d+)", version)
-    return (int(found[1]), int(found[2])) if found else None
-
-
 def check_git() -> Check:
     """git is required, by the folder check's own look (`runtime.git_version`, on this
-    process's PATH); an old one breaks the providers' folder-trust lookup."""
+    process's PATH); an old one breaks the providers' folder-trust lookup and git servers."""
     try:
         version = runtime.git_version()
     except runtime.FolderProblem as problem:
         return Check("git", FAIL, str(problem), problem.hint.line() if problem.hint else "")
-    found = _git_numbers(version)
+    found = runtime.git_numbers(version)
     if found and found < runtime.GIT_MIN:
         need = ".".join(map(str, runtime.GIT_MIN))
         hint = (
             f"LADO needs git {need} or newer: before it, the providers' folder-trust lookup "
-            "(`git rev-parse --path-format=absolute`) does not work"
+            "(`git rev-parse --path-format=absolute`) and git servers (`lado git-server`) "
+            "do not work"
         )
         return Check("git", WARN, version, hint)
     return Check("git", OK, version)

@@ -24,13 +24,12 @@ import subprocess
 import urllib.parse
 import urllib.request
 import uuid
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
 
 from lado import agent_env, git_kinds, interpreter, model_servers, project_secrets, state
-from lado import text as visible
 from lado.git_kinds import Kind
 
 TOKENS = "git-servers"  # under LADO_HOME: a folder per server, by its id
@@ -208,6 +207,84 @@ def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
     return Checked(chosen, None, unchecked)
 
 
+def helper_command(server: state.GitServer) -> str:
+    """git's `credential.<url>.helper` value for LADO's helper of `server`: LADO's own Python
+    by its absolute path, so no `lado` on the PATH is needed, with all it needs as
+    arguments, so it never opens lado.db; no token, only ids (a `ps` line shows them)."""
+    kind = git_kinds.by_name(server.kind)
+    user = kind.git_user if kind is not None else "token"  # a kind this LADO does not know
+    command = interpreter.run_module(
+        HELPER,
+        "--home", str(state.home_path().absolute()),
+        "--server", server.id,
+        "--user", user,
+        "--address", server.address,
+    )  # fmt: skip
+    return "!" + shlex.join(command)
+
+
+def _entries(server: state.GitServer) -> list[tuple[str, str]]:
+    """The git config entries of one server, in order: an empty helper for its origin, which
+    drops every helper set before it there (the image's, the human's `store`), so none
+    other is asked or stores the token; LADO's helper; its ssh addresses rewritten to its
+    root (git's rewrite is a fixed prefix: the standard ssh port alone)."""
+    parts = urllib.parse.urlsplit(server.address)
+    origin = f"{parts.scheme}://{parts.netloc}"
+    host = parts.hostname or ""
+    host = f"[{host}]" if ":" in host else host
+    rewrite = f"url.{server.address}/.insteadOf"
+    return [
+        (f"credential.{origin}.helper", ""),
+        (f"credential.{origin}.helper", helper_command(server)),
+        (rewrite, f"git@{host}:"),
+        (rewrite, f"ssh://git@{host}/"),
+        (rewrite, f"ssh://git@{host}:22/"),
+    ]
+
+
+def variables(env: Mapping[str, str], servers: Sequence[state.GitServer]) -> dict[str, str]:
+    """The `GIT_CONFIG_*` variables to lay over `env` for `servers`: the entries of `env`'s
+    own `GIT_CONFIG_COUNT` are kept, LADO's coming after them (a count that is no number
+    counts as none). Nothing for no server."""
+    if not servers:
+        return {}
+    try:
+        n = max(0, int(env.get("GIT_CONFIG_COUNT", "0")))
+    except ValueError:
+        n = 0
+    found = {}
+    for server in servers:
+        for key, value in _entries(server):
+            found[f"GIT_CONFIG_KEY_{n}"] = key
+            found[f"GIT_CONFIG_VALUE_{n}"] = value
+            n += 1
+    found["GIT_CONFIG_COUNT"] = str(n)
+    return found
+
+
+def check_git(env: Mapping[str, str]) -> None:
+    """Refuse a git on `env`'s PATH older than 2.31, which reads no `GIT_CONFIG_COUNT`; a
+    git that does not run is left to the folder check and git's own error."""
+    from lado import runtime  # runtime lays the variables: imported when asked
+
+    try:
+        result = subprocess.run(
+            ["git", "--version"], env=dict(env), capture_output=True, text=True, check=False
+        )
+    except OSError:
+        return
+    line = result.stdout.strip()
+    found = runtime.git_numbers(line)
+    if result.returncode != 0 or found is None or found >= runtime.GIT_MIN:
+        return
+    version = line.removeprefix("git version ").split()[0]
+    need = ".".join(map(str, runtime.GIT_MIN))
+    raise Refused(
+        f"git {version} is older than {need}, which git servers need; update git, or remove "
+        f"the servers ({REMOVE} <address>)"
+    )
+
+
 def token_folder(id: str) -> Path:
     return state.home_path() / TOKENS / id
 
@@ -260,7 +337,9 @@ def remove(at: Address) -> state.GitServer:
 
 
 def _link(path: Path) -> Refused:
-    return Refused(f"{path} is a symbolic link: LADO keeps a server's token only in its own folders")
+    return Refused(
+        f"{path} is a symbolic link: LADO keeps a server's token only in its own folders"
+    )
 
 
 def _write_token(id: str, token: str) -> None:

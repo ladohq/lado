@@ -1978,7 +1978,9 @@ def test_a_stray_delete_of_a_default_s_model_is_refused_by_the_foreign_key(lado_
 
 
 def test_a_git_server_kept_by_its_host(lado_home):
-    saved = state.save_git_server("a1", "https://gitlab.corp.ru", "gitlab.corp.ru", "gitlab", "ivan")
+    saved = state.save_git_server(
+        "a1", "https://gitlab.corp.ru", "gitlab.corp.ru", "gitlab", "ivan"
+    )
     assert (saved.id, saved.address, saved.host, saved.kind, saved.login) == (
         "a1",
         "https://gitlab.corp.ru",
@@ -1992,7 +1994,9 @@ def test_a_git_server_kept_by_its_host(lado_home):
 
 def test_a_git_server_saved_again_keeps_its_id(lado_home):
     state.save_git_server("a1", "https://gitlab.corp.ru", "gitlab.corp.ru", "gitlab", "ivan")
-    again = state.save_git_server("b2", "https://gitlab.corp.ru/x", "gitlab.corp.ru", "github", None)
+    again = state.save_git_server(
+        "b2", "https://gitlab.corp.ru/x", "gitlab.corp.ru", "github", None
+    )
     assert (again.id, again.address, again.kind, again.login) == (
         "a1",
         "https://gitlab.corp.ru/x",

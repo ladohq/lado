@@ -374,8 +374,15 @@ NOT_REPO_HINT = Hint(
     "Make it a repository with a first commit, in that folder:",
     "git init && git add -A && git commit -m 'First commit'",
 )
-GIT_MIN = (2, 31)  # `rev-parse --path-format=absolute` (providers/gitpaths.py)
+# `rev-parse --path-format=absolute` (providers/gitpaths.py), `GIT_CONFIG_COUNT` (git_servers)
+GIT_MIN = (2, 31)
 XCODE_TOOLS = "xcode-select --install"
+
+
+def git_numbers(version: str) -> tuple[int, int] | None:
+    """(major, minor) of `git version X.Y[.Z]...` (Apple's suffix and all); None else."""
+    found = re.match(r"git version (\d+)\.(\d+)", version)
+    return (int(found[1]), int(found[2])) if found else None
 
 
 def _macos() -> bool:

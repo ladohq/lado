@@ -5,9 +5,12 @@ real HTTP on 127.0.0.1."""
 from __future__ import annotations
 
 import os
+import shlex
 import socket
 import sqlite3
 import stat
+import subprocess
+import sys
 import time
 
 import fake_git_api as fake
@@ -344,7 +347,169 @@ def test_remove_takes_the_row_and_the_folder(lado_home):
     assert raised.value.hint == "see them: lado git-server list"
 
 
-def test_a_server_without_its_token_file(lado_home):
+def test_a_server_without_its_token_file_has_none(lado_home):
     saved, _ = _save()
     (lado_home / "git-servers" / saved.id / "token").unlink()
     assert not git_servers.has_token(state.git_servers()[0])
+
+
+# The git variables.
+
+
+def _server(id="a1", address="https://gitlab.corp.ru", host="gitlab.corp.ru", kind="gitlab"):
+    return state.GitServer(id, address, host, kind, "ivan", "2026-11-15 00:00:00")
+
+
+def _entries(found: dict[str, str]) -> list[tuple[str, str]]:
+    count = int(found["GIT_CONFIG_COUNT"])
+    return [(found[f"GIT_CONFIG_KEY_{n}"], found[f"GIT_CONFIG_VALUE_{n}"]) for n in range(count)]
+
+
+def test_no_server_sets_no_variable():
+    assert git_servers.variables({"GIT_CONFIG_COUNT": "1"}, []) == {}
+
+
+def test_each_server_gets_an_empty_helper_lados_and_its_ssh_forms(lado_home):
+    found = git_servers.variables({}, [_server()])
+    entries = _entries(found)
+    assert len(found) == 1 + 2 * len(entries)
+    helper = git_servers.helper_command(_server())
+    assert entries == [
+        ("credential.https://gitlab.corp.ru.helper", ""),
+        ("credential.https://gitlab.corp.ru.helper", helper),
+        ("url.https://gitlab.corp.ru/.insteadOf", "git@gitlab.corp.ru:"),
+        ("url.https://gitlab.corp.ru/.insteadOf", "ssh://git@gitlab.corp.ru/"),
+        ("url.https://gitlab.corp.ru/.insteadOf", "ssh://git@gitlab.corp.ru:22/"),
+    ]
+    assert helper.startswith("!" + shlex.quote(sys.executable) + " -c ")
+    assert shlex.split(helper[1:])[3:] == [
+        "lado.git_credential",
+        "--home",
+        str(lado_home),
+        "--server",
+        "a1",
+        "--user",
+        "oauth2",
+        "--address",
+        "https://gitlab.corp.ru",
+    ]
+
+
+def test_a_server_under_a_path_and_a_port():
+    entries = _entries(
+        git_servers.variables(
+            {}, [_server(address="https://corp.ru:8443/gitlab", host="corp.ru:8443", kind="github")]
+        )
+    )
+    assert entries[0] == ("credential.https://corp.ru:8443.helper", "")
+    assert "--user x-access-token" in entries[1][1]
+    assert entries[2:] == [
+        ("url.https://corp.ru:8443/gitlab/.insteadOf", "git@corp.ru:"),
+        ("url.https://corp.ru:8443/gitlab/.insteadOf", "ssh://git@corp.ru/"),
+        ("url.https://corp.ru:8443/gitlab/.insteadOf", "ssh://git@corp.ru:22/"),
+    ]
+
+
+def test_the_agents_own_entries_are_kept_and_lados_come_after():
+    env = {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "core.autocrlf"}
+    found = git_servers.variables(env, [_server(), _server("b2", "https://g.lan", "g.lan")])
+    assert found["GIT_CONFIG_COUNT"] == "11"
+    assert "GIT_CONFIG_KEY_0" not in found
+    assert found["GIT_CONFIG_KEY_1"] == "credential.https://gitlab.corp.ru.helper"
+    assert found["GIT_CONFIG_KEY_6"] == "credential.https://g.lan.helper"
+
+
+@pytest.mark.parametrize("count", ["x", "-3", ""])
+def test_a_count_that_is_no_number_counts_as_none(count):
+    found = git_servers.variables({"GIT_CONFIG_COUNT": count}, [_server()])
+    assert found["GIT_CONFIG_COUNT"] == "5"
+    assert found["GIT_CONFIG_KEY_0"] == "credential.https://gitlab.corp.ru.helper"
+
+
+@pytest.fixture
+def git_env(tmp_path):
+    """git's environment with its own HOME and global and system configs, no prompt."""
+    home = tmp_path / "home"
+    home.mkdir()
+    system = tmp_path / "gitconfig-system"
+    system.write_text("")
+    return {
+        "PATH": os.environ["PATH"],
+        "HOME": str(home),
+        "GIT_CONFIG_GLOBAL": str(home / ".gitconfig"),
+        "GIT_CONFIG_SYSTEM": str(system),
+        "LADO_HOME": os.environ["LADO_HOME"],
+    }
+
+
+@pytest.mark.parametrize(
+    ("remote", "url"),
+    [
+        ("git@gitlab.corp.ru:team/app.git", "https://gitlab.corp.ru/team/app.git"),
+        ("ssh://git@gitlab.corp.ru/team/app.git", "https://gitlab.corp.ru/team/app.git"),
+        ("ssh://git@gitlab.corp.ru:22/team/app.git", "https://gitlab.corp.ru/team/app.git"),
+        (
+            "ssh://git@gitlab.corp.ru:2222/team/app.git",
+            "ssh://git@gitlab.corp.ru:2222/team/app.git",
+        ),
+        ("git@git.lan:team/app.git", "git@git.lan:team/app.git"),
+        ("git@corp.ru:team/app.git", "https://corp.ru/gitlab/team/app.git"),
+    ],
+)
+def test_git_sends_the_ssh_forms_of_a_server_over_https(git_env, tmp_path, remote, url):
+    servers = [_server(), _server("b2", "https://corp.ru/gitlab", "corp.ru")]
+    env = git_env | git_servers.variables(git_env, servers)
+    for push in (False, True):
+        args = ["git", "ls-remote", "--get-url", remote]
+        if push:  # a push URL is rewritten the same: no pushInsteadOf of its own
+            args = [
+                "git",
+                "-C",
+                str(_repo(tmp_path, env, remote)),
+                "remote",
+                "get-url",
+                "--push",
+                "origin",
+            ]
+        result = subprocess.run(args, env=env, capture_output=True, text=True, check=True)
+        assert result.stdout.strip() == url
+
+
+def _repo(tmp_path, env, remote):
+    repo = tmp_path / "repo"
+    if not repo.exists():
+        subprocess.run(["git", "init", "-q", str(repo)], env=env, check=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "remote", "add", "origin", remote], env=env, check=True
+        )
+    return repo
+
+
+# git older than 2.31.
+
+
+def _fake_git(tmp_path, version: str) -> dict[str, str]:
+    folder = tmp_path / "old-git"
+    folder.mkdir(exist_ok=True)
+    git = folder / "git"
+    git.write_text(f"#!/bin/sh\necho 'git version {version}'\n")
+    git.chmod(0o755)
+    return {"PATH": f"{folder}:{os.environ['PATH']}"}
+
+
+def test_an_old_git_is_refused(tmp_path):
+    with pytest.raises(git_servers.Refused) as raised:
+        git_servers.check_git(_fake_git(tmp_path, "2.30.2"))
+    assert str(raised.value) == (
+        "git 2.30.2 is older than 2.31, which git servers need; update git, or remove the "
+        "servers (lado git-server remove <address>)"
+    )
+
+
+@pytest.mark.parametrize("version", ["2.31.0", "2.47.1 (Apple Git-154)"])
+def test_a_current_git_is_taken(tmp_path, version):
+    git_servers.check_git(_fake_git(tmp_path, version))
+
+
+def test_a_missing_git_is_left_to_the_other_checks(tmp_path):
+    git_servers.check_git({"PATH": str(tmp_path)})

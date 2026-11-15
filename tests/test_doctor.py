@@ -1191,6 +1191,7 @@ def test_an_old_git_warns_and_keeps_the_exit_status(tmp_path, monkeypatch, capsy
     assert (check.level, check.detail) == (doctor.WARN, "git version 2.30.2")
     assert "2.31" in check.hint
     assert "--path-format=absolute" in check.hint
+    assert "git servers (`lado git-server`)" in check.hint
     checks = doctor.run_checks
     monkeypatch.setattr(doctor, "run_checks", lambda: checks(which=lambda cmd: cmd))
     assert doctor.main() == 0

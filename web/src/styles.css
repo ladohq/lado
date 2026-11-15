@@ -7651,11 +7651,11 @@ button.locked:disabled,
   background: var(--danger-ground);
 }
 
-.field-note.bad::before {
+/* The refusal's round "!": a refusal note's and, in the launch field, a silent server's mark. */
+.field-note.bad::before,
+.bad-sign::before {
   content: "!";
-  position: absolute;
-  left: 7px;
-  top: 6px;
+  display: block;
   width: 15px;
   height: 15px;
   border-radius: 50%;
@@ -7663,6 +7663,16 @@ button.locked:disabled,
   color: var(--on-danger);
   font: 700 11px/15px var(--sans);
   text-align: center;
+}
+
+.field-note.bad::before {
+  position: absolute;
+  left: 7px;
+  top: 6px;
+}
+
+.bad-sign {
+  flex: none;
 }
 
 /* A refusal's way out: how to go on, and a button that does it (Resume's Model note). */

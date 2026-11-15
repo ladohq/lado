@@ -9,7 +9,7 @@
 
 - [ ] 2.1 `web/src/styles.css`: in `.model-pick`, the name whole and the server's mark giving way
   first, down to its icon (D3); the list's rows unchanged. Check: the UI test of 4.2.
-- [ ] 2.2 `web/src/ModelPicker.tsx` and `styles.css`: the field's server mark of a refused model
+- [x] 2.2 `web/src/ModelPicker.tsx` and `styles.css`: the field's server mark of a refused model
   on a silent server draws the refusal's round `!`, one class shared with `.field-note.bad`'s
   sign; rows and Settings keep ⚠ (D4). Check: `web/src/ModelPicker.test.tsx`, a launch field
   on a silent server has the round mark and no ⚠, its list's row of the server ⚠, a Settings

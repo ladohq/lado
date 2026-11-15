@@ -5,8 +5,10 @@ local file (LADO_UPDATE_INDEX), the installer a script (LADO_UPDATE_INSTALLER), 
 install's prefix (LADO_UPDATE_PREFIX) has a `bin/lado` that says the version a file holds and
 runs this working copy for everything else."""
 
+import contextlib
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -17,7 +19,7 @@ import agent_helpers
 import fake_provider
 import pytest
 
-from lado import __version__, loop, runtime, state
+from lado import __version__, git_kinds, git_servers, loop, runtime, state
 from lado.server import auth
 from lado.server import run as server_run
 
@@ -322,6 +324,31 @@ def test_update_to_an_older_schema_restores_the_migrations_copy_and_the_old_lado
     assert copy.read_bytes() == kept
     result = json.loads((state.home() / "update-result.json").read_text())
     assert (result["outcome"], result["database"]) == ("ok", "restored")
+
+
+def test_update_to_an_older_schema_names_the_git_server_tokens_that_stay(
+    tmp_path, repo, session, install, monkeypatch
+):
+    before = state.SCHEMA_VERSION
+    start(repo, session)
+    stopped(session)
+    newer_schema(install, monkeypatch)
+    assert install.run("ls").returncode == 0  # migrated, the copy made first
+    # Saved after the copy was made: the copy has no such server.
+    checked = git_servers.Checked(git_kinds.by_name("gitlab"), "ivan")
+    saved, _ = git_servers.save(git_servers.address("gitlab.corp.ru"), checked, "glpat-x")
+    folder = state.home() / "git-servers" / saved.id
+    publish(tmp_path, before)
+    done = lado_cli("update", OLD, "--yes")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "default models, git servers.\n" in done.stderr
+    assert (
+        "  Git server tokens stay on disk; remove them when you no longer need them:\n"
+        f"    {folder}\n"
+    ) in done.stderr
+    with contextlib.closing(sqlite3.connect(state.home() / "lado.db")) as db:
+        assert db.execute("SELECT id FROM git_servers").fetchall() == []
+    assert (folder / "token").exists()  # the older LADO does not know it: left to the human
 
 
 def test_update_to_an_older_schema_without_its_copy_stops_nothing(tmp_path, repo, session, install):

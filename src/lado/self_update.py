@@ -34,7 +34,17 @@ from pathlib import Path
 from typing import IO
 
 import lado
-from lado import gui_session, loop, model_settings, providers, runtime, state, tmux, update
+from lado import (
+    git_servers,
+    gui_session,
+    loop,
+    model_settings,
+    providers,
+    runtime,
+    state,
+    tmux,
+    update,
+)
 from lado.server import run as server_run
 
 DEFAULT_HOST = "127.0.0.1"  # `lado server --host`'s default
@@ -134,7 +144,8 @@ class Restore:
     the migration's `copy` of `schema` (made at `made`, local `YYYY-MM-DD HH:MM`) in place
     of the schema `live`; the planned sessions the copy lacks (`missing`) are not resumed.
     `keys`: the folders of model server keys the copy has no server for, which stay on disk
-    (sorted), or the folder of all keys when it cannot be read."""
+    (sorted), or the folder of all keys when it cannot be read; `tokens` the same of git
+    server tokens."""
 
     copy: Path
     schema: int
@@ -142,6 +153,7 @@ class Restore:
     made: str
     missing: list[str]
     keys: list[Path]
+    tokens: list[Path] = field(default_factory=list)
 
 
 @dataclass
@@ -270,36 +282,41 @@ def _way_back(
         db = sqlite3.connect(f"{copy.as_uri()}?mode=ro&immutable=1", uri=True, timeout=10)
         try:
             names = {row[0] for row in db.execute("SELECT name FROM sessions")}
-            servers = _server_ids(db)
+            servers = _ids(db, "model_servers")
+            git = _ids(db, "git_servers")
         finally:
             db.close()
     except sqlite3.Error as exc:
         raise runtime.LadoError(f"cannot read {copy}: {exc}; nothing was stopped") from exc
     made = datetime.datetime.fromtimestamp(copy.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
     missing = [s.name for s in sessions if s.name not in names]
-    return Restore(copy, schema, live, made, missing, _keys_left(servers))
+    keys = _left(model_settings.KEYS, model_settings.KEY, servers)
+    tokens = _left(git_servers.TOKENS, git_servers.TOKEN, git)
+    return Restore(copy, schema, live, made, missing, keys, tokens)
 
 
-def _server_ids(db: sqlite3.Connection) -> set[str]:
-    """The model servers of a copy of lado.db; one older than them has no such table."""
+def _ids(db: sqlite3.Connection, table: str) -> set[str]:
+    """The ids of `table` (model or git servers) of a copy of lado.db; one older than them
+    has no such table."""
     try:
-        return {row[0] for row in db.execute("SELECT id FROM model_servers")}
+        return {row[0] for row in db.execute(f"SELECT id FROM {table}")}
     except sqlite3.OperationalError:
         return set()
 
 
-def _keys_left(servers: set[str]) -> list[Path]:
-    """Restore.keys. An unreadable folder does not refuse, as an unreadable copy does: the
-    way back needs the copy, not the keys."""
-    folder = state.home_path() / model_settings.KEYS
+def _left(kept: str, file: str, ids: set[str]) -> list[Path]:
+    """Restore.keys or Restore.tokens: the folders of `kept` under LADO_HOME holding `file`
+    whose names are not in `ids`. An unreadable folder does not refuse, as an unreadable copy
+    does: the way back needs the copy, not the secrets."""
+    folder = state.home_path() / kept
     try:
         names = os.listdir(folder)
     except FileNotFoundError:
         return []
     except OSError:
         return [folder]
-    left = [folder / name for name in names if name not in servers]
-    return sorted(path for path in left if os.path.lexists(path / model_settings.KEY))
+    left = [folder / name for name in names if name not in ids]
+    return sorted(path for path in left if os.path.lexists(path / file))
 
 
 def agents_note() -> str | None:
@@ -347,7 +364,8 @@ def print_plan(found: Plan, say: Say = print) -> None:
             f"  lado.db goes back to {back.copy}, made {back.made}",
             f"  by the upgrade from schema {back.schema}. Everything LADO recorded since then "
             "is lost: sessions,",
-            "  runs, gates, messages, projects, model servers, models, default models.",
+            "  runs, gates, messages, projects, model servers, models, default models, git "
+            "servers.",
             "  Repositories, worktrees and project folders stay on disk.",
         ]
         if back.missing:
@@ -359,6 +377,11 @@ def print_plan(found: Plan, say: Say = print) -> None:
                 "  Model server keys stay on disk; remove them when you no longer need them:"
             )
             lines += [f"    {path}" for path in back.keys]
+        if back.tokens:
+            lines.append(
+                "  Git server tokens stay on disk; remove them when you no longer need them:"
+            )
+            lines += [f"    {path}" for path in back.tokens]
         say("\n".join(lines), file=sys.stderr)
     if found.sessions or found.server:
         say("Restarts:")

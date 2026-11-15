@@ -4,13 +4,16 @@ real HTTP on 127.0.0.1."""
 
 from __future__ import annotations
 
+import os
 import socket
+import sqlite3
+import stat
 import time
 
 import fake_git_api as fake
 import pytest
 
-from lado import git_kinds, git_servers, model_servers
+from lado import git_kinds, git_servers, model_servers, state
 
 TOKEN = "glpat-CANARY-7f3e9a"  # a canary: no output or file but its own may hold it
 
@@ -247,3 +250,101 @@ def test_kind_saves_one_that_cannot_be_checked(serve):
 
 def test_the_kinds_are_those_of_git_kinds():
     assert git_servers.KIND_NAMES == tuple(kind.name for kind in git_kinds.KINDS)
+
+
+# The store.
+
+GITLAB = git_kinds.by_name("gitlab")
+
+
+def _save(text="gitlab.corp.ru", token=TOKEN, login="ivan"):
+    checked = git_servers.Checked(GITLAB, login)
+    return git_servers.save(git_servers.address(text), checked, token)
+
+
+def _files_holding(root, value: str) -> list[str]:
+    return sorted(
+        str(p.relative_to(root))
+        for p in root.rglob("*")
+        if p.is_file() and not p.is_symlink() and value.encode() in p.read_bytes()
+    )
+
+
+def test_a_saved_server_keeps_its_token_in_its_own_file(lado_home):
+    previous = os.umask(0)  # the modes whatever the umask
+    try:
+        saved, replaced = _save()
+    finally:
+        os.umask(previous)
+    assert replaced is False
+    assert (saved.address, saved.host, saved.kind, saved.login) == (
+        "https://gitlab.corp.ru",
+        "gitlab.corp.ru",
+        "gitlab",
+        "ivan",
+    )
+    folder = lado_home / "git-servers" / saved.id
+    assert (folder / "token").read_text() == TOKEN
+    assert stat.S_IMODE((lado_home / "git-servers").stat().st_mode) == 0o700
+    assert stat.S_IMODE(folder.stat().st_mode) == 0o700
+    assert stat.S_IMODE((folder / "token").stat().st_mode) == 0o600
+    assert _files_holding(lado_home, TOKEN) == [f"git-servers/{saved.id}/token"]
+    assert git_servers.has_token(saved)
+
+
+def test_a_link_on_the_way_is_refused(lado_home, tmp_path):
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    lado_home.mkdir(exist_ok=True)
+    (lado_home / "git-servers").symlink_to(elsewhere)
+    with pytest.raises(git_servers.Refused) as raised:
+        _save()
+    assert "symbolic link" in str(raised.value)
+    assert list(elsewhere.iterdir()) == []
+    assert state.git_servers() == []
+
+
+def test_a_second_save_of_the_host_replaces_and_keeps_the_id(lado_home):
+    first, _ = _save()
+    again, replaced = _save("https://gitlab.corp.ru:443/", "glpat-NEW", login="petr")
+    assert replaced is True
+    assert (again.id, again.login) == (first.id, "petr")
+    assert (lado_home / "git-servers" / first.id / "token").read_text() == "glpat-NEW"
+    assert len(state.git_servers()) == 1
+
+
+def test_a_host_saved_meanwhile_gets_the_new_token_in_its_own_folder(lado_home, monkeypatch):
+    first, _ = _save()
+    monkeypatch.setattr(state, "git_server_by_host", lambda host: None)  # not seen yet
+    again, replaced = _save(token="glpat-NEW")
+    assert (again.id, replaced) == (first.id, True)
+    assert [p.name for p in (lado_home / "git-servers").iterdir()] == [first.id]
+    assert (lado_home / "git-servers" / first.id / "token").read_text() == "glpat-NEW"
+
+
+def test_a_failed_row_leaves_no_folder_for_a_new_server(lado_home, monkeypatch):
+    def broken(*args):
+        raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(state, "save_git_server", broken)
+    with pytest.raises(sqlite3.OperationalError):
+        _save()
+    assert list((lado_home / "git-servers").iterdir()) == []
+
+
+def test_remove_takes_the_row_and_the_folder(lado_home):
+    saved, _ = _save()
+    removed = git_servers.remove(git_servers.address("https://gitlab.corp.ru/"))
+    assert removed.id == saved.id
+    assert state.git_servers() == []
+    assert not (lado_home / "git-servers" / saved.id).exists()
+    with pytest.raises(git_servers.Refused) as raised:
+        git_servers.remove(git_servers.address("gitlab.corp.ru"))
+    assert str(raised.value) == "https://gitlab.corp.ru is no saved git server"
+    assert raised.value.hint == "see them: lado git-server list"
+
+
+def test_a_server_without_its_token_file(lado_home):
+    saved, _ = _save()
+    (lado_home / "git-servers" / saved.id / "token").unlink()
+    assert not git_servers.has_token(state.git_servers()[0])

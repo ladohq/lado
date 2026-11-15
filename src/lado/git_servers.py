@@ -206,3 +206,83 @@ def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
     if chosen is None:
         raise refusal
     return Checked(chosen, None, unchecked)
+
+
+def token_folder(id: str) -> Path:
+    return state.home_path() / TOKENS / id
+
+
+def has_token(server: state.GitServer) -> bool:
+    return os.path.lexists(token_folder(server.id) / TOKEN)
+
+
+def save(at: Address, checked: Checked, token: str) -> tuple[state.GitServer, bool]:
+    """Save the server at `at` as `checked` with `token`, or replace the one of its host,
+    keeping its id: the server as saved, and whether one was replaced. A new server's token
+    file comes first and goes again when its row fails; a replaced one's row comes first,
+    then its token file is replaced whole, so it holds the old token or the new one."""
+    known = state.git_server_by_host(at.key)
+    if known is not None:
+        saved = state.save_git_server(known.id, at.root, at.key, checked.kind.name, checked.login)
+        _write_token(saved.id, token)
+        return saved, True
+    id = uuid.uuid4().hex[:12]
+    _write_token(id, token)
+    try:
+        saved = state.save_git_server(id, at.root, at.key, checked.kind.name, checked.login)
+    except BaseException:
+        # A cleanup that fails leaves the folder over, never hides why.
+        with contextlib.suppress(OSError, Refused):
+            _remove_token(id)
+        raise
+    if saved.id != id:  # saved meanwhile by another add of the host: its row was replaced
+        _write_token(saved.id, token)
+        with contextlib.suppress(OSError, Refused):
+            _remove_token(id)
+        return saved, True
+    return saved, False
+
+
+def remove(at: Address) -> state.GitServer:
+    """Remove the server of the host of `at` and its token folder: the server removed.
+    Refused for no such server, or a folder the disk refuses to remove (the row then gone)."""
+    known = state.git_server_by_host(at.key)
+    if known is None or not state.remove_git_server(known.id):
+        raise Refused(f"{at.root} is no saved git server", "see them: lado git-server list")
+    try:
+        _remove_token(known.id)
+    except OSError as exc:
+        raise Refused(
+            f"removed git server {known.address}, but not its folder {token_folder(known.id)} "
+            f"({exc.strerror or type(exc).__name__})"
+        ) from None
+    return known
+
+
+def _link(path: Path) -> Refused:
+    return Refused(f"{path} is a symbolic link: LADO keeps a server's token only in its own folders")
+
+
+def _write_token(id: str, token: str) -> None:
+    state.home()
+    try:
+        project_secrets.write_at((TOKENS, id), token_folder(id), TOKEN, token)
+    except project_secrets.LinkRefused as exc:
+        raise _link(exc.path) from None
+    except OSError as exc:
+        raise Refused(
+            f"{token_folder(id) / TOKEN} cannot be written ({exc.strerror or type(exc).__name__})"
+        ) from None
+
+
+def _remove_token(id: str) -> None:
+    """Remove the token file of the server `id` and its folder; OSError (Refused for a link)
+    when the disk refuses it."""
+    try:
+        project_secrets.remove_at((TOKENS, id), token_folder(id), TOKEN)
+        with project_secrets.open_chain((TOKENS,), make=False) as fd:
+            if fd is not None:
+                with contextlib.suppress(FileNotFoundError):
+                    os.rmdir(id, dir_fd=fd)
+    except project_secrets.LinkRefused as exc:
+        raise _link(exc.path) from None

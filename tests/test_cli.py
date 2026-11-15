@@ -19,9 +19,7 @@ from lado import (
     artifacts,
     artifacts_local,
     cli,
-    flows,
     gitcache,
-    kits,
     marketplaces,
     project_secrets,
     projects,
@@ -40,13 +38,6 @@ def test_version_flag_prints_version():
         check=True,
     )
     assert result.stdout.strip() == f"lado {__version__}"
-
-
-def test_start_with_provider_and_ls_shows_it(repo, fake_tmux, capsys):
-    assert main(["start", str(repo), "--name", "s", "--provider", "kilo", "--no-attach"]) == 0
-    assert state.get_session("s").provider == "kilo"
-    main(["ls"])
-    assert "supervisor   supervisor kilo" in capsys.readouterr().out
 
 
 def test_start_and_ls_say_what_the_supervisors_cli_asks_first(
@@ -115,19 +106,6 @@ def test_start_in_a_new_folder_takes_your_last_sessions_provider(repo, tmp_path,
     assert state.get_session("b").provider == "kilo"
 
 
-def test_start_without_provider_refuses_a_choice_it_cannot_make(repo, fake_tmux, capsys):
-    assert main(["start", str(repo), "--no-attach"]) == 1
-    assert "give one with --provider NAME" in capsys.readouterr().err
-
-
-def test_start_help_names_no_default_provider(capsys):
-    with pytest.raises(SystemExit):
-        main(["start", "--help"])
-    out = " ".join(capsys.readouterr().out.split())
-    assert "default: claude" not in out
-    assert "without it, a new session takes its folder's last session's provider" in out
-
-
 def test_ls_says_a_newer_version_is_available_but_not_why_a_check_failed(
     published, capsys, tmp_path, monkeypatch
 ):
@@ -178,50 +156,6 @@ def test_ls_shows_how_long_each_agent_has_had_its_status(repo, fake_tmux, capsys
     assert lines[1].index("3h05m") == lines[2].index("-")
 
 
-def test_ls_shows_each_agents_model_after_its_time(repo, fake_tmux, capsys):
-    main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
-    runtime.spawn_worker("s", "task", name="w1")
-    state.report_model("s", "supervisor", "claude-opus-5-5", None)
-    capsys.readouterr()
-    main(["ls"])
-    lines = capsys.readouterr().out.splitlines()
-    assert lines[1].split()[5:] == ["claude-opus-5-5"]
-    assert lines[2].split()[5:] == ["-", "lado/s/w1"]
-    assert lines[1].index("claude-opus-5-5") == lines[2].index("-", len("  w1"))
-
-
-def test_ls_shows_an_agent_in_background_with_its_time_in_line(repo, fake_tmux, capsys):
-    main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
-    runtime.spawn_worker("s", "task", name="w1")
-    state.set_status("s", "w1", state.BACKGROUND)
-    capsys.readouterr()
-    main(["ls"])
-    lines = capsys.readouterr().out.splitlines()
-    assert lines[2].split() == ["w1", "worker", "claude", "background", "0s", "-", "lado/s/w1"]
-    assert lines[1].index(lines[1].split()[4]) == lines[2].index("0s")
-    assert len(lines) == 3  # no reason line, no task count
-
-
-def test_ls_says_why_an_agent_waits_after_failed_messages(repo, fake_tmux, capsys):
-    main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
-    runtime.spawn_worker("s", "task", name="w1")
-    agent_helpers.forget_tasks("s")
-    state.set_status("s", "supervisor", state.IDLE)
-    runtime.send_message("s", "w1", "supervisor", "report")
-    at = state.list_messages("s")[0].sent_at
-    for delay in runtime.RETRY_DELAYS + runtime.RETRY_DELAYS[-1:]:
-        at += delay
-        runtime.sweep("s", now=at)
-    capsys.readouterr()
-    main(["ls"])
-    lines = capsys.readouterr().out.splitlines()
-    assert lines[1].split()[:4] == ["supervisor", "supervisor", "claude", "waiting"]
-    assert lines[2] == (
-        "    waiting: did not take 1 message: answer the dialog in its window "
-        "or type any line there"
-    )
-
-
 def test_ls_says_why_an_agent_stopped(repo, fake_tmux, capsys):
     main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
     runtime.spawn_worker("s", "task", name="w1")
@@ -246,13 +180,6 @@ def test_finish_ends_a_worker(repo, fake_tmux, capsys):
     assert f"{finished} {worker.cwd}" in out  # the message: its task
     assert "branch lado/s/w1" in out
     assert state.get_agent("s", "w1") is None
-
-
-def test_start_with_unknown_provider_fails(repo, fake_tmux, capsys):
-    assert main(["start", str(repo), "--provider", "nope", "--no-attach"]) == 1
-    assert (
-        'unknown provider "nope"; known: claude, codex, kilo, opencode' in capsys.readouterr().err
-    )
 
 
 def test_start_in_a_repository_without_commits_fails(tmp_path, fake_tmux, capsys):
@@ -322,14 +249,6 @@ def test_start_help_lists_each_providers_permission_modes(capsys):
     assert "claude: " in out and "dontAsk" in out
 
 
-def test_start_help_names_the_model(capsys):
-    with pytest.raises(SystemExit):
-        main(["start", "--help"])
-    out = " ".join(capsys.readouterr().out.split())
-    assert "--model MODEL" in out
-    assert "'' is the CLI's own settings, past its default model" in out
-
-
 def test_start_passes_the_model_through(repo, fake_tmux, capsys):
     args = ["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]
     assert main([*args, "--model", "claude-opus-5-5"]) == 0
@@ -357,27 +276,10 @@ def test_start_says_a_default_changed_since_the_last_start_once(repo, fake_tmux,
     assert "changed model" not in err
 
 
-def test_ls_names_a_model_of_a_server_by_its_saved_name(repo, fake_tmux, capsys):
-    server = state.add_model_server("gw", "Шлюз", "http://gw", "OpenAI-compatible", [])
-    state.add_model("Шлюз Qwen", "opencode", "gw-qwen", server.id)
-    runtime.start_session(str(repo), "s", None, provider="opencode")
-    state.report_model("s", "supervisor", "lado-gw/gw-qwen", None)
-    capsys.readouterr()
-    assert main(["ls"]) == 0
-    assert "Шлюз Qwen" in capsys.readouterr().out
-
-
 def test_start_takes_the_model_without_its_spaces(repo, fake_tmux):
     args = ["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]
     assert main([*args, "--model", " sonnet "]) == 0
     assert state.get_session("s").power == state.PowerTable.single("claude", "sonnet")
-
-
-def test_start_with_a_mode_the_provider_cannot_honour_fails(repo, fake_tmux, capsys):
-    args = ["start", str(repo), "--provider", "kilo", "--permission-mode", "dontAsk"]
-    assert main([*args, "--no-attach"]) == 1
-    assert '"dontAsk" is not supported by Kilo CLI (kilo)' in capsys.readouterr().err
-    assert fake_tmux == []
 
 
 REV = "---\nname: rev\ndescription: reviews\n---\nReview.\n"
@@ -397,50 +299,6 @@ def _installed(repo, name, body=REV):
     kit = _kit(repo.parent, name, body)
     install_kit(kit)
     return kit
-
-
-def test_a_repositorys_own_kit_is_not_read_by_start(repo, fake_tmux, capsys, lado_home):
-    _kit(repo / ".lado", "team")
-    args = ["start", str(repo), "--provider", "claude", "--name", "s", "--kit", "team"]
-    assert main([*args, "--no-attach"]) == 1
-    assert capsys.readouterr().err == (
-        f'lado: kit "team" not found; looked in the installed kits in {lado_home / "lado.db"}, '
-        f"{kits.BUILTIN}\n"
-    )
-    assert state.get_session("s") is None and fake_tmux == []
-
-
-def test_kits_takes_no_repo(repo, capsys):
-    with pytest.raises(SystemExit) as exc:
-        main(["kits", "--repo=."])
-    assert exc.value.code == 2
-    assert "unrecognized arguments: --repo=." in capsys.readouterr().err
-    with pytest.raises(SystemExit) as exc:  # argparse reads the folder as a command then
-        main(["kits", "--repo", str(repo), "show", "default"])
-    assert exc.value.code == 2
-
-
-def test_kits_lists_the_same_kits_in_every_folder(tmp_path, capsys, monkeypatch):
-    one, two = init_repo(tmp_path / "one"), init_repo(tmp_path / "two")
-    _kit(one / ".lado", "team")
-    _kit(two / ".lado", "crew")
-    _installed(tmp_path / "dev" / "x", "mine")
-    outs = []
-    for folder in (one, two):
-        monkeypatch.chdir(folder)
-        assert main(["kits"]) == 0
-        outs.append(capsys.readouterr().out)
-    assert outs[0] == outs[1]
-    assert "mine " in outs[0] and "team" not in outs[0] and "crew" not in outs[0]
-
-
-def test_start_with_kits_and_without(repo, fake_tmux):
-    _installed(repo, "team")
-    args = ["start", str(repo), "--provider", "claude", "--name", "s", "--kit", "default"]
-    args += ["--kit", "team"]
-    assert main([*args, "--without", "agent:rev", "--no-attach"]) == 0
-    sess = state.get_session("s")
-    assert (sess.kits, sess.without) == (["default", "team"], ["agent:rev"])
 
 
 def test_start_says_who_leads_and_which_supervisor_is_not_used(repo, fake_tmux, capsys):
@@ -494,11 +352,6 @@ def test_start_says_who_leads_and_which_supervisor_is_not_used(repo, fake_tmux, 
         captured.err
     )
     assert "lado: kit default's supervisor leads as LADO's built-in supervisor" in captured.err
-
-
-def test_start_with_bad_kit_fails(repo, fake_tmux, capsys):
-    assert main(["start", str(repo), "--provider", "claude", "--kit", "nope", "--no-attach"]) == 1
-    assert 'lado: kit "nope" not found' in capsys.readouterr().err
 
 
 def test_kits_lists_where_each_kit_is(repo, capsys, monkeypatch, tmp_path, lado_home):
@@ -963,28 +816,6 @@ def test_kits_add_update_remove(tmp_path, repo, capsys, lado_home):
     )
 
 
-def test_kits_check_fetches_packs_and_warns_about_a_version(tmp_path, repo, capsys):
-    pack = publish(
-        init_repo(tmp_path / "pack"),
-        {"skills/tdd/SKILL.md": "---\nname: tdd\ndescription: test first\n---\n"},
-        tag="v1",
-    )
-    files = {
-        "kit.yaml": f"name: team\nversion: 1.0.0\ndependencies:\n  skills:\n    p: {pack}@v1\n"
-    }
-    work = init_repo(tmp_path / "team")
-    url = publish(work, files, tag="v2.0.0")
-    # Pinned to a commit by an older LADO, which did not check the version.
-    commit = gitcache.commit(work)
-    install_kit(gitcache.fetch_pinned(url, commit))
-    assert main(["kits", "check", "team"]) == 0
-    captured = capsys.readouterr()
-    assert f"warning: team: version 1.0.0 in kit.yaml, but {url}@{commit} is at v2.0.0" in (
-        captured.err
-    )
-    assert "team: OK (0 agents, 1 skills, 1 packs and 0 flows)" in captured.out
-
-
 def test_sources_yaml_gets_a_warning_and_sources_is_gone(repo, capsys, fake_tmux, lado_home):
     lado_home.mkdir(exist_ok=True)
     (lado_home / "sources.yaml").write_text(
@@ -1278,17 +1109,6 @@ def test_v_shows_the_full_note_in_a_pager_then_asks_again(
     assert "gate #2: approve. ship/x: check -> end (ended)" in out
 
 
-def test_v_prints_the_full_note_without_a_pager(repo, fake_tmux, capsys, monkeypatch):
-    _at_gate_with_a_long_note(repo, capsys)
-    monkeypatch.setattr(cli, "PAGER", ["no-such-pager-for-lado-tests"])
-    _typing(monkeypatch, "v")
-    assert main(["answer"]) == 0
-    out = capsys.readouterr().out
-    assert "Note: built it\n\nline 1\nline 2\n" in out and "line 60\n" in out
-    assert out.count("Ship it?\n") == 2
-    assert out.endswith("Gate #2 stays open.\n")
-
-
 PLAN = """\
 name: plan
 description: plan, build and ship
@@ -1340,48 +1160,6 @@ def _at_gate_with_reads(repo, capsys):
     capsys.readouterr()
 
 
-READS = (
-    "Ship it?\n"
-    "Note: built it (v: the full note, 2 more lines)\n"
-    "Supervisor is preparing a recommendation… (v shows it once it is given)\n"
-    "Artifacts it reads:\n"
-    "  plan/x/plan: The plan — {}\n"
-    "  plan/x/polish: no record yet\n"
-    "Options:\n"
-)
-
-
-def test_answer_shows_the_note_then_the_artifacts_the_gate_reads(
-    repo, fake_tmux, capsys, monkeypatch
-):
-    _at_gate_with_reads(repo, capsys)
-    _typing(monkeypatch, "")
-    assert main(["answer"]) == 0
-    out = capsys.readouterr().out
-    assert READS.format("the plan") in out
-    assert "step 1" not in out
-    assert "Answer (number or name, v for the full note, Enter to leave it open): " in out
-
-
-def test_answer_shows_the_latest_record_again_after_v(repo, fake_tmux, capsys, monkeypatch):
-    _at_gate_with_reads(repo, capsys)
-    monkeypatch.setattr(cli, "PAGER", ["no-such-pager-for-lado-tests"])
-    asked = iter(["v", ""])
-
-    def typing(prompt=""):
-        print(prompt, end="")
-        # The supervisor writes the plan again while the human reads the gate.
-        artifacts.write("s", "supervisor", "plan/x/plan", content="step 1", summary="new plan")
-        return next(asked)
-
-    monkeypatch.setattr("builtins.input", typing)
-    assert main(["answer"]) == 0
-    out = capsys.readouterr().out
-    assert READS.format("the plan") in out
-    assert "plan/x/plan: The plan — new plan\n\nstep 1\n" in out  # v: the latest one
-    assert READS.format("new plan") in out  # and the gate after it
-
-
 def _at_gate_from_polish(repo, capsys):
     """At gate check, reached from polish, whose note has the artifact polish attached."""
     _at_gate_with_reads(repo, capsys)
@@ -1431,25 +1209,6 @@ def test_v_names_an_artifact_that_is_not_text(repo, fake_tmux, capsys, monkeypat
     assert "plan/x/plan: The plan — a picture\n\n(image/png, 15 bytes: not text)\n" in out
     assert "plan/x/polish: no record yet\n" in out
     assert "PNG not really" not in out
-
-
-def test_answer_shows_a_gate_whose_flow_cannot_be_read_and_goes_on(
-    repo, fake_tmux, capsys, monkeypatch
-):
-    _at_gate_with_reads(repo, capsys)
-    runs.start("s", "plan", "Add y", name="y")
-    runs.force("s", "plan/y", "check", "built by hand")
-    agent_helpers.spoil_snapshot("s", "plan/x")
-    capsys.readouterr()
-    _typing(monkeypatch, "1", "reject", "")
-    assert main(["answer", "s"]) == 0
-    out = capsys.readouterr().out
-    assert "Gate #1, session s, run plan/x at check:\nShip it?\nNote: built it" in out
-    assert 'Gate #1 cannot be answered: run "plan/x": its flow snapshot is not JSON' in out
-    assert "the supervisor can cancel the run with flow_cancel" in out
-    assert "gate #2: reject. plan/y: check -> build" in out
-    assert out.endswith("No more open gates.\n")
-    assert state.open_gate("s", "plan/x").answer is None
 
 
 @pytest.mark.parametrize("failing", ["latest", "content"])
@@ -1542,12 +1301,6 @@ def terminal(monkeypatch):
     os.close(keyboard)
 
 
-def test_a_line_is_read_while_it_is_still_wanted(terminal):
-    keyboard, stdin = terminal
-    os.write(keyboard, b"approve\n")
-    assert cli.read_line_while(stdin, lambda: True) == "approve"
-
-
 def test_typing_is_dropped_when_it_is_no_longer_wanted(terminal):
     keyboard, stdin = terminal
     os.write(keyboard, b"appro")  # typed, no Enter yet
@@ -1557,39 +1310,6 @@ def test_typing_is_dropped_when_it_is_no_longer_wanted(terminal):
     # What was typed went with it: it does not reach the next prompt.
     os.write(keyboard, b"x\n")
     assert cli.read_line_while(stdin, lambda: True) == "x"
-
-
-def test_answer_notices_a_gate_answered_elsewhere(repo, fake_tmux, capsys, monkeypatch, terminal):
-    import threading
-    import time
-
-    keyboard, stdin = terminal
-    _at_gate(repo, capsys)
-    runs.start("s", "ship", "Add y", name="y")
-    runs.force("s", "ship/y", "check", "built by hand")
-    monkeypatch.setattr(sys, "stdin", stdin)
-    os.write(keyboard, b"appr")  # the human was typing
-    done = []
-    asking = threading.Thread(target=lambda: done.append(main(["answer", "s", "1"])), daemon=True)
-    asking.start()
-    out = ""
-    deadline = time.monotonic() + 10
-    while "Answer (" not in out:
-        assert time.monotonic() < deadline, out
-        time.sleep(0.02)
-        out += capsys.readouterr().out
-    runs.answer("s", "1", "reject", "from the UI")
-    while "Gate #2, session s" not in out:
-        assert time.monotonic() < deadline, out
-        time.sleep(0.02)
-        out += capsys.readouterr().out
-    os.write(keyboard, b"\n")  # leaves gate #2 open: "appr" was dropped
-    asking.join(10)
-    out += capsys.readouterr().out
-    assert done == [0]
-    assert "Gate #1 was answered elsewhere: reject by human\n" in out
-    assert out.endswith("Gate #2 stays open.\n")
-    assert state.get_gate(2).answer is None
 
 
 def test_a_comment_given_with_m_is_not_taken_to_the_next_gate(
@@ -1668,19 +1388,6 @@ def test_flow_set_moves_a_run_and_is_logged(repo, fake_tmux, capsys):
     log = capsys.readouterr().out
     assert "human: flow_set ship/x (build -> check: built by hand)" in log
     assert "lado: flow_end ship/x (at end)" in log
-
-
-def test_finish_and_stop_with_run_workers(repo, fake_tmux, capsys):
-    run = _session_with_run(repo)
-    runs.spawn_worker("s", "ship/x")
-    runs.spawn_worker("s", "ship/x", role="rev", task="Help.")
-    assert main(["finish", "s", "rev-2"]) == 0
-    out = capsys.readouterr().out
-    finished = 'Finished worker "rev-2" (closed; 1 message dropped): closed its window'
-    assert f"{finished}; run ship/x keeps {run.worktree}" in out  # the message: its task
-    assert main(["stop", "s"]) == 0
-    out = capsys.readouterr().out
-    assert out.count(f"kept worktree {run.worktree}") == 1
 
 
 def test_stop_and_start_again_resumes_the_session(repo, fake_tmux, capsys):
@@ -1820,84 +1527,6 @@ def test_kits_show_names_whose_role_does_each_step(repo, capsys):
     assert main(args) == 0
     out = capsys.readouterr().out
     assert "    plan: the lead (supervisor of kit default)\n    build: rev (a)\n" in out
-
-
-def test_kits_check_warns_about_a_flow_role_of_another_installed(repo, capsys):
-    kit = _installed(repo, "team")
-    (kit / "flows").mkdir()
-    (kit / "flows" / "ship.yaml").write_text(SHIP.replace("agent: rev", "agent: worker"))
-    assert main(["kits", "check", "team"]) == 0
-    captured = capsys.readouterr()
-    ship = kit.resolve() / "flows" / "ship.yaml"
-    assert (
-        f'warning: {ship}: state "build": role "worker" is not in kit "team"; '
-        "a session needs a kit that has it"
-    ) in captured.err
-    assert captured.err.count("is not in kit") == 1  # kits.warnings says it, the CLI prints
-    assert "team: OK (1 agents, 0 skills, 0 packs and 1 flows)" in captured.out
-    (kit / "flows" / "ship.yaml").write_text(SHIP)
-    assert main(["kits", "check", "team"]) == 0
-    assert "warning" not in capsys.readouterr().err
-    # A step of the supervisor is the session's lead's, whichever kit leads.
-    (kit / "flows" / "ship.yaml").write_text(SHIP.replace("agent: rev", "agent: supervisor"))
-    assert main(["kits", "check", "team"]) == 0
-    assert "is not in kit" not in capsys.readouterr().err
-
-
-def test_kits_check_warns_about_a_role_that_acts_in_no_flow(repo, capsys):
-    kit = _installed(repo, "team")
-    (kit / "flows").mkdir()
-    (kit / "flows" / "ship.yaml").write_text(SHIP.replace("agent: rev", "agent: supervisor"))
-    assert main(["kits", "check", "team"]) == 0
-    captured = capsys.readouterr()
-    rev = kit.resolve() / "agents" / "rev.md"
-    assert captured.err == (
-        f'warning: {rev}: role "rev" acts in no state of the kit\'s flows; '
-        "it can still be spawned outside a flow\n"
-    )
-    assert "team: OK" in captured.out
-
-
-@pytest.mark.parametrize(
-    "change, problem",
-    [
-        (
-            lambda s: s.replace(
-                "rejected: build}", "rejected: build}}\n  x: {agent: rev, do: X., outcomes: {a: x}"
-            ).replace("done: check", "done: check, side: x"),
-            'state "x": no end state can be reached from it',
-        ),
-        (
-            lambda s: s.replace("done: check", "done: check, again: build"),
-            "cycle build -> build has no state with max_visits and no gate",
-        ),
-        (
-            lambda s: s.replace("{agent: rev,", "{agent: rev, reads: [late],").replace(
-                "approved: end, rejected: build}}",
-                "approved: x, rejected: build}}\n"
-                "  x: {agent: rev, do: X., produces: [late], outcomes: {a: end}}",
-            ),
-            'state "build" reads "late", which no state before it produces',
-        ),
-    ],
-)
-def test_kits_check_fails_on_the_graph_problems_of_a_flow(repo, capsys, change, problem):
-    kit = _installed(repo, "team")
-    (kit / "flows").mkdir()
-    (kit / "flows" / "ship.yaml").write_text(change(SHIP))
-    assert main(["kits", "check", "team"]) == 1
-    captured = capsys.readouterr()
-    assert f"{kit.resolve() / 'flows' / 'ship.yaml'}: {problem}" in captured.err
-    assert "OK" not in captured.out
-    loaded = kits.load(kit)  # it still loads, and so does a run's snapshot of the flow
-    flows.from_snapshot(loaded.flows["ship"].snapshot, "team")
-
-
-def test_source_commands_are_not_under_kits(capsys):
-    for command in ("sources", "list"):
-        with pytest.raises(SystemExit):
-            main(["kits", command, "x"])
-    capsys.readouterr()
 
 
 def test_a_command_does_not_migrate_the_database_under_a_running_session(repo, fake_tmux, capsys):
@@ -2094,27 +1723,6 @@ def test_without_tmux_a_command_says_so_without_a_traceback(
     assert state.pending_migration() == (state.SCHEMA_VERSION - 1, ["s"])
 
 
-def test_a_failed_start_shows_its_cause_then_what_its_undo_could_not_do(
-    repo, fake_tmux, monkeypatch, capsys
-):
-    from lado import tmux
-
-    def fail(*args, **kwargs):
-        raise tmux.TmuxError("command too long")
-
-    def locked(*args):
-        raise sqlite3.OperationalError("database is locked")
-
-    monkeypatch.setattr(tmux, "new_session", fail)
-    monkeypatch.setattr(state, "delete_session", locked)
-    assert main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"]) == 1
-    assert capsys.readouterr().err == (
-        "lado: command too long\n"
-        "lado: undo of the start of s: forget the session failed: OperationalError: "
-        "database is locked\n"
-    )
-
-
 def test_ls_shows_a_running_session_without_its_loop(repo, fake_tmux, capsys):
     from lado import loop
 
@@ -2145,23 +1753,6 @@ def test_attach_restarts_a_dead_loop(repo, fake_tmux, loop_starts, monkeypatch):
     assert loop_starts == ["s", "s"]
     held.close()
     assert len(attached) == 2
-
-
-def test_answer_names_the_artifacts_of_the_note_before_the_gate(
-    repo, fake_tmux, capsys, monkeypatch
-):
-    _at_gate(repo, capsys)
-    runs.answer("s", "1", "reject", "first")
-    runs.spawn_worker("s", "ship/x")
-    artifacts.write("s", "rev", "design", content="v1")
-    artifacts.write("s", "rev", "plan", content="p1")
-    runs.advance("s", "rev", "ship/x", "done", "built it", attached=["design", "plan"])
-    artifacts.write("s", "rev", "plan", content="p2")
-    capsys.readouterr()
-    _typing(monkeypatch)
-    main(["answer"])
-    out = capsys.readouterr().out
-    assert "Note: built it\nArtifacts: ship/x/design, ship/x/plan (changed since)\n" in out
 
 
 def _with_artifacts(repo):
@@ -2328,14 +1919,6 @@ def test_kits_check_names_the_commands_a_kit_expects(repo, capsys, monkeypatch, 
         )
 
 
-@pytest.mark.parametrize("bad", ["/usr/bin/gh", "gh auth", "gh, gh"])
-def test_kits_check_refuses_a_command_that_is_no_name(repo, capsys, bad):
-    kit = _installed(repo, "cmd")
-    (kit / "kit.yaml").write_text(f"name: cmd\nversion: 1.0.0\nexpects:\n  commands: [{bad}]\n")
-    assert main(["kits", "check", str(kit)]) == 1
-    assert "expects.commands: " in capsys.readouterr().err
-
-
 def test_kits_show_looks_for_expected_commands_on_the_agents_path(
     repo, capsys, monkeypatch, tmp_path
 ):
@@ -2405,23 +1988,6 @@ def test_the_clone_is_there_already(tmp_path, fake_tmux, capsys):
     assert state.list_sessions() == []
 
 
-def test_a_folder_of_another_repository_or_with_files_is_refused(tmp_path, fake_tmux, capsys):
-    folder = init_repo(tmp_path / "app")
-    subprocess.run(
-        ["git", "-C", str(folder), "remote", "add", "origin", "git@github.com:acme/app.git"],
-        check=True,
-    )
-    assert main(["start", "git@github.com:ladohq/app.git", str(folder), "--no-attach"]) == 1
-    assert capsys.readouterr().err.splitlines() == [
-        f"lado: {folder} is a clone of another repository (origin git@github.com:acme/app.git): "
-        f"choose another folder, e.g. {tmp_path / 'ladohq-app'}"
-    ]
-    (tmp_path / "files").mkdir()
-    (tmp_path / "files" / "a.txt").write_text("x")
-    assert main(["start", "https://h/a/b", str(tmp_path / "files"), "--no-attach"]) == 1
-    assert "is not empty and is not a clone of https://h/a/b" in capsys.readouterr().err
-
-
 def test_a_relative_folder_is_refused(tmp_path, fake_tmux, capsys):
     assert main(["start", "https://h/a/app", "app", "--no-attach"]) == 1
     assert capsys.readouterr().err.splitlines() == [
@@ -2459,30 +2025,6 @@ def _branch_of(folder: Path) -> str:
     return runtime.branch(str(folder))
 
 
-def test_clone_and_start(tmp_path, fake_tmux, capsys):
-    url = agent_helpers.bare_remote(tmp_path)
-    folder = tmp_path / "work" / "app"
-    start = ["start", url, str(folder), "--branch", "develop", "--provider", "kilo"]
-    assert main([*start, "--no-attach"]) == 0
-    assert _branch_of(folder) == "develop"
-    sess = state.get_session("app")
-    assert sess.repo == os.path.realpath(folder)
-    captured = capsys.readouterr()
-    assert f"Cloning branch develop of {url} into {folder}" in captured.err
-    assert f'Started session "app" in {sess.repo}' in captured.out
-
-
-def test_clone_into_the_default_folder_with_the_remotes_default_branch(
-    home_workspace, tmp_path, fake_tmux, capsys, monkeypatch
-):
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    url = agent_helpers.bare_remote(tmp_path)
-    assert main(["start", url, "--provider", "kilo", "--no-attach"]) == 0
-    folder = tmp_path / "home" / "workspace" / "app"
-    assert _branch_of(folder) == "main"
-    assert f"Cloning the default branch of {url} into {folder}" in capsys.readouterr().err
-
-
 def test_a_start_refused_after_the_clone_keeps_the_clone(tmp_path, fake_tmux, capsys, monkeypatch):
     window_fails(monkeypatch)
     url = agent_helpers.bare_remote(tmp_path)
@@ -2502,25 +2044,6 @@ def test_a_clone_into_the_gone_folder_of_a_stopped_session_resumes_it(tmp_path, 
     assert main(["start", url, str(folder), "--no-attach"]) == 0
     assert f'Resumed session "app" in {os.path.realpath(folder)}' in capsys.readouterr().out
     assert _branch_of(folder) == "main"
-
-
-def test_a_git_url_without_the_login_is_refused_before_the_clone(
-    tmp_path, fake_tmux, capsys, monkeypatch, cli_logins
-):
-    for key, value in agent_helpers.fake_git(tmp_path / "fake", "ok").items():
-        monkeypatch.setenv(key, value)
-    cli_logins.logged_out()
-    folder = tmp_path / "work" / "app"
-    argv = ["start", "https://h/a/app", str(folder), "--provider", "claude", "--no-attach"]
-    assert main(argv) == 1
-    assert capsys.readouterr().err.splitlines() == [
-        "lado: Claude Code is not logged in, so the session was not started: log in in LADO's "
-        "UI (Settings → Agent CLIs, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN "
-        "as LADO's secret or a project secret"
-    ]
-    assert agent_helpers.fake_git_calls(tmp_path / "fake") == []
-    assert not (tmp_path / "work").exists()
-    assert state.list_sessions() == []
 
 
 def test_ctrl_c_during_the_clone(tmp_path, fake_tmux, capsys, monkeypatch):
@@ -2573,20 +2096,6 @@ def _start(repo, name: str, *more: str) -> list[str]:
     return ["start", str(repo), "--name", name, "--provider", "kilo", "--no-attach", *more]
 
 
-def test_start_with_a_prompt_queues_it_and_says_so(repo, fake_tmux, capsys):
-    assert main(_start(repo, "s", "--prompt", "Take LAD-19")) == 0
-    out = capsys.readouterr().out.splitlines()
-    started = next(i for i, line in enumerate(out) if line.startswith('Started session "s"'))
-    assert out[started + 1] == "first message: queued for the supervisor"
-    assert _humans("s") == ["Take LAD-19"]
-
-
-def test_start_without_a_prompt_says_nothing_of_it(repo, fake_tmux, capsys):
-    assert main(_start(repo, "s")) == 0
-    assert "first message" not in capsys.readouterr().out
-    assert _humans("s") == []
-
-
 def test_start_reads_the_prompt_from_a_file_and_from_stdin(repo, tmp_path, fake_tmux, monkeypatch):
     brief = tmp_path / "brief.md"
     brief.write_text("Это первое\nсообщение\n", encoding="utf-8")
@@ -2597,47 +2106,12 @@ def test_start_reads_the_prompt_from_a_file_and_from_stdin(repo, tmp_path, fake_
     assert _humans("b") == ["Line one\nLine two"]
 
 
-def test_start_refuses_both_prompt_options(repo, fake_tmux, capsys):
-    with pytest.raises(SystemExit) as exited:
-        main(_start(repo, "s", "--prompt", "a", "--prompt-file", "b"))
-    assert exited.value.code == 2
-    assert "not allowed with" in capsys.readouterr().err
-    assert state.get_session("s") is None
-
-
-def test_start_refuses_a_prompt_file_it_cannot_read(repo, tmp_path, fake_tmux, capsys):
-    missing = tmp_path / "missing.md"
-    assert main(_start(repo, "s", "--prompt-file", str(missing))) == 1
-    err = capsys.readouterr().err
-    assert err.startswith(f"lado: cannot read the first message from {missing}: ")
-    assert state.get_session("s") is None
-    assert fake_tmux == []
-
-
 def test_start_refuses_a_prompt_file_that_is_no_utf8(repo, tmp_path, fake_tmux, capsys):
     binary = tmp_path / "image.png"
     binary.write_bytes(b"\x89PNG\xff\xfe")
     assert main(_start(repo, "s", "--prompt-file", str(binary))) == 1
     assert f"cannot read the first message from {binary}: " in capsys.readouterr().err
     assert state.get_session("s") is None
-
-
-def test_start_refuses_an_empty_prompt(repo, fake_tmux, capsys):
-    assert main(_start(repo, "s", "--prompt", "")) == 1
-    assert capsys.readouterr().err.splitlines() == ["lado: the first message is empty"]
-    assert state.get_session("s") is None
-    assert fake_tmux == []
-
-
-def test_a_git_url_with_a_bad_prompt_clones_nothing(tmp_path, fake_tmux, capsys, monkeypatch):
-    def no_clone(*args, **kwargs):
-        raise AssertionError("cloned")
-
-    monkeypatch.setattr(cli.clone, "clone", no_clone)
-    start = ["start", "file:///nowhere/app.git", str(tmp_path / "app"), "--no-attach"]
-    assert main([*start, "--prompt", " "]) == 1
-    assert "lado: the first message is empty" in capsys.readouterr().err
-    assert not (tmp_path / "app").exists()
 
 
 def test_a_git_url_reads_stdin_once_before_the_clone(tmp_path, fake_tmux, capsys, monkeypatch):
@@ -2676,14 +2150,6 @@ def test_start_help_names_the_prompt_options(capsys):
     assert "--prompt TEXT" in out
     assert "--prompt-file FILE" in out
     assert "- reads it from stdin" in out
-
-
-def test_uninstall_help_names_its_options(capsys):
-    with pytest.raises(SystemExit):
-        main(["uninstall", "--help"])
-    out = capsys.readouterr().out
-    for option in ("--dry-run", "--keep-data", "--yes"):
-        assert option in out
 
 
 def test_uninstall_inside_an_agent_is_refused(lado_home, capsys, monkeypatch):
@@ -2775,25 +2241,6 @@ def test_title_sets_reads_and_clears(capsys):
     assert capsys.readouterr().out == "s has no title\n"
 
 
-def test_title_with_text_and_clear_exits_2(capsys):
-    state.add_session(state.Session("s", "/r", None, "claude"))
-    with pytest.raises(SystemExit) as exit_:
-        main(["title", "s", "Review", "--clear"])
-    assert exit_.value.code == 2
-    assert "argument --clear: not allowed with argument text" in capsys.readouterr().err
-
-
-def test_title_refuses_a_bad_title_and_changes_nothing(capsys):
-    state.add_session(state.Session("s", "/r", None, "claude"))
-    main(["title", "s", "Old"])
-    capsys.readouterr()
-    assert main(["title", "s", "a\nb"]) == 1
-    assert "a title is one line" in capsys.readouterr().err
-    assert main(["title", "s", "x" * 81]) == 1
-    assert "a title is at most 80 characters" in capsys.readouterr().err
-    assert state.get_session("s").title == "Old"
-
-
 def test_title_is_refused_inside_an_agent_but_read(capsys, monkeypatch):
     state.add_session(state.Session("s", "/r", None, "claude"))
     state.set_title("s", "Review")
@@ -2810,17 +2257,6 @@ def test_title_of_an_unknown_session(capsys):
     for argv in (["title", "nope"], ["title", "nope", "x"]):
         assert main(argv) == 1
         assert 'unknown session "nope"' in capsys.readouterr().err
-
-
-def test_ls_shows_the_title_after_the_name(repo, fake_tmux, capsys):
-    main(["start", str(repo), "--provider", "claude", "--name", "s", "--no-attach"])
-    main(["start", str(repo), "--provider", "claude", "--name", "t", "--no-attach"])
-    runtime.set_title("s", "Rename sessions (LAD-66)")
-    capsys.readouterr()
-    main(["ls"])
-    lines = capsys.readouterr().out.splitlines()
-    heads = [line.partition("  (")[0] for line in lines if not line.startswith(" ")]
-    assert heads == [f's "Rename sessions (LAD-66)"  {repo}', f"t  {repo}"]
 
 
 # lado start --new [<folder>] (openspec change start-from-scratch)
@@ -2863,53 +2299,11 @@ def test_new_without_the_login_makes_no_folder(tmp_path, git_config, fake_tmux, 
     assert state.list_sessions() == []
 
 
-def test_new_takes_the_name_given_and_a_relative_folder(
-    tmp_path, git_config, fake_tmux, capsys, monkeypatch
-):
-    monkeypatch.chdir(tmp_path)
-    argv = ["start", "--new", "shop", "--name", "Coffee", "--provider", "kilo", "--no-attach"]
-    assert main(argv) == 0
-    assert f"Made {tmp_path / 'shop'} a git repository" in capsys.readouterr().out
-    assert state.get_session("coffee").repo == os.path.realpath(tmp_path / "shop")
-
-
 def test_new_in_the_current_folder(tmp_path, git_config, fake_tmux, monkeypatch):
     (tmp_path / "coffee-site").mkdir()
     monkeypatch.chdir(tmp_path / "coffee-site")
     assert main(["start", "--new", "--provider", "kilo", "--no-attach"]) == 0
     assert state.get_session("coffee-site").repo == os.path.realpath(tmp_path / "coffee-site")
-
-
-def test_a_folder_with_files(tmp_path, git_config, fake_tmux, capsys):
-    (tmp_path / "notes").mkdir()
-    (tmp_path / "notes" / "todo.txt").write_text("x")
-    assert main(["start", "--new", str(tmp_path / "notes"), "--no-attach"]) == 1
-    assert capsys.readouterr().err.splitlines() == [
-        f"lado: {tmp_path / 'notes'} is not empty: choose a new or empty folder",
-        "lado: Make it a repository with a first commit, in that folder: "
-        "git init && git add -A && git commit -m 'First commit'",
-    ]
-    assert os.listdir(tmp_path / "notes") == ["todo.txt"]
-    assert state.list_sessions() == []
-
-
-def test_new_inside_a_repository_names_its_start(repo, git_config, fake_tmux, capsys):
-    assert main(["start", "--new", str(repo / "site"), "--no-attach"]) == 1
-    err = capsys.readouterr().err.splitlines()
-    real = os.path.realpath(repo)
-    assert err[-1] == f"lado: Start a session in that repository: lado start '{real}'"
-    assert not (repo / "site").exists()
-
-
-def test_new_without_the_author(tmp_path, git_config, fake_tmux, capsys):
-    git_config.write_text("")
-    assert main(["start", "--new", str(tmp_path / "shop"), "--no-attach"]) == 1
-    assert capsys.readouterr().err.splitlines() == [
-        "lado: git doesn't know who signs the agents' commits: it has no user.name or user.email",
-        "lado: Tell git who you are, once for this computer: git config --global user.name "
-        '"Your Name" && git config --global user.email you@example.com',
-    ]
-    assert not (tmp_path / "shop").exists()
 
 
 def test_new_with_a_kit_that_lacks_a_skill_makes_no_folder(
@@ -3044,36 +2438,6 @@ def test_project_create_refuses_with_its_reason(ws, capsys):
     assert not ws.exists()
 
 
-def test_project_delete_shows_unpushed_work_and_needs_yes(ws, git_config, capsys):
-    assert main(["project", "create", "shop"]) == 0
-    folder = ws / "projects" / "shop"
-    repo = init_repo(folder / "frontend")
-    (repo / "new.txt").write_text("x")
-    capsys.readouterr()
-    assert main(["project", "delete", "shop"]) == 1
-    captured = capsys.readouterr()
-    assert captured.out.splitlines() == [
-        f"Unpushed work in {folder}:",
-        "  frontend: uncommitted changes; branch main not pushed",
-    ]
-    assert captured.err == (
-        f"lado: deleting project shop removes its folder {folder} with everything in it; "
-        "run again with --yes\n"
-    )
-    assert folder.is_dir() and state.get_project("shop")
-    assert main(["project", "delete", "shop", "--yes"]) == 0
-    assert capsys.readouterr().out.splitlines()[-1] == "Deleted project shop"
-    assert not folder.exists() and state.get_project("shop") is None
-    assert (ws / "projects").is_dir()
-
-
-def test_project_delete_with_nothing_unpushed_prints_no_list(ws, capsys):
-    assert main(["project", "create", "shop"]) == 0
-    capsys.readouterr()
-    assert main(["project", "delete", "shop"]) == 1
-    assert capsys.readouterr().out == ""
-
-
 def test_project_delete_names_a_session_from_before_projects(ws, capsys):
     assert main(["project", "create", "shop"]) == 0
     folder = ws / "projects" / "shop"
@@ -3190,22 +2554,6 @@ def test_start_with_a_project_takes_its_repository_only(shop, fake_tmux, capsys,
     assert state.list_sessions() == []
 
 
-def test_start_refuses_a_repository_the_project_does_not_have(shop, fake_tmux, capsys):
-    assert main(["start", "--project", "shop", "--repo", "web", "--no-attach"]) == 1
-    assert capsys.readouterr().err == (
-        "lado: project shop has no repository web; its repositories: frontend\n"
-    )
-
-
-def test_start_without_the_project_in_its_repository_offers_it(shop, fake_tmux, capsys):
-    assert main(["start", str(shop / "frontend"), "--no-attach"]) == 1
-    assert capsys.readouterr().err.splitlines() == [
-        f"lado: {shop / 'frontend'} belongs to the project Shop: start a session in the project",
-        "lado: Start a session in the project: lado start --project shop --repo frontend",
-    ]
-    assert state.list_sessions() == []
-
-
 def test_a_clone_into_a_project_is_refused_before_cloning(shop, fake_tmux, capsys):
     assert main(["start", "https://h/shop/web", str(shop / "web"), "--no-attach"]) == 1
     assert capsys.readouterr().err.splitlines() == [
@@ -3243,12 +2591,6 @@ def test_project_show_lists_the_repositories(shop, tmp_path, capsys):
         "  variables: none",
         "  secrets: none",
     ]
-
-
-def test_project_show_without_repositories(shop, capsys):
-    shutil.rmtree(shop)
-    assert main(["project", "show", "shop"]) == 0
-    assert capsys.readouterr().out.splitlines()[-3] == "  repositories: none"
 
 
 def test_project_delete_with_sessions(shop, capsys):
@@ -3407,17 +2749,6 @@ def test_project_repo_remove(shop, capsys):
     assert state.get_project("shop") and shop.is_dir()
 
 
-def test_project_repo_remove_names_a_session_from_before_projects(shop, capsys):
-    state.add_session(state.Session("old-frontend", str(shop / "frontend"), None, "kilo"))
-    state.stop_session("old-frontend")
-    assert main(["project", "repo", "remove", "shop", "frontend"]) == 1
-    captured = capsys.readouterr()
-    assert captured.out.splitlines()[0] == "Sessions to forget: old-frontend (no project)"
-    assert captured.err.endswith("and forgets its 1 session; run again with --yes\n")
-    assert main(["project", "repo", "remove", "shop", "frontend", "--yes"]) == 0
-    assert not (shop / "frontend").exists() and state.list_sessions() == []
-
-
 def test_project_repo_remove_a_link(shop, tmp_path, capsys):
     target = tmp_path / "docs"
     target.mkdir()
@@ -3432,22 +2763,6 @@ def test_project_repo_remove_a_link(shop, tmp_path, capsys):
     assert main(["project", "repo", "remove", "shop", "docs", "--yes"]) == 0
     assert capsys.readouterr().out == "Removed the link docs from project shop\n"
     assert target.is_dir() and not os.path.lexists(shop / "docs")
-
-
-def test_project_repo_remove_refusals(shop, capsys):
-    (shop / "notes").mkdir()
-    assert main(["project", "repo", "remove", "shop", "notes", "--yes"]) == 1
-    assert capsys.readouterr().err == (
-        "lado: notes in project shop is not a repository: LADO removes only repositories and "
-        "links\n"
-    )
-    assert main(["project", "repo", "remove", "shop", "web"]) == 1
-    assert capsys.readouterr().err == (
-        "lado: project shop has no repository web; its repositories: frontend\n"
-    )
-    assert main(["project", "repo", "remove", "acme", "web"]) == 1
-    assert capsys.readouterr().err == 'lado: unknown project "acme"\n'
-    assert (shop / "notes").is_dir() and (shop / "frontend").is_dir()
 
 
 # A project's variables (openspec change project-variables)
@@ -3505,11 +2820,6 @@ def _not_stopped(sess):
     return runtime.SessionStatus.STOPPED if sess.stopped_at else runtime.SessionStatus.RUNNING
 
 
-def test_project_set_a_value_that_starts_with_a_dash(shop, capsys):
-    assert main(["project", "set", "shop", "FLAGS", "--", "-v"]) == 0
-    assert state.project_variables("shop") == {"FLAGS": "-v"}
-
-
 @pytest.mark.parametrize(
     ("argv", "said"),
     [
@@ -3535,15 +2845,6 @@ def test_project_set_and_unset_refusals(shop, capsys, argv, said):
     err = capsys.readouterr().err
     assert err.startswith(f"lado: {said}") and err.count("\n") == 1
     assert state.project_variables("shop") == {}
-
-
-def test_project_set_s_secret_hint(shop, capsys):
-    assert main(["project", "set", "shop", "DB_PASSWORD", "x"]) == 1
-    assert capsys.readouterr().err == (
-        "lado: DB_PASSWORD looks like a secret (PASSWORD): a plain variable takes no name with "
-        "TOKEN, KEY, SECRET or PASSWORD; set it as a secret with lado project set shop "
-        "DB_PASSWORD --secret\n"
-    )
 
 
 @pytest.mark.parametrize(
@@ -3576,18 +2877,6 @@ def test_project_set_racing_a_delete_is_an_unknown_project(shop, capsys, monkeyp
     assert state.project_variables("shop") == {}
 
 
-def test_project_delete_takes_the_variables_along(shop, capsys, monkeypatch):
-    assert main(["project", "set", "shop", "BOARD_URL", "https://a"]) == 0
-    monkeypatch.setattr("sys.stdin", Stdin("ghp_1\n"))
-    assert main(["project", "set", "shop", "GH_TOKEN", "--secret"]) == 0
-    assert main(["project", "delete", "shop", "--yes"]) == 0
-    assert not os.path.lexists(project_secrets.data_folder("shop"))
-    assert main(["project", "create", "shop"]) == 0
-    capsys.readouterr()
-    assert main(["project", "show", "shop"]) == 0
-    assert capsys.readouterr().out.splitlines()[-2:] == ["  variables: none", "  secrets: none"]
-
-
 # A project's secrets (openspec change project-secrets)
 
 
@@ -3605,10 +2894,6 @@ class Stdin(io.StringIO):
     @property
     def touched(self) -> bool:
         return self.buffer.tell() > 0
-
-
-def secret_file(name: str) -> Path:
-    return project_secrets.folder("shop") / name
 
 
 @pytest.mark.parametrize(
@@ -3634,16 +2919,6 @@ def test_project_set_secret_from_a_pipe(shop, capsys, monkeypatch, given, stored
     ]
     assert project_secrets.read("shop").values == {"GH_TOKEN": stored}
     assert state.project_variables("shop") == {}
-
-
-def test_project_set_secret_on_a_terminal_asks_without_echo(shop, capsys, monkeypatch):
-    monkeypatch.setattr("sys.stdin", Stdin(tty=True))
-    asked = []
-    monkeypatch.setattr("getpass.getpass", lambda prompt: asked.append(prompt) or "ghp_1")
-    assert main(["project", "set", "shop", "GH_TOKEN", "--secret"]) == 0
-    assert asked == ["Value of GH_TOKEN (not shown): "]
-    assert secret_file("GH_TOKEN").read_text() == "ghp_1"
-    assert "ghp_1" not in capsys.readouterr().out
 
 
 def test_project_set_secret_ended_on_a_terminal_is_an_empty_value(shop, capsys, monkeypatch):
@@ -3678,27 +2953,6 @@ def test_project_set_secret_with_the_value_given_is_refused_before_reading(
     assert project_secrets.names("shop") == []
 
 
-@pytest.mark.parametrize(
-    ("name", "given", "said"),
-    [
-        (
-            "GH_TOKEN",
-            "\n",
-            "the secret GH_TOKEN is empty; to remove it: lado project unset shop GH_TOKEN",
-        ),
-        ("GH_TOKEN", "x" * 70000, "the value of GH_TOKEN is larger than 64 KiB"),
-        ("LADO_HOME", "x", "LADO_HOME is reserved: LADO or the agent CLIs set it"),
-        ("A-B", "x", "the name A-B is not a variable name: "),
-    ],
-)
-def test_project_set_secret_refusals(shop, capsys, monkeypatch, name, given, said):
-    monkeypatch.setattr("sys.stdin", Stdin(given))
-    assert main(["project", "set", "shop", name, "--secret"]) == 1
-    err = capsys.readouterr().err
-    assert err.startswith(f"lado: {said}") and err.count("\n") == 1
-    assert not project_secrets.data_folder("shop").exists()
-
-
 def test_project_set_without_a_value_or_secret(shop, capsys):
     assert main(["project", "set", "shop", "BOARD_URL"]) == 1
     assert capsys.readouterr().err == (
@@ -3713,29 +2967,6 @@ def test_project_set_secret_of_an_unknown_project_reads_nothing(shop, capsys, mo
     assert main(["project", "set", "nope", "GH_TOKEN", "--secret"]) == 1
     assert capsys.readouterr().err == 'lado: unknown project "nope"\n'
     assert not stdin.touched
-
-
-def test_project_set_secret_needs_one_value_per_name(shop, capsys, monkeypatch):
-    assert main(["project", "set", "shop", "DATABASE_URL", "postgres://x"]) == 0
-    monkeypatch.setattr("sys.stdin", Stdin("postgres://y"))
-    assert main(["project", "set", "shop", "DATABASE_URL", "--secret"]) == 1
-    assert capsys.readouterr().err == (
-        "lado: DATABASE_URL is a plain variable of shop; remove it first with lado project "
-        "unset shop DATABASE_URL\n"
-    )
-
-
-def test_agents_cannot_set_a_secret_and_stdin_is_not_read(shop, capsys, monkeypatch):
-    stdin = Stdin("x")
-    monkeypatch.setattr("sys.stdin", stdin)
-    monkeypatch.setenv("LADO_SESSION", "s")
-    monkeypatch.setenv("LADO_AGENT", "w1")
-    assert main(["project", "set", "shop", "GH_TOKEN", "--secret"]) == 1
-    assert capsys.readouterr().err == (
-        'lado: lado project set is for the human; agent "w1" cannot use it\n'
-    )
-    assert not stdin.touched
-    assert project_secrets.names("shop") == []
 
 
 # lado project set refuses its command line without repeating it (openspec change
@@ -3831,15 +3062,3 @@ def test_project_show_lists_secrets_by_name_only(shop, capsys, monkeypatch):
     out = capsys.readouterr().out
     assert out.splitlines()[-3:] == ["  secrets:", "    GH_TOKEN", "    YOUGILE_API_KEY"]
     assert "canary" not in out
-
-
-def test_project_unset_removes_a_secret(shop, capsys, monkeypatch):
-    monkeypatch.setattr("sys.stdin", Stdin("g"))
-    assert main(["project", "set", "shop", "GH_TOKEN", "--secret"]) == 0
-    capsys.readouterr()
-    assert main(["project", "unset", "shop", "GH_TOKEN"]) == 0
-    assert capsys.readouterr().out.splitlines() == [
-        "Removed GH_TOKEN from project shop.",
-        "Agents started from now on do not get it.",
-    ]
-    assert not secret_file("GH_TOKEN").exists()

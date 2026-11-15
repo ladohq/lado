@@ -636,6 +636,38 @@ others reference feature steps of the models epic (LAD-180, 182, 183, 187, 200, 
   working copy) and `tmux.py` 143-144, run by `test_tmux.py`, which this change does not
   touch and which runs them when run again. Unit tests: 5 575 passed (5 717 on main).
 
+### Stage 1, part 5 (2026-11-15, branch `chore/test-audit-stage-1-cli`): `cli.py`
+
+**Coverage** measured again on main 6ab2d1b4. `tests/test_cli.py` runs `cli.py` and,
+through the commands, eight more modules, so all nine were mutated with the same judge
+(`--judge tests/test_cli.py --enough 3`): `cli.py`, `clone.py`, `marketplaces.py`,
+`log.py`, `gitcache.py`, `self_update.py`, `providers/kilo.py`, `runs.py`, `flows.py`.
+
+**Mutants.** 4 087 in all: 1 875 killed by a test of the file, 866 untouched by it, 1 209
+skipped, 112 on lines no test runs, 24 timeouts, 1 error; no survivor. `cli.py` alone:
+2 078 (1 238 killed). The tests of `cli.py` start processes, so a mutant takes about 45 s
+and one of the argument parser up to 150 s: about seven hours on six jobs, the slowest
+module so far. The one error (`cli.py` 139, the attach test negated) attaches to tmux and
+crashes the pytest workers; the remaining tests of the file still fail on it.
+
+**Removable.** Of the 225 test functions, 32 kill no mutant the run recorded; `removable`
+over the nine matrices lists 86. Rule 2 keeps 20: the bug tasks LAD-105 (a kit checked
+only after the folder was made), LAD-181 (a secret printed by argparse's error) and
+LAD-141, and LAD-5, 27, 106, 139, 163, 176 and 239, which read both ways. Rule 4 keeps the
+three tests of a database on an older schema. The others reference feature tasks
+(projects and their secrets, kits, `lado new`, the hints of `start`, `ls`, `answer`) or
+none. **63 test functions removed** and 2 helpers no test used any more:
+`tests/test_cli.py` 225 → 162 test functions, about 780 lines fewer.
+
+**Rechecks.**
+- Every mutant a removed test killed (343) was run again against its remaining killers:
+  all 343 killed.
+- The branch coverage of the whole unit suite on main and on the branch: no branch of
+  `src/` left unrun by the removal. Two files differ, neither touched: `tmux.py` 122,
+  143-144 (run by `test_tmux.py` when run alone) and `model_servers.py` 655, the branch of
+  an `OSError` with a message, which a fake server's refused connection reaches by chance.
+  Unit tests: 5 506 passed (5 576 on main).
+
 ## 7. Sources
 
 - coverage.py, Measurement contexts: https://coverage.readthedocs.io/en/latest/contexts.html

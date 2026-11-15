@@ -9,8 +9,10 @@
 | 2026-11-15 | intake, #7068 q4 | Documentation | each step documents itself, step 4 writes the plain guide; all in step 4 | each step plus the guide (lead) | as recommended (human) | yes |
 | 2026-11-15 | intake, #7068 q5 | Removal and rollback | a removed server's host works as today; `GH_TOKEN` and `gh`'s login are kept on migration, so a rollback to 0.47 breaks nothing | as listed (lead) | as recommended (human) | yes |
 | 2026-11-15 | intake, #7068 q6 | Step 5, kit sdlc's GitLab example (other repository) | in this epic; Later, task created on the human's yes after steps 1–3 | Later (lead) | Later (human) | yes |
-| 2026-11-15 | plan, plan-review P2, P3 | Split S1 and S2 now or at design | at design; in the plan | in the plan (critic) | pending plan_ok | — |
-| 2026-11-15 | plan, plan-review P6 | A github.com entry before S3 | accept it, with a rule which source wins; refuse it until S3 | refuse until S3 (lead) | pending plan_ok | — |
-| 2026-11-15 | plan, plan-review P10 | Where the human checks | release candidate carrying S5; `make docker` from main | the release candidate (lead) | pending plan_ok | — |
-| 2026-11-15 | plan_ok #528, the human's message | Step numbers S1a, S1b, S2a, S2b | keep letters; renumber in order | — | renumber S1–S8 in order: no step is in the tracker yet (human) | — |
+| 2026-11-15 | plan, plan-review P2, P3 | Split S1 and S2 now or at design | at design; in the plan | in the plan (critic) | in the plan, approved at plan_ok #528 (human) | yes |
+| 2026-11-15 | plan, plan-review P6 | A github.com entry before S3 | accept it, with a rule which source wins; refuse it until S3 | refuse until S5 (lead; S3 before the renumbering) | approved at plan_ok #528 (human) | yes |
+| 2026-11-15 | plan, plan-review P10 | Where the human checks | release candidate carrying S5; `make docker` from main | the release candidate (lead) | approved at plan_ok #528 (human) | yes |
+| 2026-11-15 | plan_ok #528, the human's message | Step numbers S1a, S1b, S2a, S2b | keep letters; renumber in order | — | renumber S1–S8 in order: no step is in the tracker yet (human) | n/a (the human's own) |
 | 2026-11-15 | plan_ok #528, #7090, #7092 | Who names a server's kind | the human chooses it (the statement); LADO finds it from the server's API, `--kind` as the fallback | found by LADO, `--kind` the fallback (lead) | found by LADO, `--kind` the fallback; asked how it works for servers on the local network and whether other kinds can come later — both covered (human) | yes |
+
+Epic: plan_ok #528 — approved as recommended; questions #7086 (update LAD-162's stages, as recommended).

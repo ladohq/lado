@@ -1,7 +1,7 @@
 # Plan: Git servers (LAD-162)
 
 ## State
-Phase: plan · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
+Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
 In work: — · Next: S1 · Open checks: the human's check on the company GitLab, on the release candidate that carries S7
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).

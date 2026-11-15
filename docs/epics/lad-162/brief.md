@@ -54,26 +54,26 @@ list behaves as today and the UI suggests adding it; `~/.gitconfig` is unchanged
 
 ## Readiness checklist
 
-- Goal and "done": covered by S5, Check: "Then the human's check, on the release
-  candidate that carries S5 … github.com works as before."
-- Users and how they use it: covered by S1b, Check: "a UI e2e test adds a gitlab.com and
+- Goal and "done": covered by S7, Check: "Then the human's check, on the release
+  candidate that carries S7 … github.com works as before."
+- Users and how they use it: covered by S2, Check: "a UI e2e test adds a gitlab.com and
   a self-hosted server … and removes one".
 - Scope and what is out: covered by the plan's Steps and Later.
-- Data and migrations: covered by S1a, Check: "the upgrade and rollback test of the way
-  back"; S2a and S4 the same; S3, Check: "an integration test of an upgrade".
-- Secrets and credentials: covered by S1a, Check: "clone and push by https with no
+- Data and migrations: covered by S1, Check: "the upgrade and rollback test of the way
+  back"; S3 and S6 the same; S5, Check: "an integration test of an upgrade".
+- Secrets and credentials: covered by S1, Check: "clone and push by https with no
   prompt"; the token in LADO's secret store under `LADO_HOME`, never in a git config file.
-- Update and rollback: covered by the plan's way back and S3, Check: "after a rollback
+- Update and rollback: covered by the plan's way back and S5, Check: "after a rollback
   … the old path works — checked by running it after the rollback". A rollback restores
   lado.db from before the migration: the entries are gone, their files stay unused.
-- Removal: covered by S1a, Check: "a removed server's host behaves as before".
-- Platforms: covered by S1a, Check: "git older than … (2.31) is refused loudly" and "a
-  real CLI's git uses the entry — the smoke layer for Claude Code and Codex"; S5 the image.
-- Observability: covered by S2b, Check: "'Check' … say 'works, this is <name>' or why not
-  in plain words"; S4 the untrusted server.
+- Removal: covered by S1, Check: "a removed server's host behaves as before".
+- Platforms: covered by S1, Check: "git older than … (2.31) is refused loudly" and "a
+  real CLI's git uses the entry"; S7 the image.
+- Observability: covered by S4, Check: "'Check' … say 'works, this is <name>' or why not
+  in plain words"; S6 the untrusted server.
 - Tests and what only a human can check: covered by each step's Check; the human's check
-  in S5.
-- Documentation: covered by each step ("docs describe what was built") and S6.
+  in S7.
+- Documentation: covered by each step ("docs describe what was built") and S8.
 
 ## Branch strategy
 

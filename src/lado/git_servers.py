@@ -268,6 +268,9 @@ def variables(env: Mapping[str, str], servers: Sequence[state.GitServer]) -> dic
             found[f"GIT_CONFIG_VALUE_{n}"] = value
             n += 1
     found["GIT_CONFIG_COUNT"] = str(n)
+    # What a process this one starts gets back once LADO's entries are dropped
+    # (agent_env.without_launch).
+    found[agent_env.GIT_CONFIG_BASE] = env.get("GIT_CONFIG_COUNT", "")
     return found
 
 

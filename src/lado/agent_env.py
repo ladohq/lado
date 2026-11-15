@@ -53,6 +53,9 @@ from lado import interpreter, state, tmux
 
 SOURCE_VAR = "LADO_AGENT_ENV"
 LAUNCH_VARS = "LADO_LAUNCH_VARS"  # the names a launch set on top of the layers, comma-separated
+# The layers' own GIT_CONFIG_COUNT under LADO's git entries ("" for none): without_launch
+# gives it back.
+GIT_CONFIG_BASE = "LADO_GIT_CONFIG_BASE"
 SHELL, INHERIT = "shell", "inherit"
 TIMEOUT = 10  # seconds the shell may take
 SLOW = 2  # seconds above which `lado doctor` warns
@@ -133,9 +136,16 @@ def layers(project: Mapping[str, str] | None = None) -> Layers:
 def without_launch(env: Mapping[str, str]) -> dict[str, str]:
     """`env` without what LADO and the provider set for the launch of the agent it is the
     environment of (LAUNCH_VARS): a process an agent started hands on neither that agent's
-    config nor its keys to the agent it starts."""
+    config nor its keys to the agent it starts. `GIT_CONFIG_COUNT`, which LADO's git
+    entries raised past the layers' own (lado.git_servers.variables), goes back to the
+    layers' count, GIT_CONFIG_BASE ("" for none)."""
     names = {*env.get(LAUNCH_VARS, "").split(","), LAUNCH_VARS}
-    return {k: v for k, v in env.items() if k not in names}
+    found = {k: v for k, v in env.items() if k not in names}
+    if GIT_CONFIG_BASE in env:
+        found.pop("GIT_CONFIG_COUNT", None)
+        if env[GIT_CONFIG_BASE]:
+            found["GIT_CONFIG_COUNT"] = env[GIT_CONFIG_BASE]
+    return found
 
 
 def merge(

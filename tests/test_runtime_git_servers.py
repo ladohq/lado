@@ -64,6 +64,28 @@ def test_a_saved_server_reaches_the_agent_after_its_own_entries(
     assert "glpat-CANARY" not in json.dumps(env)
 
 
+@pytest.mark.parametrize(
+    "own",
+    [
+        {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "a.b", "GIT_CONFIG_VALUE_0": "c"},
+        {},
+    ],
+)
+def test_a_worker_spawned_from_an_agent_starts_from_the_humans_own_git_entries(
+    repo, fake_tmux, lado_home, monkeypatch, agents_path, own
+):
+    """Under LADO_AGENT_ENV=inherit a worker starts from its spawner's environment without
+    what the spawner's launch set: the human's own GIT_CONFIG_* come back as they were."""
+    _, path = agents_path
+    _shell(monkeypatch, {"PATH": path, **own})
+    _save()
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    launched = _launched(lado_home)
+    assert launched["GIT_CONFIG_COUNT"] == str(int(own.get("GIT_CONFIG_COUNT", 0)) + 5)
+    back = agent_env.without_launch(launched)
+    assert {k: v for k, v in back.items() if k.startswith("GIT_CONFIG")} == own
+
+
 def _old_git(folder):
     (folder / "git").write_text("#!/bin/sh\necho 'git version 2.30.2'\n")
     (folder / "git").chmod(0o755)

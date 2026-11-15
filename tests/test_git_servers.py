@@ -372,7 +372,8 @@ def test_no_server_sets_no_variable():
 def test_each_server_gets_an_empty_helper_lados_and_its_ssh_forms(lado_home):
     found = git_servers.variables({}, [_server()])
     entries = _entries(found)
-    assert len(found) == 1 + 2 * len(entries)
+    assert len(found) == 2 + 2 * len(entries)
+    assert found["LADO_GIT_CONFIG_BASE"] == ""  # the environment had no count of its own
     helper = git_servers.helper_command(_server())
     assert entries == [
         ("credential.https://gitlab.corp.ru.helper", ""),
@@ -414,6 +415,7 @@ def test_the_agents_own_entries_are_kept_and_lados_come_after():
     env = {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "core.autocrlf"}
     found = git_servers.variables(env, [_server(), _server("b2", "https://g.lan", "g.lan")])
     assert found["GIT_CONFIG_COUNT"] == "11"
+    assert found["LADO_GIT_CONFIG_BASE"] == "1"
     assert "GIT_CONFIG_KEY_0" not in found
     assert found["GIT_CONFIG_KEY_1"] == "credential.https://gitlab.corp.ru.helper"
     assert found["GIT_CONFIG_KEY_6"] == "credential.https://g.lan.helper"

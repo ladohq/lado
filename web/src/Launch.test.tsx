@@ -2133,14 +2133,13 @@ test("a start refused for its model points at the field", async () => {
     );
   toggleTeam();
   fireEvent.click(startButton());
-  await screen.findByText(`Not started: ${HOME} does not answer. See Model above.`);
-  expect(screen.getByText(SILENT)).toBeTruthy();
+  await screen.findByText(SILENT);
   await waitFor(() => expect(teamIsOpen()).toBe(true));
   expect(document.activeElement).toBe(modelField());
   expect(startButton().disabled).toBe(true);
+  expect(screen.queryByText(/Not started/)).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Use Kilo CLI's settings" }));
   await waitFor(() => expect(startButton().disabled).toBe(false));
-  expect(screen.queryByText(/^Not started/)).toBeNull();
 });
 
 test("the list's foot opens Settings in a new tab, and the window reads the models at its focus", async () => {

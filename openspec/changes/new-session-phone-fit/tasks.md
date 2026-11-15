@@ -1,6 +1,6 @@
 ## 1. One refusal of the model
 
-- [ ] 1.1 `web/src/Launch.tsx`: drop the `Not started: … See Model above.` paragraph (D5); keep
+- [x] 1.1 `web/src/Launch.tsx`: drop the `Not started: … See Model above.` paragraph (D5); keep
   `modelRefusal`'s other effects. Check: `web/src/Launch.test.tsx`, the test that waits for
   `Not started` (~line 2136), now asserts no `Not started` text after the refused start, the
   refusal `does not answer` under Model, the focus on Model and the start button off; `make web`.

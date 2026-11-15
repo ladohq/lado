@@ -1477,9 +1477,6 @@ function LaunchDialog({
               </p>
             </div>
           )}
-          {modelRefusal && (
-            <p className="problem" role="alert">{`Not started: ${modelRefusal.short}. See Model above.`}</p>
-          )}
           {resuming && <ActionProblem attempt={attempt} />}
         </div>
 

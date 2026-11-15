@@ -1738,12 +1738,14 @@ def cmd_git_server_add(args: argparse.Namespace) -> int:
     again = f"{git_servers.ADD} {at.root} --token"
     try:
         git_servers.check_not_github(at)
+        if args.token is None:
+            raise git_servers.Refused(
+                f"a git server is added with its token: run {again} and type it, or pipe it in"
+            )
         if args.token is not _NO_VALUE:
             raise git_servers.Refused(
                 "a server's token is never given on the command line (ps and the shell's "
                 f"history keep it); run {again} and type it, or pipe it in"
-                if args.token is not None
-                else f"a git server is added with its token: run {again} and type it, or pipe it in"
             )
         git_servers.check_git(os.environ)
         warning = git_servers.plain_http_warning(at)

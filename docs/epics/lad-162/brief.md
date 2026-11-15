@@ -44,6 +44,10 @@ version, maybe two pull requests: core, then UI); 2 company certificate; 3 GitLa
 in the image configured from the server entry, agents open merge requests); 4 the guide
 "Connect your own git server"; 5 kit sdlc's GitLab example (repository kit-sdlc).
 
+These are the design's stage numbers, also used by the rows of intake in decisions.md
+("step 4" there is the guide, "step 5" kit sdlc). The plan numbers its own steps: design 1
+→ S1–S5, 2 → S6, 3 → S7, 4 → S8, 5 → Later.
+
 ## Goal and done
 
 Done when, in LADO in Docker on a Mac with the company GitLab reached through the

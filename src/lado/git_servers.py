@@ -205,8 +205,9 @@ def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
         unchecked = f"it sends to {moved}"
         refusal = Refused(f"{at.root} sends to {moved}; give the server's own address")
     elif all(answer.status is None for answer in answers):
-        unchecked = f"it does not answer: {_silent(answers[0])}"
-        refusal = Refused(f"{at.key} does not answer: {_silent(answers[0])}", _kind_hint(at.root))
+        silent = _silent(answers[0])
+        unchecked = f"it does not answer: {silent}"
+        refusal = Refused(f"{at.key} does not answer: {silent}", _kind_hint(at.root))
     else:
         titles = " nor ".join(kind.title for kind in git_kinds.KINDS)
         unchecked = f"it answers as neither {titles}"

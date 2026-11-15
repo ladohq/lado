@@ -2,7 +2,7 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: — · Next: S1 · Open checks: the human's check on the company GitLab, on the release candidate that carries S7
+In work: S1 (LAD-289, run task/lad-289) · Next: S2 · Open checks: the human's check on the company GitLab, on the release candidate that carries S7
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
@@ -27,7 +27,7 @@ git for a host that was listed goes the old way. Each such step checks it with a
 and rollback test, as earlier migrations do, and names whether its files are cleaned up.
 
 ### S1 — Git servers: the list and https access for agents (walking skeleton)
-Status: planned
+Status: in progress (LAD-289, run task/lad-289)
 Check: unit tests per server kind against a fake API: `lado git-server add <address>
 --token` finds the kind itself by asking the server's API with the token (GitLab's
 `/api/v4/user`, GitHub's `/api/v3/user` or api.github.com) and says "GitLab, signed in as

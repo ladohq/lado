@@ -247,7 +247,8 @@ tests kept for a bug; the recheck.
 
 **Cost.** A mutant in a function's body runs a few tests, seconds; one at import time (a
 constant) runs every test of the module, minutes. `providers/codex.py` (967 mutants) took
-about four hours on four to six jobs.
+about four hours on four to six jobs. A module most of the suite runs needs `--judge` and
+`--enough` (part 2), and the modules its test file covers most are run with the same judge.
 
 ### Stage 2. Tables of the checks that stay
 
@@ -519,6 +520,58 @@ escapes of a TOML string, the labels of the sandbox modes, the default context l
 
 **Time.** About four hours of runs on four to six jobs (an import-time mutant runs some 425
 tests), the rechecks two more. The next modules start with `scripts/mutants.py`.
+
+### Stage 1, part 2 (2026-11-15, branch `chore/test-audit-stage-1-runtime`): `runtime.py`
+
+**What made it affordable.** `runtime.py` is run by most of the suite: an import-time
+mutant runs some 3 100 tests, a prompt text's mutant that nothing kills about 1 000 s. A
+plain run was estimated at days. Two options of `scripts/mutants.py run` answer only what
+`removable` on one test file needs:
+
+- `--judge tests/test_runtime.py`: the file's tests run first; the other files' tests run
+  only when one of the file's tests killed the mutant, up to the first that fails (is
+  there another killer). A mutant none of the file's tests runs is "skipped", one none of
+  them kills "untouched"; neither keeps a test of the file.
+- `--enough 3`: the file's tests stop at three killers. `removable` keeps one of the
+  killers it knows; a killer it does not know only makes it keep more tests, never fewer.
+
+The whole module then took about four hours on six jobs.
+
+**Mutants.** 1 754: 1 259 killed, 10 survived, 204 untouched, 241 skipped, 4 timeouts,
+11 errors, 25 on lines no test runs.
+
+**Other modules.** A test of `test_runtime.py` runs more than `runtime.py`, and may be the
+last killer of a mutant elsewhere. The five modules where `test_runtime.py` is a large part
+of the covering tests were run with the same judge: `hooks.py` (181 mutants, 100 killed by
+a test of the file), `providers/kilo.py` (29, 8), `providers/opencode.py` (55, 9),
+`providers/opencode_family.py` (283, 38), `artifacts.py` (409, 45). Together with
+`runtime.py` they move `removable` from 344 to 335. The first run of `artifacts.py` had
+106 mutants "not imported" from the middle of the run on, with the disk 97% full; run
+again with space freed, none.
+
+**Removable.** Of the 489 test functions of `tests/test_runtime.py` (on main 85dafa79),
+9 kill no mutant; `removable` over the six matrices lists 335. Rule 2 keeps 56 of them:
+those of the bug tasks LAD-212, 227, 172, 167, 247, 141, 153, and those of tasks that read
+both ways (LAD-274, 5, 199, 163, 176, 106, 89; LAD-166 counts as a feature, as in part 1).
+Main had meanwhile changed one more test of the list for LAD-105, after the mutation data:
+kept as well. **281 test functions removed**, and 19 helpers no test used any more:
+`tests/test_runtime.py` on main 504 → 223 test functions, about 3 700 lines fewer.
+
+**Rechecks.**
+- Every mutant a removed test killed (969, in all six modules) was run again against its
+  remaining killers: 963 killed. The other six, the media types of `artifacts.py`
+  (`text/csv` ... `image/jpeg`), were import-time mutants whose "killers" were tests of
+  finishing a worker; run again against the removed tests on the old tree, none kills
+  them. A test that failed by chance under load, out of the 638 an import-time mutant
+  runs, counted as a kill; the recheck is what catches it.
+- Main changed `runtime.py` and `hooks.py` after the mutation data (LAD-105, 170, 173,
+  234). The branch coverage of the whole unit suite on main and on the branch, compared:
+  no branch of `src/` that main's tests run is left unrun (one line of `cli.py` differs,
+  the warning of a missing web UI bundle, which depends on the working copy, not on the
+  tests). Unit tests: 5 848 passed (6 200 on main).
+
+**Time.** `runtime.py` about four hours, the five other modules about five, the recheck
+about two, on six jobs.
 
 ## 7. Sources
 

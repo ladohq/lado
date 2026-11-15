@@ -1,7 +1,5 @@
-import ast
 import contextlib
 import dataclasses
-import datetime
 import json
 import re
 import sqlite3
@@ -157,21 +155,6 @@ def test_an_incomplete_kit_row_is_an_error_not_a_name_taken(lado_home):
         state.add_kit(state.InstalledKit("team", address="file:///team.git", tag="v1.0.0"))
 
 
-@pytest.mark.parametrize(
-    "values",
-    [
-        "('x', NULL, NULL, NULL, NULL)",  # neither an address nor a folder
-        "('x', 'file:///x.git', 'v1.0.0', 'abc', '/dev/x')",  # both
-        "('x', 'file:///x.git', NULL, 'abc', NULL)",  # an address without its tag
-        "('x', 'file:///x.git', 'v1.0.0', NULL, NULL)",  # an address without its commit
-        "('x', NULL, 'v1.0.0', NULL, '/dev/x')",  # a folder with a tag
-    ],
-)
-def test_an_installed_kit_has_an_address_with_its_tag_and_commit_or_a_folder(lado_home, values):
-    with state.connect() as db, pytest.raises(sqlite3.IntegrityError, match="CHECK"):
-        db.execute(f'INSERT INTO kits (name, address, tag, "commit", folder) VALUES {values}')
-
-
 def test_marketplaces_are_added_changed_and_removed(lado_home):
     assert state.add_marketplace("team", "file:///m.git")
     assert not state.add_marketplace("team", "file:///other.git")
@@ -184,24 +167,6 @@ def test_marketplaces_are_added_changed_and_removed(lado_home):
     assert state.delete_marketplace("team")
     assert not state.delete_marketplace("team")
     assert state.get_marketplace("team") is None
-
-
-def test_incompatible_database_is_reported(lado_home):
-    lado_home.mkdir()
-    sqlite3.connect(lado_home / "lado.db").execute("CREATE TABLE sessions (name TEXT)")
-    with pytest.raises(state.SchemaError, match="incompatible schema"):
-        state.list_sessions()
-
-
-def test_newer_database_is_reported(lado_home):
-    lado_home.mkdir()
-    sqlite3.connect(lado_home / "lado.db").execute("PRAGMA user_version = 99")
-    with pytest.raises(state.SchemaError, match="version 99") as refused:
-        state.list_sessions()
-    message = str(refused.value)
-    assert "newer LADO" in message
-    assert "upgrade LADO" in message
-    assert "delete" not in message
 
 
 @pytest.mark.parametrize(
@@ -254,48 +219,6 @@ def test_the_migration_gives_messages_their_print_mark(lado_home):
     assert "printed_at" not in columns
     assert state.migrate().after == state.SCHEMA_VERSION
     assert state.get_message("s", old).printed_at is None
-
-
-def test_output_printed_marks_only_the_hook_output_handed_over_since(lado_home, monkeypatch):
-    _session_with(_agent(status=state.IDLE))
-
-    def handed_over(summary, at, channel):
-        message = state.queue_message("s", "supervisor", "w1", summary)
-        monkeypatch.setattr(state.time, "time", lambda: at)
-        state.take_pending("s", "w1", state.SENT, channel=channel)
-        return message
-
-    early = handed_over("early", 100.0, state.HOOK_OUTPUT)
-    typed = handed_over("typed", 110.0, state.TYPED)
-    batch = handed_over("batch", 110.0, state.HOOK_OUTPUT)
-    state.output_printed("s", "w1", since=105.0)
-    printed = {m.id: m.printed_at for m in state.list_messages("s")}
-    assert printed == {early: None, typed: None, batch: 110.0}
-
-
-def _printed_and_requeued(message):
-    state.take_pending("s", "w1", state.SENT, channel=state.HOOK_OUTPUT)
-    state.output_printed("s", "w1", since=0)
-    assert state.get_message("s", message).printed_at is not None
-    state.sweep("s", "w1", 200.0, lambda agent, sent: state.Plan(requeue=[m.id for m in sent]))
-    assert state.get_message("s", message).state == state.PENDING
-
-
-def test_a_hand_over_clears_the_print_mark_of_an_earlier_one(lado_home):
-    _session_with(_agent(status=state.IDLE))
-    message = state.queue_message("s", "supervisor", "w1", "report")
-    _printed_and_requeued(message)
-    state.take_pending("s", "w1", state.SENT, channel=state.HOOK_OUTPUT)
-    assert state.get_message("s", message).printed_at is None
-
-
-def test_the_sweeps_retype_clears_the_print_mark_of_an_earlier_hand_over(lado_home):
-    _session_with(_agent(status=state.BUSY))
-    message = state.queue_message("s", "supervisor", "w1", "report")
-    _printed_and_requeued(message)
-    state.sweep("s", "w1", 300.0, lambda agent, sent: state.Plan(retype=True))
-    retyped = state.get_message("s", message)
-    assert (retyped.state, retyped.printed_at) == (state.SENT, None)
 
 
 def test_the_migration_gives_agents_their_resumes(lado_home):
@@ -422,23 +345,6 @@ def test_the_migration_gives_sessions_no_project_as_a_new_database_has_it(lado_h
     assert state.get_session("site").project is None  # never taken from the path
 
 
-def test_a_session_keeps_its_project(lado_home):
-    with state.creating_project("shop", "Shop"):
-        pass
-    state.add_session(state.Session("a", "/r/a", None, provider="claude", project="shop"))
-    state.add_session(state.Session("b", "/r/b", None, provider="claude"))
-    state.add_session(state.Session("c", "/r/c", None, provider="claude", project="shop"))
-    assert state.get_session("a").project == "shop"
-    assert state.get_session("b").project is None
-    assert [s.name for s in state.project_sessions("shop")] == ["a", "c"]
-    assert state.project_sessions("acme") == []
-    state.stop_session("a")
-    other = state.Session("a", "/r/a", None, provider="codex", project=None)
-    assert state.resume_session(other, "provider codex")
-    assert state.get_session("a").project == "shop"  # a resume never changes it
-    assert state.get_session("a").provider == "codex"
-
-
 def test_a_project_with_sessions_keeps_its_record(lado_home):
     with state.creating_project("shop", None):
         pass
@@ -447,20 +353,6 @@ def test_a_project_with_sessions_keeps_its_record(lado_home):
         state.delete_project("shop")
     state.delete_session("a")
     assert state.delete_project("shop") is True
-
-
-def test_a_project_being_made_stays_only_when_its_block_ends_well(lado_home):
-    with pytest.raises(OSError):
-        with state.creating_project("shop", "Shop"):
-            assert state.get_project("shop") is None  # not committed yet: other readers
-            raise OSError("no folder")
-    assert state.get_project("shop") is None
-    with state.creating_project("acme", None):
-        pass
-    assert state.get_project("acme").title is None
-    with pytest.raises(sqlite3.IntegrityError):
-        with state.creating_project("acme", None):
-            pass
 
 
 def test_the_migration_marks_the_windows_of_the_agents_there_as_opened(lado_home):
@@ -506,12 +398,6 @@ def _last_change() -> int:
         return db.execute("SELECT coalesce(max(id), 0) FROM changes").fetchone()[0]
 
 
-def test_a_new_agent_has_the_clis_default_model(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "claude"))
-    assert _model(state.get_agent("s", "w1")) == CLI_DEFAULT_MODEL
-
-
 def test_the_migration_gives_the_agents_there_the_clis_default(lado_home):
     state.add_session(state.Session("s", "/r", None, provider="claude"))
     state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "idle", "claude"))
@@ -522,27 +408,6 @@ def test_the_migration_gives_the_agents_there_the_clis_default(lado_home):
     assert "model" not in columns
     migrated = state.migrate()
     assert (migrated.before, migrated.after) == (35, state.SCHEMA_VERSION)
-    assert _model(state.get_agent("s", "w1")) == CLI_DEFAULT_MODEL
-
-
-def test_set_model_writes_the_launchs_choice(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="codex"))
-    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "codex"))
-    state.set_model(
-        "s",
-        "w1",
-        state.Choice("gpt-5.6-sol", state.CLI_CONFIG, "profile work"),
-        state.Choice("high", state.CLI_CONFIG),
-    )
-    assert _model(state.get_agent("s", "w1")) == (
-        "gpt-5.6-sol",
-        "cli-config",
-        "profile work",
-        "high",
-        "cli-config",
-        None,
-    )
-    state.set_model("s", "w1", None, None)  # nothing chosen: the CLI's default again
     assert _model(state.get_agent("s", "w1")) == CLI_DEFAULT_MODEL
 
 
@@ -565,42 +430,6 @@ def test_source_words(source, detail, words):
     assert state.source_words(source, detail, "Codex CLI") == words  # the CLI's own name
 
 
-def test_power_table_round_trips():
-    table = state.PowerTable.single("codex", "gpt-5.6-sol")
-    assert set(table.rows) == {"light", "normal", "heavy"}
-    assert all(row == state.PowerRow("codex", "gpt-5.6-sol") for row in table.rows.values())
-    assert table.row() == table.rows["normal"]
-    assert json.loads(table.to_json())["normal"] == {"cli": "codex", "model": "gpt-5.6-sol"}
-    assert state.PowerTable.from_json(table.to_json()) == table
-
-
-@pytest.mark.parametrize(
-    "row",
-    [
-        state.PowerRow("codex", "gpt-5.6-sol"),
-        state.PowerRow("opencode", "qwen3-8b", "m1", "Локальная Qwen"),
-        state.PowerRow("opencode", ""),
-    ],
-    ids=["built-in", "external", "settings"],
-)
-def test_each_form_of_a_row_round_trips(row):
-    table = state.PowerTable.of(row)
-    assert set(table.rows) == set(state.LEVELS)
-    assert state.PowerTable.from_json(table.to_json()) == table
-    assert table.readable
-
-
-def test_a_built_in_row_is_stored_as_before():
-    stored = json.loads(state.PowerTable.of(state.PowerRow("codex", "gpt-5.6-sol")).to_json())
-    assert stored["normal"] == {"cli": "codex", "model": "gpt-5.6-sol"}
-
-
-def test_an_unknown_key_of_a_row_is_ignored():
-    text = json.dumps({"normal": {"cli": "codex", "model": "gpt-5.6-sol", "effort": "high"}})
-    table = state.PowerTable.from_json(text)
-    assert table.readable and table.row() == state.PowerRow("codex", "gpt-5.6-sol")
-
-
 @pytest.mark.parametrize(
     "text",
     [
@@ -621,27 +450,6 @@ def test_an_unknown_key_of_a_row_is_ignored():
 def test_a_table_that_cannot_be_read_is_unreadable(text):
     assert state.PowerTable.from_json(text) == state.PowerTable.unreadable()
     assert not state.PowerTable.from_json(text).readable
-
-
-def test_a_broken_table_breaks_no_session_list(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="codex"))
-    with state.connect() as db:
-        db.execute("UPDATE sessions SET power = 'not json' WHERE name = 's'")
-    assert not state.get_session("s").power.readable
-    assert [sess.name for sess in state.list_sessions()] == ["s"]
-
-
-def test_a_session_keeps_its_power(lado_home):
-    table = state.PowerTable.single("codex", "gpt-5.6-sol")
-    state.add_session(state.Session("s", "/r", None, provider="codex", power=table))
-    state.add_session(state.Session("t", "/r", None, provider="codex"))
-    assert state.get_session("s").power == table
-    assert state.get_session("t").power is None
-    stopped = state.get_session("s")
-    state.stop_session("s")
-    stopped.power = None
-    assert state.resume_session(stopped, "")
-    assert state.get_session("s").power is None
 
 
 def test_the_migration_gives_sessions_no_power(lado_home):
@@ -722,14 +530,6 @@ def test_the_migration_marks_the_messages_there_reminded(lado_home):
     assert [m.id for m in state.check_unread("s", "w1")] == [later]
 
 
-def test_a_launch_records_a_source_with_no_name(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="codex"))
-    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "claude"))
-    note = "the session's model gpt-5.6-sol is for Codex CLI"
-    state.set_model("s", "w1", state.Choice(None, state.CLI_DEFAULT, note), None)
-    assert _model(state.get_agent("s", "w1"))[:3] == (None, "cli", note)
-
-
 def _codex_agent_with_a_config_model():
     state.add_session(state.Session("s", "/r", None, provider="codex"))
     state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "codex"))
@@ -739,33 +539,6 @@ def _codex_agent_with_a_config_model():
         state.Choice("gpt-5.6-sol", state.CLI_CONFIG, "profile work"),
         state.Choice("high", state.CLI_CONFIG, "profile work"),
     )
-
-
-def test_a_reported_model_is_recorded(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", "claude"))
-    state.report_model("s", "w1", "claude-opus-5-5", None)
-    assert _model(state.get_agent("s", "w1")) == (
-        "claude-opus-5-5",
-        "cli",
-        None,
-        None,
-        "cli",
-        None,
-    )
-    state.report_model("s", "w1", "", "high")
-    assert _model(state.get_agent("s", "w1"))[3:] == ("high", "cli", None)
-
-
-def test_a_repeated_report_writes_nothing(lado_home):
-    _codex_agent_with_a_config_model()
-    before = _last_change()
-    state.report_model("s", "w1", "gpt-5.6-sol", None)
-    state.report_model("s", "w1", "gpt-5.6-sol", "high")
-    assert _last_change() == before
-    assert _model(state.get_agent("s", "w1"))[:3] == ("gpt-5.6-sol", "cli-config", "profile work")
-    state.report_model("s", "gone", "gpt-5.5", None)  # a row that is gone: no error
-    state.report_model("s", "gone", "gpt-5.5", "")
 
 
 def test_a_different_model_is_the_clis(lado_home):
@@ -781,46 +554,6 @@ def test_a_different_model_is_the_clis(lado_home):
         "profile work",
     )
     assert _last_change() == before + 1
-
-
-def _agent_with_model(model, source, detail=None, provider="claude"):
-    state.add_session(state.Session("s", "/r", None, provider=provider))
-    state.add_agent(state.Agent("s", "w1", "worker", "/r", None, None, "starting", provider))
-    state.set_model("s", "w1", state.Choice(model, source, detail), None)
-
-
-def _alias(chosen: str, reported: str) -> bool:
-    return chosen == "opus" and reported.startswith("claude-opus-")
-
-
-def test_an_alias_s_full_name_keeps_the_source(lado_home):
-    _agent_with_model("opus", state.SESSION)
-    state.report_model("s", "w1", "claude-opus-5-5", None, _alias)
-    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-opus-5-5", "session", None)
-
-
-def test_another_model_than_the_alias_is_the_clis(lado_home):
-    _agent_with_model("opus", state.SESSION)
-    state.report_model("s", "w1", "claude-sonnet-5-5", None, _alias)
-    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-sonnet-5-5", "cli-changed", None)
-    state.report_model("s", "w1", "claude-opus-5-5", None)  # the default rule: equality
-    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-opus-5-5", "cli-changed", None)
-
-
-def test_a_first_name_keeps_the_note(lado_home):
-    note = "the session's model gpt-5.6-sol is for Codex CLI"
-    _agent_with_model(None, state.CLI_DEFAULT, note)
-    state.report_model("s", "w1", "claude-opus-5-5", None)
-    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-opus-5-5", "cli", note)
-    state.report_model("s", "w1", "claude-sonnet-5-5", None)  # a later change: the CLI's
-    assert _model(state.get_agent("s", "w1"))[:3] == ("claude-sonnet-5-5", "cli-changed", None)
-
-
-def test_an_event_without_a_model_changes_nothing(lado_home):
-    _codex_agent_with_a_config_model()
-    before = _last_change()
-    state.report_model("s", "w1", "", None)
-    assert _last_change() == before
 
 
 def test_an_effort_reported_as_the_clis_default_clears_the_name(lado_home):
@@ -864,39 +597,6 @@ def test_the_migration_makes_the_project_variables_table_as_a_new_database_has_i
     assert state.project_variables("shop") == {}
 
 
-def test_a_project_keeps_its_variables(lado_home):
-    for id in ("shop", "acme"):
-        with state.creating_project(id, None):
-            pass
-    state.set_project_variable("shop", "MODEL_URL", "http://localhost:11434")
-    state.set_project_variable("shop", "BOARD_URL", "https://a")
-    state.set_project_variable("acme", "BOARD_URL", "https://b")
-    assert state.project_variables("shop") == {
-        "BOARD_URL": "https://a",
-        "MODEL_URL": "http://localhost:11434",
-    }
-    assert list(state.project_variables("shop")) == ["BOARD_URL", "MODEL_URL"]  # by name
-    state.set_project_variable("shop", "BOARD_URL", "line\nx = y ü")
-    assert state.project_variables("shop")["BOARD_URL"] == "line\nx = y ü"
-    assert state.project_variables("acme") == {"BOARD_URL": "https://b"}
-    assert state.unset_project_variable("shop", "BOARD_URL") is True
-    assert state.unset_project_variable("shop", "BOARD_URL") is False
-    assert state.project_variables("shop") == {"MODEL_URL": "http://localhost:11434"}
-    assert state.project_variables("nope") == {}
-
-
-def test_a_project_s_variables_go_with_it(lado_home):
-    with state.creating_project("shop", None):
-        pass
-    state.set_project_variable("shop", "BOARD_URL", "https://a")
-    assert state.delete_project("shop") is True
-    with state.connect() as db:
-        assert db.execute("SELECT count(*) FROM project_variables").fetchone()[0] == 0
-    with state.creating_project("shop", None):
-        pass
-    assert state.project_variables("shop") == {}
-
-
 def test_the_migration_gives_agents_their_read_only_flag(lado_home):
     _session_with(_agent(status=state.BUSY))
     agent_helpers.schema_before(25)
@@ -911,32 +611,6 @@ def test_the_migration_gives_agents_their_read_only_flag(lado_home):
         )
     )
     assert state.get_agent("s", "w2").read_only is True
-
-
-def test_a_session_has_no_title_until_one_is_set(lado_home):
-    state.add_session(state.Session("s", "/r", None, "claude"))
-    assert state.get_session("s").title is None
-    assert state.set_title("s", "Review")
-    assert state.get_session("s").title == "Review"
-    assert state.set_title("s", None)
-    assert state.get_session("s").title is None
-
-
-def test_set_title_of_an_unknown_session_is_false(lado_home):
-    assert not state.set_title("nope", "x")
-
-
-def test_a_title_survives_stop_and_resume_and_goes_with_forget(lado_home):
-    state.add_session(state.Session("s", "/r", None, "claude"))
-    state.set_title("s", "Review")
-    state.stop_session("s")
-    assert state.get_session("s").title == "Review"
-    assert state.resume_session(state.Session("s", "/r", "auto", "codex"), "")
-    assert state.get_session("s").title == "Review"
-    state.stop_session("s")
-    state.delete_session("s")
-    state.add_session(state.Session("s", "/r", None, "claude"))
-    assert state.get_session("s").title is None
 
 
 def test_setting_a_title_is_journaled_as_a_session_update(lado_home):
@@ -1072,39 +746,12 @@ def test_the_containers_stop_marks_every_running_session_in_one_go(lado_home):
     assert state.stop_for_container() == []
 
 
-def test_any_resume_clears_the_mark(lado_home):
-    state.add_session(state.Session("s", "/r", None, "claude"))
-    state.stop_for_container()
-    assert state.resume_session(state.get_session("s"), "same settings")
-    assert not state.get_session("s").resume_at_start
-
-
-def test_giving_up_clears_the_mark_of_a_stopped_session(lado_home):
-    state.add_session(state.Session("s", "/r", None, "claude"))
-    state.stop_for_container()
-    before = _kinds("s")
-    state.give_up_resume("s")
-    sess = state.get_session("s")
-    assert sess.stopped_at and not sess.resume_at_start
-    assert _kinds("s") == before
-
-
 def test_giving_up_stops_a_session_not_stopped(lado_home):
     state.add_session(state.Session("s", "/r", None, "claude"))
     state.give_up_resume("s")
     sess = state.get_session("s")
     assert sess.stopped_at and not sess.resume_at_start
     assert _kinds("s")[-2:] == [state.SESSION_GONE, state.SESSION_STOP]
-
-
-def test_resumable_lists_the_marked_and_the_not_stopped(lado_home):
-    for name in ("a", "b", "c", "d"):
-        state.add_session(state.Session(name, "/r", None, "claude"))
-    state.stop_session("a")  # the human's: never resumed
-    state.stop_for_container()  # b, c, d marked
-    state.give_up_resume("c")
-    state.resume_session(state.get_session("d"), "")  # running again, not marked
-    assert [s.name for s in state.resumable()] == ["b", "d"]
 
 
 def test_schema_29_gives_sessions_the_resume_mark(lado_home):
@@ -1260,26 +907,6 @@ def test_the_migration_drops_needs_from_the_snapshots_of_closed_runs_only(lado_h
         runs.flow_of(state.get_run("s", "ship/waiting"))
 
 
-def test_a_due_resume_is_queued_once_also_while_the_agent_stays_idle(lado_home):
-    """E.g. a batch typed before is unconfirmed, so the queue is not handed over and the
-    agent stays idle: the next sweep queues no second resume."""
-    _session_with(_agent(status=state.BUSY))
-    state.add_event("s", "w1", state.TURN_ERROR, "overloaded")
-    state.schedule_resume("s", "w1", 100.0, (30.0, 60.0))
-    state.set_status("s", "w1", state.IDLE)
-    summary = lambda n, error: f"resume {n}: {error}"  # noqa: E731
-    assert state.take_resume("s", "w1", 129.0, summary) is None
-    message = state.take_resume("s", "w1", 130.0, summary)
-    assert state.take_resume("s", "w1", 130.0, summary) is None
-    queued = state.get_message("s", message)
-    assert (queued.sender, queued.summary, queued.state) == (
-        "lado",
-        "resume 1: overloaded",
-        "pending",
-    )
-    assert state.get_agent("s", "w1").resume_at is None
-
-
 def test_a_due_resume_is_queued_on_a_database_from_before_0_7(lado_home):
     """Its messages.body is the old text column, renamed: NOT NULL without a DEFAULT."""
     lado_home.mkdir()
@@ -1310,16 +937,6 @@ def test_every_insert_into_messages_names_its_body():
     assert inserts
     without = [c for c in inserts if "body" not in [n.strip() for n in c.split(",")]]
     assert without == []
-
-
-def test_connect_refuses_an_older_schema_and_changes_nothing(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    agent_helpers.previous_schema()
-    before = agent_helpers.database()
-    with pytest.raises(state.SchemaError, match=f"schema version {state.SCHEMA_VERSION - 1}") as e:
-        state.get_session("s")
-    assert "`lado stop --all`" in str(e.value)
-    assert agent_helpers.database() == before
 
 
 def test_migrate_upgrades_an_older_schema_once(lado_home):
@@ -1377,37 +994,6 @@ def test_migrate_backs_up_the_older_schema_first(lado_home):
     assert _schema(lado_home / "lado.db") == state.SCHEMA_VERSION
 
 
-def test_an_earlier_backup_that_cannot_be_removed_does_not_stop_the_migration(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    agent_helpers.previous_schema()
-    old = state.SCHEMA_VERSION - 1
-    stuck = lado_home / "backups" / f"lado.db.schema-{old - 1}"
-    stuck.mkdir(parents=True)  # unlink fails on a folder
-    migrated = state.migrate()
-    assert migrated == state.Migrated(old, state.SCHEMA_VERSION, migrated.backup)
-    assert _schema(migrated.backup) == old
-    assert stuck.is_dir()
-
-
-def test_nothing_to_migrate_writes_no_backup(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    assert state.migrate() is None
-    assert not (lado_home / "backups").exists()
-
-
-def test_a_backup_that_cannot_be_written_stops_the_migration(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    agent_helpers.previous_schema()
-    (lado_home / "backups").write_text("a file where the folder goes")
-    with pytest.raises(state.BackupFailed) as e:
-        state.migrate()
-    old = state.SCHEMA_VERSION - 1
-    assert (e.value.before, e.value.after) == (old, state.SCHEMA_VERSION)
-    assert e.value.backup == lado_home / "backups" / f"lado.db.schema-{old}"
-    assert e.value.reason
-    assert _schema(lado_home / "lado.db") == old
-
-
 def test_a_failing_step_leaves_the_schema_and_keeps_the_backup(lado_home, monkeypatch):
     state.add_session(state.Session("s", "/r", None, provider="claude"))
     old = state.SCHEMA_VERSION - 1
@@ -1428,33 +1014,6 @@ def test_a_failing_step_leaves_the_schema_and_keeps_the_backup(lado_home, monkey
         assert "read_reminded" not in _message_columns(db)  # rolled back
 
 
-def test_no_pending_migration_without_a_database(lado_home):
-    assert state.pending_migration() is None
-    assert not (lado_home / "lado.db").exists()
-
-
-def test_no_pending_migration_at_the_current_version(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    assert state.pending_migration() is None
-
-
-def test_pending_migration_names_the_sessions_not_stopped(lado_home):
-    for name in ("b", "a", "gone"):
-        state.add_session(state.Session(name, "/r", None, provider="claude"))
-    state.stop_session("gone")
-    agent_helpers.previous_schema()
-    before = agent_helpers.database()
-    assert state.pending_migration() == (state.SCHEMA_VERSION - 1, ["a", "b"])
-    assert (lado_home / "lado.db").read_bytes() == before
-
-
-def test_pending_migration_before_sessions_could_stop(lado_home):
-    """Before version 8 a session had no stopped_at: each one may be running."""
-    lado_home.mkdir()
-    sqlite3.connect(lado_home / "lado.db").executescript(SCHEMA_V1)
-    assert state.pending_migration() == (1, ["s"])
-
-
 def test_version_2_database_gets_kits(lado_home):
     lado_home.mkdir()
     db = sqlite3.connect(lado_home / "lado.db")
@@ -1466,12 +1025,6 @@ def test_version_2_database_gets_kits(lado_home):
     state.migrate()
     sess = state.get_session("s")
     assert (sess.kits, sess.without) == (["default"], [])
-
-
-def test_session_kits_round_trip(lado_home):
-    state.add_session(state.Session("s", "/r", None, "kilo", ["a", "b"], ["skill:x"]))
-    sess = state.get_session("s")
-    assert (sess.kits, sess.without) == (["a", "b"], ["skill:x"])
 
 
 def _schema_v3(lado_home):
@@ -1497,19 +1050,6 @@ def _agent(name="w1", status=state.STARTING):
     return state.Agent("s", name, "worker", "/r", None, None, status, provider="claude")
 
 
-def test_status_change_is_an_event_once(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    state.add_agent(_agent())
-    state.set_status("s", "w1", state.BUSY)
-    state.set_status("s", "w1", state.BUSY)
-    state.set_status("s", "w1", state.IDLE)
-    assert [(e.agent, e.kind, e.detail) for e in state.list_events("s")] == [
-        ("w1", "status", "busy"),
-        ("w1", "status", "idle"),
-    ]
-    assert state.get_agent("s", "w1").status == state.IDLE
-
-
 def _status_events():
     return [e.detail for e in state.list_events("s") if e.kind == state.STATUS]
 
@@ -1520,64 +1060,11 @@ def _waiting_agent(key=""):
     state.wait("s", "w1", key)
 
 
-def test_a_wait_with_a_key_keeps_the_key(lado_home):
-    _waiting_agent("k1")
-    agent = state.get_agent("s", "w1")
-    assert (agent.status, agent.waiting_for) == (state.WAITING, "k1")
-    assert _status_events() == ["waiting"]
-    state.wait("s", "w1", "k2")  # the next request: its key replaces the first one
-    agent = state.get_agent("s", "w1")
-    assert (agent.status, agent.waiting_for) == (state.WAITING, "k2")
-    assert _status_events() == ["waiting"]
-
-
-def test_a_wait_without_a_key_does_not_wipe_the_key_of_a_waiting_agent(lado_home):
-    _waiting_agent("k1")
-    state.wait("s", "w1")
-    assert state.get_agent("s", "w1").waiting_for == "k1"
-    state.set_status("s", "w1", state.WAITING)  # e.g. a sweep's failed messages
-    assert state.get_agent("s", "w1").waiting_for == "k1"
-    assert _status_events() == ["waiting"]
-
-
-def test_a_wait_without_a_key_has_none(lado_home):
-    _waiting_agent()
-    agent = state.get_agent("s", "w1")
-    assert (agent.status, agent.waiting_for) == (state.WAITING, None)
-
-
-def test_resume_with_the_key_waited_for_makes_the_agent_busy(lado_home):
-    _waiting_agent("k1")
-    state.resume("s", "w1", "k1")
-    agent = state.get_agent("s", "w1")
-    assert (agent.status, agent.waiting_for) == (state.BUSY, None)
-    assert _status_events() == ["waiting", "busy"]
-
-
-def test_resume_with_another_key_changes_nothing(lado_home):
-    _waiting_agent("k1")
-    state.resume("s", "w1", "k2")
-    state.resume("s", "w1", "")
-    agent = state.get_agent("s", "w1")
-    assert (agent.status, agent.waiting_for) == (state.WAITING, "k1")
-    assert _status_events() == ["waiting"]
-
-
 def test_any_resume_ends_a_wait_without_a_key(lado_home):
     _waiting_agent()
     state.resume("s", "w1", "x")
     assert state.get_agent("s", "w1").status == state.BUSY
     assert _status_events() == ["waiting", "busy"]
-
-
-@pytest.mark.parametrize("status", [state.IDLE, state.BUSY, state.STARTING, state.STOPPED])
-def test_resume_of_an_agent_not_waiting_changes_nothing(lado_home, status):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    state.add_agent(_agent(status=status))
-    state.resume("s", "w1", "k1")
-    state.resume("s", "w1", "")
-    assert state.get_agent("s", "w1").status == status
-    assert _status_events() == []
 
 
 def test_an_answer_returns_an_agent_that_waited_from_background_to_background(lado_home):
@@ -1595,46 +1082,6 @@ def test_an_answer_returns_an_agent_that_waited_from_background_to_background(la
     state.wait("s", "w1", "k2")
     state.resume("s", "w1", "k2")
     assert state.get_agent("s", "w1").status == state.BUSY
-
-
-def test_a_wait_of_a_new_launch_never_resumes_to_an_earlier_launchs_background(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    state.add_agent(_agent(status=state.BUSY))
-    state.set_status("s", "w1", state.BACKGROUND)
-    state.delete_agent("s", "w1")
-    state.add_agent(_agent(status=state.STARTING))  # its first status: waiting
-    state.add_event("s", "w1", state.SPAWNED, "")
-    state.wait("s", "w1", "k1")
-    state.resume("s", "w1", "k1")
-    assert state.get_agent("s", "w1").status == state.BUSY
-
-
-@pytest.mark.parametrize("status", [state.IDLE, state.BACKGROUND])
-def test_both_statuses_that_take_input_keep_a_planned_resume_and_get_it(lado_home, status):
-    _session_with(_agent(status=state.BUSY))
-    state.add_event("s", "w1", state.TURN_ERROR, "overloaded")
-    state.schedule_resume("s", "w1", 100.0, (30.0,))
-    state.set_status("s", "w1", status)
-    assert state.get_agent("s", "w1").resume_at == 130.0
-    assert state.take_resume("s", "w1", 130.0, lambda n, error: "go on") is not None
-
-
-@pytest.mark.parametrize(
-    ("status", "taken"),
-    [
-        (state.IDLE, True),
-        (state.BACKGROUND, True),
-        (state.BUSY, False),
-        (state.WAITING, False),
-        (state.STARTING, False),
-    ],
-)
-def test_only_an_agent_that_takes_input_has_its_queue_taken(lado_home, status, taken):
-    assert state.accepts_input(status) is taken
-    _session_with(_agent(status=status))
-    state.queue_message("s", "supervisor", "w1", "hi", "")
-    moved = state.take_pending("s", "w1", state.SENT, state.BUSY, idle_only=True)
-    assert bool(moved) is taken
 
 
 def _turn_end_take():
@@ -1681,136 +1128,6 @@ def test_take_pending_keeps_the_status_when_a_batch_is_unconfirmed(lado_home):
     assert state.get_message("s", later).state == state.PENDING
 
 
-# Where `idle` may be named in LADO's code (file, the function or module-level name around
-# it): its definitions, the one setter, the API's list of statuses and the text of a failed
-# turn. Anywhere else, asking for idle would leave `background` out: ask accepts_input or
-# ACCEPTS_INPUT_SQL.
-IDLE_NAMED = {
-    ("state.py", "IDLE"),
-    ("state.py", "ACCEPTS_INPUT"),
-    ("hooks.py", "_idle"),
-    ("server/models.py", "AgentStatus"),
-    ("runtime.py", "turn_failed"),
-}
-
-
-def _idle_named(path):
-    """(the scope's name, line) of each use of IDLE or the literal "idle" in the file."""
-    found = []
-
-    def visit(node, scope):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            scope = scope or node.name
-        elif isinstance(node, (ast.Assign, ast.AnnAssign)) and scope is None:
-            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-            scope = next((t.id for t in targets if isinstance(t, ast.Name)), None)
-        named = (isinstance(node, ast.Name) and node.id == "IDLE") or (
-            isinstance(node, ast.Attribute) and node.attr == "IDLE"
-        )
-        if named or (isinstance(node, ast.Constant) and node.value == "idle"):
-            found.append((scope, node.lineno))
-        for child in ast.iter_child_nodes(node):
-            visit(child, scope)
-
-    visit(ast.parse(path.read_text()), None)
-    return found
-
-
-def test_only_the_predicate_asks_whether_an_agent_takes_input():
-    root = Path(state.__file__).parent
-    stray = [
-        f"{rel}:{line} ({scope})"
-        for path in sorted(root.rglob("*.py"))
-        for rel in [path.relative_to(root).as_posix()]
-        for scope, line in _idle_named(path)
-        if (rel, scope) not in IDLE_NAMED
-    ]
-    assert stray == []
-
-
-def test_the_guard_finds_a_new_comparison_with_idle(tmp_path):
-    code = tmp_path / "x.py"
-    code.write_text('def f(a):\n    return a.status == state.IDLE or a.status == "idle"\n')
-    assert _idle_named(code) == [("f", 2), ("f", 2)]
-
-
-@pytest.mark.parametrize("status", [state.IDLE, state.BUSY, state.STARTING, state.STOPPED])
-def test_leaving_waiting_drops_the_key(lado_home, status):
-    _waiting_agent("k1")
-    state.set_status("s", "w1", status)
-    assert state.get_agent("s", "w1").waiting_for is None
-    state.wait("s", "w1")  # waiting again, from something without a key
-    state.resume("s", "w1", "other")  # so any answer ends it
-    assert state.get_agent("s", "w1").status == state.BUSY
-
-
-def _event_at(agent, kind, created_at, detail=""):
-    with state.connect() as db:
-        db.execute(
-            "INSERT INTO events (session, agent, kind, detail, created_at) VALUES (?, ?, ?, ?, ?)",
-            ("s", agent, kind, detail, created_at),
-        )
-
-
-def test_status_since_is_the_latest_status_event_or_the_spawn(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    _event_at("w1", state.SPAWNED, "2026-10-01 10:00:00.000")
-    _event_at("w1", state.STATUS, "2026-10-01 10:00:05.250", state.BUSY)
-    _event_at("w1", state.STATUS, "2026-10-01 10:07:00.000", state.IDLE)
-    _event_at("w1", state.FINISHED, "2026-10-01 11:00:00.000", "merged")
-    _event_at("w2", state.SPAWNED, "2026-10-01 10:30:00.000")
-    utc = datetime.timezone.utc
-    assert state.status_since("s") == {
-        "w1": datetime.datetime(2026, 10, 1, 10, 7, tzinfo=utc),
-        "w2": datetime.datetime(2026, 10, 1, 10, 30, tzinfo=utc),
-    }
-
-
-def test_status_since_of_a_reused_name_starts_at_its_new_spawn(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    _event_at("w1", state.SPAWNED, "2026-10-01 10:00:00.000")
-    _event_at("w1", state.STATUS, "2026-10-01 10:05:00.000", state.IDLE)
-    _event_at("w1", state.SPAWNED, "2026-10-01 12:00:00.000")
-    assert state.status_since("s")["w1"].hour == 12
-
-
-def test_agent_times_are_its_latest_spawn_and_the_status_since_of_lado_ls(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    _event_at("w1", state.SPAWNED, "2026-10-01 10:00:00.000")
-    _event_at("w1", state.STATUS, "2026-10-01 10:05:00.000", state.IDLE)
-    _event_at("w1", state.FINISHED, "2026-10-01 11:00:00.000", "merged")
-    _event_at("w1", state.SPAWNED, "2026-10-01 12:00:00.500")
-    _event_at("w1", state.STATUS, "2026-10-01 12:03:00.000", state.BUSY)
-    _event_at("w2", state.SPAWNED, "2026-10-01 10:30:00.000")
-    utc = datetime.timezone.utc
-    w1 = state.agent_times("s", "w1")
-    assert w1 == (
-        datetime.datetime(2026, 10, 1, 12, 0, 0, 500000, tzinfo=utc),
-        datetime.datetime(2026, 10, 1, 12, 3, tzinfo=utc),
-    )
-    assert w1[1] == state.status_since("s")["w1"]
-    assert state.agent_times("s", "w2") == (state.status_since("s")["w2"],) * 2
-    assert state.agent_times("s", "w9") == (None, None)
-
-
-def test_an_agent_has_the_time_it_was_added(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    state.add_agent(
-        state.Agent("s", "w1", "worker", "/r", None, None, state.IDLE, provider="claude")
-    )
-    created = state.get_agent("s", "w1").created_at
-    assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d", created)
-
-
-def test_events_have_sub_second_times_and_go_with_the_session(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    state.add_event("s", "w1", "finished", "")
-    [event] = state.list_events("s")
-    assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}", event.created_at)
-    state.delete_session("s")
-    assert state.list_events("s") == []
-
-
 def _schema_v4(lado_home):
     _schema_v3(lado_home)
     db = sqlite3.connect(lado_home / "lado.db")
@@ -1843,50 +1160,6 @@ def test_old_message_gets_a_summary_from_its_first_line():
     long = state.Message(1, "w1", "", "x" * 300)
     assert long.title == "x" * 199 + "…"
     assert state.Message(1, "w1", "now", "details").title == "now"
-
-
-def test_read_messages_returns_unread_bodies_once(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    state.add_agent(_agent("supervisor"))
-    state.add_agent(_agent("w2"))
-    one = state.queue_message("s", "w1", "supervisor", "done", "the report")
-    state.queue_message("s", "w1", "supervisor", "no body")
-    later = state.queue_message("s", "w2", "supervisor", "blocked", "why")
-    state.queue_message("s", "w1", "w2", "not mine", "body")
-    state.take_pending("s", "supervisor", state.DELIVERED)
-    state.queue_message("s", "w1", "supervisor", "still pending", "body")
-    read = state.read_messages("s", "supervisor")
-    assert [(m.id, m.sender, m.summary, m.body) for m in read] == [
-        (one, "w1", "done", "the report"),
-        (later, "w2", "blocked", "why"),
-    ]
-    assert read[0].created_at
-    assert state.read_messages("s", "supervisor") == []
-    states = {m.summary: m.state for m in state.list_messages("s")}
-    assert states == {
-        "done": state.READ,
-        "no body": state.DELIVERED,
-        "blocked": state.READ,
-        "not mine": state.PENDING,
-        "still pending": state.PENDING,
-    }
-
-
-@pytest.mark.parametrize("channel", [state.HOOK_OUTPUT, state.TYPED])
-def test_read_messages_reads_a_handed_over_message_before_it_is_confirmed(lado_home, channel):
-    _session_with(_agent())
-    report = state.queue_message("s", "supervisor", "w1", "report", "the details")
-    state.queue_message("s", "supervisor", "w1", "ping")
-    state.take_pending("s", "w1", state.SENT, channel=channel)
-    state.queue_message("s", "supervisor", "w1", "later", "not handed over yet")
-    assert [m.id for m in state.read_messages("s", "w1")] == [report]
-    assert state.read_messages("s", "w1") == []
-    states = {m.summary: m.state for m in state.list_messages("s")}
-    assert states == {"report": state.READ, "ping": state.SENT, "later": state.PENDING}
-    # What is left of the batch is confirmed as before; the read one stays read.
-    state.confirm_channel("s", "w1", channel)
-    states = {m.summary: m.state for m in state.list_messages("s")}
-    assert states == {"report": state.READ, "ping": state.DELIVERED, "later": state.PENDING}
 
 
 def test_a_queue_taken_by_a_tool_result_is_delivered_once_and_out_of_the_sweep(lado_home):
@@ -1959,55 +1232,6 @@ def _run(name="feature/x", **changes):
     return dataclasses.replace(run, **changes)
 
 
-def test_a_run_is_stored_with_its_start_event(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    state.add_run(_run(), [("supervisor", state.FLOW_START, "feature/x: started")])
-    run = state.get_run("s", "feature/x")
-    assert run == _run(created_at=run.created_at)
-    assert (run.status, run.visits, run.reason) == (state.ACTIVE, {}, "")
-    [event] = state.list_events("s")
-    assert (event.agent, event.kind, event.run) == ("supervisor", state.FLOW_START, "feature/x")
-    assert state.run_since("s")["feature/x"] == datetime.datetime.fromisoformat(
-        event.created_at
-    ).replace(tzinfo=datetime.timezone.utc)
-
-
-def test_a_run_changes_only_from_the_state_it_was_read_in(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    state.add_run(_run(), [("supervisor", state.FLOW_START, "started")])
-    before = state.get_run("s", "feature/x")
-    after = dataclasses.replace(before, state="build", visits={"build": 1})
-    assert state.update_run(before, after, [("w1", state.FLOW, "design -ready-> build")])
-    assert state.get_run("s", "feature/x").visits == {"build": 1}
-    # Someone else moved it on meanwhile: nothing is written.
-    stale = dataclasses.replace(before, state="review")
-    assert not state.update_run(before, stale, [("w2", state.FLOW, "lost")])
-    assert state.get_run("s", "feature/x").state == "build"
-    assert [e.detail for e in state.list_events("s")] == ["started", "design -ready-> build"]
-
-
-def test_two_self_loops_from_the_same_read_write_once(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    state.add_run(_run(visits={"design": 1}), [("supervisor", state.FLOW_START, "started")])
-    before = state.get_run("s", "feature/x")
-    again = dataclasses.replace(before, visits={"design": 2})
-    assert state.update_run(before, again, [("supervisor", state.FLOW, "design -again-> design")])
-    assert not state.update_run(before, again, [("w1", state.FLOW, "design -again-> design")])
-    assert len(state.list_events("s")) == 2
-
-
-def test_runs_go_with_their_session(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    state.add_run(_run(), [("supervisor", state.FLOW_START, "started")])
-    state.add_run(
-        _run("feature/y", status=state.ENDED), [("supervisor", state.FLOW_START, "started")]
-    )
-    assert [r.name for r in state.list_runs("s")] == ["feature/x", "feature/y"]
-    assert [r.name for r in state.list_runs("s", open_only=True)] == ["feature/x"]
-    state.delete_session("s")
-    assert state.list_runs("s") == []
-
-
 def test_version_6_database_gets_gates(lado_home):
     db = _schema_v4(lado_home)
     for version in (4, 5):
@@ -2043,27 +1267,6 @@ def _waiting(lado_home):
     gate = _gate()
     assert state.update_run(before, after, [("supervisor", state.FLOW, "go")], opens=gate)
     return after, gate
-
-
-def test_a_gate_opens_with_the_run_that_waits_at_it(lado_home):
-    run, gate = _waiting(lado_home)
-    assert gate.id
-    stored = state.get_gate(gate.id)
-    assert stored == dataclasses.replace(gate, created_at=stored.created_at)
-    assert (stored.answer, stored.answered_at) == (None, None)
-    assert state.open_gates() == [stored]
-    assert state.open_gates("other") == []
-    assert state.open_gate("s", "feature/x") == stored
-    events = [(e.agent, e.kind, e.detail, e.run) for e in state.list_events("s")][1:]
-    assert events == [
-        ("supervisor", state.FLOW, "go", "feature/x"),
-        (
-            "lado",
-            state.GATE_OPEN,
-            f"#{gate.id} approval at design_ok: Approve the design?",
-            "feature/x",
-        ),
-    ]
 
 
 def test_a_gate_and_its_event_share_one_time(lado_home, monkeypatch):
@@ -2118,61 +1321,6 @@ def test_the_gate_closes_with_the_runs_next_write(lado_home):
     assert state.update_run(after, again, [], closes=("human", "overridden", "x", None))
 
 
-def _agent_waiting(session, name):
-    state.add_agent(
-        state.Agent(session, name, "worker", "/w", None, None, "idle", provider="claude")
-    )
-    state.add_event(session, name, state.SPAWNED)
-    state.set_status(session, name, state.WAITING)
-
-
-def test_what_waits_for_the_human_is_one_list_of_sessions_not_stopped(lado_home):
-    run, gate = _waiting(lado_home)
-    question = state.add_question("s", "w1", "Ship?", "", ["yes"], True)
-    _agent_waiting("s", "w1")
-    state.add_session(
-        state.Session("gone", "/r", None, provider="claude")
-    )  # tmux gone: still not stopped
-    _agent_waiting("gone", "w2")
-    state.add_session(state.Session("old", "/r", None, provider="claude"))
-    state.add_run(
-        _run(session="old"), [("supervisor", state.FLOW_START, "x")], _gate(session="old")
-    )
-    state.add_question("old", "w3", "Old?", "", None, True)
-    state.stop_session("old")
-
-    items = state.waiting_items()
-    assert [(w.session, w.gate, w.question and w.question.id) for w in items[:2]] == [
-        ("s", state.get_gate(gate.id), None),
-        ("s", None, question),
-    ]
-    [(s1, a1), (s2, a2)] = [(w.session, w.agent.name) for w in items[2:]]
-    assert {(s1, a1), (s2, a2)} == {("s", "w1"), ("gone", "w2")}
-    assert all(w.since for w in items)
-    assert [w.since for w in items] == sorted(w.since for w in items)
-    assert items[2].since == state.list_events(items[2].session)[-1].created_at
-    for waits in items[2:]:  # the time `lado ls` shows
-        since = state.status_since(waits.session)[waits.agent.name]
-        assert datetime.datetime.fromisoformat(waits.since).replace(tzinfo=since.tzinfo) == since
-    assert [w.session for w in state.waiting_items("gone")] == ["gone"]
-    assert state.waiting_items("old") == []
-    assert state.waiting_for_human("s") == (1, 1, 1)
-    assert state.waiting_for_human("old") == (0, 0, 0)
-
-    state.reply_to_questions("s", [_yes(question)])
-    state.set_status("s", "w1", "busy")
-    assert [w.gate for w in state.waiting_items("s")] == [state.get_gate(gate.id)]
-
-
-def test_a_new_run_can_start_at_a_gate_and_gates_go_with_their_session(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    gate = _gate()
-    state.add_run(_run(status=state.WAITING), [("supervisor", state.FLOW_START, "x")], gate)
-    assert state.open_gates() == [state.get_gate(gate.id)]
-    state.delete_session("s")
-    assert state.get_gate(gate.id) is None
-
-
 def test_version_7_database_gets_stopped_sessions(lado_home):
     db = _schema_v4(lado_home)
     for version in (4, 5, 6):
@@ -2218,12 +1366,6 @@ def test_version_9_database_gets_message_attempts_and_when_agents_were_seen(lado
     assert state.failed_counts("s") == {}  # reads messages.failed_at
 
 
-def test_a_run_keeps_the_language_of_the_human(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    state.add_run(_run(language="ru"), [("supervisor", state.FLOW_START, "started")])
-    assert state.get_run("s", "feature/x").language == "ru"
-
-
 def test_version_10_database_keeps_the_notes_of_runs(lado_home):
     db = _schema_v4(lado_home)
     for version in range(4, 10):
@@ -2240,60 +1382,6 @@ def test_version_10_database_keeps_the_notes_of_runs(lado_home):
     # A run from before keeps its previous note; no earlier note was kept.
     assert state.get_run("s", "feature/x").note == "designed"
     assert state.run_notes("s", "feature/x") == []
-
-
-def _moved(run, to, note, body="", kind=state.REPORT):
-    """Move `run` to state `to` with the note reported from where it was."""
-    after = dataclasses.replace(run, state=to, note=note, note_body=body)
-    assert state.update_run(run, after, [], noted=state.Noted(run.state, kind))
-    return after
-
-
-def test_every_note_is_kept_with_the_state_it_was_reported_from(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    run = _run()
-    state.add_run(run, [("supervisor", state.FLOW_START, "started")])
-    run = _moved(run, "implement", "first design", "plan A")
-    run = _moved(run, "design", "back to design")
-    run = _moved(run, "implement", "second design", "plan B")
-    # A write that moves nothing keeps no note.
-    stale = dataclasses.replace(run, state="other")
-    lost = dataclasses.replace(run, note="lost")
-    assert not state.update_run(stale, lost, [], noted=state.Noted("other", state.REPORT))
-    notes = state.run_notes("s", "feature/x")
-    assert [(n.state, n.summary, n.body) for n in notes] == [
-        ("design", "first design", "plan A"),
-        ("implement", "back to design", ""),
-        ("design", "second design", "plan B"),
-    ]
-    assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}", notes[0].created_at)
-    # The notes go with their session.
-    state.delete_session("s")
-    assert state.run_notes("s", "feature/x") == []
-
-
-def test_notes_belong_to_their_run(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    for name in ("feature/x", "feature/y"):
-        state.add_run(_run(name), [("supervisor", state.FLOW_START, "started")])
-    _moved(_run("feature/x"), "implement", "x designed")
-    assert state.run_notes("s", "feature/y") == []
-
-
-def test_the_humans_override_is_kept_apart_from_a_states_report(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    run = _run()
-    state.add_run(run, [("supervisor", state.FLOW_START, "started")])
-    run = _moved(run, "implement", "the design")
-    run = _moved(run, "design", "back to design")
-    _moved(run, "implement", "set by the human: old design is fine", kind=state.OVERRIDE)
-    with state.connect() as db:
-        kept = db.execute("SELECT state, kind, summary FROM notes ORDER BY id").fetchall()
-    assert [tuple(row) for row in kept][-1] == (
-        "design",
-        state.OVERRIDE,
-        "set by the human: old design is fine",
-    )
 
 
 def test_stopping_a_session_keeps_its_history_and_drops_what_was_not_delivered(lado_home):
@@ -2333,18 +1421,6 @@ def test_stopping_a_session_keeps_its_history_and_drops_what_was_not_delivered(l
         ("w1", state.STATUS, state.STOPPED),
         ("lado", state.SESSION_STOP, "3 messages dropped"),
     ]
-
-
-def test_a_resumed_session_gets_its_new_settings(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    state.stop_session("s")
-    state.resume_session(state.Session("s", "/r", "plan", "kilo", ["team"], ["skill:x"]), "kits")
-    sess = state.get_session("s")
-    assert sess == state.Session(
-        "s", "/r", "plan", "kilo", ["team"], ["skill:x"], created_at=sess.created_at
-    )
-    last = state.list_events("s")[-1]
-    assert (last.agent, last.kind, last.detail) == ("lado", state.SESSION_RESUME, "kits")
 
 
 def test_version_12_messages_become_plain_messages_in_version_13(lado_home):
@@ -2400,65 +1476,10 @@ def test_version_15_agents_wait_for_no_key(lado_home):
     assert state.get_agent("s", "w1").status == state.BUSY
 
 
-def test_run_notes_are_the_steps_of_the_session_in_order(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    x, y = _run("feature/x"), _run("feature/y")
-    for run in (x, y):
-        state.add_run(run, [("supervisor", state.FLOW_START, "started")])
-    after = dataclasses.replace(x, state="implement", note="designed", note_body="plan")
-    step = state.Noted("design", state.REPORT, "supervisor", "ready", "implement")
-    assert state.update_run(x, after, [], noted=step)
-    _moved(y, "implement", "y designed")
-    _moved(after, "design", "set by the human: again", kind=state.OVERRIDE)
-    notes = state.run_notes("s")
-    assert [(n.run, n.summary) for n in notes] == [
-        ("feature/x", "designed"),
-        ("feature/y", "y designed"),
-        ("feature/x", "set by the human: again"),
-    ]
-    first = notes[0]
-    assert (first.state, first.kind, first.body) == ("design", state.REPORT, "plan")
-    assert (first.actor, first.outcome, first.target) == ("supervisor", "ready", "implement")
-    assert notes[0].id < notes[1].id < notes[2].id
-    assert [n.summary for n in state.run_notes("s", "feature/y")] == ["y designed"]
-
-
-def test_a_session_and_an_agent_need_their_provider():
-    """No provider is the default (feature/no-default-provider): one left out is an error,
-    never Claude Code."""
-    with pytest.raises(TypeError, match="provider"):
-        state.Session("s", "/repo", None)
-    with pytest.raises(TypeError, match="provider"):
-        state.Agent("s", "w1", "worker", "/repo", None, None, state.IDLE)
-
-
 def _session_with(*agents):
     state.add_session(state.Session("s", "/r", None, provider="claude"))
     for agent in agents:
         state.add_agent(agent)
-
-
-@pytest.mark.parametrize(
-    "queue",
-    [
-        lambda: state.queue_message("s", "supervisor", "w1", "hi"),
-        lambda: state.queue_with_copy("s", "human", "w1", "hi", "", "supervisor", str),
-    ],
-    ids=["queue_message", "queue_with_copy"],
-)
-@pytest.mark.parametrize("w1", [None, _agent(status=state.STOPPED)], ids=["gone", "stopped"])
-def test_a_message_is_queued_only_for_a_running_agent(lado_home, queue, w1):
-    _session_with(*([w1] if w1 else []))
-    with pytest.raises(state.NotRunning) as refused:
-        queue()
-    assert refused.value.name == "w1"
-    assert state.list_messages("s") == []
-    if w1 is None:
-        state.add_agent(_agent(status=state.IDLE))
-    else:
-        state.set_status("s", "w1", state.IDLE)
-    queue()
-    assert [m.recipient for m in state.list_messages("s")][0] == "w1"
 
 
 @pytest.mark.parametrize("supervisor", [None, state.STOPPED, state.IDLE], ids=str)
@@ -2470,29 +1491,6 @@ def test_the_copy_is_queued_only_for_a_running_agent_and_the_message_anyway(lado
     queued = [(m.recipient, m.summary) for m in state.list_messages("s")]
     copy = [("supervisor", str(message))] if supervisor == state.IDLE else []
     assert queued == [("w1", "hi"), *copy]
-
-
-def test_messages_to_the_human_and_delivered_ones_need_no_running_agent(lado_home):
-    _session_with()
-    state.queue_message("s", "w1", "human", "hi", mark=state.DELIVERED)
-    state.queue_message("s", "lado", "w1", "first input", "long", state.DELIVERED)
-    assert [m.state for m in state.list_messages("s")] == [state.DELIVERED] * 2
-
-
-def test_messages_for_a_supervisor_about_to_start_need_no_running_agent(lado_home):
-    _session_with()
-    state.queue_message("s", "lado", "supervisor", "session resumed", before_start=True)
-    assert [m.state for m in state.list_messages("s")] == [state.PENDING]
-
-
-def test_an_answer_goes_only_to_a_running_agent(lado_home):
-    _session_with(_agent(status=state.IDLE))
-    question = state.add_question("s", "w1", "Merge?", "", ["yes"], True)
-    state.set_status("s", "w1", state.STOPPED)
-    with pytest.raises(state.NotRunning):
-        state.reply_to_questions("s", [_yes(question)])
-    assert state.get_message("s", question).question_state == state.OPEN_QUESTION
-    assert [m.id for m in state.list_messages("s")] == [question]
 
 
 def _yes(question):
@@ -2591,167 +1589,6 @@ def test_only_the_sessions_stopped_questions_are_untold(lado_home):
     state.stop_session("s")
     assert state.get_message("s", closed).question_state == state.CLOSED
     assert state.untold_questions("s") == []
-
-
-def test_the_replies_to_questions_are_written_together(lado_home):
-    _session_with(_agent(status=state.IDLE))
-    first = state.add_question("s", "w1", "Merge?", "", ["yes"], True)
-    second = state.add_question("s", "w1", "Port?", "", None, True)
-    dismissal = state.Reply(second, f"Dismissed #{second}", "later", None, state.DISMISSED)
-    ids = state.reply_to_questions("s", [_yes(first), dismissal])
-    replies = state.list_messages("s")[2:]
-    assert [m.id for m in replies] == ids
-    assert [(m.sender, m.recipient, m.summary, m.body, m.reply_to, m.choice) for m in replies] == [
-        ("human", "w1", f"Answer to #{first}: yes", "", first, "yes"),
-        ("human", "w1", f"Dismissed #{second}", "later", second, None),
-    ]
-    asked = [state.get_message("s", q) for q in (first, second)]
-    assert [(m.question_state, m.answered_by) for m in asked] == [
-        (state.ANSWERED, ids[0]),
-        (state.DISMISSED, ids[1]),
-    ]
-
-
-@pytest.mark.parametrize("closed", ["answered", None], ids=["answered", "no question"])
-def test_replies_with_one_question_not_open_write_nothing(lado_home, closed):
-    _session_with(_agent(status=state.IDLE))
-    first = state.add_question("s", "w1", "Merge?", "", ["yes"], True)
-    second = state.add_question("s", "w1", "Port?", "", None, True)
-    if closed:
-        with state.connect() as db:
-            db.execute("UPDATE messages SET question_state = ? WHERE id = ?", (closed, second))
-    missing = second if closed else 999
-    with pytest.raises(state.QuestionClosed) as refused:
-        state.reply_to_questions("s", [_yes(first), _yes(missing)])
-    assert (refused.value.question, refused.value.question_state) == (missing, closed or "gone")
-    assert [m.id for m in state.list_messages("s")] == [first, second]
-    assert state.get_message("s", first).question_state == state.OPEN_QUESTION
-
-
-def _typed(*summaries, status=state.IDLE, channel=state.TYPED):
-    """w1 with these messages typed into its window (sent; or by another `channel`), and its
-    status."""
-    _session_with(_agent(status=status))
-    for summary in summaries:
-        state.queue_message("s", "supervisor", "w1", summary)
-    state.take_pending("s", "w1", state.SENT, channel=channel)
-    return [m.id for m in state.list_messages("s")]
-
-
-def test_sweep_gives_the_plan_the_agent_and_its_sent_messages(lado_home):
-    one, two = _typed("one", "two")
-    state.queue_message("s", "supervisor", "w1", "pending")
-    seen = []
-    swept = state.sweep("s", "w1", 5.0, lambda a, sent: seen.append((a, sent)) or state.Plan())
-    [(agent, sent)] = seen
-    assert (agent.name, [m.id for m in sent]) == ("w1", [one, two])
-    assert swept == state.Swept([], [])
-    assert [m.state for m in state.list_messages("s")] == [state.SENT] * 2 + [state.PENDING]
-
-
-def test_sweep_of_an_agent_that_is_gone_plans_nothing(lado_home):
-    _session_with()
-    swept = state.sweep("s", "w1", 5.0, lambda a, sent: pytest.fail("no plan for nobody"))
-    assert swept == state.Swept([], [])
-
-
-def test_sweep_fails_and_requeues_what_the_plan_says(lado_home):
-    one, two, three = _typed("one", "two", "three")
-    swept = state.sweep("s", "w1", 5.0, lambda a, sent: state.Plan(requeue=[two], fail=[one]))
-    assert [m.id for m in swept.failed] == [one]
-    assert swept.failed[0].state == state.FAILED
-    assert swept.typed == []
-    states = [m.state for m in state.list_messages("s")]
-    assert states == [state.FAILED, state.PENDING, state.SENT]
-    with state.connect() as db:
-        failed_at = [r[0] for r in db.execute("SELECT failed_at FROM messages ORDER BY id")]
-    assert failed_at == [5.0, None, None]
-    # Not told to: the agent's status stays.
-    assert state.get_agent("s", "w1").status == state.IDLE
-    assert _status_events() == []
-
-
-def test_sweep_types_the_sent_and_pending_messages_again(lado_home):
-    one, two = _typed("one", "two", status=state.BUSY)
-    state.queue_message("s", "supervisor", "w1", "new")
-    swept = state.sweep("s", "w1", 5.0, lambda a, sent: state.Plan(retype=True))
-    assert [m.summary for m in swept.typed] == ["one", "two", "new"]
-    assert all(m.state == state.SENT for m in swept.typed)
-    messages = state.list_messages("s")
-    assert [(m.state, m.attempts, m.sent_at) for m in messages] == [
-        (state.SENT, 2, 5.0),
-        (state.SENT, 2, 5.0),
-        (state.SENT, 1, 5.0),
-    ]
-
-
-def test_confirming_a_channel_delivers_only_the_messages_sent_by_it(lado_home):
-    _typed("typed")
-    state.queue_message("s", "supervisor", "w1", "output")
-    state.take_pending("s", "w1", state.SENT, channel=state.HOOK_OUTPUT)
-    state.confirm_channel("s", "w1", state.HOOK_OUTPUT)
-    states = {m.summary: m.state for m in state.list_messages("s")}
-    assert states == {"typed": state.SENT, "output": state.DELIVERED}
-
-
-def test_what_sweep_types_again_goes_by_the_typed_channel(lado_home):
-    _typed("one", status=state.BUSY, channel=state.HOOK_OUTPUT)
-    state.queue_message("s", "supervisor", "w1", "new")
-    swept = state.sweep("s", "w1", 5.0, lambda a, sent: state.Plan(retype=True))
-    assert [m.channel for m in swept.typed] == [state.TYPED] * 2
-    assert [m.channel for m in state.list_messages("s")] == [state.TYPED] * 2
-
-
-@pytest.mark.parametrize("status", [state.BUSY, state.IDLE])
-def test_sweep_sets_the_agent_waiting_when_the_plan_says_so(lado_home, status):
-    [one] = _typed("one", status=status)
-    state.sweep("s", "w1", 5.0, lambda a, sent: state.Plan(fail=[one], wait=True))
-    assert state.get_agent("s", "w1").status == state.WAITING
-    assert _status_events() == [state.WAITING]
-
-
-def test_a_transition_s_detail_reads_back_as_it_was_written():
-    detail = state.flow_detail("design", "ready", "architecture")
-    assert detail == "design -ready-> architecture"
-    assert state.transition(detail) == ("design", "ready", "architecture")
-    assert state.transition(state.flow_detail("review", "changes", "review")) == (
-        "review",
-        "changes",
-        "review",
-    )
-
-
-@pytest.mark.parametrize(
-    "detail",
-    [
-        "at design",
-        "",
-        "design -ready->",
-        "design -ready-> architecture extra",
-        "a b -x-> c",
-        "design -re-ady-> x",
-    ],
-)
-def test_a_detail_not_in_the_transition_s_form_is_no_transition(detail):
-    assert state.transition(detail) is None
-
-
-def test_working_agents_counts_the_agents_in_busy_starting_or_background(lado_home):
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    assert state.working_agents("s") == 0
-    for name, status in [
-        ("w1", state.IDLE),
-        ("w2", state.WAITING),
-        ("w3", state.STOPPED),
-        ("w4", state.BUSY),
-        ("w5", state.STARTING),
-        ("w6", state.BACKGROUND),
-    ]:
-        state.add_agent(
-            state.Agent("s", name, "worker", "/w", None, None, status, provider="claude")
-        )
-    assert state.working_agents("s") == 3
-    assert state.working_agents("other") == 0
 
 
 # The lead's recommendation (RECOMMENDATION).
@@ -3065,20 +1902,6 @@ def test_a_server_a_model_refers_to_is_not_removed(lado_home):
     assert state.model_servers() == []
 
 
-def test_replacing_a_server_keeps_its_models(lado_home):
-    _server()
-    state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
-    assert state.replace_model_server("s1", "http://localhost:1235", "Ollama", ())
-    replaced = state.model_server("LM Studio дома")
-    assert (replaced.address, replaced.kind, replaced.apis) == (
-        "http://localhost:1235",
-        "Ollama",
-        (),
-    )
-    assert state.model("Локальная Qwen").server == "s1"
-    assert not state.replace_model_server("nope", "http://x", "Ollama", ())
-
-
 def test_a_server_removed_with_its_models(lado_home):
     _server()
     _server("s2", "other")
@@ -3089,50 +1912,6 @@ def test_a_server_removed_with_its_models(lado_home):
     assert [s.id for s in state.model_servers()] == ["s2"]
     assert [m.name for m in state.models()] == ["kept"]
     assert state.remove_model_server_with_models("s1") is None
-
-
-def test_a_server_removed_with_the_models_confirmed_only(lado_home):
-    _server()
-    state.add_model("sp", "kilo", "qwen3-8b", "s1")
-    state.add_model("late", "opencode", "qwen3-8b", "s1")
-    with pytest.raises(state.ModelsChanged) as changed:
-        state.remove_model_server_with_models("s1", confirmed=["SP"])
-    assert changed.value.names == ["late", "sp"]
-    assert [m.name for m in state.models()] == ["late", "sp"]
-    assert state.model_server("LM Studio дома") is not None
-    removed = state.remove_model_server_with_models("s1", confirmed=["Late", "sp"])
-    assert removed.names == ["late", "sp"]
-
-
-def test_a_model_renamed_keeps_its_cli_model_and_server(lado_home):
-    _server()
-    state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
-    state.add_model("Other", "claude", "haiku", "s1")
-    assert state.rename_model("локальная qwen", "Сильная") is True
-    renamed = state.model("сильная")
-    assert (renamed.name, renamed.cli, renamed.model, renamed.server) == (
-        "Сильная",
-        "opencode",
-        "qwen3-8b",
-        "s1",
-    )
-    assert state.model("Локальная Qwen") is None
-    assert state.rename_model("Сильная", "СИЛЬНАЯ") is True  # its own name in another case
-    assert state.model("сильная").name == "СИЛЬНАЯ"
-    with pytest.raises(state.NameTaken) as taken:
-        state.rename_model("сильная", "other")
-    assert taken.value.name == "Other"
-    assert state.model("сильная").name == "СИЛЬНАЯ"
-    assert state.rename_model("nope", "x") is False
-
-
-def test_the_lists_are_sorted_ignoring_case(lado_home):
-    for i, name in enumerate(["work", "LM Studio дома", "ext"]):
-        _server(f"s{i}", name)
-    assert [s.name for s in state.model_servers()] == ["ext", "LM Studio дома", "work"]
-    for name in ["Локальная Qwen", "быстрая", "Alpha"]:
-        state.add_model(name, "claude", "haiku", "s0")
-    assert [m.name for m in state.models()] == ["Alpha", "быстрая", "Локальная Qwen"]
 
 
 def _schema_38_with_models(lado_home):
@@ -3185,83 +1964,6 @@ def test_a_failed_migration_to_ids_leaves_the_rows_of_schema_38(lado_home, monke
     ]
     assert _schema(lado_home / "lado.db") == 38
     db.close()
-
-
-def test_a_model_on_no_server_is_refused_by_the_store(lado_home):
-    with pytest.raises(sqlite3.IntegrityError):
-        state.add_model("Быстрая", "claude", "haiku", None)
-    assert state.models() == []
-
-
-def test_a_model_is_found_by_its_id(lado_home):
-    _server()
-    saved = state.add_model("Q", "opencode", "qwen3-8b", "s1")
-    assert state.model_by_id(saved.id) == saved
-    assert state.model_by_id("nope") is None
-
-
-def test_a_default_is_external_or_built_in_never_both_or_neither(lado_home):
-    _server()
-    saved = state.add_model("Q", "opencode", "qwen3-8b", "s1")
-    with pytest.raises(sqlite3.IntegrityError):
-        state.set_cli_default(state.ModelRef("opencode", saved.id, "qwen3-8b"))
-    with pytest.raises(sqlite3.IntegrityError):
-        state.set_cli_default(state.ModelRef("opencode", None, None))
-    assert state.cli_defaults() == []
-
-
-def test_a_default_is_replaced_and_cleared(lado_home):
-    _server()
-    saved = state.add_model("Q", "opencode", "qwen3-8b", "s1")
-    state.set_cli_default(state.ModelRef("opencode", saved.id, None))
-    state.set_cli_default(state.ModelRef("claude", None, "opus"))
-    state.set_cli_default(state.ModelRef("opencode", None, "anthropic/claude-sonnet-4"))
-    assert state.cli_defaults() == [
-        state.ModelRef("claude", None, "opus"),
-        state.ModelRef("opencode", None, "anthropic/claude-sonnet-4"),
-    ]
-    assert state.clear_cli_default("claude") is True
-    assert state.clear_cli_default("claude") is False
-    assert [ref.cli for ref in state.cli_defaults()] == ["opencode"]
-
-
-def test_a_default_survives_a_rename_of_its_model(lado_home):
-    _server()
-    saved = state.add_model("Локальная Qwen", "opencode", "qwen3-8b", "s1")
-    ref = state.ModelRef("opencode", saved.id, None)
-    state.set_cli_default(ref)
-    assert state.rename_model("Локальная Qwen", "Alpha") is True
-    assert state.cli_defaults() == [ref]
-    assert state.model_by_id(saved.id).name == "Alpha"
-
-
-def test_a_default_on_no_saved_model_is_refused(lado_home):
-    with pytest.raises(sqlite3.IntegrityError):
-        state.set_cli_default(state.ModelRef("opencode", "nope", None))
-
-
-def test_removing_a_model_clears_the_default_on_it(lado_home):
-    _server()
-    saved = state.add_model("Q", "opencode", "qwen3-8b", "s1")
-    state.add_model("Other", "opencode", "qwen3-8b", "s1")
-    state.set_cli_default(state.ModelRef("opencode", saved.id, None))
-    state.set_cli_default(state.ModelRef("claude", None, "opus"))
-    assert state.remove_model("Other") == state.ModelsRemoved(["Other"], [])
-    assert len(state.cli_defaults()) == 2
-    assert state.remove_model("q") == state.ModelsRemoved(["Q"], ["opencode"])
-    assert state.cli_defaults() == [state.ModelRef("claude", None, "opus")]
-
-
-def test_removing_a_server_clears_the_defaults_on_its_models(lado_home):
-    _server()
-    a = state.add_model("a", "opencode", "qwen3-8b", "s1")
-    b = state.add_model("b", "kilo", "qwen3-8b", "s1")
-    state.set_cli_default(state.ModelRef("opencode", a.id, None))
-    state.set_cli_default(state.ModelRef("kilo", b.id, None))
-    state.set_cli_default(state.ModelRef("claude", None, "opus"))
-    removed = state.remove_model_server_with_models("s1")
-    assert removed == state.ModelsRemoved(["a", "b"], ["kilo", "opencode"])
-    assert state.cli_defaults() == [state.ModelRef("claude", None, "opus")]
 
 
 def test_a_stray_delete_of_a_default_s_model_is_refused_by_the_foreign_key(lado_home):

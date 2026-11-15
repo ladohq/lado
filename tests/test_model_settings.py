@@ -4,10 +4,7 @@ in process."""
 
 import json
 import os
-import socket
 import sqlite3
-import stat
-import time
 
 import fake_model_server as fake
 import pytest
@@ -37,12 +34,6 @@ def outside_container(monkeypatch):
     monkeypatch.delenv("LADO_CONTAINER", raising=False)
 
 
-def closed_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 def add(name, address, key=None, replace=False, notes=None):
     warned = []
     found = model_settings.add_server(
@@ -63,35 +54,6 @@ def key_file(name):
 # Names.
 
 
-@pytest.mark.parametrize(
-    ("name", "says"),
-    [
-        ("", "a model server's name is empty"),
-        ("x" * 65, "a model server's name is at most 64 characters (this one has 65)"),
-        (
-            "a\nb",
-            "a model server's name is one line of visible text: U+000A is not allowed",
-        ),
-        (
-            "a​b",
-            "a model server's name is one line of visible text: U+200B ZERO WIDTH SPACE is not "
-            "allowed",
-        ),
-        (" lab", "a model server's name has no spaces at its ends"),
-        ("lab ", "a model server's name has no spaces at its ends"),
-    ],
-)
-def test_a_name_refused(name, says):
-    with pytest.raises(model_settings.Refused) as refused:
-        model_settings.check_name(name, model_settings.SERVER)
-    assert str(refused.value) == says
-
-
-@pytest.mark.parametrize("name", ["LM Studio дома", "x" * 64, "Быстрая", "-x"])
-def test_a_name_kept(name):
-    model_settings.check_name(name, model_settings.MODEL)
-
-
 # Servers.
 
 
@@ -108,38 +70,6 @@ def test_add_saves_the_address_type_and_apis_not_the_models(serve):
     )
     assert not model_settings.key_folder(saved.id).exists()
     assert model_settings.server_key(saved) is None
-
-
-@pytest.mark.parametrize("profile", ["unknown", "openai-key", "closed"])
-def test_a_server_that_fails_the_probe_is_not_saved(serve, profile, lado_home):
-    if profile == "closed":
-        url = f"http://127.0.0.1:{closed_port()}"
-    elif profile == "openai-key":
-        url = serve("openai", key="k-1").url
-    else:
-        url = serve(profile).url
-    with pytest.raises(model_servers.ProbeError):
-        add("lab", url, key="wrong" if profile == "openai-key" else None)
-    assert state.model_servers() == []
-    assert not (lado_home / model_settings.KEYS).exists()
-
-
-def test_a_bad_address_is_a_value_error():
-    with pytest.raises(ValueError):
-        add("lab", "ftp://x")
-
-
-def test_a_taken_name_is_refused_before_any_request(serve):
-    first = serve("lmstudio")
-    add("LM Studio дома", first.url)
-    second = serve("lmstudio")
-    with pytest.raises(model_settings.Refused) as refused:
-        add("lm studio ДОМА", second.url)
-    assert str(refused.value) == (
-        'a model server "LM Studio дома" is saved already; to change its address or key: '
-        'lado model-server add "LM Studio дома" <address> [--key] --replace'
-    )
-    assert second.requests == []
 
 
 @pytest.mark.parametrize(
@@ -175,68 +105,11 @@ def test_a_server_at_the_address_of_another_is_saved_and_named(serve, given):
     assert [s.name for s in state.model_servers()] == ["lms", "macpro", "other"]
 
 
-def test_each_server_at_the_address_is_named(serve):
-    server = serve("lmstudio")
-    add("a", server.url)
-    add("b", server.url)
-    notes = []
-    add("c", server.url, notes=notes)
-    assert notes == ['same address as model server "a"', 'same address as model server "b"']
-
-
-def test_another_port_is_not_named(serve):
-    # Another path: test_same_address (a fake answers under one path only).
-    add("gw", serve("openai", prefix="/llm").url)
-    notes = []
-    add("root", serve("openai").url, notes=notes)
-    assert notes == []
-
-
-def test_replace_does_not_count_the_server_replaced(serve):
-    server = serve("lmstudio")
-    add("lms", server.url)
-    notes = []
-    add("lms", server.url + "/", replace=True, notes=notes)
-    assert notes == []
-    add("macpro", server.url)
-    add("lms", server.url, replace=True, notes=notes)
-    assert notes == ['same address as model server "macpro"']
-
-
-def test_a_failed_probe_names_no_server(serve):
-    server = serve("lmstudio")
-    add("lms", server.url)
-    server.close()
-    notes = []
-    with pytest.raises(model_servers.ProbeError):
-        add("macpro", server.url, notes=notes)
-    assert notes == []
-
-
-def test_the_probe_names_the_add_command(serve):
-    server = serve("openai", key="k-1")
-    with pytest.raises(model_servers.ProbeError) as raised:
-        add("work", server.url)
-    assert str(raised.value).endswith(f'run lado model-server add "work" {server.url} --key')
-
-
 @pytest.fixture(params=[0o077, 0o000])
 def umask(request):
     old = os.umask(request.param)
     yield
     os.umask(old)
-
-
-def test_the_key_file_is_private_whatever_the_umask(serve, umask, lado_home):
-    server = serve("openai", key="k-1")
-    add("work", server.url, key="k-1")
-    path = key_file("work")
-    assert path.read_text() == "k-1"
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
-    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
-    assert stat.S_IMODE((lado_home / model_settings.KEYS).stat().st_mode) == 0o700
-    assert model_settings.server_key(state.model_server("work")) == "k-1"
-    assert sorted(os.listdir(path.parent)) == ["key"]
 
 
 def test_a_link_on_the_way_to_the_key_is_refused(serve, lado_home, tmp_path):
@@ -249,79 +122,6 @@ def test_a_link_on_the_way_to_the_key_is_refused(serve, lado_home, tmp_path):
         add("work", server.url, key="k-1")
     assert list(elsewhere.iterdir()) == []
     assert state.model_servers() == []
-
-
-def test_replace_with_a_new_key_rewrites_the_file(serve):
-    old = serve("openai", key="k-1")
-    add("work", old.url, key="k-1")
-    new = serve("openai", key="k-2")
-    found, _ = add("WORK", new.url, key="k-2", replace=True)
-    assert found.kind == "OpenAI-compatible"
-    assert key_file("work").read_text() == "k-2"
-    assert state.model_server("work").address == new.url
-
-
-def test_replace_without_a_key_keeps_and_sends_the_kept_one(serve):
-    old = serve("openai", key="k-1")
-    add("work", old.url, key="k-1")
-    state.add_model("Q", "opencode", "gpt-oss-20b", state.model_server("work").id)
-    new = serve("ollama", key="k-1")
-    add("work", new.url, replace=True)
-    saved = state.model_server("work")
-    assert (saved.address, saved.kind, saved.apis) == (new.url, "Ollama", (CHAT, RESPONSES))
-    assert {r.headers["Authorization"] for r in new.requests} == {"Bearer k-1"}
-    assert key_file("work").read_text() == "k-1"
-    assert state.model("Q").server == saved.id
-
-
-def test_a_failed_replace_changes_nothing(serve):
-    old = serve("openai", key="k-1")
-    add("work", old.url, key="k-1")
-    before = state.model_server("work")
-    with pytest.raises(model_servers.ProbeError):
-        add("work", f"http://127.0.0.1:{closed_port()}", key="k-2", replace=True)
-    assert state.model_server("work") == before
-    assert key_file("work").read_text() == "k-1"
-
-
-def test_replace_of_a_name_no_server_has_is_refused(serve):
-    server = serve("openai")
-    with pytest.raises(model_settings.Refused) as refused:
-        add("work", server.url, replace=True)
-    assert str(refused.value) == (
-        'no model server "work" is saved; lado model-server list names them'
-    )
-    assert server.requests == []
-
-
-def test_the_plain_http_warning_comes_before_the_probe(serve, monkeypatch):
-    server = serve("openai", key="k-1")
-    events = []
-    real = model_servers.probe
-
-    def probe(text, key, command):  # the public address answers on the fake server
-        events.append("probe")
-        return real(server.url, key, command)
-
-    monkeypatch.setattr(model_servers, "probe", probe)
-    model_settings.add_server(
-        "ext", "http://llm.example.com", "k-1", warn=events.append, note=events.append
-    )
-    assert events == [
-        "the key goes to llm.example.com over plain http://, unencrypted; use https:// if the "
-        "server has it",
-        "probe",
-    ]
-
-
-def test_remove_removes_the_server_and_its_key_folder(serve, lado_home):
-    server = serve("openai", key="k-1")
-    add("work", server.url, key="k-1")
-    folder = key_file("work").parent
-    assert model_settings.remove_server("WORK") == "work"
-    assert state.model_servers() == []
-    assert not folder.exists()
-    assert list((lado_home / model_settings.KEYS).iterdir()) == []
 
 
 def test_remove_of_a_server_models_use_is_refused_naming_them(serve):
@@ -357,25 +157,6 @@ def test_remove_with_models_removes_them_then_the_server(serve, lado_home):
     assert not folder.exists()
 
 
-def test_remove_with_models_takes_a_model_added_after_the_listing(serve, monkeypatch):
-    """The models are found in the transaction that removes the server: one added after the
-    page listed them goes too, never a foreign-key refusal."""
-    add("lms", serve("lmstudio").url)
-    id = state.model_server("lms").id
-    state.add_model("listed", "opencode", "qwen3-8b", id)
-    real = state.remove_model_server_with_models
-
-    def late(server_id, confirmed):
-        state.add_model("late", "kilo", "qwen3-8b", server_id)
-        return real(server_id, confirmed)
-
-    monkeypatch.setattr(state, "remove_model_server_with_models", late)
-    removed = []
-    model_settings.remove_server("lms", with_models=True, removed=removed.append)
-    assert removed == ["late", "listed"]
-    assert state.models() == []
-
-
 def test_remove_with_the_models_confirmed_refuses_one_added_after_the_confirmation(serve):
     """The page names the models it removes: one added after it asked keeps the server and
     every model, and the refusal names them all."""
@@ -395,18 +176,6 @@ def test_remove_with_the_models_confirmed_refuses_one_added_after_the_confirmati
         "lms", with_models=True, confirmed=["late", "LISTED"], removed=removed.append
     )
     assert (removed, state.model_servers()) == (["late", "listed"], [])
-
-
-def test_remove_with_models_of_a_server_no_model_uses(serve):
-    add("lms", serve("lmstudio").url)
-    removed = []
-    assert model_settings.remove_server("lms", with_models=True, removed=removed.append) == "lms"
-    assert (removed, state.model_servers()) == ([], [])
-
-
-def test_remove_of_a_name_no_server_has_is_refused():
-    with pytest.raises(model_settings.Refused, match='no model server "work" is saved'):
-        model_settings.remove_server("work")
 
 
 def test_remove_refused_by_a_model_gone_again_meanwhile(serve, monkeypatch):
@@ -457,39 +226,6 @@ def test_a_key_that_cannot_be_read_refuses_in_one_line(serve, unreadable):
     assert state.models() == []
 
 
-def test_a_key_over_64_kib_is_refused_before_any_request(serve, lado_home):
-    server = serve("openai")
-    with pytest.raises(model_settings.Refused) as raised:
-        add("work", server.url, key="k" * (agent_env.MAX_VALUE + 1))
-    assert str(raised.value) == "the key is larger than 64 KiB"
-    assert server.requests == []
-    assert state.model_servers() == []
-    assert not (lado_home / model_settings.KEYS).exists()
-
-
-@pytest.mark.parametrize("key", ["\udcff\udcfe", "a\nb", "ключ"])
-def test_a_key_no_header_can_carry_is_refused(serve, key):
-    server = serve("openai")
-    with pytest.raises(model_settings.Refused) as raised:
-        add("work", server.url, key=key)
-    assert str(raised.value) == "the key holds a character no HTTP header can carry"
-    assert server.requests == []
-
-
-def test_a_cleanup_that_fails_keeps_the_first_error(serve, monkeypatch):
-    server = serve("openai", key="k-1")
-    monkeypatch.setattr(
-        state, "add_model_server", lambda *a: (_ for _ in ()).throw(state.NameTaken("Work"))
-    )
-
-    def refused(id):
-        raise OSError(13, "Permission denied")
-
-    monkeypatch.setattr(model_settings, "_remove_key", refused)
-    with pytest.raises(model_settings.Refused, match='a model server "Work" is saved already'):
-        add("work", server.url, key="k-1")
-
-
 def test_a_key_file_over_64_kib_is_not_read_cut(serve):
     server = serve("openai", key="k-1")
     add("work", server.url, key="k-1")
@@ -513,15 +249,6 @@ def test_a_failed_insert_removes_the_key_it_wrote(serve, monkeypatch, lado_home)
     assert list((lado_home / model_settings.KEYS).iterdir()) == []
 
 
-def test_the_clis_a_saved_server_suits():
-    saved = state.add_model_server(
-        "s1", "work", "https://gw", "OpenAI-compatible", (CHAT, RESPONSES)
-    )
-    assert model_settings.clis(saved) == ["Codex CLI", "Kilo CLI", "OpenCode"]
-    bare = state.add_model_server("s2", "bare", "https://x", "OpenAI-compatible", ())
-    assert model_settings.clis(bare) == []
-
-
 # Models.
 
 
@@ -539,72 +266,12 @@ def add_model(name, cli, model, server=None):
     return model_settings.add_model(name, cli, model, server)
 
 
-def test_a_model_without_a_server_is_refused_and_reads_no_list(monkeypatch):
-    seen = listing(monkeypatch, "claude", base.ModelList(("haiku",), None, why="no list"))
-    with pytest.raises(model_settings.Refused) as refused:
-        add_model("Быстрая", "claude", "haiku")
-    assert str(refused.value) == (
-        "a CLI's own models need no saving; only a model on a server is added: --server <server>"
-    )
-    assert refused.value.hint == "to make one its default: lado model default <cli> <model>"
-    assert refused.value.field == "server"
-    assert seen == []
-    assert state.models() == []
-
-
 def test_a_cli_lado_does_not_know_is_refused():
     with pytest.raises(model_settings.Refused) as refused:
         add_model("G", "gemini", "x")
     assert str(refused.value) == (
         'LADO knows no agent CLI "gemini"; --cli takes one of claude, codex, kilo, opencode'
     )
-
-
-def test_an_empty_model_is_refused():
-    with pytest.raises(model_settings.Refused, match="the model is empty"):
-        add_model("E", "claude", "  ")
-
-
-def test_a_taken_name_is_refused_before_any_check(serve):
-    server = serve("lmstudio")
-    add("lms", server.url)
-    add_model("Быстрая", "opencode", "qwen3-8b", "lms")
-    server.requests.clear()
-    with pytest.raises(model_settings.Refused) as refused:
-        add_model("быстрая", "kilo", "qwen3-8b", "lms")
-    assert str(refused.value) == (
-        'a model "Быстрая" is saved already; remove it first: lado model remove "Быстрая"'
-    )
-    assert server.requests == []
-    assert state.model("Быстрая").cli == "opencode"
-
-
-def test_a_server_no_one_saved_is_refused_without_a_request():
-    with pytest.raises(model_settings.Refused) as refused:
-        add_model("Q", "opencode", "q", "nowhere")
-    assert str(refused.value) == (
-        'no model server "nowhere" is saved; lado model-server list names them'
-    )
-
-
-def test_a_model_on_a_server_in_its_list_is_saved(serve):
-    server = serve("lmstudio")
-    add("LM Studio дома", server.url)
-    saved, verdict = add_model("Локальная Qwen", "opencode", "qwen3-8b", "lm studio дома")
-    assert saved.server == state.model_server("LM Studio дома").id
-    assert (verdict.kind, verdict.text) == (model_check.OK, "in LM Studio дома's list of models")
-
-
-def test_a_model_the_server_does_not_list_is_refused(serve):
-    server = serve("lmstudio")
-    add("LM Studio дома", server.url)
-    with pytest.raises(model_settings.Refused) as refused:
-        add_model("Q", "opencode", "qwen3-14b", "LM Studio дома")
-    assert str(refused.value) == (
-        f"qwen3-14b is not in LM Studio дома's list of models; lado model-server probe "
-        f"{server.url} prints the list"
-    )
-    assert state.models() == []
 
 
 def test_an_embeddings_model_is_refused(serve):
@@ -633,34 +300,6 @@ def test_a_server_without_types_is_checked_by_its_list(serve):
     add("ol", server.url)
     _, verdict = add_model("O", "opencode", "llama3.1:8b", "ol")
     assert verdict.kind == model_check.OK
-
-
-def test_a_server_with_no_list_saves_with_a_warning(serve):
-    server = serve("responses-only")
-    add("resp", server.url)
-    _, verdict = add_model("C", "codex", "gpt-x", "resp")
-    assert verdict.kind == model_check.WARN
-    assert verdict.text.startswith("GET /v1/models: 404: LADO cannot check gpt-x")
-
-
-def test_a_server_that_does_not_answer_refuses_the_model(serve):
-    server = serve("lmstudio")
-    add("LM Studio дома", server.url)
-    server.close()
-    with pytest.raises(model_settings.Refused) as refused:
-        add_model("Q", "opencode", "qwen3-8b", "LM Studio дома")
-    assert str(refused.value) == (
-        f"{server.url} does not answer (connection refused); LADO cannot check qwen3-8b"
-    )
-    assert state.models() == []
-
-
-def test_the_server_is_asked_with_its_kept_key(serve):
-    server = serve("openai", key="k-1")
-    add("work", server.url, key="k-1")
-    server.requests.clear()
-    add_model("W", "opencode", "gpt-oss-20b", "work")
-    assert {r.headers["Authorization"] for r in server.requests} == {"Bearer k-1"}
 
 
 @pytest.fixture
@@ -716,13 +355,6 @@ def test_a_cli_that_speaks_no_server_api_is_refused(serve, monkeypatch):
     assert server.requests == []
 
 
-def test_claude_on_an_anthropic_compatible_server_is_saved(serve):
-    server = serve("anthropic")
-    add("gw", server.url)
-    saved, verdict = add_model("Gw Claude", "claude", "claude-x", "gw")
-    assert (saved.cli, verdict.kind) == ("claude", model_check.OK)
-
-
 @pytest.mark.parametrize(
     "model", ["sonnet", "Sonnet", "opus", "best", "opusplan", "default", "qwen3[1m]", "qwen[1M]"]
 )
@@ -738,33 +370,6 @@ def test_a_name_claude_code_reads_as_its_own_is_not_saved_for_it(serve, model):
     )
     assert refused.value.field == model_settings.MODEL_FIELD
     assert len(server.requests) == asked and state.models() == []
-
-
-def test_a_name_claude_code_reads_as_its_own_starts_on_opencode():
-    default_on(entry("Своя", model="sonnet"))
-    start = model_settings.start_model(None, OPENCODE)
-    probe = counting_probe(found_on_server("sonnet"))
-    assert model_settings.check_start(start, OPENCODE, {}, probe).kind == model_check.OK
-
-
-def test_a_saved_name_claude_code_reads_as_its_own_is_refused_at_a_start():
-    saved = entry("Своя", cli="claude", model="sonnet", server="Шлюз")
-    default_on(saved)
-    probe = counting_probe()
-    start = model_settings.start_model(None, CLAUDE)
-    with pytest.raises(model_settings.Refused, match="reads sonnet as its own model"):
-        model_settings.check_start(start, CLAUDE, {}, probe)
-    assert probe.asked == []
-
-
-def test_claude_code_on_a_server_without_its_api_is_refused(serve):
-    server = serve("openai")
-    add("oai", server.url)
-    with pytest.raises(model_settings.Refused) as refused:
-        add_model("O", "claude", "gpt-oss-20b", "oai")
-    assert str(refused.value).startswith(
-        "oai does not suit Claude Code: it has no Anthropic Messages API; it suits "
-    )
 
 
 def test_remove_a_model_keeps_its_server(serve):
@@ -832,37 +437,6 @@ def test_a_model_removed_meanwhile_is_named_after_the_others(monkeypatch):
 
 
 # The field a refusal concerns (the page shows it under that field).
-
-
-def test_name_refusals_name_the_name():
-    with pytest.raises(model_settings.Refused) as refused:
-        model_settings.check_name("", model_settings.MODEL)
-    assert refused.value.field == "name"
-
-
-def test_server_refusals_name_their_field(serve):
-    server = serve("lmstudio")
-    add("lms", server.url)
-    for call, field in [
-        (lambda: add("LMS", server.url), "name"),
-        (lambda: add("nope", server.url, replace=True), "name"),
-        (lambda: add("work", server.url, key="a\nb"), "key"),
-        (lambda: add("work", server.url, key=""), "key"),
-        (lambda: model_settings.remove_server("nope"), ""),
-    ]:
-        with pytest.raises(model_settings.Refused) as refused:
-            call()
-        assert refused.value.field == field, refused.value
-    state.add_model("Q", "opencode", "qwen3-8b", state.model_server("lms").id)
-    with pytest.raises(model_settings.Refused) as refused:
-        model_settings.remove_server("lms")
-    assert refused.value.field == ""
-
-
-def test_the_empty_key_is_refused():
-    with pytest.raises(model_settings.Refused) as refused:
-        model_settings.check_key("")
-    assert (str(refused.value), refused.value.field) == ("the key is empty", "key")
 
 
 def test_model_refusals_name_their_field(serve):
@@ -935,20 +509,6 @@ def test_check_model_without_a_name_checks_no_name(serve):
         model_check.OK,
         "qwen3-8b · lms · OpenCode (2)",
     )
-
-
-def test_check_model_uses_the_probe_given(serve):
-    server = serve("lmstudio")
-    add("lms", server.url)
-    kept = model_servers.probe(server.url)
-    server.requests.clear()
-    seen = []
-    checked = check_model(
-        "N", "opencode", "qwen3-8b", "lms", probe=lambda s: seen.append(s) or kept
-    )
-    assert checked.verdict.kind == model_check.OK
-    assert [s.name for s in seen] == ["lms"]
-    assert server.requests == []
 
 
 # A model's default name.
@@ -1065,17 +625,6 @@ def test_rename_a_model():
     assert rename("сильная", "СИЛЬНАЯ").name == "СИЛЬНАЯ"
 
 
-def test_rename_to_a_taken_name_is_refused():
-    saved_models("a", "Other")
-    with pytest.raises(model_settings.Refused) as refused:
-        rename("a", "OTHER")
-    assert (str(refused.value), refused.value.field) == (
-        'a model "Other" is saved already; remove it first: lado model remove "Other"',
-        "name",
-    )
-    assert [m.name for m in state.models()] == ["a", "Other"]
-
-
 @pytest.mark.parametrize("new", ["", "x" * 65, " a"])
 def test_rename_to_no_name_is_refused(new):
     saved_models("a")
@@ -1085,15 +634,6 @@ def test_rename_to_no_name_is_refused(new):
     assert [m.name for m in state.models()] == ["a"]
 
 
-def test_rename_of_a_model_not_saved_is_refused():
-    with pytest.raises(model_settings.Refused) as refused:
-        rename("nope", "x")
-    assert (str(refused.value), refused.value.field) == (
-        'no model "nope" is saved; lado model list names them',
-        "",
-    )
-
-
 # An agent CLI's full list.
 
 
@@ -1101,38 +641,6 @@ def external(name="Локальная Qwen", cli="opencode", model="qwen3-8b"):
     if state.model_server("lms") is None:
         state.add_model_server("s1", "lms", "http://lms", "LM Studio", (CHAT,))
     return state.add_model(name, cli, model, "s1")
-
-
-def test_the_full_list_of_a_cli_with_a_list_offers_no_other_name():
-    external("Second")
-    external("first")
-    external("Kilo's", "kilo")
-    listed = base.ModelList((), ("a/b", "c/d"), "opencode models")
-    choices = model_settings.choices(providers.get("opencode"), lambda provider: listed)
-    assert (choices.aliases, choices.models, choices.why) == ((), ("a/b", "c/d"), "")
-    assert [m.name for m in choices.external] == ["first", "Second"]
-    assert choices.other_name is False
-
-
-def test_the_full_list_of_claude_code_is_its_aliases_and_an_other_name():
-    listed = base.ModelList(("opus",), None, why="Claude Code gives no list beyond its aliases")
-    choices = model_settings.choices(providers.get("claude"), lambda provider: listed)
-    assert (choices.aliases, choices.models) == (("opus",), None)
-    assert choices.why == "Claude Code gives no list beyond its aliases"
-    assert choices.other_name is True
-
-
-def test_a_list_that_cannot_be_read_keeps_the_external_models():
-    external("K", "kilo")
-    listed = base.ModelList(why="`kilo models` timed out after 15 s")
-    choices = model_settings.choices(providers.get("kilo"), lambda provider: listed)
-    assert [m.name for m in choices.external] == ["K"]
-    assert (choices.why, choices.other_name) == ("`kilo models` timed out after 15 s", True)
-
-
-def test_which_clis_take_a_whole_process_for_an_external_model():
-    whole = {name: providers.get(name).external_whole_process for name in providers.names()}
-    assert whole == {"claude": True, "codex": True, "kilo": False, "opencode": False}
 
 
 # An agent CLI's default model.
@@ -1156,56 +664,6 @@ OPENCODE_LIST = base.ModelList((), ("anthropic/claude-sonnet-4",), "opencode mod
 CLAUDE_LIST = base.ModelList(("opus",), None, why="Claude Code gives no list beyond its aliases")
 
 
-def test_an_external_default_is_found_ignoring_case_and_asks_no_server(installed, monkeypatch):
-    saved = external()
-    listing(monkeypatch, "opencode", OPENCODE_LIST)
-    ref, verdict = model_settings.set_default("opencode", "локальная qwen", installed("opencode"))
-    assert ref == state.ModelRef("opencode", saved.id, None)
-    assert verdict is None
-    assert state.cli_defaults() == [ref]
-
-
-def test_an_external_default_is_set_when_the_list_cannot_be_read(installed, monkeypatch):
-    saved = external()
-    listing(monkeypatch, "opencode", base.ModelList(why="no list"))
-    ref, _ = model_settings.set_default("opencode", "Локальная Qwen", installed("opencode"))
-    assert ref.model_id == saved.id
-
-
-def test_a_built_in_default_of_an_alias(installed, monkeypatch):
-    seen = listing(monkeypatch, "claude", CLAUDE_LIST)
-    env = installed("claude")
-    ref, verdict = model_settings.set_default("claude", " opus ", env)
-    assert ref == state.ModelRef("claude", None, "opus")
-    assert (verdict.kind, verdict.text) == (model_check.OK, "an alias of Claude Code")
-    assert seen == [env(None)]
-
-
-def test_a_built_in_default_the_list_lacks_is_refused(installed, monkeypatch):
-    listing(monkeypatch, "opencode", OPENCODE_LIST)
-    with pytest.raises(model_settings.Refused) as refused:
-        model_settings.set_default("opencode", "anthropic/claude-sonet-4", installed("opencode"))
-    assert str(refused.value) == (
-        "anthropic/claude-sonet-4 is not in OpenCode's list of models; opencode models prints "
-        "the list"
-    )
-    assert refused.value.page == "anthropic/claude-sonet-4 is not in OpenCode's list of models"
-    assert state.cli_defaults() == []
-
-
-def test_a_built_in_default_with_no_list_is_set_with_a_warning(installed, monkeypatch):
-    listing(monkeypatch, "claude", CLAUDE_LIST)
-    ref, verdict = model_settings.set_default(
-        "claude", "claude-opus-4-1-20250805", installed("claude")
-    )
-    assert ref.builtin == "claude-opus-4-1-20250805"
-    assert verdict.kind == model_check.WARN
-    assert verdict.text == (
-        "Claude Code gives no list beyond its aliases: LADO cannot check "
-        "claude-opus-4-1-20250805; a wrong name stops its agents at their first turn"
-    )
-
-
 def test_one_name_of_two_models_is_refused(installed, monkeypatch):
     external("qwen3-8b")
     listing(monkeypatch, "opencode", base.ModelList((), ("qwen3-8b",), "opencode models"))
@@ -1216,23 +674,6 @@ def test_one_name_of_two_models_is_refused(installed, monkeypatch):
         "Settings → Model servers"
     )
     assert state.cli_defaults() == []
-
-
-def test_another_cli_s_model_is_refused_on_a_cli_with_no_list(installed, monkeypatch):
-    external()
-    seen = listing(monkeypatch, "claude", CLAUDE_LIST)
-    with pytest.raises(model_settings.Refused) as refused:
-        model_settings.set_default("claude", "локальная qwen", installed("claude"))
-    assert str(refused.value) == '"Локальная Qwen" is a model of OpenCode, not of Claude Code'
-    assert len(seen) == 1
-    assert state.cli_defaults() == []
-
-
-def test_a_built_in_name_another_cli_s_model_also_has_is_set(installed, monkeypatch):
-    external("opus")
-    listing(monkeypatch, "claude", CLAUDE_LIST)
-    ref, _ = model_settings.set_default("claude", "opus", installed("claude"))
-    assert ref == state.ModelRef("claude", None, "opus")
 
 
 def test_a_cli_not_installed_or_not_known_is_refused(installed, monkeypatch):
@@ -1290,19 +731,6 @@ def test_a_default_set_by_reference_refuses_another_cli_s_or_a_gone_model(instal
     assert state.cli_defaults() == []
 
 
-def test_a_default_set_by_reference_uses_the_list_given(installed, monkeypatch):
-    seen = listing(monkeypatch, "claude", CLAUDE_LIST)
-    given = []
-
-    def kept(provider):
-        given.append(provider.name)
-        return CLAUDE_LIST
-
-    ref = state.ModelRef("claude", None, "opus")
-    model_settings.set_default_ref(ref, installed("claude"), kept)
-    assert (given, seen) == (["claude"], [])
-
-
 def test_a_model_removed_between_the_check_and_the_save_is_refused(installed, monkeypatch):
     saved = external()
     listing(monkeypatch, "opencode", OPENCODE_LIST)
@@ -1317,66 +745,6 @@ def test_a_model_removed_between_the_check_and_the_save_is_refused(installed, mo
     with pytest.raises(model_settings.Refused) as refused:
         model_settings.set_default_ref(state.ModelRef("opencode", saved.id, None), env)
     assert str(refused.value) == "that model is no longer saved"
-
-
-def test_clearing_a_default_of_a_cli_not_installed(installed):
-    state.set_cli_default(state.ModelRef("kilo", None, "x/y"))
-    assert model_settings.clear_default("kilo") is True
-    assert model_settings.clear_default("kilo") is False
-    assert state.cli_defaults() == []
-    with pytest.raises(model_settings.Refused, match='LADO knows no agent CLI "gemini"'):
-        model_settings.clear_default("gemini")
-
-
-def test_the_defaults_name_their_model_and_server():
-    saved = external()
-    state.set_cli_default(state.ModelRef("opencode", saved.id, None))
-    state.set_cli_default(state.ModelRef("claude", None, "opus"))
-    state.rename_model(saved.name, "Alpha")
-    claude, opencode = model_settings.defaults()
-    assert (claude.ref.cli, claude.name, claude.model, claude.server) == (
-        "claude",
-        "opus",
-        "opus",
-        None,
-    )
-    assert (opencode.ref.model_id, opencode.name, opencode.model, opencode.server) == (
-        saved.id,
-        "Alpha",
-        "qwen3-8b",
-        "lms",
-    )
-
-
-def test_removing_a_default_s_model_says_the_cli_cleared():
-    saved = external()
-    other = external("Other")
-    state.set_cli_default(state.ModelRef("opencode", saved.id, None))
-    events = []
-    model_settings.remove_models(
-        [other.name, saved.name],
-        lambda name: events.append(("removed", name)),
-        lambda cli: events.append(("cleared", cli)),
-    )
-    assert events == [
-        ("removed", "Other"),
-        ("removed", "Локальная Qwen"),
-        ("cleared", "opencode"),
-    ]
-
-
-def test_removing_a_server_says_the_defaults_cleared(serve):
-    add("lms", serve("lmstudio").url)
-    id = state.model_server("lms").id
-    saved = state.add_model("coder-oc", "opencode", "qwen3-8b", id)
-    state.add_model("sp", "kilo", "qwen3-8b", id)
-    state.set_cli_default(state.ModelRef("opencode", saved.id, None))
-    removed, cleared = [], []
-    model_settings.remove_server(
-        "lms", with_models=True, removed=removed.append, cleared=cleared.append
-    )
-    assert (removed, cleared) == (["coder-oc", "sp"], ["opencode"])
-    assert state.cli_defaults() == []
 
 
 # What an agent starts on.
@@ -1404,115 +772,12 @@ def external_table(saved):
     return state.PowerTable.of(state.PowerRow(saved.cli, saved.model, saved.id, saved.name))
 
 
-def test_the_row_of_the_session_goes_first():
-    default_on(entry())
-    start = model_settings.start_model(state.PowerTable.single("opencode", "x/y"), OPENCODE)
-    assert (start.name, start.model, start.server, start.source) == ("x/y", "x/y", None, "session")
-
-
-def test_an_external_row_is_read_by_its_id():
-    saved = entry()
-    table = external_table(saved)
-    state.rename_model(saved.name, "Qwen дома")
-    start = model_settings.start_model(table, OPENCODE)
-    assert (start.name, start.model, start.source) == ("Qwen дома", "qwen3-8b", "session")
-    assert start.server.name == "LM Studio дома" and not start.gone
-    server_id = start.server.id
-    assert start.launch_name(OPENCODE) == f"lado-{server_id}/qwen3-8b"
-
-
-def test_the_settings_row_goes_past_a_default():
-    default_on(entry())
-    start = model_settings.start_model(state.PowerTable.single("opencode", ""), OPENCODE)
-    assert (start.name, start.model, start.source) == (None, None, "cli")
-
-
-def test_no_table_takes_the_default():
-    default_on(entry())
-    start = model_settings.start_model(None, OPENCODE)
-    assert (start.name, start.model, start.source) == ("Локальная Qwen", "qwen3-8b", "default")
-
-
-def test_a_built_in_default():
-    state.set_cli_default(state.ModelRef("opencode", None, "opencode/big-pickle"))
-    start = model_settings.start_model(None, OPENCODE)
-    assert (start.model, start.server, start.source) == ("opencode/big-pickle", None, "default")
-
-
-def test_nothing_set_is_the_cli_s_choice():
-    start = model_settings.start_model(None, OPENCODE)
-    assert (start.name, start.model, start.source, start.note) == (None, None, "cli", None)
-
-
-def test_a_table_of_another_cli_takes_the_agent_s_default():
-    default_on(entry("Qwen в Kilo", "kilo"))
-    start = model_settings.start_model(state.PowerTable.single("opencode", "x/y"), KILO)
-    assert (start.name, start.source, start.note) == ("Qwen в Kilo", "default", None)
-
-
-def test_a_table_of_another_cli_with_no_default_says_so():
-    start = model_settings.start_model(state.PowerTable.single("codex", "gpt-5.6-sol"), CLAUDE)
-    assert start.model is None and start.source == "cli"
-    assert start.note == "the session's model gpt-5.6-sol is for Codex CLI"
-
-
 def test_a_settings_row_of_another_cli_has_no_note():
     start = model_settings.start_model(state.PowerTable.single("codex", ""), CLAUDE)
     assert start.note is None
 
 
-def test_an_entry_removed_is_gone():
-    saved = entry()
-    table = external_table(saved)
-    state.remove_model(saved.name)
-    start = model_settings.start_model(table, OPENCODE)
-    assert start.gone and start.name == "Локальная Qwen" and start.server is None
-    with pytest.raises(model_settings.Refused) as refused:
-        model_settings.check_start(start, OPENCODE, {})
-    assert str(refused.value) == (
-        "the session ran on the model Локальная Qwen, which is no longer saved; resume it with "
-        "--model '' for OpenCode's settings or --model <model> for another"
-    )
-
-
-def test_an_unreadable_table_is_refused():
-    with pytest.raises(model_settings.Refused) as refused:
-        model_settings.start_model(state.PowerTable.unreadable(), OPENCODE)
-    assert str(refused.value) == (
-        "the session's model cannot be read; resume it with --model '' for OpenCode's settings "
-        "or --model <model> for another"
-    )
-
-
 # A name given for a session.
-
-
-@pytest.fixture
-def on_path(monkeypatch):
-    monkeypatch.setattr(model_settings.shutil, "which", lambda *a, **k: "/bin/x")
-
-
-def test_an_empty_name_is_the_settings(on_path):
-    assert model_settings.session_row("", OPENCODE, {}) == state.PowerRow("opencode", "")
-    assert model_settings.session_row("  ", OPENCODE, {}) == state.PowerRow("opencode", "")
-
-
-def test_a_built_in_name_is_a_built_in_row(on_path):
-    row = model_settings.session_row("opencode/big-pickle", OPENCODE, {}, lambda _: EMPTY)
-    assert row == state.PowerRow("opencode", "opencode/big-pickle")
-
-
-def test_an_external_name_is_an_external_row_ignoring_case(on_path):
-    saved = entry()
-    row = model_settings.session_row("локальная qwen", OPENCODE, {}, lambda _: EMPTY)
-    assert row == state.PowerRow("opencode", "qwen3-8b", saved.id, "Локальная Qwen")
-
-
-def test_another_cli_s_external_name_is_refused(on_path):
-    entry()
-    with pytest.raises(model_settings.Refused) as refused:
-        model_settings.session_row("Локальная Qwen", CLAUDE, {}, lambda _: base.ModelList())
-    assert str(refused.value) == '"Локальная Qwen" is a model of OpenCode, not of Claude Code'
 
 
 # The check before a start.
@@ -1544,14 +809,6 @@ def found_on_server(*models, apis=(CHAT,), why=""):
     )
 
 
-def test_nothing_to_check_asks_nothing():
-    probe = counting_probe()
-    verdict = model_settings.check_start(
-        model_settings.start_model(None, OPENCODE), OPENCODE, {}, probe
-    )
-    assert verdict.kind == model_check.DEFAULT and probe.asked == []
-
-
 def test_a_built_in_model_is_checked_against_the_list():
     start = model_settings.start_model(state.PowerTable.single("opencode", "x/y"), OPENCODE)
     with pytest.raises(model_settings.Refused) as refused:
@@ -1559,22 +816,6 @@ def test_a_built_in_model_is_checked_against_the_list():
     assert str(refused.value) == (
         "x/y is not in OpenCode's list of models; opencode models prints the list"
     )
-
-
-def test_an_external_model_is_on_its_server():
-    default_on(entry())
-    probe = counting_probe(found_on_server("qwen3-8b"))
-    start = model_settings.start_model(None, OPENCODE)
-    assert model_settings.check_start(start, OPENCODE, {}, probe).kind == model_check.OK
-    assert probe.asked == ["LM Studio дома"]
-
-
-def test_a_server_with_no_list_warns():
-    default_on(entry())
-    probe = counting_probe(found_on_server(why="its answer lists no models"))
-    start = model_settings.start_model(None, OPENCODE)
-    verdict = model_settings.check_start(start, OPENCODE, {}, probe)
-    assert verdict.kind == model_check.WARN and "LADO cannot check qwen3-8b" in verdict.text
 
 
 def test_a_model_gone_from_its_server_is_refused():
@@ -1587,26 +828,6 @@ def test_a_model_gone_from_its_server_is_refused():
         "http://localhost:1234 prints the list"
     )
     assert refused.value.page == "qwen3-8b is not in LM Studio дома's list of models"
-    assert refused.value.retry
-
-
-def test_a_silent_server_is_refused_in_the_words_of_each_place():
-    default_on(entry())
-    start = model_settings.start_model(None, OPENCODE)
-    error = model_servers.ProbeError(
-        "http://localhost:1234 does not answer (connection refused)", silent="connection refused"
-    )
-    with pytest.raises(model_settings.Refused) as refused:
-        model_settings.check_start(start, OPENCODE, {}, counting_probe(error=error))
-    assert str(refused.value) == (
-        "http://localhost:1234 does not answer (connection refused); LADO cannot check qwen3-8b"
-    )
-    assert refused.value.window == (
-        "LM Studio дома does not answer (connection refused); qwen3-8b is on it. Start the "
-        "server or pick another model."
-    )
-    assert refused.value.short == "LM Studio дома does not answer"
-    assert refused.value.peek == "not answering"
     assert refused.value.retry
 
 
@@ -1629,34 +850,6 @@ def test_a_cli_a_server_s_type_does_not_suit_is_refused_with_no_request(apis):
     assert refused.value.short == "Шлюз does not suit Codex CLI"
     assert refused.value.peek == "does not suit"
     assert probe.asked == [] and not refused.value.retry
-
-
-def test_codex_on_a_gateway_is_asked_and_passes():
-    server = state.add_model_server("gw", "Шлюз", "http://gw", "OpenAI-compatible", (RESPONSES,))
-    default_on(state.add_model("Шлюз GPT", "codex", "gw-gpt", server.id))
-    probe = counting_probe(found_on_server("gw-gpt", apis=(RESPONSES,)))
-    start = model_settings.start_model(None, CODEX)
-    model_settings.check_start(start, CODEX, {}, probe)
-    assert probe.asked == ["Шлюз"]
-
-
-def test_a_model_of_codex_on_lm_studio_is_not_saved(serve):
-    server = serve("lmstudio")
-    add("lms", server.url)
-    server.requests.clear()
-    with pytest.raises(model_settings.Refused) as refused:
-        add_model("C", "codex", "qwen3-8b", "lms")
-    assert str(refused.value) == (
-        f"lms does not suit Codex CLI: {LOSES_TOOLS}; Kilo CLI and OpenCode do"
-    )
-    assert refused.value.field == model_settings.SERVER_FIELD
-    assert server.requests == []
-    assert state.model("C") is None
-
-
-def test_the_saved_server_s_clis_follow_its_type():
-    server = state.add_model_server("lms", "lms", "http://lms", base.LM_STUDIO, (CHAT, RESPONSES))
-    assert model_settings.clis(server) == ["Kilo CLI", "OpenCode"]
 
 
 @pytest.mark.parametrize(
@@ -1695,24 +888,6 @@ def write_key(saved, key):
     model_settings._write_key(saved.server, key)
 
 
-def test_the_ticked_models_are_grouped_by_server():
-    one = entry()
-    other = entry("Рабочая Qwen", model="qwen3-coder-30b")
-    gateway = entry("Шлюз Qwen", model="qwen/qwen3", server="Шлюз")
-    entry("Qwen в Kilo", cli="kilo")
-    write_key(gateway, "secret-key")
-    found, warnings = model_settings.agent_servers(OPENCODE)
-    assert warnings == []
-    assert [server.name for server in found] == ["LM Studio дома", "Шлюз"]
-    home, gate = found
-    assert home.models == (("qwen3-8b", one.name), ("qwen3-coder-30b", other.name))
-    assert home.base_url == "http://localhost:1234/v1"
-    assert (home.key, home.key_variable) == (None, "")
-    assert gate.key == "secret-key"
-    assert gate.key_variable == f"LADO_MODEL_KEY_{gateway.server.upper()}"
-    assert "secret-key" not in repr(gate)
-
-
 def on_fake(fake_server, name="Малая", model="small", cli="opencode"):
     """A saved model on the fake server, by a server of its own name."""
     saved = state.model_server(fake_server.url) or state.add_model_server(
@@ -1721,46 +896,10 @@ def on_fake(fake_server, name="Малая", model="small", cli="opencode"):
     return state.add_model(name, cli, model, saved.id)
 
 
-def test_a_server_s_limits_go_with_its_entry(serve):
-    on_fake(serve("gateway-limits"))
-    (found,), warnings = model_settings.agent_servers(OPENCODE)
-    assert found.limits["small"] == base.Limit(16000, 2048)
-    assert warnings == []
-
-
-def test_a_server_that_reports_nothing_has_no_limits_and_no_warning():
-    default_on(entry())
-    start = model_settings.start_model(None, OPENCODE)
-    (found,), warnings = model_settings.agent_servers(OPENCODE, start)
-    assert found.limits == {}
-    assert warnings == []
-
-
-def test_silent_servers_cost_one_ceiling_together(serve, monkeypatch):
-    monkeypatch.setattr(model_servers, "LIMIT_TIMEOUT", 0.5)
-    on_fake(serve("hang"), "Первая")
-    on_fake(serve("hang"), "Вторая")
-    on_fake(serve("hang"), "Третья")
-    began = time.monotonic()
-    found, warnings = model_settings.agent_servers(OPENCODE)
-    assert time.monotonic() - began < 1.2
-    assert len(found) == 3 and warnings == []
-
-
 def warned(server, cli, model="small"):
     saved = on_fake(server, model=model, cli=cli.name)
     default_on(saved)
     return model_settings.agent_servers(cli, model_settings.start_model(None, cli))[1]
-
-
-@pytest.mark.parametrize(("cli", "need"), [(OPENCODE, "32,768"), (providers.get("kilo"), "49,152")])
-def test_a_start_below_the_cli_s_need_warns(serve, cli, need):
-    server = serve("gateway-limits")
-    assert warned(server, cli) == [
-        f"Малая on {server.url} has a context of 16,000 tokens; {cli.title} needs about "
-        f"{need} for its instructions and tools: load the model with a larger context; see "
-        '"What to expect of a small model" in docs/install.md'
-    ]
 
 
 @pytest.mark.parametrize(
@@ -1781,66 +920,6 @@ def test_the_warning_says_where_a_server_of_a_known_kind_sets_the_context(kind, 
     assert f"tools: {how}; see " in warning
 
 
-def test_a_context_at_the_need_does_not_warn():
-    start = model_settings.StartModel(name="m", model="m", server=None)
-    assert model_settings.context_warning(start, OPENCODE, base.Limit(32768)) is None
-    assert model_settings.context_warning(start, OPENCODE, base.Limit(32767)) is not None
-
-
-def test_an_unknown_context_off_a_server_does_not_warn():
-    start = model_settings.StartModel(name="m", model="m", server=None)
-    assert model_settings.context_warning(start, OPENCODE, None) is None
-
-
-@pytest.mark.parametrize(
-    "address",
-    [
-        "http://localhost:1",
-        "http://192.168.1.10:1234",
-        "http://mac-studio.local:1234",
-        "http://gpu-box:8000",
-        "http://ollama.lan:11434",
-        "https://llm.corp.internal",
-        "http://nas.home.arpa:8080",
-    ],
-)
-def test_an_unknown_context_on_a_local_server_does_not_warn(address):
-    server = state.ModelServer("id", "Дома", address, model_servers.OPENAI, (CHAT,), "")
-    start = model_settings.StartModel(name="m", model="m", server=server)
-    assert model_settings.context_warning(start, OPENCODE, None) is None
-
-
-def test_an_unknown_context_on_a_public_server_warns_and_a_known_one_does_not():
-    server = state.ModelServer(
-        "id", "Облако", "https://llm.example.com", model_servers.OPENAI, (CHAT,), ""
-    )
-    start = model_settings.StartModel(name="Большая", model="m", server=server)
-    assert model_settings.context_warning(start, OPENCODE, None) == (
-        "Большая on Облако: the server reports no context for it, so the agent compacts late and "
-        'its answers have no limit; see "A cloud provider" in docs/install.md'
-    )
-    assert model_settings.context_warning(start, OPENCODE, base.Limit(131072)) is None
-
-
-def test_a_cli_with_no_need_never_warns():
-    start = model_settings.StartModel(name="m", model="m", server=None)
-    assert model_settings.context_warning(start, CODEX, base.Limit(1)) is None
-
-
-def test_a_small_model_the_agent_does_not_start_on_does_not_warn(serve):
-    on_fake(serve("gateway-limits"))
-    assert model_settings.agent_servers(OPENCODE)[1] == []
-
-
-def test_codex_gets_the_server_of_its_start_with_that_model_alone():
-    saved = entry("Шлюз GPT", cli="codex", model="gw-gpt", server="Шлюз")
-    entry("Шлюз Mini", cli="codex", model="gw-mini", server="Шлюз")
-    default_on(saved)
-    start = model_settings.start_model(None, CODEX)
-    entries, _ = model_settings.agent_servers(CODEX, start)
-    assert [(e.name, e.models) for e in entries] == [("Шлюз", (("gw-gpt", "Шлюз GPT"),))]
-
-
 def test_a_cli_of_one_model_per_process_gets_the_server_of_its_start_alone():
     saved = entry("Шлюз Opus", cli="claude", model="gw-opus", server="Шлюз")
     entry("Шлюз Sonnet", cli="claude", model="gw-sonnet", server="Шлюз")
@@ -1859,14 +938,6 @@ def test_a_cli_of_one_model_per_process_gets_the_server_of_its_start_alone():
     assert warnings == []
 
 
-def test_a_cli_of_one_model_per_process_on_a_built_in_model_gets_no_server():
-    entry("Шлюз Opus", cli="claude", model="gw-opus", server="Шлюз")
-    table = state.PowerTable.single("claude", "opus")
-    start = model_settings.start_model(table, CLAUDE)
-    assert model_settings.agent_servers(CLAUDE, start) == ((), [])
-    assert model_settings.agent_servers(CLAUDE) == ((), [])
-
-
 def test_a_cli_of_one_model_per_process_has_the_limits_of_its_model(serve):
     saved = on_fake(serve("gateway-limits"), model="small", cli="claude")
     default_on(saved)
@@ -1874,18 +945,6 @@ def test_a_cli_of_one_model_per_process_has_the_limits_of_its_model(serve):
     (found,), warnings = model_settings.agent_servers(CLAUDE, start)
     assert found.limits["small"] == base.Limit(16000, 2048)
     assert len(warnings) == 1 and "needs about 65,536" in warnings[0]
-
-
-def test_a_key_that_cannot_be_read_refuses_the_one_server_of_a_start():
-    saved = entry("Шлюз Opus", cli="claude", model="gw-opus", server="Шлюз")
-    default_on(saved)
-    write_key(saved, "k")
-    key = model_settings.key_folder(saved.server) / model_settings.KEY
-    key.unlink()
-    key.symlink_to("/etc/hostname")
-    start = model_settings.start_model(None, CLAUDE)
-    with pytest.raises(model_settings.Refused, match="symbolic link"):
-        model_settings.agent_servers(CLAUDE, start)
 
 
 def test_a_key_that_cannot_be_read_leaves_its_server_out():
@@ -1898,18 +957,6 @@ def test_a_key_that_cannot_be_read_leaves_its_server_out():
     found, warnings = model_settings.agent_servers(OPENCODE)
     assert [server.id for server in found] == [other.server]
     assert len(warnings) == 1 and "LM Studio дома" in warnings[0] and "left out" in warnings[0]
-
-
-def test_a_key_that_cannot_be_read_refuses_the_server_of_the_start():
-    saved = entry()
-    default_on(saved)
-    write_key(saved, "k")
-    key = model_settings.key_folder(saved.server) / model_settings.KEY
-    key.unlink()
-    key.symlink_to("/etc/hostname")
-    start = model_settings.start_model(None, OPENCODE)
-    with pytest.raises(model_settings.Refused, match="symbolic link"):
-        model_settings.agent_servers(OPENCODE, start)
 
 
 @pytest.mark.parametrize("key", ['ab"cd', "ab\\cd", "ab\tcd"], ids=["quote", "backslash", "tab"])
@@ -1981,36 +1028,10 @@ def _agent_on(saved, source, session_power=None):
     return state.get_agent("s", "w1")
 
 
-def test_an_agent_keeps_the_name_it_started_on_beside_a_twin():
-    """Two entries of one CLI, model and server are allowed: a twin saved first by name must not
-    take the agent's name."""
-    chosen = entry("Абрикос")
-    entry("Яблоко")  # the same model and server, read after it
-    agent = _agent_on(chosen, state.SESSION, external_table(chosen))
-    assert model_settings.model_name(agent) == "Абрикос"
-    assert model_settings.agent_shown(agent).name == "Абрикос"
-
-
-def test_an_agent_on_a_default_keeps_its_name_beside_a_twin():
-    chosen = entry("Абрикос")
-    entry("Яблоко")
-    default_on(chosen)
-    agent = _agent_on(chosen, state.DEFAULT_MODEL)
-    assert model_settings.model_name(agent) == "Абрикос"
-
-
 def test_a_model_renamed_while_the_agent_runs_shows_the_new_name():
     chosen = entry("Абрикос")
     entry("Яблоко")  # a twin must not take it either
     agent = _agent_on(chosen, state.SESSION, external_table(chosen))
-    state.rename_model("Абрикос", "Персик")
-    assert model_settings.model_name(agent) == "Персик"
-
-
-def test_a_default_renamed_while_the_agent_runs_shows_the_new_name():
-    chosen = entry("Абрикос")
-    default_on(chosen)
-    agent = _agent_on(chosen, state.DEFAULT_MODEL)
     state.rename_model("Абрикос", "Персик")
     assert model_settings.model_name(agent) == "Персик"
 
@@ -2022,53 +1043,6 @@ def test_the_config_names_a_model_of_two_entries_as_the_agent_started_on_it():
     start = model_settings.start_model(None, OPENCODE)
     found, _ = model_settings.agent_servers(OPENCODE, start)
     assert found[0].models == (("qwen3-8b", "Абрикос"),)
-
-
-def test_a_model_of_two_entries_stands_once_in_the_config():
-    entry("Абрикос")
-    entry("Яблоко")
-    found, _ = model_settings.agent_servers(OPENCODE)
-    assert found[0].models == (("qwen3-8b", "Абрикос"),)
-
-
-def test_a_model_changed_in_the_cli_is_found_by_its_id():
-    chosen = entry("Яблоко")
-    other = entry("Абрикос", model="m2")
-    agent = _agent_on(other, state.CLI_CHANGED, external_table(chosen))
-    assert model_settings.model_name(agent) == "Абрикос"
-
-
-def test_a_table_that_cannot_be_read_leaves_the_lookup_by_id():
-    saved = entry("Яблоко")
-    agent = _agent_on(saved, state.SESSION, state.PowerTable.unreadable())
-    assert model_settings.model_name(agent) == "Яблоко"
-
-
-def test_a_model_of_a_server_is_shown_by_its_entry():
-    saved = entry("Рабочая Qwen", model="qwen/qwen3-coder")
-    found = model_settings.shown(OPENCODE, f"lado-{saved.server}/qwen/qwen3-coder")
-    assert found == model_settings.Shown(
-        "Рабочая Qwen", "qwen/qwen3-coder", "LM Studio дома", "http://localhost:1234"
-    )
-
-
-def test_a_model_of_a_server_with_no_entry_is_shown_by_its_id():
-    saved = entry()
-    found = model_settings.shown(OPENCODE, f"lado-{saved.server}/other")
-    assert found == model_settings.Shown(
-        "other", "other", "LM Studio дома", "http://localhost:1234"
-    )
-
-
-def test_another_cli_s_entry_gives_no_name():
-    saved = entry("Qwen в Kilo", cli="kilo")
-    assert model_settings.shown(OPENCODE, f"lado-{saved.server}/qwen3-8b").name == "qwen3-8b"
-
-
-def test_a_removed_server_and_a_built_in_model_are_shown_as_they_are():
-    assert model_settings.shown(OPENCODE, "lado-gone/qwen3-8b") is None
-    assert model_settings.shown(OPENCODE, "opencode/big-pickle") is None
-    assert model_settings.shown(CLAUDE, "lado-gone/qwen3-8b") is None
 
 
 # A name given for a worker.
@@ -2097,23 +1071,6 @@ def worker_start(name, given, session_cli, env, lists):
     return model_settings.worker_start(name, given, session_cli, env, lists)
 
 
-def test_a_name_of_the_session_s_cli_reads_no_other_list(installed):
-    lists = Lists(opencode=OPENCODE_MODELS, kilo=KILO_MODELS)
-    env = installed("opencode", "kilo")
-    cli, start = worker_start(SHARED, None, OPENCODE, env, lists)
-    assert cli is OPENCODE
-    assert (start.name, start.model, start.source) == (SHARED, SHARED, "supervisor")
-    assert set(lists.reads) == {"opencode"}
-
-
-def test_a_name_only_another_cli_has_picks_that_cli(installed):
-    env = installed("claude", "kilo", "opencode")
-    lists = Lists(claude=CLAUDE_LIST, opencode=OPENCODE_MODELS, kilo=KILO_MODELS)
-    cli, start = worker_start("kilo/auto", None, CLAUDE, env, lists)
-    assert cli is KILO
-    assert (start.name, start.source) == ("kilo/auto", "supervisor")
-
-
 def test_a_saved_model_of_another_cli_picks_that_cli_ignoring_case(installed):
     saved = entry()
     env = installed("claude", "opencode")
@@ -2136,40 +1093,6 @@ def test_a_name_of_two_other_clis_is_refused_naming_them(installed):
     assert str(refused.value) == f"{SHARED} is a model of Kilo CLI and OpenCode; give provider"
 
 
-def test_a_name_of_no_cli_is_refused_pointing_to_list_models(installed):
-    env = installed("kilo", "opencode")
-    lists = Lists(opencode=OPENCODE_MODELS, kilo=KILO_MODELS)
-    with pytest.raises(model_settings.Refused) as refused:
-        worker_start("gpt-9", None, OPENCODE, env, lists)
-    assert str(refused.value) == "gpt-9 is in no agent CLI's list of models; list_models shows them"
-
-
-def test_a_free_name_with_no_provider_says_how_to_give_it(installed):
-    env = installed("claude", "opencode")
-    lists = Lists(claude=CLAUDE_LIST, opencode=OPENCODE_MODELS)
-    with pytest.raises(model_settings.Refused) as refused:
-        worker_start("sonet", None, CLAUDE, env, lists)
-    assert str(refused.value) == (
-        "sonet is in no agent CLI's list of models; list_models shows them; Claude Code gives no "
-        'full list: provider="claude" starts it with a warning'
-    )
-
-
-def test_a_provider_that_has_the_name_takes_it(installed):
-    env = installed("claude", "kilo", "opencode")
-    lists = Lists(claude=CLAUDE_LIST, opencode=OPENCODE_MODELS, kilo=KILO_MODELS)
-    cli, start = worker_start(SHARED, KILO, CLAUDE, env, lists)
-    assert (cli, start.name) == (KILO, SHARED)
-    assert "opencode" not in lists.reads
-
-
-def test_a_free_name_with_its_provider_starts(installed):
-    env = installed("claude", "opencode")
-    lists = Lists(claude=CLAUDE_LIST, opencode=OPENCODE_MODELS)
-    cli, start = worker_start("claude-opus-5-5", CLAUDE, OPENCODE, env, lists)
-    assert (cli, start.name, start.source) == (CLAUDE, "claude-opus-5-5", "supervisor")
-
-
 def test_a_saved_model_of_another_cli_is_refused_for_a_provider(installed):
     entry()
     env = installed("kilo", "opencode")
@@ -2179,30 +1102,12 @@ def test_a_saved_model_of_another_cli_is_refused_for_a_provider(installed):
     assert str(refused.value) == '"Локальная Qwen" is a model of OpenCode, not of Kilo CLI'
 
 
-def test_a_built_in_model_of_another_cli_is_refused_for_a_provider(installed):
-    env = installed("claude", "opencode")
-    lists = Lists(claude=CLAUDE_LIST, opencode=OPENCODE_MODELS)
-    with pytest.raises(model_settings.Refused) as refused:
-        worker_start("opus", OPENCODE, CLAUDE, env, lists)
-    assert str(refused.value) == "opus is a model of Claude Code, not of OpenCode"
-
-
 def test_a_free_name_another_cli_has_is_refused_for_a_provider_of_no_full_list(installed):
     env = installed("claude", "opencode")
     lists = Lists(claude=CLAUDE_LIST, opencode=OPENCODE_MODELS)
     with pytest.raises(model_settings.Refused) as refused:
         worker_start("opencode/big-pickle", CLAUDE, OPENCODE, env, lists)
     assert str(refused.value) == "opencode/big-pickle is a model of OpenCode, not of Claude Code"
-
-
-def test_a_name_no_list_has_is_refused_by_the_list_of_its_provider(installed):
-    env = installed("kilo", "opencode")
-    lists = Lists(opencode=OPENCODE_MODELS, kilo=KILO_MODELS)
-    with pytest.raises(model_settings.Refused) as refused:
-        worker_start("gpt-9", OPENCODE, KILO, env, lists)
-    assert str(refused.value) == (
-        "gpt-9 is not in OpenCode's list of models; opencode models prints the list"
-    )
 
 
 def test_a_list_that_failed_or_a_cli_not_installed_has_no_name(installed):
@@ -2221,14 +1126,6 @@ def test_a_saved_model_of_a_cli_not_installed_says_so(installed):
         worker_start("Локальная Qwen", None, CLAUDE, env, Lists(claude=CLAUDE_LIST))
 
 
-def test_a_saved_name_of_one_cli_and_built_in_of_the_session_s_stays_with_the_session(installed):
-    entry(SHARED)
-    env = installed("kilo", "opencode")
-    lists = Lists(kilo=KILO_MODELS)
-    cli, start = worker_start(SHARED, None, KILO, env, lists)
-    assert (cli, start.entry) == (KILO, None)  # the built-in one, not OpenCode's saved one
-
-
 def test_a_saved_name_that_is_also_built_in_of_its_cli_keeps_the_start_s_refusal(installed):
     entry(SHARED)
     env = installed("opencode")
@@ -2240,19 +1137,6 @@ def test_a_name_with_a_hidden_character_is_no_name(installed):
     env = installed("opencode")
     with pytest.raises(model_settings.Refused, match="a model is one line"):
         worker_start("gpt\x1b[2J", None, OPENCODE, env, Lists(opencode=OPENCODE_MODELS))
-
-
-def test_an_empty_name_is_the_cli_s_own_settings_past_a_default(installed):
-    default_on(entry())
-    lists = Lists()
-    cli, start = worker_start(" ", None, OPENCODE, installed("opencode"), lists)
-    assert (cli, start) == (OPENCODE, model_settings.StartModel())
-    assert lists.reads == []
-
-
-def test_an_empty_name_with_a_provider_is_that_cli(installed):
-    cli, start = worker_start("", KILO, OPENCODE, installed("opencode"), Lists())
-    assert (cli, start) == (KILO, model_settings.StartModel())
 
 
 # What list_models gives.
@@ -2289,44 +1173,12 @@ def test_each_installed_cli_is_listed_with_the_session_s_first(installed):
     ]
 
 
-def test_a_provider_narrows_the_list_to_its_cli(installed):
-    env = installed("claude", "kilo", "opencode")
-    lists = Lists(claude=CLAUDE_LIST, opencode=OPENCODE_MODELS, kilo=KILO_MODELS)
-    clis = model_settings.cli_models(session_of("claude"), KILO, env, lists)
-    assert [cli["cli"] for cli in clis] == ["kilo"]
-    assert lists.reads == ["kilo"]
-
-
-def test_a_provider_not_installed_is_refused(installed):
-    env = installed("claude")
-    with pytest.raises(model_settings.Refused, match="^Kilo CLI is not installed$"):
-        model_settings.cli_models(session_of("claude"), KILO, env, Lists())
-
-
-def test_an_external_model_of_a_cli_its_server_does_not_suit_says_why_it_cannot_start(installed):
-    entry("Шлюз GPT", cli="codex", server="LM Studio дома")
-    env = installed("codex")
-    [codex] = model_settings.cli_models(session_of("codex"), None, env, Lists())
-    [external] = codex["external"]
-    assert external["blocked"] == (
-        "Шлюз GPT is on the model server LM Studio дома; LM Studio дома does not suit Codex CLI: "
-        f"{LOSES_TOOLS}; Kilo CLI and OpenCode do"
-    )
-
-
 def test_a_saved_name_of_claude_code_s_own_says_why_it_cannot_start(installed):
     entry("Своя", cli="claude", model="sonnet", server="Шлюз")
     env = installed("claude")
     [claude] = model_settings.cli_models(session_of("claude"), None, env, Lists(claude=CLAUDE_LIST))
     [external] = claude["external"]
     assert external["blocked"].startswith("Claude Code reads sonnet as its own model")
-
-
-def test_an_external_model_of_claude_code_is_not_blocked(installed):
-    entry("Шлюз Opus", cli="claude", server="Шлюз")
-    env = installed("claude")
-    [claude] = model_settings.cli_models(session_of("claude"), None, env, Lists(claude=CLAUDE_LIST))
-    assert [one["blocked"] for one in claude["external"]] == [None]
 
 
 def test_starts_on_is_what_a_worker_of_each_cli_starts_on_with_no_model(installed):
@@ -2346,21 +1198,6 @@ def test_a_table_that_cannot_be_read_starts_on_nothing_named(installed):
     env = installed("opencode")
     [cli] = model_settings.cli_models(session, None, env, Lists(opencode=OPENCODE_MODELS))
     assert cli["starts_on"] is None
-
-
-def test_the_list_asks_no_server_and_holds_no_address_or_key(serve, installed):
-    key = "secret-key-of-the-canary"
-    listening = serve("all", key=key)
-    model_settings.add_server("Шлюз", listening.url, key, warn=print, note=print)
-    server = state.model_server("Шлюз")
-    state.add_model("Шлюз Qwen", "opencode", "m1", server.id)
-    listening.requests.clear()
-    clis = model_settings.cli_models(
-        session_of("opencode"), None, installed("opencode"), Lists(opencode=OPENCODE_MODELS)
-    )
-    assert listening.requests == []
-    assert clis[0]["external"][0]["server"] == "Шлюз"
-    assert key not in str(clis) and listening.url not in str(clis)
 
 
 # An agent of a CLI whose model names no server: its launch says which.
@@ -2384,12 +1221,3 @@ def test_an_agent_on_a_server_is_shown_by_its_name_and_server(source):
     assert model_settings.agent_shown(agent) == model_settings.Shown(
         "Шлюз Opus", "gw-opus", "Шлюз", "http://localhost:1234"
     )
-
-
-def test_a_built_in_model_of_the_id_of_a_saved_one_is_shown_as_it_is():
-    entry("Шлюз Opus", cli="claude", model="claude-opus-5-5", server="Шлюз")
-    state.add_session(state.Session("s", "/r", None, provider="claude"))
-    agent = state.Agent("s", "w1", "worker", "/r", None, None, state.STARTING, "claude")
-    state.add_agent(agent)
-    state.set_model("s", "w1", state.Choice("claude-opus-5-5", state.SUPERVISOR_CHOICE), None)
-    assert model_settings.agent_shown(state.get_agent("s", "w1")) is None

@@ -54,8 +54,8 @@ OPEN_ON_HOST = "Open it in your browser on the host."  # `lado ui` in a containe
 # `lado bug-report` reports lado.db's schema as it is, as `lado doctor`.
 # `lado model-server probe` asks a server over the network and keeps nothing, lado.db
 # untouched; `lado model-server` alone prints its help. Its add, list and remove keep the
-# servers in lado.db and migrate, as `lado model` does. A pair is a command and its
-# subcommand.
+# servers in lado.db and migrate, as `lado model` does; so does `lado git-server`, whose
+# bare command prints its help. A pair is a command and its subcommand.
 NOT_MIGRATING = (
     "stop",
     "doctor",
@@ -64,6 +64,7 @@ NOT_MIGRATING = (
     "bug-report",
     ("model-server", "probe"),
     ("model-server", None),
+    ("git-server", None),
 )
 
 
@@ -1554,16 +1555,25 @@ _ADD_TAKES_NO_MORE = (
     "server's key is never given on the command line (ps and the shell's history keep it): "
     "run lado model-server add <name> <address> --key and type it, or pipe it in"
 )
-_TAKES_NO_MORE = {"probe": _PROBE_TAKES_NO_MORE, "add": _ADD_TAKES_NO_MORE}
+_GIT_ADD_TAKES_NO_MORE = (
+    "lado git-server add takes an address, --token and --kind, nothing more; a server's token "
+    "is never given on the command line (ps and the shell's history keep it): run lado "
+    "git-server add <address> --token and type it, or pipe it in"
+)
+_TAKES_NO_MORE = {
+    "model-server probe": _PROBE_TAKES_NO_MORE,
+    "model-server add": _ADD_TAKES_NO_MORE,
+    "git-server add": _GIT_ADD_TAKES_NO_MORE,
+}
 
 
 class _ServerParser(argparse.ArgumentParser):
-    """The parser of a `lado model-server` command: the errors of those that take a key
-    (an argument of -h or --help, a missing address) would name a word of argv, which may
-    be the key; the usage and a fixed text instead, exit 1."""
+    """The parser of a `lado model-server` or `lado git-server` command: the errors of those
+    that take a key or a token (an argument of -h or --help, a missing address) would name a
+    word of argv, which may be the secret; the usage and a fixed text instead, exit 1."""
 
     def error(self, message: str):
-        refusal = _TAKES_NO_MORE.get(self.prog.rsplit(" ", 1)[-1])
+        refusal = _TAKES_NO_MORE.get(" ".join(self.prog.split()[-2:]))
         if refusal is None:
             super().error(message)
         self.print_usage(sys.stderr)
@@ -1701,6 +1711,98 @@ def cmd_model_server_remove(args: argparse.Namespace) -> int:
     except model_settings.Refused as exc:
         return _refused(exc)
     print(f'Removed model server "{name}".')
+    return 0
+
+
+def _git_address(text: str):
+    """The address of a git server, None after saying why it is not one (exit 2)."""
+    from lado import git_servers
+
+    try:
+        return git_servers.address(text)
+    except ValueError as exc:
+        print(f"lado: not a git server's address: {exc}", file=sys.stderr)
+        return None
+
+
+def cmd_git_server_add(args: argparse.Namespace) -> int:
+    """`lado git-server add <address> --token [--kind K]`: tell the server's kind by its API
+    and save it with its token (lado.git_servers); exit 1 for a refusal, 2 for an address it
+    does not take. The token is asked without echo or read from stdin, never taken from
+    argv."""
+    from lado import git_kinds, git_servers
+
+    at = _git_address(args.address)
+    if at is None:
+        return 2
+    again = f"{git_servers.ADD} {at.root} --token"
+    try:
+        git_servers.check_not_github(at)
+        if args.token is not _NO_VALUE:
+            raise git_servers.Refused(
+                "a server's token is never given on the command line (ps and the shell's "
+                f"history keep it); run {again} and type it, or pipe it in"
+                if args.token is not None
+                else f"a git server is added with its token: run {again} and type it, or pipe it in"
+            )
+        git_servers.check_git(os.environ)
+        warning = git_servers.plain_http_warning(at)
+        if warning:
+            _warn_line(warning)
+        token = _read_secret("Token of the server (not shown): ")
+        git_servers.check_token(token)
+        checked = git_servers.probe(at, token, args.kind)
+        saved, replaced = git_servers.save(at, checked, token)
+    except git_servers.Refused as exc:
+        return _refused(exc)
+    kind = git_kinds.by_name(saved.kind)
+    if checked.unchecked:
+        _warn_line(
+            f"{saved.address} could not be checked ({checked.unchecked}); saved as "
+            f"{kind.title if kind else saved.kind}"
+        )
+    if line := checked.line():
+        print(line)
+    print(f"{'Replaced' if replaced else 'Saved'} git server {saved.address}.")
+    print(git_servers.RESTART)
+    return 0
+
+
+def cmd_git_server_list(args: argparse.Namespace) -> int:
+    """`lado git-server list`: the saved servers, asking none of them."""
+    from lado import git_kinds, git_servers
+
+    servers = state.git_servers()
+    if not servers:
+        print(f"No git servers. Add one: {git_servers.ADD} <address> --token")
+        return 0
+    rows = []
+    for server in servers:
+        kind = git_kinds.by_name(server.kind)
+        rows.append(
+            [
+                server.address,
+                kind.title if kind else server.kind,
+                server.login or "not checked",
+                "yes" if git_servers.has_token(server) else "no",
+            ]
+        )
+    _table(["ADDRESS", "KIND", "LOGIN", "TOKEN"], rows)
+    return 0
+
+
+def cmd_git_server_remove(args: argparse.Namespace) -> int:
+    """`lado git-server remove <address>`: the server of the address's host and its token."""
+    from lado import git_servers
+
+    at = _git_address(args.address)
+    if at is None:
+        return 2
+    try:
+        removed = git_servers.remove(at)
+    except git_servers.Refused as exc:
+        return _refused(exc)
+    print(f"Removed git server {removed.address}.")
     return 0
 
 
@@ -2443,6 +2545,45 @@ def main(argv: list[str] | None = None) -> int:
     )
     model_server_remove.set_defaults(func=cmd_model_server_remove)
 
+    from lado.git_servers import KIND_NAMES
+
+    git_server = commands.add_parser(
+        "git-server", help="your GitLab and GitHub Enterprise servers: agents reach them by token"
+    )
+    git_server.set_defaults(func=lambda _: git_server.print_help() or 0)
+    git_server_sub = git_server.add_subparsers(
+        dest="sub", metavar="<command>", parser_class=_ServerParser
+    )
+    git_server_add = git_server_sub.add_parser(
+        "add",
+        help="tell a server's kind by its API and save it with your token",
+        usage="%(prog)s [-h] --token [--kind {" + ",".join(KIND_NAMES) + "}] address",
+    )
+    git_server_add.add_argument(
+        "address", help="e.g. gitlab.example.com or https://example.com/gitlab (https:// if none)"
+    )
+    git_server_add.add_argument(
+        "--token",
+        nargs="?",
+        const=_NO_VALUE,
+        help="asked without echo, or read from stdin; never given here",
+    )
+    git_server_add.add_argument(
+        "--kind",
+        choices=KIND_NAMES,
+        help="save a server whose API cannot be asked from here as this kind, unchecked",
+    )
+    git_server_add.set_defaults(func=cmd_git_server_add)
+    git_server_list = git_server_sub.add_parser(
+        "list", help="the saved servers, without asking them"
+    )
+    git_server_list.set_defaults(func=cmd_git_server_list)
+    git_server_remove = git_server_sub.add_parser(
+        "remove", help="remove a saved server and its token"
+    )
+    git_server_remove.add_argument("address")
+    git_server_remove.set_defaults(func=cmd_git_server_remove)
+
     model_cmd = commands.add_parser(
         "model", help="your servers' models under names, and each agent CLI's default model"
     )
@@ -2503,8 +2644,9 @@ def main(argv: list[str] | None = None) -> int:
     login_wait_cmd.add_argument("args", nargs=argparse.REMAINDER)
 
     args, more = parser.parse_known_args(argv)
-    if more and args.command == "model-server" and args.sub in _TAKES_NO_MORE:
-        print(f"lado: {_TAKES_NO_MORE[args.sub]}", file=sys.stderr)
+    taken = f"{args.command} {getattr(args, 'sub', None)}"
+    if more and taken in _TAKES_NO_MORE:
+        print(f"lado: {_TAKES_NO_MORE[taken]}", file=sys.stderr)
         return 1
     if more and hasattr(args, "quiet_parser"):  # words that may be a secret: not repeated
         args.quiet_parser.error("")

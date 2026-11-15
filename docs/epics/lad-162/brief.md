@@ -54,27 +54,29 @@ list behaves as today and the UI suggests adding it; `~/.gitconfig` is unchanged
 
 ## Readiness checklist
 
-- Goal and "done": missing: a step (the statement gives both, above).
-- Users and how they use it: missing: a step. The single LADO user; Settings → Git
-  servers, then nothing per session or project.
-- Scope and what is out: missing: a step. Out: ssh, Bitbucket/Gitea, several accounts per
+- Goal and "done": covered by S1–S5, the done of the epic is S5's human check (above).
+- Users and how they use it: covered by S1, Check: a server added in Settings is used by
+  agents by host. The single LADO user; nothing per session or project.
+- Scope and what is out: covered by the plan's Steps and Later. Out: ssh, Bitbucket/Gitea, several accounts per
   server, the host's ssh agent; kit sdlc's example (step 5) is in another repository and
   goes to Later (D6).
-- Data and migrations: missing: a step. A server list in LADO's state (likely a schema
-  migration); the GitHub login migrated into a github.com entry without removing its
+- Data and migrations: covered by S1 (the server list, its way back) and S3, Check: an
+  upgrade test; the GitHub login becomes the github.com entry without removing its
   sources (D5).
-- Secrets and credentials: missing: a step. Tokens in LADO's secret store; a credential
+- Secrets and credentials: covered by S1, Check: clone and push with no prompt, no token
+  in a git config file. Tokens in LADO's secret store; a credential
   helper per agent process; no interactive password prompt.
-- Update and rollback: missing: a step. Rollback to 0.47 keeps working: `GH_TOKEN` and
+- Update and rollback: covered by S1 and S3, Check: the old path runs after the upgrade. Rollback to 0.47 keeps working: `GH_TOKEN` and
   `gh`'s login are kept (D5).
-- Removal: missing: a step. A server removed from the list: its host works as today (D5).
-- Platforms: missing: a step. Docker (main, the human's check: Docker on a Mac, D3) and
+- Removal: covered by S1, Check: a removed server's host behaves as before. A server removed from the list: its host works as today (D5).
+- Platforms: covered by S1 (native and Docker, integration tests), S5 (the image). Docker (main, the human's check: Docker on a Mac, D3) and
   native macOS/Linux, where `GIT_CONFIG_*` per process works too.
-- Observability: missing: a step. "Check" in Settings with a reason in plain words (bad
+- Observability: covered by S2 and S4, Check: each failure reason in plain words. "Check" in Settings with a reason in plain words (bad
   token, missing rights, untrusted server, unreachable), `lado doctor`, clone hints.
-- Tests and what only a human can check: missing: a step. Tests with a fake git server
+- Tests and what only a human can check: covered by each step's Check; the human's check
+  after S5. Tests with a fake git server
   over https; only the human checks the company GitLab (D3).
-- Documentation: missing: a step. Each step documents what it built; step 4 writes the
+- Documentation: covered by each step ("docs describe what was built") and S6. Each step documents what it built; step 4 writes the
   plain guide (D4).
 
 ## Branch strategy

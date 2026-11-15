@@ -223,7 +223,7 @@ def test_checklist_warns_about_another_checkout():
 
 
 @pytest.mark.parametrize(
-    "version", ["0.45.0rc1", "0.45.0rc2", "0.46.0rc1", "0.46.1rc1", "0.46.2rc1"]
+    "version", ["0.45.0rc1", "0.45.0rc2", "0.46.0rc1", "0.46.1rc1", "0.46.2rc1", "0.47.0rc1"]
 )
 def test_the_repositorys_own_checklists_have_no_warning(version):
     parsed = rc.parse(version)

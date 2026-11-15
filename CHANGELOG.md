@@ -22,6 +22,11 @@
   key, or one of the other kind, is refused with what to paste instead, rather than shown as
   logged in until an agent fails.
 
+### Upgrade
+
+- **Running sessions restart with the update.** `lado update` stops and resumes them; after
+  an update made another way, restart them yourself.
+
 ## 0.46.2 (2026-11-12)
 
 ### Fixed

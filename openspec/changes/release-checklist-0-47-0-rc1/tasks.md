@@ -16,16 +16,16 @@
 
 ## 2. CHANGELOG.md
 
-- [ ] 2.1 `### Upgrade` after `### Fixed` in `## 0.47.0 (unreleased)`, with the one item of the
+- [x] 2.1 `### Upgrade` after `### Fixed` in `## 0.47.0 (unreleased)`, with the one item of the
   proposal; the `### Fixed` items unchanged. Check: `python3 scripts/release_notes.py
   v0.47.0rc1` prints the section with the group.
 
 ## 3. The test
 
-- [ ] 3.1 `tests/test_rc_check.py`: the real-file test also runs `0.47.0rc1` on
+- [x] 3.1 `tests/test_rc_check.py`: the real-file test also runs `0.47.0rc1` on
   `docs/releases/0.47.0.md`, with the same asserts. Unit;
   `make test PYTEST_ARGS="-n0 tests/test_rc_check.py"` passes.
-- [ ] 3.2 `python3 scripts/rc_check.py` is not run (it installs from PyPI); the test of 3.1 is
+- [x] 3.2 `python3 scripts/rc_check.py` is not run (it installs from PyPI); the test of 3.1 is
   the check that its list prints without a warning.
 
 ## 4. The checks

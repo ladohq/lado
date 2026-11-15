@@ -605,6 +605,37 @@ test used any more: `tests/test_state.py` 210 → 107 test functions, about 1 30
   `src/` left unrun (the same line of `cli.py` as in part 2 differs, the working copy's
   web UI bundle). Unit tests: 5 717 passed (5 848 on main).
 
+### Stage 1, part 4 (2026-11-15, branch `chore/test-audit-stage-1-model-settings`): `model_settings.py`
+
+**Coverage** measured again on main b0cbbde3 (5 717 unit tests). 1 262 tests run
+`model_settings.py`, 197 of them in `tests/test_model_settings.py`; the file is also 29% of
+the tests of `model_servers.py` and 13% of those of `project_secrets.py`, so the three
+were mutated with the same judge (`--judge tests/test_model_settings.py --enough 3`).
+
+**Mutants.** `model_settings.py` 635 (572 killed by a test of the file, 41 untouched, 2
+skipped, 2 timeouts, 18 on lines no test runs); `model_servers.py` 412 (246, 60, 95
+skipped, 9 uncovered, 2 errors: a provider's label renamed breaks the import);
+`project_secrets.py` 104 (24, 21, 58 skipped, 1 uncovered). About 80 minutes on six jobs.
+
+**Removable.** Of the 198 test functions, 16 kill no mutant the run recorded; `removable`
+over the three matrices lists 139. Rule 2 keeps 17: the bug tasks LAD-185 (the hint of
+`model-server remove` named one model) and LAD-186 (LiteLLM probed as Anthropic-compatible),
+and LAD-184 and LAD-240, which read both ways. No SQL here, so rule 4 keeps none. The
+others reference feature steps of the models epic (LAD-180, 182, 183, 187, 200, 208, 211,
+217, 220, 230). **122 test functions removed** and 2 helpers no test used any more:
+`tests/test_model_settings.py` 198 → 76 test functions, about 1 170 lines fewer.
+
+**Rechecks.**
+- Every mutant a removed test killed (579) was run again against its remaining killers:
+  573 killed. The other six are in the threads and requests of `model_servers.py`'s probe
+  (`_ask`, the join of the answers), whose "killers" were tests of unrelated commands;
+  run against all their killers on the old tree, none kills them: chance failures of tests
+  with a fake HTTP server under load, as the media types of part 2.
+- The branch coverage of the whole unit suite on main and on the branch: no branch of
+  `src/` left unrun by the removal. Two lines differ: `cli.py`'s bundle warning (the
+  working copy) and `tmux.py` 143-144, run by `test_tmux.py`, which this change does not
+  touch and which runs them when run again. Unit tests: 5 575 passed (5 717 on main).
+
 ## 7. Sources
 
 - coverage.py, Measurement contexts: https://coverage.readthedocs.io/en/latest/contexts.html

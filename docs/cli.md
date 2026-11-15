@@ -9,8 +9,12 @@ branch (the remote's default without `--branch`) into the folder, a full path, b
 `<workspace>/<repo>` (the workspace: an absolute `LADO_REPOS`, else `~/workspace`, made with
 the clone when missing), then starts there as `lado start <folder>` does: the folder must be new or
 empty (a clone of the same repository there is refused with the `lado start <folder>` that
-uses it as it is; LADO never fetches into or switches a folder that exists), and a name a
-session of another folder has is refused before the clone (`runtime.check_name`). git's
+uses it as it is; LADO never fetches into or switches a folder that exists), and the new
+session is checked whole before the clone (`runtime.check_new_session`: the kits and the
+skills they expect, a name a session of another folder has, the provider, which must be
+given when it cannot be chosen, the permission mode, the kits' commands, the model and the
+login), so a refusal clones nothing; a stopped session of that name and folder (the folder
+gone) is not checked so, and the start resumes it in the clone, as for `--new`. git's
 progress goes to stderr; Ctrl-C ends git's process group, removes the temporary folder and
 exits 130 (`lado: clone cancelled`), a SIGTERM or SIGHUP the same way with 128 + its
 number; a start refused after the clone says `the clone stays
@@ -32,8 +36,12 @@ starts the session as `lado start <folder>` does, named by `--name` or the folde
 is exit 1 with its hint and changes nothing: a folder with files gets LAD-5's `git init`
 command, a folder of a repository `lado start <root>`, a git without the author the `git
 config --global` command (in LADO's container: `LADO_GIT_NAME` and `LADO_GIT_EMAIL` in
-`.env`); a git step that fails removes what it made. A start refused after the repository
-was made says `the repository stays in <folder>`. `--new` with a git URL, a second folder or
+`.env`); then the new session is checked whole as before a clone, so a kit's refusal too
+leaves the folder as it was; a git step that fails removes what it made. A start refused
+after the repository was made (its window did not open, the name was taken meanwhile)
+removes the folder it made, or the `.git` of an empty folder given, when it still holds
+only that empty commit and no session has it, and says `removed <folder>, which this start
+made`; otherwise it says `the repository stays in <folder>`. `--new` with a git URL, a second folder or
 `--branch` exits 2. Without `--new`, `lado start` never makes a repository.
 
 `lado project` keeps the human's projects (`lado.projects`, [design/projects.md](design/projects.md)):
@@ -303,8 +311,7 @@ in in LADO's UI (Settings → Agent CLIs, `lado ui`), or set
 CLAUDE_CODE_OAUTH_TOKEN as LADO's secret or a project secret` (Codex: `lado: Codex CLI is
 not logged in, so the session was not started: … or set OPENAI_API_KEY as LADO's secret or
 a project secret`). `lado start <git-url>` and
-`lado start --new` say so before the clone or the new folder when the provider is known
-(`--provider`, or the only one installed). A supervisor's `spawn_worker` of such a CLI gets
+`lado start --new` say so before the clone or the new folder (`runtime.check_new_session`). A supervisor's `spawn_worker` of such a CLI gets
 `… so the worker was not started: ask the human to log in in Settings → Agent CLIs and
 environment, or start the worker with another provider`; each worker is checked by its own
 provider, so a Claude session's supervisor can still start Kilo workers. A resume by hand

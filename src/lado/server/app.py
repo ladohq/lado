@@ -1092,9 +1092,10 @@ def create_app(
         others there: one login per layer, so the one saved is the login. The agents started
         after it, and those that wait for a login, get it."""
         provider = provider_named(name)
+        value = given.value.strip()  # a pasted line break or space: no token or key has one
         try:
-            logins.check_secret(provider, variable, given.value)
-            project_secrets.write_lado(variable, given.value)
+            logins.check_secret(provider, variable, value)
+            project_secrets.write_lado(variable, value)
             for other in provider.login_variables:
                 if other != variable:
                     project_secrets.remove_lado(other)
@@ -1466,31 +1467,52 @@ def create_app(
         name a session has is 409 with that session's status and folder; on an empty
         LADO_HOME the core makes lado.db."""
         where = _where(given.where)
+        made = None
         try:
             path = None
             if where.path is not None:
                 path = runtime.full_path(where.path)
+                name = runtime.slug(given.name or Path(path).name)
                 if where.kind == "scratch":
-                    runtime.check_start_login(given.provider, None, given.model)
-                    scratch.make(path, runtime.slug(given.name or Path(path).name))
+                    # The folder's own refusals first, as `lado start --new` gives them.
+                    scratch.check(path, name)
+                if where.kind in ("scratch", "setup"):
+                    # Refused as the start would be, before anything is made on disk.
+                    if given.prompt is not None:
+                        runtime.check_prompt(given.prompt)
+                    runtime.check_new_session(
+                        path,
+                        given.name,
+                        given.permission_mode,
+                        given.provider,
+                        given.kits,
+                        given.without,
+                        given.title,
+                        given.model,
+                    )
+                if where.kind == "scratch":
+                    made = scratch.make(path, name)
                 elif where.kind == "setup":
-                    runtime.check_start_login(given.provider, None, given.model)
-                    runtime.check_name(runtime.slug(given.name or Path(path).name), path)
                     setup.make(path, where.include or [])
-            done = runtime.start_session(
-                path,
-                given.name,
-                given.permission_mode,
-                given.provider,
-                given.kits,
-                given.without,
-                resume=False,
-                prompt=given.prompt,
-                title=given.title,
-                project=where.project,
-                repo_name=where.repo,
-                model=given.model,
-            )
+            try:
+                done = runtime.start_session(
+                    path,
+                    given.name,
+                    given.permission_mode,
+                    given.provider,
+                    given.kits,
+                    given.without,
+                    resume=False,
+                    prompt=given.prompt,
+                    title=given.title,
+                    project=where.project,
+                    repo_name=where.repo,
+                    model=given.model,
+                )
+            except Exception:
+                if made is not None:
+                    scratch.remove_unused(made)  # a fresh start refused late: unused, it goes
+                raise
         except runtime.SessionExists as taken:
             detail = Taken(message=str(taken), status=taken.status, repo=taken.repo)
             raise HTTPException(409, detail.model_dump(mode="json")) from taken

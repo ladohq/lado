@@ -38,15 +38,22 @@ message: in its first input, a line from `lado` with more to read makes it call
 reads when told to). `FAKE_AGENT_CRASH_AT_START=1` in its environment makes it exit before
 its first hook. A test keeps it busy with its `pause` command
 and ends that pause itself (`agent_helpers.release`), never with a `sleep` it must act
-within. They use a temp `LADO_HOME` and their own tmux server
+within. The fake agent runs only what is typed into its window: a command that reaches it
+mid-turn, in a LADO tool's result, is text to it and never runs. So a test sends a human
+command that follows another turn, or reads "the last message" to an agent, once the agent
+is settled (`agent_helpers.settled`: idle, and no message to it pending or sent), not just
+idle: at a turn's end the hook queues the reminder of a human message answered in no chat
+before it marks the agent idle, and that reminder starts one more turn (LAD-284). They use a temp `LADO_HOME` and their own tmux server
 (`LADO_TMUX_SOCKET=lado-test-...`), and refuse to run otherwise. They run LADO's timers
 short, `LADO_LOOP_INTERVAL=0.25` and `LADO_RETRY_DELAYS=2,0.5,0.5`, set for each test in
 `tests/integration/conftest.py` (docs/design/agents.md; the first delay outlasts a prompt-submit
 hook's confirmation under `-n auto`, the comment there says by how much); only tests set
 either. Tests never use the default
 `lado` tmux socket. `tests/conftest.py` clears `LADO_AGENT`, `LADO_SESSION`, `LADO_HOME`,
-`LADO_TMUX_SOCKET`, `TMUX`, `LADO_CONTAINER` and `LADO_REPOS` for the test run, so the
-tests run in an agent's shell (or LADO's image) as is,
+`LADO_TMUX_SOCKET`, `TMUX`, `LADO_CONTAINER`, `LADO_REPOS`, `LADO_ENV_DIR`, `LADO_LISTEN`
+and `LADO_PUBLIC_HOST` for the test run, and `LADO_LAUNCH_VARS` with every name it lists
+but `TMPDIR` (what the launch of the agent whose shell it is set, such as
+`CLAUDE_CODE_TMPDIR`), so the tests run in an agent's shell (or LADO's image) as is,
 and sets `LADO_AGENT_ENV=inherit`: agents get the test run's environment, not the user's
 login shell (tests of the shell set their own `SHELL`). Its autouse `agents_tmp` gives each
 test its own `TMPDIR` and `LADO_TEMP_PARENT` (outside `tmp_path`): the agents' temporary
@@ -135,7 +142,8 @@ is left to the human's daily use of LADO: the keychain and the macOS graphical s
 itself with its limits, as the endpoint stands between.
 
 The passive supervisor of the live kit is
-read-only (no command tools; LADO's run messages to it name the human's ways), and every
+read-only (no command tools; LADO's run messages to it name the human's ways; its role lets
+it answer the human with `send_message` and use no other tool), and every
 live test fails when a `repo_changed` event names it; the test merges only while it is idle.
 No Codex agent asks whether to trust the test's repo: LADO's config of each agent trusts
 it, and the test fails if Codex asks. `tests/live/test_codex_login.py` runs a Codex session
@@ -330,18 +338,19 @@ retry) and `docker history lado:local` (each layer's
 size, so a new layer's is the image's growth), then `scripts/smoke_ci.py container <out>
 K/2` (its shard of the container tests with the smoke cell's pass rule, so a skip or an
 empty shard is red; the artifact `container-<arch>-<k>`), on every run whatever it changes,
-pushing nothing anywhere. Its build takes the layers from GitHub's Actions cache, scope
-`container-<arch>`, through a BuildKit builder of its own (`docker/setup-buildx-action`;
-`--load` puts the image into the runner's Docker) and `make docker DOCKER_BUILD_FLAGS=...`:
-a pull request reads main's cache and writes none; a push to main reads and writes it
-(`mode=min`); the schedule and a dispatch build from nothing (`--no-cache`) and write it
-anew, so a broken outside source (Debian, gh's repository, npm) shows within a day. Only
-shard 1 of each architecture writes, so two cells never write one scope at once. LADO's
-wheel is the Dockerfile's last layer, so a pull request rebuilds only that one; the release
-(`release.yml`) builds without any cache. And
+pushing nothing anywhere. Each cell builds the image from nothing on the runner's own
+Docker, with no layer cache, so a broken outside source (Debian, gh's repository, npm) shows
+in the next run: LAD-252's measurement (`docs/research/ci-speedup-check.md`) found a cache
+in GitHub's Actions cache saved 14-16 s of a cell that ends 1.5 % of green pull request
+runs and took 7 GB of the repository's 10 GB. LADO's wheel stays the Dockerfile's last
+layer, so a developer's own Docker rebuilds only that one; the release (`release.yml`)
+builds without any cache too. And
 `ci-ok`, the one check the ruleset of main requires. Every job has a `timeout-minutes`,
 about twice its p90 (a test refuses a job without one): a hung job ends red instead of
-running GitHub's six hours. A UI job takes Chromium and the `.deb` files `playwright install
+running GitHub's six hours. A job cancelled by its own limit keeps neither its log nor
+its junit report, so the pytest step of a `ui` job has 12 minutes, under the job's 25 (the
+step takes ~5): a hang outside a test ends the step red with its log kept, and the junit
+upload still runs (LAD-271). A UI job takes Chromium and the `.deb` files `playwright install
 --with-deps` downloads (fonts, from an Ubuntu mirror that is sometimes slow or hangs) from a
 GitHub cache keyed by Playwright's version and the runner image's (`$ImageOS`,
 `$ImageVersion`): on a hit it installs them with `dpkg -i` and runs `playwright install
@@ -373,12 +382,19 @@ GitHub mails a red scheduled run to whoever last changed its cron line. A cell i
 an optional dependency that failed to install, a CLI's native binary, and exits 0): after a
 failed attempt but the last, a `::warning::` annotation in the run's summary names the
 provider and the attempt, then `npm uninstall` and a fresh install; the third failure is a
-red cell with no test run. Then it runs `uv run pytest -m smoke -n0 -v -k <provider>` into
-`<out>/smoke-<provider>.log`, and passes only on exit 0 with a test passed and none skipped;
-a failing cell's evidence goes to `<out>/evidence` (the artifact
-`smoke-<os>-<provider>`). `smoke_ci.py`'s `PINS` is the one place a CLI's version is
-written for CI: its providers are exactly `lado.providers`' and each pin's version parts are
-its provider's `TESTED_VERSION` (`tests/test_smoke_ci.py`); the matrix is the same list
+red cell with no test run. Then it runs `uv run pytest -m smoke -n 3 --dist worksteal -v -k
+<provider>` into `<out>/smoke-<provider>.log`: three workers, a worker that ends its share
+taking tests still queued for another, as each smoke test is isolated (its own `HOME`, CLI
+config, `LADO_HOME`, tmux server and fake endpoint) and mostly waits on its CLI. The step
+is then bound by the longest test plus each worker's cold start of the CLI rather than by
+the sum: on macOS, claude's `[401]` refusal case takes ~160 s and a worker's first test
+~40 s, and the step 252-284 s against 409 s serially (LAD-280's trial; the runners' speed
+varies by up to half on the same code). `make test-smoke` stays serial (`-n0`) to debug
+one CLI by hand. The cell passes only on exit 0 with a test passed and none skipped; a
+failing cell's evidence goes to `<out>/evidence` (the artifact `smoke-<os>-<provider>`).
+`smoke_ci.py`'s `PINS` is the one place a CLI's version is written for CI: its providers
+are exactly `lado.providers`' and each pin's version parts are its provider's
+`TESTED_VERSION` (`tests/test_smoke_ci.py`); the matrix is the same list
 (`tests/test_ci_workflow.py`). No secret anywhere.
 A job GitHub finds no hosted runner for is cancelled before any step, with no runner and
 GitHub's annotation "The job was not acquired by Runner of type hosted even after multiple
@@ -480,7 +496,15 @@ Seven layers; each change gets tests at the lowest layer that can catch its bugs
    `lado server` on a free port, with sessions of the fake agent, isolated like the
    integration tests; only what needs a browser. Each test saves a screenshot of every
    screen it checks to `<temp dir>/lado-ui-shots/<test>.png` (the `shot` fixture), outside
-   the tree, for the reviewer. In `make check` and in CI (four shards; `make dist` in the
+   the tree, for the reviewer. Each test has 120 s, its fixtures included
+   (`TEST_TIMEOUT` in `tests/time_limit.py`, which `tests/ui/conftest.py` imports;
+   pytest-timeout), locally and in CI alike; no other layer has a per-test limit. A test
+   past it ends its process (method `thread`: `signal` would raise into Playwright's event
+   loop and hang the page's teardown), so xdist names it ("worker 'gw0' crashed while
+   running …", an error in the junit report) and a new worker goes on; the hung test's
+   teardown does not run. 5 s before the limit every thread's stack goes to the log
+   (Python's faulthandler): a wait in plain Python shows the test's line, a wait inside
+   Playwright only Playwright's event loop. In `make check` and in CI (four shards; `make dist` in the
    job `web`).
 5. **Smoke** (`make test-smoke`, marker `smoke`): each provider's real CLI with real tmux,
    hooks, `lado mcp` and SQLite, and a local endpoint that answers 401 instead of a model

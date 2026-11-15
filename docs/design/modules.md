@@ -249,9 +249,14 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     and removes the program only.
   - `runtime.py`: starts agents in tmux (worker = own git worktree and branch) and delivers
     messages to them. A new session or worker of a CLI that needs a login and has none is
-    refused first (`check_login`, `NotLoggedIn`; `check_start_login` before a clone or a new
-    folder), in `agents_env(agent_layers(project), agent_cli)`, the environment the agent starts from; a resumed agent
-    waits for it instead (`_held_for_login`). Whether a folder can hold a session is `check_repo` (its repository's
+    refused first (`check_login`, `NotLoggedIn`), in `agents_env(agent_layers(project), agent_cli)`, the environment the agent starts from; a resumed agent
+    waits for it instead (`_held_for_login`). `check_new_session` is every check of a new
+    session that needs no repository (the kits not empty, a folder of LADO's projects/
+    without a project, the name, the title, a taken name,
+    the provider, the permission mode, `kits.resolve`, the kits' commands, the model, the
+    login), for a folder that may not exist yet; it returns a `NewSession`, which
+    `start_session` goes on with, and a fresh start, a set-up and `lado start <git-url>`
+    call it before they change the disk (openspec change scratch-checks-first). Whether a folder can hold a session is `check_repo` (its repository's
     root, or why not: a `FolderProblem`, a `LadoError` with a `kind`, `missing`,
     `not_folder`, `no_git`, `git_broken`, `not_repo`, `git_refused`, `no_commits`, the
     first that holds in that order, and a `Hint`, a sentence and one command, for `no_git`,
@@ -349,12 +354,17 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     files, `lado start <root>` inside a repository), `author_problem` (git's `user.name`
     and `user.email` where the folder would be, outside any repository the global and
     system config; no author is a refusal with the `.env` hint in LADO's container, the
-    `git config --global` one elsewhere; LADO sets no author) and `make` (the checks again,
-    the name as `runtime.check_name` first, then the folders, `git init`, the branch of
+    `git config --global` one elsewhere; LADO sets no author), `check` (the name as
+    `runtime.check_name`, the target, the author: `make`'s refusals, making nothing) and
+    `make` (`check` again, then the folders, `git init`, the branch of
     `init.defaultBranch` else `main` by `symbolic-ref`, one empty commit `Start from
     scratch` with no signing, no hooks (`core.hooksPath` to the null device and
     `--no-verify`), no prompt and stdin closed; a failed step removes the folders it made,
-    or the `.git` of an empty folder it was given). A refusal is a `ScratchError` (a
+    or the `.git` of an empty folder it was given; it returns a `Made`, the root and the
+    topmost folder it created). `remove_unused` undoes a `Made` after a start refused late,
+    only while the root holds nothing but `.git` and `.DS_Store`, its history is the one
+    commit, `git status` sees no change, no session has the folder and each folder created
+    above holds only the next one; otherwise it keeps all. A refusal is a `ScratchError` (a
     `LadoError` with `kind` and a `runtime.Hint`); git missing is LAD-5's `no_git`.
     `check_target` and `make` take a `project` as `clone`'s do (`projects.add_new`); `make`
     then asks no session's name, as it makes no session.
@@ -523,7 +533,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `run_status`, with a time limit, unknown with why on any failure, `LoginStatus.choice`
     and `file_words`; `login_actions`, the login windows' commands (OpenCode's, Kilo's;
     none of Claude Code's); `login_question` and `login_choices` (`LoginChoice`: a value of
-    one login variable to paste, Claude Code's two); `login_variables`, `login_note`,
+    one login variable to paste, Claude Code's two); `login_value_problem`, why a pasted
+    value cannot be the login (Claude Code's by the prefixes of its token and key, the
+    others' none), asked by `logins.check_secret`; `login_variables`, `login_note`,
     `Capabilities.needs_login`), each
     provider parsing its own CLI's output, `CLI_VARIABLES`,
     the names LADO sets for the agent CLIs, reserved from project variables and kept in
@@ -868,7 +880,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   - `hooks.py`: neutral hook logic: agent status, handing over queued messages and, at a
     turn's end, the forgotten-reply check (`state.check_replies`, which decides each human
     message once and returns those to remind; one `REPLY_REMINDER` from `lado` each, queued
-    before the queue is handed over); first of all the model an event names
+    before the queue is handed over), then the unread-text check (`state.check_unread`;
+    one `unread_reminder` from `lado` for all the texts left unread); first of all the model an event names
     (`state.report_model`, with the provider's `same_model`; docs/design/agents.md).
   - `model_check.py`: the one check of a model chosen for a session (`lado start
     --model`, the launch window): `check(provider, model, env)` reads the CLI's
@@ -1004,7 +1017,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     a question its `choices`, `free_answer`, `question_state` and `answered_by`, an answer
     or dismissal its `reply_to` and `choice`, and the human's message to an agent its
     `reply_state`: `replied`, `reminded` (one reminder sent, the verdict waits for its turn)
-    or `missing`, set by `check_replies` (docs/design/agents.md). The `events`
+    or `missing`, set by `check_replies` (docs/design/agents.md). From schema 40 a message
+    has `read_reminded`, set once `check_unread` reminded its recipient of its text left
+    unread (and by the migration on every message there). The `events`
     table records what each agent did (`spawned`, `status` changes via `set_status`,
     `mcp_ready`, `finished`, `turn_error` with the error, `ended` with why its process
     ended by itself, `blocked` with what its CLI asks the human before any hook) and what happened to each flow run (`flow_start`, `flow` transitions,

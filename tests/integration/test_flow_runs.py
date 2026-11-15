@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import agent_helpers
 import pytest
 from agent_helpers import install_kit
 from test_agents import (
@@ -281,13 +282,16 @@ def test_a_step_is_refused_until_it_writes_what_it_produces(repo, flow_kit):
 
 
 def to_the_gate(name: str) -> None:
-    """Start a run of "reviewed" whose worker reports its build done: the run waits."""
+    """Start a run of "reviewed" whose worker reports its build done: the run waits, and the
+    worker's turn is over with its reminder of the human's command (agent_helpers.settled),
+    so the next step is the last message to the worker."""
     supervisor_runs("flow_start reviewed check it")
     supervisor_runs(f"spawnrun {name}")
     wait_status("worker", state.IDLE)
     runtime.send_message(SESSION, "human", "worker", f"advance {name} done")
     waiting = f"[from lado] recommend on gate #1: {name} at check"
     wait_for(lambda: got("supervisor", waiting), "the gate")
+    wait_for(lambda: agent_helpers.settled(SESSION, "worker"), "the worker settled")
 
 
 def test_the_humans_answer_moves_the_run_on_to_the_next_agent(repo, flow_kit):

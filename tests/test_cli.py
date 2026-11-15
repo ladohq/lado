@@ -2442,6 +2442,19 @@ def test_a_name_of_a_session_in_another_folder_is_refused_before_the_clone(
     assert not (tmp_path / "work").exists()
 
 
+def test_a_kit_that_lacks_a_skill_is_refused_before_the_clone(
+    tmp_path, repo, fake_tmux, capsys, monkeypatch
+):
+    _expecting_kit(repo)
+    for key, value in agent_helpers.fake_git(tmp_path / "fake", "ok").items():
+        monkeypatch.setenv(key, value)
+    argv = ["start", "https://h/a/app", str(tmp_path / "work" / "app"), "--kit", "sdlc"]
+    assert main([*argv, "--provider", "kilo", "--no-attach"]) == 1
+    assert 'kit "sdlc" expects skill "tracker"' in capsys.readouterr().err
+    assert agent_helpers.fake_git_calls(tmp_path / "fake") == []
+    assert not (tmp_path / "work").exists()
+
+
 def _branch_of(folder: Path) -> str:
     return runtime.branch(str(folder))
 
@@ -2470,11 +2483,24 @@ def test_clone_into_the_default_folder_with_the_remotes_default_branch(
     assert f"Cloning the default branch of {url} into {folder}" in capsys.readouterr().err
 
 
-def test_a_start_refused_after_the_clone_keeps_the_clone(tmp_path, fake_tmux, capsys):
+def test_a_start_refused_after_the_clone_keeps_the_clone(tmp_path, fake_tmux, capsys, monkeypatch):
+    window_fails(monkeypatch)
     url = agent_helpers.bare_remote(tmp_path)
     folder = tmp_path / "app"
-    assert main(["start", url, str(folder), "--provider", "nosuch", "--no-attach"]) == 1
+    assert main(["start", url, str(folder), "--provider", "kilo", "--no-attach"]) == 1
     assert capsys.readouterr().err.splitlines()[-1] == f"lado: the clone stays in {folder}"
+    assert _branch_of(folder) == "main"
+
+
+def test_a_clone_into_the_gone_folder_of_a_stopped_session_resumes_it(tmp_path, fake_tmux, capsys):
+    url = agent_helpers.bare_remote(tmp_path)
+    folder = tmp_path / "app"
+    assert main(["start", url, str(folder), "--provider", "kilo", "--no-attach"]) == 0
+    runtime.stop_session("app")
+    shutil.rmtree(folder)
+    capsys.readouterr()
+    assert main(["start", url, str(folder), "--no-attach"]) == 0
+    assert f'Resumed session "app" in {os.path.realpath(folder)}' in capsys.readouterr().out
     assert _branch_of(folder) == "main"
 
 
@@ -2502,7 +2528,8 @@ def test_ctrl_c_during_the_clone(tmp_path, fake_tmux, capsys, monkeypatch):
         raise KeyboardInterrupt
 
     monkeypatch.setattr(cli.clone, "clone", interrupted)
-    assert main(["start", "https://h/a/app", str(tmp_path / "app"), "--no-attach"]) == 130
+    argv = ["start", "https://h/a/app", str(tmp_path / "app"), "--provider", "kilo"]
+    assert main([*argv, "--no-attach"]) == 130
     assert capsys.readouterr().err.splitlines()[-1] == "lado: clone cancelled"
 
 
@@ -2527,7 +2554,8 @@ def test_a_clone_failure_prints_its_hint(tmp_path, fake_tmux, capsys, monkeypatc
         )
 
     monkeypatch.setattr(cli.clone, "clone", refused)
-    assert main(["start", "git@github.com:a/b.git", str(tmp_path / "b"), "--no-attach"]) == 1
+    argv = ["start", "git@github.com:a/b.git", str(tmp_path / "b"), "--provider", "kilo"]
+    assert main([*argv, "--no-attach"]) == 1
     assert capsys.readouterr().err.splitlines()[-2:] == [
         "lado: cannot clone git@github.com:a/b.git: github.com refused this machine's ssh key (x)",
         "lado: Check that this machine's ssh key is added: ssh -T git@github.com",
@@ -2884,9 +2912,72 @@ def test_new_without_the_author(tmp_path, git_config, fake_tmux, capsys):
     assert not (tmp_path / "shop").exists()
 
 
-def test_a_start_refused_after_new_keeps_the_repository(tmp_path, git_config, fake_tmux, capsys):
+def test_new_with_a_kit_that_lacks_a_skill_makes_no_folder(
+    tmp_path, repo, git_config, fake_tmux, capsys
+):
+    _expecting_kit(repo)
+    folder = tmp_path / "lado" / "shop"
+    argv = ["start", "--new", str(folder), "--kit", "sdlc", "--provider", "kilo", "--no-attach"]
+    assert main(argv) == 1
+    assert 'kit "sdlc" expects skill "tracker"' in capsys.readouterr().err
+    assert not (tmp_path / "lado").exists()
+    assert state.list_sessions() == []
+
+
+def test_new_in_the_gone_folder_of_a_stopped_session_resumes_it(
+    tmp_path, git_config, fake_tmux, capsys
+):
+    folder = tmp_path / "shop"
+    assert main(["start", "--new", str(folder), "--provider", "kilo", "--no-attach"]) == 0
+    runtime.stop_session("shop")
+    shutil.rmtree(folder)
+    capsys.readouterr()
+    assert main(["start", "--new", str(folder), "--no-attach"]) == 0
+    assert f'Resumed session "shop" in {os.path.realpath(folder)}' in capsys.readouterr().out
+
+
+def test_new_with_a_provider_it_does_not_know_makes_no_folder(
+    tmp_path, git_config, fake_tmux, capsys
+):
     folder = tmp_path / "shop"
     assert main(["start", "--new", str(folder), "--provider", "nosuch", "--no-attach"]) == 1
+    assert 'unknown provider "nosuch"' in capsys.readouterr().err
+    assert not folder.exists()
+
+
+def window_fails(monkeypatch, before=None):
+    """The supervisor's window does not open: a start refused once its folder is there;
+    `before` runs first."""
+
+    def fails(*args, **kwargs):
+        if before is not None:
+            before()
+        raise runtime.LadoError("tmux could not open the window")
+
+    monkeypatch.setattr(runtime.tmux, "new_session", fails)
+
+
+def test_a_start_refused_after_new_removes_the_unused_folder(
+    tmp_path, git_config, fake_tmux, capsys, monkeypatch
+):
+    window_fails(monkeypatch)
+    folder = tmp_path / "lado" / "shop"
+    assert main(["start", "--new", str(folder), "--provider", "kilo", "--no-attach"]) == 1
+    err = capsys.readouterr().err.splitlines()
+    assert err[-2:] == [
+        "lado: tmux could not open the window",
+        f"lado: removed {folder}, which this start made",
+    ]
+    assert not (tmp_path / "lado").exists()
+    assert state.list_sessions() == []
+
+
+def test_a_start_refused_after_new_keeps_a_changed_repository(
+    tmp_path, git_config, fake_tmux, capsys, monkeypatch
+):
+    folder = tmp_path / "shop"
+    window_fails(monkeypatch, lambda: (folder / "notes.md").write_text("x"))
+    assert main(["start", "--new", str(folder), "--provider", "kilo", "--no-attach"]) == 1
     assert capsys.readouterr().err.splitlines()[-1] == f"lado: the repository stays in {folder}"
     assert runtime.check_repo(str(folder)) == os.path.realpath(folder)
 

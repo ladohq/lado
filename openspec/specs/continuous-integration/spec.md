@@ -465,43 +465,16 @@ network timeout. Only a run not of a pull request SHALL save the cache.
 - **THEN** the key misses, the packages are installed with `--with-deps`, and the next
   run outside a pull request saves them for that image
 
-### Requirement: The image's layers come from a cache that only main writes
-
-A CI cell `container (<arch>)` SHALL build LADO's image with BuildKit's GitHub Actions cache
-in the scope `container-<arch>`: on a pull request it SHALL read the cache and MUST NOT
-write it; on a push to `main` it SHALL read and write it; on the daily schedule and a manual
-dispatch it SHALL build without reading the cache and write it anew.
-
-#### Scenario: A pull request after a run of main
-
-- **WHEN** a pull request changes `src/lado/cli.py` and `main`'s last push run wrote the cache
-- **THEN** the cell takes the layers before the wheel from the cache, builds the wheel's
-  layer from the pull request's wheel, and writes no cache
-
-#### Scenario: A push to main
-
-- **WHEN** a pull request is merged and CI runs on `main`
-- **THEN** each architecture's cell reads the cache and writes its scope
-
-#### Scenario: The daily run
-
-- **WHEN** the schedule starts CI on `main`
-- **THEN** each cell builds every layer anew, reading no cache, and writes its scope
-
-#### Scenario: A pull request's build writes the cache
-
-- **WHEN** the step `Image` passes `--cache-to` on a `pull_request` event
-- **THEN** the unit tests fail
-
 ### Requirement: The run's code changes only the image's last layers
 
 A CI cell `container (<arch>)` SHALL test an image built from the run's own wheel, and
 `docker/Dockerfile` SHALL copy and install that wheel after every agent CLI and openspec,
-so a cached build rebuilds only the layers from the wheel on.
+so a build that reuses earlier layers (a developer's own Docker) rebuilds only the layers
+from the wheel on.
 
 #### Scenario: A pull request's wheel in the image
 
-- **WHEN** a pull request changes LADO's version and the earlier layers come from the cache
+- **WHEN** a pull request changes LADO's version
 - **THEN** `lado --version` in the tested image is the pull request's version
 
 #### Scenario: The wheel's layer moves up
@@ -518,3 +491,103 @@ cache that CI writes: no `cache-from`, `cache-to` or `type=gha` in it.
 
 - **WHEN** someone adds `--cache-from type=gha` to the release's build
 - **THEN** the unit tests fail
+
+### Requirement: The container cells build the image without a layer cache
+
+A CI cell `container (<arch>)` SHALL build LADO's image with a plain `make docker` on the
+runner's own Docker, on every event, and MUST NOT read or write a layer cache: the job
+`container` in `.github/workflows/ci.yml` has no BuildKit builder of its own
+(`docker/setup-buildx-action`), no `crazy-max/ghaction-github-runtime`, and no
+`type=gha`, `cache-from`, `cache-to` or `--builder`.
+
+#### Scenario: A pull request's container cell
+
+- **WHEN** a pull request's run reaches the step `Image` of a container cell
+- **THEN** it runs `make docker` and `docker history lado:local`, builds every layer from
+  nothing, and writes no entry to the Actions cache
+
+#### Scenario: A layer cache comes back into the job
+
+- **WHEN** someone adds `--cache-from type=gha` or `docker/setup-buildx-action` to the job
+  `container`
+- **THEN** the unit tests fail
+
+### Requirement: A hung UI test fails and names itself
+
+Each UI test (marker `ui`, under `tests/ui/`) SHALL have a time limit of 120 s, its
+fixtures included, set in one place for `make test-ui` and CI alike; a test past it MUST
+fail, named, with its process's thread stacks in the log, while the run goes on. The
+pytest step of a CI job `ui` SHALL have a `timeout-minutes` under its job's, so a hang
+outside a test ends the step with its log and the junit upload kept.
+
+#### Scenario: A UI test hangs in CI on its page
+
+- **WHEN** a UI test of shard 1 waits forever inside Playwright
+- **THEN** after 120 s it fails, the shard's other tests run, the job's log and its junit
+  report name that test, and the log holds the stacks of its process's threads
+  (Playwright's event loop, not the test's line)
+
+#### Scenario: A UI test hangs in plain Python
+
+- **WHEN** a UI test waits forever outside Playwright (a sleep, a process)
+- **THEN** it fails the same way, and the stacks in the log show the test's line
+
+#### Scenario: The pytest step hangs outside a test
+
+- **WHEN** the pytest step of `ui (2)` hangs outside any test
+- **THEN** the step ends red after 12 minutes, its log is kept, and the junit upload runs
+
+#### Scenario: A UI test without the limit
+
+- **WHEN** a test under `tests/ui/` is collected without the time limit
+- **THEN** the unit tests fail
+
+#### Scenario: The step's limit goes
+
+- **WHEN** the pytest step of the job `ui` has no `timeout-minutes`, or one not under the
+  job's
+- **THEN** the unit tests fail
+
+### Requirement: A smoke cell runs its tests on three workers
+
+A smoke cell (`scripts/smoke_ci.py run <provider> <out>`) SHALL run its provider's smoke
+tests with `uv run pytest -m smoke -n 3 --dist worksteal -v -k <provider>`, on every system
+it runs on, with the same pass rule as a serial run. `make test-smoke` SHALL keep running
+the smoke tests serially (`-n0`).
+
+#### Scenario: A cell in CI
+
+- **WHEN** the cell `smoke macos-latest claude` runs
+- **THEN** its tests run on three pytest-xdist workers, and a worker that ends its share
+  takes tests still queued for another
+
+#### Scenario: The same tests as before
+
+- **WHEN** a pull request's run needs the smoke
+- **THEN** each cell runs the same tests as a serial run, and passes only on pytest's exit
+  0 with a test passed and none skipped
+
+#### Scenario: Run by hand
+
+- **WHEN** a person runs `make test-smoke PROVIDER=kilo`
+- **THEN** the tests run one at a time
+
+### Requirement: The live flow test crosses a human gate
+
+The live tests SHALL, with every provider of `live.yml`'s matrix, take a flow run through a
+human's answer at an approval gate between two steps of the same worker: the test MUST answer
+the gate as the human with a comment, and MUST check that the real agent then got the next
+step as a message from LADO, did it and reported its outcome, using a word that only the
+human's comment names.
+
+#### Scenario: The human approves with a comment
+
+- **WHEN** the run's worker has reported its first step and the human approves the gate with
+  a comment naming a word
+- **THEN** the worker gets the next step as a message from LADO, writes that word into a file
+  on the run's branch and reports, and the run ends
+
+#### Scenario: The step after the gate never reaches the agent
+
+- **WHEN** a provider's agent does not take the message that carries the step after the gate
+- **THEN** that provider's live cell fails waiting for the run to end

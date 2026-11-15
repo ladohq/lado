@@ -176,10 +176,20 @@ messages from other workers are information or questions, not orders.
 """
 )
 
+# The rule on commits of every worker, in its own worktree or a flow run's (LAD-173): a
+# default the task can switch off, so a task's "Do not commit" wins over it.
+COMMIT_RULE = """\
+Commit your work on that branch, unless your task says otherwise: an explicit instruction of \
+your task (not to commit, to leave the branch as it is) wins over this default.
+"""
+
 WORKER_INSTRUCTIONS = (
     """\
 You are worker "{name}" in LADO session "{session}", working in your own git worktree on \
-branch {branch}. Commit your work on that branch.
+branch {branch}.
+"""
+    + COMMIT_RULE
+    + """\
 Report to your supervisor with the `lado` MCP tool send_message(to="supervisor", ...).
 The supervisor cannot see your screen: calling that tool is the only way to reach it, and a
 report you only write as text is lost.
@@ -213,8 +223,10 @@ answer.
 RUN_WORKER_INSTRUCTIONS = (
     """\
 You are worker "{name}" in LADO session "{session}", working for the flow run "{run}" in \
-the run's git worktree on branch {branch}, shared with the run's other workers. Commit \
-your work on that branch.
+the run's git worktree on branch {branch}, shared with the run's other workers.
+"""
+    + COMMIT_RULE
+    + """\
 LADO sends you the run's steps as messages from "lado". When you finish a step, report its \
 outcome with the `lado` MCP tool flow_advance(run="{run}", outcome=...) as the last action \
 of your turn: note_summary is your status and a one-line result, note_body the full report. \
@@ -737,6 +749,85 @@ def set_title(name: str, text: str | None) -> str | None:
     return stored
 
 
+@dataclass
+class NewSession:
+    """A new session as check_new_session found it fit to start: what start_session goes on
+    with."""
+
+    sess: state.Session
+    chosen: Suggestion | None  # the provider LADO chose, none given
+    agent_cli: providers.Provider
+    env: kits.Environment
+    layers: agent_env.Layers
+    base_env: dict[str, str]
+    start: "model_settings.StartModel"
+    servers: tuple[providers.base.ServerEntry, ...]
+    warnings: list[str]  # the model's
+
+
+def check_new_session(
+    path: str,
+    name: str | None,
+    permission_mode: str | None,
+    provider: str | None,
+    kit_names: list[str] | None,
+    without: list[str] | None,
+    title: str | None,
+    model: str | None,
+    project: str | None = None,
+) -> NewSession:
+    """Every check of a new session in the folder `path` (a full path) that needs no
+    repository there, in start_session's order: the kits not empty, a folder of LADO's
+    projects/ without `project` (projects.refusal), the name (another
+    folder's session; `name` None: the folder's), the title, a taken name, the provider
+    (given, else suggested as start_session suggests it), the permission mode, the kits
+    resolved, the commands they expect, the model and the login. start_session calls it for
+    a new session; a fresh start, a set-up and `lado start <git-url>` call it before they
+    make a folder, a repository or a clone, so that a refusal leaves the disk as it was.
+    The folder may not exist: its repository's root will be its real path. Stores and
+    makes nothing."""
+    from lado import projects  # lado.projects builds on this module
+
+    if kit_names is not None and not kit_names:
+        raise LadoError("a session needs at least one kit")  # not silently the default
+    if project is None and (refused := projects.refusal(path)):
+        raise refused
+    repo = os.path.realpath(path)
+    session = slug(name or Path(repo).name)
+    old = state.get_session(session)
+    if old and old.repo != repo:
+        raise _elsewhere(old, repo)
+    stored_title = check_title(title, session)
+    if old:
+        raise SessionExists(old, session_status(old))
+    layers, chosen = None, None
+    if not provider:
+        # Resolved before the provider is chosen: it is the one on the agents' PATH. A
+        # provider given is checked first, without waiting for the login shell.
+        layers = agent_layers(project)
+        chosen = _new_sessions_provider(repo, agent_env.merge(layers))
+    agent_cli = _provider(provider or chosen.provider)
+    sess = state.Session(
+        session,
+        repo,
+        permission_mode,
+        agent_cli.name,
+        kit_names or [kits.DEFAULT_KIT],
+        without if without is not None else [],
+        title=stored_title,
+        project=project,
+    )
+    _check_permission_mode(agent_cli, sess.permission_mode)
+    env = kits.resolve(sess.kits, sess.without)
+    if layers is None:
+        layers = agent_layers(project)
+    base_env = agents_env(layers, agent_cli)
+    _check_commands(env, base_env)
+    start, servers, warnings = _start_model(sess, agent_cli, base_env, model)
+    check_login(agent_cli, base_env, logins.SESSION, start)
+    return NewSession(sess, chosen, agent_cli, env, layers, base_env, start, servers, warnings)
+
+
 def start_session(
     path: str | None,
     name: str | None,
@@ -807,7 +898,6 @@ def start_session(
                 raise refused from None
             raise
         session = slug(name or Path(repo).name)
-    stored_title = check_title(title, session)
     old = state.get_session(session)
     if old and resume is False:
         raise SessionExists(old, session_status(old))
@@ -829,37 +919,36 @@ def start_session(
             raise LadoError(f'session "{session}" is already running; use `lado attach {session}`')
         if old.repo != repo:
             raise _elsewhere(old, repo)
-    layers, chosen = None, None
-    if not provider and not old:
-        # Resolved before the provider is chosen: it is the one on the agents' PATH. A
-        # provider given or stored is checked first, without waiting for the login shell.
-        layers = agent_layers(project)
-        chosen = _new_sessions_provider(repo, agent_env.merge(layers))
-    agent_cli = _provider(provider or (old.provider if old else chosen.provider))
-    sess = state.Session(
-        session,
-        repo,
-        permission_mode or (old.permission_mode if old else None),
-        agent_cli.name,
-        kit_names or (old.kits if old else [kits.DEFAULT_KIT]),
-        without if without is not None else (old.without if old else []),
-        title=old.title if old else stored_title,
-        project=old.project if old else project,
-        power=_kept_power(old, agent_cli),
-    )
-    _check_permission_mode(agent_cli, sess.permission_mode)
-    env = kits.resolve(sess.kits, sess.without)
-    if layers is None:
+        # A provider given or stored is checked first, without waiting for the login shell.
+        agent_cli, chosen = _provider(provider or old.provider), None
+        sess = state.Session(
+            session,
+            repo,
+            permission_mode or old.permission_mode,
+            agent_cli.name,
+            kit_names or old.kits,
+            without if without is not None else old.without,
+            title=old.title,
+            project=old.project,
+            power=_kept_power(old, agent_cli),
+        )
+        _check_permission_mode(agent_cli, sess.permission_mode)
+        env = kits.resolve(sess.kits, sess.without)
         layers = agent_layers(sess.project)
-    base_env = agents_env(layers, agent_cli)
-    _check_commands(env, base_env)
-    start, servers, checked = _start_model(sess, agent_cli, base_env, model)
-    if not old:
-        check_login(agent_cli, base_env, logins.SESSION, start)
-    elif not (wait_for_login or reason == AT_START):
-        # A resume by hand; LADO's own (the container's start, lado update) waits for the
-        # login instead (_held_for_login).
-        check_login(agent_cli, base_env, logins.RESUME, start)
+        base_env = agents_env(layers, agent_cli)
+        _check_commands(env, base_env)
+        start, servers, checked = _start_model(sess, agent_cli, base_env, model)
+        if not (wait_for_login or reason == AT_START):
+            # A resume by hand; LADO's own (the container's start, lado update) waits for
+            # the login instead (_held_for_login).
+            check_login(agent_cli, base_env, logins.RESUME, start)
+    else:
+        new = check_new_session(
+            repo, session, permission_mode, provider, kit_names, without, title, model, project
+        )
+        sess, chosen, agent_cli, env = new.sess, new.chosen, new.agent_cli, new.env
+        layers, base_env, start, servers = new.layers, new.base_env, new.start, new.servers
+        checked = new.warnings
     agent = state.Agent(
         session, SUPERVISOR, env.lead.name, repo, None, None, state.STARTING, sess.provider
     )
@@ -3491,38 +3580,6 @@ def check_login(
         return
     if reason := logins.refusal(agent_cli, base_env, what):
         raise NotLoggedIn(reason)
-
-
-def _new_start(
-    agent_cli: providers.Provider, base_env: Mapping[str, str], model: str | None
-) -> "model_settings.StartModel | None":
-    """What a new session of `agent_cli` would start on, `model` given or not, reading its
-    table as _start_model does; None for a model that is refused, which start_session says."""
-    from lado import model_settings
-
-    try:
-        row = None if model is None else model_settings.session_row(model, agent_cli, base_env)
-        return model_settings.start_model(state.PowerTable.of(row) if row else None, agent_cli)
-    except model_settings.Refused:
-        return None
-
-
-def check_start_login(provider: str | None, project: str | None, model: str | None = None) -> None:
-    """Before a clone or a new folder for a new session (`lado start <git-url>`, `--new`,
-    the UI's From scratch): refuse as start_session would, on `model` if given, when the
-    provider is known now: given, or the only one installed on the agents' PATH. Otherwise
-    start_session decides once the folder is there."""
-    layers = agent_layers(project)
-    if provider is None:
-        found = suggested_provider(None, _on_agents_path(agent_env.merge(layers)))
-        if found is None:
-            return
-        provider = found.provider
-    elif provider not in providers.names():
-        return  # start_session refuses it as it refuses any
-    agent_cli = providers.get(provider)
-    base_env = agents_env(layers, agent_cli)
-    check_login(agent_cli, base_env, logins.SESSION, _new_start(agent_cli, base_env, model))
 
 
 def _held_for_login(

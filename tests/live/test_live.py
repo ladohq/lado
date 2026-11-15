@@ -1,6 +1,7 @@
 """Two short scenarios per real agent CLI: a worker does a tiny task, reports, gets a message
 and is finished after its branch is merged; and a flow run's worker does its step and
-reports the outcome, which ends the run."""
+reports the outcome, the human approves the run's gate with a comment, and the worker gets
+the next step as a message, does what the comment says and reports, which ends the run."""
 
 import asyncio
 import json
@@ -47,7 +48,8 @@ WHILE_BUSY = "No reply needed to this line"
 # supervisor role merges what a worker reports and may then finish the worker. Read-only:
 # models follow LADO's lines over a role's text, so it has no tool to act with
 # (check_supervisor_tools), and a change it makes in the repository fails the test
-# (check_supervisor_kept_still).
+# (check_supervisor_kept_still). It may answer the human, as check_hello expects; the role
+# says nothing on how, so check_hello tests LADO's hint and reminder (LAD-285).
 PASSIVE_SUPERVISOR = """\
 ---
 name: passive
@@ -55,16 +57,19 @@ description: Only acknowledges messages; for the live test.
 read_only: true
 ---
 You are a passive supervisor in an automated test. When a message arrives, reply with the
-single word ACK. Never use any tool: no spawn_worker, finish_worker or send_message, no
-git commands, no file edits.
+single word ACK. Use no tool but send_message to the human: no spawn_worker or
+finish_worker, no send_message to an agent, no git commands, no file edits.
 """
 
 
-# One worker step, then the end. The test plays the supervisor's part (start the run, spawn
-# its worker) itself; the worker reports the outcome with flow_advance.
+# A worker step, the human's gate, a second step of the same worker, then the end. The test
+# plays the supervisor's part (start the run, spawn its worker) and the human's (answer the
+# gate) itself; the worker reports each outcome with flow_advance. The second step needs a
+# word only the human's comment at the gate names (GATE_WORD), so it shows the comment
+# reached the model.
 TINY_FLOW = """\
 name: tiny
-description: One worker step, then the end; for the live test.
+description: A worker step, a gate, a second worker step, then the end; for the live test.
 start: step
 states:
   step:
@@ -72,10 +77,22 @@ states:
     do: >-
       Create a file flow.txt containing exactly OK and commit it on your branch. Then call
       flow_advance with the outcome done. Do nothing else.
+    outcomes: {done: ok}
+  ok:
+    gate: approval
+    ask: Go on to the second step?
+    outcomes: {approved: after, rejected: end}
+  after:
+    agent: worker
+    do: >-
+      The note of the previous step holds the human's comment, which names one word. Create
+      a file gate.txt containing exactly that word and commit it on your branch. Then call
+      flow_advance with the outcome done. Do nothing else.
     outcomes: {done: end}
   end:
     end: true
 """
+GATE_WORD = "MARIGOLD"
 
 
 # The passive supervisor's MCP server: it writes the token it got next to itself, then
@@ -670,9 +687,13 @@ def finish_worker(repo, worker: state.Agent) -> None:
 
 def test_a_flow_run_moves_on_when_its_worker_reports(live_repo, live_provider, live_model):
     """The run's worker gets its step as its task, does it and reports the outcome with
-    flow_advance; the run ends. Its branch is not merged yet, so LADO keeps the worktree,
-    the branch and the worker and tells the supervisor; finishing the worker after the
-    merge removes them."""
+    flow_advance; the run waits at its gate. The human approves with a comment
+    (runs.answer_text, as every surface of the human), and the human's answer reaches the
+    real CLI as the next step, a message from LADO: the worker writes the word the comment
+    names and reports; the run ends. The lead's recommendation on the gate is the model's
+    choice: the test neither waits for it nor requires it. The run's branch is not merged
+    yet, so LADO keeps the worktree, the branch and the worker and tells the supervisor;
+    finishing the worker after the merge removes them."""
     repo = live_repo
     started, since = time.monotonic(), time.time()
     start_session(repo, live_provider)
@@ -683,20 +704,35 @@ def test_a_flow_run_moves_on_when_its_worker_reports(live_repo, live_provider, l
     assert worker.cwd == run.worktree
     check_lado_tools_loaded(live_provider, worker.cwd, since)
 
+    def at_gate():
+        r = state.get_run(SESSION, run.name)
+        return r.status == state.WAITING and r.state == "ok" and state.open_gate(SESSION, r.name)
+
+    wait_for(answering(live_provider, "w1", at_gate), "the run's gate to open", 240)
+    check_first_input("w1", f"flow {run.name}: step step")
+    answered = runs.answer_text(SESSION, run.name, "approve", f"The word is {GATE_WORD}.")
+    print(f"gate: {answered}")
+
     ended = wait_for(
         answering(
             live_provider,
             "w1",
             lambda: (r := state.get_run(SESSION, run.name)).status == state.ENDED and r,
         ),
-        "the run to end",
+        "the run to end after the gate",
         240,
     )
     assert ended.state == "end"
-    check_first_input("w1", f"flow {run.name}: step step")
     moves = [(e.agent, e.detail) for e in state.list_events(SESSION) if e.kind == state.FLOW]
-    assert moves == [("w1", "step -done-> end")]
+    assert moves == [
+        ("w1", "step -done-> ok"),
+        (runs.HUMAN, "ok -approved-> after"),
+        ("w1", "after -done-> end"),
+    ]
+    # The step after the gate came as a message with the human's answer as its note.
+    assert (f"flow {run.name}: step after", state.READ) in messages(state.LADO, "w1")
     assert runtime.git(str(repo), "show", f"{run.branch}:flow.txt").strip() == "OK"
+    assert runtime.git(str(repo), "show", f"{run.branch}:gate.txt").strip() == GATE_WORD
     # w1's MCP server stores the end first and tells the supervisor after its git checks.
     kept = f"flow {run.name}: ended at end; kept its worktree and branch"
     wait_for(
@@ -834,5 +870,43 @@ def test_an_agent_s_shell_has_its_own_temporary_folder(live_repo, live_provider,
     print(f"{live_provider}: TMPDIR {written.read_text()!r}")
     assert written.read_text() == str(expected)
     assert expected.is_dir()
+    check_supervisor_kept_still()
+    runtime.stop_session(SESSION)
+
+
+NO_COMMIT_WORKER = (
+    "Create a file hello.txt containing exactly OK. Do not commit. "
+    "Then report to the supervisor with send_message."
+)
+COMMIT_WORKER = (
+    "Create a file hello.txt containing exactly OK. Then report to the supervisor with "
+    "send_message."
+)
+
+
+def test_a_worker_commits_unless_its_task_says_not_to(live_repo, live_provider):
+    """LADO's rule on commits is a default the task can switch off (LAD-173): w1, told not
+    to commit, leaves its branch at its start and hello.txt untracked; w2, told nothing of
+    commits, commits it."""
+    repo = live_repo
+    start_session(repo, live_provider)
+    head = runtime.git(str(repo), "rev-parse", "HEAD")
+    w1 = runtime.spawn_worker(SESSION, NO_COMMIT_WORKER, name="w1")
+    w2 = runtime.spawn_worker(SESSION, COMMIT_WORKER, name="w2")
+
+    def both_reported() -> bool:
+        answer_dialogs(live_provider, SESSION, "w1")
+        answer_dialogs(live_provider, SESSION, "w2")
+        return bool(messages("w1", "supervisor") and messages("w2", "supervisor"))
+
+    wait_for(both_reported, "w1's and w2's reports", 180)
+    # A worker may commit after its report, in the same turn: look at the branches only once
+    # both turns have ended.
+    wait_for(lambda: status("w1") == status("w2") == state.IDLE, "w1 and w2 to be idle", 120)
+    assert runtime.git(str(repo), "rev-parse", w1.branch) == head
+    assert (Path(w1.cwd) / "hello.txt").read_text().strip() == "OK"
+    assert runtime.git(w1.cwd, "status", "--porcelain", "--", "hello.txt") == "?? hello.txt"
+    assert runtime.git(str(repo), "rev-list", "--count", f"{head}..{w2.branch}") != "0"
+    assert runtime.git(str(repo), "show", f"{w2.branch}:hello.txt").strip() == "OK"
     check_supervisor_kept_still()
     runtime.stop_session(SESSION)

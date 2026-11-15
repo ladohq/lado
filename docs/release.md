@@ -171,7 +171,9 @@ The release's check checks LADO itself, not its kits: no kit is needed here.
 
 Flows and gates are the tests': a gate's card in the browser tests with the fake agent
 (`tests/ui/test_gates.py`), a flow run by a real CLI in the live tests
-(`tests/live/test_live.py`, the flow `tiny` of a test kit).
+(`tests/live/test_live.py`, the flow `tiny` of a test kit). The flow `tiny` has a gate the
+test answers as the human with a comment, so `live.yml` checks on each RC that a gate's
+answer reaches a real CLI as the next step.
 
 There is no fixed soak time: the final follows your "ok".
 

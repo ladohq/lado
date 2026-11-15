@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.47.0 (unreleased)
+
+### Fixed
+
+- **An agent that skips a message's text is told so once.** An agent that ends its turn
+  without reading the text of a message it got (a step, your request, a report) gets one
+  reminder from LADO to read it, so a weak model does not lose what it was asked.
+- **New session no longer takes the focus away from you.** When the recent places come late,
+  a field or button you already moved to keeps the focus, and what you type stays there; Where
+  still shows the last place.
+- **A worker told not to commit leaves its work uncommitted.** Workers still commit on their
+  branch by default, but a task that says "Do not commit" now wins over that.
+- **A refused new session leaves no empty folder behind.** New empty folder, Set up, `lado
+  start --new` and a clone in the terminal check the whole session (its kits too) before they
+  make a folder, a repository or a clone; a late refusal removes the unused folder it made.
+- **Claude Code's login checks what you paste.** A string that is no subscription token or API
+  key, or one of the other kind, is refused with what to paste instead, rather than shown as
+  logged in until an agent fails.
+
 ## 0.46.2 (2026-11-12)
 
 ### Fixed

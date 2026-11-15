@@ -129,7 +129,7 @@ def test_a_folder_directly_in_the_named_project_takes_a_fresh_start(shop):
 
 def test_a_fresh_start_into_a_project_asks_no_sessions_name(shop, git_config, tmp_path):
     state.add_session(state.Session("site", str(tmp_path / "elsewhere"), None, "claude"))
-    root = scratch.make(str(shop / "site"), "site", project="shop")
+    root = scratch.make(str(shop / "site"), "site", project="shop").root
     assert os.path.realpath(root) == os.path.realpath(shop / "site")
     log = subprocess.run(
         ["git", "-C", root, "log", "--format=%s"], capture_output=True, text=True, check=True
@@ -294,7 +294,7 @@ def git_out(path, *args) -> str:
 
 def test_a_new_folder(git_config, tmp_path):
     path = tmp_path / "a" / "sait-kofeini"
-    root = scratch.make(str(path), "sait-kofeini")
+    root = scratch.make(str(path), "sait-kofeini").root
     assert os.path.realpath(root) == os.path.realpath(path)
     assert os.listdir(path) == [".git"]
     assert git_out(path, "log", "--format=%s %an") == "Start from scratch LADO test"
@@ -418,3 +418,79 @@ def test_no_author_is_refused_before_anything(git_config, tmp_path):
         scratch.make(str(tmp_path / "shop"), "shop")
     assert refused.value.kind == "no_author"
     assert not (tmp_path / "shop").exists()
+
+
+# A fresh start refused late removes its unused folder (openspec change scratch-checks-first).
+
+
+def test_what_a_fresh_start_made_is_removed_while_unused(git_config, tmp_path):
+    made = scratch.make(str(tmp_path / "work" / "shop"), "shop")
+    assert made.created == tmp_path / "work"
+    assert scratch.remove_unused(made) is True
+    assert not (tmp_path / "work").exists()
+
+
+def test_an_empty_folder_given_loses_only_its_repository(git_config, tmp_path):
+    path = tmp_path / "shop"
+    path.mkdir()
+    (path / ".DS_Store").write_bytes(b"\0")
+    made = scratch.make(str(path), "shop")
+    assert made.created is None
+    assert scratch.remove_unused(made) is True
+    assert os.listdir(path) == [".DS_Store"]
+
+
+def _with_a_file(path: Path) -> None:
+    (path / "notes.md").write_text("x")
+
+
+def _with_a_second_commit(path: Path) -> None:
+    git_out(path, "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-q", "-m", "more")
+
+
+def _with_a_session(path: Path) -> None:
+    state.add_session(state.Session("shop", os.path.realpath(path), None, "claude"))
+
+
+def _with_a_staged_file(path: Path) -> None:
+    (path / ".git" / "info" / "exclude").write_text("")
+    _with_a_file(path)
+    git_out(path, "add", "notes.md")
+    (path / "notes.md").unlink()
+
+
+def _with_a_file_beside_it(path: Path) -> None:
+    (path.parent / "notes.md").write_text("x")
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [_with_a_file, _with_a_second_commit, _with_a_session, _with_a_staged_file],
+)
+def test_a_fresh_repository_that_changed_stays(git_config, tmp_path, changed):
+    path = tmp_path / "shop"
+    made = scratch.make(str(path), "shop")
+    changed(path)
+    assert scratch.remove_unused(made) is False
+    assert runtime.check_repo(str(path)) == os.path.realpath(path)
+
+
+def test_a_removal_that_fails_says_so(git_config, tmp_path, monkeypatch):
+    path = tmp_path / "shop"
+    made = scratch.make(str(path), "shop")
+
+    def refused(target, ignore_errors=False, **kwargs):
+        if not ignore_errors:  # as rmtree: errors ignored leave the folder silently
+            raise PermissionError(13, "Permission denied", str(target))
+
+    monkeypatch.setattr(scratch.shutil, "rmtree", refused)
+    assert scratch.remove_unused(made) is False
+    assert runtime.check_repo(str(path)) == os.path.realpath(path)
+
+
+def test_a_folder_made_above_it_that_holds_more_stays(git_config, tmp_path):
+    path = tmp_path / "work" / "shop"
+    made = scratch.make(str(path), "shop")
+    _with_a_file_beside_it(path)
+    assert scratch.remove_unused(made) is False
+    assert runtime.check_repo(str(path)) == os.path.realpath(path)

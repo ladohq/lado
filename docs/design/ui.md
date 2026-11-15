@@ -1614,8 +1614,10 @@ connection, above).
   `~`) lists `Use folder <path>` and its parent's subfolders (`GET /api/folders`). The list
   is fixed under the field above 760 px, so the body's scroll does not cut it, and in the flow
   below. The window **opens on the last place**, the first recent one, with the focus in
-  Task; with none on New empty folder, the focus in Folder name, with no message above Where;
-  the project's page's New session… and a repository's Start session open it on that project
+  Task; with none on New empty folder, the focus in Folder name, with no message above Where.
+  The focus moves there when the recent places come, and only from where the window put it at
+  opening (or the page's body): a focus the human moved meanwhile (Tab, a click) stays; the
+  project's page's New session… and a repository's Start session open it on that project
   (`useLaunch()({kind: "new", project, repo})`), Resume's Start a new session instead on the
   session's folder (`{kind: "new", path}`). A place picked or typed by the human is kept.
   Under Where stand the way's own fields and the place's notes, which are its input's
@@ -1672,8 +1674,11 @@ connection, above).
   creates it in <folder>.`), a quiet `folder <slug>` when the slug differs from the words
   (`lado.scratch.names`), the name's or the folder's refusal (`GET /api/scratch-target`) and
   git's missing author with its hint and Copy, and always the note `Also the session’s name.`:
-  the window has no Name field for it. **Create and start** sends `where: {kind: "scratch", path}` with the name and the title; a start refused
-  after the repository was made turns Where to it.
+  the window has no Name field for it. **Create and start** sends `where: {kind: "scratch", path}` with the name and the title. The server checks
+  the new session whole before it makes the folder, so a refusal (a kit's too, with Team
+  open) keeps Where on New empty folder with the name as typed; a start refused after the
+  repository was made turns Where to it when the repository stays (the server removes it
+  while unused).
 - **Project…** shows `LaunchProject.tsx`: **Project** (by title, one whose folder is not
   found off, its line of repositories, sessions running and folder) and **Repository** (a
   `radiogroup`, `✓ Ready · branch X`), from `GET /api/project-launch?project=&repo=` (the last
@@ -2814,8 +2819,13 @@ provider-login-layers, providers-section-and-start-screens and settings-pages; b
   a login of another layer. LADO runs no login command of Claude Code: the human brings a
   ready token or key; `claude auth logout` in a terminal removes the login of Claude Code's
   own file. For a CLI that logs in by its own command only (OpenCode, Kilo) the sheet is its
-  login window at once, with "Log out of one…" in its head while logged in. A value the
-  agents could not get (a NUL, over 64 KiB) is refused. LADO's secrets go to
+  login window at once, with "Log out of one…" in its head while logged in. Save drops the
+  spaces and line breaks around a pasted value. A value the agents could not get (a NUL,
+  over 64 KiB) is refused, and so is one the provider says cannot be its login
+  (`Provider.login_value_problem`; Claude Code: a subscription token starts with
+  `sk-ant-oat01-` and an API key with `sk-ant-api03-`, any version digits, then letters,
+  digits, `-` and `_` only; a value of the other kind names the other choice); the
+  refusal shows under the choices, quotes no part of the value, and the sheet stays open. LADO's secrets go to
   `<LADO_HOME>/secrets/`, a layer of every agent between the outside folder and a project's.
 - **The login window**: "Log in: <CLI>" and Close (which ends the command), the terminal of
   the CLI's command (a tmux session of its own, `lado-login-<provider>`, labelled; one per

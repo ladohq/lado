@@ -991,6 +991,47 @@ def test_a_fresh_start_without_the_login_is_400_and_makes_no_folder(
     assert state.get_session("shop") is None
 
 
+def _lacking_kit(tmp_path) -> None:
+    """Kit sdlc, installed, whose role analyst uses skill tracker, which it expects and no
+    kit provides."""
+    kit = _kit(
+        tmp_path / "kits", "sdlc", "name: sdlc\nversion: 1.0.0\nexpects:\n  skills: [tracker]\n"
+    )
+    (kit / "agents").mkdir()
+    (kit / "agents" / "analyst.md").write_text(
+        "---\nname: analyst\ndescription: a\nskills: [tracker]\n---\nA.\n"
+    )
+    agent_helpers.install_kit(kit)
+
+
+LACKING = 'kit "sdlc" expects skill "tracker", which no kit of the session provides'
+
+
+def test_a_fresh_start_a_kit_refuses_is_400_and_makes_no_folder(
+    client, git_config, tmp_path, fake_tmux
+):
+    _lacking_kit(tmp_path)
+    path = tmp_path / "lado" / "rc-check"
+    answer = start_scratch(client, path, name="rc-check", kits=["sdlc"], provider="kilo")
+    assert answer.status_code == 400
+    assert answer.json()["detail"]["message"].startswith(LACKING)
+    assert not (tmp_path / "lado").exists()
+    assert state.list_sessions() == []
+
+
+def test_a_setup_a_kit_refuses_is_400_and_leaves_the_folder(
+    client, git_config, tmp_path, fake_tmux
+):
+    _lacking_kit(tmp_path)
+    notes = tmp_path / "notes"
+    notes.mkdir()
+    (notes / "a.txt").write_text("hello")
+    answer = start_setup(client, notes, kits=["sdlc"], provider="kilo")
+    assert answer.status_code == 400
+    assert answer.json()["detail"]["message"].startswith(LACKING)
+    assert os.listdir(notes) == ["a.txt"]
+
+
 def test_a_new_session_or_a_resume_without_the_login_is_400(client, repo, fake_tmux, cli_logins):
     cli_logins.logged_out()
     answer = launch(client, repo, name="s", kits=["default"], provider="claude")
@@ -1010,10 +1051,32 @@ def test_a_new_session_or_a_resume_without_the_login_is_400(client, repo, fake_t
     assert answer.status_code == 200, answer.text
 
 
-def test_a_fresh_start_refused_after_the_repository_keeps_it(
-    client, git_config, tmp_path, fake_tmux
+def window_fails(monkeypatch, before=None):
+    """The supervisor's window does not open: a start refused once its folder is there;
+    `before` runs first."""
+
+    def fails(*args, **kwargs):
+        if before is not None:
+            before()
+        raise runtime.LadoError("tmux could not open the window")
+
+    monkeypatch.setattr(runtime.tmux, "new_session", fails)
+
+
+def test_a_fresh_start_refused_after_the_repository_removes_it_unused(
+    client, git_config, tmp_path, fake_tmux, monkeypatch
 ):
-    answer = start_scratch(client, tmp_path / "shop", name="shop", provider="nosuch")
+    window_fails(monkeypatch)
+    answer = start_scratch(client, tmp_path / "lado" / "shop", name="shop", provider="kilo")
+    assert (answer.status_code, answer.json()["detail"]) == (400, "tmux could not open the window")
+    assert not (tmp_path / "lado").exists()
+
+
+def test_a_fresh_start_refused_after_the_repository_keeps_it_changed(
+    client, git_config, tmp_path, fake_tmux, monkeypatch
+):
+    window_fails(monkeypatch, lambda: (tmp_path / "shop" / "notes.md").write_text("x"))
+    answer = start_scratch(client, tmp_path / "shop", name="shop", provider="kilo")
     assert answer.status_code == 400
     assert runtime.check_repo(str(tmp_path / "shop")) == os.path.realpath(tmp_path / "shop")
 
@@ -1070,12 +1133,13 @@ def test_a_name_text_cannot_carry_is_a_refusal_not_a_server_error(client, git_co
 
 
 def test_a_start_refused_after_the_setup_keeps_the_repository(
-    client, git_config, tmp_path, fake_tmux
+    client, git_config, tmp_path, fake_tmux, monkeypatch
 ):
+    window_fails(monkeypatch)
     notes = tmp_path / "notes"
     notes.mkdir()
     (notes / "a.txt").write_text("hello")
-    answer = start_setup(client, notes, provider="kilo", kits=["no-such-kit"])
+    answer = start_setup(client, notes, provider="kilo")
     assert answer.status_code == 400, answer.text
     assert runtime.check_repo(str(notes)) == os.path.realpath(notes)
 
@@ -1160,6 +1224,15 @@ def shop(tmp_path, monkeypatch, git_config):
 
 
 IN_SHOP = "{} belongs to the project Shop: start a session in the project"
+
+
+def test_a_setup_in_a_project_is_refused_before_its_repository(client, shop, fake_tmux):
+    notes = shop / "notes"
+    notes.mkdir()
+    (notes / "a.txt").write_text("hello")
+    answer = start_setup(client, notes, provider="kilo")
+    assert (answer.status_code, answer.json()["detail"]) == (400, IN_SHOP.format(notes))
+    assert os.listdir(notes) == ["a.txt"]
 
 
 def test_a_folder_in_a_project_is_refused_before_git(client, shop):

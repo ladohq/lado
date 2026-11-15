@@ -171,8 +171,9 @@ Found: 2026-10-05, run feature/session-head (developer, reviewer).
 Seen again 2026-10-07, verify of fix/integration-fix2, load average 75–108: 4 UI tests
 failed, all passed on rerun: test_launch::test_stop_from_the_session_head (tooltip 'Stop
 session…' not in 5 s), test_chat::test_the_human_writes_and_the_supervisor_gets_it_and_replies
-(test_chat.py:35, value ''), test_layout::test_many_tabs_stay_on_one_line… (click 'Open
-terminal' 30 s timeout), test_launch::test_a_session_starts_from_the_new_session_window
+(test_chat.py:35, value ''), test_chat::test_many_tabs_stay_on_one_line… (then in
+test_layout; click 'Open terminal' 30 s timeout, the load; its own measurement race, boxes
+from two layouts, fixed by LAD-283), test_launch::test_a_session_starts_from_the_new_session_window
 (provider select disabled: `/api/providers` slower than 30 s, since the CLIs' `--version`
 are slow under load; failed twice, passed the third time).
 
@@ -551,6 +552,19 @@ failure goes through `fix` and a patch release.
 Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
+
+## A LADO agent's `make test` is red on a temp-dir test: `LADO_LAUNCH_VARS` leaks in
+
+Size: S. Why here: every developer agent that runs the unit tests inside LADO sees one red
+test with no cause in its work, and must stop to prove it.
+
+`tests/test_temp_dirs.py::test_the_users_tmpdir_is_the_parent_and_not_warned_of[shell]`
+fails in an agent's shell (`expected .../own-tmp/lado-1000/s/supervisor`, got
+`.../tmpdirNNN/...`) and passes with `env -u LADO_LAUNCH_VARS`: the agent's own
+`LADO_LAUNCH_VARS` (holding `TMPDIR`) reaches the test, as `tests/conftest.py` does not
+clear it with LADO's other variables. Red on origin/main 85dafa79 too; CI has no such
+variable. Wanted: conftest clears `LADO_LAUNCH_VARS`, with that test green inside an agent.
+Found: 2026-11-14, branch lado/cd-cd-speedup/task-lad-279 (LAD-279).
 
 ## Flaky: the New session window's Cancel by the keyboard may miss the focus
 
@@ -1929,7 +1943,34 @@ Size: S. Why here: only a failed kill prints them, and only a session already go
 both hints print `=<session>:=<worker>` and `=<session>`, as `tmux.py`'s own calls do.
 Found: 2026-11-07, review of branch hotfix/lad-227-stopped-session-delivery (LAD-227).
 
+## Integration tests send a human command before the agent's turn and its reminder are over
+
+Size: M. Why here: each such test is a flake that looks like a timeout under load, and a
+rerun hides it.
+
+A test that sends the fake agent a human command while it is still in a turn, or while its
+turn-end reminder of a human message answered in no chat (LAD-274) is still to come, races:
+a command that reaches it mid-turn, in a LADO tool's result, is text to the fake agent and
+never runs, and "the last message to the agent" can be the reminder. LAD-284 fixed the two
+that failed: `test_session_start.py`'s approved-proposal test (CI run 43622349434) and
+`test_flow_runs.py`'s `to_the_gate` (Windows probe run 43622342944). About 64 human
+commands in 20 files of `tests/integration/` were not checked; most wait for idle or for
+the agent's tool call. Wanted: each command that follows another turn, and each read of the
+last message, waits for `agent_helpers.settled` (docs/testing.md).
+Found: 2026-11-14, branch hotfix/lad-284-tests-wait-for-turn-end (LAD-284).
+
 # P3: maybe never
+
+## A read-only worker is told to commit, then told not to
+
+Size: S. Why here: no harm is known, as the read-only paragraph that follows wins, but the
+model gets two rules that contradict each other in a row.
+
+A read-only role's worker (a run's reviewer) gets `runtime.WORKER_INSTRUCTIONS` or
+`RUN_WORKER_INSTRUCTIONS` with `COMMIT_RULE` ("Commit your work on that branch, unless your
+task says otherwise …"), then `READ_ONLY_INSTRUCTIONS` ("no commits"). Wanted: no
+`COMMIT_RULE` for a read-only worker, with a unit test of its prompt.
+Found: 2026-11-14, branch lado/lado/task-lad-173 (LAD-173 review, round 1).
 
 ## A session's chat address with a broken %-code blanks the app
 

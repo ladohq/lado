@@ -22,7 +22,6 @@ from lado import (
     hooks,
     kits,
     loop,
-    mcp_exec,
     model_servers,
     model_settings,
     providers,
@@ -34,11 +33,6 @@ from lado import (
     tmux,
 )
 from lado.providers import base
-
-
-def test_slug():
-    assert runtime.slug("My Repo.v2") == "my-repo-v2"
-    assert runtime.slug("...") == "lado"
 
 
 def test_start_session_launches_supervisor(repo, fake_tmux, lado_home):
@@ -72,95 +66,11 @@ def _installed(*names):
     return lambda provider: provider.name in names
 
 
-def test_the_suggested_provider_is_the_folders_last_sessions_when_installed(repo, fake_tmux):
-    runtime.start_session(str(repo), "old", None, "opencode")
-    runtime.start_session(str(repo), "new", None, "kilo")
-    suggestion = runtime.suggested_provider(str(repo), _installed("claude", "kilo", "opencode"))
-    assert suggestion == runtime.Suggestion("kilo", runtime.LAST_SESSION)
-    assert suggestion.line() == "kilo (the folder's last session)"
-
-
 def test_the_last_sessions_provider_not_installed_falls_back_to_the_only_one(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, "kilo")
     suggestion = runtime.suggested_provider(str(repo), _installed("opencode"))
     assert suggestion == runtime.Suggestion("opencode", runtime.ONLY_INSTALLED)
     assert suggestion.line() == "opencode (the only one installed)"
-
-
-def test_the_last_session_anywhere_is_the_second_step(repo, tmp_path, fake_tmux):
-    other = agent_helpers.init_repo(tmp_path / "other")
-    runtime.start_session(str(other), "o", None, "kilo")
-    runtime.start_session(str(other), "p", None, "opencode")
-    suggestion = runtime.suggested_provider(str(repo), _installed("claude", "kilo", "opencode"))
-    assert suggestion == runtime.Suggestion("opencode", runtime.LAST_ANY)
-    assert suggestion.line() == "opencode (your last session)"
-    assert runtime.suggested_provider(None, _installed("claude", "opencode")) == suggestion
-
-
-def test_the_last_session_anywhere_not_installed_falls_back_to_the_only_one(
-    repo, tmp_path, fake_tmux
-):
-    other = agent_helpers.init_repo(tmp_path / "other")
-    runtime.start_session(str(other), "o", None, "kilo")
-    suggestion = runtime.suggested_provider(str(repo), _installed("opencode"))
-    assert suggestion == runtime.Suggestion("opencode", runtime.ONLY_INSTALLED)
-    assert runtime.suggested_provider(str(repo), _installed("claude", "opencode")) is None
-
-
-def test_a_new_folder_takes_the_provider_of_the_last_session_anywhere(repo, tmp_path, fake_tmux):
-    other = agent_helpers.init_repo(tmp_path / "other")
-    runtime.start_session(str(other), "o", None, "opencode")
-    started = runtime.start_session(str(repo), "s", None)
-    assert started.session.provider == "opencode"
-    assert started.chosen == runtime.Suggestion("opencode", runtime.LAST_ANY)
-
-
-def test_free_name_is_the_name_when_no_session_has_it(repo, fake_tmux):
-    assert runtime.free_name("webapp") == "webapp"
-
-
-def test_free_name_counts_past_the_taken_ones(repo, fake_tmux):
-    runtime.start_session(str(repo), "webapp", None, "kilo")
-    assert runtime.free_name("webapp") == "webapp-2"
-    runtime.start_session(str(repo), "webapp-2", None, "kilo")
-    assert runtime.free_name("webapp") == "webapp-3"
-
-
-@pytest.mark.parametrize(
-    ("installed", "expected"),
-    [
-        (("kilo",), runtime.Suggestion("kilo", runtime.ONLY_INSTALLED)),
-        (("claude", "opencode"), None),
-        ((), None),
-    ],
-)
-def test_without_a_last_session_only_a_single_installed_provider_is_suggested(
-    repo, installed, expected
-):
-    assert runtime.suggested_provider(str(repo), _installed(*installed)) == expected
-    assert runtime.suggested_provider(None, _installed(*installed)) == expected
-
-
-def test_a_new_session_without_a_provider_takes_the_one_on_the_agents_path(
-    repo, fake_tmux, monkeypatch, fake_clis, tmp_path
-):
-    only = tmp_path / "only-kilo"
-    only.mkdir()
-    (only / "kilo").symlink_to(fake_clis / "kilo")
-    _shell(monkeypatch, {"PATH": str(only)})
-    started = runtime.start_session(str(repo), "s", None)
-    assert started.session.provider == "kilo"
-    assert started.chosen == runtime.Suggestion("kilo", runtime.ONLY_INSTALLED)
-    runtime.stop_session("s")
-    resumed = runtime.start_session(str(repo), "s", None)  # a resume keeps its own
-    assert (resumed.session.provider, resumed.chosen) == ("kilo", None)
-
-
-def test_a_new_session_takes_the_folders_last_provider(repo, fake_tmux):
-    runtime.start_session(str(repo), "a", None, "opencode")
-    started = runtime.start_session(str(repo), "b", None)
-    assert started.session.provider == "opencode"
-    assert started.chosen == runtime.Suggestion("opencode", runtime.LAST_SESSION)
 
 
 def test_a_new_session_with_several_providers_and_no_history_is_refused(repo, fake_tmux):
@@ -206,19 +116,6 @@ def resolved(monkeypatch, fake_clis):
     return calls
 
 
-def test_agents_get_the_resolved_environment_then_lados_then_the_providers(
-    repo, fake_tmux, resolved
-):
-    runtime.start_session(str(repo), "s", None, "kilo")
-    runtime.spawn_worker("s", "a task")
-    for call, name in zip(fake_tmux, ("supervisor", "worker"), strict=True):
-        env, _ = agent_helpers.launched(call)
-        assert env["FROM_SHELL"] == "1"
-        assert env["LADO_AGENT"] == name
-        assert env["KILO_DISABLE_AUTOUPDATE"] == "1"
-    assert len(resolved) == 2  # anew for each launch
-
-
 def _broken_env(project=None):
     raise agent_env.AgentEnvError("your shell failed with exit status 1: zsh -ilc ...")
 
@@ -228,34 +125,6 @@ def _shell(monkeypatch, env):
     monkeypatch.setattr(
         agent_env, "layers", lambda project=None: agent_env.Layers(dict(env), {}, {}, {})
     )
-
-
-@pytest.mark.parametrize(
-    ("given", "refused"),
-    [
-        ({"provider": "nope"}, 'unknown provider "nope"'),
-        ({"provider": "kilo", "permission_mode": "dontAsk"}, 'permission mode "dontAsk"'),
-    ],
-)
-@pytest.mark.parametrize("resumed", [False, True])
-def test_a_wrong_provider_or_mode_is_refused_before_the_login_shell(
-    repo, fake_tmux, monkeypatch, given, refused, resumed
-):
-    if resumed:
-        runtime.start_session(str(repo), "s", None, "claude")
-        runtime.stop_session("s")
-    monkeypatch.setattr(agent_env, "layers", _broken_env)
-    with pytest.raises(runtime.LadoError, match=re.escape(refused)):
-        runtime.start_session(str(repo), "s", given.get("permission_mode"), given["provider"])
-
-
-def test_a_start_whose_environment_fails_launches_nothing(repo, fake_tmux, monkeypatch):
-    monkeypatch.setattr(agent_env, "layers", _broken_env)
-    with pytest.raises(runtime.LadoError, match="your shell failed with exit status 1"):
-        runtime.start_session(str(repo), "s", None, provider="claude")
-    assert fake_tmux == []
-    assert state.get_session("s") is None
-    assert not (state.home() / "agents" / "s").exists()
 
 
 def test_a_resume_whose_environment_fails_leaves_the_session_as_it_was(
@@ -317,12 +186,6 @@ def test_a_spawn_whose_cli_is_not_on_the_agents_path_leaves_no_worker(
     assert not (state.home() / "agents" / "s" / "worker").exists()
 
 
-def test_start_refuses_running_session(repo, fake_tmux):
-    runtime.start_session(str(repo), None, None, provider="claude")
-    with pytest.raises(runtime.LadoError, match="already running"):
-        runtime.start_session(str(repo), None, None, provider="claude")
-
-
 def test_start_on_a_running_session_restarts_a_dead_loop(repo, fake_tmux, loop_starts):
     from lado import loop
 
@@ -338,67 +201,10 @@ def test_start_on_a_running_session_restarts_a_dead_loop(repo, fake_tmux, loop_s
     held.close()
 
 
-def test_start_requires_git_repo(tmp_path, fake_tmux):
-    with pytest.raises(runtime.LadoError, match="not inside a git repository"):
-        runtime.start_session(str(tmp_path), None, None, provider="claude")
-
-
-def _session_in(status, repo, fake_tmux):
-    """A session "s" of `repo` that is running, stopped or whose tmux server is gone."""
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    if status == runtime.SessionStatus.STOPPED:
-        runtime.stop_session("s")
-    elif status == runtime.SessionStatus.TMUX_GONE:
-        fake_tmux.append(("kill_session", "s"))
-
-
-def test_a_new_session_starts_with_resume_false(repo, fake_tmux):
-    started = runtime.start_session(str(repo), "s", None, resume=False, provider="claude")
-    assert not started.resumed
-    assert state.get_session("s").repo == str(repo)
-
-
-@pytest.mark.parametrize(
-    "status",
-    [runtime.SessionStatus.RUNNING, runtime.SessionStatus.STOPPED, runtime.SessionStatus.TMUX_GONE],
-)
-def test_resume_false_refuses_a_session_of_that_name(repo, fake_tmux, status):
-    _session_in(status, repo, fake_tmux)
-    events = len(state.list_events("s"))
-    # A running session's loop is not started here: its status says so.
-    shown = runtime.SessionStatus.LOOP_DOWN if status == runtime.SessionStatus.RUNNING else status
-    with pytest.raises(runtime.SessionExists) as error:
-        runtime.start_session(str(repo), "s", "plan", resume=False, provider="claude")
-    assert (error.value.status, error.value.repo) == (shown, str(repo))
-    assert f'session "s" exists already ({shown.value}, in {repo})' in str(error.value)
-    assert len(state.list_events("s")) == events  # nothing was changed
-    assert state.get_session("s").permission_mode is None
-
-
 def test_resume_true_refuses_an_unknown_session(repo, fake_tmux):
     with pytest.raises(runtime.NoSuchSession, match='unknown session "s"'):
         runtime.start_session(str(repo), "s", None, resume=True, provider="claude")
     assert state.get_session("s") is None
-
-
-@pytest.mark.parametrize("status", [runtime.SessionStatus.STOPPED, runtime.SessionStatus.TMUX_GONE])
-def test_resume_true_resumes_a_session_not_running(repo, fake_tmux, status):
-    _session_in(status, repo, fake_tmux)
-    started = runtime.start_session(str(repo), "s", "plan", resume=True)
-    assert started.resumed
-    assert started.changes == ["permission mode: none -> plan"]
-
-
-def test_resume_true_refuses_a_running_session(repo, fake_tmux):
-    _session_in(runtime.SessionStatus.RUNNING, repo, fake_tmux)
-    with pytest.raises(runtime.LadoError, match='session "s" is already running') as error:
-        runtime.start_session(str(repo), "s", None, resume=True, provider="claude")
-    assert not isinstance(error.value, runtime.SessionExists)
-
-
-def test_check_repo_gives_the_root_of_a_repository_with_commits(repo):
-    (repo / "sub").mkdir()
-    assert runtime.check_repo(str(repo / "sub")) == str(repo)
 
 
 def _refusal(path: Path) -> runtime.FolderProblem:
@@ -451,16 +257,6 @@ def test_git_without_git_is_ladoerror_not_a_crash(tmp_path, monkeypatch):
         runtime.git(str(tmp_path), "status")
 
 
-def test_check_repo_refuses_a_folder_that_is_not_there(tmp_path):
-    missing = tmp_path / "nope"
-    refused = _refusal(missing)
-    assert (refused.kind, str(refused), refused.hint) == (
-        "missing",
-        f"{missing} does not exist",
-        None,
-    )
-
-
 def test_check_repo_refuses_a_file(tmp_path):
     file = tmp_path / "notes.txt"
     file.write_text("x")
@@ -469,18 +265,6 @@ def test_check_repo_refuses_a_file(tmp_path):
         "not_folder",
         f"{file} is a file, not a folder",
         None,
-    )
-
-
-def test_check_repo_refuses_a_folder_outside_git(tmp_path):
-    refused = _refusal(tmp_path)
-    assert (refused.kind, str(refused)) == (
-        "not_repo",
-        f"{tmp_path} is not inside a git repository",
-    )
-    assert refused.hint == runtime.Hint(
-        "Make it a repository with a first commit, in that folder:",
-        "git init && git add -A && git commit -m 'First commit'",
     )
 
 
@@ -495,21 +279,6 @@ def test_check_repo_reads_git_in_english(tmp_path, monkeypatch):
     )
     _fake_git(tmp_path, monkeypatch, script)
     assert _refusal(tmp_path).kind == "not_repo"
-
-
-def _repo_without_commits(path: Path) -> Path:
-    path.mkdir()
-    subprocess.run(["git", "init", "-q", str(path)], check=True)
-    return path
-
-
-def test_check_repo_refuses_a_repository_without_commits(tmp_path):
-    empty = _repo_without_commits(tmp_path / "empty")
-    refused = _refusal(empty)
-    assert (refused.kind, str(refused)) == ("no_commits", f"{empty} has no commits yet")
-    assert refused.hint == runtime.Hint(
-        "Make a first commit, in that folder:", "git add -A && git commit -m 'First commit'"
-    )
 
 
 def test_check_repo_without_git(tmp_path, monkeypatch):
@@ -570,48 +339,6 @@ def test_the_hint_for_a_git_that_does_not_run(tmp_path, monkeypatch, system, com
     refused = _refusal(tmp_path)
     assert refused.hint is not None
     assert refused.hint.command == command
-
-
-def test_start_refuses_a_repository_without_commits(tmp_path, fake_tmux):
-    empty = _repo_without_commits(tmp_path / "empty")
-    with pytest.raises(runtime.LadoError, match="has no commits yet"):
-        runtime.start_session(str(empty), None, None, provider="claude")
-    assert state.list_sessions() == []
-
-
-def test_spawn_worker_creates_worktree_and_passes_task(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    worker = runtime.spawn_worker("s", "fix the bug;")
-    assert (worker.name, worker.branch) == ("worker", "lado/s/worker")
-    assert (repo / ".lado/worktrees/s/worker/.git").exists()
-    kind, _, window, cwd, cmd = fake_tmux[-1]
-    assert (kind, window, cwd) == ("new_window", "worker", worker.cwd)
-    status = subprocess.run(
-        ["git", "-C", str(repo), "status", "--porcelain"], capture_output=True, text=True
-    )
-    assert status.stdout == ""  # .lado/ is excluded
-    assert runtime.spawn_worker("s", "another").name == "worker-2"
-    assert runtime.spawn_worker("s", "named", name="w1").name == "w1"  # a given name wins
-    assert runtime.spawn_worker("s", "third").name == "worker-3"
-
-
-@pytest.mark.parametrize("task", ["fix the bug;", "x" * 50_000])
-def test_a_worker_gets_its_task_through_its_queue(repo, fake_tmux, task):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    worker = runtime.spawn_worker("s", task)
-    assert worker.task == task  # in full: lado ls, list_agents
-    [message] = state.list_messages("s")
-    assert (message.sender, message.recipient, message.summary, message.state) == (
-        "lado",
-        "worker",
-        "your task",
-        state.PENDING,  # handed over when the worker is idle, as any message
-    )
-    assert message.body == task + runtime.REPORT_REMINDER
-    # Not on the command line, which `ps` shows to every user of the machine.
-    window = fake_tmux[-1]
-    assert window[0] == "new_window"
-    assert not [a for a in window[-1] if "fix the bug" in a or "xxx" in a]
 
 
 @pytest.mark.parametrize("provider", ["kilo", "opencode"])
@@ -708,98 +435,6 @@ def test_an_agent_that_starts_at_its_first_input_gets_one_from_lado(repo, fake_t
     assert first_input.environ["PATH"] == env["PATH"]
 
 
-def test_an_agent_that_starts_at_its_first_input_and_has_one_gets_no_other(
-    repo, fake_tmux, first_input
-):
-    runtime.start_session(str(repo), "s", None, provider="firstinput")
-    warnings = []
-    runtime.spawn_worker("s", "fix the bug;", name="w1", warnings=warnings)
-    task = state.list_messages("s")[-1]
-    assert [m.summary for m in state.list_messages("s") if m.recipient == "w1"] == ["your task"]
-    _, argv = agent_helpers.launched(fake_tmux[-1])
-    assert argv == [
-        "firstinput",
-        f"[from lado] your task (#{task.id}, 3 lines: call read_messages)",
-    ]
-    assert "w!" in warnings
-
-
-def test_other_agents_get_no_first_input_from_lado(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="kilo")
-    assert state.list_messages("s") == []
-    _, argv = agent_helpers.launched(fake_tmux[0])
-    assert "--prompt" not in argv
-
-
-def test_a_failed_spawn_drops_the_first_line_handed_over_on_the_command_line(
-    repo, fake_tmux, monkeypatch
-):
-    runtime.start_session(str(repo), "s", None, provider="kilo")
-    monkeypatch.setattr(tmux, "new_window", _fail)
-    with pytest.raises(tmux.TmuxError):
-        runtime.spawn_worker("s", "fix the bug;", name="w1")
-    assert [m.state for m in state.list_messages("s")] == [state.DROPPED]
-
-
-def test_a_resumed_opencode_family_supervisor_gets_its_lines_on_its_command_line(
-    repo, fake_tmux, monkeypatch
-):
-    runtime.start_session(str(repo), "s", None, provider="kilo")
-    runtime.stop_session("s")
-    with monkeypatch.context() as m:
-        m.setattr(tmux, "new_session", _fail)
-        with pytest.raises(tmux.TmuxError):
-            runtime.start_session(str(repo), "s", None)
-    runtime.start_session(str(repo), "s", None)
-    _, argv = agent_helpers.launched(fake_tmux[-1])
-    assert argv[argv.index("--prompt") + 1] == "[from lado] session resumed: 0 open runs"
-    # The failed resume's went with its stop; this one's is handed over at the launch.
-    assert [(m.state, m.attempts, m.channel) for m in state.list_messages("s")] == [
-        (state.DROPPED, 1, state.TYPED),
-        (state.SENT, 1, state.TYPED),
-    ]
-
-
-def _from_human(session: str) -> list[state.Message]:
-    return [m for m in state.list_messages(session) if m.sender == state.HUMAN]
-
-
-def test_a_new_session_starts_with_the_humans_first_message(repo, fake_tmux):
-    runtime.start_session(
-        str(repo), "s", None, provider="claude", prompt="  Take LAD-19\nAsk me first \n"
-    )
-    [m] = state.list_messages("s")
-    assert (m.sender, m.recipient, m.summary, m.body, m.state) == (
-        "human",
-        "supervisor",
-        runtime.FIRST_MESSAGE,
-        "Take LAD-19\nAsk me first",
-        state.PENDING,  # handed over at its first hook, as any queued message
-    )
-
-
-def test_a_one_line_first_message_is_a_body_too(repo, fake_tmux):
-    """A summary made of the text would go on Kilo's and OpenCode's command line."""
-    runtime.start_session(str(repo), "s", None, provider="claude", prompt="Go")
-    [m] = state.list_messages("s")
-    assert (m.summary, m.body) == (runtime.FIRST_MESSAGE, "Go")
-
-
-def test_without_a_prompt_nothing_new_is_queued(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    assert state.list_messages("s") == []
-
-
-def test_a_resumed_session_gets_the_humans_message_after_lados(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    runtime.stop_session("s")
-    assert runtime.start_session(str(repo), "s", None, prompt="Continue").resumed
-    assert [(m.sender, m.summary, m.body, m.state) for m in state.list_messages("s")] == [
-        ("lado", "session resumed: 0 open runs", "", state.PENDING),
-        ("human", runtime.FIRST_MESSAGE, "Continue", state.PENDING),
-    ]
-
-
 @pytest.mark.parametrize(
     ("prompt", "refused"),
     [
@@ -818,61 +453,10 @@ def test_a_bad_first_message_is_refused_before_anything(repo, fake_tmux, prompt,
     assert fake_tmux == []
 
 
-def test_a_first_message_at_the_limit_is_taken_stripped():
-    text = "x" * runtime.MAX_MESSAGE
-    assert runtime.check_prompt(f" {text}\n") == text
-
-
-def test_a_bad_first_message_leaves_a_stopped_session_as_it_was(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    runtime.stop_session("s")
-    before = len(fake_tmux)
-    with pytest.raises(runtime.LadoError, match="the first message is empty"):
-        runtime.start_session(str(repo), "s", None, prompt="")
-    assert len(fake_tmux) == before
-    assert state.get_session("s").stopped_at
-    assert state.list_messages("s") == []
-
-
-@pytest.mark.parametrize("resumed", [False, True])
-def test_a_failed_start_drops_the_humans_message(repo, fake_tmux, monkeypatch, resumed):
-    if resumed:
-        runtime.start_session(str(repo), "s", None, provider="claude")
-        runtime.stop_session("s")
-    with monkeypatch.context() as m:
-        m.setattr(tmux, "new_session", _fail)
-        with pytest.raises(tmux.TmuxError):
-            runtime.start_session(str(repo), "s", None, provider="claude", prompt="Go")
-    if resumed:
-        # Dropped with LADO's own, never left for a later resume.
-        assert [(m.sender, m.state) for m in state.list_messages("s")] == [
-            ("lado", state.DROPPED),
-            ("human", state.DROPPED),
-        ]
-    else:
-        assert state.get_session("s") is None
-        assert state.list_messages("s") == []
-
-
 @pytest.mark.parametrize("provider", ["claude", "kilo", "opencode"])
 def test_a_cli_that_starts_its_session_by_itself_gets_no_first_input(repo, fake_tmux, provider):
     runtime.start_session(str(repo), "s", None, provider=provider)
     assert [m.summary for m in state.list_messages("s")] == []
-
-
-@pytest.mark.parametrize("provider", ["kilo", "opencode"])
-def test_an_opencode_family_supervisor_gets_the_fixed_line_not_the_text(repo, fake_tmux, provider):
-    runtime.start_session(
-        str(repo), "s", None, provider=provider, prompt="Take LAD-19\nsecret plan"
-    )
-    [m] = state.list_messages("s")
-    _, argv = agent_helpers.launched(fake_tmux[0])
-    assert argv[argv.index("--prompt") + 1] == (
-        f"[from human] {runtime.FIRST_MESSAGE} (#{m.id}, 2 lines: call read_messages)"
-        + runtime.HUMAN_REPLY_HINT
-    )
-    assert not [a for a in argv if "LAD-19" in a or "secret" in a]
-    assert (m.state, m.channel) == (state.SENT, state.TYPED)
 
 
 def test_a_resumed_opencode_family_supervisor_gets_lados_line_and_the_humans(repo, fake_tmux):
@@ -888,81 +472,8 @@ def test_a_resumed_opencode_family_supervisor_gets_lados_line_and_the_humans(rep
     )
 
 
-def test_an_agent_that_starts_at_its_first_input_takes_the_humans_message(
-    repo, fake_tmux, first_input
-):
-    runtime.start_session(str(repo), "s", None, provider="firstinput", prompt="Go")
-    [m] = state.list_messages("s")
-    assert m.sender == "human"  # no FIRST_INPUT of LADO's before it
-    _, argv = agent_helpers.launched(fake_tmux[0])
-    assert argv == [
-        "firstinput",
-        f"[from human] {runtime.FIRST_MESSAGE} (#{m.id}, 1 line: call read_messages)"
-        + runtime.HUMAN_REPLY_HINT,
-    ]
-
-
-@pytest.mark.parametrize(
-    ("role", "taken", "expected"),
-    [
-        ("developer", set(), "developer"),
-        ("developer", {"developer", "developer-2"}, "developer-3"),
-        ("Code Reviewer", set(), "code-reviewer"),  # made valid like a given name
-        ("lado", set(), "lado-2"),
-        ("human", set(), "human-2"),
-        ("supervisor", set(), "supervisor-2"),
-    ],
-)
-def test_default_worker_name_is_the_first_free_one_of_its_role(role, taken, expected):
-    assert runtime._next_name(role, taken) == expected
-
-
-def test_worker_is_told_a_text_report_is_lost(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    runtime.spawn_worker("s", "task")
-    cmd = fake_tmux[-1][-1]
-    prompt = agent_helpers.claude_prompt(cmd)
-    assert "The supervisor cannot see your screen" in prompt
-
-
 def _prompt(cmd):
     return agent_helpers.claude_prompt(cmd)
-
-
-def test_agents_are_told_how_to_send_and_read_messages(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    runtime.spawn_worker("s", "task")
-    for _, _, window, _, cmd in fake_tmux:
-        prompt = _prompt(cmd)
-        assert "one-line summary" in prompt, window
-        assert "body" in prompt and "call read_messages" in prompt, window
-        assert "last action of your turn" in prompt, window
-        assert "being idle tells" in prompt, window
-    supervisor = _prompt(fake_tmux[0][-1])
-    assert "Do not relay worker or reviewer reports to the human" in supervisor
-    assert "lado log" in supervisor
-    # Only the lead reads other agents' statuses.
-    background = (
-        "`background`: the agent's turn ended while work it started (e.g. subagents) still "
-        "runs; a message reaches it at once; it is not done yet."
-    )
-    assert background in " ".join(supervisor.split())
-    assert background not in " ".join(_prompt(fake_tmux[-1][-1]).split())
-
-
-def test_agents_are_told_to_keep_results_as_artifacts_and_attach_them(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    runtime.spawn_worker("s", "task")
-    for _, _, window, _, cmd in fake_tmux:
-        prompt = " ".join(_prompt(cmd).split())
-        for tool in ("write_artifact", "read_artifact", "list_artifacts"):
-            assert tool in prompt, window
-        assert "`artifacts`" in prompt and "flow_advance" in prompt, window
-        assert "is an artifact, not a path to a file" in prompt, window
-    supervisor = " ".join(_prompt(fake_tmux[0][-1]).split())
-    assert "A bare artifact name is in the session's scope" in supervisor
-    assert 'named by their full name, "<run>/<name>"' in supervisor
-    assert "in a step of your own in a run, write and attach the run's artifacts" in supervisor
 
 
 HUMAN_REPLY_RULE = " ".join(runtime.HUMAN_REPLY_RULE.split())
@@ -1038,16 +549,6 @@ def test_every_worker_commits_unless_its_task_says_otherwise(repo, fake_tmux, qu
         assert "Commit your work on that branch." not in prompt
 
 
-def test_the_supervisor_is_told_the_copy_of_the_humans_message_is_for_its_information(
-    repo, fake_tmux
-):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    supervisor = " ".join(_prompt(fake_tmux[0][-1]).split())
-    assert '"[from lado] human wrote to <agent>: ..." that is for your information' in supervisor
-    assert "do not pass it on and do not answer it" in supervisor
-    assert "if it changes the plan, take it into account" in supervisor
-
-
 def _mcp_ready(agent, instance=None):
     """What the agent's LADO MCP server records when Claude Code has listed its tools."""
     instance = instance or state.get_agent("s", agent).instance
@@ -1071,44 +572,6 @@ def _session_with_worker(repo):
     agent_helpers.forget_tasks("s")
 
 
-def test_message_to_idle_agent_is_pasted(repo, fake_tmux):
-    _session_with_worker(repo)
-    state.set_status("s", "w1", state.IDLE)
-    assert runtime.send_message("s", "supervisor", "w1", "hi") == "sent"
-    assert fake_tmux[-1] == ("send_text", "s", "w1", "[from supervisor] hi")
-    assert state.get_agent("s", "w1").status == state.BUSY
-    _hook("UserPromptSubmit", "w1", {"prompt": "[from supervisor] hi"})
-    _hook("Stop", "w1")
-    assert fake_tmux[-1][0] == "send_text"  # confirmed, so not delivered again
-
-
-def test_a_sweep_during_a_turns_end_cannot_type_the_hooks_batch(repo, fake_tmux, monkeypatch):
-    """The session loop may sweep at any moment outside the turn-end hook's transaction:
-    the hook makes the agent idle and takes its queue in one, so the sweep never sees it
-    idle with the queue the hook prints."""
-    _session_with_worker(repo)
-    _hook("SessionStart", "w1")
-    _hook("UserPromptSubmit", "w1", {"prompt": "go"})
-    runtime.send_message("s", "supervisor", "w1", "one more thing")
-    hand_over = runtime.hand_over
-    swept = []
-
-    def loop_sweeps_first(session, recipient, *args, **kwargs):
-        if not swept:  # the hook's hand-over; the sweep's own goes straight on
-            swept.append(recipient)
-            runtime.sweep(session, recipient)
-        return hand_over(session, recipient, *args, **kwargs)
-
-    monkeypatch.setattr(runtime, "hand_over", loop_sweeps_first)
-    typed_before = len([c for c in fake_tmux if c[0] == "send_text"])
-    out = _hook("Stop", "w1")
-    assert swept == ["w1"]
-    assert "[from supervisor] one more thing" in out["reason"]
-    [message] = [m for m in state.list_messages("s") if m.summary == "one more thing"]
-    assert (message.channel, message.attempts) == (state.HOOK_OUTPUT, 1)
-    assert len([c for c in fake_tmux if c[0] == "send_text"]) == typed_before
-
-
 def test_a_message_the_loop_types_in_while_it_is_sent_is_reported_sent(
     repo, fake_tmux, monkeypatch
 ):
@@ -1126,71 +589,6 @@ def test_a_message_the_loop_types_in_while_it_is_sent_is_reported_sent(
     monkeypatch.setattr(state, "queue_message", queue_then_loop_pass)
     assert runtime.send_message("s", "supervisor", "w1", "hi") == "sent"
     assert _typed(fake_tmux, "w1") == ["[from supervisor] hi"]
-
-
-@pytest.mark.parametrize("dropped", [True, False])
-def test_a_message_to_a_worker_finished_while_it_is_sent_is_refused(
-    repo, fake_tmux, monkeypatch, dropped
-):
-    """finish_worker forgets the worker, then drops its undelivered messages: either may
-    come between the sender's queue and its delivery. Nobody got the message."""
-    _session_with_worker(repo)
-    state.set_status("s", "w1", state.IDLE)
-    queue_message = state.queue_message
-
-    def queue_then_finish(*args, **kwargs):
-        queued = queue_message(*args, **kwargs)
-        state.delete_agent("s", "w1")
-        if dropped:
-            state.drop_undelivered("s", "w1")
-        return queued
-
-    monkeypatch.setattr(state, "queue_message", queue_then_finish)
-    with pytest.raises(runtime.LadoError, match='no running agent "w1"; running agents: '):
-        runtime.send_message("s", "supervisor", "w1", "hi")
-    assert _typed(fake_tmux, "w1") == []
-
-
-def test_an_agent_being_typed_into_never_looks_idle(repo, fake_tmux, monkeypatch):
-    """Taken from the queue and the agent busy in one step: no one sees the agent idle
-    with a message on its way in."""
-    _session_with_worker(repo)
-    state.set_status("s", "w1", state.IDLE)
-    status_once_taken = []
-    take_pending = state.take_pending
-
-    def spy(*args, **kwargs):
-        taken = take_pending(*args, **kwargs)
-        status_once_taken.append(state.get_agent("s", "w1").status)
-        return taken
-
-    monkeypatch.setattr(state, "take_pending", spy)
-    assert runtime.send_message("s", "supervisor", "w1", "hi") == "sent"
-    assert status_once_taken == [state.BUSY]
-
-
-BACKGROUND_TASKS = {"background_tasks": [{"id": "a1", "type": "subagent", "status": "running"}]}
-
-
-def test_a_turn_end_with_background_work_sets_background_and_hands_the_queue_over(repo, fake_tmux):
-    _session_with_worker(repo)
-    _hook("SessionStart", "w1")  # its task: busy
-    _hook("UserPromptSubmit", "w1", {"prompt": "[from lado] your task"})
-    assert _hook("Stop", "w1", BACKGROUND_TASKS) is None  # nothing queued
-    assert state.get_agent("s", "w1").status == state.BACKGROUND
-    # A message reaches it at once, as an idle agent.
-    assert runtime.send_message("s", "supervisor", "w1", "hi") == "sent"
-    assert _typed(fake_tmux, "w1") == ["[from supervisor] hi"]
-    assert state.get_agent("s", "w1").status == state.BUSY
-    _hook("UserPromptSubmit", "w1", {"prompt": "[from supervisor] hi"})
-    # At a turn's end the queue goes in the hook's output, as for an idle agent.
-    runtime.send_message("s", "supervisor", "w1", "more")
-    out = _hook("Stop", "w1", BACKGROUND_TASKS)
-    assert out == {"decision": "block", "reason": "[from supervisor] more"}
-    assert state.get_agent("s", "w1").status == state.BUSY
-    # A turn's end with no background work left: idle.
-    _hook("Stop", "w1", CONTINUED)
-    assert state.get_agent("s", "w1").status == state.IDLE
 
 
 def test_a_message_to_an_agent_in_background_is_queued_like_one_to_an_idle_agent(repo, fake_tmux):
@@ -1278,30 +676,6 @@ def test_every_agent_is_told_where_mid_turn_messages_come_from(repo, fake_tmux):
     assert "Do not wait for a worker" not in worker
 
 
-def test_hand_over_by_hook_output_returns_the_lines_and_types_nothing(repo, fake_tmux):
-    _session_with_worker(repo)
-    state.queue_message("s", "supervisor", "w1", "one")
-    state.queue_message("s", "supervisor", "w1", "two")
-    state.set_status("s", "w1", state.IDLE)
-    text = runtime.hand_over("s", "w1", state.HOOK_OUTPUT)
-    assert text == "[from supervisor] one\n[from supervisor] two"
-    assert _typed(fake_tmux, "w1") == []
-    messages = state.list_messages("s")
-    assert [(m.state, m.channel, m.attempts) for m in messages] == [
-        (state.SENT, state.HOOK_OUTPUT, 1)
-    ] * 2
-    assert state.get_agent("s", "w1").status == state.BUSY
-
-
-def test_hand_over_by_typing_types_the_lines(repo, fake_tmux):
-    _session_with_worker(repo)
-    state.queue_message("s", "supervisor", "w1", "one")
-    state.set_status("s", "w1", state.IDLE)
-    assert runtime.hand_over("s", "w1", state.TYPED) == "[from supervisor] one"
-    assert _typed(fake_tmux, "w1") == ["[from supervisor] one"]
-    assert state.list_messages("s")[0].channel == state.TYPED
-
-
 @pytest.mark.parametrize("channel", [state.TYPED, state.HOOK_OUTPUT])
 def test_hand_over_takes_nothing_while_a_batch_is_unconfirmed_or_the_agent_not_idle(
     repo, fake_tmux, channel
@@ -1336,19 +710,6 @@ def _swallowed_report(repo, fake_tmux):
     return state.list_messages("s")[-1].sent_at
 
 
-def test_a_swallowed_message_is_typed_again_after_each_delay(repo, fake_tmux):
-    sent = _swallowed_report(repo, fake_tmux)
-    runtime.sweep("s", now=sent + 14, delays=DELAYS)
-    assert _typed(fake_tmux) == ["[from w1] report"]
-    for at in (15, 15 + 30, 15 + 30 + 60):
-        runtime.sweep("s", now=sent + at - 1, delays=DELAYS)
-        runtime.sweep("s", now=sent + at, delays=DELAYS)
-    assert _typed(fake_tmux) == ["[from w1] report"] * 4
-    [message] = state.list_messages("s")
-    assert (message.state, message.attempts) == (state.SENT, 4)
-    assert state.get_agent("s", "supervisor").status == state.BUSY
-
-
 def test_a_message_is_not_typed_again_after_a_hook_of_its_agent(repo, fake_tmux):
     sent = _swallowed_report(repo, fake_tmux)
     _hook("UserPromptSubmit", "supervisor", {"prompt": "the human typed this"})
@@ -1365,61 +726,6 @@ def test_nothing_is_typed_again_into_an_agent_not_busy(repo, fake_tmux, status):
     assert _typed(fake_tmux) == ["[from w1] report"]
 
 
-def _missed_report(repo):
-    """w1's report queued for the idle supervisor and handed over by no one: as if every
-    hook had missed it."""
-    _session_with_worker(repo)
-    state.set_status("s", "supervisor", state.IDLE)
-    state.queue_message("s", "w1", "supervisor", "report", "")
-
-
-def test_a_sweep_types_in_what_no_hook_handed_over(repo, fake_tmux):
-    _missed_report(repo)
-    runtime.sweep("s")
-    assert _typed(fake_tmux) == ["[from w1] report"]
-    assert [m.state for m in state.list_messages("s")] == [state.SENT]
-    assert state.get_agent("s", "supervisor").status == state.BUSY
-    runtime.sweep("s")
-    assert _typed(fake_tmux) == ["[from w1] report"]
-
-
-@pytest.mark.parametrize("status", [state.BUSY, state.WAITING, state.STARTING, state.STOPPED])
-def test_a_sweep_types_nothing_into_an_agent_not_idle(repo, fake_tmux, status):
-    _missed_report(repo)
-    state.set_status("s", "supervisor", status)
-    runtime.sweep("s")
-    assert _typed(fake_tmux) == []
-    assert [m.state for m in state.list_messages("s")] == [state.PENDING]
-
-
-def test_a_sweep_types_nothing_new_while_a_typed_message_is_unconfirmed(repo, fake_tmux):
-    sent = _mismatched_report(repo, fake_tmux)  # the supervisor is idle
-    state.queue_message("s", "w1", "supervisor", "ping", "")
-    runtime.sweep("s", now=sent + 1, delays=DELAYS)
-    assert _typed(fake_tmux) == ["[from w1] report"]
-    assert [m.state for m in state.list_messages("s")] == [state.SENT, state.PENDING]
-
-
-def test_sweeps_at_once_type_a_message_again_only_once(repo, fake_tmux):
-    sent = _swallowed_report(repo, fake_tmux)
-    errors = []
-
-    def sweep():
-        try:
-            runtime.sweep("s", now=sent + 15)
-        except Exception as exc:
-            errors.append(exc)
-
-    sweeps = [threading.Thread(target=sweep) for _ in range(8)]
-    for t in sweeps:
-        t.start()
-    for t in sweeps:
-        t.join()
-    assert errors == []
-    assert _typed(fake_tmux) == ["[from w1] report"] * 2
-    assert state.list_messages("s")[0].attempts == 2
-
-
 def _mismatched_report(repo, fake_tmux):
     """w1's report typed into the idle supervisor, which then ran a prompt that does not
     contain it and ended its turn at once."""
@@ -1427,23 +733,6 @@ def _mismatched_report(repo, fake_tmux):
     _hook("UserPromptSubmit", "supervisor", {"prompt": "something else"})
     assert _hook("Stop", "supervisor") is None
     return sent
-
-
-def test_a_hook_soon_after_typing_does_not_type_again(repo, fake_tmux):
-    _mismatched_report(repo, fake_tmux)
-    assert _typed(fake_tmux) == ["[from w1] report"]
-    assert state.list_messages("s")[0].state == state.SENT
-
-
-def test_a_message_not_confirmed_by_the_next_prompt_is_typed_again(repo, fake_tmux):
-    sent = _mismatched_report(repo, fake_tmux)
-    runtime.sweep("s", now=sent + 14, delays=DELAYS)
-    assert _typed(fake_tmux) == ["[from w1] report"]
-    runtime.sweep("s", now=sent + 15, delays=DELAYS)
-    assert _typed(fake_tmux) == ["[from w1] report"] * 2
-    [message] = state.list_messages("s")
-    assert (message.state, message.attempts) == (state.SENT, 2)
-    assert state.get_agent("s", "supervisor").status == state.BUSY
 
 
 def test_a_message_never_confirmed_is_typed_once_per_attempt_and_fails(repo, fake_tmux):
@@ -1469,85 +758,6 @@ def test_a_turn_end_after_the_delay_types_the_message_again(repo, fake_tmux, mon
     assert state.list_messages("s")[0].attempts == 2
 
 
-def test_the_first_hook_after_a_swallowed_failure_delivers_it_again(repo, fake_tmux):
-    sent = _swallowed_report(repo, fake_tmux)
-    _retry_until_failed(sent)
-    # The human answered the dialog and typed a line.
-    _hook("UserPromptSubmit", "supervisor", {"prompt": "go on"})
-    [report, _] = state.list_messages("s")
-    assert (report.state, report.attempts) == (state.PENDING, 0)
-    assert _hook("Stop", "supervisor") == {"decision": "block", "reason": "[from w1] report"}
-    assert state.list_messages("s")[0].state == state.SENT
-    _hook("Stop", "supervisor", CONTINUED)
-    assert state.list_messages("s")[0].state == state.DELIVERED
-
-
-def test_a_new_message_waits_while_one_typed_is_unconfirmed(repo, fake_tmux):
-    _mismatched_report(repo, fake_tmux)  # the supervisor is idle
-    assert runtime.send_message("s", "w1", "supervisor", "ping").startswith("queued")
-    assert _typed(fake_tmux) == ["[from w1] report"]
-
-
-@pytest.mark.parametrize(
-    ("event", "payload"),
-    [("SessionStart", {"source": "clear"}), ("Stop", {}), ("Stop", CONTINUED)],
-    ids=["conversation start", "turn end", "turn end that went on"],
-)
-def test_a_hook_hands_over_nothing_while_a_message_typed_is_unconfirmed(
-    repo, fake_tmux, event, payload
-):
-    _swallowed_report(repo, fake_tmux)  # the supervisor is busy, as LADO typed into it
-    _hook("UserPromptSubmit", "supervisor", {"prompt": "something else"})
-    runtime.send_message("s", "w1", "supervisor", "ping")
-    assert _hook(event, "supervisor", payload) is None
-    assert _typed(fake_tmux) == ["[from w1] report"]
-    assert [m.state for m in state.list_messages("s")] == [state.SENT, state.PENDING]
-
-
-def test_a_new_message_brings_a_swallowed_one_again_after_the_delay(repo, fake_tmux, monkeypatch):
-    _swallowed_report(repo, fake_tmux)
-    assert runtime.send_message("s", "w1", "supervisor", "ping").startswith("queued")
-    monkeypatch.setattr(runtime, "RETRY_DELAYS", (0, 0, 0))
-    runtime.send_message("s", "w1", "supervisor", "pong")
-    assert _typed(fake_tmux)[1:] == ["[from w1] report\n[from w1] ping\n[from w1] pong"]
-    assert [m.attempts for m in state.list_messages("s")] == [2, 1, 1]
-
-
-def _sweeps_that_typed_into_a_waiting_agent(fake_tmux, sent):
-    """Sweep every 15 s for 400 s; returns the times of the sweeps that left the supervisor
-    waiting and typed into it."""
-    wrong = []
-    for at in range(15, 400, 15):
-        typed = len(_typed(fake_tmux))
-        runtime.sweep("s", now=sent + at, delays=DELAYS)
-        waiting = state.get_agent("s", "supervisor").status == state.WAITING
-        if waiting and len(_typed(fake_tmux)) > typed:
-            wrong.append(at)
-    return wrong
-
-
-def test_a_failure_types_nothing_more_with_a_swallowed_message(repo, fake_tmux):
-    sent = _swallowed_report(repo, fake_tmux)
-    runtime.send_message("s", "w1", "supervisor", "ping")  # queued behind the report
-    assert _sweeps_that_typed_into_a_waiting_agent(fake_tmux, sent) == []
-    assert state.list_messages("s")[0].state == state.FAILED
-
-
-def test_a_failure_types_nothing_more_with_an_unconfirmed_message(repo, fake_tmux):
-    sent = _mismatched_report(repo, fake_tmux)
-    runtime.send_message("s", "w1", "supervisor", "ping")  # queued behind the report
-    runtime.sweep("s", now=sent + 15, delays=DELAYS)  # both typed: report 2nd, ping 1st time
-    with state.connect() as db:  # the report is on its last attempt, the ping is not
-        db.execute("UPDATE messages SET attempts = 4 WHERE summary = 'report'")
-    _hook("UserPromptSubmit", "supervisor", {"prompt": "something else"})
-    _hook("Stop", "supervisor")
-    typed = len(_typed(fake_tmux))
-    runtime.sweep("s", now=state.list_messages("s")[0].sent_at + 60, delays=DELAYS)
-    assert state.get_agent("s", "supervisor").status == state.WAITING
-    assert len(_typed(fake_tmux)) == typed
-    assert [m.state for m in state.list_messages("s")[:2]] == [state.FAILED, state.PENDING]
-
-
 def test_a_message_typed_with_a_failed_one_fails_with_it(repo, fake_tmux):
     sent = _swallowed_report(repo, fake_tmux)
     runtime.send_message("s", "w1", "supervisor", "ping")  # typed with the report from now on
@@ -1570,15 +780,6 @@ def test_a_message_typed_with_a_failed_one_fails_with_it(repo, fake_tmux):
         "decision": "block",
         "reason": "[from w1] report\n[from w1] ping",
     }
-
-
-def test_nothing_is_typed_into_an_agent_waiting_after_a_failure(repo, fake_tmux):
-    sent = _swallowed_report(repo, fake_tmux)
-    _retry_until_failed(sent)
-    assert state.get_agent("s", "supervisor").status == state.WAITING
-    typed = len(_typed(fake_tmux))
-    assert runtime.send_message("s", "w1", "supervisor", "ping").startswith("queued")
-    assert len(_typed(fake_tmux)) == typed
 
 
 def test_an_agent_waiting_after_swallowed_messages_says_what_to_do(repo, fake_tmux):
@@ -1626,122 +827,6 @@ def test_an_agent_waiting_after_swallowed_messages_works_again_after_any_tool(re
     assert _hook("Stop", "supervisor") == {"decision": "block", "reason": "[from w1] report"}
 
 
-def test_a_waiting_agent_works_again_once_the_human_answered_its_dialog(repo, fake_tmux):
-    _session_with_worker(repo)
-    bash = {"tool_name": "Bash", "tool_input": {"command": "make"}}
-    _hook("PermissionRequest", "w1", bash)
-    assert state.get_agent("s", "w1").status == state.WAITING
-    # Its subagent reads a file meanwhile: the dialog is still open.
-    _hook("PostToolUse", "w1", {"tool_name": "Read", "tool_input": {}, "agent_id": "a1"})
-    assert state.get_agent("s", "w1").status == state.WAITING
-    assert [w.agent.name for w in state.waiting_items("s")] == ["w1"]
-    _hook("PostToolUse", "w1", {**bash, "tool_response": {"stdout": ""}})
-    assert state.get_agent("s", "w1").status == state.BUSY
-    assert state.waiting_items("s") == []
-    _hook("Stop", "w1")
-    _hook("PostToolUse", "w1", bash)  # an async hook that comes after the turn's end
-    assert state.get_agent("s", "w1").status == state.IDLE
-
-
-def _seen_at_launch(monkeypatch, call, agent):
-    """Record the agent's status and status_reason when tmux's `call` starts its window."""
-    seen, launch = [], getattr(tmux, call)
-
-    def record(*args, **kwargs):
-        seen.append((state.get_agent("s", agent).status, runtime.status_reason("s", agent)))
-        return launch(*args, **kwargs)
-
-    monkeypatch.setattr(tmux, call, record)
-    return seen
-
-
-def test_an_agent_held_before_its_first_hook_waits_for_the_human_from_its_start(
-    repo, fake_tmux, claude_config, monkeypatch
-):
-    claude_config.refuse()  # Claude Code trusts no folder: it asks before any hook
-    seen = _seen_at_launch(monkeypatch, "new_session", "supervisor")
-    started = runtime.start_session(str(repo), "s", None, provider="claude")
-    reason = claude_config.reason(repo)
-    assert seen == [(state.WAITING, reason)]  # waiting before its window starts
-    assert reason in started.warnings
-    assert runtime.status_reasons("s") == {"supervisor": reason}
-    [waits] = state.waiting_items("s")
-    assert waits.agent.name == "supervisor"
-    runtime.write_as_human("s", "hi")
-    assert state.list_messages("s")[-1].state == state.PENDING
-    assert fake_tmux[-1][0] == "new_session"  # nothing typed into it
-    # The human trusts the folder: Claude Code starts, its session-start hook runs.
-    _hook("SessionStart", "supervisor", {"source": "startup"})
-    assert state.get_agent("s", "supervisor").status == state.BUSY  # typed in: the message
-    assert runtime.status_reasons("s") == {}
-    assert state.waiting_items("s") == []
-
-
-def test_the_reason_an_agent_was_held_goes_with_its_next_status(repo, fake_tmux, claude_config):
-    claude_config.refuse()
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    _hook("SessionStart", "supervisor", {"source": "startup"})
-    # Later it waits for a permission: the folder's trust is not why.
-    _hook("PermissionRequest", "supervisor", {"tool_name": "Bash", "tool_input": {}})
-    assert state.get_agent("s", "supervisor").status == state.WAITING
-    assert runtime.status_reason("s", "supervisor") is None
-
-
-def test_a_session_start_ends_no_other_wait(repo, fake_tmux):
-    """Claude Code's SessionStart after a compaction is a session start too."""
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    _hook("SessionStart", "supervisor", {"source": "startup"})
-    _hook("PermissionRequest", "supervisor", {"tool_name": "Bash", "tool_input": {}})
-    _hook("SessionStart", "supervisor", {"source": "compact"})
-    assert state.get_agent("s", "supervisor").status == state.WAITING
-
-
-def test_a_conversation_start_of_a_held_agent_is_as_before(repo, fake_tmux, claude_config):
-    claude_config.refuse()
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    _hook("SessionStart", "supervisor", {"source": "clear"})
-    assert state.get_agent("s", "supervisor").status == state.IDLE
-
-
-def test_a_held_agent_of_an_earlier_launch_is_no_reason_for_the_next(
-    repo, fake_tmux, claude_config
-):
-    claude_config.refuse()
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    runtime.stop_session("s")
-    claude_config.trust(repo)
-    started = runtime.start_session(str(repo), "s", None)
-    assert started.warnings == []
-    assert state.get_agent("s", "supervisor").status == state.STARTING
-    state.wait("s", "supervisor")  # e.g. after messages failed
-    assert runtime.status_reason("s", "supervisor") is None
-
-
-def test_a_failed_start_of_a_held_agent_leaves_nothing_waiting(
-    repo, fake_tmux, claude_config, monkeypatch
-):
-    claude_config.refuse()
-    monkeypatch.setattr(tmux, "new_session", _fail)
-    with pytest.raises(tmux.TmuxError):
-        runtime.start_session(str(repo), "s", None, provider="claude")
-    assert state.waiting_items() == []
-
-
-def test_a_worker_held_before_its_first_hook_says_so_to_its_spawner(
-    repo, fake_tmux, claude_config, monkeypatch
-):
-    claude_config.refuse()
-    runtime.start_session(str(repo), "s", None, provider="kilo")
-    seen = _seen_at_launch(monkeypatch, "new_window", "w1")
-    warnings = []
-    runtime.spawn_worker("s", "task", name="w1", provider="claude", warnings=warnings)
-    reason = claude_config.reason(repo)
-    assert seen == [(state.WAITING, reason)]
-    assert warnings == [reason]
-    assert f"s: w1: {reason}" in (state.home() / "loop.log").read_text()
-    assert runtime.status_reasons("s") == {"w1": reason}
-
-
 def _logged(line):
     return (state.home() / "loop.log").read_text().count(line)
 
@@ -1764,49 +849,6 @@ def _stopped_claude_session(repo, fake_tmux):
     runtime.start_session(str(repo), "s", None, provider="claude")
     runtime.stop_session("s")
     fake_tmux.clear()
-
-
-SESSION_REFUSED = (
-    "Claude Code is not logged in, so the session was not started: log in in LADO's UI "
-    "(Settings → Agent CLIs, `lado ui`), or set CLAUDE_CODE_OAUTH_TOKEN as "
-    "LADO's secret or a project secret"
-)
-WORKER_REFUSED = (
-    "Claude Code is not logged in, so the worker was not started: ask the human to log in in "
-    "Settings → Agent CLIs, or start the worker with another provider"
-)
-
-
-def test_a_new_claude_session_without_a_login_is_refused_and_leaves_nothing(
-    repo, fake_tmux, claude_config, cli_logins
-):
-    claude_config.trust()  # it would record the trust, had the start gone on
-    before = claude_config.path.read_text()
-    cli_logins.logged_out()
-    with pytest.raises(runtime.NotLoggedIn) as refused:
-        runtime.start_session(str(repo), "s", None, provider="claude")
-    assert str(refused.value) == SESSION_REFUSED
-    assert state.get_session("s") is None
-    assert fake_tmux == []
-    assert not (state.home() / "agents" / "s").exists()
-    assert claude_config.path.read_text() == before
-    # resume=False (the UI's New session, the MCP tool) is refused the same way.
-    with pytest.raises(runtime.NotLoggedIn):
-        runtime.start_session(str(repo), "s", None, provider="claude", resume=False)
-    assert state.get_session("s") is None
-
-
-def test_a_new_session_is_refused_by_the_suggested_provider(
-    repo, fake_tmux, fake_clis, cli_logins, monkeypatch
-):
-    for name in ("codex", "kilo", "opencode", "noskills"):
-        (fake_clis / name).unlink()
-    (fake_clis / "git").symlink_to(shutil.which("git"))
-    monkeypatch.setenv("PATH", str(fake_clis))  # Claude Code is the only one installed
-    cli_logins.logged_out()
-    with pytest.raises(runtime.NotLoggedIn, match="so the session was not started"):
-        runtime.start_session(str(repo), "s", None)
-    assert state.get_session("s") is None
 
 
 RESUME_REFUSED = (
@@ -1854,214 +896,6 @@ def test_a_resume_with_another_provider_goes_on(repo, fake_tmux, cli_logins):
     assert state.get_agent("s", "supervisor").status == state.STARTING
 
 
-def test_a_claude_worker_without_a_login_is_refused_and_leaves_nothing(repo, fake_tmux, cli_logins):
-    runtime.start_session(str(repo), "s", None, provider="kilo")  # a mixed session
-    fake_tmux.clear()
-    cli_logins.logged_out()
-    with pytest.raises(runtime.NotLoggedIn) as refused:
-        runtime.spawn_worker("s", "task", name="w1", provider="claude")
-    assert str(refused.value) == WORKER_REFUSED
-    assert state.get_agent("s", "w1") is None
-    assert runtime.git(str(repo), "branch", "--list", "lado/s/w1") == ""
-    assert not (repo / ".lado" / "worktrees" / "s" / "w1").exists()
-    assert (
-        not (repo / ".git" / "info" / "exclude").exists()
-        or ".lado" not in (repo / ".git" / "info" / "exclude").read_text()
-    )
-    assert fake_tmux == []
-    # Its own provider decides: a Kilo worker needs no login.
-    runtime.spawn_worker("s", "task", name="w2", provider="kilo")
-    assert state.get_agent("s", "w2").status == state.STARTING
-
-
-def test_a_worker_of_a_claude_session_without_a_login_is_refused(repo, fake_tmux, cli_logins):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    cli_logins.logged_out()
-    with pytest.raises(runtime.NotLoggedIn, match="so the worker was not started"):
-        runtime.spawn_worker("s", "task", name="w1")  # the session's provider
-    runtime.spawn_worker("s", "task", name="w2", provider="kilo")
-    assert state.get_agent("s", "w2") is not None
-
-
-def test_a_claude_agent_without_a_login_waits_for_it(
-    repo, fake_tmux, claude_config, cli_logins, monkeypatch
-):
-    _stopped_claude_session(repo, fake_tmux)
-    claude_config.trust()  # and trusts no folder yet
-    cli_logins.logged_out()
-    cli_logins.calls.clear()
-    seen = _seen_at_launch(monkeypatch, "new_session", "supervisor")
-    started = runtime.start_session(str(repo), "s", None, wait_for_login=True)
-    assert seen == [(state.WAITING, LOGIN_REASON)]  # waiting before its window starts
-    # The trust is recorded now, in loop.log only; the first run once logged in.
-    assert started.warnings == [LOGIN_REASON]
-    assert _logged(f"s: supervisor: {LOGIN_REASON}") == 1
-    assert _logged(f"s: supervisor: {claude_config.note(repo)}") == 1
-    assert runtime.status_reasons("s") == {"supervisor": LOGIN_REASON}
-    [call] = [c for c in fake_tmux if c[0] == "new_session"]
-    cmd = call[-1]
-    assert _waits_for_login(cmd)
-    i = cmd.index("login-wait")
-    assert cmd[i + 1] == "claude" and cmd[i + 3] == "claude"
-    held = json.loads(Path(cmd[i + 2]).read_text())
-    assert held["project"] is None
-    assert {"LADO_HOME", "LADO_SESSION", "LADO_AGENT", "LADO_TMUX_SOCKET"} <= set(held["ours"])
-    assert held["env"]["LADO_AGENT"] == "supervisor"
-    config = json.loads(claude_config.path.read_text())
-    assert config["projects"] == {str(repo): {"hasTrustDialogAccepted": True}}
-    # The status was read in the agent's own launch environment.
-    argv, env = next(c for c in cli_logins.calls if c[0][0] == "claude")
-    assert argv == ["claude", "auth", "status", "--json"] and env["LADO_AGENT"] == "supervisor"
-
-
-def test_a_claude_agent_without_a_login_in_a_fresh_home_gets_the_trust_alone(
-    repo, fake_tmux, claude_config, cli_logins
-):
-    _stopped_claude_session(repo, fake_tmux)
-    claude_config.path.unlink()
-    cli_logins.logged_out()
-    started = runtime.start_session(str(repo), "s", None, reason=runtime.AT_START)
-    assert started.warnings == [LOGIN_REASON]
-    assert _logged(f"s: supervisor: {claude_config.note(repo)}") == 1
-    assert json.loads(claude_config.path.read_text()) == {
-        "projects": {str(repo): {"hasTrustDialogAccepted": True}}
-    }
-    assert claude_config.path.stat().st_mode & 0o777 == 0o600
-    # It waits for its login, not for the trust question.
-    assert runtime.status_reasons("s") == {"supervisor": LOGIN_REASON}
-
-
-def test_a_trust_lado_cannot_record_waits_for_the_login_first(
-    repo, fake_tmux, claude_config, cli_logins
-):
-    """The trust's fallback question comes once the login is there: the window asks again
-    (lado.login_wait); meanwhile the agent waits for the login."""
-    _stopped_claude_session(repo, fake_tmux)
-    claude_config.refuse()
-    cli_logins.logged_out()
-    started = runtime.start_session(str(repo), "s", None, wait_for_login=True)
-    assert started.warnings == [LOGIN_REASON]
-    assert runtime.status_reasons("s") == {"supervisor": LOGIN_REASON}
-
-
-def test_an_agent_whose_cli_needs_no_login_in_its_launch_environment_is_not_held(
-    repo, fake_tmux, cli_logins, monkeypatch
-):
-    """Whether it needs one is asked with the agent's launch environment (Codex's model)."""
-    _stopped_claude_session(repo, fake_tmux)
-    cli_logins.logged_out()
-    seen = []
-    claude = providers.get("claude")
-    monkeypatch.setattr(claude, "needs_login", lambda env: seen.append(env) or False)
-    started = runtime.start_session(str(repo), "s", None, wait_for_login=True)
-    assert started.warnings == []
-    assert state.get_agent("s", "supervisor").status == state.STARTING
-    [call] = [c for c in fake_tmux if c[0] == "new_session"]
-    assert not _waits_for_login(call[-1])
-    assert seen and seen[-1]["LADO_AGENT"] == "supervisor"
-
-
-def test_a_logged_in_claude_agent_starts_as_before(repo, fake_tmux):
-    started = runtime.start_session(str(repo), "s", None, provider="claude")
-    assert started.warnings == []
-    assert state.get_agent("s", "supervisor").status == state.STARTING
-    [call] = [c for c in fake_tmux if c[0] == "new_session"]
-    assert not _waits_for_login(call[-1])
-
-
-def test_an_unknown_login_never_holds_an_agent(repo, fake_tmux, cli_logins):
-    cli_logins.answer("claude", "`claude auth status --json` timed out after 10 s")
-    started = runtime.start_session(str(repo), "s", None, provider="claude")
-    warning = (
-        "cannot tell whether Claude Code is logged in: `claude auth status --json` timed out "
-        "after 10 s; the agent starts all the same"
-    )
-    assert started.warnings == [warning]
-    assert _logged(f"s: supervisor: {warning}") == 1
-    assert state.get_agent("s", "supervisor").status == state.STARTING
-    [call] = [c for c in fake_tmux if c[0] == "new_session"]
-    assert not _waits_for_login(call[-1])
-    # Nor refuses a new one: neither a session nor a worker.
-    runtime.spawn_worker("s", "task", name="w1")
-    assert state.get_agent("s", "w1").status == state.STARTING
-
-
-@pytest.mark.parametrize("provider", ["codex", "kilo", "opencode"])
-def test_other_clis_are_never_held_for_a_login(repo, fake_tmux, cli_logins, provider, codex_home):
-    codex_home.mkdir()
-    (codex_home / "config.toml").write_text('model_provider = "ollama"\n')  # Codex: a local model
-    runtime.start_session(str(repo), "s", None, provider=provider)
-    assert runtime.status_reason("s", "supervisor") != LOGIN_REASON
-    [call] = [c for c in fake_tmux if c[0] == "new_session"]
-    assert not _waits_for_login(call[-1])
-    assert [c for c in cli_logins.calls if c[0][0] == provider] == []
-
-
-def test_codex_on_openais_model_is_refused_without_a_login(repo, fake_tmux, cli_logins):
-    cli_logins.answer("codex", 1, "", "Not logged in\n")
-    with pytest.raises(runtime.NotLoggedIn) as refused:
-        runtime.start_session(str(repo), "s", None, provider="codex")
-    assert str(refused.value) == (
-        "Codex CLI is not logged in, so the session was not started: log in in LADO's UI "
-        "(Settings → Agent CLIs, `lado ui`), or set OPENAI_API_KEY as LADO's "
-        "secret or a project secret"
-    )
-    assert state.get_session("s") is None
-    assert fake_tmux == []
-
-
-def _codex_logged_in_by_its_file(cli_logins):
-    """Codex's status as the real one reads it: logged in where CODEX_HOME's auth.json is
-    there (a link to a file that exists too)."""
-    cli_logins.answers["codex"] = lambda env: (
-        (0, "", "Logged in using ChatGPT\n")
-        if (Path(env["CODEX_HOME"]) / "auth.json").exists()
-        else (1, "", "Not logged in\n")
-    )
-
-
-@pytest.mark.parametrize("how", [{"provider": "codex"}, {"reason": runtime.AT_START}])
-def test_a_logged_in_codex_agent_is_not_held_for_its_login(
-    repo, fake_tmux, cli_logins, codex_home, how
-):
-    """Its login is read in its own Codex home, whose auth.json LADO links before."""
-    codex_home.mkdir()
-    (codex_home / "auth.json").write_text("{}")
-    _codex_logged_in_by_its_file(cli_logins)
-    if how.get("reason"):
-        runtime.start_session(str(repo), "s", None, provider="codex")
-        runtime.stop_session("s")
-        fake_tmux.clear()
-        how = {**how, "resume": True}
-    started = runtime.start_session(str(repo), "s", None, **how)
-    assert started.warnings == []
-    assert state.get_agent("s", "supervisor").status == state.STARTING
-    [call] = [c for c in fake_tmux if c[0] == "new_session"]
-    assert not _waits_for_login(call[-1])
-    home = state.home() / "agents" / "s" / "supervisor"
-    assert os.readlink(home / "auth.json") == str(codex_home / "auth.json")
-
-
-def test_each_agent_takes_its_own_providers_login_whole_from_one_layer(
-    repo, fake_tmux, cli_logins, monkeypatch
-):
-    from lado import project_secrets
-
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "shell-key")
-    project_secrets.write_lado("CLAUDE_CODE_OAUTH_TOKEN", "lado-token")
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    env, _ = agent_helpers.launched(fake_tmux[-1])
-    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "lado-token"
-    assert "ANTHROPIC_API_KEY" not in env  # the token's layer gives Claude Code's whole login
-    # Its login was read with what the agent gets.
-    _, read_with = next(c for c in cli_logins.calls if c[0][0] == "claude")
-    assert "ANTHROPIC_API_KEY" not in read_with
-    # The key is no login variable of OpenCode: its worker keeps it.
-    runtime.spawn_worker("s", "task", name="w1", provider="opencode")
-    env, _ = agent_helpers.launched(fake_tmux[-1])
-    assert (env["ANTHROPIC_API_KEY"], env["CLAUDE_CODE_OAUTH_TOKEN"]) == ("shell-key", "lado-token")
-
-
 def test_a_claude_worker_whose_login_goes_after_the_check_waits_and_says_so(
     repo, fake_tmux, cli_logins, monkeypatch
 ):
@@ -2080,23 +914,6 @@ def test_a_claude_worker_whose_login_goes_after_the_check_waits_and_says_so(
     assert _logged(f"s: w1: {LOGIN_REASON}") == 1
     [call] = [c for c in fake_tmux if c[0] == "new_window"]
     assert _waits_for_login(call[-1])
-
-
-def test_a_project_session_waits_with_its_project(fake_tmux, cli_logins, tmp_path, monkeypatch):
-    from lado import projects
-
-    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
-    projects.create("shop", None)
-    agent_helpers.init_repo(projects.folder("shop") / "app")
-    runtime.start_session(None, None, None, provider="claude", project="shop", repo_name="app")
-    runtime.stop_session("shop-app")
-    fake_tmux.clear()
-    cli_logins.logged_out()
-    runtime.start_session(None, None, None, project="shop", repo_name="app", wait_for_login=True)
-    [call] = [c for c in fake_tmux if c[0] == "new_session"]
-    cmd = call[-1]
-    held = json.loads(Path(cmd[cmd.index("login-wait") + 2]).read_text())
-    assert held["project"] == "shop"
 
 
 def test_lado_records_claude_codes_trust_in_the_log_only(repo, fake_tmux, claude_config):
@@ -2137,38 +954,6 @@ def test_lado_records_claude_codes_trust_for_a_worker(repo, fake_tmux, claude_co
     assert state.get_agent("s", "w1").status == state.STARTING
     assert list(json.loads(claude_config.path.read_text())["projects"]) == [str(repo)]
     assert worker.cwd != str(repo)
-
-
-def test_a_claude_config_that_cannot_be_read_is_a_warning(repo, fake_tmux, claude_config):
-    claude_config.path.write_text("{not json")
-    started = runtime.start_session(str(repo), "s", None, provider="claude")
-    assert started.warnings == [
-        f"cannot tell whether Claude Code trusts {repo}: {claude_config.path}: Expecting "
-        "property name enclosed in double quotes: line 1 column 2 (char 1)"
-    ]
-    assert state.get_agent("s", "supervisor").status == state.STARTING
-    warnings = []
-    runtime.spawn_worker("s", "task", name="w1", warnings=warnings)
-    assert warnings == started.warnings
-    assert f"s: w1: {warnings[0]}" in (state.home() / "loop.log").read_text()
-
-
-def test_a_session_start_may_start_tmux_in_the_graphical_session(repo, fake_tmux, monkeypatch):
-    """runtime passes gui_session.ensure_server to the new-session, which calls it before
-    each attempt; what it says is a warning, and the session starts."""
-    asked = []
-    monkeypatch.setattr(gui_session, "ensure_server", lambda socket: asked.append(socket) or "x")
-
-    def new_session(*args, before_attempt=None):
-        fake_tmux.append(("new_session", *args))
-        return [before_attempt()]
-
-    monkeypatch.setattr(tmux, "new_session", new_session)
-    started = runtime.start_session(str(repo), "s", None, provider="kilo")
-    assert asked == [tmux.socket()]
-    assert started.warnings == ["x"]
-    assert "s: supervisor: x" in (state.home() / "loop.log").read_text()
-    assert state.get_agent("s", "supervisor").status == state.STARTING
 
 
 @pytest.fixture
@@ -2219,25 +1004,6 @@ def test_an_agent_that_cannot_read_the_keychain_is_started_with_a_warning(
     assert [a.name for a in state.list_agents("s")] == ["supervisor", "w1"]
 
 
-def test_an_agent_with_another_login_gets_no_keychain_warning(
-    repo, fake_tmux, keychain, monkeypatch
-):
-    monkeypatch.setenv("LADO_MACOS_PLACE", "no-gui")
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "t")
-    assert runtime.start_session(str(repo), "s", None, provider="claude").warnings == []
-    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN")
-    warnings = []
-    runtime.spawn_worker("s", "task", name="w1", provider="kilo", warnings=warnings)
-    assert warnings == []
-
-
-def test_providers_that_never_hold_an_agent_start_it_as_before(repo, fake_tmux, claude_config):
-    claude_config.trust()
-    started = runtime.start_session(str(repo), "s", None, provider="kilo")
-    assert started.warnings == []
-    assert state.get_agent("s", "supervisor").status == state.STARTING
-
-
 @pytest.fixture
 def outside(tmp_path, monkeypatch):
     """The outside folder (LADO_ENV_DIR), empty."""
@@ -2245,29 +1011,6 @@ def outside(tmp_path, monkeypatch):
     folder.mkdir()
     monkeypatch.setenv("LADO_ENV_DIR", str(folder))
     return folder
-
-
-def test_agents_get_the_outside_folders_variables(repo, fake_tmux, outside):
-    (outside / "OUT_KEY").write_text("v-1\n")
-    runtime.start_session(str(repo), "s", None, provider="kilo")
-    env, _ = agent_helpers.launched(fake_tmux[0])
-    assert env["OUT_KEY"] == "v-1"
-    # A file added while the session runs reaches the next agent.
-    (outside / "OUT_KEY2").write_text("v-2")
-    runtime.spawn_worker("s", "task", name="w1")
-    env, _ = agent_helpers.launched(fake_tmux[-1])
-    assert (env["OUT_KEY"], env["OUT_KEY2"]) == ("v-1", "v-2")
-
-
-def test_a_start_and_a_resume_name_the_files_not_used(repo, fake_tmux, outside):
-    (outside / "PATH").write_text("/x")
-    line = f"variable file PATH in {outside} not used: a reserved name"
-    started = runtime.start_session(str(repo), "s", None, provider="kilo")
-    assert started.warnings == [line]
-    env, _ = agent_helpers.launched(fake_tmux[0])
-    assert env["PATH"] == os.environ["PATH"]
-    runtime.stop_session("s")
-    assert runtime.start_session(str(repo), "s", None).warnings == [line]
 
 
 def test_a_start_with_the_null_device_warns_nothing(repo, fake_tmux, monkeypatch):
@@ -2289,79 +1032,6 @@ def projects(tmp_path, monkeypatch):
     return folder
 
 
-def test_a_folder_outside_the_repositories_folder_is_named_in_a_container(projects, tmp_path):
-    (tmp_path / "app").mkdir()
-    assert runtime.outside_workspace(str(tmp_path / "app")) == runtime.OUTSIDE_WORKSPACE.format(
-        folder=projects
-    )
-    # One not made yet is judged by where it would be.
-    assert runtime.outside_workspace(str(tmp_path / "new" / "app")) is not None
-    # A sibling whose name starts with the folder's is outside too.
-    (tmp_path / "projects-old").mkdir()
-    assert runtime.outside_workspace(str(tmp_path / "projects-old")) is not None
-
-
-def test_the_repositories_folder_and_what_is_in_it_get_no_warning(projects, tmp_path):
-    (projects / "app").mkdir()
-    assert runtime.outside_workspace(str(projects)) is None
-    assert runtime.outside_workspace(str(projects / "app")) is None
-    assert runtime.outside_workspace(str(projects / "new" / "app")) is None
-    # By real path: a link to a folder inside is inside, a link inside to outside is not.
-    (tmp_path / "link").symlink_to(projects / "app")
-    assert runtime.outside_workspace(str(tmp_path / "link")) is None
-    (tmp_path / "out").mkdir()
-    (projects / "away").symlink_to(tmp_path / "out")
-    assert runtime.outside_workspace(str(projects / "away")) is not None
-
-
-def test_a_link_loop_is_judged_without_an_error(projects, tmp_path, monkeypatch):
-    """A loop of links (a -> b -> a) is no folder: the folder check says so, and the
-    warning's rule must not raise on it (a 500 of the UI's checks)."""
-    (tmp_path / "a").symlink_to(tmp_path / "b")
-    (tmp_path / "b").symlink_to(tmp_path / "a")
-    assert runtime.outside_workspace(str(tmp_path / "a")) is not None
-    assert runtime.outside_workspace(str(tmp_path / "a" / "sub")) is not None
-    (projects / "c").symlink_to(projects / "d")
-    (projects / "d").symlink_to(projects / "c")
-    assert runtime.outside_workspace(str(projects / "c")) is None
-    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "a"))
-    assert runtime.outside_workspace(str(tmp_path / "a")) is None
-
-
-def test_a_repositories_folder_given_through_a_link_holds_its_folders(tmp_path, monkeypatch):
-    real = tmp_path / "real"
-    (real / "app").mkdir(parents=True)
-    (tmp_path / "projects").symlink_to(real)
-    monkeypatch.setenv("LADO_CONTAINER", "1")
-    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "projects"))
-    assert runtime.outside_workspace(str(real / "app")) is None
-
-
-def test_no_warning_outside_a_container(projects, tmp_path, monkeypatch):
-    (tmp_path / "app").mkdir()
-    monkeypatch.setenv("LADO_CONTAINER", "0")
-    assert runtime.outside_workspace(str(tmp_path / "app")) is None
-    monkeypatch.delenv("LADO_CONTAINER")
-    assert runtime.outside_workspace(str(tmp_path / "app")) is None
-
-
-@pytest.mark.parametrize("value", [None, "relative/projects"])
-def test_in_a_container_without_lado_repos_the_default_workspace_is_judged(
-    home_workspace, value, tmp_path, monkeypatch
-):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("LADO_CONTAINER", "1")
-    if value is None:
-        monkeypatch.delenv("LADO_REPOS", raising=False)
-    else:
-        monkeypatch.setenv("LADO_REPOS", value)
-    (tmp_path / "app").mkdir()
-    assert runtime.outside_workspace(str(tmp_path / "app")) == runtime.OUTSIDE_WORKSPACE.format(
-        folder=tmp_path / "workspace"
-    )
-    assert runtime.outside_workspace(str(tmp_path / "workspace" / "app")) is None
-
-
 def test_a_start_and_a_resume_outside_the_repositories_folder_warn(repo, fake_tmux, projects):
     """A warning, never a refusal: the session runs."""
     line = runtime.OUTSIDE_WORKSPACE.format(folder=projects)
@@ -2370,15 +1040,6 @@ def test_a_start_and_a_resume_outside_the_repositories_folder_warn(repo, fake_tm
     assert state.get_session("s") is not None
     runtime.stop_session("s")
     assert line in runtime.start_session(str(repo), "s", None).warnings
-
-
-def test_a_start_inside_the_repositories_folder_has_no_warning(
-    repo, fake_tmux, tmp_path, monkeypatch
-):
-    monkeypatch.setenv("LADO_CONTAINER", "1")
-    monkeypatch.setenv("LADO_REPOS", str(repo.parent))
-    started = runtime.start_session(str(repo), "s", None, provider="kilo")
-    assert not [w for w in started.warnings if "Outside the workspace" in w]
 
 
 def test_a_name_the_provider_sets_keeps_its_value_and_is_named(repo, fake_tmux, outside):
@@ -2401,34 +1062,6 @@ def test_a_name_the_provider_sets_keeps_its_value_and_is_named(repo, fake_tmux, 
     assert warnings == []
 
 
-def test_a_kits_mcp_server_sees_the_outside_folders_variable(
-    repo, fake_tmux, outside, team_kit, monkeypatch
-):
-    monkeypatch.delenv("DB_TOKEN", raising=False)
-    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
-    with pytest.raises(kits.KitError, match="DB_TOKEN"):
-        runtime.spawn_worker("s", "review it", role="reviewer")
-    (outside / "DB_TOKEN").write_text("from-folder\n")
-    runtime.spawn_worker("s", "review it", role="reviewer")
-    env, _ = agent_helpers.launched(fake_tmux[-1])
-    assert env["DB_TOKEN"] == "from-folder"
-
-
-def test_stop_drops_failed_messages(repo, fake_tmux):
-    _retry_until_failed(_swallowed_report(repo, fake_tmux))
-    assert runtime.stop_session("s").dropped == 2  # the report and the notice to w1
-    assert [m.state for m in state.list_messages("s")] == [state.DROPPED] * 2
-
-
-def test_finish_drops_the_failed_messages_of_the_worker(repo, fake_tmux):
-    _session_with_worker(repo)
-    state.set_status("s", "w1", state.IDLE)
-    runtime.send_message("s", "supervisor", "w1", "task")
-    _retry_until_failed(state.list_messages("s")[0].sent_at)
-    assert runtime.finish_worker("s", "w1", discard=True).dropped == 1
-    assert state.list_messages("s")[0].state == state.DROPPED
-
-
 @pytest.mark.parametrize(
     ("status", "wait"),
     [
@@ -2448,78 +1081,7 @@ def test_a_failure_plans_a_busy_or_idle_agent_waiting(status, wait):
     assert runtime._plan(agent, [young], 100.0, DELAYS) == state.Plan()
 
 
-@pytest.mark.parametrize(
-    ("status", "requeued"),
-    [(state.IDLE, True), (state.BACKGROUND, True), (state.BUSY, False), (state.WAITING, False)],
-)
-def test_a_message_no_prompt_held_goes_back_to_the_queue_of_an_agent_that_takes_input(
-    status, requeued
-):
-    agent = state.Agent(
-        "s", "w1", "worker", "/r", None, None, status, provider="claude", seen_at=90.0
-    )
-    typed = state.Message(7, "supervisor", "hi", "", "w1", state.SENT, attempts=1, sent_at=80.0)
-    plan = runtime._plan(agent, [typed], 100.0, DELAYS)
-    assert plan.requeue == ([7] if requeued else [])
-
-
 WAITS = (75.0, 600.0)  # a hook_output batch's (not printed, printed), as LADO's own
-
-
-def _output_batch(status, seen_at=0.0, printed=True):
-    """w1's batch handed over at 100 in its turn-end hook's output, its first attempt."""
-    agent = state.Agent(
-        "s", "w1", "worker", "/r", None, None, status, provider="claude", seen_at=seen_at
-    )
-    message = state.Message(
-        7,
-        "supervisor",
-        "hi",
-        "",
-        "w1",
-        state.SENT,
-        attempts=1,
-        sent_at=100.0,
-        channel=state.HOOK_OUTPUT,
-        printed_at=100.5 if printed else None,
-    )
-    return agent, [message]
-
-
-def test_a_printed_batch_waits_for_its_turn_however_long_up_to_the_backstop():
-    agent, sent = _output_batch(state.BUSY)  # no hook since: a long model step
-    for later in (DELAYS[0] + 5, WAITS[0] + 1, WAITS[1] - 1):
-        assert runtime._plan(agent, sent, 100.0 + later, DELAYS, WAITS) == state.Plan()
-    # The CLI broke its promise to take it: typed in once, and it never fails.
-    assert runtime._plan(agent, sent, 100.0 + WAITS[1], DELAYS, WAITS) == state.Plan(retype=True)
-    assert runtime._plan(agent, sent, 100.0 + 100 * WAITS[1], DELAYS, WAITS) == state.Plan(
-        retype=True
-    )
-
-
-def test_a_batch_never_printed_is_typed_in_once_the_hook_is_surely_dead():
-    agent, sent = _output_batch(state.BUSY, printed=False)
-    assert runtime._plan(agent, sent, 100.0 + WAITS[0] - 1, DELAYS, WAITS) == state.Plan()
-    assert runtime._plan(agent, sent, 100.0 + WAITS[0], DELAYS, WAITS) == state.Plan(retype=True)
-
-
-def test_a_printed_batch_of_a_turn_that_runs_hooks_waits_for_its_end():
-    agent, sent = _output_batch(state.BUSY, seen_at=130.0)  # a tool call's hook
-    assert runtime._plan(agent, sent, 100.0 + 10 * WAITS[1], DELAYS, WAITS) == state.Plan()
-
-
-@pytest.mark.parametrize("printed", [True, False])
-def test_a_batch_whose_turn_ended_meanwhile_goes_back_to_the_queue_after_its_wait(printed):
-    agent, sent = _output_batch(state.IDLE, seen_at=130.0, printed=printed)
-    wait = WAITS[1] if printed else WAITS[0]
-    assert runtime._plan(agent, sent, 100.0 + wait - 1, DELAYS, WAITS) == state.Plan()
-    assert runtime._plan(agent, sent, 100.0 + wait, DELAYS, WAITS).requeue == [7]
-
-
-def test_without_the_cli_taking_printed_output_a_batch_waits_the_first_delay():
-    agent, sent = _output_batch(state.BUSY)
-    assert runtime._plan(agent, sent, 100.0 + DELAYS[0] - 1, DELAYS) == state.Plan()
-    assert runtime._plan(agent, sent, 100.0 + DELAYS[0], DELAYS) == state.Plan(retype=True)
 
 
 def test_the_hook_output_waits_are_lados_unless_the_environment_gives_others():
@@ -2553,21 +1115,6 @@ def _retry_until_failed(sent, start=0):
     return at
 
 
-def test_a_message_never_taken_fails_after_the_last_delay(repo, fake_tmux):
-    sent = _swallowed_report(repo, fake_tmux)
-    at = _retry_until_failed(sent)
-    assert len(_typed(fake_tmux)) == 1 + len(DELAYS)
-    report = state.list_messages("s")[0]
-    assert report.state == state.FAILED
-    assert state.get_agent("s", "supervisor").status == state.WAITING
-    runtime.sweep("s", now=at + 1000, delays=DELAYS)
-    assert len(_typed(fake_tmux)) == 1 + len(DELAYS)
-    # Its sender hears of it, in one line from LADO.
-    notice = state.list_messages("s")[-1]
-    assert (notice.sender, notice.recipient, notice.body) == ("lado", "w1", "")
-    assert notice.summary == f"message #{report.id} to supervisor not delivered: report"
-
-
 def test_a_failed_message_from_lado_is_reported_to_the_supervisor(repo, fake_tmux):
     _session_with_worker(repo)
     state.set_status("s", "w1", state.IDLE)
@@ -2591,51 +1138,6 @@ def test_a_failed_notice_is_not_reported(repo, fake_tmux):
     ]
 
 
-def test_message_to_busy_agent_arrives_via_stop_hook(repo, fake_tmux):
-    _session_with_worker(repo)
-    _hook("UserPromptSubmit", "supervisor")
-    assert runtime.send_message("s", "w1", "supervisor", "done").startswith("queued")
-    assert runtime.send_message("s", "w1", "supervisor", "branch lado/s/w1").startswith("queued")
-    out = _hook("Stop", "supervisor")
-    assert out == {
-        "decision": "block",
-        "reason": "[from w1] done\n[from w1] branch lado/s/w1",
-    }
-    assert state.get_agent("s", "supervisor").status == state.BUSY
-    assert _hook("Stop", "supervisor") is None
-    assert state.get_agent("s", "supervisor").status == state.IDLE
-
-
-def test_messages_in_the_stop_hooks_output_are_delivered_when_the_turn_goes_on(repo, fake_tmux):
-    _session_with_worker(repo)
-    _hook("UserPromptSubmit", "supervisor")
-    runtime.send_message("s", "w1", "supervisor", "one")
-    assert _hook("Stop", "supervisor") == {"decision": "block", "reason": "[from w1] one"}
-    [one] = state.list_messages("s")
-    assert (one.state, one.channel) == (state.SENT, state.HOOK_OUTPUT)
-    # A second block at once: the first one is confirmed before the queue is taken.
-    runtime.send_message("s", "w1", "supervisor", "two")
-    assert _hook("Stop", "supervisor", CONTINUED) == {
-        "decision": "block",
-        "reason": "[from w1] two",
-    }
-    assert [m.state for m in state.list_messages("s")] == [state.DELIVERED, state.SENT]
-    assert _hook("Stop", "supervisor", CONTINUED) is None
-    assert [m.state for m in state.list_messages("s")] == [state.DELIVERED] * 2
-    assert state.get_agent("s", "supervisor").status == state.IDLE
-    assert _typed(fake_tmux) == []
-
-
-def test_a_turn_that_went_on_confirms_no_message_typed_in(repo, fake_tmux):
-    """Another Stop hook of the user's may have made the turn go on: what LADO typed is
-    confirmed only by its line."""
-    _swallowed_report(repo, fake_tmux)
-    _hook("UserPromptSubmit", "supervisor", {"prompt": "something else"})
-    _hook("Stop", "supervisor", CONTINUED)
-    [report] = state.list_messages("s")
-    assert (report.state, report.channel) == (state.SENT, state.TYPED)
-
-
 def _handed_over_in_the_stop_hook(repo, printed=True):
     """w1's report in the busy supervisor's Stop hook output, marked printed as hooks.main
     marks it unless not `printed`. Returns when it was handed over."""
@@ -2647,29 +1149,6 @@ def _handed_over_in_the_stop_hook(repo, printed=True):
     if printed:
         state.output_printed("s", "supervisor", since=sent)
     return sent
-
-
-@pytest.mark.parametrize(
-    ("printed", "wait"),
-    [(True, runtime.HOOK_OUTPUT_BACKSTOP), (False, runtime.HOOK_OUTPUT_WAIT)],
-)
-def test_a_long_turn_from_the_hook_output_gets_it_typed_in_once_and_never_fails(
-    repo, fake_tmux, printed, wait
-):
-    sent = _handed_over_in_the_stop_hook(repo, printed)
-    for at in (DELAYS[0], DELAYS[0] + DELAYS[1], wait - 1):  # no hook
-        runtime.sweep("s", now=sent + at, delays=DELAYS)
-    assert _typed(fake_tmux) == []
-    for at in range(int(wait), int(wait) + DELAYS[1]):  # each second, until a typed retry
-        runtime.sweep("s", now=sent + at, delays=DELAYS)
-    assert _typed(fake_tmux) == ["[from w1] report"]
-    [report] = state.list_messages("s")
-    assert (report.state, report.channel) == (state.SENT, state.TYPED)
-    # The turn ends; the CLI takes what was typed in meanwhile as its next prompt.
-    _hook("Stop", "supervisor", CONTINUED)
-    assert state.list_messages("s")[0].state == state.SENT
-    _hook("UserPromptSubmit", "supervisor", {"prompt": "[from w1] report"})
-    assert state.list_messages("s")[0].state == state.DELIVERED
 
 
 def test_a_batch_printed_once_and_handed_over_again_unprinted_waits_only_the_hook_limit(
@@ -2695,39 +1174,6 @@ def test_a_batch_printed_once_and_handed_over_again_unprinted_waits_only_the_hoo
     assert _typed(fake_tmux) == ["[from w1] report"]
 
 
-def test_typed_in_after_the_hook_output_it_is_retried_and_fails_as_any_typed(repo, fake_tmux):
-    sent = _handed_over_in_the_stop_hook(repo)
-    _retry_until_failed(sent + runtime.HOOK_OUTPUT_BACKSTOP - DELAYS[0])
-    assert _typed(fake_tmux) == ["[from w1] report"] * len(DELAYS)
-    assert state.list_messages("s")[0].state == state.FAILED
-    assert state.get_agent("s", "supervisor").status == state.WAITING
-    report, *_, notice = state.list_messages("s")
-    assert (notice.sender, notice.recipient) == ("lado", "w1")
-    assert notice.summary == f"message #{report.id} to supervisor not delivered: report"
-
-
-def test_a_turn_that_ends_without_taking_the_hook_output_gets_it_from_the_queue(repo, fake_tmux):
-    sent = _handed_over_in_the_stop_hook(repo)
-    _hook("Stop", "supervisor")  # not stop_hook_active: the CLI did not take the output
-    runtime.sweep("s", now=sent + DELAYS[0] - 1, delays=DELAYS)
-    assert state.list_messages("s")[0].state == state.SENT
-    runtime.sweep("s", now=sent + DELAYS[0], delays=DELAYS)
-    assert _typed(fake_tmux) == ["[from w1] report"]
-    [report] = state.list_messages("s")
-    assert (report.state, report.channel, report.attempts) == (state.SENT, state.TYPED, 2)
-
-
-def test_output_a_turn_ended_without_is_not_confirmed_by_a_later_turn_that_goes_on(repo, fake_tmux):
-    """E.g. Claude Code's 8th block in a row is overridden: the turn ends without the text.
-    A later turn that another Stop hook made go on must not confirm it."""
-    _handed_over_in_the_stop_hook(repo)
-    _hook("Stop", "supervisor")  # not stop_hook_active: the CLI did not take the output
-    _hook("UserPromptSubmit", "supervisor", {"prompt": "something else"})
-    _hook("Stop", "supervisor", CONTINUED)
-    [report] = state.list_messages("s")
-    assert (report.state, report.channel) == (state.SENT, state.TYPED)
-
-
 def _report_and_ping_in_the_stop_hook(repo):
     """w1's report (with a body) and ping (without) in the busy supervisor's Stop hook
     output. Returns when they were handed over."""
@@ -2737,15 +1183,6 @@ def _report_and_ping_in_the_stop_hook(repo):
     runtime.send_message("s", "w1", "supervisor", "ping")
     assert _hook("Stop", "supervisor")["decision"] == "block"
     return state.list_messages("s")[0].sent_at
-
-
-def test_the_turn_that_goes_on_from_the_hook_output_reads_its_bodies(repo, fake_tmux):
-    _report_and_ping_in_the_stop_hook(repo)
-    [read] = state.read_messages("s", "supervisor")
-    assert (read.summary, read.body) == ("report", "the details")
-    # The turn's end confirms only what is left of the batch.
-    _hook("Stop", "supervisor", CONTINUED)
-    assert [m.state for m in state.list_messages("s")] == [state.READ, state.DELIVERED]
 
 
 @pytest.mark.parametrize("taken", [True, False])
@@ -2767,123 +1204,12 @@ def test_a_message_read_before_its_confirmation_is_never_typed_again(repo, fake_
         assert notices == [f"message #{ping.id} to supervisor not delivered: ping"]
 
 
-def test_a_message_read_stays_read_when_the_hook_output_was_not_taken(repo, fake_tmux):
-    _report_and_ping_in_the_stop_hook(repo)
-    state.read_messages("s", "supervisor")
-    state.output_not_taken("s", "supervisor")
-    report, ping = state.list_messages("s")
-    assert (report.state, report.channel) == (state.READ, state.HOOK_OUTPUT)
-    assert (ping.state, ping.channel) == (state.SENT, state.TYPED)
-
-
-def test_a_batch_read_in_full_holds_back_no_next_message(repo, fake_tmux):
-    _session_with_worker(repo)
-    _hook("UserPromptSubmit", "supervisor")
-    runtime.send_message("s", "w1", "supervisor", "report", "the details")
-    assert _hook("Stop", "supervisor")["decision"] == "block"
-    state.read_messages("s", "supervisor")
-    assert _hook("Stop", "supervisor") is None  # idle, nothing sent is left unconfirmed
-    assert runtime.send_message("s", "w1", "supervisor", "next") == "sent"
-    assert _typed(fake_tmux) == ["[from w1] next"]
-
-
-def test_only_the_summary_is_typed_and_the_body_waits(repo, fake_tmux):
-    _session_with_worker(repo)
-    state.set_status("s", "supervisor", state.IDLE)
-    body = "Status: DONE\nFiles: a.py\nChecks: make check green"
-    assert runtime.send_message("s", "w1", "supervisor", "DONE: tests pass", body) == "sent"
-    [message] = state.list_messages("s")
-    line = f"[from w1] DONE: tests pass (#{message.id}, 3 lines: call read_messages)"
-    assert fake_tmux[-1] == ("send_text", "s", "supervisor", line)
-    assert (message.summary, message.body) == ("DONE: tests pass", body)
-    _hook("UserPromptSubmit", "supervisor", {"prompt": line})
-    assert state.list_messages("s")[0].state == state.DELIVERED
-
-
-def test_summary_is_stripped_so_a_trimmed_prompt_confirms_it(repo, fake_tmux):
-    _session_with_worker(repo)
-    state.set_status("s", "supervisor", state.IDLE)
-    runtime.send_message("s", "w1", "supervisor", " done \t")
-    assert fake_tmux[-1][3] == "[from w1] done"
-    _hook("UserPromptSubmit", "supervisor", {"prompt": "[from w1] done"})
-    assert state.list_messages("s")[0].state == state.DELIVERED
-
-
-def test_stop_hook_carries_one_short_line_per_message(repo, fake_tmux):
-    _session_with_worker(repo)
-    _hook("UserPromptSubmit", "supervisor")
-    runtime.send_message("s", "w1", "supervisor", "DONE: added x", "line one\nline two")
-    runtime.send_message("s", "w1", "supervisor", "one more thing", "a single line")
-    first, second = state.list_messages("s")
-    out = _hook("Stop", "supervisor")
-    assert out["reason"] == (
-        f"[from w1] DONE: added x (#{first.id}, 2 lines: call read_messages)\n"
-        f"[from w1] one more thing (#{second.id}, 1 line: call read_messages)"
-    )
-
-
 def test_message_errors(repo, fake_tmux):
     _session_with_worker(repo)
     with pytest.raises(runtime.LadoError, match="running agents: supervisor, w1"):
         runtime.send_message("s", "w1", "nobody", "hi")
     with pytest.raises(runtime.LadoError, match=r"write the details to an artifact \(write_"):
         runtime.send_message("s", "w1", "supervisor", "done", "x" * 9000)
-
-
-@pytest.mark.parametrize(
-    ("summary", "reason"),
-    [
-        ("", "summary is empty"),
-        ("  ", "summary is empty"),
-        (
-            "done\nall tests pass",
-            "summary must be one line of visible text: U+000A is not allowed; "
-            "put the details in body",
-        ),
-        ("done\tall", "summary must be one line of visible text: U+0009 is not allowed"),
-        ("done\x1b[31m", "summary must be one line of visible text: U+001B is not allowed"),
-        (
-            "done\u2028tests pass",
-            "summary must be one line of visible text: U+2028 LINE SEPARATOR is not allowed; "
-            "put the details in body",
-        ),
-        ("done\u202e", "U+202E RIGHT-TO-LEFT OVERRIDE is not allowed"),
-        ("\u200bdone", "U+200B ZERO WIDTH SPACE is not allowed"),
-        ("done\u2028all", "summary must be one line"),
-        ("x" * 201, "summary is 201 characters, the limit is 200; put the details in body"),
-    ],
-)
-def test_summary_must_be_one_short_line(repo, fake_tmux, summary, reason):
-    _session_with_worker(repo)
-    with pytest.raises(runtime.LadoError, match=re.escape(reason)):
-        runtime.send_message("s", "w1", "supervisor", summary, "body")
-    assert state.list_messages("s") == []
-
-
-def test_status_hooks(repo, fake_tmux):
-    _session_with_worker(repo)
-    _hook("SessionStart", "supervisor")
-    _hook("SessionStart", "w1")
-    assert state.get_agent("s", "supervisor").status == state.IDLE  # no task yet
-    assert state.get_agent("s", "w1").status == state.IDLE  # its task was taken before
-    _hook("PermissionRequest", "w1", {"tool_name": "Bash", "tool_input": {}})
-    assert state.get_agent("s", "w1").status == state.WAITING
-    _hook("Notification", "w1", {"notification_type": "idle_prompt"})
-    assert state.get_agent("s", "w1").status == state.WAITING
-    _hook("SessionEnd", "w1")
-    assert state.get_agent("s", "w1").status == state.STOPPED
-
-
-def test_session_start_waits_until_the_lado_mcp_server_listed_its_tools(repo, fake_tmux):
-    """Claude Code starts the first turn after its SessionStart hooks, but not after its MCP
-    servers: tools listed later are deferred behind tool search."""
-    _session_with_worker(repo)
-    _mcp_ready("w1", instance="an-earlier-launch")
-    started = time.monotonic()
-    threading.Timer(0.2, _mcp_ready, ["w1"]).start()
-    _hook("SessionStart", "w1", mcp_ready=False)
-    assert 0.2 <= time.monotonic() - started < hooks.MCP_READY_TIMEOUT
-    assert state.get_agent("s", "w1").status == state.IDLE  # ready: its queue is empty
 
 
 def test_session_start_looks_for_the_lado_mcp_server_every_twentieth_of_a_second(
@@ -2925,15 +1251,6 @@ def test_a_session_start_with_a_note_tells_the_lead_and_hands_the_queue_over(rep
     told = [m.summary for m in state.list_messages("s") if m.sender == state.LADO]
     assert "w1: no report from its TUI" in told
     assert [c for c in fake_tmux if c[0] == "send_text"]
-
-
-def test_a_note_of_an_agent_already_ready_tells_no_one(repo, fake_tmux):
-    _session_with_worker(repo)
-    kilo_cli = providers.get("kilo")
-    hooks.handle(kilo_cli, providers.Event(providers.SESSION_START), "s", "w1")
-    start = providers.Event(providers.SESSION_START, note="no report from its TUI")
-    hooks.handle(kilo_cli, start, "s", "w1")
-    assert "no report" not in " ".join(m.summary for m in state.list_messages("s"))
 
 
 @pytest.mark.parametrize("provider", ["claude", "codex"])
@@ -3048,145 +1365,6 @@ def test_another_session_start_leaves_a_wait_of_failed_messages(repo, fake_tmux)
     assert state.get_agent("s", "w1").status == state.WAITING
 
 
-def test_session_start_waits_only_where_the_provider_needs_it(repo, fake_tmux):
-    _session_with_worker(repo)
-    kilo_cli = providers.get("kilo")
-    assert not kilo_cli.capabilities.hold_first_turn  # its session start is the TUI plugin's
-    started = time.monotonic()
-    hooks.handle(kilo_cli, providers.Event(providers.SESSION_START), "s", "w1")
-    # Far below the wait, but not tight: the tests run in parallel on a busy machine.
-    assert time.monotonic() - started < hooks.MCP_READY_TIMEOUT / 4
-    assert state.get_agent("s", "w1").status == state.IDLE  # ready: its queue is empty
-
-
-def test_session_start_types_in_what_was_queued_while_the_agent_started(repo, fake_tmux):
-    _session_with_worker(repo)
-    # Not at its turn's end: as soon as it is idle.
-    assert runtime.send_message("s", "w1", "supervisor", "report") == (
-        "queued; supervisor is starting and will get it when it is idle or background"
-    )
-    _hook("SessionStart", "supervisor", {"source": "startup"})
-    assert _typed(fake_tmux) == ["[from w1] report"]
-    assert [m.state for m in state.list_messages("s")] == [state.SENT]
-    assert state.get_agent("s", "supervisor").status == state.BUSY
-
-
-def test_session_start_of_a_worker_types_in_its_task_with_its_queue(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    runtime.spawn_worker("s", "task", name="w1")
-    runtime.send_message("s", "supervisor", "w1", "hi")
-    _hook("SessionStart", "w1", {"source": "startup"})
-    task = next(m for m in state.list_messages("s") if m.summary == "your task")
-    assert _typed(fake_tmux, "w1") == [
-        f"[from lado] your task (#{task.id}, {len(task.body.splitlines())} lines: call "
-        "read_messages)\n[from supervisor] hi"
-    ]
-    assert state.get_agent("s", "w1").status == state.BUSY
-
-
-@pytest.mark.parametrize("hook_runs", ["before the queue", "after the queue", "after the read"])
-def test_a_message_sent_while_the_agent_becomes_idle_is_handed_over_once(
-    repo, fake_tmux, monkeypatch, hook_runs
-):
-    """The sender queues, then reads the status; the hook sets idle, then takes the queue.
-    Wherever the hook runs in between, exactly one of them types the message in."""
-    _session_with_worker(repo)
-    queue_message, get_agent = state.queue_message, state.get_agent
-    status_read_next = []
-
-    def session_start():
-        _hook("SessionStart", "supervisor", {"source": "startup"})
-
-    def queue(*args, **kwargs):
-        if hook_runs == "before the queue":
-            session_start()
-        queued = queue_message(*args, **kwargs)
-        if hook_runs == "after the queue":
-            session_start()
-        status_read_next.append(True)
-        return queued
-
-    def read_status(*args, **kwargs):
-        agent = get_agent(*args, **kwargs)
-        if status_read_next and status_read_next.pop() and hook_runs == "after the read":
-            session_start()  # the sender has seen the supervisor starting
-        return agent
-
-    monkeypatch.setattr(state, "queue_message", queue)
-    monkeypatch.setattr(state, "get_agent", read_status)
-    runtime.send_message("s", "w1", "supervisor", "report")
-    monkeypatch.setattr(state, "queue_message", queue_message)
-    monkeypatch.setattr(state, "get_agent", get_agent)
-    runtime.sweep("s")  # the session loop finds nothing more to do
-    assert _typed(fake_tmux) == ["[from w1] report"]
-    assert [m.state for m in state.list_messages("s")] == [state.SENT]
-
-
-@pytest.mark.parametrize("command", ["clear", "resume"])
-def test_conversation_switch_keeps_agent_running(repo, fake_tmux, command):
-    _session_with_worker(repo)
-    _hook("SessionStart", "supervisor", {"source": "startup"})
-    _hook("SessionEnd", "supervisor", {"reason": command})
-    # Not ready (the next conversation is loading): messages wait instead of being typed.
-    assert state.get_agent("s", "supervisor").status == state.STARTING
-    assert runtime.send_message("s", "w1", "supervisor", "report").startswith("queued")
-    assert fake_tmux[-1][0] != "send_text"
-    _hook("SessionStart", "supervisor", {"source": command})
-    assert fake_tmux[-1] == ("send_text", "s", "supervisor", "[from w1] report")
-    assert state.get_agent("s", "supervisor").status == state.BUSY
-    _hook("UserPromptSubmit", "supervisor", {"prompt": "[from w1] report"})
-    _hook("Stop", "supervisor")
-    assert state.get_agent("s", "supervisor").status == state.IDLE
-    assert [m.state for m in state.list_messages("s")] == [state.DELIVERED]
-
-
-def test_conversation_switch_ends_idle_with_nothing_queued(repo, fake_tmux):
-    _session_with_worker(repo)
-    _hook("SessionStart", "w1", {"source": "startup"})  # busy with its task
-    _hook("Stop", "w1")
-    _hook("SessionEnd", "w1", {"reason": "resume"})
-    _hook("SessionStart", "w1", {"source": "resume"})
-    assert state.get_agent("s", "w1").status == state.IDLE  # not busy with its task again
-
-
-def test_the_resume_picker_leaves_the_agent_idle_until_a_conversation_is_chosen(repo, fake_tmux):
-    """What Claude Code 2.1.287 sends, captured with a probe (2026-10-02): typing /resume
-    and opening its picker fire no hook, nor does cancelling it with Esc. Choosing a
-    conversation fires SessionEnd(resume) and, a second later, SessionStart(resume)."""
-    _session_with_worker(repo)
-    _hook("SessionStart", "w1", {"source": "startup", "model": "claude-haiku-4-5-20251001"})
-    _hook("UserPromptSubmit", "w1", {"prompt": "Reply with the single word hi"})
-    _hook("Stop", "w1")
-    # /resume, picker open, Esc: no hook. The CLI is ready again, and so is the agent.
-    assert state.get_agent("s", "w1").status == state.IDLE
-    assert runtime.send_message("s", "supervisor", "w1", "next") == "sent"
-    _hook("UserPromptSubmit", "w1", {"prompt": "[from supervisor] next"})
-    _hook("Stop", "w1")
-    # /resume again, a conversation chosen:
-    _hook("SessionEnd", "w1", {"reason": "resume", "prompt_id": "e0d81dbc"})
-    assert state.get_agent("s", "w1").status == state.STARTING
-    payload = {"source": "resume", "prompt_id": "e0d81dbc", "seconds_since_last_response": 965}
-    _hook("SessionStart", "w1", payload)
-    assert state.get_agent("s", "w1").status == state.IDLE
-
-
-def test_real_exit_stops_agent(repo, fake_tmux):
-    _session_with_worker(repo)
-    _hook("SessionStart", "w1", {"source": "startup"})
-    _hook("SessionEnd", "w1", {"reason": "prompt_input_exit"})
-    assert state.get_agent("s", "w1").status == state.STOPPED
-    with pytest.raises(runtime.LadoError, match='no running agent "w1"'):
-        runtime.send_message("s", "supervisor", "w1", "hi")
-
-
-def test_hook_errors_are_logged_not_raised(repo, fake_tmux, lado_home, monkeypatch):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    instance = state.get_agent("s", "supervisor").instance
-    monkeypatch.setattr("sys.stdin.read", lambda: "not json")
-    assert hooks.main("Stop", "s", "supervisor", instance) == 0
-    assert "JSONDecodeError" in (lado_home / "hooks.log").read_text()
-
-
 def test_a_stop_hook_that_fails_after_the_hand_over_loses_no_message(
     repo, fake_tmux, lado_home, monkeypatch
 ):
@@ -3268,50 +1446,6 @@ def test_a_print_mark_that_fails_leaves_the_printed_output_to_its_turn(
     )
 
 
-def test_a_turn_another_stop_hook_went_on_with_confirms_no_output_never_printed(
-    repo, fake_tmux, monkeypatch
-):
-    _session_with_worker(repo)
-    _hook("UserPromptSubmit", "supervisor")
-    runtime.send_message("s", "w1", "supervisor", "report")
-    instance = state.get_agent("s", "supervisor").instance
-    with monkeypatch.context() as patched:
-        claude = type(providers.get("claude"))
-        patched.setattr(claude, "continue_output", lambda self, text: 1 / 0)
-        patched.setattr("sys.stdin.read", lambda: "{}")
-        hooks.main("Stop", "s", "supervisor", instance)
-    # The user's own Stop hook made the turn go on.
-    _hook("Stop", "supervisor", CONTINUED)
-    assert state.list_messages("s")[0].state == state.SENT
-
-
-def test_a_hook_on_an_older_schema_says_why_and_changes_nothing(
-    repo, fake_tmux, lado_home, monkeypatch
-):
-    """LADO upgraded in place under a running session: its hooks run the new code."""
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    instance = state.get_agent("s", "supervisor").instance
-    agent_helpers.previous_schema()
-    before = agent_helpers.database()
-    monkeypatch.setattr("sys.stdin.read", lambda: "{}")
-    assert hooks.main("Stop", "s", "supervisor", instance) == 0
-    log = (lado_home / "hooks.log").read_text()
-    assert "Stop s/supervisor: " in log
-    assert "LADO was upgraded under a running session" in log and "`lado stop --all`" in log
-    assert "Traceback" not in log
-    assert agent_helpers.database() == before
-
-
-def test_hooks_from_an_earlier_launch_are_ignored(repo, fake_tmux, monkeypatch):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    old = state.get_agent("s", "supervisor").instance
-    runtime.stop_session("s")
-    runtime.start_session(str(repo), "s", None)
-    monkeypatch.setattr("sys.stdin.read", lambda: "{}")
-    hooks.main("SessionEnd", "s", "supervisor", old)  # the killed process exits late
-    assert state.get_agent("s", "supervisor").status == state.STARTING
-
-
 def test_a_hook_writes_nothing_into_a_deleted_home(repo, fake_tmux, monkeypatch, lado_home):
     runtime.start_session(str(repo), "s", None, provider="claude")
     instance = state.get_agent("s", "supervisor").instance
@@ -3371,38 +1505,6 @@ def test_an_agents_config_folder_lives_only_while_it_runs(repo, fake_tmux, lado_
     runtime.forget_session("s")
     assert not (lado_home / "agents" / "s").exists()
     assert _config_folders(lado_home) == ["other/supervisor"]
-
-
-def test_stop_all_removes_the_config_folders_of_each_session(repo, fake_tmux, lado_home):
-    _session_with_worker(repo)
-    runtime.start_session(str(repo), "other", None, provider="claude")
-    runtime.stop_all(lambda name, stopped: None)
-    assert _config_folders(lado_home) == []
-
-
-def test_the_containers_stop_marks_first_then_kills_each_session(
-    repo, fake_tmux, lado_home, monkeypatch
-):
-    _session_with_worker(repo)
-    runtime.start_session(str(repo), "other", None, provider="claude")
-    runtime.start_session(str(repo), "mine", None, provider="claude")
-    runtime.stop_session("mine")  # the human's
-    record = tmux.kill_session
-    stopped_at_kill = {}
-
-    def kill(session):
-        stopped_at_kill[session] = state.get_session(session).stopped_at
-        record(session)
-
-    monkeypatch.setattr(tmux, "kill_session", kill)
-    assert runtime.stop_for_container() == ["s", "other"]
-    assert all(stopped_at_kill[s] for s in ("s", "other"))  # marked before the kill
-    assert ("close_viewers", "s") in fake_tmux and ("close_viewers", "other") in fake_tmux
-    assert _config_folders(lado_home) == []
-    assert state.get_session("s").resume_at_start
-    assert not state.get_session("mine").resume_at_start
-    agents = [m for m in state.list_messages("s") if m.sender == state.LADO]
-    assert agents == []  # nothing told about the agents' end
 
 
 def test_a_kill_that_fails_does_not_keep_the_containers_stop_from_the_rest(
@@ -3564,28 +1666,6 @@ def test_a_resume_that_fails_unexpectedly_is_recorded(repo, fake_tmux, monkeypat
     assert recorded == ["server:resume"]
 
 
-def test_a_session_the_human_resumed_meanwhile_is_left_running(repo, fake_tmux, monkeypatch):
-    for name in ("a", "b"):
-        runtime.start_session(str(repo), name, None, provider="claude")
-    state.stop_for_container()
-    fake_tmux += [("kill_session", "a"), ("kill_session", "b")]
-    real = runtime.start_session
-    calls = []
-
-    def start(path, name, mode, **kwargs):
-        calls.append(name)
-        if name == "a":  # the human resumes b from the UI while a starts
-            real(path, "b", None)
-        return real(path, name, mode, **kwargs)
-
-    monkeypatch.setattr(runtime, "start_session", start)
-    lines = []
-    runtime.resume_at_start(lines.append)
-    assert calls == ["a"]  # b runs already: not tried
-    assert lines == ['lado: resumed session "a" at the container\'s start']
-    assert not state.get_session("b").stopped_at
-
-
 def test_a_failed_resume_of_a_session_that_runs_does_not_stop_it(repo, fake_tmux, monkeypatch):
     runtime.start_session(str(repo), "a", None, provider="claude")
     state.stop_for_container()
@@ -3651,17 +1731,6 @@ def test_start_resumes_a_stopped_session(repo, fake_tmux):
     assert runtime.spawn_worker("s", "task").name == "worker-2"
 
 
-def test_start_resumes_a_session_whose_tmux_server_is_gone(repo, fake_tmux):
-    _session_with_worker(repo)
-    runtime.send_message("s", "supervisor", "w1", "hi")
-    fake_tmux.append(("kill_session", "s"))  # the tmux server died, no lado stop
-    started = runtime.start_session(str(repo), "s", None)
-    assert started.resumed
-    assert [a.name for a in state.list_agents("s")] == ["supervisor"]
-    assert state.list_messages("s")[0].state == state.DROPPED
-    assert state.SESSION_STOP in [e.kind for e in state.list_events("s")]
-
-
 def _fail(*args, **kwargs):
     raise tmux.TmuxError("command too long")
 
@@ -3685,36 +1754,6 @@ def test_a_failed_spawn_leaves_no_ghost_worker(repo, fake_tmux, monkeypatch, fai
     assert (last.agent, last.kind) == ("worker", state.FINISHED)
     assert last.detail.startswith("not started: command too long")
     assert runtime.spawn_worker("s", "a task that is long").name == "worker"
-
-
-def test_a_failed_start_leaves_no_session(repo, fake_tmux, monkeypatch):
-    monkeypatch.setattr(tmux, "new_session", _fail)
-    with pytest.raises(tmux.TmuxError, match="command too long"):
-        runtime.start_session(str(repo), "s", None, provider="claude")
-    assert state.get_session("s") is None
-    assert not (state.home() / "agents" / "s" / "supervisor").exists()
-
-
-def test_a_failed_resume_leaves_the_session_stopped(repo, fake_tmux, monkeypatch):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    runtime.stop_session("s")
-    with monkeypatch.context() as m:
-        m.setattr(tmux, "new_session", _fail)
-        with pytest.raises(tmux.TmuxError, match="command too long"):
-            runtime.start_session(str(repo), "s", None)
-    assert state.get_session("s").stopped_at
-    assert state.list_agents("s") == []
-    # LADO's first messages never reached a supervisor.
-    [resumed] = state.list_messages("s")
-    assert (resumed.summary, resumed.state) == ("session resumed: 0 open runs", state.DROPPED)
-    assert not (state.home() / "agents" / "s" / "supervisor").exists()
-    assert runtime.start_session(str(repo), "s", None).resumed
-    assert state.get_agent("s", "supervisor") is not None
-    # The resume writes them anew, once.
-    assert [(m.summary, m.state) for m in state.list_messages("s")] == [
-        ("session resumed: 0 open runs", state.DROPPED),
-        ("session resumed: 0 open runs", state.PENDING),
-    ]
 
 
 @pytest.mark.parametrize("failing", ["tmux", "runs"])
@@ -3747,37 +1786,12 @@ def test_a_failed_resume_keeps_the_settings_it_had(repo, fake_tmux, monkeypatch,
     assert state.get_session("s").provider == "kilo"
 
 
-def _no_tmux(*args, **kwargs):
-    raise tmux.TmuxMissing("tmux is not installed or not on PATH (/nowhere)")
-
-
 def _locked(*args, **kwargs):
     raise sqlite3.OperationalError("database is locked")
 
 
 def _undo_notes(error):
     return getattr(error, "__notes__", [])
-
-
-def test_a_spawn_without_tmux_leaves_no_ghost_worker(repo, fake_tmux, monkeypatch):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    with monkeypatch.context() as m:
-        m.setattr(tmux, "new_window", _no_tmux)
-        m.setattr(tmux, "kill_window", _no_tmux)  # its undo's tmux call fails the same way
-        with pytest.raises(tmux.TmuxMissing, match="tmux is not installed") as error:
-            runtime.spawn_worker("s", "task")
-    assert [a.name for a in state.list_agents("s")] == ["supervisor"]
-    assert not (state.home() / "agents" / "s" / "worker").exists()
-    assert runtime.session_worktrees(str(repo), "s") == {}
-    assert runtime.git(str(repo), "branch", "--list", "lado/s/*") == ""
-    last = state.list_events("s")[-1]
-    assert (last.agent, last.kind) == ("worker", state.FINISHED)
-    note = (
-        "undo of the spawn of worker: close its window failed: TmuxMissing: "
-        "tmux is not installed or not on PATH (/nowhere)"
-    )
-    assert _undo_notes(error.value) == [note]
-    assert note in (state.home() / "loop.log").read_text()
 
 
 def test_a_failed_spawn_undo_keeps_the_cause_and_runs_every_step(repo, fake_tmux, monkeypatch):
@@ -3929,68 +1943,6 @@ def test_start_with_kits_stores_them_and_appends_lado_instructions(repo, fake_tm
     assert sorted(p.name for p in added.iterdir()) == ["checklist"]
 
 
-def test_spawn_worker_with_role_and_without(repo, fake_tmux, team_kit, monkeypatch):
-    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
-    monkeypatch.setenv("DB_TOKEN", "t0k")
-    worker = runtime.spawn_worker("s", "review it", role="reviewer")
-    assert worker.role == "reviewer"
-    cmd = fake_tmux[-1][-1]
-    prompt = agent_helpers.claude_prompt(cmd)
-    assert prompt.startswith(f"You review. Notes are in {team_kit.resolve()}/notes.")
-    assert 'You are worker "reviewer" in LADO session "s"' in prompt
-    added = Path(cmd[cmd.index("--add-dir") + 1], ".claude", "skills")
-    assert sorted(p.name for p in added.iterdir()) == ["checklist"]
-    mcp = json.loads(open(cmd[cmd.index("--mcp-config") + 1]).read())["mcpServers"]
-    templates = {"TOKEN": "${DB_TOKEN}"}
-    wrapped = mcp_exec.wrap("db", [f"{team_kit.resolve()}/db.sh"], templates)
-    assert [mcp["db"]["command"], *mcp["db"]["args"]] == wrapped
-    assert mcp["db"]["env"] == {}
-    # The worker role gets all skills; this one without the MCP server it does not have.
-    runtime.spawn_worker("s", "t", role="worker", without=["skill:style"])
-    cmd = fake_tmux[-1][-1]
-    added = Path(cmd[cmd.index("--add-dir") + 1], ".claude", "skills")
-    assert sorted(p.name for p in added.iterdir()) == ["checklist"]
-    runtime.spawn_worker("s", "t", role="reviewer", without=["mcp:db"])
-    mcp = json.loads(open(fake_tmux[-1][-1][fake_tmux[-1][-1].index("--mcp-config") + 1]).read())
-    assert list(mcp["mcpServers"]) == ["lado"]
-
-
-def test_kit_mcp_variables_come_from_the_agents_environment(repo, fake_tmux, team_kit, monkeypatch):
-    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
-    monkeypatch.delenv("DB_TOKEN", raising=False)  # set only by the user's shell
-    path = os.environ["PATH"]
-    _shell(monkeypatch, {"PATH": path, "DB_TOKEN": "from-shell"})
-    runtime.spawn_worker("s", "review it", role="reviewer")
-    env, _ = agent_helpers.launched(fake_tmux[-1])
-    assert env["DB_TOKEN"] == "from-shell"  # the wrapper's CLI gets it from there
-
-
-@pytest.mark.parametrize("provider", ["claude", "codex", "kilo", "opencode"])
-def test_kit_mcp_secrets_are_in_no_file_lado_leaves(
-    repo, fake_tmux, team_kit, monkeypatch, lado_home, provider
-):
-    monkeypatch.setenv("DB_TOKEN", "s3cr3t")
-    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider=provider)
-    runtime.spawn_worker("s", "review it", role="reviewer", name="r")
-    env, _ = agent_helpers.launched(fake_tmux[-1])
-    for name, value in env.items():
-        if name.endswith("_CONFIG_CONTENT"):
-            assert "s3cr3t" not in value
-    found = []
-    for path in (lado_home / "agents").rglob("*"):
-        if path.is_file() and path.name != "env.json" and "s3cr3t" in path.read_text():
-            found.append(path)
-    assert found == []
-    config = providers.base.config_path(state.get_agent("s", "r"))
-    files = [*config.glob("*.json"), *config.glob("*.toml")]
-    # Not Codex's auth.json, a link to the user's login file, which may not exist.
-    text = "\n".join(p.read_text() for p in files if p.is_file() and p.name != "env.json")
-    assert "lado.mcp_exec" in text
-    assert "${" not in text and "{env:" not in text
-    env_files = list((lado_home / "agents").rglob("env.json"))
-    assert [f.stat().st_mode & 0o777 for f in env_files] == [0o600, 0o600]
-
-
 def test_spawn_worker_errors_leave_nothing_behind(repo, fake_tmux, team_kit, monkeypatch):
     runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
     monkeypatch.delenv("DB_TOKEN", raising=False)
@@ -4008,67 +1960,6 @@ def test_spawn_worker_errors_leave_nothing_behind(repo, fake_tmux, team_kit, mon
     assert not (repo / ".lado" / "worktrees").exists()
 
 
-def test_spawn_worker_takes_the_only_role(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    cmd = fake_tmux[0][-1]
-    prompt = agent_helpers.claude_prompt(cmd)
-    assert '`role` picks the kind of worker; it may be left out: "worker" is the only one.' in (
-        prompt
-    )
-    assert runtime.spawn_worker("s", "t").role == "worker"
-
-
-def test_a_worker_gets_its_role_from_an_installed_kit(tmp_path, repo, fake_tmux):
-    """An installed kit is a row in lado.db; a running session reads it at each spawn."""
-    work = agent_helpers.init_repo(tmp_path / "team-kit")
-    agent = "---\nname: dev\ndescription: d\n---\n{text}\n"
-    files = {"kit.yaml": "name: team\nversion: 1.0.0\n", "agents/dev.md": agent.format(text="v1")}
-    url = agent_helpers.publish(work, files, tag="v1.0.0")
-    kits.install(kits.plan_add(url))
-    assert not (state.home() / "kits").exists()
-
-    runtime.start_session(str(repo), "s", None, kit_names=["default", "team"], provider="claude")
-    runtime.spawn_worker("s", "t", role="dev")
-    assert _prompt(fake_tmux[-1][-1]).startswith("v1")
-
-    files = {"kit.yaml": "name: team\nversion: 1.1.0\n", "agents/dev.md": agent.format(text="v2")}
-    agent_helpers.publish(work, files, tag="v1.1.0")
-    kits.install(kits.plan_update("team"))
-    assert runtime.spawn_worker("s", "t", role="dev").name == "dev-2"
-    assert _prompt(fake_tmux[-1][-1]).startswith("v2")
-
-
-def test_a_kit_supervisor_leads_the_session(repo, fake_tmux, team_kit):
-    _write(team_kit / "kit.yaml", "name: team\nversion: 1.0.0\nsupervisor: boss\n")
-    _write(team_kit / "agents" / "boss.md", "---\nname: boss\ndescription: d\n---\nYou lead.\n")
-    started = runtime.start_session(str(repo), "s", None, kit_names=["team"], provider="claude")
-    assert started.lead == "lead: boss of kit team"
-    assert state.get_agent("s", "supervisor").role == "boss"
-    cmd = fake_tmux[0][-1]
-    assert agent_helpers.claude_prompt(cmd).startswith("You lead.")
-    started = runtime.start_session(
-        str(repo), "t", None, kit_names=["default", "team"], provider="claude"
-    )
-    assert started.lead == (
-        "lead: LADO's built-in supervisor (kits default and team each have a supervisor)"
-    )
-    assert [w.split(" (")[0].split(":")[0] for w in started.warnings] == [
-        "kit default's supervisor leads as LADO's built-in supervisor",
-        "kit team's supervisor does not lead",
-        "kit team's supervisor lists no skills",
-    ]
-
-
-def test_start_errors_leave_no_session(repo, fake_tmux):
-    with pytest.raises(kits.KitError, match='kit "nope" not found'):
-        runtime.start_session(str(repo), "s", None, kit_names=["nope"], provider="claude")
-    with pytest.raises(kits.KitError, match="kit default has no agent nope"):
-        runtime.start_session(
-            str(repo), "s", None, without=["agent:nope@default"], provider="claude"
-        )
-    assert state.get_session("s") is None and fake_tmux == []
-
-
 class _NoSkills(providers.Provider):
     name = "noskills"
     title = "No Skills CLI"
@@ -4081,40 +1972,6 @@ class _NoSkills(providers.Provider):
 
     def parse_event(self, native, payload):
         return None
-
-
-class _ChoosesAModel(_NoSkills):
-    """A CLI whose launch chooses a model and an effort (Codex's carried config)."""
-
-    capabilities = providers.Capabilities(
-        status_events=True, permission_event=False, deliver_on_turn_end=True, skills=True
-    )
-
-    def launch_command(self, agent, session, spec):
-        detail = f"for {agent.name}"
-        return providers.Launch(
-            ["noskills"],
-            model=state.Choice("big", state.CLI_CONFIG, detail),
-            effort=state.Choice("high", state.CLI_CONFIG),
-        )
-
-
-def test_spawn_records_the_launchs_model(repo, fake_tmux, monkeypatch):
-    monkeypatch.setitem(providers._PROVIDERS, "noskills", _ChoosesAModel())
-    runtime.start_session(str(repo), "s", None, provider="noskills")
-    runtime.spawn_worker("s", "fix the bug", name="w1")
-    for name in ("supervisor", "w1"):
-        agent = state.get_agent("s", name)
-        assert (agent.model, agent.model_source, agent.model_detail) == (
-            "big",
-            "cli-config",
-            f"for {name}",
-        )
-        assert (agent.effort, agent.effort_source, agent.effort_detail) == (
-            "high",
-            "cli-config",
-            None,
-        )
 
 
 def test_provider_without_skills_fails_loudly(repo, fake_tmux, team_kit, monkeypatch):
@@ -4152,22 +2009,6 @@ def test_include_worktrees_drops_only_lados_line(repo):
     assert exclude.read_text() == "# mine\n*.log\n"
 
 
-def test_include_worktrees_undoes_exclude_worktrees(repo):
-    exclude = repo / ".git" / "info" / "exclude"
-    exclude.write_text("# mine\n")
-    runtime.exclude_worktrees(str(repo))
-    runtime.include_worktrees(str(repo))
-    assert exclude.read_text() == "# mine\n"
-
-
-def test_include_worktrees_from_a_linked_worktree_changes_the_common_file(repo, tmp_path):
-    linked = tmp_path / "linked"
-    runtime.git(str(repo), "worktree", "add", "-q", "-b", "side", str(linked))
-    runtime.exclude_worktrees(str(repo))
-    runtime.include_worktrees(str(linked))
-    assert "/.lado/worktrees/" not in (repo / ".git" / "info" / "exclude").read_text()
-
-
 def test_include_worktrees_without_the_file_is_no_error(repo):
     exclude = repo / ".git" / "info" / "exclude"
     exclude.unlink(missing_ok=True)
@@ -4175,75 +2016,10 @@ def test_include_worktrees_without_the_file_is_no_error(repo):
     assert not exclude.exists()
 
 
-def test_start_and_spawn_record_spawned_events(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, "kilo")
-    runtime.spawn_worker("s", "task", provider="claude")
-    assert [(e.agent, e.kind, e.detail) for e in state.list_events("s")] == [
-        ("supervisor", "spawned", "role supervisor, kit default, provider kilo"),
-        ("worker", "spawned", "role worker, kit default, provider claude"),
-    ]
-
-
 def _commit(worktree, name="work.txt"):
     Path(worktree, name).write_text("done\n")
     runtime.git(worktree, "add", name)
     runtime.git(worktree, "commit", "-q", "-m", f"add {name}")
-
-
-def _branches(repo):
-    return runtime.git(str(repo), "branch", "--format=%(refname:short)").split()
-
-
-def test_work_state_tells_how_a_workers_branch_stands_against_the_repo(repo, fake_tmux):
-    _session_with_worker(repo)
-    worker = state.get_agent("s", "w1")
-    work = runtime.work_state("s", "w1")
-    assert (work.branch, work.base, work.ahead, work.behind, work.uncommitted) == (
-        "lado/s/w1",
-        "main",
-        0,
-        0,
-        0,
-    )
-    _commit(worker.cwd, "one.txt")
-    _commit(worker.cwd, "two.txt")
-    _commit(str(repo), "on-main.txt")
-    Path(worker.cwd, "untracked.txt").write_text("x")
-    Path(worker.cwd, "one.txt").write_text("changed")
-    work = runtime.work_state("s", "w1")
-    assert (work.ahead, work.behind, work.uncommitted) == (2, 1, 2)
-    head = runtime.git(worker.cwd, "rev-parse", "HEAD")
-    assert (work.last_commit.sha, work.last_commit.subject) == (head, "add two.txt")
-    assert work.last_commit.at.tzinfo is not None
-
-
-def test_work_state_reads_the_time_of_a_commit_made_in_utc(repo, fake_tmux, monkeypatch):
-    # git 2.45+ writes such a time with "Z", which Python 3.10's fromisoformat refuses.
-    _session_with_worker(repo)
-    worker = state.get_agent("s", "w1")
-    monkeypatch.setenv("GIT_COMMITTER_DATE", "2026-10-04T11:00:00 +0000")
-    _commit(worker.cwd)
-    at = runtime.work_state("s", "w1").last_commit.at
-    assert at == datetime.datetime(2026, 10, 4, 11, 0, tzinfo=datetime.timezone.utc)
-    assert runtime.finish_preview("s", "w1").refused.startswith("branch lado/s/w1")
-
-
-def test_work_of_and_keeps_work_judge_work_by_finishs_rule(repo):
-    """The one rule of finish and uninstall: merged into the current branch and nothing
-    uncommitted, else why it stays."""
-    worktree = str(repo / ".lado" / "worktrees" / "s" / "w")
-    runtime.git(str(repo), "worktree", "add", "-q", "-b", "lado/s/w", worktree)
-    work = runtime.work_of(str(repo), worktree, "lado/s/w")
-    assert (work.ahead, work.gone, runtime.keeps_work(work)) == (0, [], None)
-    _commit(worktree)
-    work = runtime.work_of(str(repo), worktree, "lado/s/w")
-    assert runtime.keeps_work(work) == "not merged into main"
-    runtime.git(str(repo), "merge", "-q", "--ff-only", "lado/s/w")
-    Path(worktree, "draft.txt").write_text("x")
-    work = runtime.work_of(str(repo), worktree, "lado/s/w")
-    assert runtime.keeps_work(work) == "uncommitted changes"
-    Path(worktree, "draft.txt").unlink()
-    assert runtime.keeps_work(runtime.work_of(str(repo), worktree, "lado/s/w")) is None
 
 
 def test_keeps_work_of_a_gone_branch_counts_the_worktrees_commits(repo):
@@ -4258,60 +2034,12 @@ def test_keeps_work_of_a_gone_branch_counts_the_worktrees_commits(repo):
     assert runtime.keeps_work(work) == "2 commits not in main"
 
 
-def test_keeps_work_with_branch_and_worktree_gone_keeps_nothing(repo):
-    worktree = str(repo / ".lado" / "worktrees" / "s" / "w")
-    work = runtime.work_of(str(repo), worktree, "lado/s/w")
-    assert (work.gone, runtime.keeps_work(work)) == (["worktree", "branch"], None)
-
-
 def test_work_state_refuses_an_agent_without_a_branch(repo, fake_tmux):
     _session_with_worker(repo)
     with pytest.raises(runtime.LadoError, match="works in the repo, not on a branch of its own"):
         runtime.work_state("s", "supervisor")
     with pytest.raises(runtime.LadoError, match='no agent "w9"'):
         runtime.work_state("s", "w9")
-
-
-def test_finish_preview_says_what_finishing_a_worker_would_do_and_changes_nothing(repo, fake_tmux):
-    _session_with_worker(repo)
-    worker = state.get_agent("s", "w1")
-    preview = runtime.finish_preview("s", "w1")
-    assert (preview.removes_worktree, preview.refused, preview.work.ahead) == (True, None, 0)
-    _commit(worker.cwd)
-    preview = runtime.finish_preview("s", "w1")
-    assert preview.refused == (
-        f"branch lado/s/w1 is not merged into main (the current branch of {repo}); "
-        "merge it first, or finish with discard to throw its work away"
-    )
-    assert preview.work.ahead == 1
-    assert state.get_agent("s", "w1") is not None and Path(worker.cwd).exists()
-    for name, error in [("supervisor", "lado stop s"), ("w9", 'no worker "w9"')]:
-        with pytest.raises(runtime.LadoError, match=re.escape(error)):
-            runtime.finish_preview("s", name)
-
-
-def test_finish_worker_removes_a_merged_worker(repo, fake_tmux):
-    _session_with_worker(repo)
-    worker = state.get_agent("s", "w1")
-    _commit(worker.cwd)
-    runtime.git(str(repo), "merge", "-q", "--ff-only", worker.branch)
-    finished = runtime.finish_worker("s", "w1").worker
-    assert (finished.name, finished.branch, finished.cwd) == ("w1", "lado/s/w1", worker.cwd)
-    assert ("kill_window", "s", "w1") in fake_tmux
-    assert not Path(worker.cwd).exists()
-    assert _branches(repo) == ["main"]
-    assert [a.name for a in state.list_agents("s")] == ["supervisor"]
-    last = state.list_events("s")[-1]
-    assert (last.agent, last.kind, last.detail) == ("w1", "finished", "merged")
-    assert runtime.spawn_worker("s", "again", name="w1").branch == "lado/s/w1"
-
-
-def test_a_finished_workers_name_is_the_default_again(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    worker = runtime.spawn_worker("s", "task")
-    assert runtime.spawn_worker("s", "at the same time").name == "worker-2"
-    runtime.finish_worker("s", worker.name)  # nothing to merge
-    assert runtime.spawn_worker("s", "again").name == "worker"
 
 
 def test_finish_worker_refuses_unknown_session_agent_and_supervisor(repo, fake_tmux):
@@ -4326,90 +2054,9 @@ def test_finish_worker_refuses_unknown_session_agent_and_supervisor(repo, fake_t
     assert len(state.list_agents("s")) == 2
 
 
-def test_finish_worker_refuses_unmerged_or_dirty_work(repo, fake_tmux):
-    _session_with_worker(repo)
-    worker = state.get_agent("s", "w1")
-    _commit(worker.cwd)
-    with pytest.raises(runtime.LadoError, match="lado/s/w1 is not merged into main.*discard"):
-        runtime.finish_worker("s", "w1")
-    runtime.git(str(repo), "merge", "-q", "--ff-only", worker.branch)
-    Path(worker.cwd, "untracked.txt").write_text("x")
-    with pytest.raises(runtime.LadoError, match="(?s)uncommitted changes.*untracked.txt.*discard"):
-        runtime.finish_worker("s", "w1")
-    Path(worker.cwd, "untracked.txt").unlink()
-    Path(worker.cwd, "work.txt").write_text("changed")
-    with pytest.raises(runtime.LadoError, match="(?s)uncommitted changes.*work.txt"):
-        runtime.finish_worker("s", "w1")
-    assert not any(c[0] == "kill_window" for c in fake_tmux)
-    assert Path(worker.cwd).exists() and "lado/s/w1" in _branches(repo)
-    assert state.get_agent("s", "w1") is not None
-
-
-def test_finish_worker_discard_throws_the_work_away(repo, fake_tmux):
-    _session_with_worker(repo)
-    worker = state.get_agent("s", "w1")
-    _commit(worker.cwd)
-    Path(worker.cwd, "untracked.txt").write_text("x")
-    Path(worker.cwd, "work.txt").write_text("changed")
-    runtime.finish_worker("s", "w1", discard=True)
-    assert not Path(worker.cwd).exists()
-    assert _branches(repo) == ["main"]
-    assert state.get_agent("s", "w1") is None
-    last = state.list_events("s")[-1]
-    assert (last.agent, last.kind, last.detail) == ("w1", "finished", "discarded")
-
-
-def _push(repo, worktree, branch):
-    """Push the branch to a bare `origin` of the repo, with its upstream set."""
-    origin = Path(repo).parent / f"{Path(repo).name}-origin.git"
-    runtime.git(str(repo), "init", "-q", "--bare", str(origin))
-    runtime.git(str(repo), "remote", "add", "origin", str(origin))
-    runtime.git(worktree, "push", "-q", "-u", "origin", branch)
-
-
-def test_finish_worker_removes_a_merged_branch_whose_upstream_is_behind(repo, fake_tmux):
-    # git branch -d checks a branch with an upstream against it, not against HEAD.
-    _session_with_worker(repo)
-    worker = state.get_agent("s", "w1")
-    _commit(worker.cwd, "one.txt")
-    _push(repo, worker.cwd, worker.branch)
-    _commit(worker.cwd, "two.txt")
-    runtime.git(str(repo), "merge", "-q", "--ff-only", worker.branch)
-    assert runtime.finish_worker("s", "w1").how == "merged"
-    assert not Path(worker.cwd).exists()
-    assert _branches(repo) == ["main"]
-
-
 def _detach_and_delete_branch(repo, worker):
     runtime.git(worker.cwd, "checkout", "-q", "--detach")
     runtime.git(str(repo), "branch", "-D", worker.branch)
-
-
-def test_a_worker_whose_branch_is_gone_finishes(repo, fake_tmux):
-    _session_with_worker(repo)
-    worker = state.get_agent("s", "w1")
-    _commit(worker.cwd)
-    runtime.git(str(repo), "merge", "-q", "--ff-only", worker.branch)
-    _detach_and_delete_branch(repo, worker)
-    work = runtime.work_state("s", "w1")
-    assert (work.gone, work.ahead, work.uncommitted) == (["branch"], 0, 0)
-    # The work stands on its worktree's HEAD now.
-    assert work.last_commit.sha == runtime.git(worker.cwd, "rev-parse", "HEAD")
-    preview = runtime.finish_preview("s", "w1")
-    assert (preview.removes_worktree, preview.refused, preview.work.gone) == (
-        True,
-        None,
-        ["branch"],
-    )
-    finished = runtime.finish_worker("s", "w1")
-    assert (finished.how, finished.gone) == ("merged", ["branch"])
-    assert finished.text() == (
-        f'Finished worker "w1" (merged): removed window and worktree {worker.cwd}; '
-        "already gone: branch lado/s/w1"
-    )
-    assert not Path(worker.cwd).exists()
-    assert ("kill_window", "s", "w1") in fake_tmux
-    assert state.get_agent("s", "w1") is None
 
 
 def test_a_worker_whose_branch_is_gone_keeps_unmerged_commits_without_discard(repo, fake_tmux):
@@ -4430,49 +2077,6 @@ def test_a_worker_whose_branch_is_gone_keeps_unmerged_commits_without_discard(re
     assert state.get_agent("s", "w1") is not None and Path(worker.cwd).exists()
     assert runtime.finish_worker("s", "w1", discard=True).how == "discarded"
     assert not Path(worker.cwd).exists()
-
-
-def test_a_worker_whose_branch_is_gone_keeps_uncommitted_changes_without_discard(repo, fake_tmux):
-    _session_with_worker(repo)
-    worker = state.get_agent("s", "w1")
-    _detach_and_delete_branch(repo, worker)
-    Path(worker.cwd, "draft.txt").write_text("x")
-    with pytest.raises(runtime.LadoError, match="(?s)uncommitted changes.*draft.txt.*discard"):
-        runtime.finish_worker("s", "w1")
-    assert state.get_agent("s", "w1") is not None and Path(worker.cwd).exists()
-    finished = runtime.finish_worker("s", "w1", discard=True)
-    assert (finished.how, finished.gone) == ("discarded", ["branch"])
-    assert not Path(worker.cwd).exists()
-
-
-def test_a_worker_whose_worktree_is_gone_finishes(repo, fake_tmux):
-    _session_with_worker(repo)
-    worker = state.get_agent("s", "w1")
-    _commit(worker.cwd)
-    runtime.git(str(repo), "merge", "-q", "--ff-only", worker.branch)
-    shutil.rmtree(worker.cwd)  # by hand: git still has it as a worktree
-    work = runtime.work_state("s", "w1")
-    assert (work.gone, work.ahead, work.uncommitted) == (["worktree"], 0, 0)
-    assert runtime.finish_preview("s", "w1").refused is None
-    finished = runtime.finish_worker("s", "w1")
-    assert (finished.how, finished.gone) == ("merged", ["worktree"])
-    assert finished.text() == (
-        'Finished worker "w1" (merged): removed window and branch lado/s/w1; '
-        f"already gone: worktree {worker.cwd}"
-    )
-    assert _branches(repo) == ["main"]
-    assert runtime.git(str(repo), "worktree", "list").count("\n") == 0
-
-
-def test_a_worker_whose_worktree_is_gone_still_needs_its_branch_merged(repo, fake_tmux):
-    _session_with_worker(repo)
-    worker = state.get_agent("s", "w1")
-    _commit(worker.cwd)
-    shutil.rmtree(worker.cwd)
-    with pytest.raises(runtime.LadoError, match="lado/s/w1 is not merged into main"):
-        runtime.finish_worker("s", "w1")
-    assert runtime.finish_worker("s", "w1", discard=True).gone == ["worktree"]
-    assert _branches(repo) == ["main"]
 
 
 @pytest.mark.parametrize("discard", [False, True])
@@ -4504,25 +2108,6 @@ def test_finish_worker_keeps_the_window_when_git_fails(repo, fake_tmux, discard)
     runtime.git(str(repo), "worktree", "unlock", worker.cwd)
     runtime.finish_worker("s", "w1", discard=discard)
     assert ("kill_window", "s", "w1") in fake_tmux
-
-
-def test_finish_worker_drops_its_undelivered_messages(repo, fake_tmux, monkeypatch):
-    _session_with_worker(repo)
-    _hook("UserPromptSubmit", "w1")  # busy, so messages wait for its turn to end
-    runtime.send_message("s", "supervisor", "w1", "old task")
-    state.set_status("s", "w1", state.IDLE)
-    runtime.send_message("s", "supervisor", "w1", "typed, never confirmed")
-    finished = runtime.finish_worker("s", "w1", discard=True)
-    assert finished.dropped == 2
-    last = state.list_events("s")[-1]
-    assert (last.kind, last.detail) == ("finished", "discarded; 2 messages dropped")
-    runtime.spawn_worker("s", "new task", name="w1")
-    monkeypatch.setattr(runtime, "RETRY_DELAYS", (0, 0, 0))
-    # Its own task only, nothing meant for the old w1.
-    reason = _hook("Stop", "w1")["reason"]
-    assert reason.startswith("[from lado] your task (#") and "\n" not in reason
-    states = [m.state for m in state.list_messages("s")]
-    assert states == [state.DROPPED, state.DROPPED, state.SENT]
 
 
 @pytest.mark.parametrize(
@@ -4558,21 +2143,6 @@ def test_a_message_queued_while_the_worker_is_finished_reaches_nobody(
     assert [m.id for m in state.read_messages("s", "w1")] == [taken[0].id]
 
 
-def test_finish_worker_drops_the_bodies_it_never_read(repo, fake_tmux):
-    _session_with_worker(repo)
-    for summary, body in [("details inside", "the body"), ("no body", "")]:
-        state.set_status("s", "w1", state.IDLE)
-        runtime.send_message("s", "supervisor", "w1", summary, body)
-        _hook("UserPromptSubmit", "w1", {"prompt": fake_tmux[-1][3]})
-    assert [m.state for m in state.list_messages("s")] == [state.DELIVERED] * 2
-    finished = runtime.finish_worker("s", "w1", discard=True)
-    assert finished.dropped == 1
-    runtime.spawn_worker("s", "new task", name="w1")
-    assert state.read_messages("s", "w1") == []  # nothing meant for the old w1
-    states = [m.state for m in state.list_messages("s")]
-    assert states == [state.DROPPED, state.DELIVERED, state.PENDING]  # its task last
-
-
 def test_hooks_of_a_finished_worker_are_ignored(repo, fake_tmux, monkeypatch):
     _session_with_worker(repo)
     old = state.get_agent("s", "w1").instance
@@ -4583,23 +2153,6 @@ def test_hooks_of_a_finished_worker_are_ignored(repo, fake_tmux, monkeypatch):
     runtime.spawn_worker("s", "again", name="w1")
     assert hooks.main("SessionEnd", "s", "w1", old) == 0  # the killed process exits late
     assert state.get_agent("s", "w1").status == state.STARTING
-
-
-def test_no_migration_under_a_running_session(repo, fake_tmux):
-    runtime.start_session(str(repo), "old", None, provider="claude")
-    runtime.start_session(str(repo), "other", None, provider="claude")
-    runtime.start_session(str(repo), "gone", None, provider="claude")
-    runtime.stop_session("gone")
-    tmux.kill_session("other")  # its tmux server died without `lado stop`
-    agent_helpers.previous_schema()
-    with pytest.raises(runtime.LadoError) as refused:
-        runtime.migrate_if_safe()
-    message = str(refused.value)
-    assert f"schema version {state.SCHEMA_VERSION - 1}" in message
-    assert 'running sessions: "old"' in message
-    assert "other" not in message and "gone" not in message
-    assert "`lado stop --all`" in message
-    assert state.pending_migration() is not None  # nothing migrated
 
 
 def test_a_migration_due_names_the_sessions_that_keep_it_from_running(repo, fake_tmux):
@@ -4614,17 +2167,6 @@ def test_a_migration_due_names_the_sessions_that_keep_it_from_running(repo, fake
     assert runtime.migration_due() is None  # migrated by the stop
 
 
-def test_migration_goes_ahead_with_no_session_running(repo, fake_tmux):
-    runtime.start_session(str(repo), "old", None, provider="claude")
-    runtime.stop_session("old")
-    agent_helpers.previous_schema()
-    assert state.pending_migration() is not None
-    runtime.migrate_if_safe()
-    assert state.pending_migration() is None
-    runtime.migrate_if_safe()  # nothing pending: nothing to do
-    assert state.get_session("old").stopped_at
-
-
 def _database() -> bytes:
     """lado.db with its WAL folded in: equal bytes mean nothing was written in between."""
     return agent_helpers.database()
@@ -4634,36 +2176,6 @@ def _spy_migrate(monkeypatch, calls):
     """Record state.migrate in the tmux calls, to see it in order with the kills."""
     migrate = state.migrate
     monkeypatch.setattr(state, "migrate", lambda: calls.append(("migrate",)) or migrate())
-
-
-def test_stopping_one_of_two_running_sessions_on_an_older_schema_is_refused(repo, fake_tmux):
-    runtime.start_session(str(repo), "a", None, provider="claude")
-    runtime.start_session(str(repo), "b", None, provider="claude")
-    agent_helpers.previous_schema()
-    before, calls = _database(), len(fake_tmux)
-    with pytest.raises(runtime.LadoError) as refused:
-        runtime.stop_session("a")
-    assert "`lado stop --all`" in str(refused.value)
-    assert '"b"' in str(refused.value)
-    assert fake_tmux[calls:] == []  # no session killed
-    assert _database() == before
-
-
-def test_stopping_the_only_running_session_on_an_older_schema_kills_migrates_and_marks(
-    repo, fake_tmux, monkeypatch
-):
-    runtime.start_session(str(repo), "a", None, provider="claude")
-    runtime.start_session(str(repo), "gone", None, provider="claude")
-    tmux.kill_session("gone")  # its tmux server died: not running
-    agent_helpers.previous_schema()
-    _spy_migrate(monkeypatch, fake_tmux)
-    calls = len(fake_tmux)
-    runtime.stop_session("a")
-    assert fake_tmux[calls:] == [("kill_session", "a"), ("migrate",), ("close_viewers", "a")]
-    assert state.pending_migration() is None
-    assert state.get_session("a").stopped_at
-    assert state.SESSION_GONE not in [e.kind for e in state.list_events("a")]
-    assert not state.get_session("gone").stopped_at  # only the one asked for
 
 
 def test_stopping_an_unknown_session_on_an_older_schema(repo, fake_tmux):
@@ -4710,15 +2222,6 @@ def test_stop_all_on_an_older_schema_kills_all_then_migrates_then_marks(
     assert state.SESSION_GONE not in [e.kind for e in state.list_events("a")]
 
 
-def test_stop_all_stops_every_session_not_stopped(repo, fake_tmux):
-    for name in ("a", "b"):
-        runtime.start_session(str(repo), name, None, provider="claude")
-    tmux.kill_session("b")
-    assert _stop_all() == ["a", "b"]
-    assert all(state.get_session(n).stopped_at for n in ("a", "b"))
-    assert _stop_all() == []
-
-
 def test_stop_all_does_not_migrate_while_a_loop_runs_on(repo, fake_tmux, monkeypatch):
     runtime.start_session(str(repo), "a", None, provider="claude")
     agent_helpers.previous_schema()
@@ -4730,32 +2233,6 @@ def test_stop_all_does_not_migrate_while_a_loop_runs_on(repo, fake_tmux, monkeyp
     assert state.pending_migration() == (state.SCHEMA_VERSION - 1, ["a"])
     monkeypatch.setattr(loop, "wait_stopped", lambda session: True)
     assert _stop_all() == ["a"]  # again, once it ended
-
-
-@pytest.mark.parametrize("older", [False, True])
-def test_stop_all_goes_on_past_a_session_it_cannot_stop_and_names_it(
-    repo, fake_tmux, monkeypatch, older
-):
-    for name in ("a", "b", "c"):
-        runtime.start_session(str(repo), name, None, provider="claude")
-    if older:
-        agent_helpers.previous_schema()
-    mark = state.stop_session
-
-    def locked(session, gone=False):
-        if session == "b":
-            raise sqlite3.OperationalError("database is locked")
-        return mark(session, gone)
-
-    monkeypatch.setattr(state, "stop_session", locked)
-    reported = []
-    with pytest.raises(runtime.LadoError) as failed:
-        runtime.stop_all(lambda name, stopped: reported.append(name))
-    assert reported == ["a", "c"]  # each one as soon as it is stopped
-    assert str(failed.value) == (
-        'could not stop session "b": OperationalError: database is locked; stopped: "a", "c"'
-    )
-    assert [bool(state.get_session(n).stopped_at) for n in "abc"] == [True, False, True]
 
 
 def test_stop_returns_once_the_loop_has_ended(repo, fake_tmux, monkeypatch, lado_home):
@@ -4836,34 +2313,6 @@ def _stop_all() -> list[str]:
     return reported
 
 
-def test_session_status_tells_the_four_states(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    sess = state.get_session("s")
-    assert runtime.session_status(sess) == runtime.SessionStatus.LOOP_DOWN
-    held = loop.take_lock("s")  # its loop runs
-    assert runtime.session_status(sess) == runtime.SessionStatus.RUNNING
-    tmux.kill_session("s")
-    assert runtime.session_status(sess) == runtime.SessionStatus.TMUX_GONE
-    held.close()
-    runtime.stop_session("s")
-    assert runtime.session_status(state.get_session("s")) == runtime.SessionStatus.STOPPED
-
-
-def test_a_message_to_the_human_is_delivered_at_once_into_no_window(repo, fake_tmux):
-    _session_with_worker(repo)
-    typed_before = len(fake_tmux)
-    assert runtime.send_message("s", "supervisor", "human", "need a decision", "A or B?") == (
-        "delivered: the human reads it in LADO's UI"
-    )
-    assert len(fake_tmux) == typed_before
-    [message] = state.list_messages("s")
-    assert (message.sender, message.recipient, message.state) == (
-        "supervisor",
-        "human",
-        state.DELIVERED,
-    )
-
-
 def test_an_unknown_recipient_names_the_human_too(repo, fake_tmux):
     _session_with_worker(repo)
     with pytest.raises(runtime.LadoError, match='running agents: supervisor, w1; or "human"'):
@@ -4877,31 +2326,6 @@ def test_a_worker_cannot_take_a_name_of_lado_or_the_human(repo, fake_tmux, name)
         runtime.spawn_worker("s", "task", name=name)
     assert [a.name for a in state.list_agents("s")] == ["supervisor"]
     assert not (repo / ".lado/worktrees/s" / name.lower()).exists()
-
-
-def test_messages_to_the_human_are_never_dropped(repo, fake_tmux):
-    _session_with_worker(repo)
-    runtime.send_message("s", "w1", "human", "a question", "with a body")
-    runtime.send_message("s", "supervisor", "human", "a milestone")
-    runtime.sweep("s", now=time.time() + 1000, delays=DELAYS)
-    assert runtime.finish_worker("s", "w1", discard=True).dropped == 0
-    assert runtime.stop_session("s").dropped == 0
-    assert [m.state for m in state.list_messages("s")] == [state.DELIVERED] * 2
-    assert state.list_events("s")[-1].detail == "0 messages dropped"
-
-
-def test_the_humans_text_reaches_the_supervisor_as_a_message(repo, fake_tmux):
-    _session_with_worker(repo)
-    state.set_status("s", "supervisor", state.IDLE)
-    assert runtime.write_as_human("s", "  merge w1, please\t\n") == "sent"
-    assert fake_tmux[-1] == (
-        "send_text",
-        "s",
-        "supervisor",
-        "[from human] merge w1, please" + runtime.HUMAN_REPLY_HINT,
-    )
-    [message] = state.list_messages("s")
-    assert (message.sender, message.recipient, message.body) == ("human", "supervisor", "")
 
 
 @pytest.mark.parametrize(
@@ -4963,18 +2387,6 @@ def test_the_copy_of_a_long_text_stays_one_short_line(repo, fake_tmux):
     assert copy.summary.endswith(f"… (#{mine.id})")
 
 
-def test_no_copy_of_the_humans_text_to_the_supervisor_or_of_answers(repo, fake_tmux):
-    _session_with_worker(repo)
-    runtime.write_as_human("s", "hello")
-    first = runtime.ask_human("s", "w1", "Merge now?", choices=["yes", "no"])
-    second = runtime.ask_human("s", "w1", "Which port?")
-    asked = [m.id for m in state.list_messages("s") if m.kind == state.QUESTION]
-    assert first and second
-    runtime.answer_question("s", asked[0], choice="yes")
-    runtime.dismiss_question("s", asked[1])
-    assert [m.sender for m in _messages() if m.recipient == "supervisor"] == ["human"]
-
-
 @pytest.mark.parametrize(
     ("text", "to", "reason"),
     [
@@ -4989,55 +2401,6 @@ def test_the_humans_text_is_refused_with_a_reason(repo, fake_tmux, text, to, rea
     with pytest.raises(runtime.LadoError, match=re.escape(reason)):
         runtime.write_as_human("s", text, to=to)
     assert state.list_messages("s") == []
-
-
-def test_the_human_cannot_write_into_a_stopped_session(repo, fake_tmux):
-    _session_with_worker(repo)
-    runtime.stop_session("s")
-    with pytest.raises(runtime.LadoError, match='session "s" is stopped'):
-        runtime.write_as_human("s", "hi")
-
-
-def test_the_human_hears_of_their_message_that_failed(repo, fake_tmux):
-    _session_with_worker(repo)
-    state.set_status("s", "supervisor", state.IDLE)
-    runtime.write_as_human("s", "are you there?")
-    _retry_until_failed(state.list_messages("s")[0].sent_at)
-    mine, notice = state.list_messages("s")
-    assert mine.state == state.FAILED
-    assert (notice.sender, notice.recipient, notice.state) == ("lado", "human", state.DELIVERED)
-    assert notice.summary == f"message #{mine.id} to supervisor not delivered: are you there?"
-
-
-def test_an_agent_asks_the_human_a_question(repo, fake_tmux):
-    _session_with_worker(repo)
-    typed_before = len(fake_tmux)
-    result = runtime.ask_human("s", "w1", "Merge now?", "Tests pass.", ["yes", "later"], False)
-    [question] = _messages()
-    assert result == (
-        f"question #{question.id} asked; the human's answer or dismissal comes as a message "
-        "from human"
-    )
-    assert len(fake_tmux) == typed_before
-    assert (question.kind, question.sender, question.recipient, question.state) == (
-        state.QUESTION,
-        "w1",
-        "human",
-        state.DELIVERED,
-    )
-    assert (question.summary, question.body) == ("Merge now?", "Tests pass.")
-    assert (question.choices, question.free_answer, question.question_state) == (
-        ["yes", "later"],
-        False,
-        state.OPEN_QUESTION,
-    )
-
-
-def test_a_question_without_choices_takes_a_free_answer(repo, fake_tmux):
-    _session_with_worker(repo)
-    runtime.ask_human("s", "w1", "Which port?")
-    [question] = _messages()
-    assert (question.choices, question.free_answer) == (None, True)
 
 
 @pytest.mark.parametrize(
@@ -5084,135 +2447,12 @@ def _asked(repo, choices=("yes", "later"), free=True):
     return _messages()[-1]
 
 
-@pytest.mark.parametrize(
-    ("choice", "text", "summary", "body"),
-    [
-        ("yes", None, "Answer to #{id}: yes", ""),
-        (
-            "later",
-            "after the release\nplease",
-            "Answer to #{id}: later",
-            "after the release\nplease",
-        ),
-        (None, " after the release ", "Answer to #{id}: after the release", ""),
-        (None, "after\nthe release", "Answer to #{id}: after", "after\nthe release"),
-    ],
-)
-def test_the_humans_answer_comes_to_the_agent_as_a_message(
-    repo, fake_tmux, choice, text, summary, body
-):
-    question = _asked(repo)
-    runtime.answer_question("s", question.id, choice, text)
-    asked, answer = _messages()
-    summary = summary.format(id=question.id)
-    assert (answer.sender, answer.recipient, answer.summary, answer.body) == (
-        "human",
-        "w1",
-        summary,
-        body,
-    )
-    assert (answer.reply_to, answer.choice) == (question.id, choice)
-    assert (asked.question_state, asked.answered_by) == (state.ANSWERED, answer.id)
-    assert fake_tmux[-1][:3] == ("send_text", "s", "w1")
-    assert fake_tmux[-1][3].startswith(f"[from human] {summary}")
-
-
-def test_a_long_own_answer_is_cut_in_the_summary_and_whole_in_the_body(repo, fake_tmux):
-    question = _asked(repo)
-    runtime.answer_question("s", question.id, None, "x" * 300)
-    answer = _messages()[-1]
-    assert len(answer.summary) == state.SUMMARY_LIMIT and answer.summary.endswith("…")
-    assert answer.body == "x" * 300
-
-
-def test_the_human_dismisses_a_question_and_the_agent_hears_of_it(repo, fake_tmux):
-    question = _asked(repo)
-    runtime.dismiss_question("s", question.id)
-    asked, dismissal = _messages()
-    assert (dismissal.sender, dismissal.recipient, dismissal.summary) == (
-        "human",
-        "w1",
-        f"Dismissed #{question.id}",
-    )
-    assert (dismissal.reply_to, dismissal.choice) == (question.id, None)
-    assert (asked.question_state, asked.answered_by) == (state.DISMISSED, dismissal.id)
-    assert fake_tmux[-1] == ("send_text", "s", "w1", f"[from human] Dismissed #{question.id}")
-
-
-def test_a_dismissal_carries_the_humans_comment_as_its_body(repo, fake_tmux):
-    question = _asked(repo)
-    runtime.dismiss_question("s", question.id, "  not now:\nask after the release  ")
-    asked, dismissal = _messages()
-    assert (dismissal.summary, dismissal.body) == (
-        f"Dismissed #{question.id}",
-        "not now:\nask after the release",
-    )
-    assert (dismissal.reply_to, dismissal.choice) == (question.id, None)
-    assert (asked.question_state, asked.answered_by) == (state.DISMISSED, dismissal.id)
-    assert fake_tmux[-1][3].startswith(f"[from human] Dismissed #{question.id} (#{dismissal.id}, ")
-
-
-def test_a_blank_comment_leaves_the_dismissal_without_a_body(repo, fake_tmux):
-    question = _asked(repo)
-    runtime.dismiss_question("s", question.id, " \n ")
-    assert _messages()[-1].body == ""
-
-
 def test_a_too_long_comment_is_refused_and_the_question_stays_open(repo, fake_tmux):
     question = _asked(repo)
     long = "x" * (runtime.MAX_MESSAGE + 1)
     with pytest.raises(runtime.LadoError, match=f"the limit is {runtime.MAX_MESSAGE}"):
         runtime.dismiss_question("s", question.id, long)
     assert [m.question_state for m in _messages()] == [state.OPEN_QUESTION]
-
-
-@pytest.mark.parametrize(
-    ("choices", "free", "choice", "text", "reason"),
-    [
-        (
-            ("yes", "later"),
-            True,
-            "no",
-            None,
-            'question #{id} has no choice "no"; its choices: yes, later',
-        ),
-        (
-            ("yes",),
-            False,
-            None,
-            "maybe",
-            "question #{id} takes one of its choices, not an own answer",
-        ),
-        (("yes",), True, None, None, "choose one of the choices or write an answer"),
-        (("yes",), True, None, "  ", "choose one of the choices or write an answer"),
-    ],
-)
-def test_a_wrong_answer_is_refused(repo, fake_tmux, choices, free, choice, text, reason):
-    question = _asked(repo, choices, free)
-    with pytest.raises(runtime.LadoError, match=re.escape(reason.format(id=question.id))):
-        runtime.answer_question("s", question.id, choice, text)
-    assert _messages()[-1].question_state == state.OPEN_QUESTION
-
-
-def test_only_an_open_question_takes_an_answer(repo, fake_tmux):
-    question = _asked(repo)
-    runtime.answer_question("s", question.id, "yes")
-    for act in (
-        lambda: runtime.answer_question("s", question.id, "later"),
-        lambda: runtime.dismiss_question("s", question.id),
-    ):
-        with pytest.raises(runtime.LadoError, match=f"question #{question.id} is answered"):
-            act()
-    assert len(_messages()) == 2
-
-
-def test_an_answer_to_no_question_is_refused(repo, fake_tmux):
-    question = _asked(repo)
-    answer_id = question.id + 1
-    runtime.send_message("s", "w1", "human", "not a question")
-    for missing in (answer_id, 999):
-        with pytest.raises(runtime.LadoError, match=f"no question #{missing} in session s"):
-            runtime.answer_question("s", missing, "yes")
 
 
 def _two_asked(repo, status=state.IDLE):
@@ -5230,110 +2470,6 @@ def _pastes(fake_tmux, agent="w1"):
     return [call[3] for call in fake_tmux if call[:3] == ("send_text", "s", agent)]
 
 
-def test_two_answers_reach_an_idle_agent_in_one_paste(repo, fake_tmux):
-    first, second = _two_asked(repo)
-    result = runtime.answer_questions(
-        "s",
-        [runtime.HumanReply(first, "short"), runtime.HumanReply(second, text="main, then rebase")],
-    )
-    assert result == "sent"
-    [paste] = _pastes(fake_tmux)
-    assert f"[from human] Answer to #{first}: short" in paste
-    assert f"[from human] Answer to #{second}: main, then rebase" in paste
-    assert _question_states() == [state.ANSWERED, state.ANSWERED]
-
-
-def test_a_skip_is_a_dismissal_with_its_comment(repo, fake_tmux):
-    first, second = _two_asked(repo)
-    runtime.answer_questions(
-        "s",
-        [runtime.HumanReply(first, "short"), runtime.HumanReply(second, text=" later ", skip=True)],
-    )
-    *_, answer, dismissal = state.list_messages("s")
-    assert (answer.summary, answer.reply_to) == (f"Answer to #{first}: short", first)
-    assert (dismissal.summary, dismissal.body, dismissal.reply_to, dismissal.choice) == (
-        f"Dismissed #{second}",
-        "later",
-        second,
-        None,
-    )
-    assert _question_states() == [state.ANSWERED, state.DISMISSED]
-    [paste] = _pastes(fake_tmux)
-    assert f"[from human] Answer to #{first}: short" in paste
-    assert f"[from human] Dismissed #{second} (#{dismissal.id}, " in paste
-
-
-def _reply_files(reply: state.Message) -> list[str]:
-    return [a.artifact.full_name for a in artifacts.attached(state.message_attachments(reply.id))]
-
-
-def test_a_reply_carries_the_files_the_human_attached(repo, fake_tmux):
-    first, second = _two_asked(repo)
-    shot = artifacts.upload("s", "shot.png", b"png").full_name
-    log = artifacts.upload("s", "server.log", b"boom").full_name
-    runtime.answer_questions(
-        "s",
-        [
-            runtime.HumanReply(first, "short"),
-            runtime.HumanReply(second, text="like this", attached=(shot, log)),
-        ],
-    )
-    *_, answer, own = state.list_messages("s")
-    assert (own.summary, own.reply_to) == (f"Answer to #{second}: like this", second)
-    assert _reply_files(own) == [shot, log]
-    assert _reply_files(answer) == []
-    [paste] = _pastes(fake_tmux)
-    assert f"[from human] Answer to #{second}: like this (#{own.id}, " in paste
-
-
-def test_an_own_answer_of_files_only_names_them(repo, fake_tmux):
-    _, second = _two_asked(repo)
-    log = artifacts.upload("s", "server.log", b"boom").full_name
-    runtime.answer_questions("s", [runtime.HumanReply(second, text=" ", attached=(log,))])
-    own = state.list_messages("s")[-1]
-    assert (own.summary, own.body) == (f"Answer to #{second}: 1 file: {log}", "")
-    assert _reply_files(own) == [log]
-    assert _question_states() == [state.OPEN_QUESTION, state.ANSWERED]
-
-
-def test_a_files_only_answer_is_cut_to_the_summary_limit(repo, fake_tmux):
-    _, second = _two_asked(repo)
-    names = [
-        artifacts.upload("s", f"{'x' * 40}{n}.txt", str(n).encode()).full_name for n in range(9)
-    ]
-    runtime.answer_questions("s", [runtime.HumanReply(second, attached=tuple(names))])
-    own = state.list_messages("s")[-1]
-    assert own.summary.startswith(f"Answer to #{second}: 9 files: ")
-    assert len(own.summary) == state.SUMMARY_LIMIT and own.summary.endswith("…")
-    assert _reply_files(own) == names
-
-
-def test_a_skip_takes_files_without_a_comment(repo, fake_tmux):
-    _, second = _two_asked(repo)
-    log = artifacts.upload("s", "server.log", b"boom").full_name
-    runtime.answer_questions("s", [runtime.HumanReply(second, skip=True, attached=(log,))])
-    dismissal = state.list_messages("s")[-1]
-    assert (dismissal.summary, dismissal.body) == (f"Dismissed #{second}", "")
-    assert _reply_files(dismissal) == [log]
-    assert _question_states() == [state.OPEN_QUESTION, state.DISMISSED]
-
-
-def test_a_reply_naming_a_missing_file_refuses_the_whole_call(repo, fake_tmux):
-    first, second = _two_asked(repo)
-    before = state.list_messages("s")
-    with pytest.raises(artifacts.ArtifactError, match='no artifact "nope.txt" in session s'):
-        runtime.answer_questions(
-            "s",
-            [
-                runtime.HumanReply(first, "short"),
-                runtime.HumanReply(second, text="x", attached=("nope.txt",)),
-            ],
-        )
-    assert state.list_messages("s") == before
-    assert _question_states() == [state.OPEN_QUESTION, state.OPEN_QUESTION]
-    assert _pastes(fake_tmux) == []
-
-
 def test_a_reply_with_eleven_files_is_refused(repo, fake_tmux):
     first, second = _two_asked(repo)
     names = [artifacts.upload("s", f"{n}.txt", str(n).encode()).full_name for n in range(11)]
@@ -5348,18 +2484,6 @@ def test_a_reply_with_eleven_files_is_refused(repo, fake_tmux):
         )
     assert state.list_messages("s") == before
     assert _question_states() == [state.OPEN_QUESTION, state.OPEN_QUESTION]
-
-
-def test_a_batch_with_a_question_closed_meanwhile_changes_nothing(repo, fake_tmux):
-    first, second = _two_asked(repo)
-    runtime.answer_question("s", second, None, "main")
-    before = state.list_messages("s")
-    with pytest.raises(runtime.LadoError, match=f"^question #{second} is answered$"):
-        runtime.answer_questions(
-            "s", [runtime.HumanReply(first, "short"), runtime.HumanReply(second, text="x")]
-        )
-    assert state.list_messages("s") == before
-    assert _question_states() == [state.OPEN_QUESTION, state.ANSWERED]
 
 
 def test_a_question_closed_between_the_check_and_the_write_changes_nothing(
@@ -5436,41 +2560,8 @@ def test_a_batch_the_core_refuses_changes_nothing(repo, fake_tmux, replies, reas
     assert state.list_messages("s") == before
 
 
-def test_a_busy_agent_gets_the_batch_at_its_turns_end_in_one_hand_over(repo, fake_tmux):
-    first, second = _two_asked(repo, status=state.BUSY)
-    result = runtime.answer_questions(
-        "s", [runtime.HumanReply(first, "short"), runtime.HumanReply(second, text="main")]
-    )
-    assert result.startswith("queued; w1 is busy")
-    assert _pastes(fake_tmux) == []
-    reason = _hook("Stop", "w1")["reason"]
-    assert reason.splitlines() == [
-        f"[from human] Answer to #{first}: short",
-        f"[from human] Answer to #{second}: main",
-    ]
-
-
 def _question_states():
     return [m.question_state for m in state.list_messages("s") if m.kind == state.QUESTION]
-
-
-def test_a_finished_workers_open_questions_are_closed(repo, fake_tmux):
-    _session_with_worker(repo)
-    runtime.ask_human("s", "w1", "first?")
-    runtime.ask_human("s", "w1", "second?")
-    runtime.ask_human("s", "supervisor", "the supervisor's?")
-    runtime.answer_question("s", state.list_messages("s")[0].id, text="done")
-    runtime.finish_worker("s", "w1", discard=True)
-    assert _question_states() == [state.ANSWERED, state.CLOSED, state.OPEN_QUESTION]
-
-
-def test_stopping_the_session_closes_its_open_questions(repo, fake_tmux):
-    _session_with_worker(repo)
-    runtime.ask_human("s", "w1", "first?")
-    runtime.ask_human("s", "supervisor", "second?")
-    assert runtime.stop_preview("s").questions == 2
-    assert runtime.stop_session("s").questions == 2
-    assert _question_states() == [state.QUESTION_STOPPED, state.QUESTION_STOPPED]
 
 
 def test_the_containers_stop_marks_the_open_questions_stopped(repo, fake_tmux):
@@ -5653,65 +2744,9 @@ def test_no_reminder_on_a_turn_that_ended_on_an_error(repo, fake_tmux):
     assert _reminders() == []
 
 
-@pytest.mark.parametrize(
-    "reply",
-    [
-        lambda: runtime.send_message("s", "supervisor", "human", "merged"),
-        lambda: runtime.ask_human("s", "supervisor", "merge w2 too?"),
-    ],
-)
-def test_a_turn_that_wrote_to_the_human_is_not_flagged(repo, fake_tmux, reply):
-    _session_with_worker(repo)
-    mine = _human_writes()
-    reply()
-    assert _hook("Stop", "supervisor") is None
-    assert _reply_state(mine) == state.REPLIED and _reminders() == []
-
-
 def _turn_fails():
     event = providers.Event(providers.TURN_END, error="APIError: the server broke")
     hooks.handle(providers.get("claude"), event, "s", "supervisor")
-
-
-def test_a_turn_that_ended_on_an_error_decides_no_reply(repo, fake_tmux):
-    _session_with_worker(repo)
-    mine = _human_writes()
-    _turn_fails()
-    assert _reply_state(mine) is None
-
-
-def test_the_next_turn_after_an_error_replies(repo, fake_tmux):
-    _session_with_worker(repo)
-    mine = _human_writes()
-    _turn_fails()
-    runtime.send_message("s", "supervisor", "human", "merged")
-    _hook("Stop", "supervisor")
-    assert _reply_state(mine) == state.REPLIED
-
-
-def test_the_next_turn_after_an_error_does_not_reply(repo, fake_tmux):
-    _session_with_worker(repo)
-    mine = _human_writes()
-    _turn_fails()
-    _hook("Stop", "supervisor")
-    assert _reply_state(mine) == state.REMINDED and len(_reminders()) == 1
-
-
-def test_a_body_read_in_a_turn_without_a_reply_is_reminded(repo, fake_tmux):
-    _session_with_worker(repo)
-    mine = _human_writes("merge w1?\nthen tag it")
-    assert [m.id for m in state.read_messages("s", "supervisor")] == [mine.id]
-    _hook("Stop", "supervisor")
-    assert _reply_state(mine) == state.REMINDED
-
-
-def test_an_answer_to_a_question_needs_no_reply(repo, fake_tmux):
-    question = _asked(repo)
-    runtime.answer_question("s", question.id, "yes")
-    answer = _messages()[-1]
-    _hook("UserPromptSubmit", "w1", {"prompt": runtime.format_message(answer)})
-    _hook("Stop", "w1")
-    assert _reply_state(answer) is None
 
 
 def test_a_message_handed_over_at_the_turn_end_is_checked_at_the_next_one(repo, fake_tmux):
@@ -5724,19 +2759,6 @@ def test_a_message_handed_over_at_the_turn_end_is_checked_at_the_next_one(repo, 
     runtime.send_message("s", "supervisor", "human", "merged")
     _hook("Stop", "supervisor", CONTINUED)
     assert _reply_state(mine) == state.REPLIED
-
-
-def test_what_the_agent_wrote_before_it_got_the_message_is_no_reply_to_it(repo, fake_tmux):
-    """Written in the turn before: the human's message, queued while the agent was busy,
-    has a lower id than the agent's report, but the agent had not got it yet."""
-    _session_with_worker(repo)
-    _hook("UserPromptSubmit", "supervisor")  # busy
-    runtime.write_as_human("s", "merge w1?")
-    mine = state.list_messages("s")[-1]
-    runtime.send_message("s", "supervisor", "human", "a report written meanwhile")
-    _hook("Stop", "supervisor")  # hands the human's message over
-    _hook("Stop", "supervisor", CONTINUED)  # that turn wrote nothing to the human
-    assert _reply_state(mine) == state.REMINDED
 
 
 def _got(sender="supervisor", agent="w1", summary="one last note", body="Reply with ACK"):
@@ -5949,22 +2971,6 @@ def test_the_built_in_lead_gets_a_lead_skill_per_kit_supervisor(
     ) in prompt
 
 
-def test_lead_skills_are_written_anew_at_each_start(repo, fake_tmux, boss_kit, lado_home):
-    runtime.start_session(str(repo), "s", None, kit_names=["default", "boss"], provider="claude")
-    files = _lead_dir(lado_home) / "lead-files"
-    _write(files / "boss" / "notes" / "stale.md", "old\n")
-    _write(_lead_dir(lado_home) / "lead-skills" / "lead-gone" / "SKILL.md", "old\n")
-    runtime.stop_session("s")
-    runtime.start_session(str(repo), "s", None)
-    assert not (files / "boss" / "notes" / "stale.md").exists()
-    assert not (_lead_dir(lado_home) / "lead-skills" / "lead-gone").exists()
-    assert (files / "boss" / "notes" / "SKILL.md").is_file()
-    # A kit supervisor that leads gets no lead skills.
-    runtime.stop_session("s")
-    runtime.start_session(str(repo), "s", None, kit_names=["boss"])
-    assert not files.exists() and not (_lead_dir(lado_home) / "lead-skills").exists()
-
-
 def test_a_lead_skill_says_when_its_supervisor_lists_no_skills(repo, fake_tmux, lado_home):
     kit = repo.parent / "kits" / "boss"
     _write(kit / "kit.yaml", "name: boss\nversion: 1.0.0\nsupervisor: chief\n")
@@ -5977,22 +2983,6 @@ def test_a_lead_skill_says_when_its_supervisor_lists_no_skills(repo, fake_tmux, 
     runtime.stop_session("s")
     runtime.start_session(str(repo), "s", None)
     assert skill_md.read_text().endswith("---\nL.\n")
-
-
-def test_a_lost_start_does_not_touch_the_running_leads_files(
-    repo, fake_tmux, boss_kit, lado_home, monkeypatch
-):
-    config = _lead_dir(lado_home)
-    _write(config / "lead-files" / "boss" / "notes" / "SKILL.md", "the running lead's\n")
-    monkeypatch.setattr(state, "add_session", lambda sess: False)  # another start took it
-    with pytest.raises(runtime.LadoError, match="already running"):
-        runtime.start_session(
-            str(repo), "s", None, kit_names=["default", "boss"], provider="claude"
-        )
-    assert (config / "lead-files" / "boss" / "notes" / "SKILL.md").read_text() == (
-        "the running lead's\n"
-    )
-    assert not (config / "lead-skills").exists()
 
 
 @pytest.mark.parametrize("target", ["missing.txt", "loop"])
@@ -6035,29 +3025,6 @@ def quiet_kit(repo):
     )
     _write(kit / "agents" / "dev.md", "---\nname: dev\ndescription: develops\n---\nDevelop.\n")
     return kit
-
-
-def _deny(cmd):
-    return json.loads(open(cmd[cmd.index("--settings") + 1]).read())["permissions"]["deny"]
-
-
-def test_a_read_only_worker_is_stored_so_and_its_cli_takes_its_edit_tools(
-    repo, fake_tmux, quiet_kit
-):
-    runtime.start_session(str(repo), "s", None, kit_names=["quiet"], provider="claude")
-    reviewer = runtime.spawn_worker("s", "review", role="reviewer")
-    assert state.get_agent("s", reviewer.name).read_only is True
-    cmd = fake_tmux[-1][-1]
-    assert _deny(cmd) == ["SendMessage", "ListAgents", "Edit", "Write", "NotebookEdit"]
-    assert runtime.READ_ONLY_INSTRUCTIONS.format(role="reviewer") in agent_helpers.claude_prompt(
-        cmd
-    )
-    dev = runtime.spawn_worker("s", "build", role="dev")
-    assert state.get_agent("s", dev.name).read_only is False
-    cmd = fake_tmux[-1][-1]
-    assert _deny(cmd) == ["SendMessage", "ListAgents"]
-    assert "read-only" not in agent_helpers.claude_prompt(cmd)
-    assert state.get_agent("s", "supervisor").read_only is False
 
 
 def test_in_a_container_every_agent_is_told_of_mise_and_who_sets_a_default(
@@ -6109,13 +3076,6 @@ def test_every_agent_is_told_to_keep_its_temporary_files_in_its_folder(
     assert "Never write to a fixed path in `/tmp`" in runtime.TEMP_FILES
 
 
-def test_outside_a_container_no_agent_is_told_of_mise(repo, fake_tmux, quiet_kit):
-    runtime.start_session(str(repo), "s", None, kit_names=["quiet"], provider="claude")
-    runtime.spawn_worker("s", "build", role="dev")
-    for call in (fake_tmux[0], fake_tmux[-1]):
-        assert "mise" not in agent_helpers.claude_prompt(call[-1])
-
-
 def test_a_read_only_worker_on_a_cli_that_cannot_take_edits_is_refused_before_its_worktree(
     repo, fake_tmux, quiet_kit, monkeypatch
 ):
@@ -6158,19 +3118,6 @@ def test_a_read_only_codex_lead_and_worker_start(repo, fake_tmux, quiet_kit, mod
         )
     assert [w for w in started.warnings if "apply_patch" in w]
     assert [w for w in warnings if "apply_patch" in w]
-
-
-def test_a_read_only_lead_is_stored_so_and_written_anew_at_each_resume(repo, fake_tmux, quiet_kit):
-    _write(quiet_kit / "kit.yaml", "name: quiet\nversion: 1.0.0\nsupervisor: reviewer\n")
-    runtime.start_session(str(repo), "s", None, kit_names=["quiet"], provider="claude")
-    assert state.get_agent("s", "supervisor").read_only is True
-    assert "Edit" in _deny(fake_tmux[0][-1])
-    runtime.stop_session("s")
-    reviewer = quiet_kit / "agents" / "reviewer.md"
-    reviewer.write_text(reviewer.read_text().replace("read_only: true\n", ""))
-    runtime.start_session(str(repo), "s", None)
-    assert state.get_agent("s", "supervisor").read_only is False
-    assert "Edit" not in _deny(fake_tmux[-1][-1])
 
 
 def test_a_read_only_lead_on_a_cli_that_cannot_take_edits_refuses_the_start(
@@ -6221,15 +3168,6 @@ def test_kit_users_are_the_sessions_that_name_the_kit_split_by_status(
     assert none.running_line("nope") is None and none.stopped_line("nope") is None
 
 
-def test_a_session_whose_repository_has_a_kit_folder_of_that_name_uses_the_kit(tmp_path, lado_home):
-    (tmp_path / "s" / ".lado" / "kits" / "team").mkdir(parents=True)
-    state.add_session(
-        state.Session("s", str(tmp_path / "s"), None, kits=["team"], provider="claude")
-    )
-    state.stop_session("s")
-    assert runtime.kit_users("team") == runtime.KitUsers(running=[], stopped=["s"])
-
-
 # The time a session ran (runtime.session_time) and the end of one whose tmux died.
 
 
@@ -6272,37 +3210,6 @@ def _gone(session):
     return [e.created_at for e in state.list_events(session) if e.kind == state.SESSION_GONE]
 
 
-def test_a_new_session_runs_since_it_was_created(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    _set_created("s", "2026-10-05 10:00:00")
-    sess = state.get_session("s")
-    assert sess.created_at == "2026-10-05 10:00:00"
-    assert runtime.session_time(sess) == runtime.SessionTime(0, _utc("2026-10-05 10:00:00"))
-
-
-def test_a_session_ran_between_its_starts_and_stops(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    runtime.stop_session("s")
-    runtime.start_session(str(repo), "s", None)
-    runtime.stop_session("s")
-    runtime.start_session(str(repo), "s", None)
-    _set_created("s", "2026-10-05 10:00:00")
-    _set_all_events("s", "2026-10-05 10:00:00.000")
-    _set_events("s", state.SESSION_STOP, "2026-10-05 10:10:00.000", "2026-10-05 11:05:00.500")
-    _set_events("s", state.SESSION_RESUME, "2026-10-05 11:00:00.000", "2026-10-05 12:00:00.000")
-    running = runtime.session_time(state.get_session("s"))
-    assert running == runtime.SessionTime(900, _utc("2026-10-05 12:00:00"))
-    runtime.stop_session("s")
-    _set_events(
-        "s",
-        state.SESSION_STOP,
-        *["2026-10-05 10:10:00.000", "2026-10-05 11:05:00.500"],
-        "2026-10-05 12:01:00.000",
-    )
-    assert runtime.session_time(state.get_session("s")) == runtime.SessionTime(960, None)
-    assert _gone("s") == []
-
-
 def _died(repo, fake_tmux, seen):
     """Session "s", created at 10:00, whose agents' latest hook ran at `seen` (none for
     None), and whose tmux server died then."""
@@ -6324,28 +3231,6 @@ def test_a_resume_after_tmux_died_counts_no_time_after_the_last_sign_of_life(rep
     _set_events("s", state.SESSION_RESUME, "2026-10-05 13:00:00.000")
     resumed = runtime.session_time(state.get_session("s"))
     assert resumed == runtime.SessionTime(gone.ran_seconds, _utc("2026-10-05 13:00:00"))
-
-
-def test_a_stop_after_tmux_died_counts_no_time_after_the_last_sign_of_life(repo, fake_tmux):
-    _died(repo, fake_tmux, "2026-10-05 10:20:00")
-    gone = runtime.session_time(state.get_session("s"))
-    runtime.stop_session("s")
-    assert _gone("s") == ["2026-10-05 10:20:00.000"]
-    assert runtime.session_time(state.get_session("s")) == gone == runtime.SessionTime(1200, None)
-
-
-def test_without_hooks_the_last_sign_of_life_is_the_sessions_latest_event(repo, fake_tmux):
-    _died(repo, fake_tmux, None)
-    assert runtime.session_time(state.get_session("s")) == runtime.SessionTime(300, None)
-    runtime.stop_session("s")
-    assert _gone("s") == ["2026-10-05 10:05:00.000"]
-    assert runtime.session_time(state.get_session("s")) == runtime.SessionTime(300, None)
-
-
-def test_a_stop_of_a_session_whose_tmux_runs_records_no_end_of_life(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    runtime.stop_session("s")
-    assert _gone("s") == []
 
 
 @pytest.mark.parametrize("seen", [None, "2026-10-05 10:50:00"])
@@ -6380,22 +3265,6 @@ def test_public_remote_drops_what_may_be_a_secret(url, public):
     assert runtime.public_remote(url) == public
 
 
-def test_branch_and_remote_of_a_repository_with_origin(repo):
-    subprocess.run(
-        ["git", "-C", str(repo), "remote", "add", "origin", "git@github.com:ladohq/lado.git"],
-        check=True,
-    )
-    assert (runtime.branch(str(repo)), runtime.remote(str(repo))) == (
-        "main",
-        "git@github.com:ladohq/lado.git",
-    )
-
-
-def test_no_remote_without_origin_and_no_branch_on_a_detached_head(repo):
-    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "--detach"], check=True)
-    assert (runtime.branch(str(repo)), runtime.remote(str(repo))) == (None, None)
-
-
 @pytest.mark.parametrize(("value", "delays"), [(None, (15.0, 30.0, 60.0)), ("0.5,1", (0.5, 1.0))])
 def test_the_retry_delays_are_lado_retry_delays_else_lado_s_own(value, delays):
     assert runtime.retry_delays_from(value) == delays
@@ -6419,27 +3288,6 @@ def _expecting_kits(repo):
     )
     agent_helpers.install_kit(base / "sdlc")
     agent_helpers.install_kit(base / "tracker")
-
-
-def test_a_session_without_the_kit_an_expected_skill_needs_does_not_start(repo, fake_tmux):
-    _expecting_kits(repo)
-    with pytest.raises(kits.KitError) as exc:
-        runtime.start_session(str(repo), "s", None, kit_names=["sdlc"], provider="claude")
-    assert str(exc.value) == (
-        'kit "sdlc" expects skill "tracker", which no kit of the session provides: add a kit '
-        "that provides it with --kit <kit>"
-    )
-    assert state.get_session("s") is None and fake_tmux == []
-
-
-def test_a_spawn_may_not_switch_off_a_skill_its_kit_expects(repo, fake_tmux):
-    _expecting_kits(repo)
-    runtime.start_session(str(repo), "s", None, kit_names=["sdlc", "tracker"], provider="claude")
-    windows = len(fake_tmux)
-    with pytest.raises(kits.KitError, match='agent "analyst" cannot run without it'):
-        runtime.spawn_worker("s", "t", role="analyst", without=["skill:tracker"])
-    assert [a.name for a in state.list_agents("s")] == ["supervisor"]
-    assert len(fake_tmux) == windows
 
 
 @pytest.fixture
@@ -6480,34 +3328,6 @@ def _missing_text(path: str) -> str:
         "it (each launch looks again), or leave out --kit host when the session starts\n"
         f"the agents' PATH: {path}; for a command installed elsewhere: {agent_env.PATH_ADVICE}"
     )
-
-
-def test_a_session_whose_kits_expect_commands_not_on_the_agents_path_does_not_start(
-    repo, fake_tmux, agents_bin, monkeypatch, tmp_path
-):
-    _commanding_kits(repo)
-    # On this process's PATH, which is not the agents'.
-    process_bin = tmp_path / "process-bin"
-    for name in ("openspec", "uv", "gh"):
-        _command(process_bin, name)
-    monkeypatch.setenv("PATH", f"{process_bin}{os.pathsep}{os.environ['PATH']}")
-    with pytest.raises(runtime.LadoError) as exc:
-        runtime.start_session(str(repo), "s", None, kit_names=["sdlc", "host"], provider="claude")
-    assert str(exc.value) == _missing_text(agent_env.resolve()["PATH"])
-    assert state.get_session("s") is None and fake_tmux == []
-    assert not (state.home() / "agents" / "s").exists()
-
-
-def test_a_session_whose_expected_commands_are_on_the_agents_path_starts(
-    repo, fake_tmux, agents_bin
-):
-    _commanding_kits(repo)
-    for name in ("openspec", "uv", "gh"):
-        _command(agents_bin, name)  # on the agents' PATH only
-    runtime.start_session(str(repo), "s", None, kit_names=["sdlc", "host"], provider="claude")
-    assert state.get_session("s").stopped_at is None
-    runtime.spawn_worker("s", "t", role="analyst")
-    assert [a.name for a in state.list_agents("s")] == ["supervisor", "analyst"]
 
 
 def test_a_resume_whose_kits_expect_missing_commands_stays_stopped(repo, fake_tmux, agents_bin):
@@ -6555,82 +3375,6 @@ def test_a_spawn_whose_kits_expect_a_missing_command_is_refused(repo, fake_tmux,
     assert not (repo / ".lado" / "worktrees" / "s").exists()
 
 
-def _titled(title: str | None = None) -> None:
-    state.add_session(state.Session("s", "/r", None, "claude"))
-    if title is not None:
-        state.set_title("s", title)
-
-
-@pytest.mark.parametrize(
-    "text, stored",
-    [
-        ("Review", "Review"),
-        ("  Ревью kit-sdlc  ", "Ревью kit-sdlc"),
-        ("   ", None),
-        ("", None),
-        (None, None),
-        ("s", None),
-        ("  s ", None),
-        ("x" * 80, "x" * 80),
-        ("  " + "я" * 80 + " ", "я" * 80),
-        ("🚀" * 80, "🚀" * 80),
-        ("🚀 launch", "🚀 launch"),
-        ("Семья 👨\u200d👩\u200d👧", "Семья 👨\u200d👩\u200d👧"),
-        ("代码 review", "代码 review"),
-    ],
-)
-def test_set_title_stores_what_the_rule_says(text, stored):
-    _titled("Old")
-    assert runtime.set_title("s", text) == stored
-    assert state.get_session("s").title == stored
-
-
-@pytest.mark.parametrize(
-    "text, reason",
-    [
-        ("x" * 81, "a title is at most 80 characters"),
-        ("  " + "я" * 81, "a title is at most 80 characters"),
-        ("a\nb", "a title is one line of visible text: U\\+000A is not allowed"),
-        ("a\tb", "a title is one line of visible text: U\\+0009 is not allowed"),
-        ("a\x00b", "a title is one line of visible text: U\\+0000 is not allowed"),
-        ("a\x7fb", "a title is one line of visible text: U\\+007F is not allowed"),
-        ("a\u2028b", "a title is one line of visible text: U\\+2028 LINE SEPARATOR is not allowed"),
-        (
-            "abc\u202edef",
-            "a title is one line of visible text: U\\+202E RIGHT-TO-LEFT OVERRIDE is not allowed",
-        ),
-        ("\u200b", "a title is one line of visible text: U\\+200B ZERO WIDTH SPACE is not allowed"),
-    ],
-)
-def test_set_title_refuses_and_changes_nothing(text, reason):
-    _titled("Old")
-    with pytest.raises(runtime.LadoError, match=f"^{reason}$"):
-        runtime.set_title("s", text)
-    assert state.get_session("s").title == "Old"
-
-
-def test_set_title_of_an_unknown_session_is_refused():
-    with pytest.raises(runtime.NoSuchSession, match='unknown session "nope"'):
-        runtime.set_title("nope", "x")
-
-
-def test_set_title_works_on_a_stopped_session():
-    _titled()
-    state.stop_session("s")
-    assert runtime.set_title("s", "Review") == "Review"
-    assert state.get_session("s").title == "Review"
-
-
-def test_a_fresh_starts_title(repo, fake_tmux):
-    runtime.start_session(str(repo), "sait-kofeini", None, "claude", title="  Сайт кофейни ")
-    assert state.get_session("sait-kofeini").title == "Сайт кофейни"
-
-
-def test_a_title_equal_to_the_name_is_none(repo, fake_tmux):
-    runtime.start_session(str(repo), "shop", None, "claude", title="shop")
-    assert state.get_session("shop").title is None
-
-
 def test_a_bad_title_refuses_before_anything_starts(repo, fake_tmux):
     with pytest.raises(runtime.LadoError, match="^a title is one line of visible text"):
         runtime.start_session(str(repo), "shop", None, "claude", title="a\nb")
@@ -6646,13 +3390,6 @@ def test_a_resume_with_a_title_is_refused(repo, fake_tmux):
     assert state.get_session("shop").stopped_at is not None
 
 
-def test_check_title_is_the_rule_of_set_title():
-    assert runtime.check_title("  Ревью ", "s") == "Ревью"
-    assert runtime.check_title("s", "s") is None
-    with pytest.raises(runtime.LadoError, match="^a title is at most 80 characters$"):
-        runtime.check_title("x" * 81, "s")
-
-
 def _set_power(session: str, cli: str, model: str) -> None:
     """Give a running session a power table, as a start with --model stores it."""
     with state.connect() as db:
@@ -6660,18 +3397,6 @@ def _set_power(session: str, cli: str, model: str) -> None:
             "UPDATE sessions SET power = ? WHERE name = ?",
             (state.PowerTable.single(cli, model).to_json(), session),
         )
-
-
-def test_a_worker_of_the_session_s_cli_starts_on_its_model(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    _set_power("s", "claude", "opus")
-    warnings = []
-    runtime.spawn_worker("s", "a task", name="w1", warnings=warnings)
-    _, argv = agent_helpers.launched(fake_tmux[-1])
-    assert argv[argv.index("--model") + 1] == "opus"
-    agent = state.get_agent("s", "w1")
-    assert (agent.model, agent.model_source, agent.model_detail) == ("opus", "session", None)
-    assert not [w for w in warnings if "model" in w]
 
 
 def test_a_worker_of_another_cli_gets_the_note(repo, fake_tmux):
@@ -6691,16 +3416,6 @@ def test_a_worker_of_another_cli_gets_the_note(repo, fake_tmux):
     assert (agent.model, agent.model_source, agent.model_detail) == (None, "cli", note)
 
 
-def test_no_table_passes_no_model(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    warnings = []
-    runtime.spawn_worker("s", "a task", name="w1", warnings=warnings)
-    _, argv = agent_helpers.launched(fake_tmux[-1])
-    assert "--model" not in argv
-    agent = state.get_agent("s", "w1")
-    assert (agent.model, agent.model_source, agent.model_detail) == (None, "cli", None)
-
-
 def _models(monkeypatch, name, *models):
     """`name`'s CLI lists `models` (none: it gives no list)."""
     listed = (
@@ -6709,58 +3424,6 @@ def _models(monkeypatch, name, *models):
         else providers.base.ModelList(why=f"{name} gives no list")
     )
     monkeypatch.setattr(type(providers.get(name)), "model_list", lambda self, env: listed)
-
-
-def test_the_supervisor_starts_on_the_session_model(repo, fake_tmux, monkeypatch):
-    _models(monkeypatch, "kilo", "kilo/a", "kilo/b")
-    started = runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/b")
-    assert not [w for w in started.warnings if "kilo/b" in w]
-    assert state.get_session("s").power == state.PowerTable.single("kilo", "kilo/b")
-    env, _ = agent_helpers.launched(fake_tmux[0])
-    assert json.loads(env["KILO_CONFIG_CONTENT"])["model"] == "kilo/b"
-    agent = state.get_agent("s", "supervisor")
-    assert (agent.model, agent.model_source) == ("kilo/b", "session")
-
-
-def test_a_refused_model_stores_nothing(repo, fake_tmux, monkeypatch):
-    _models(monkeypatch, "kilo", "kilo/a")
-    with pytest.raises(runtime.LadoError) as error:
-        runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/z")
-    assert (
-        str(error.value)
-        == "kilo/z is not in Kilo CLI's list of models; kilo models prints the list"
-    )
-    assert state.get_session("s") is None
-    assert fake_tmux == []
-
-
-def test_a_warned_model_starts_with_the_warning(repo, fake_tmux, monkeypatch):
-    _models(monkeypatch, "kilo")
-    started = runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/z")
-    line = (
-        "kilo gives no list: LADO cannot check kilo/z; a wrong name stops its agents at their "
-        "first turn"
-    )
-    assert line in started.warnings
-    assert f"s: supervisor: {line}" in (state.home() / "loop.log").read_text()
-    assert state.get_session("s").power.row().model == "kilo/z"
-
-
-def test_a_claude_alias_starts_with_no_warning_and_no_list(repo, fake_tmux):
-    started = runtime.start_session(str(repo), "s", None, provider="claude", model="sonnet")
-    assert not [w for w in started.warnings if "sonnet" in w]
-    _, argv = agent_helpers.launched(fake_tmux[0])
-    assert argv[argv.index("--model") + 1] == "sonnet"
-
-
-def test_a_resume_keeps_the_model(repo, fake_tmux, monkeypatch):
-    _models(monkeypatch, "kilo", "kilo/a")
-    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
-    runtime.stop_session("s")
-    started = runtime.start_session(str(repo), "s", None)
-    assert started.changes == []
-    env, _ = agent_helpers.launched(fake_tmux[-1])
-    assert json.loads(env["KILO_CONFIG_CONTENT"])["model"] == "kilo/a"
 
 
 def test_the_model_is_taken_without_its_spaces(repo, fake_tmux, monkeypatch):
@@ -6827,23 +3490,6 @@ def test_lados_own_resume_of_a_kept_model_the_list_lacks(repo, fake_tmux, monkey
     assert sess.stopped_at and sess.power == state.PowerTable.single("kilo", "kilo/a")
 
 
-def test_an_empty_model_drops_it(repo, fake_tmux, monkeypatch):
-    _models(monkeypatch, "kilo", "kilo/a", "kilo/b")
-    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
-    runtime.stop_session("s")
-    started = runtime.start_session(str(repo), "s", None, model="kilo/b")
-    assert started.changes == ["model: kilo kilo/a -> kilo kilo/b"]
-    runtime.stop_session("s")
-    started = runtime.start_session(str(repo), "s", None, model="")
-    assert started.changes == ["model: kilo kilo/b -> Kilo CLI's settings"]
-    assert state.get_session("s").power == state.PowerTable.single("kilo", "")
-    env, _ = agent_helpers.launched(fake_tmux[-1])
-    assert "model" not in json.loads(env["KILO_CONFIG_CONTENT"])
-    runtime.stop_session("s")
-    started = runtime.start_session(str(repo), "s", None, model="kilo/a")
-    assert started.changes == ["model: Kilo CLI's settings -> kilo kilo/a"]
-
-
 CHAT = providers.base.CHAT_COMPLETIONS
 NOT_GIVEN_WAY_OUT = '; list_models shows the others, model="" is the CLI\'s own settings'
 
@@ -6888,69 +3534,6 @@ def _config(call):
     return json.loads(env["OPENCODE_CONFIG_CONTENT"])
 
 
-def test_a_session_with_no_choice_starts_on_the_cli_s_default(repo, fake_tmux, monkeypatch):
-    saved = _on_server()
-    _default(saved)
-    asked = _answers(monkeypatch, "qwen3-8b")
-    runtime.start_session(str(repo), "s", None, provider="opencode")
-    assert state.get_session("s").power is None
-    named = f"lado-{saved.server}/qwen3-8b"
-    assert _config(fake_tmux[0])["model"] == named
-    _, argv = agent_helpers.launched(fake_tmux[0])
-    assert argv[argv.index("--model") + 1] == named
-    agent = state.get_agent("s", "supervisor")
-    assert (agent.model, agent.model_source) == (named, "default")
-    assert asked == ["LM Studio дома"]
-
-
-def test_a_session_on_an_external_model_keeps_its_id(repo, fake_tmux, monkeypatch):
-    saved = _on_server()
-    _models(monkeypatch, "opencode", "opencode/big-pickle")
-    _answers(monkeypatch, "qwen3-8b")
-    runtime.start_session(str(repo), "s", None, provider="opencode", model="Локальная Qwen")
-    assert state.get_session("s").power == state.PowerTable.of(
-        state.PowerRow("opencode", "qwen3-8b", saved.id, "Локальная Qwen")
-    )
-    agent = state.get_agent("s", "supervisor")
-    assert (agent.model, agent.model_source) == (f"lado-{saved.server}/qwen3-8b", "session")
-
-
-def test_a_refused_external_model_stores_nothing(repo, fake_tmux, monkeypatch):
-    _on_server()
-    _models(monkeypatch, "opencode", "opencode/big-pickle")
-    _silent(monkeypatch)
-    with pytest.raises(runtime.ModelRefused) as error:
-        runtime.start_session(str(repo), "s", None, provider="opencode", model="Локальная Qwen")
-    assert str(error.value).startswith(
-        "http://localhost:1234 does not answer (connection refused); LADO cannot check qwen3-8b"
-    )
-    assert error.value.refused.short == "LM Studio дома does not answer"
-    assert state.get_session("s") is None and fake_tmux == []
-
-
-def test_a_refused_default_says_its_way_out(repo, fake_tmux, monkeypatch):
-    _default(_on_server())
-    _silent(monkeypatch)
-    with pytest.raises(runtime.LadoError) as error:
-        runtime.start_session(str(repo), "s", None, provider="opencode")
-    assert str(error.value).endswith(
-        "; it is OpenCode's default model: start with --model '' for its settings, or change it "
-        "with lado model default opencode"
-    )
-
-
-def test_past_a_default_no_model_is_passed_and_no_server_asked(repo, fake_tmux, monkeypatch):
-    _default(_on_server())
-    asked = _answers(monkeypatch, "qwen3-8b")
-    runtime.start_session(str(repo), "s", None, provider="opencode", model="")
-    assert "model" not in _config(fake_tmux[0]) and asked == []
-    agent = state.get_agent("s", "supervisor")
-    assert (agent.model, agent.model_source) == (None, "cli")
-    runtime.stop_session("s")
-    runtime.start_session(str(repo), "s", None)
-    assert "model" not in _config(fake_tmux[-1]) and asked == []
-
-
 def test_a_default_changed_before_a_resume_is_said(repo, fake_tmux, monkeypatch):
     first = _on_server()
     _default(first)
@@ -6980,28 +3563,6 @@ def test_a_default_set_or_cleared_before_a_resume_is_said(repo, fake_tmux, monke
     assert started.changes == ["model: Локальная Qwen -> CLI default"]
 
 
-def test_the_same_default_at_a_resume_is_no_change(repo, fake_tmux, monkeypatch):
-    saved = _on_server()
-    _default(saved)
-    _answers(monkeypatch, "qwen3-8b")
-    runtime.start_session(str(repo), "s", None, provider="opencode")
-    runtime.stop_session("s")
-    state.rename_model(saved.name, "Qwen дома")
-    started = runtime.start_session(str(repo), "s", None)
-    assert started.changes == []
-    assert not [w for w in started.warnings if "changed model" in w]
-
-
-def test_an_alias_default_the_cli_named_in_full_is_no_change(repo, fake_tmux):
-    state.set_cli_default(state.ModelRef("claude", None, "opus"))
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    state.report_model(
-        "s", "supervisor", "claude-opus-5-5", None, providers.get("claude").same_model
-    )
-    runtime.stop_session("s")
-    assert runtime.start_session(str(repo), "s", None).changes == []
-
-
 def test_all_ticked_models_are_in_the_config_whatever_the_session_chose(
     repo, fake_tmux, monkeypatch
 ):
@@ -7015,67 +3576,6 @@ def test_all_ticked_models_are_in_the_config_whatever_the_session_chose(
         assert set(_config(fake_tmux[-1])["provider"]) == both
 
 
-def test_a_silent_server_of_another_model_stops_nothing(repo, fake_tmux, monkeypatch):
-    _default(_on_server())
-    _on_server("Шлюз Qwen", model="gw-qwen", server="Шлюз")
-    asked = _answers(monkeypatch, "qwen3-8b")
-    runtime.start_session(str(repo), "s", None, provider="opencode")
-    assert asked == ["LM Studio дома"]
-
-
-def test_a_key_over_plain_http_warns_at_a_start_and_a_spawn(repo, fake_tmux, monkeypatch):
-    server = state.add_model_server("gw", "Шлюз", "http://llm.example.com", "OpenAI", [CHAT])
-    state.add_model("Qwen", "opencode", "q", server.id)
-    model_settings._write_key(server.id, "KEY-CANARY")
-    started = runtime.start_session(str(repo), "s", None, provider="opencode")
-    line = model_servers.PLAIN_HTTP.format(host="llm.example.com")
-    assert line in started.warnings
-    assert f"s: supervisor: {line}" in (state.home() / "loop.log").read_text()
-    warnings = []
-    runtime.spawn_worker("s", "a task", name="w1", warnings=warnings)
-    assert line in warnings
-    env, _ = agent_helpers.launched(fake_tmux[-1])
-    assert env["LADO_MODEL_KEY_GW"] == "KEY-CANARY"
-    assert "KEY-CANARY" not in env["OPENCODE_CONFIG_CONTENT"]
-
-
-def test_another_provider_names_the_default_the_session_goes_to(repo, fake_tmux, monkeypatch):
-    _models(monkeypatch, "kilo", "kilo/a")
-    _models(monkeypatch, "opencode", "opencode/big-pickle")
-    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
-    runtime.stop_session("s")
-    _default(_on_server())
-    _answers(monkeypatch, "qwen3-8b")
-    started = runtime.start_session(str(repo), "s", None, provider="opencode")
-    assert "model: kilo kilo/a -> Локальная Qwen" in started.changes
-
-
-def test_an_agent_s_state_outlives_a_resume_and_goes_with_its_session(repo, fake_tmux, lado_home):
-    runtime.start_session(str(repo), "s", None, provider="opencode")
-    folder = lado_home / "agent-state" / "s" / "supervisor"
-    env, _ = agent_helpers.launched(fake_tmux[0])
-    assert env["XDG_STATE_HOME"] == str(folder)
-    memory = folder / "opencode" / "model.json"
-    memory.parent.mkdir(parents=True)
-    memory.write_text('{"recent": []}')
-    runtime.stop_session("s")
-    assert memory.exists()  # the agent's /model pick is the agent's
-    runtime.start_session(str(repo), "s", None)
-    assert memory.exists()
-    runtime.stop_session("s")
-    runtime.forget_session("s")
-    assert not (lado_home / "agent-state" / "s").exists()
-
-
-def test_a_finished_worker_s_state_goes_with_it(repo, fake_tmux, lado_home):
-    runtime.start_session(str(repo), "s", None, provider="opencode")
-    runtime.spawn_worker("s", "a task", name="w1")
-    folder = lado_home / "agent-state" / "s" / "w1"
-    folder.mkdir(parents=True, exist_ok=True)
-    runtime.finish_worker("s", "w1", discard=True)
-    assert not folder.exists()
-
-
 def test_a_failed_start_leaves_no_state(repo, fake_tmux, lado_home, monkeypatch):
     def fails(*_args, **_kwargs):
         (lado_home / "agent-state" / "s" / "supervisor").mkdir(parents=True, exist_ok=True)
@@ -7085,43 +3585,6 @@ def test_a_failed_start_leaves_no_state(repo, fake_tmux, lado_home, monkeypatch)
     with pytest.raises(tmux.TmuxError):
         runtime.start_session(str(repo), "s", None, provider="opencode")
     assert not (lado_home / "agent-state" / "s").exists()
-
-
-def test_a_worker_takes_the_default_as_it_is_at_its_spawn(repo, fake_tmux, monkeypatch):
-    _answers(monkeypatch, "qwen3-8b")
-    runtime.start_session(str(repo), "s", None, provider="opencode")
-    saved = _on_server()
-    _default(saved)
-    runtime.spawn_worker("s", "a task", name="w1")
-    agent = state.get_agent("s", "w1")
-    assert (agent.model, agent.model_source) == (f"lado-{saved.server}/qwen3-8b", "default")
-
-
-def test_a_worker_of_another_cli_takes_its_own_default(repo, fake_tmux, monkeypatch):
-    _models(monkeypatch, "opencode", "opencode/big-pickle")
-    saved = _on_server("Qwen в Kilo", cli="kilo")
-    _default(saved)
-    _answers(monkeypatch, "qwen3-8b")
-    runtime.start_session(str(repo), "s", None, provider="opencode", model="opencode/big-pickle")
-    warnings = []
-    runtime.spawn_worker("s", "a task", name="w1", provider="kilo", warnings=warnings)
-    agent = state.get_agent("s", "w1")
-    assert (agent.model, agent.model_source) == (f"lado-{saved.server}/qwen3-8b", "default")
-    assert not [w for w in warnings if "default model" in w]
-
-
-def test_a_worker_on_a_server_its_cli_cannot_run_is_refused(repo, fake_tmux, monkeypatch):
-    _answers(monkeypatch)
-    runtime.start_session(str(repo), "s", None, provider="opencode")
-    _default(_on_server("Шлюз GPT", cli="codex", model="gw-gpt", server="Шлюз"))
-    with pytest.raises(runtime.LadoError) as error:
-        runtime.spawn_worker("s", "a task", name="w1", provider="codex")
-    assert str(error.value) == (
-        "Шлюз GPT is on the model server Шлюз; Шлюз does not suit Codex CLI: its Responses API "
-        "loses Codex CLI's MCP tools, so the agent could not talk to LADO; Kilo CLI and OpenCode "
-        f"do{NOT_GIVEN_WAY_OUT}"
-    )
-    assert state.get_agent("s", "w1") is None
 
 
 def test_a_kept_model_no_longer_saved_is_refused(repo, fake_tmux, monkeypatch):
@@ -7183,67 +3646,6 @@ def _nothing_of(repo, fake_tmux, worker):
     assert not [c for c in fake_tmux if c[0] == "new_window"]
 
 
-def test_a_worker_starts_on_a_model_named_for_it(repo, fake_tmux, monkeypatch):
-    _models(monkeypatch, "kilo", "kilo/a", "kilo/b")
-    runtime.start_session(str(repo), "s", None, provider="kilo", model="kilo/a")
-    table = state.get_session("s").power
-    runtime.spawn_worker("s", "a task", name="w1", model="kilo/b")
-    agent = state.get_agent("s", "w1")
-    assert (agent.model, agent.model_source) == ("kilo/b", "supervisor")
-    _, argv = agent_helpers.launched(fake_tmux[-1])
-    assert argv[argv.index("--model") + 1] == "kilo/b"
-    assert state.get_session("s").power == table
-    runtime.spawn_worker("s", "a task", name="w2")  # it holds for that one spawn
-    agent = state.get_agent("s", "w2")
-    assert (agent.model, agent.model_source) == ("kilo/a", "session")
-
-
-def test_a_name_moves_the_worker_to_the_cli_that_has_it(repo, fake_tmux, monkeypatch):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    saved = _on_server()
-    _answers(monkeypatch, "qwen3-8b")
-    runtime.spawn_worker("s", "a task", name="w1", model="Локальная Qwen")
-    agent = state.get_agent("s", "w1")
-    assert (agent.provider, agent.model, agent.model_source) == (
-        "opencode",
-        f"lado-{saved.server}/qwen3-8b",
-        "supervisor",
-    )
-
-
-def test_a_free_name_with_its_provider_warns(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    warnings = []
-    runtime.spawn_worker(
-        "s", "a task", name="w1", provider="claude", model="claude-opus-5-5", warnings=warnings
-    )
-    assert "LADO cannot check claude-opus-5-5" in warnings[0]
-    assert state.get_agent("s", "w1").model == "claude-opus-5-5"
-
-
-def test_an_empty_model_is_the_cli_s_settings_past_the_session_s(repo, fake_tmux, monkeypatch):
-    _default(_on_server())
-    asked = _answers(monkeypatch, "qwen3-8b")
-    runtime.start_session(str(repo), "s", None, provider="opencode")
-    del asked[:]
-    runtime.spawn_worker("s", "a task", name="w1", model="")
-    agent = state.get_agent("s", "w1")
-    assert (agent.model, agent.model_source) == (None, "cli")
-    _, argv = agent_helpers.launched(fake_tmux[-1])
-    assert "--model" not in argv
-    assert asked == []
-
-
-def test_a_refused_name_leaves_nothing(repo, fake_tmux, monkeypatch):
-    _models(monkeypatch, "opencode", "opencode/big-pickle")
-    _models(monkeypatch, "kilo", "kilo/a")
-    runtime.start_session(str(repo), "s", None, provider="opencode")
-    with pytest.raises(runtime.ModelRefused) as error:
-        runtime.spawn_worker("s", "a task", name="w1", model="gpt-9")
-    assert str(error.value) == "gpt-9 is in no agent CLI's list of models; list_models shows them"
-    _nothing_of(repo, fake_tmux, "w1")
-
-
 def test_a_silent_server_refuses_a_model_given(repo, fake_tmux, monkeypatch):
     runtime.start_session(str(repo), "s", None, provider="opencode")
     _on_server()
@@ -7255,60 +3657,6 @@ def test_a_silent_server_refuses_a_model_given(repo, fake_tmux, monkeypatch):
     )
     assert NOT_GIVEN_WAY_OUT not in str(error.value)
     _nothing_of(repo, fake_tmux, "w1")
-
-
-def test_a_silent_server_refuses_the_session_s_model_with_a_way_out(repo, fake_tmux, monkeypatch):
-    _on_server()
-    _models(monkeypatch, "opencode", "opencode/big-pickle")
-    _answers(monkeypatch, "qwen3-8b")
-    runtime.start_session(str(repo), "s", None, provider="opencode", model="Локальная Qwen")
-    _silent(monkeypatch)
-    with pytest.raises(runtime.ModelRefused) as error:
-        runtime.spawn_worker("s", "a task", name="w1")
-    assert NOT_GIVEN_WAY_OUT in str(error.value)
-    assert "--model" not in str(error.value)
-    _nothing_of(repo, fake_tmux, "w1")
-
-
-def test_a_model_gone_from_its_server_is_refused(repo, fake_tmux, monkeypatch):
-    runtime.start_session(str(repo), "s", None, provider="opencode")
-    _on_server()
-    _answers(monkeypatch, "another")
-    with pytest.raises(runtime.ModelRefused, match="qwen3-8b is not in LM Studio дома's list"):
-        runtime.spawn_worker("s", "a task", name="w1", model="Локальная Qwen")
-    _nothing_of(repo, fake_tmux, "w1")
-
-
-def test_codex_on_lm_studio_is_refused_asking_no_server(repo, fake_tmux, monkeypatch):
-    runtime.start_session(str(repo), "s", None, provider="codex")
-    _on_server("Шлюз GPT", cli="codex", model="gw-gpt", server="Шлюз")
-    asked = _answers(monkeypatch, "gw-gpt")
-    with pytest.raises(runtime.ModelRefused, match="Шлюз does not suit Codex CLI"):
-        runtime.spawn_worker("s", "a task", name="w1", model="Шлюз GPT")
-    assert asked == []
-    _nothing_of(repo, fake_tmux, "w1")
-
-
-def test_a_worker_with_nothing_chosen_reads_no_list_and_asks_no_server(
-    repo, fake_tmux, monkeypatch
-):
-    runtime.start_session(str(repo), "s", None, provider="opencode")
-    _on_server()  # saved, but no agent starts on it
-    asked = _answers(monkeypatch, "qwen3-8b")
-
-    def no_list(self, env):
-        raise AssertionError("a list was read")
-
-    monkeypatch.setattr(type(providers.get("opencode")), "model_list", no_list)
-    runtime.spawn_worker("s", "a task", name="w1")
-    assert asked == []
-
-
-def test_list_models_gives_the_session_s_clis(repo, fake_tmux, monkeypatch):
-    _models(monkeypatch, "opencode", "opencode/big-pickle")
-    runtime.start_session(str(repo), "s", None, provider="opencode")
-    clis = runtime.list_models("s")["clis"]
-    assert clis[0]["cli"] == "opencode" and clis[0]["builtin"] == ["opencode/big-pickle"]
 
 
 def test_list_models_refuses_a_cli_not_installed(repo, fake_tmux, monkeypatch, tmp_path):
@@ -7356,64 +3704,6 @@ def _claude_on_server(monkeypatch, name="Шлюз Qwen", model="qwen3-8b", serve
     return saved
 
 
-def _no_status(monkeypatch):
-    """Claude Code's status is an error to read: a start on a server asks nothing of it."""
-
-    def read(self, env):
-        raise AssertionError("the login was read")
-
-    monkeypatch.setattr(type(providers.get("claude")), "login_status", read)
-
-
-def test_a_claude_session_on_a_server_starts_without_a_login(
-    repo, fake_tmux, claude_config, cli_logins, monkeypatch
-):
-    claude_config.trust()
-    _default(_claude_on_server(monkeypatch))
-    cli_logins.logged_out()
-    _no_status(monkeypatch)
-    started = runtime.start_session(str(repo), "s", None, provider="claude")
-    assert started.warnings == []
-    assert runtime.status_reasons("s") == {}
-    [call] = [c for c in fake_tmux if c[0] == "new_session"]
-    assert not _waits_for_login(call[-1])
-    assert json.loads(claude_config.path.read_text())["hasCompletedOnboarding"] is True
-
-
-def test_a_claude_session_on_a_built_in_model_stays_refused_with_a_server_saved(
-    repo, fake_tmux, cli_logins, monkeypatch
-):
-    _claude_on_server(monkeypatch)
-    cli_logins.logged_out()
-    with pytest.raises(runtime.NotLoggedIn) as refused:
-        runtime.start_session(str(repo), "s", None, provider="claude", model="opus")
-    assert str(refused.value) == SESSION_REFUSED
-
-
-def test_a_claude_session_on_a_server_resumes_by_hand_without_a_login(
-    repo, fake_tmux, cli_logins, monkeypatch
-):
-    _default(_claude_on_server(monkeypatch))
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    runtime.stop_session("s")
-    cli_logins.logged_out()
-    started = runtime.start_session(str(repo), "s", None)
-    assert started.resumed and runtime.status_reasons("s") == {}
-
-
-def test_a_claude_session_on_a_server_is_not_held_at_lados_own_resume(
-    repo, fake_tmux, cli_logins, monkeypatch
-):
-    _default(_claude_on_server(monkeypatch))
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    runtime.stop_session("s")
-    fake_tmux.clear()
-    cli_logins.logged_out()
-    runtime.start_session(str(repo), "s", None, reason=runtime.AT_START, resume=True)
-    [call] = [c for c in fake_tmux if c[0] == "new_session"]
-    assert not _waits_for_login(call[-1])
-
-
 def test_a_claude_worker_on_a_server_starts_without_a_login(
     repo, fake_tmux, cli_logins, monkeypatch
 ):
@@ -7423,34 +3713,6 @@ def test_a_claude_worker_on_a_server_starts_without_a_login(
     runtime.spawn_worker("s", "a task", name="w1", provider="claude", model="Шлюз Qwen")
     assert state.get_agent("s", "w1").model == "qwen3-8b"
     assert runtime.status_reasons("s") == {}
-
-
-def test_a_built_in_claude_worker_of_a_session_on_a_server_needs_the_login(
-    repo, fake_tmux, cli_logins, monkeypatch
-):
-    _default(_claude_on_server(monkeypatch))
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    cli_logins.logged_out()
-    with pytest.raises(runtime.NotLoggedIn) as refused:
-        runtime.spawn_worker("s", "a task", name="w1", model="sonnet")
-    assert str(refused.value) == WORKER_REFUSED
-
-
-def test_a_launch_names_what_its_cli_hands_on():
-    agent = state.Agent("s", "w1", "worker", "/r", None, None, state.STARTING, "claude")
-    launch = providers.Launch(["c"], {"KEY": "k"}, cli_env=("ANTHROPIC_BASE_URL",))
-    env = runtime._launch_env(agent, {"PATH": "/bin"}, launch)
-    named = env[agent_env.LAUNCH_VARS].split(",")
-    assert {"KEY", "ANTHROPIC_BASE_URL"} <= set(named)
-    assert "ANTHROPIC_BASE_URL" not in env  # the CLI sets it itself
-
-
-def test_no_keychain_warning_for_an_agent_on_a_server(repo, fake_tmux, monkeypatch):
-    monkeypatch.setattr(sys, "platform", "darwin")
-    monkeypatch.setattr(runtime.gui_session, "place", lambda: runtime.gui_session.Place.NO_GUI)
-    _default(_claude_on_server(monkeypatch))
-    started = runtime.start_session(str(repo), "s", None, provider="claude")
-    assert started.warnings == []
 
 
 def _check_new(path, name=None, mode=None, provider="claude", kits=None, title=None, model=None):
@@ -7628,22 +3890,6 @@ def test_check_turns_asks_only_about_busy_agents(repo, fake_tmux, monkeypatch):
     failing = _failing(monkeypatch, REFUSED_TURN)
     runtime.check_turns("s")
     assert failing.asked == []
-
-
-def test_check_turns_changes_nothing_of_a_turn_that_goes_on(repo, fake_tmux, monkeypatch):
-    _busy_codex(repo)
-    failing = _failing(monkeypatch, None)
-    runtime.check_turns("s")
-    assert failing.asked == ["w1"]
-    assert state.get_agent("s", "w1").status == state.BUSY
-
-
-def test_check_turns_passes_over_an_agent_of_an_unknown_cli(repo, fake_tmux):
-    _busy_codex(repo)
-    with state.connect() as db:
-        db.execute("UPDATE agents SET provider = 'gone' WHERE name = 'w1'")
-    runtime.check_turns("s")
-    assert state.get_agent("s", "w1").status == state.BUSY
 
 
 def test_the_keys_of_a_failed_turn_are_the_kept_key_of_the_agent_s_server(

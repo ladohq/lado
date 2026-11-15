@@ -2,7 +2,7 @@
 file catch nothing the others do not.
 
     python scripts/mutants.py run <module> <.coverage> <out.json> [--jobs N] [--timeout S]
-        [--kinds compare,...] [--also <file of node ids>]
+        [--kinds compare,...] [--also <file of node ids>] [--judge <test file>] [--enough N]
     python scripts/mutants.py removable <test file> <.coverage> <kills.json>... [--json OUT]
 
 `run` makes each mutant of one module of `src/` (one small change of its code: a
@@ -20,8 +20,11 @@ database measured per test (docs/research/test-audit.md, stage 0):
 With `--judge <test file>` a run answers only what `removable` on that file needs: that
 file's tests run in full, and the others, up to the first that fails (`pytest -x`), only
 for a mutant one of the file's tests killed. A mutant none of the file's tests runs is
-"skipped", one none of them kills "untouched": neither keeps a test of the file. A module
-that most of the suite runs (`runtime.py`) costs hours instead of days.
+"skipped", one none of them kills "untouched": neither keeps a test of the file. With
+`--enough N` the file's tests stop at N killers (`pytest --maxfail`): `removable` then keeps
+one of the killers it knows, and one it does not know only makes it keep more tests than it
+must, never fewer. A module that most of the suite runs (`runtime.py`) costs hours instead
+of days.
 
 Each mutant runs in a copy of `src/` of its own (one per job), so the working copy is never
 touched; `PYTHONPATH` puts the copy first. A run that never imported the mutant is an
@@ -204,10 +207,10 @@ def chooser(by_line: dict[int, set[str]], also: set[str]):
 
 
 def run_one(
-    work: Path, repo: Path, rel: Path, source: str, tests: list[str], timeout: int, first=False
+    work: Path, repo: Path, rel: Path, source: str, tests: list[str], timeout: int, maxfail=0
 ):
-    """One mutant in the copy `work`: its status and the tests that failed (with `first`,
-    the first test that failed, `pytest -x`). The module's
+    """One mutant in the copy `work`: its status and the tests that failed (with `maxfail`,
+    the first that many). The module's
     compiled files go first, and a run that compiled none never imported the mutant (a
     stale .pyc, the copy gone, another `lado` first on the path): an error, never
     "survived"."""
@@ -224,7 +227,7 @@ def run_one(
         run = subprocess.run(
             [sys.executable, "-m", "pytest", "-q", "-n0", "-p", "no:cacheprovider",
              "-p", "no:randomly", f"--junitxml={junit}", "-o", "addopts=",
-             *(["-x"] if first else []), *tests],
+             *([f"--maxfail={maxfail}"] if maxfail else []), *tests],
             cwd=repo,
             env={**environ, "PYTHONPATH": str(work / "src")},
             capture_output=True,
@@ -245,23 +248,25 @@ def run_one(
     return {"status": status, "killed_by": failed, "seconds": round(time.monotonic() - started, 2)}
 
 
-def judged(work, repo, rel, source, tests: list[str], timeout: int, judge: str | None):
+def judged(work, repo, rel, source, tests: list[str], timeout: int, judge: str | None, enough=0):
     """With `judge` (a test file), only what decides whether a test of that file can go:
     its tests run in full, and only when one of them kills the mutant do the others run, up
     to the first that fails (is there another killer). A mutant no test of the file runs
-    is skipped, one none of them kills is "untouched": neither keeps a test of the file."""
+    is skipped, one none of them kills is "untouched": neither keeps a test of the file.
+    With `enough`, the file's tests stop at that many killers: `removable` keeps one of
+    those it knows, and a killer it does not know only makes it keep more."""
     if not judge:
         return run_one(work, repo, rel, source, tests, timeout)
     own = [t for t in tests if t.startswith(judge)]
     rest = [t for t in tests if not t.startswith(judge)]
     if not own:
         return {"status": "skipped", "killed_by": [], "seconds": 0}
-    mine = run_one(work, repo, rel, source, own, timeout)
+    mine = run_one(work, repo, rel, source, own, timeout, maxfail=enough)
     if mine["status"] == "survived":
         return mine | {"status": "untouched"}
     if mine["status"] != "killed" or not rest:
         return mine
-    others = run_one(work, repo, rel, source, rest, timeout, first=True)
+    others = run_one(work, repo, rel, source, rest, timeout, maxfail=1)
     return mine | {
         "killed_by": mine["killed_by"] + others["killed_by"],
         "seconds": mine["seconds"] + others["seconds"],
@@ -270,6 +275,7 @@ def judged(work, repo, rel, source, tests: list[str], timeout: int, judge: str |
 
 def plan(module: Path, coverage: str, also: set[str], kinds: set[str] | None) -> list[dict]:
     """Every mutant of the module: its key, its source and its tests."""
+    name = str(module.relative_to(Path.cwd())) if module.is_relative_to(Path.cwd()) else str(module)
     tree = ast.parse(module.read_text())
     mark(tree)
     tests = chooser(tests_by_line(coverage, str(module)), also)
@@ -282,14 +288,16 @@ def plan(module: Path, coverage: str, also: set[str], kinds: set[str] | None) ->
         apply(list(ast.walk(mutated))[i])
         seen[line, kind, detail] += 1
         out.append({
-            "line": line, "kind": kind, "detail": detail, "nth": seen[line, kind, detail],
+            "module": name, "line": line, "kind": kind, "detail": detail,
+            "nth": seen[line, kind, detail],
             "tests": sorted(tests(nodes[i], line)), "source": ast.unparse(mutated),
         })  # fmt: skip
     return out
 
 
 def key(row: dict) -> tuple:
-    return row["line"], row["kind"], row["detail"], row["nth"]
+    """A mutant's identity across runs: kill matrices of several modules join in one."""
+    return row.get("module", ""), row["line"], row["kind"], row["detail"], row["nth"]
 
 
 def run(args) -> None:
@@ -323,7 +331,16 @@ def run(args) -> None:
             while todo or running:
                 while todo and free:
                     m, work = todo.pop(0), free.pop()
-                    job = (work, repo, rel, m["source"], m["tests"], args.timeout, args.judge)
+                    job = (
+                        work,
+                        repo,
+                        rel,
+                        m["source"],
+                        m["tests"],
+                        args.timeout,
+                        args.judge,
+                        args.enough,
+                    )
                     running[pool.submit(judged, *job)] = (m, work)
                 done, _ = cf.wait(running, return_when=cf.FIRST_COMPLETED)
                 for future in done:
@@ -426,6 +443,9 @@ def main() -> None:
     one.add_argument("--also", help="node ids, one a line, run on import-time mutants too")
     one.add_argument(
         "--judge", help="a test file: its tests in full, the others up to the first that fails"
+    )
+    one.add_argument(
+        "--enough", type=int, default=0, help="with --judge, stop the file's tests at N killers"
     )
     one.set_defaults(go=run)
     two = commands.add_parser("removable", help="the tests of one file that can go")

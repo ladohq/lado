@@ -205,3 +205,26 @@ def test_with_a_judge_only_what_decides_a_test_of_the_file_runs(tmp_path):
     assert judge("X = 1\n")["status"] == "untouched"
     assert not ran.exists()
     assert judge("X = 2\n", tests[2:])["status"] == "skipped"
+
+
+def test_enough_stops_the_judged_file_at_that_many_killers(tmp_path):
+    repo = tmp_path.resolve()
+    work = repo / "work"
+    (work / "src" / "pkg").mkdir(parents=True)
+    (work / "src" / "pkg" / "__init__.py").write_text("")
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_m.py").write_text(
+        "from pkg.m import X\n\n"
+        + "".join(f"def test_{n}():\n    assert X == 1\n\n" for n in "abcd")
+    )
+    tests = [f"tests/test_m.py::test_{n}" for n in "abcd"]
+    result = mutants.judged(
+        work, repo, Path("pkg/m.py"), "X = 2\n", tests, 60, "tests/test_m.py", enough=2
+    )
+    assert result["killed_by"] == tests[:2]
+
+
+def test_the_mutants_of_two_modules_on_the_same_line_stay_apart():
+    a = row(1, "killed", "t::a") | {"module": "src/a.py"}
+    b = row(1, "killed", "t::b") | {"module": "src/b.py"}
+    assert mutants.merged([[a], [b]]) == [a, b]

@@ -485,6 +485,31 @@ def _repo(tmp_path, env, remote):
     return repo
 
 
+@pytest.mark.parametrize(
+    ("remote", "found"),
+    [
+        ("https://gitlab.corp.ru/team/app.git", "a1"),
+        ("HTTPS://GitLab.corp.ru:443/team/app.git", "a1"),
+        ("http://gitlab.corp.ru/team/app.git", "a1"),
+        ("git@gitlab.corp.ru:team/app.git", "a1"),
+        ("ssh://git@gitlab.corp.ru/team/app.git", "a1"),
+        ("ssh://git@gitlab.corp.ru:22/team/app.git", "a1"),
+        ("ssh://git@gitlab.corp.ru:2222/team/app.git", None),
+        ("https://gitlab.corp.ru:8443/team/app.git", None),
+        ("https://git.test:8443/a.git", "b2"),
+        ("git@git.test:a.git", "b2"),
+        ("https://git.test/a.git", None),
+        ("https://github.com/a/b.git", None),
+        ("/some/folder", None),
+        ("file:///some/folder", None),
+    ],
+)
+def test_the_server_of_a_remote(remote, found):
+    servers = [_server(), _server("b2", "https://git.test:8443", "git.test:8443")]
+    server = git_servers.server_for(remote, servers)
+    assert (server.id if server else None) == found
+
+
 # git older than 2.31.
 
 

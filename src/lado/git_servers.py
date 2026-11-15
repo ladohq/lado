@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import shlex
 import subprocess
 import urllib.parse
@@ -260,6 +261,30 @@ def variables(env: Mapping[str, str], servers: Sequence[state.GitServer]) -> dic
             n += 1
     found["GIT_CONFIG_COUNT"] = str(n)
     return found
+
+
+def server_for(remote: str, servers: Sequence[state.GitServer]) -> state.GitServer | None:
+    """The server of `servers` git reaches for `remote` with `variables`: by its host and
+    port for an https:// or http:// URL, by its host for an ssh address it rewrites
+    (`git@host:`, `ssh://git@host[:22]/`); None for any other remote."""
+    try:
+        if "://" in remote:
+            parts = urllib.parse.urlsplit(remote)
+            scheme = parts.scheme.lower()
+            if scheme in ("https", "http"):
+                key = address(f"{scheme}://{parts.netloc.rsplit('@', 1)[-1]}").key
+                return next((s for s in servers if s.host == key), None)
+            if scheme != "ssh" or parts.username != "git" or parts.port not in (None, 22):
+                return None
+            host = parts.hostname
+        else:
+            found = re.match(r"git@([^:/]+):", remote)
+            if found is None:
+                return None
+            host = found[1].lower()
+    except ValueError:
+        return None
+    return next((s for s in servers if urllib.parse.urlsplit(s.address).hostname == host), None)
 
 
 def check_git(env: Mapping[str, str]) -> None:

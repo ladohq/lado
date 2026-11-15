@@ -459,6 +459,40 @@ def test_git_runs_with_no_terminal_and_no_prompt(tmp_path, monkeypatch):
     assert "GIT_SSH_COMMAND" not in env
 
 
+def _git_server():
+    from lado import git_kinds, git_servers
+
+    checked = git_servers.Checked(git_kinds.by_name("gitlab"), "ivan")
+    return git_servers.save(git_servers.address("https://gitlab.corp.ru"), checked, "glpat-x")[0]
+
+
+def test_a_clone_reaches_the_saved_git_servers(tmp_path, monkeypatch):
+    from lado import git_servers
+
+    for key, value in fake_git(tmp_path, "fail").items():
+        monkeypatch.setenv(key, value)
+    server = _git_server()
+    with pytest.raises(clone.CloneError):
+        clone.list_branches("git@gitlab.corp.ru:team/app.git")
+    [call] = [c for c in fake_git_calls(tmp_path) if c["args"][0] == "ls-remote"]
+    env = call["env"]
+    expected = git_servers.variables(os.environ, [server])
+    assert {k: env[k] for k in expected} == expected
+
+
+def test_an_old_git_refuses_a_clone_from_a_saved_server(tmp_path, monkeypatch):
+    folder = tmp_path / "old-git"
+    folder.mkdir()
+    (folder / "git").write_text("#!/bin/sh\necho 'git version 2.30.2'\n")
+    (folder / "git").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
+    _git_server()
+    with pytest.raises(clone.CloneError) as refused:
+        clone.list_branches("https://gitlab.corp.ru/team/app.git")
+    assert refused.value.kind == "git_too_old"
+    assert str(refused.value).startswith("git 2.30.2 is older than 2.31")
+
+
 def test_no_git(tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", str(tmp_path))
     with pytest.raises(clone.CloneError) as refused:

@@ -162,13 +162,23 @@ def resolve(project: Mapping[str, str] | None = None, login: Iterable[str] = ())
     return merge(layers(project), login)
 
 
-def for_git(project: Mapping[str, str] | None = None) -> dict[str, str]:
+def for_git(project: Mapping[str, str] | None = None, remote: str | None = None) -> dict[str, str]:
     """The environment of LADO's own network git calls (lado.gitcache, lado.clone): LADO's
     process environment, then the outside folder's variables read now, then `project`, a
     project's layer for a clone into it (lado.project_secrets.layer). No login shell: it
     would cost a shell's start per call; the folder's unused files are named by `lado
-    doctor` and each launch, not here."""
-    return {**os.environ, **outside().values, **(project or {})}
+    doctor` and each launch, not here. A call to a `remote` gets git's way to the saved git
+    servers, read now (lado.git_servers.variables); lado.git_servers.Refused when the
+    remote is a saved server's and the git on that PATH is older than 2.31."""
+    env = {**os.environ, **outside().values, **(project or {})}
+    if remote is None:
+        return env
+    from lado import git_servers  # it builds on this module's secrets reader
+
+    servers = state.git_servers()
+    if git_servers.server_for(remote, servers) is not None:
+        git_servers.check_git(env)
+    return {**env, **git_servers.variables(env, servers)}
 
 
 class Outside(NamedTuple):

@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from lado import agent_env, gitcache, project_secrets, projects, runtime
+from lado import agent_env, git_servers, gitcache, project_secrets, projects, runtime
 
 URL = re.compile(r"(https?|ssh|git|file)://(.+)", re.IGNORECASE)
 # user@host:path, git's scp form; a bare host:path would take a folder with a colon.
@@ -352,11 +352,16 @@ def _told(
     return kind, f"{reason} ({line})", hint
 
 
-def _environment(project: str | None) -> dict[str, str]:
-    """The environment of a clone's or listing's git: LADO's own git's
-    (lado.agent_env.for_git), into `project` with its layer, and no prompt over it."""
+def _environment(project: str | None, url: str) -> dict[str, str]:
+    """The environment of a clone's or listing's git of `url`: LADO's own git's
+    (lado.agent_env.for_git, the saved git servers with it), into `project` with its layer,
+    and no prompt over it. CloneError `git_too_old` for a saved server's URL and a git
+    older than 2.31."""
     layer = project_secrets.layer(project) if project else None
-    return {**agent_env.for_git(layer), **gitcache.NO_PROMPT}
+    try:
+        return {**agent_env.for_git(layer, remote=url), **gitcache.NO_PROMPT}
+    except git_servers.Refused as exc:
+        raise CloneError("git_too_old", str(exc)) from None
 
 
 def _start_git(
@@ -413,7 +418,7 @@ def list_branches(url: str, project: str | None = None) -> Remote:
         url,
         "HEAD",
         "refs/heads/*",
-        env=_environment(project),
+        env=_environment(project, url),
         stdout=subprocess.PIPE,
     )
     try:
@@ -536,7 +541,7 @@ def _run_clone(
         "--",
         url,
         temp,
-        env=_environment(project),
+        env=_environment(project, url),
     )
     assert process.stderr is not None
     decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")

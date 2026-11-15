@@ -13,3 +13,4 @@
 | 2026-11-15 | plan, plan-review P6 | A github.com entry before S3 | accept it, with a rule which source wins; refuse it until S3 | refuse until S3 (lead) | pending plan_ok | — |
 | 2026-11-15 | plan, plan-review P10 | Where the human checks | release candidate carrying S5; `make docker` from main | the release candidate (lead) | pending plan_ok | — |
 | 2026-11-15 | plan_ok #528, the human's message | Step numbers S1a, S1b, S2a, S2b | keep letters; renumber in order | — | renumber S1–S8 in order: no step is in the tracker yet (human) | — |
+| 2026-11-15 | plan_ok #528, #7090, #7092 | Who names a server's kind | the human chooses it (the statement); LADO finds it from the server's API, `--kind` as the fallback | found by LADO, `--kind` the fallback (lead) | found by LADO, `--kind` the fallback; asked how it works for servers on the local network and whether other kinds can come later — both covered (human) | yes |

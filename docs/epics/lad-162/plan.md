@@ -28,8 +28,15 @@ and rollback test, as earlier migrations do, and names whether its files are cle
 
 ### S1 — Git servers: the list and https access for agents (walking skeleton)
 Status: planned
-Check: an integration test with a local https git server that requires a token: a server
-added with `lado git-server add` (and through the API) is used by an agent process (the
+Check: unit tests per server kind against a fake API: `lado git-server add <address>
+--token` finds the kind itself by asking the server's API with the token (GitLab's
+`/api/v4/user`, GitHub's `/api/v3/user` or api.github.com) and says "GitLab, signed in as
+<name>"; when the server does not answer (unreachable, untrusted certificate, a proxy)
+it refuses with the reason in plain words unless `--kind github|gitlab` is given, then
+saves with a warning that it was not checked; a plain `http://` address is accepted with
+a warning that the token goes unencrypted. An integration test with a local https git
+server that requires a token: a server added with `lado git-server add` (and through the
+API) is used by an agent process (the
 fake agent) and by LADO's own git (`clone`, `gitcache`) to clone and push by https with
 no prompt; `git@<host>:<path>` and `ssh://git@<host>[:port]/<path>` addresses of a listed
 host go over https; a host not in the list behaves as before; a removed server's host
@@ -45,15 +52,19 @@ Touches: a new module of server kinds (github, gitlab), `agent_env.py`, `runtime
 `providers/` (where a sandbox needs the helper), `cli.py` (`lado git-server add|list|remove`,
 a credential helper command), `state.py`, `server/app.py` (API), `doctor.py`, tests, docs/cli.md.
 Notes: `lado model-server add|list|remove` and `model_settings.py` are the precedent for
-a saved list with a secret. The token lives in LADO's secret store under `LADO_HOME`
+a saved list with a secret, and `model_servers.py` for finding a server's type from its
+address (D: the kind is found, `--kind` the fallback, #7092). Each kind is a module that
+knows how to recognise its server, check a token, its host tool and its token page, so a
+new kind (Bitbucket, Gitea) is one more module. The token lives in LADO's secret store under `LADO_HOME`
 (as a model server's key), never in a git config file or an agent's worktree. A github.com
 entry is not accepted until S5 (plan decision, P6): github.com keeps today's path through
 `gh` until S5 settles which source wins.
 
 ### S2 — Settings → Git servers
 Status: planned
-Check: a UI e2e test adds a gitlab.com and a self-hosted server (kind, address prefilled
-for gitlab.com, token with a "where to get it" link) and removes one; the list matches
+Check: a UI e2e test adds a gitlab.com and a self-hosted server (address, prefilled for
+gitlab.com; token with a "where to get it" link; the kind shown once found, chosen by hand
+only when the server did not answer) and removes one; the list matches
 `lado git-server list`; docs/design/ui.md and the user's docs describe the screen.
 Touches: `web/src/` (Settings), `server/app.py` if the API needs a field, docs/design/ui.md.
 
@@ -67,9 +78,10 @@ Touches: the server kinds module, `agent_env.py`, `state.py`, `cli.py`, `web/src
 
 ### S4 — "Check", `lado doctor` and clone hints from the list
 Status: planned
-Check: unit tests per server kind against a fake API (`GET /user`): "Check" in Settings
-and `lado git-server check` say "works, this is <name>" or why not in plain words (wrong
-token, missing rights, server unreachable); `lado doctor` lists the servers and their
+Check: unit tests per server kind against a fake API: "Check" in Settings and `lado
+git-server check` check a saved server again (the same request as `add` in S1) and say
+"works, this is <name>" or why not in plain words (wrong token, missing rights, server
+unreachable), and a server saved with `--kind` unchecked is checked when it answers; `lado doctor` lists the servers and their
 check; a failed clone from a listed host names its entry, from an unlisted host suggests
 adding it, in the UI too (UI e2e); docs describe what was built.
 Touches: the server kinds module, `doctor.py`, `clone.py`, `server/`, `web/src/` (Settings,

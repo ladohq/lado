@@ -1594,8 +1594,12 @@ connection, above).
   Kits). The frame stands 40 px from the top and grows down
   (`max-height: calc(100dvh - 64px)`, width `min(640px, 100vw - 32px)`), only its body
   scrolls; at 760 px or less it is a full-screen sheet (a 56 px head, the footer above
-  `env(safe-area-inset-bottom)`, targets of 44 px). The window decides nothing the core
-  decides: every check and text comes from the server.
+  `env(safe-area-inset-bottom)`, targets of 44 px: every field 44 px high but Name, 30 px on
+  Task's label row; a note's buttons and Switch off's offers at least 44 px (not a link within
+  a note's sentence, such as `Make one in Projects`); a kit chip 32 px,
+  its × 32 px with a 44 × 44 px hit area by `::after`, as an info button's; `+ Add kit` 44 px;
+  LAD-209). The window decides nothing the core decides: every check and text comes from the
+  server.
 - **Where** is one combobox (an input `role="combobox"` with a listbox `Places`). Closed, it
   shows on one line the place's icon, name (a folder's last segment, a project repository's
   name) and a muted secondary (`.place-sub`): a folder's path, a project repository's `in
@@ -1734,7 +1738,9 @@ connection, above).
   **Permissions** (radio rows titled by the provider's words, `ProviderInfo.mode_words`, the
   description under the chosen one and always under a risky one; a mode without words by its
   value; `No permission modes.` for a CLI without), **Model** (the one picker of LAD-207, its
-  notes and refusals as before) and **Switch off** (the `--without` text field, its format
+  notes and refusals as before; the picked name whole, the server's mark giving way first, down
+  to its icon, and carrying the refusal's round `!`, not `⚠`, when its server does not answer;
+  LAD-209) and **Switch off** (the `--without` text field, its format
   under its info button; a refusal's `Switch off <name> of <kit>` buttons stand under it).
   Team's info says where its values come from: `As in the last session in this folder.`, else
   `Agent as in your last session; kits and permissions are LADO's defaults.` (the
@@ -1793,7 +1799,8 @@ connection, above).
   **Set up and start in <folder>**. While it works the button keeps the focus (`aria-disabled`,
   not `disabled`) and reads `Starting…`, `Setting up…`, `Resuming…` or `Cloning…`. A refusal
   puts the focus on the field to fix, else on the refusal (`role="alert"`), never on the
-  page's body. On a phone two actions are a column, Resume on top, and × closes. The window
+  page's body. A start refused for its model is said once: the refusal under Model and `To
+  start: fix the model`, no second notice above the buttons (LAD-209). On a phone two actions are a column, Resume on top, and × closes. The window
   does not yet show who will lead the session (BACKLOG). On success the window closes and the
   session's Activity opens; the `Started` answer's `problems` (open runs that cannot go on), its
   `warnings` (what `lado start` prints on stderr: kit supervisors not used, what the
@@ -3140,8 +3147,9 @@ core's why (`ProbeInfo.cannot`); the CLIs a tick can save a model of are `ProbeI
   whole (no tooltip); ✎, 🗑, ↻, × and Undo at least 44 by 44 px and a list's row 44 px; a
   server's list of up to 20 models not bounded (no scroll within a scroll on touch); the
   CLIs under a server's model without indent. No page scrolls sideways. At every width a
-  picked model's name stays whole and its id gives way first (`.mp-title` does not shrink);
-  only a name longer than the whole field is cut, whole in its title.
+  picked model's name stays whole: its id gives way first, then the server's mark down to its
+  icon (the value's parts are the field's flex items, shrinking by weight; `default` does not
+  shrink); only a name longer than the whole field is cut, whole in its title.
 - **API** (`lado.server.model_entries` over `lado.model_settings`, under the token, no
   change-feed event): `GET /api/model-settings` (`ModelSettings`: the models, the saved
   servers and the `defaults`, asking none; no `lado.db` made), `GET

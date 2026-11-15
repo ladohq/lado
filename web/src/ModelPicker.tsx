@@ -573,7 +573,9 @@ export function ModelPicker({
         {valueIsDefault && <span className="mc-default">default</span>}
         {lost && <span className="mx-gone">⚠ no longer listed</span>}
         {fieldMark && <span className="mx-gone">{fieldMark}</span>}
-        {value?.server && <Server name={value.server} down={state !== undefined && "down" in state} />}
+        {value?.server && (
+          <Server name={value.server} down={state !== undefined && "down" in state} refused={launching} />
+        )}
         <span className="mp-arrow" aria-hidden="true">
           <ChevronIcon />
         </span>
@@ -668,11 +670,12 @@ export function ModelPicker({
 }
 
 // A model server's mark: its name, with a sign and not colour alone when it does not answer.
-function Server({ name, down }: { name: string; down: boolean }) {
+// In the launch field a silent server refuses the model, so it takes the refusal's round "!".
+function Server({ name, down, refused = false }: { name: string; down: boolean; refused?: boolean }) {
   return (
     <span className={`srv${down ? " down" : ""}`} title={name}>
       <ServerIcon />
-      {down && <span aria-hidden="true">⚠</span>}
+      {down && (refused ? <span className="bad-sign" aria-hidden="true" /> : <span aria-hidden="true">⚠</span>)}
       <span className="srv-t">{name}</span>
     </span>
   );

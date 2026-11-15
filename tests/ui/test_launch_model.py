@@ -62,6 +62,18 @@ def open_advanced(dialog: Locator) -> Locator:
     return dialog.get_by_role("combobox", name="Model")
 
 
+def shown_whole(title: Locator) -> bool:
+    """The text's laid-out width fits its box: an ellipsis shows at a fraction of a pixel short,
+    which `scrollWidth`, rounded, does not see."""
+    return title.evaluate(
+        """e => {
+          const text = document.createRange();
+          text.selectNodeContents(e);
+          return text.getBoundingClientRect().width <= e.getBoundingClientRect().width;
+        }"""
+    )
+
+
 def fold(dialog: Locator) -> Locator:
     """Team folded: its summary's model part."""
     dialog.get_by_role("button", name="Hide").click()
@@ -320,12 +332,47 @@ def test_a_start_refused_at_a_phone_s_width_comes_into_sight(
     expect(start).to_be_enabled()
     home_server.close()
     start.click()
-    expect(dialog.get_by_text("Not started:")).to_contain_text(f"{HOME} does not answer")
+    note = advanced(dialog).locator(".field-note.bad")
+    expect(note).to_contain_text(f"{HOME} does not answer")
     model = dialog.get_by_role("combobox", name="Model")
     expect(model).to_be_focused()
     expect(model).to_be_in_viewport()
-    expect(advanced(dialog).locator(".field-note.bad")).to_be_in_viewport()
+    expect(note).to_be_in_viewport()
+    # Said once: under Model, not again above the buttons.
+    expect(dialog.get_by_text("Not started")).to_have_count(0)
+    for name in ("Check again", f"Use {TITLE}'s settings"):
+        assert note.get_by_role("button", name=name).bounding_box()["height"] >= 44
+    # The field's server mark carries the refusal's round sign, not a warning's.
+    mark = model.locator(".srv.down")
+    expect(mark.locator(".bad-sign")).to_have_count(1)
+    expect(mark).not_to_contain_text("⚠")
+    assert shown_whole(model.locator(".mp-title"))
     shot(page, "refused")
+    context.close()
+
+
+def test_a_short_name_stays_whole_at_a_phone_s_width(
+    browser: Browser, fake_models, home_server, server, repo, shot
+):
+    """The server's mark gives way first, down to its icon; `default` stays whole."""
+    set_default()
+    context = browser.new_context(viewport={"width": 390, "height": 844})
+    page = context.new_page()
+    dialog = new_window(page, server, repo)
+    model = open_advanced(dialog)
+    expect(model).to_contain_text(QWEN, timeout=15_000)
+    title = model.locator(".mp-title")
+    assert shown_whole(title)
+    field = model.bounding_box()
+    right = field["x"] + field["width"]
+    shown = title.bounding_box()
+    default = model.locator(".mc-default").bounding_box()
+    icon = model.locator(".srv svg").bounding_box()
+    assert (
+        shown["x"] + shown["width"] <= default["x"] < default["x"] + default["width"] <= icon["x"]
+    )
+    assert icon["x"] + icon["width"] <= right
+    shot(page, "name-whole")
     context.close()
 
 

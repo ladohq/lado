@@ -23,6 +23,7 @@ from playwright.sync_api import Locator, Page, expect
 from test_layout import BUILD
 
 from lado import loop, runs, runtime, state
+from lado import projects as lado_projects
 
 pytestmark = pytest.mark.ui
 
@@ -1213,6 +1214,7 @@ def test_a_plain_folder_is_set_up_and_started(page: Page, git_config, server, tm
     for width in (1440, 390):
         page.set_viewport_size({"width": width, "height": 900 if width > 760 else 844})
         shot(page, f"g-{width}", full_page=False)
+        assert tick.bounding_box()["height"] <= 20, width  # the phone's 44 px fields leave it a box
     page.set_viewport_size({"width": 1440, "height": 900})
     start = dialog.get_by_role("button", name="Set up and start in notes")
     start.click()
@@ -1302,3 +1304,70 @@ def test_on_a_phone_a_folders_path_is_cut_before_its_name(page: Page, server, re
     assert text <= room, (text, room)  # a fraction of a pixel short shows an ellipsis
     assert sub.evaluate("span => span.scrollWidth > span.clientWidth")  # the path is cut
     shot(page, "folder", full_page=False)
+
+
+# What the sheet's targets miss: each visible field and button of the window's body lower
+# than 44 px, but Name's field on Task's label row (30 px by LAD-265's decision), the info
+# buttons (a hit area of their own), a kit's × (below), the radio buttons of Permissions
+# (their 44 px rows are the targets) and a link within a note's sentence (`.link-button`, such
+# as Project…'s "Make one in Projects": a line of text, not a button of its own).
+SHORT_TARGETS = """dialog => [...dialog.querySelectorAll(
+    ".launch-body input, .launch-body select, .launch-body button")]
+  .filter(el => el.getClientRects().length > 0)
+  .filter(el => !el.closest(".name-inline, .info-tip, .kits-box-chip"))
+  .filter(el => !el.matches(".field-note .link-button"))
+  .filter(el => el.type !== "radio")
+  .map(el => {
+    // Where's input stands in its box: the box is the field.
+    const box = (el.closest(".place-box") ?? el).getBoundingClientRect();
+    const label = el.getAttribute("aria-label") || el.labels?.[0]?.textContent.trim();
+    return [label || el.textContent.trim() || el.className, Math.round(box.height)];
+  })
+  .filter(([, height]) => height < 44)"""
+
+
+@pytest.fixture
+def a_project(tmp_path, monkeypatch, git_config):
+    """LADO_REPOS with the project shop and its repository backend, taken before `server`."""
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    lado_projects.create("shop", "Shop")
+    agent_helpers.init_repo(lado_projects.folder("shop") / "backend")
+
+
+def test_on_a_phone_every_field_and_button_of_the_window_is_a_44_px_target(
+    page: Page, a_project, server, repo, shot
+):
+    """Team open at 390x844, on each way of Where (capability new-session-window, "The sheet's
+    fields and buttons", "A kit's ×")."""
+    page.set_viewport_size({"width": 390, "height": 844})
+    log_in(page, server)
+    dialog, where = other_folder(page)
+    where.fill(str(repo))
+    expect(dialog).to_contain_text("✓ Ready · branch main")
+    agent(dialog).select_option("fake")
+    expect(dialog.get_by_role("combobox", name="Model")).to_be_visible()
+    assert dialog.evaluate(SHORT_TARGETS) == []
+    assert name_field(dialog).bounding_box()["height"] == 30
+    shot(page, "targets")
+    # Each way measured once it settled: its own field is there, the check's answer in.
+    ways = {
+        "Clone from URL…": dialog.get_by_role("textbox", name="Clone into"),
+        "New empty folder…": dialog.get_by_role("textbox", name="Folder name"),
+        "Project…": dialog.get_by_role("combobox", name="Project"),
+    }
+    for way, settled in ways.items():
+        pick_place(dialog, way)
+        expect(settled.first).to_be_visible()
+        assert dialog.evaluate(SHORT_TARGETS) == [], way
+
+    # A kit's ×: a 32 px look, a 44 px target; a press 5 px right of the drawn × removes the kit.
+    pick_place(dialog, "Other folder…")
+    chip = dialog.locator(".kits-box-chip", has_text="default")
+    assert chip.bounding_box()["height"] == 32
+    drawn = chip.get_by_role("button", name="Remove default").bounding_box()
+    assert (drawn["width"], drawn["height"]) == (32, 32)
+    page.mouse.click(drawn["x"] + drawn["width"] + 5, drawn["y"] + drawn["height"] / 2)
+    expect(chip).to_have_count(0)
+    # Now `+ Add kit` offers it back.
+    assert add_kit(dialog).bounding_box()["height"] == 44
+    shot(page, "kit-removed")

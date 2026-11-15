@@ -454,6 +454,22 @@ test("a server's state marks its rows and the field", () => {
   expect(texts()[2]).toContain("not on the server");
 });
 
+test("in the launch field a silent server's mark carries the refusal's round sign; rows and Settings keep ⚠", () => {
+  const health = { "lm studio дома": { down: "does not answer" } };
+  const { field } = mount({ where: "launch", value: external(QWEN), own: [QWEN, CODER], health });
+  const mark = field.querySelector(".srv.down")!;
+  expect(mark.querySelector(".bad-sign")).toBeTruthy();
+  expect(mark.textContent).not.toContain("⚠");
+  fireEvent.click(field);
+  const row = screen.getByRole("option", { name: /Рабочая Qwen/ });
+  expect(row.querySelector(".srv.down")!.textContent).toContain("⚠");
+  expect(row.querySelector(".bad-sign")).toBeNull();
+  cleanup();
+  const settings = mount({ value: external(QWEN), own: [QWEN], health }).field;
+  expect(settings.querySelector(".srv.down")!.textContent).toContain("⚠");
+  expect(settings.querySelector(".bad-sign")).toBeNull();
+});
+
 test("a server's name past 24 characters goes under the id in its row", () => {
   const long = model("Длинная", "opencode", "OpenCode", "m", "LM Studio дома на втором компьютере");
   fireEvent.click(mount({ own: [QWEN, long] }).field);

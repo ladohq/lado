@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- **New session fits a phone.** Its fields and buttons are easy to tap, a short model name is
+  no longer cut, and a model's server that does not answer is marked as the refusal under it;
+  a start refused for its model says so once, under Model.
 - **An agent that skips a message's text is told so once.** An agent that ends its turn
   without reading the text of a message it got (a step, your request, a report) gets one
   reminder from LADO to read it, so a weak model does not lose what it was asked.

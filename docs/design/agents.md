@@ -85,6 +85,17 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `TERM_PROGRAM(_VERSION)`, `TMUX` and `TMUX_PANE`, and execs the agent's CLI, found on the
   resolved `PATH`. `lado doctor` shows the source and how long the shell takes (a warning
   above 2 s).
+- While git servers are saved (`lado git-server`, `git_servers.py`), each agent's launch
+  adds git's way to them among LADO's variables (`runtime._ours`): `GIT_CONFIG_KEY_<n>` and
+  `GIT_CONFIG_VALUE_<n>` per server (an empty credential helper for its address, LADO's
+  helper `lado.git_credential` by LADO's Python's absolute path, its ssh addresses
+  rewritten to https), numbered after the `GIT_CONFIG_*` entries the layers already hold,
+  and `GIT_CONFIG_COUNT` raised to cover them. They are in `LADO_LAUNCH_VARS`, with
+  `LADO_GIT_CONFIG_BASE`, the layers' own count: `without_launch` gives that count back, so
+  a worker spawned under `LADO_AGENT_ENV=inherit` gets the human's own entries and LADO's
+  anew. With no server saved none is set, and the launch asks no `git --version`; with one,
+  an agents' git older than 2.31 refuses the launch first (`_check_commands`). The list is
+  read at each launch: a server added or removed reaches a running agent at its restart.
 - Each agent has a temporary folder of its own (LAD-247): all agents of a machine run as one
   user with one `/tmp`, where two agents' files of one name (a draft `pr.md`) met. At each
   launch `providers.base.make_temp_dir` makes `<parent>/lado-<uid>/<session>/<agent>`, each

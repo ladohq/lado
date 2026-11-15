@@ -789,6 +789,66 @@ Settings → Model servers`), a name only another CLI's configured model has (`"
 or not: `<CLI>'s default model is cleared.`, or `<CLI> has no default model.`; a model with
 `--clear`, or `--clear` with no CLI, exits 2.
 
+`lado git-server add <address> --token [--kind github|gitlab]` saves a GitLab or GitHub
+Enterprise server with the human's token, so that agents and LADO's own git reach it over
+https without a password (`git_servers.py`, lado.db's `git_servers`, schema 41). The address
+takes `https://` when it has none and keeps a path (`https://example.com/gitlab`); a user or
+password, a query, a fragment or another scheme is refused with exit 2 (`not a git server's
+address: <why>`, never naming the address). `github.com` (and `www.`, `api.`) is refused
+before the token is asked: it is reached through gh's login (`GH_TOKEN` or `gh auth login`)
+as before. The token is asked without echo (`Token of the server (not shown): `) or read from
+stdin when that is no terminal; one given on the command line (`--token <value>`, `--token=…`,
+a stray word) is refused without its value, as a model server's key, and an empty one too.
+Then LADO asks each kind's API at once, one GET each, cut at 5 s and following no redirect
+(the kind modules of `git_kinds/`): GitLab's `<address>/api/v4/user` with `PRIVATE-TOKEN`,
+GitHub's `<address>/api/v3/user` with `Authorization: token`. One kind that answers with its
+user prints `GitLab, signed in as <login>` (`GitHub, …`), then `Saved git server <address>.`
+and `Agents started from now on reach it; restart running agents to give it to them.`, exit
+0. Refused, nothing saved, exit 1, with a hint: a token the server refuses (`GitLab at
+<address> refuses the token` and the kind's token page with the scopes it needs; GitLab's 403
+`insufficient_scope` says the token lacks `read_api`), even with `--kind`; a redirect (`<address>
+sends to <location>; give the server's own address`, nothing sent there); two kinds
+answering (`… answers as GitHub and as GitLab; say which: --kind github or --kind gitlab`);
+a server that does not answer (`<host> does not answer: the name is not found` / `the
+connection is refused` / `it did not answer in 5 s` / `its certificate is not trusted on this
+machine (…)`) or answers as neither kind; those two name `--kind` in their hint. With
+`--kind`, a server that does not answer or answers as neither is saved as that kind with no
+login, after `lado: warning: <address> could not be checked (<why>); saved as GitLab`; a
+server recognised as another kind is refused (`<address> answers as GitLab, not GitHub`). An
+`http://` address warns `the token goes to <host> over plain http://, unencrypted; use https://
+if the server has it` and goes on. A server is its host and port: adding one already saved
+replaces its address, kind, login and token, keeping its id (`Replaced git server
+<address>.`). The token is kept in `<LADO_HOME>/git-servers/<id>/token` alone (folders 700,
+the file 600, written by LADO's secrets writer as a model server's key), never in lado.db,
+an output, a log, a git config file or a worktree. A git older than 2.31 on this PATH is
+refused before the token is asked (`git <version> is older than 2.31, which git servers need;
+update git, or remove the servers (lado git-server remove <address>)`).
+
+`lado git-server list` prints `ADDRESS KIND LOGIN TOKEN`, one line per server by host, asking
+none: `not checked` for one saved with `--kind` unchecked, `yes`/`no` for its token file; with
+none, `No git servers. Add one: lado git-server add <address> --token`. `lado git-server
+remove <address>` finds the server by the host and port of the address, with or without its
+scheme, removes it and its token folder: `Removed git server <address>.`; an address of no
+saved server is refused (exit 1). `lado git-server` alone prints its help; the commands
+migrate lado.db as `lado ls` does.
+
+What a saved server gives: each agent at its launch, and LADO's own network git at each call
+(kits, packs, marketplaces, a clone or listing of a URL), gets through `GIT_CONFIG_COUNT`,
+`GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>`, per server: an empty
+`credential.<scheme>://<host[:port]>.helper` (every helper set before it there is dropped, so
+no other helper, a `store` of the global config included, keeps the token), LADO's helper
+(`lado.git_credential`, run with LADO's own Python by its absolute path, so no `lado` on the
+agent's PATH is needed), and `git@<host>:`, `ssh://git@<host>/` and `ssh://git@<host>:22/`
+rewritten to the server's address; an ssh address with another port goes over ssh as before.
+The entries come after the `GIT_CONFIG_*` entries the agent's layers already hold; with no
+server saved none is set. A host not in the list goes as before, and the global and system
+git configs are never written. An agent gets the list at its launch: a server added or
+removed reaches running agents after their restart; the helper of a removed server tells git
+to stop (`lado: no token for <address>; add it again: lado git-server add <address>
+--token`), so git never prompts. git reads `GIT_CONFIG_COUNT` from 2.31 on: while a server is
+saved, a launch whose agents' git is older is refused before anything starts, and so is LADO's
+own git for a saved server's address; with no server, nothing changes.
+
 `lado ui` prints (or opens) the local link with the token, then, when the running server
 has a link for another device, `From another machine: <link>`: it asks the server
 (`GET /api/access` with the token, `run.access`), so `LADO_PUBLIC_HOST` and, in a

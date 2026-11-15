@@ -664,6 +664,8 @@ command do it.
 Going back to a version before 0.45.0 forgets your model servers, models and default models,
 and their keys stay in `~/.lado/model-servers/` of the home volume. Remove them when you no
 longer need them: `docker compose run --rm lado sh -c 'rm -rf ~/.lado/model-servers'`.
+Going back to a version without git servers leaves their tokens in `~/.lado/git-servers/`
+the same way: `docker compose run --rm lado sh -c 'rm -rf ~/.lado/git-servers'`.
 
 ### A second LADO
 
@@ -1039,10 +1041,10 @@ no session running).
 - The plan warns before it asks: `lado.db` goes back to the copy
   `~/.lado/backups/lado.db.schema-31`, made when 0.43.0 upgraded it; everything LADO
   recorded since then is lost (sessions, runs, gates, messages, projects, model servers,
-  models, default models); repositories, worktrees and project folders stay on disk. It
-  names the running sessions the copy does not have: they are not started again. It lists
-  the folders of model server keys the copy has no server for: they stay on disk (What
-  stays, below). `Update? [y/N]`, or `--yes`, is your yes to that.
+  models, default models, git servers); repositories, worktrees and project folders stay
+  on disk. It names the running sessions the copy does not have: they are not started
+  again. It lists the folders of model server keys and of git server tokens the copy has
+  no server for: they stay on disk (What stays, below). `Update? [y/N]`, or `--yes`, is your yes to that.
 - After the installer and the version check it puts the copy back into `lado.db`, keeps
   the copy, says `Restored lado.db from … (schema 31)` and starts the sessions the copy
   has on 0.42.x.
@@ -1083,6 +1085,12 @@ and `~/.lado/model-servers/` stays with the key of each server: remove it with
 back, and `lado doctor` calls each folder left over until you remove it. Going back to a
 version that knows model servers, remove only the folders the warning listed: the others hold
 the keys of servers still saved.
+
+Going back to a version without git servers forgets them, and `~/.lado/git-servers/` stays
+with each server's token: the warning lists each folder; remove them (`rm -rf
+~/.lado/git-servers/<id>`) when you no longer need them. The older LADO does not use them:
+git reaches those servers as it did before you added them. Upgrading again brings no server
+back: add it again with `lado git-server add`.
 
 ### The check for a newer version
 

@@ -253,7 +253,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     waits for it instead (`_held_for_login`). `check_new_session` is every check of a new
     session that needs no repository (the kits not empty, a folder of LADO's projects/
     without a project, the name, the title, a taken name,
-    the provider, the permission mode, `kits.resolve`, the kits' commands, the model, the
+    the provider, the permission mode, `kits.resolve`, the kits' commands and, while a git
+    server is saved, the agents' git of 2.31 or newer (`_check_commands`), the model, the
     login), for a folder that may not exist yet; it returns a `NewSession`, which
     `start_session` goes on with, and a fresh start, a set-up and `lado start <git-url>`
     call it before they change the disk (openspec change scratch-checks-first). Whether a folder can hold a session is `check_repo` (its repository's
@@ -683,7 +684,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     variables, given as names, taken whole from the highest layer that sets any), `resolve`
     (both), `for_git` (the
     environment of LADO's own network git, gitcache's and clone's: the process's, the
-    outside folder's over it, then a project's layer when given; no login shell), and
+    outside folder's over it, then a project's layer when given; no login shell; a call
+    that names its `remote` gets the saved git servers' `GIT_CONFIG_*` over it,
+    `git_servers.variables`, and the old-git refusal for a saved server's remote), and
     `command`, the window's command that runs the agent with exactly that environment. `read_folder` is
     the one reader of a folder of variables, the outside folder's and a project's secrets
     folder's (`Folder`: the values and each file not used with why); with `own`, for a folder
@@ -915,7 +918,31 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     context (three GETs at once within `LIMIT_TIMEOUT`, read by shape: LM Studio's loaded context,
     Ollama's running model, a list's `max_input_tokens`, `context_length` or `max_model_len`, with
     `max_output_tokens` or `top_provider.max_completion_tokens`; never raises); standard library only,
-    the key only in the requests' headers.
+    the key only in the requests' headers. `ask`, `ask_all`, `no_answer`, `NoRedirect` and
+    `Answer` are its request path, shared with the git server probe.
+  - `git_kinds/`: the kinds of git server, one module each (`github.py`, `gitlab.py`, the
+    frozen `base.Kind`: the user API's request with the token in the kind's header, the
+    login told from its answer as one line of visible text, the refusal of a token, the user
+    name git sends, the host tool, the token page and its scopes); `KINDS` in `__init__.py`
+    is the one list of them (`--kind`'s choices, the probe's requests).
+  - `git_servers.py`: the human's git servers (`lado git-server add|list|remove`): `address`
+    (`https://` added, a path kept, the default port dropped; its `key`, host and port, is
+    the server's identity), `check_not_github`, `check_token`, `probe` (every kind asked at
+    once through `model_servers.ask_all`, no redirect, the verdicts and their words;
+    `--kind` gives `Checked.unchecked`), `save` and `remove` (the row in lado.db's
+    `git_servers` and the token file `<LADO_HOME>/git-servers/<id>/token` by
+    `project_secrets.write_at`/`remove_at`: a new server's file first, a replaced one's row
+    first, its id kept), `variables` (per server an empty `credential.<origin>.helper`, then
+    `helper_command`, then three `url.<root>/.insteadOf` of its ssh forms, numbered after
+    the environment's own `GIT_CONFIG_COUNT`; nothing for no server), `server_for` (the
+    saved server a remote reaches) and `check_git` (`GitTooOld`'s words for a git below
+    `runtime.GIT_MIN` on a given PATH). The HTTP client is imported by `probe` alone: hooks
+    and launches import this module.
+  - `git_credential.py`: LADO's git credential helper, run by git with LADO's Python
+    (`interpreter.run_module`) and its arguments (`--home`, `--server`, `--user`,
+    `--address`): `get` prints the user and the token read by the link-refusing reader of
+    LADO's secrets, or `quit=1` and one stderr line with no token file; `store` and `erase`
+    do nothing; it never opens lado.db.
   - `model_settings.py`: the human's model servers, configured models under names and agent
     CLIs' default models (`lado model-server add|list|remove`, `lado model
     add|list|remove|default`, and Settings → Model servers and Agent CLIs through

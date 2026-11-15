@@ -71,11 +71,11 @@ One line per module; each module's behaviour in detail: [docs/design/modules.md]
   - `logins.py`: the agent CLIs' logins and login windows; `login_wait.py` an agent's wait.
   - `interpreter.py`: `run_module`, the one way LADO starts a Python process of its own.
   - `mcp_exec.py`: a kit's MCP server whose secrets never go on disk.
-  - `text.py`: the one rule of a line of visible text.
-  - `terminal.py`: an agent's terminal for the UI.
+  - `text.py`: the one rule of a line of visible text; `terminal.py`: an agent's terminal for the UI.
   - `kits.py`: kits (roles, skills, MCP servers, flows), lookup, install, resolve; `builtin_kits/`.
   - `gitcache.py`: the git cache of kits and packs; all git commands for kits.
-  - `marketplaces.py`: kit marketplaces.
+  - `git_servers.py`: git servers and their tokens (`lado git-server`), kinds in `git_kinds/`,
+    the helper `git_credential.py`; `marketplaces.py`: kit marketplaces.
   - `flows.py`: the flow format and its validator; `runs.py`: flow runs, steps, gates.
   - `mcp_server.py`: the MCP tools agents use (`lado mcp`).
   - `artifacts.py`: artifacts, a session's named documents; `artifacts_local.py` its store;

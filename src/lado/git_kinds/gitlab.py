@@ -1,7 +1,13 @@
 """GitLab, gitlab.com or the human's own: its REST API under `/api/v4`."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from lado.git_kinds.base import Kind
-from lado.model_servers import Answer
+
+if TYPE_CHECKING:
+    from lado.model_servers import Answer
 
 
 class GitLab(Kind):

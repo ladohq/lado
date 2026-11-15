@@ -4,9 +4,12 @@ answer is told, and what git and the human need of it."""
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from lado import text as visible
-from lado.model_servers import Answer
+
+if TYPE_CHECKING:  # the HTTP client is loaded by a probe only, never by a hook
+    from lado.model_servers import Answer
 
 
 @dataclass(frozen=True)

@@ -23,15 +23,17 @@ import re
 import shlex
 import subprocess
 import urllib.parse
-import urllib.request
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
-from lado import agent_env, git_kinds, interpreter, model_servers, project_secrets, state
+from lado import agent_env, git_kinds, interpreter, project_secrets, state
 from lado.git_kinds import Kind
+
+if TYPE_CHECKING:  # the HTTP client: loaded by `add` alone, never by a launch or a hook
+    from lado import model_servers
 
 TOKENS = "git-servers"  # under LADO_HOME: a folder per server, by its id
 TOKEN = "token"  # the token's file in a server's folder
@@ -117,6 +119,8 @@ def check_not_github(at: Address) -> None:
 def check_token(token: str) -> None:
     """Refuse an empty token, one no HTTP header can carry (nor git's credential protocol,
     one line), and one larger than its file may hold."""
+    from lado import model_servers
+
     if not token:
         raise Refused("the token is empty")
     if not model_servers.carriable(token):
@@ -167,6 +171,10 @@ def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
     once; with `kind_name`, that kind for a server no kind recognises (Checked.unchecked says
     why). Refused for a server that refuses the token, sends elsewhere, answers as two kinds
     without `kind_name` or as another, or cannot be checked without `kind_name`."""
+    import urllib.request
+
+    from lado import model_servers
+
     opener = urllib.request.build_opener(model_servers.NoRedirect())
     asked = []
     for kind in git_kinds.KINDS:

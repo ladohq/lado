@@ -47,7 +47,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-15-git-servers.
 
 ## 7. Codex's sandbox and the way back
 
-- [ ] 7.1 Smoke: `codex sandbox -- git credential fill` and `git ls-remote` (D12); stop and
+- [x] 7.1 Smoke: `codex sandbox -- git credential fill` and `git ls-remote` (D12); stop and
   ask the human if the sandbox blocks the helper or the token. Check: CI's smoke cells (`tests/smoke/test_codex_git_server.py`).
 - [x] 7.2 `self_update`: `git servers` among the loss, the token folders that stay (D11).
   Check: `tests/test_self_update.py`, a case in

@@ -1595,7 +1595,8 @@ connection, above).
   (`max-height: calc(100dvh - 64px)`, width `min(640px, 100vw - 32px)`), only its body
   scrolls; at 760 px or less it is a full-screen sheet (a 56 px head, the footer above
   `env(safe-area-inset-bottom)`, targets of 44 px: every field 44 px high but Name, 30 px on
-  Task's label row; a note's buttons and Switch off's offers at least 44 px; a kit chip 32 px,
+  Task's label row; a note's buttons and Switch off's offers at least 44 px (not a link within
+  a note's sentence, such as `Make one in Projects`); a kit chip 32 px,
   its × 32 px with a 44 × 44 px hit area by `::after`, as an info button's; `+ Add kit` 44 px;
   LAD-209). The window decides nothing the core decides: every check and text comes from the
   server.

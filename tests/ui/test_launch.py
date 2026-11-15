@@ -23,6 +23,7 @@ from playwright.sync_api import Locator, Page, expect
 from test_layout import BUILD
 
 from lado import loop, runs, runtime, state
+from lado import projects as lado_projects
 
 pytestmark = pytest.mark.ui
 
@@ -1307,12 +1308,14 @@ def test_on_a_phone_a_folders_path_is_cut_before_its_name(page: Page, server, re
 
 # What the sheet's targets miss: each visible field and button of the window's body lower
 # than 44 px, but Name's field on Task's label row (30 px by LAD-265's decision), the info
-# buttons (a hit area of their own), a kit's × (below) and the radio buttons of Permissions
-# (their 44 px rows are the targets).
+# buttons (a hit area of their own), a kit's × (below), the radio buttons of Permissions
+# (their 44 px rows are the targets) and a link within a note's sentence (`.link-button`, such
+# as Project…'s "Make one in Projects": a line of text, not a button of its own).
 SHORT_TARGETS = """dialog => [...dialog.querySelectorAll(
     ".launch-body input, .launch-body select, .launch-body button")]
   .filter(el => el.getClientRects().length > 0)
   .filter(el => !el.closest(".name-inline, .info-tip, .kits-box-chip"))
+  .filter(el => !el.matches(".field-note .link-button"))
   .filter(el => el.type !== "radio")
   .map(el => {
     // Where's input stands in its box: the box is the field.
@@ -1323,8 +1326,16 @@ SHORT_TARGETS = """dialog => [...dialog.querySelectorAll(
   .filter(([, height]) => height < 44)"""
 
 
+@pytest.fixture
+def a_project(tmp_path, monkeypatch, git_config):
+    """LADO_REPOS with the project shop and its repository backend, taken before `server`."""
+    monkeypatch.setenv("LADO_REPOS", str(tmp_path / "ws"))
+    lado_projects.create("shop", "Shop")
+    agent_helpers.init_repo(lado_projects.folder("shop") / "backend")
+
+
 def test_on_a_phone_every_field_and_button_of_the_window_is_a_44_px_target(
-    page: Page, server, repo, shot
+    page: Page, a_project, server, repo, shot
 ):
     """Team open at 390x844, on each way of Where (capability new-session-window, "The sheet's
     fields and buttons", "A kit's ×")."""
@@ -1338,9 +1349,15 @@ def test_on_a_phone_every_field_and_button_of_the_window_is_a_44_px_target(
     assert dialog.evaluate(SHORT_TARGETS) == []
     assert name_field(dialog).bounding_box()["height"] == 30
     shot(page, "targets")
-    for way in ("Clone from URL…", "New empty folder…", "Project…"):
+    # Each way measured once it settled: its own field is there, the check's answer in.
+    ways = {
+        "Clone from URL…": dialog.get_by_role("textbox", name="Clone into"),
+        "New empty folder…": dialog.get_by_role("textbox", name="Folder name"),
+        "Project…": dialog.get_by_role("combobox", name="Project"),
+    }
+    for way, settled in ways.items():
         pick_place(dialog, way)
-        expect(dialog.get_by_role("combobox", name="Where")).to_have_value(way.rstrip("…"))
+        expect(settled.first).to_be_visible()
         assert dialog.evaluate(SHORT_TARGETS) == [], way
 
     # A kit's ×: a 32 px look, a 44 px target; a press 5 px right of the drawn × removes the kit.

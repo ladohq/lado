@@ -1213,6 +1213,7 @@ def test_a_plain_folder_is_set_up_and_started(page: Page, git_config, server, tm
     for width in (1440, 390):
         page.set_viewport_size({"width": width, "height": 900 if width > 760 else 844})
         shot(page, f"g-{width}", full_page=False)
+        assert tick.bounding_box()["height"] <= 20, width  # the phone's 44 px fields leave it a box
     page.set_viewport_size({"width": 1440, "height": 900})
     start = dialog.get_by_role("button", name="Set up and start in notes")
     start.click()

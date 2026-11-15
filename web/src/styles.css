@@ -8465,7 +8465,7 @@ button.locked:disabled,
   }
 
   /* Every field 44 px but Name's, which stands on Task's label row (LAD-265). */
-  .launch-dialog .field input:not(.place-input, .name-inline input, [type="radio"]),
+  .launch-dialog .field input:not(.place-input, .name-inline input, [type="radio"], [type="checkbox"]),
   .launch-dialog .field select,
   .launch-dialog .model-pick {
     height: 44px;

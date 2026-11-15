@@ -518,8 +518,8 @@ def test_added_scheme_is_on_the_first_line(serve):
 
 def test_closed_port_does_not_answer_after_one_request(monkeypatch):
     asked = []
-    real = ms._ask
-    monkeypatch.setattr(ms, "_ask", lambda *a: asked.append(a) or real(*a))
+    real = ms.ask
+    monkeypatch.setattr(ms, "ask", lambda *a: asked.append(a) or real(*a))
     port = closed_port()
     with pytest.raises(ms.ProbeError) as raised:
         ms.probe(f"http://127.0.0.1:{port}")
@@ -654,7 +654,7 @@ def test_container_hint_names_the_command_run(monkeypatch):
 
 def test_container_hint_takes_the_scheme_s_port(monkeypatch):
     monkeypatch.setenv("LADO_CONTAINER", "1")
-    monkeypatch.setattr(ms, "_ask", lambda *a: ms.Answer(why="connection refused"))
+    monkeypatch.setattr(ms, "ask", lambda *a: ms.Answer(why="connection refused"))
     with pytest.raises(ms.ProbeError) as raised:
         ms.probe("https://localhost")
     assert "probe https://host.docker.internal:443 (not tried)" in raised.value.hint
@@ -668,7 +668,7 @@ def test_no_hint_outside_container():
 
 def test_no_hint_for_a_lan_address(monkeypatch):
     monkeypatch.setenv("LADO_CONTAINER", "1")
-    monkeypatch.setattr(ms, "_ask", lambda *a: ms.Answer(why="connection refused"))
+    monkeypatch.setattr(ms, "ask", lambda *a: ms.Answer(why="connection refused"))
     with pytest.raises(ms.ProbeError) as raised:
         ms.probe("192.168.1.10:11434")
     assert raised.value.hint == ""
@@ -677,8 +677,8 @@ def test_no_hint_for_a_lan_address(monkeypatch):
 def test_container_hint_sends_nothing_there(monkeypatch):
     monkeypatch.setenv("LADO_CONTAINER", "1")
     asked = []
-    real = ms._ask
-    monkeypatch.setattr(ms, "_ask", lambda *a: asked.append(a[1]) or real(*a))
+    real = ms.ask
+    monkeypatch.setattr(ms, "ask", lambda *a: asked.append(a[1]) or real(*a))
     port = closed_port()
     with pytest.raises(ms.ProbeError):
         ms.probe(f"localhost:{port}")

@@ -2,12 +2,12 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: S1 (LAD-289, run task/lad-289) · Next: S2 · Open checks: the human's check on the company GitLab, on the release candidate that carries S7
+In work: none · Next: S2 (draft waits at step_ok) · Open checks: the human's check on the company GitLab, on the release candidate that carries S7
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
 - The statement's decisions (brief.md) are not reopened.
-Last review: 2026-11-15, base at e0e27c02
+Last review: 2026-11-16, after S1, base at a76695bc
 
 ## Steps
 
@@ -27,7 +27,11 @@ git for a host that was listed goes the old way. Each such step checks it with a
 and rollback test, as earlier migrations do, and names whether its files are cleaned up.
 
 ### S1 — Git servers: the list and https access for agents (walking skeleton)
-Status: in progress (LAD-289, run task/lad-289)
+Status: done (LAD-289, PR #320, merged a76695bc on 2026-11-16, in release 0.48.0). The human ran
+the manual check with Claude Code on gitlab.com and on the company GitLab: all OK.
+Leftovers: E4 and the empty `git-servers/` folder → S2; E2 → S4; on the company GitLab
+https was not told apart from ssh (the human has an ssh key there) → S7's check; no live test
+of Claude Code or of Codex with a model through a git server → S7's release candidate.
 Check: unit tests per server kind against a fake API: `lado git-server add <address>
 --token` finds the kind itself by asking the server's API with the token (GitLab's
 `/api/v4/user`, GitHub's `/api/v3/user` or api.github.com) and says "GitLab, signed in as
@@ -66,7 +70,16 @@ Check: a UI e2e test adds a gitlab.com and a self-hosted server (address, prefil
 gitlab.com; token with a "where to get it" link; the kind shown once found, chosen by hand
 only when the server did not answer) and removes one; the list matches
 `lado git-server list`; docs/design/ui.md and the user's docs describe the screen.
-Touches: `web/src/` (Settings), `server/app.py` if the API needs a field, docs/design/ui.md.
+Touches: `web/src/` (Settings), `server/app.py` (the API for the list: add with the kind
+found, list, remove; S1 built none, "Only what is used"), `web/openapi.json` and
+`src/api.gen.ts`, docs/design/ui.md.
+Leftovers of S1 (ledger E4, the human's manual check):
+- Two servers on one host name with different https ports (`host` and `host:8443`): the
+  `git@host:` and `ssh://git@host/` rewrites of both clash; the analyst asks the human for
+  the rule (e.g. refuse or warn the second one, or rewrite ssh forms for neither) and
+  applies it in the CLI and the screen alike.
+- After the last server is removed, an empty `<LADO_HOME>/git-servers/` folder stays:
+  remove it with the last server.
 
 ### S3 — The commit author of a server
 Status: planned
@@ -82,7 +95,8 @@ Check: unit tests per server kind against a fake API: "Check" in Settings and `l
 git-server check` check a saved server again (the same request as `add` in S1) and say
 "works, this is <name>" or why not in plain words (wrong token, missing rights, server
 unreachable), and a server saved with `--kind` unchecked is checked when it answers; `lado doctor` lists the servers and their
-check; a failed clone from a listed host names its entry, from an unlisted host suggests
+check; a server whose two kinds both refuse the token names the reason without guessing the
+kind (S1 ledger E2: a gateway that answers 401 on every path); a failed clone from a listed host names its entry, from an unlisted host suggests
 adding it, in the UI too (UI e2e); docs describe what was built.
 Touches: the server kinds module, `doctor.py`, `clone.py`, `server/`, `web/src/` (Settings,
 the clone window), docs.
@@ -122,9 +136,13 @@ most 60 MB (past it: ask the human before merging); docs describe what was built
 GitLab part of docs/install.md). Then the human's check, on the release candidate that
 carries S7 (Docker on a Mac, the company GitLab over the company's VPN): Settings → Git
 servers → "Check" green; an agent clones, commits with the given author, pushes and opens
-a merge request; github.com works as before.
+a merge request; github.com works as before. The push must be shown to go over https, not
+the human's ssh key (S1's manual check could not tell them apart there): the agent runs
+`GIT_SSH_COMMAND=false git push …`, or the human's ssh key is set aside for the check. The
+release candidate's live tests (each RC, docs/release.md) include an agent with a model
+pushing through a listed server, for Claude Code and Codex (S1 had none).
 Touches: `docker/Dockerfile`, `scripts/` pins, the server kinds module (gitlab),
-`agent_env.py`, `tests/container/`, docs/install.md.
+`agent_env.py`, `tests/container/`, `tests/live/` (a push through a listed server), docs/install.md.
 
 ### S8 — The guide "Connect your own git server"
 Status: planned

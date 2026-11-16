@@ -126,6 +126,8 @@ project's secret) or `gh auth login` on the home volume sees a github.com entry 
 `GH_TOKEN` is handled as the human decides (open question 1); nothing is deleted
 (`GH_TOKEN` and gh's login stay), so after a rollback (the way back above) the old path
 works — checked by running it after the rollback; the docs say where the GitHub login is now.
+The kind hint without a token (S2) on a real GitHub Enterprise was never seen live: check
+it when a GHE server is at hand, or name it as not checked.
 Touches: the server kinds module (github), `logins.py`, `agent_env.py`, `clone.py`
 (`_github_login`), `docker/Dockerfile` (the system helper for github.com), docs.
 Notes: decided at intake (D5). The analyst decides whether the entry is stored or derived

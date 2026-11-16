@@ -2,7 +2,7 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: S3 (draft, starts without a gate) · Next: S4 · Open checks: the human's check on the company GitLab, on the release candidate that carries S7
+In work: S3 (LAD-291, run task/lad-291) · Next: S4 · Open checks: the human's check on the company GitLab, on the release candidate that carries S7
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
@@ -85,7 +85,7 @@ Leftovers of S1 (ledger E4, the human's manual check):
   remove it with the last server.
 
 ### S3 — The commit author of a server
-Status: planned
+Status: in progress (LAD-291, run task/lad-291)
 Check: an integration test: an agent's commit to a listed host carries the server's author
 (name, email) in both author and committer, otherwise LADO's as today; Settings and
 `lado git-server` set and clear it (UI e2e); the way back (above) with its upgrade and

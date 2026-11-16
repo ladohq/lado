@@ -2463,6 +2463,114 @@
         }
       }
     },
+    "/api/git-servers/{host}/author": {
+      "put": {
+        "summary": "Set Git Server Author",
+        "description": "Set the server's commit author as `lado git-server author --name --email` does.",
+        "operationId": "set_git_server_author_api_git_servers__host__author_put",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Host"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitServerAuthor"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitServerAuthorDone"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryRefused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Clear Git Server Author",
+        "description": "Clear the server's commit author as `lado git-server author --clear` does.",
+        "operationId": "clear_git_server_author_api_git_servers__host__author_delete",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Host"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitServerAuthorDone"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryRefused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/git-servers/{host}": {
       "delete": {
         "summary": "Remove Git Server",
@@ -6329,6 +6437,43 @@
         "title": "GitServerAdded",
         "description": "A git server saved or replaced: as saved, the line that says so, and the warnings\n(its token over plain http://)."
       },
+      "GitServerAuthor": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "email"
+        ],
+        "title": "GitServerAuthor",
+        "description": "A git server's commit author to set: both its name and its email."
+      },
+      "GitServerAuthorDone": {
+        "properties": {
+          "server": {
+            "$ref": "#/components/schemas/GitServerInfo"
+          },
+          "line": {
+            "type": "string",
+            "title": "Line"
+          }
+        },
+        "type": "object",
+        "required": [
+          "server",
+          "line"
+        ],
+        "title": "GitServerAuthorDone",
+        "description": "A git server's commit author set or cleared: the server as saved and the line of\n`lado git-server author` that says so."
+      },
       "GitServerCheck": {
         "properties": {
           "address": {
@@ -6468,6 +6613,28 @@
           "has_token": {
             "type": "boolean",
             "title": "Has Token"
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "author_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Email"
           }
         },
         "type": "object",
@@ -6477,10 +6644,12 @@
           "kind",
           "kind_title",
           "login",
-          "has_token"
+          "has_token",
+          "author_name",
+          "author_email"
         ],
         "title": "GitServerInfo",
-        "description": "A saved git server as lado.db keeps it, asking it nothing: `host` its key (host and a\nport other than the scheme's), `login` None for one saved without a check, and whether\nits token file is there (never the token)."
+        "description": "A saved git server as lado.db keeps it, asking it nothing: `host` its key (host and a\nport other than the scheme's), `login` None for one saved without a check, whether\nits token file is there (never the token), and its commit author (both or neither)."
       },
       "GitServers": {
         "properties": {

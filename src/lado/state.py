@@ -23,7 +23,7 @@ from lado.flows import IDENTIFIER
 
 # `lado update` of a later LADO reads this line from this release's wheel to learn the schema
 # it knows (update.release_schema): keep its form, `SCHEMA_VERSION = <N>` on a line of its own.
-SCHEMA_VERSION = 41
+SCHEMA_VERSION = 42
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -1070,6 +1070,15 @@ CREATE TABLE IF NOT EXISTS git_servers (
 )"""
 SCHEMA += GIT_SERVERS_TABLE + ";\n"
 MIGRATIONS[40] = [GIT_SERVERS_TABLE]
+
+# From version 42: a git server's commit author (lado.git_servers.set_author), both or
+# neither; agents commit to its repositories with it.
+GIT_SERVERS_AUTHOR = [
+    "ALTER TABLE git_servers ADD COLUMN author_name TEXT",
+    "ALTER TABLE git_servers ADD COLUMN author_email TEXT",
+]
+SCHEMA += "".join(f"{step};\n" for step in GIT_SERVERS_AUTHOR)
+MIGRATIONS[41] = GIT_SERVERS_AUTHOR
 
 # Where an agent's model or effort came from. Each later way of choosing one adds a token;
 # a token this LADO does not know (a newer LADO's row) is shown as itself (source_words).
@@ -4187,11 +4196,20 @@ class GitServer:
     kind: str
     login: str | None  # None: saved unchecked
     added_at: str  # UTC, YYYY-MM-DD HH:MM:SS
+    author_name: str | None = None  # the commit author: both or neither
+    author_email: str | None = None
 
 
 def _git_server(row: sqlite3.Row) -> GitServer:
     return GitServer(
-        row["id"], row["address"], row["host"], row["kind"], row["login"], row["added_at"]
+        row["id"],
+        row["address"],
+        row["host"],
+        row["kind"],
+        row["login"],
+        row["added_at"],
+        row["author_name"],
+        row["author_email"],
     )
 
 
@@ -4205,9 +4223,10 @@ class HostTaken(Exception):
 
 def save_git_server(id: str, address: str, host: str, kind: str, login: str | None) -> GitServer:
     """Save a git server under `id`, or, when one of `host` is saved, replace its address,
-    kind and login, keeping its id: the server as saved. HostTaken, nothing saved, when a
-    server of the address's host name is saved on another port (lado.git_servers.check_host,
-    checked again here inside the write against an add at the same moment)."""
+    kind and login, keeping its id and commit author: the server as saved. HostTaken, nothing
+    saved, when a server of the address's host name is saved on another port
+    (lado.git_servers.check_host, checked again here inside the write against an add at the
+    same moment)."""
     hostname = urllib.parse.urlsplit(address).hostname
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
@@ -4236,6 +4255,18 @@ def git_servers() -> list[GitServer]:
 def git_server_by_host(host: str) -> GitServer | None:
     with connect() as db:
         row = db.execute("SELECT * FROM git_servers WHERE host = ?", (host,)).fetchone()
+    return _git_server(row) if row else None
+
+
+def set_git_server_author(id: str, name: str | None, email: str | None) -> GitServer | None:
+    """Set the commit author of the git server `id` (None and None: clear it): the server as
+    saved, or None when there is no such server."""
+    with connect() as db:
+        db.execute(
+            "UPDATE git_servers SET author_name = ?, author_email = ? WHERE id = ?",
+            (name, email, id),
+        )
+        row = db.execute("SELECT * FROM git_servers WHERE id = ?", (id,)).fetchone()
     return _git_server(row) if row else None
 
 

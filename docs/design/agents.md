@@ -96,6 +96,18 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   anew. With no server saved none is set, and the launch asks no `git --version`; with one,
   an agents' git older than 2.31 refuses the launch first (`_check_commands`). The list is
   read at each launch: a server added or removed reaches a running agent at its restart.
+- A server with a commit author (`lado git-server author`) adds, after its own entries,
+  six `includeIf.hasconfig:remote.*.url:<pattern>.path` entries (`git_servers.author_entries`:
+  its address with or without a user, `git@<host>:*`, `git@<host>:*/**`, `ssh://git@<host>/**`
+  and `ssh://git@<host>:22/**`) pointing to `<config folder>/git-authors/<server id>.gitconfig`,
+  which the launch writes in `_ours` (`git_servers.author_files`: only `[user]` name and email,
+  mode 600, by a rename) and which goes with the config folder. git includes it in a
+  repository with a remote on the server, so one agent commits to each server's repositories
+  as that server's author and elsewhere as before; the condition needs git 2.36
+  (`GIT_AUTHOR_MIN`): while an author is set, an older agents' git refuses the launch
+  (`_check_commands`). `GIT_AUTHOR_*`/`GIT_COMMITTER_*` of the agent's environment win over
+  every config: the launch names each in its warnings (`_author_warnings`). LADO's own git
+  (`agent_env.for_git`) gets no author.
 - Each agent has a temporary folder of its own (LAD-247): all agents of a machine run as one
   user with one `/tmp`, where two agents' files of one name (a draft `pr.md`) met. At each
   launch `providers.base.make_temp_dir` makes `<parent>/lado-<uid>/<session>/<agent>`, each

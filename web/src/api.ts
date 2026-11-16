@@ -470,6 +470,17 @@ export const addGitServer = (address: string, token: string, kind: string | null
 export const removeGitServer = (host: string) =>
   post<GitServers>(`/api/git-servers/${encodeURIComponent(host)}`, undefined, "DELETE");
 
+export type GitServerAuthorDone = components["schemas"]["GitServerAuthorDone"];
+const gitAuthorPath = (host: string) => `/api/git-servers/${encodeURIComponent(host)}/author`;
+
+// Set the commit author of the server of `host`, as `lado git-server author --name --email`.
+export const setGitServerAuthor = (host: string, name: string, email: string) =>
+  post<GitServerAuthorDone>(gitAuthorPath(host), { name, email }, "PUT");
+
+// Clear it: agents commit there with the human's own git author again.
+export const clearGitServerAuthor = (host: string) =>
+  post<GitServerAuthorDone>(gitAuthorPath(host), undefined, "DELETE");
+
 // A request LADO's server gave no answer to.
 export const unreachable = (error: unknown) => error instanceof Unreached;
 export const LADO_DOWN = "LADO's server does not answer: your request may or may not have reached it.";

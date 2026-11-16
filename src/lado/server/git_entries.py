@@ -42,6 +42,8 @@ def server_info(server: state.GitServer) -> models.GitServerInfo:
         kind_title=kind.title if kind else server.kind,
         login=server.login,
         has_token=git_servers.has_token(server),
+        author_name=server.author_name,
+        author_email=server.author_email,
     )
 
 
@@ -128,6 +130,28 @@ def add(given: models.GitServerAdd) -> models.GitServerAdded:
         line = f"{done} git server {saved.address} as {info.kind_title} without a check "
         line += f"({checked.unchecked})."
     return models.GitServerAdded(server=info, line=line, replaced=replaced, warnings=warnings)
+
+
+def set_author(host: str, given: models.GitServerAuthor) -> models.GitServerAuthorDone:
+    """Set the commit author of the server of `host` (its key) as `lado git-server author
+    --name --email` does."""
+    try:
+        saved = git_servers.set_author(git_servers.saved_address(host), given.name, given.email)
+    except git_servers.Refused as exc:
+        raise _refusal(exc) from None
+    author = git_servers.author_text(saved)
+    line = git_servers.AUTHOR_SET.format(address=saved.address, author=author)
+    return models.GitServerAuthorDone(server=server_info(saved), line=line)
+
+
+def clear_author(host: str) -> models.GitServerAuthorDone:
+    """Clear the commit author of the server of `host` as `lado git-server author --clear`."""
+    try:
+        saved = git_servers.clear_author(git_servers.saved_address(host))
+    except git_servers.Refused as exc:
+        raise _refusal(exc) from None
+    line = git_servers.AUTHOR_CLEARED.format(address=saved.address)
+    return models.GitServerAuthorDone(server=server_info(saved), line=line)
 
 
 def remove(host: str) -> models.GitServers:

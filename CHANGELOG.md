@@ -8,6 +8,9 @@
   checks the server and keeps your token; agents and LADO then clone and push there over
   https without a password, `git@…` addresses included. Needs git 2.31 or newer. Also in
   Settings → Git servers, which shows the token page with the rights the token needs.
+- **Your commit name and email per git server.** `lado git-server author` or ✎ in Settings →
+  Git servers: agents commit to that server's repositories with this name and email, and
+  elsewhere as before. Your global git settings stay untouched. Needs git 2.36 or newer.
 
 ## 0.47.0 (2026-11-15)
 

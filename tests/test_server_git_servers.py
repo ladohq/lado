@@ -4,6 +4,7 @@ FastAPI's test client and the fake git APIs of tests/fake_git_api.py."""
 
 from __future__ import annotations
 
+import os
 import socket
 
 import fake_git_api as fake
@@ -105,6 +106,7 @@ def test_the_list_is_the_commands(client, serve, capsys, lado_home):
     ok(add(client, server.url))
     ok(add(client, f"https://git.lan:{closed_port()}", kind="github"))
     gone = state.git_servers()[1]
+    state.set_git_server_author(gone.id, "Ivan Petrov", "ivan@corp.ru")
     (lado_home / "git-servers" / gone.id / "token").unlink()
     asked = len(server.requests)
     rows = ok(client.get("/api/git-servers"))["servers"]
@@ -118,6 +120,7 @@ def test_the_list_is_the_commands(client, serve, capsys, lado_home):
             r["kind_title"],
             *(r["login"] or "not checked").split(),
             "yes" if r["has_token"] else "no",
+            *(f"{r['author_name']} <{r['author_email']}>" if r["author_name"] else "-").split(),
         ]
         for r in rows
     ] == printed
@@ -137,6 +140,8 @@ def test_add_gitlab_saves_it_with_its_login(client, serve, lado_home):
         "kind_title": "GitLab",
         "login": fake.LOGIN,
         "has_token": True,
+        "author_name": None,
+        "author_email": None,
     }
     assert added["line"] == f"Saved git server {server.url}: GitLab, signed in as {fake.LOGIN}."
     assert added["replaced"] is False
@@ -344,3 +349,85 @@ def test_an_ipv6_host_is_removed_by_its_key(client):
     host = state.git_servers()[0].host
     assert host.startswith("[::1]:")
     assert ok(client.delete(f"/api/git-servers/{host}"))["servers"] == []
+
+
+# The commit author.
+
+
+def _saved(client, address="https://git.lan"):
+    ok(add(client, address, kind="gitlab"))
+    return state.git_servers()[0]
+
+
+def put_author(client, host, name, email):
+    return client.put(f"/api/git-servers/{host}/author", json={"name": name, "email": email})
+
+
+def test_an_author_is_set_and_cleared_by_host(client, capsys):
+    server = _saved(client)
+    done = ok(put_author(client, server.host, " Ivan Petrov ", "ivan@corp.ru"))
+    assert done["line"] == "Agents commit to https://git.lan as Ivan Petrov <ivan@corp.ru>."
+    assert (done["server"]["author_name"], done["server"]["author_email"]) == (
+        "Ivan Petrov",
+        "ivan@corp.ru",
+    )
+    [listed] = ok(client.get("/api/git-servers"))["servers"]
+    assert listed == done["server"]
+    capsys.readouterr()
+    main(["git-server", "list"])
+    assert capsys.readouterr().out.splitlines()[1].endswith(" Ivan Petrov <ivan@corp.ru>")
+    cleared = ok(client.delete(f"/api/git-servers/{server.host}/author"))
+    assert cleared["line"] == "Agents commit to https://git.lan with your own git author again."
+    assert (cleared["server"]["author_name"], cleared["server"]["author_email"]) == (None, None)
+    assert [s.address for s in state.git_servers()] == ["https://git.lan"]  # not removed
+
+
+def test_an_ipv6_hosts_author(client):
+    server = _saved(client, f"https://[::1]:{closed_port()}")
+    ok(put_author(client, server.host, "Ivan", "ivan@corp.ru"))
+    assert state.git_servers()[0].author_name == "Ivan"
+    ok(client.delete(f"/api/git-servers/{server.host}/author"))
+    assert state.git_servers()[0].author_name is None
+
+
+@pytest.mark.parametrize(
+    ("name", "email", "field", "message"),
+    [
+        ("", "ivan@corp.ru", "name", "the author's name is empty"),
+        ("Ivan <boss>", "ivan@corp.ru", "name", "the author's name holds no < or > or line break"),
+        ("Ivan", "ivan.petrov", "email", "not an email address: name@host"),
+    ],
+)
+def test_an_author_refused_under_its_field(client, name, email, field, message):
+    server = _saved(client)
+    detail = refused(put_author(client, server.host, name, email))
+    assert (detail["message"], detail["field"]) == (message, field)
+    assert state.git_servers()[0].author_name is None
+
+
+def test_an_old_git_refuses_an_author_under_no_field(client, tmp_path, monkeypatch):
+    server = _saved(client)
+    folder = tmp_path / "old-git"
+    folder.mkdir()
+    (folder / "git").write_text("#!/bin/sh\necho 'git version 2.34.1'\n")
+    (folder / "git").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{folder}:{os.environ['PATH']}")
+    detail = refused(put_author(client, server.host, "Ivan", "ivan@corp.ru"))
+    assert (detail["message"], detail["field"]) == (
+        "git 2.34.1 is older than 2.36, which a commit author of a git server needs; update git",
+        "",
+    )
+
+
+def test_the_author_of_no_saved_server_is_refused(client):
+    _saved(client)
+    for answer in (
+        put_author(client, "gitlab.corp.ru", "Ivan", "ivan@corp.ru"),
+        client.delete("/api/git-servers/gitlab.corp.ru/author"),
+    ):
+        detail = refused(answer)
+        assert (detail["message"], detail["hint"], detail["field"]) == (
+            "gitlab.corp.ru is no saved git server",
+            "",
+            "address",
+        )

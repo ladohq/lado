@@ -792,8 +792,8 @@ class ServerCheck(BaseModel):
 
 class GitServerInfo(BaseModel):
     """A saved git server as lado.db keeps it, asking it nothing: `host` its key (host and a
-    port other than the scheme's), `login` None for one saved without a check, and whether
-    its token file is there (never the token)."""
+    port other than the scheme's), `login` None for one saved without a check, whether
+    its token file is there (never the token), and its commit author (both or neither)."""
 
     address: str
     host: str
@@ -801,6 +801,8 @@ class GitServerInfo(BaseModel):
     kind_title: str
     login: str | None
     has_token: bool
+    author_name: str | None
+    author_email: str | None
 
 
 class GitKindInfo(BaseModel):
@@ -857,6 +859,21 @@ class GitServerAdded(BaseModel):
     line: str
     replaced: bool
     warnings: list[str]
+
+
+class GitServerAuthor(BaseModel):
+    """A git server's commit author to set: both its name and its email."""
+
+    name: str
+    email: str
+
+
+class GitServerAuthorDone(BaseModel):
+    """A git server's commit author set or cleared: the server as saved and the line of
+    `lado git-server author` that says so."""
+
+    server: GitServerInfo
+    line: str
 
 
 class LoginInfo(BaseModel):

@@ -791,7 +791,8 @@ or not: `<CLI>'s default model is cleared.`, or `<CLI> has no default model.`; a
 
 `lado git-server add <address> --token [--kind github|gitlab]` saves a GitLab or GitHub
 Enterprise server with the human's token, so that agents and LADO's own git reach it over
-https without a password (`git_servers.py`, lado.db's `git_servers`, schema 41). The address
+https without a password (`git_servers.py`, lado.db's `git_servers`, schema 41; its commit
+author from schema 42). The address
 takes `https://` when it has none and keeps a path (`https://example.com/gitlab`); a user or
 password, a query, a fragment or another scheme is refused with exit 2 (`not a git server's
 address: <why>`, never naming the address). `github.com` (and `www.`, `api.`) is refused
@@ -817,8 +818,8 @@ login, after `lado: warning: <address> could not be checked (<why>); saved as Gi
 server recognised as another kind is refused (`<address> answers as GitLab, not GitHub`). An
 `http://` address warns `the token goes to <host> over plain http://, unencrypted; use https://
 if the server has it` and goes on. A server is its host and port: adding one already saved
-replaces its address, kind, login and token, keeping its id (`Replaced git server
-<address>.`). One host name holds one server, as git's ssh addresses of a host carry no port:
+replaces its address, kind, login and token, keeping its id and commit author (`Replaced
+git server <address>.`). One host name holds one server, as git's ssh addresses of a host carry no port:
 a server whose host name a saved server holds on another port is refused before the token is
 asked and before any request (`<host> already has a git server, <its address>; LADO keeps one
 server per host name, as git's ssh addresses (git@<host>:…) carry no port`, hint `remove it
@@ -828,9 +829,26 @@ an output, a log, a git config file or a worktree. A git older than 2.31 on this
 refused before the token is asked (`git <version> is older than 2.31, which git servers need;
 update git, or remove the servers (lado git-server remove <address>)`).
 
-`lado git-server list` prints `ADDRESS KIND LOGIN TOKEN`, one line per server by host, asking
-none: `not checked` for one saved with `--kind` unchecked, `yes`/`no` for its token file; with
-none, `No git servers. Add one: lado git-server add <address> --token`. `lado git-server
+`lado git-server list` prints `ADDRESS KIND LOGIN TOKEN AUTHOR`, one line per server by host,
+asking none: `not checked` for one saved with `--kind` unchecked, `yes`/`no` for its token
+file, its commit author `<name> <<email>>` or `-`; with none, `No git servers. Add one: lado
+git-server add <address> --token`.
+
+`lado git-server author <address> --name <name> --email <email>` sets the commit author of
+the saved server of the address's host and port, without its token again: `Agents commit to
+<address> as <name> <<email>>.` and `Agents started from now on commit so; restart running
+agents to give it to them.`. `--clear` removes it (`Agents commit to <address> with your own
+git author again.` and the same second line; also when there was none), and with neither it
+prints `<name> <<email>>` or `<address> has no commit author: agents commit there with your
+own git author.`. Exit 2 for an address it does not take, `--name` without `--email` or the
+other way round (`--name and --email go together`), or `--clear` with either (`--clear takes no
+--name or --email`). Refused with exit 1, nothing saved: an address of no saved server
+(`<address> is no saved git server`, hint `see them: lado git-server list`), a name empty
+after trimming (`the author's name is empty`) or holding `<`, `>` or a control character
+(`the author's name holds no < or > or line break`), an email that is not text on both sides
+of one `@` with no space, `<`, `>` or control character (`not an email address: name@host`),
+either over 256 characters, and a git older than 2.36 on this PATH (`git <version> is older
+than 2.36, which a commit author of a git server needs; update git`); clearing needs no git. `lado git-server
 remove <address>` finds the server by the host and port of the address, with or without its
 scheme, removes it and its token folder, and `<LADO_HOME>/git-servers/` itself with the last
 server: `Removed git server <address>.`; an address of no saved server is refused (exit 1).
@@ -854,6 +872,26 @@ to stop (`lado: no token for <address>; add it again: lado git-server add <addre
 --token`), so git never prompts. git reads `GIT_CONFIG_COUNT` from 2.31 on: while a server is
 saved, a launch whose agents' git is older is refused before anything starts, and so is LADO's
 own git for a saved server's address; with no server, nothing changes.
+
+A server with a commit author gives agents, and not LADO's own git (which commits nothing to a
+server), that name and email as author and committer in every repository with a remote on the
+server, as git wrote the remote: `<address>/…`, the same with a user before the host
+(`https://oauth2@host/…`), `git@<host>:…` and `ssh://git@<host>[:22]/…`, the forms whose
+token LADO gives. The agent's launch writes `<its config folder>/git-authors/<server id>.gitconfig`
+(only `[user]` `name` and `email`, mode 600, gone with the folder when the agent stops) and
+adds, after the server's entries, six `includeIf.hasconfig:remote.*.url:<pattern>.path`
+entries pointing to it. In such a repository the server's author wins over the repository's
+own `user.name`/`user.email`; `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME` and
+`GIT_COMMITTER_EMAIL` in the agent's environment win over it, and the launch warns `<VAR> is
+set for <agent>: it wins over the commit author of the git servers`. A repository with no
+remote yet (`git init` before `git remote add`) commits with the human's own author; one with
+remotes on two servers with authors takes the author of the server later by host. A
+repository's remote whose host is written in another case (`GitLab.Corp.example`) or with the
+scheme's own port (`:443`) does not match. The condition needs git 2.36: while a server has a
+commit author, a launch whose agents' git is older is refused before anything starts (`git
+<version> is older than 2.36, which a commit author of a git server needs; update git, or clear
+the author (lado git-server author <address> --clear)`); without one, 2.31 is enough. A
+running agent keeps the author of its launch until it restarts.
 
 `lado ui` prints (or opens) the local link with the token, then, when the running server
 has a link for another device, `From another machine: <link>`: it asks the server

@@ -941,10 +941,17 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     under it tries once more). `Refused` carries the form `field` it concerns and `page`/
     `page_hint`, its words without a command. `variables` (per server an empty `credential.<origin>.helper`, then
     `helper_command`, then three `url.<root>/.insteadOf` of its ssh forms, numbered after
-    the environment's own `GIT_CONFIG_COUNT`; nothing for no server), `server_for` (the
+    the environment's own `GIT_CONFIG_COUNT`; nothing for no server; with `authors`, an
+    agent's, `author_entries` after each server's own), `server_for` (the
     saved server a remote reaches) and `check_git` (a `Refused` naming the version for a git
-    below `runtime.GIT_MIN` on a given PATH). The HTTP client is imported by `probe` alone: hooks
-    and launches import this module.
+    below `runtime.GIT_MIN` on a given PATH). A server's commit author (`lado git-server
+    author`): `check_author` (the name's and the email's rules, fields `name`/`email`),
+    `set_author`/`clear_author` (the command and the page alike; `saved_server`,
+    `saved_address` find the server), `check_author_git` (below `runtime.GIT_AUTHOR_MIN`, 2.36,
+    the version `includeIf hasconfig:` needs), `author_text`, `author_files` (an agent's author
+    files, only `[user]` name and email) and `author_entries` (the `includeIf` entries of a
+    server's address forms, escaped for git's wildmatch). The HTTP client is imported by `probe`
+    alone: hooks and launches import this module.
   - `git_credential.py`: LADO's git credential helper, run by git with LADO's Python
     (`interpreter.run_module`) and its arguments (`--home`, `--server`, `--user`,
     `--address`): `get` prints the user and the token read by the link-refusing reader of
@@ -1350,8 +1357,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `git_servers.py`: `listing` (asks no server; empty with no lado.db), `check` (the add
     form's check, saving nothing: the address's, host name's and git's refusals, which ask no
     server, then the plain-http warning, whether it is saved and `git_servers.hint`), `add`
-    (`git_servers.add` with the token of `GitServerAdd`, the saved line) and `remove` (by the
-    server's host and port); each refusal a `model_entries.Refusal` with the core's page words
+    (`git_servers.add` with the token of `GitServerAdd`, the saved line), `set_author`/
+    `clear_author` (the commit author by the server's host and port, the command's line) and
+    `remove` (by the server's host and port); each refusal a `model_entries.Refusal` with the core's page words
     and field; the token comes in only in `GitServerAdd`, whose route is in
     `app.SECRET_ROUTE`;
     `GET /api/sessions/{name}/about` (`SessionAbout`, `launch.session_about`; docs/design/ui.md,

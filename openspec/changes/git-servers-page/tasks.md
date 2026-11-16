@@ -2,11 +2,11 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-16-git-servers-
 
 ## 1. The core
 
-- [ ] 1.1 `git_servers.Refused` with `field`, `page`, `page_hint` on every refusal (D2).
+- [x] 1.1 `git_servers.Refused` with `field`, `page`, `page_hint` on every refusal (D2).
   Check: `tests/test_git_servers.py`.
-- [ ] 1.2 `check_host` and its check inside `save`; `git_servers.add` shared by the command
+- [x] 1.2 `check_host` and its check inside `save`; `git_servers.add` shared by the command
   (D1, D5). Check: `tests/test_git_servers.py`, `tests/test_cli_git_server.py`.
-- [ ] 1.3 `git-servers/` removed with the last server; `_write_token` retries once (D6).
+- [x] 1.3 `git-servers/` removed with the last server; `_write_token` retries once (D6).
   Check: `tests/test_git_servers.py`.
 
 ## 2. The address check without a token

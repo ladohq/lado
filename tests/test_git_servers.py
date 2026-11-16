@@ -332,7 +332,7 @@ def test_a_failed_row_leaves_no_folder_for_a_new_server(lado_home, monkeypatch):
     monkeypatch.setattr(state, "save_git_server", broken)
     with pytest.raises(sqlite3.OperationalError):
         _save()
-    assert list((lado_home / "git-servers").iterdir()) == []
+    assert not (lado_home / "git-servers").exists()  # no server left: the folder goes too
 
 
 def test_remove_takes_the_row_and_the_folder(lado_home):
@@ -540,3 +540,179 @@ def test_a_current_git_is_taken(tmp_path, version):
 
 def test_a_missing_git_is_left_to_the_other_checks(tmp_path):
     git_servers.check_git({"PATH": str(tmp_path)})
+
+
+# One server per host name.
+
+
+def _host_taken(address: str, held: str) -> str:
+    host = git_servers.address(address).host
+    return (
+        f"{host} already has a git server, {held}; LADO keeps one server per host name, as "
+        f"git's ssh addresses (git@{host}:…) carry no port"
+    )
+
+
+@pytest.mark.parametrize("other", ["git.corp.example:8443", "http://git.corp.example:8080"])
+def test_another_port_of_a_saved_host_name_is_refused(lado_home, other):
+    _save("git.corp.example")
+    with pytest.raises(git_servers.Refused) as raised:
+        git_servers.check_host(git_servers.address(other))
+    refused = raised.value
+    assert str(refused) == _host_taken(other, "https://git.corp.example")
+    assert refused.hint == "remove it first: lado git-server remove https://git.corp.example"
+    assert refused.page_hint == "Remove it first if the server moved to this address."
+    assert refused.field == "address"
+    git_servers.check_host(git_servers.address("https://git.corp.example/"))  # its own key
+    git_servers.check_host(git_servers.address("git.corp.example.org"))
+
+
+def test_save_refuses_another_port_inside_its_write(lado_home):
+    # Two adds at once both passed check_host: the second save is refused, its folder gone.
+    first, _ = _save("git.corp.example")
+    with pytest.raises(git_servers.Refused) as raised:
+        _save("git.corp.example:8443", token="glpat-OTHER")
+    assert str(raised.value) == _host_taken("git.corp.example:8443", "https://git.corp.example")
+    assert [s.id for s in state.git_servers()] == [first.id]
+    assert [p.name for p in (lado_home / "git-servers").iterdir()] == [first.id]
+    assert _files_holding(lado_home, "glpat-OTHER") == []
+
+
+def test_add_refuses_another_port_before_reading_the_token_or_asking(serve, lado_home):
+    server = serve("gitlab", token=TOKEN)
+    _save(f"https://127.0.0.1:{closed_port()}")
+    asked = []
+
+    def token():
+        asked.append(True)
+        return TOKEN
+
+    with pytest.raises(git_servers.Refused) as raised:
+        git_servers.add(git_servers.address(server.url), token, None, lambda line: None)
+    assert "127.0.0.1 already has a git server" in str(raised.value)
+    assert (asked, server.requests) == ([], [])
+
+
+def test_add_checks_and_saves(serve, lado_home):
+    server = serve("gitlab", token=TOKEN)
+    warned = []
+    saved, replaced, checked = git_servers.add(
+        git_servers.address(server.url), lambda: TOKEN, None, warned.append
+    )
+    assert (saved.address, saved.login, replaced) == (server.url, fake.LOGIN, False)
+    assert checked.kind.name == "gitlab"
+    assert warned == [git_servers.plain_http_warning(git_servers.address(server.url))]
+
+
+def test_add_refuses_a_kind_it_does_not_know(lado_home):
+    with pytest.raises(git_servers.Refused) as raised:
+        git_servers.add(git_servers.address("git.lan"), lambda: TOKEN, "gitea", print)
+    assert (str(raised.value), raised.value.field) == (
+        "gitea is no kind of git server LADO knows: github or gitlab",
+        "kind",
+    )
+
+
+# The folder of the tokens.
+
+
+def test_the_folder_goes_with_the_last_server(lado_home):
+    _save("gitlab.corp.ru")
+    other, _ = _save("git.lan")
+    git_servers.remove(git_servers.address("gitlab.corp.ru"))
+    assert [p.name for p in (lado_home / "git-servers").iterdir()] == [other.id]
+    git_servers.remove(git_servers.address("git.lan"))
+    assert not (lado_home / "git-servers").exists()
+
+
+def test_an_add_whose_folder_goes_under_it_writes_again(lado_home, monkeypatch):
+    # The last server's removal takes git-servers/ between the add's opening of it and the
+    # making of the new server's folder in it.
+    mkdir = os.mkdir
+    taken = []
+
+    def racing(name, mode=0o777, *, dir_fd=None):
+        if dir_fd is not None and not taken:
+            taken.append(name)
+            os.rmdir(lado_home / "git-servers")
+        return mkdir(name, mode, dir_fd=dir_fd)
+
+    lado_home.mkdir(exist_ok=True)
+    (lado_home / "git-servers").mkdir()
+    monkeypatch.setattr(os, "mkdir", racing)
+    saved, _ = _save()
+    assert taken
+    assert (lado_home / "git-servers" / saved.id / "token").read_text() == TOKEN
+
+
+# The page's words.
+
+
+def _page_lines(refused: git_servers.Refused) -> str:
+    return refused.page + " " + refused.page_hint
+
+
+@pytest.mark.parametrize(
+    ("profile", "kind", "field", "page_hint"),
+    [
+        ("gitlab-refuses", None, "token", None),
+        ("gitlab-scope", None, "token", None),
+        ("both", None, "kind", ""),
+        ("gitlab", "github", "kind", ""),
+        ("neither", None, "address", git_servers.PAGE_KIND_HINT),
+        ("hang", None, "address", git_servers.PAGE_KIND_HINT),
+    ],
+)
+def test_each_probe_refusal_has_its_field_and_page_words(
+    serve, monkeypatch, profile, kind, field, page_hint
+):
+    monkeypatch.setattr(model_servers, "TIMEOUT", 1)
+    server = serve(profile)
+    refused = _refused(server.url, kind=kind)
+    assert refused.field == field
+    if page_hint is not None:
+        assert refused.page_hint == page_hint
+    assert "lado " not in _page_lines(refused) and "--" not in _page_lines(refused)
+
+
+def test_both_kinds_on_the_page_say_choose(serve):
+    server = serve("both")
+    assert _refused(server.url).page == (
+        f"{server.url} answers as GitHub and as GitLab; choose its kind"
+    )
+
+
+def test_a_redirect_is_refused_under_the_address(serve):
+    server = serve(fake.REDIRECT, location="https://sso.example/login")
+    refused = _refused(server.url)
+    assert (refused.field, refused.page_hint) == ("address", "")
+
+
+def test_the_other_refusals_have_their_fields(lado_home, tmp_path):
+    def refusal(call, *args) -> git_servers.Refused:
+        with pytest.raises(git_servers.Refused) as raised:
+            call(*args)
+        assert "lado " not in _page_lines(raised.value)
+        assert "--" not in _page_lines(raised.value)
+        return raised.value
+
+    assert refusal(git_servers.check_not_github, git_servers.address("github.com")).field == (
+        "address"
+    )
+    for token in ("", "a\nb"):
+        assert refusal(git_servers.check_token, token).field == "token"
+    old = refusal(git_servers.check_git, _fake_git(tmp_path, "2.30.1"))
+    assert (old.field, old.page) == (
+        "",
+        "git 2.30.1 is older than 2.31, which git servers need; update git",
+    )
+    gone = refusal(git_servers.remove, git_servers.address("git.lan"))
+    assert (gone.field, gone.page_hint) == ("address", "")
+
+
+def test_an_address_with_a_user_names_the_token_field_on_the_page():
+    with pytest.raises(git_servers.BadAddress) as raised:
+        git_servers.address("https://me:pw@git.lan")
+    assert raised.value.page == (
+        "a git server's address holds no user or password; put the token in Token"
+    )

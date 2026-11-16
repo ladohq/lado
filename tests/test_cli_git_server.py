@@ -269,6 +269,33 @@ def test_remove_by_address(serve, capsys, lado_home):
     ]
 
 
+def test_another_port_of_a_saved_host_name_is_refused_before_the_token(serve, capsys, monkeypatch):
+    server = serve("gitlab")
+    main(["git-server", "add", server.url, "--token"])
+    capsys.readouterr()
+    asked = len(server.requests)
+    stdin = Stdin(TOKEN)
+    monkeypatch.setattr("sys.stdin", stdin)
+    assert main(["git-server", "add", "http://127.0.0.1:1", "--token"]) == 1
+    out, err = capsys.readouterr()
+    assert err.splitlines() == [
+        f"lado: 127.0.0.1 already has a git server, {server.url}; LADO keeps one server per "
+        "host name, as git's ssh addresses (git@127.0.0.1:…) carry no port",
+        f"lado: remove it first: lado git-server remove {server.url}",
+    ]
+    assert out == ""
+    assert not stdin.touched
+    assert len(server.requests) == asked
+    assert [s.address for s in state.git_servers()] == [server.url]
+
+
+def test_removing_the_last_server_removes_the_folder(serve, capsys, lado_home):
+    server = serve("gitlab")
+    main(["git-server", "add", server.url, "--token"])
+    assert main(["git-server", "remove", server.url]) == 0
+    assert not (lado_home / "git-servers").exists()
+
+
 def test_the_bare_command_prints_its_help(capsys, lado_home):
     assert main(["git-server"]) == 0
     assert "add" in capsys.readouterr().out

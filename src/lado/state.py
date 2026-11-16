@@ -4223,9 +4223,10 @@ class HostTaken(Exception):
 
 def save_git_server(id: str, address: str, host: str, kind: str, login: str | None) -> GitServer:
     """Save a git server under `id`, or, when one of `host` is saved, replace its address,
-    kind and login, keeping its id and commit author: the server as saved. HostTaken, nothing saved, when a
-    server of the address's host name is saved on another port (lado.git_servers.check_host,
-    checked again here inside the write against an add at the same moment)."""
+    kind and login, keeping its id and commit author: the server as saved. HostTaken, nothing
+    saved, when a server of the address's host name is saved on another port
+    (lado.git_servers.check_host, checked again here inside the write against an add at the
+    same moment)."""
     hostname = urllib.parse.urlsplit(address).hostname
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")

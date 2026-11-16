@@ -118,3 +118,113 @@ def test_an_old_git_without_a_server_is_not_even_asked(
     runtime.start_session(str(repo), "s", None, provider="claude")
     assert asked == []
     assert state.get_session("s") is not None
+
+
+# A server's commit author.
+
+
+def _with_author(address="https://gitlab.corp.ru"):
+    server = _save(address)
+    return state.set_git_server_author(server.id, 'Ivan "Boss" Petrov', "ivan@corp.ru")
+
+
+def test_an_author_reaches_the_agent_through_a_file_in_its_config_folder(
+    repo, fake_tmux, lado_home, monkeypatch, agents_path
+):
+    _, path = agents_path
+    _shell(monkeypatch, {"PATH": path, "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "a.b"})
+    plain = _save("https://git.lan")
+    server = _with_author()
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    env = _launched(lado_home)
+    file = lado_home / "agents" / "s" / "supervisor" / "git-authors" / f"{server.id}.gitconfig"
+    assert (
+        file.read_text() == '[user]\n\tname = "Ivan \\"Boss\\" Petrov"\n\temail = "ivan@corp.ru"\n'
+    )
+    expected = git_servers.variables(
+        {"GIT_CONFIG_COUNT": "1"}, [plain, server], authors={server.id: file}
+    )
+    assert {k: env[k] for k in expected} == expected
+    assert env["GIT_CONFIG_COUNT"] == str(1 + 5 + 5 + 6)
+    values = [env[f"GIT_CONFIG_VALUE_{n}"] for n in range(1, int(env["GIT_CONFIG_COUNT"]))]
+    assert values.count(str(file)) == 6
+    assert sorted(p.name for p in file.parent.iterdir()) == [file.name]  # none for git.lan
+
+
+def test_no_author_no_include(repo, fake_tmux, lado_home, monkeypatch, agents_path):
+    _, path = agents_path
+    _shell(monkeypatch, {"PATH": path})
+    _save()
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    env = _launched(lado_home)
+    assert not [k for k, v in env.items() if k.startswith("GIT_CONFIG_KEY") and "includeIf" in v]
+    assert not (lado_home / "agents" / "s" / "supervisor" / "git-authors").exists()
+
+
+def test_lados_own_git_gets_no_author(lado_home):
+    _with_author()
+    env = agent_env.for_git(remote="https://gitlab.corp.ru/team/app.git")
+    count = int(env["GIT_CONFIG_COUNT"])
+    assert count == int(os.environ.get("GIT_CONFIG_COUNT", "0")) + 5
+    assert not [n for n in range(count) if "includeIf" in env[f"GIT_CONFIG_KEY_{n}"]]
+    assert not (lado_home / "agents").exists()
+
+
+def _git_version(folder, version):
+    (folder / "git").write_text(f"#!/bin/sh\necho 'git version {version}'\n")
+    (folder / "git").chmod(0o755)
+
+
+def test_a_git_older_than_2_36_refuses_a_launch_while_an_author_is_set(
+    repo, fake_tmux, lado_home, monkeypatch, agents_path
+):
+    folder, path = agents_path
+    _git_version(folder, "2.34.1")
+    _shell(monkeypatch, {"PATH": path})
+    _with_author()
+    with pytest.raises(runtime.LadoError) as raised:
+        runtime.start_session(str(repo), "s", None, provider="claude")
+    assert str(raised.value) == (
+        "git 2.34.1 is older than 2.36, which a commit author of a git server needs; update "
+        "git, or clear the author (lado git-server author https://gitlab.corp.ru --clear)"
+    )
+    assert fake_tmux == []
+
+
+def test_a_git_older_than_2_36_without_an_author_starts(
+    repo, fake_tmux, lado_home, monkeypatch, agents_path
+):
+    folder, path = agents_path
+    _git_version(folder, "2.34.1")
+    _shell(monkeypatch, {"PATH": path})
+    _save()
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    assert state.get_session("s") is not None
+
+
+WINS = "{name} is set for {agent}: it wins over the commit author of the git servers"
+
+
+def test_an_author_variable_of_the_environment_is_named_at_the_launch(
+    repo, fake_tmux, lado_home, monkeypatch, agents_path
+):
+    _, path = agents_path
+    _shell(monkeypatch, {"PATH": path, "GIT_AUTHOR_EMAIL": "me@home", "GIT_COMMITTER_NAME": "Me"})
+    _with_author()
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    for name in ("GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME"):
+        assert WINS.format(name=name, agent="supervisor") in started.warnings
+    assert not [w for w in started.warnings if "GIT_AUTHOR_NAME" in w]
+    warnings = []
+    runtime.spawn_worker("s", "task", name="w1", warnings=warnings)
+    assert WINS.format(name="GIT_AUTHOR_EMAIL", agent="w1") in warnings
+
+
+def test_an_author_variable_without_an_author_is_not_named(
+    repo, fake_tmux, lado_home, monkeypatch, agents_path
+):
+    _, path = agents_path
+    _shell(monkeypatch, {"PATH": path, "GIT_AUTHOR_EMAIL": "me@home"})
+    _save()
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    assert not [w for w in started.warnings if "GIT_AUTHOR_EMAIL" in w]

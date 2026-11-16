@@ -379,6 +379,13 @@ NOT_REPO_HINT = Hint(
 GIT_MIN = (2, 31)
 # `includeIf "hasconfig:remote.*.url:…"`, a git server's commit author (git_servers)
 GIT_AUTHOR_MIN = (2, 36)
+GIT_AUTHORS = "git-authors"  # in an agent's config folder: its servers' author files
+GIT_AUTHOR_VARIABLES = (
+    "GIT_AUTHOR_NAME",
+    "GIT_AUTHOR_EMAIL",
+    "GIT_COMMITTER_NAME",
+    "GIT_COMMITTER_EMAIL",
+)
 XCODE_TOOLS = "xcode-select --install"
 
 
@@ -1028,6 +1035,7 @@ def start_session(
         launch = _launch_command(agent_cli, agent, sess, spec, start.note)
         started.warnings += launch.warnings
         started.warnings += _layer_warnings(agent, launch, sess.project, files=True)
+        started.warnings += _author_warnings(agent, base_env)
         blocker, command = _before_window(
             agent_cli, agent, base_env, layers.shell, launch, sess.project
         )
@@ -1315,6 +1323,7 @@ def spawn_worker(
         launch = _launch_command(agent_cli, agent, sess, spec, start.note)
         held = [*server_warnings, *launch.warnings]
         held += _layer_warnings(agent, launch, sess.project, files=False)
+        held += _author_warnings(agent, base_env)
         before, command = _before_window(
             agent_cli, agent, base_env, layers.shell, launch, sess.project
         )
@@ -3499,15 +3508,20 @@ def agents_env(layers: agent_env.Layers, agent_cli: providers.Provider) -> dict[
 
 def _check_commands(env: kits.Environment, base_env: dict[str, str]) -> None:
     """Refuse a launch while a command the session's kits expect (expects.commands) is not
-    on the agents' PATH, or while a git server is saved and the agents' git is older than
-    2.31 (lado.git_servers.check_git); called before the launch changes anything."""
+    on the agents' PATH, while a git server is saved and the agents' git is older than
+    2.31 (lado.git_servers.check_git), or while one has a commit author and it is older than
+    2.36 (check_author_git); called before the launch changes anything."""
     path = base_env.get("PATH", os.defpath)
     missing = kits.missing_commands(env.kits, path)
     if missing:
         raise LadoError(kits.commands_error(missing, path))
-    if state.git_servers():  # no server, no git asked: the launch goes as before
+    servers = state.git_servers()
+    if servers:  # no server, no git asked: the launch goes as before
         try:
             git_servers.check_git(base_env)
+            authored = [s for s in servers if git_servers.author_text(s)]
+            if authored:
+                git_servers.check_author_git(base_env, authored[0].address)
         except git_servers.Refused as exc:
             raise LadoError(str(exc)) from None
 
@@ -3529,11 +3543,25 @@ def _ours(
     """The variables LADO and the provider set for the agent's launch, over every layer:
     LADO's, the agent's own TMPDIR (its folder under the layers' TMPDIR,
     providers.base.temp_path), git's way to the saved git servers (after the layers' own
-    `GIT_CONFIG_*` entries, lado.git_servers.variables; none without a server), then the
-    provider's."""
+    `GIT_CONFIG_*` entries, lado.git_servers.variables; none without a server, with the
+    servers' commit authors written into the agent's config folder), then the provider's."""
     temp_dir = providers.base.temp_path(agent, base_env)
-    git = git_servers.variables(base_env, state.git_servers())
+    servers = state.git_servers()
+    authors = git_servers.author_files(providers.base.config_dir(agent) / GIT_AUTHORS, servers)
+    git = git_servers.variables(base_env, servers, authors=authors)
     return {**providers.agent_env(agent), "TMPDIR": str(temp_dir), **git, **launch.env}
+
+
+def _author_warnings(agent: state.Agent, base_env: Mapping[str, str]) -> list[str]:
+    """One line per variable of `base_env` that sets git's author or committer over every
+    config, while a git server has a commit author: LADO leaves them, the human's choice."""
+    if not any(git_servers.author_text(s) for s in state.git_servers()):
+        return []
+    return [
+        f"{name} is set for {agent.name}: it wins over the commit author of the git servers"
+        for name in GIT_AUTHOR_VARIABLES
+        if name in base_env
+    ]
 
 
 def _layer_warnings(

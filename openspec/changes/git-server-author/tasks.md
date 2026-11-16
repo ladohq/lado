@@ -16,9 +16,9 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-16-git-server-a
 
 ## 3. The launch
 
-- [ ] 3.1 The files in the agent's config folder and the entries in `_ours`; none in
+- [x] 3.1 The files in the agent's config folder and the entries in `_ours`; none in
   `for_git` (D2, D3). Check: `tests/test_runtime_git_servers.py`.
-- [ ] 3.2 The 2.36 refusal in `_check_commands` and the `GIT_AUTHOR_*` warning (D6, D8).
+- [x] 3.2 The 2.36 refusal in `_check_commands` and the `GIT_AUTHOR_*` warning (D6, D8).
   Check: `tests/test_runtime_git_servers.py`.
 
 ## 4. End to end

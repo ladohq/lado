@@ -1,8 +1,9 @@
 // Settings → Git servers (docs/design/ui.md, Git servers): the human's GitLab and GitHub
 // Enterprise servers, as `lado git-server` keeps them, on Model servers' rows and form. The
 // list is read when the page opens and after each change of its own (GET /api/git-servers asks
-// no server). A row has nothing to open: its address, its kind, the login it signs in as, and
-// 🗑, which asks first. + Add server opens a form under the list, with gitlab.com filled in while
+// no server). A row: its address, its kind, the login it signs in as, whom agents commit as when
+// it has a commit author; ✎ opens the author's form under it, 🗑 asks first there, one of them at
+// a time. + Add server opens a form under the list, with gitlab.com filled in while
 // it is not saved; once the address's typing settles the server is asked with no token, and the
 // kind it looks like is only a hint for Token's link; the kind is chosen by hand only for a
 // server that cannot be told. Add server saves as `lado git-server add` does, with the token in
@@ -13,17 +14,20 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   addGitServer,
   checkGitServer,
+  clearGitServerAuthor,
   type EntryRefused,
   type GitKindInfo,
   type GitServerAdded,
+  type GitServerAuthorDone,
   type GitServerCheck,
   type GitServerInfo,
   type GitServers,
   getGitServers,
   refusalOf,
   removeGitServer,
+  setGitServerAuthor,
 } from "./api";
-import { ForgetIcon } from "./icons";
+import { ForgetIcon, PencilIcon } from "./icons";
 import { MODEL_DEBOUNCE, useDebounced } from "./Launch";
 import { CheckNote, emptyKey } from "./ModelSources";
 import { SecretField } from "./ProjectVariables";
@@ -34,7 +38,14 @@ export const GIT_LEAD =
   "Your GitLab or GitHub Enterprise: agents clone and push there with its token. github.com uses gh's login. Running agents get a change after a restart.";
 export const GITLAB_COM = "https://gitlab.com";
 const RESTART = "Agents started from now on reach it; restart running agents to give it to them.";
+const AUTHOR_RESTART = "Agents started from now on commit so; restart running agents to give it to them.";
+const AUTHOR_NOTE =
+  "Agents' commits to this server's repositories carry this name and email; elsewhere your own git author.";
 const TOKEN_NOTE = "Only LADO reads it; never shown again.";
+
+// What stands above a row after a change of it here: the API's line, what running agents get,
+// the warnings.
+type Saved = { host: string; line: string; note: string; warnings: string[] };
 
 // What the row says under the address: the login, or why it cannot be trusted as it is.
 function secondLine(server: GitServerInfo): { text: string; warn: boolean } {
@@ -78,9 +89,14 @@ export function GitServersPage() {
     if (order.current && !order.current.includes(server.host)) order.current.push(server.host);
   const [gone, setGone] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState(false);
-  const [saved, setSaved] = useState<{ host: string; done: GitServerAdded } | null>(null);
-  const [fresh, setFresh] = useState<string | null>(null); // the server just added: the focus
-  const [removing, setRemoving] = useState<string | null>(null);
+  const [saved, setSaved] = useState<Saved | null>(null);
+  // The row just added or changed here takes the focus, each time anew.
+  const [fresh, setFresh] = useState<{ host: string; n: number } | null>(null);
+  const focusRow = (host: string) => setFresh((now) => ({ host, n: (now?.n ?? 0) + 1 }));
+  // What stands open under a row, one at a time: the author's form or the removal's question.
+  const [open, setOpen] = useState<{ host: string; what: "author" | "remove" } | null>(null);
+  const toggle = (host: string, what: "author" | "remove") =>
+    setOpen((now) => (now?.host === host && now.what === what ? null : { host, what }));
   const addButton = useRef<HTMLButtonElement>(null);
   const [removedOne, setRemovedOne] = useState(false); // a server went: the focus goes to Add
   useEffect(() => {
@@ -111,21 +127,35 @@ export function GitServersPage() {
                 <li key={host} className="mx-src" data-anchor="">
                   {server ? (
                     <>
-                      {saved?.host === host && <SavedLines done={saved.done} />}
+                      {saved?.host === host && <SavedLines saved={saved} />}
                       <GitRow
                         server={server}
-                        focus={fresh === host}
-                        removing={removing === host}
-                        onRemove={() => setRemoving((now) => (now === host ? null : host))}
+                        focus={fresh?.host === host ? fresh.n : 0}
+                        open={open?.host === host ? open.what : null}
+                        onAuthor={() => toggle(host, "author")}
+                        onRemove={() => toggle(host, "remove")}
                       />
-                      {removing === host && (
+                      {open?.host === host && open.what === "author" && (
+                        <GitAuthor
+                          server={server}
+                          onTouch={touch}
+                          onCancel={() => setOpen(null)}
+                          onDone={(done) => {
+                            setOpen(null);
+                            setSaved({ host, line: done.line, note: AUTHOR_RESTART, warnings: [] });
+                            focusRow(host);
+                            void reload();
+                          }}
+                        />
+                      )}
+                      {open?.host === host && open.what === "remove" && (
                         <RemoveGitServer
                           server={server}
                           onTouch={touch}
-                          onCancel={() => setRemoving(null)}
+                          onCancel={() => setOpen(null)}
                           onChanged={reload}
                           onGone={(done) => {
-                            setRemoving(null);
+                            setOpen(null);
                             setGone((now) => ({ ...now, [host]: done }));
                             setRemovedOne(true);
                           }}
@@ -154,8 +184,8 @@ export function GitServersPage() {
                       delete next[done.server.host];
                       return next;
                     });
-                    setSaved({ host: done.server.host, done });
-                    setFresh(done.server.host);
+                    setSaved({ host: done.server.host, line: done.line, note: RESTART, warnings: done.warnings });
+                    focusRow(done.server.host);
                     void reload();
                   }}
                 />
@@ -180,30 +210,33 @@ export function GitServersPage() {
   );
 }
 
-function SavedLines({ done }: { done: GitServerAdded }) {
+function SavedLines({ saved }: { saved: Saved }) {
   return (
     <div className="mx-saved gx-saved">
       <p className="mx-saved-line" role="status">
-        {done.line}
+        {saved.line}
       </p>
-      <p className="mx-note">{RESTART}</p>
-      {done.warnings.map((line) => (
+      <p className="mx-note">{saved.note}</p>
+      {saved.warnings.map((line) => (
         <span key={line} className="field-note warn">{`⚠ ${line}`}</span>
       ))}
     </div>
   );
 }
 
-// A server's row: its address whole, its kind, its second line; 🗑 at the right.
+// A server's row: its address whole, its kind, its second line, whom agents commit as there;
+// ✎ and 🗑 at the right. `focus`: a new number takes the focus.
 function GitRow({
   server,
   focus,
-  removing,
+  open,
+  onAuthor,
   onRemove,
 }: {
   server: GitServerInfo;
-  focus: boolean;
-  removing: boolean;
+  focus: number;
+  open: "author" | "remove" | null;
+  onAuthor: () => void;
   onRemove: () => void;
 }) {
   const id = useId();
@@ -222,12 +255,25 @@ function GitRow({
         <span className={`mx-l2${second.warn ? " gx-warn" : ""}`} id={id}>
           {second.text}
         </span>
+        {server.author_name !== null && (
+          <span className="mx-l2">{`commits as ${server.author_name} <${server.author_email}>`}</span>
+        )}
       </div>
       <span className="mx-acts">
         <button
           type="button"
+          className="mx-icon"
+          aria-pressed={open === "author"}
+          aria-label={`Commit author of ${server.address}`}
+          title="Commit author"
+          onClick={onAuthor}
+        >
+          <PencilIcon />
+        </button>
+        <button
+          type="button"
           className="mx-icon mx-icon-danger"
-          aria-pressed={removing}
+          aria-pressed={open === "remove"}
           aria-label={`Remove ${server.address}`}
           title="Remove"
           onClick={onRemove}
@@ -445,6 +491,117 @@ function AddGitServer({
           Cancel
         </button>
         {[...of(""), ...mine("")].map((r) => (
+          <CheckNote key={r.message} note={r} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// The commit author: Name and Email under the row, the saved ones else empty, the focus on Name;
+// Save author once both are filled and differ from the saved, Remove author (no question:
+// setting it again is as easy) only when one is saved; Esc cancels. A refusal stands under its
+// field, one of no field under the buttons.
+function GitAuthor({
+  server,
+  onTouch,
+  onCancel,
+  onDone,
+}: {
+  server: GitServerInfo;
+  onTouch: () => void;
+  onCancel: () => void;
+  onDone: (done: GitServerAuthorDone) => void;
+}) {
+  const id = useId();
+  const [name, setName] = useState(server.author_name ?? "");
+  const [email, setEmail] = useState(server.author_email ?? "");
+  const [refused, setRefused] = useState<EntryRefused | null>(null);
+  const [busy, setBusy] = useState(false);
+  const has = server.author_name !== null;
+  const changed = name.trim() !== (server.author_name ?? "") || email.trim() !== (server.author_email ?? "");
+  const ready = !busy && name.trim() !== "" && email.trim() !== "" && changed;
+  const send = async (call: () => Promise<GitServerAuthorDone>) => {
+    onTouch();
+    setBusy(true);
+    setRefused(null);
+    try {
+      onDone(await call());
+    } catch (error) {
+      setRefused(refusalOf(error));
+      setBusy(false);
+    }
+  };
+  const save = () => {
+    if (ready) void send(() => setGitServerAuthor(server.host, name, email));
+  };
+  const under = (field: string) => (refused?.field === field ? [refused] : []);
+  const other = refused && refused.field !== "name" && refused.field !== "email" ? [refused] : [];
+  const edited = (field: string) => setRefused((was) => (was?.field === field ? null : was));
+  return (
+    <div
+      className="mx-form"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onCancel();
+        } else if (event.key === "Enter" && event.target instanceof HTMLInputElement) save();
+      }}
+    >
+      <div className="launch-grid">
+        <p className="mx-note launch-wide">{AUTHOR_NOTE}</p>
+        <div className="field">
+          <label htmlFor={`${id}-name`}>Name</label>
+          <input
+            id={`${id}-name`}
+            value={name}
+            placeholder="Ivan Petrov"
+            aria-invalid={under("name").length ? true : undefined}
+            autoFocus
+            onChange={(event) => {
+              setName(event.target.value);
+              edited("name");
+            }}
+          />
+          {under("name").map((r) => (
+            <CheckNote key={r.message} note={r} />
+          ))}
+        </div>
+        <div className="field">
+          <label htmlFor={`${id}-email`}>Email</label>
+          <input
+            id={`${id}-email`}
+            value={email}
+            placeholder="ivan.petrov@example.com"
+            aria-invalid={under("email").length ? true : undefined}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              edited("email");
+            }}
+          />
+          {under("email").map((r) => (
+            <CheckNote key={r.message} note={r} />
+          ))}
+        </div>
+      </div>
+      <div className="mx-form-acts">
+        <button type="button" className="primary" disabled={!ready} onClick={save}>
+          Save author
+        </button>
+        {has && (
+          <button
+            type="button"
+            className="danger"
+            disabled={busy}
+            onClick={() => void send(() => clearGitServerAuthor(server.host))}
+          >
+            Remove author
+          </button>
+        )}
+        <button type="button" className="quiet" onClick={onCancel}>
+          Cancel
+        </button>
+        {other.map((r) => (
           <CheckNote key={r.message} note={r} />
         ))}
       </div>

@@ -22,6 +22,8 @@ const GITLAB_COM: GitServerInfo = {
   kind_title: "GitLab",
   login: "alex",
   has_token: true,
+  author_name: null,
+  author_email: null,
 };
 const CORP: GitServerInfo = {
   address: "https://git.corp.example",
@@ -30,6 +32,8 @@ const CORP: GitServerInfo = {
   kind_title: "GitHub",
   login: null,
   has_token: true,
+  author_name: null,
+  author_email: null,
 };
 
 const nothing: GitServerCheck = {
@@ -56,6 +60,23 @@ class Fake {
   calls: Call[] = [];
   checks: Record<string, GitServerCheck | (() => Promise<Response>)> = {};
   add: (body: Record<string, unknown>) => Response = () => new Response("{}", { status: 500 });
+  authorRefusal: Response | null = null;
+  author(method: string, path: string, body: Record<string, unknown> | undefined): Response {
+    if (this.authorRefusal) return this.authorRefusal;
+    const host = decodeURIComponent(path.slice("/api/git-servers/".length, -"/author".length));
+    const server = this.servers.find((s) => s.host === host)!;
+    const set = method === "PUT";
+    const saved = {
+      ...server,
+      author_name: set ? String(body!.name).trim() : null,
+      author_email: set ? String(body!.email).trim() : null,
+    };
+    this.servers = this.servers.map((s) => (s.host === host ? saved : s));
+    const line = set
+      ? `Agents commit to ${server.address} as ${saved.author_name} <${saved.author_email}>.`
+      : `Agents commit to ${server.address} with your own git author again.`;
+    return new Response(JSON.stringify({ server: saved, line }), { status: 200 });
+  }
   install() {
     vi.stubGlobal(
       "fetch",
@@ -71,6 +92,7 @@ class Fake {
           return typeof found === "function" ? found() : json(found);
         }
         if (path === "/api/git-servers" && method === "POST") return this.add(body!);
+        if (path.endsWith("/author")) return this.author(method, path, body);
         if (path.startsWith("/api/git-servers/") && method === "DELETE") {
           const host = decodeURIComponent(path.slice("/api/git-servers/".length));
           this.servers = this.servers.filter((s) => s.host !== host);
@@ -349,4 +371,120 @@ test("Remove asks first, then leaves its line and the focus on + Add server", as
   expect(fake.calls.at(-1)).toMatchObject({ method: "DELETE", path: "/api/git-servers/git.corp.example" });
   await waitFor(() => expect(document.activeElement).toBe(plusAdd()));
   expect(screen.getByRole("heading", { name: "Servers 1" })).toBeTruthy();
+});
+
+// The commit author.
+
+const AUTHORED: GitServerInfo = { ...CORP, author_name: "Ivan Petrov", author_email: "ivan@corp.example" };
+const pencil = (address: string) => screen.getByRole("button", { name: `Commit author of ${address}` });
+const nameField = () => screen.getByRole("textbox", { name: "Name" }) as HTMLInputElement;
+const emailField = () => screen.getByRole("textbox", { name: "Email" }) as HTMLInputElement;
+const saveAuthor = () => screen.getByRole("button", { name: "Save author" }) as HTMLButtonElement;
+const AUTHOR_NOTE = "Agents' commits to this server's repositories carry this name and email; elsewhere your own git author.";
+const AUTHOR_RESTART = "Agents started from now on commit so; restart running agents to give it to them.";
+
+test("a row with an author says whom agents commit as; one without says nothing of it", async () => {
+  fake.servers = [GITLAB_COM, AUTHORED];
+  await mount();
+  expect(screen.getByText("commits as Ivan Petrov <ivan@corp.example>")).toBeTruthy();
+  expect(screen.getAllByText(/^commits as/)).toHaveLength(1);
+  expect(pencil("https://gitlab.com").getAttribute("title")).toBe("Commit author");
+});
+
+test("✎ opens the form with the saved author, the focus on Name; Esc cancels", async () => {
+  fake.servers = [AUTHORED];
+  await mount();
+  fireEvent.click(pencil(AUTHORED.address));
+  expect(pencil(AUTHORED.address).getAttribute("aria-pressed")).toBe("true");
+  expect(screen.getByText(AUTHOR_NOTE)).toBeTruthy();
+  expect(nameField().value).toBe("Ivan Petrov");
+  expect(emailField().value).toBe("ivan@corp.example");
+  expect(document.activeElement).toBe(nameField());
+  expect(saveAuthor().disabled).toBe(true); // nothing changed
+  expect(screen.getByRole("button", { name: "Remove author" })).toBeTruthy();
+  fireEvent.keyDown(nameField(), { key: "Escape" });
+  expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
+});
+
+test("Save author is on once both are filled; no Remove author without one", async () => {
+  fake.servers = [GITLAB_COM];
+  await mount();
+  fireEvent.click(pencil(GITLAB_COM.address));
+  expect(nameField().value).toBe("");
+  expect(screen.queryByRole("button", { name: "Remove author" })).toBeNull();
+  expect(saveAuthor().disabled).toBe(true);
+  type(nameField(), "Alex");
+  expect(saveAuthor().disabled).toBe(true);
+  type(emailField(), "  ");
+  expect(saveAuthor().disabled).toBe(true);
+  type(emailField(), "alex@home.example");
+  expect(saveAuthor().disabled).toBe(false);
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
+});
+
+test("✎ and 🗑 share the place under the row: one opens, the other closes", async () => {
+  fake.servers = [GITLAB_COM];
+  await mount();
+  fireEvent.click(pencil(GITLAB_COM.address));
+  fireEvent.click(screen.getByRole("button", { name: "Remove https://gitlab.com" }));
+  expect(screen.getByRole("alertdialog")).toBeTruthy();
+  expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
+  fireEvent.click(pencil(GITLAB_COM.address));
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+  expect(nameField()).toBeTruthy();
+});
+
+test("Save author sets it, says so above the row and puts the focus on the row", async () => {
+  fake.servers = [GITLAB_COM];
+  await mount();
+  fireEvent.click(pencil(GITLAB_COM.address));
+  type(nameField(), "Alex Smith");
+  type(emailField(), "alex@home.example");
+  fireEvent.click(saveAuthor());
+  await screen.findByText("Agents commit to https://gitlab.com as Alex Smith <alex@home.example>.");
+  expect(fake.calls.at(-2)).toMatchObject({
+    method: "PUT",
+    path: "/api/git-servers/gitlab.com/author",
+    body: { name: "Alex Smith", email: "alex@home.example" },
+  });
+  expect(screen.getByText(AUTHOR_RESTART)).toBeTruthy();
+  expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
+  await screen.findByText("commits as Alex Smith <alex@home.example>");
+  await waitFor(() => expect(document.activeElement?.textContent).toContain("https://gitlab.com"));
+  fireEvent.click(plusAdd()); // the next change on the page: the lines go
+  expect(screen.queryByText(AUTHOR_RESTART)).toBeNull();
+});
+
+test("a refusal stands under its field; one of no field under the buttons", async () => {
+  fake.servers = [GITLAB_COM];
+  await mount();
+  fireEvent.click(pencil(GITLAB_COM.address));
+  type(nameField(), "Alex");
+  type(emailField(), "alex");
+  fake.authorRefusal = refused("not an email address: name@host", "email");
+  fireEvent.click(saveAuthor());
+  await screen.findByText("not an email address: name@host");
+  expect(emailField().getAttribute("aria-invalid")).toBe("true");
+  expect(nameField().getAttribute("aria-invalid")).toBeNull();
+  type(emailField(), "alex@x");
+  expect(screen.queryByText("not an email address: name@host")).toBeNull();
+  const old = "git 2.34.1 is older than 2.36, which a commit author of a git server needs; update git";
+  fake.authorRefusal = refused(old, "");
+  fireEvent.click(saveAuthor());
+  const note = await screen.findByText(old);
+  expect(note.closest(".mx-form-acts")).toBeTruthy();
+});
+
+test("Remove author clears it with no question and says so", async () => {
+  fake.servers = [AUTHORED];
+  await mount();
+  fireEvent.click(pencil(AUTHORED.address));
+  fireEvent.click(screen.getByRole("button", { name: "Remove author" }));
+  await screen.findByText("Agents commit to https://git.corp.example with your own git author again.");
+  expect(fake.calls.some((c) => c.method === "DELETE" && c.path === "/api/git-servers/git.corp.example/author")).toBe(
+    true,
+  );
+  await waitFor(() => expect(screen.queryByText(/^commits as/)).toBeNull());
+  expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
 });

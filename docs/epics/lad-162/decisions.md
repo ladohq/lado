@@ -16,4 +16,4 @@
 | 2026-11-15 | plan_ok #528, #7090, #7092 | Who names a server's kind | the human chooses it (the statement); LADO finds it from the server's API, `--kind` as the fallback | found by LADO, `--kind` the fallback (lead) | found by LADO, `--kind` the fallback; asked how it works for servers on the local network and whether other kinds can come later — both covered (human) | yes |
 
 Epic: plan_ok #528 — approved as recommended; questions #7086 (update LAD-162's stages, as recommended).
-S1 (LAD-289): question #7098, gate #529 (design_ok) — approved as recommended.
+S1 (LAD-289): question #7098, gate #529 (design_ok) — approved as recommended; gate #530 (merge_ok) — rejected as recommended (F1–F3 fixed); gate #531 (merge_ok) — approved as recommended after the human's manual check (gitlab.com and the company GitLab, all OK).

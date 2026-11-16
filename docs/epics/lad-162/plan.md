@@ -2,7 +2,7 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: none · Next: S5 (draft waits at step_ok) · Open checks: the human's check on the company GitLab, on the release candidate that carries S8
+In work: S5 (LAD-293, run task/lad-293) · Next: S6 · Open checks: the human's check on the company GitLab, on the release candidate that carries S8
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
@@ -114,7 +114,7 @@ Notes: one tracker task for the step, as for every step. The page's current code
 `web/src/GitServers.tsx`, `docs/design/ui.md` (Git servers).
 
 ### S5 — The page from the mockup, "Check", `lado doctor` and clone hints from the list
-Status: planned
+Status: in progress (LAD-293, run task/lad-293)
 Check: unit tests per server kind against a fake API: "Check" in Settings and `lado
 git-server check` check a saved server again (the same request as `add` in S1) and say
 "works, this is <name>" or why not in plain words (wrong token, missing rights, server

@@ -18,4 +18,4 @@
 
 Epic: plan_ok #528 — approved as recommended; questions #7086 (update LAD-162's stages, as recommended).
 S1 (LAD-289): question #7098, gate #529 (design_ok) — approved as recommended; gate #530 (merge_ok) — rejected as recommended (F1–F3 fixed); gate #531 (merge_ok) — approved as recommended after the human's manual check (gitlab.com and the company GitLab, all OK).
-S2 (LAD-290): step_ok #532 — approved as recommended; question #7131 — as recommended by the analyst with the lead's two corrections (a redirect refused with no manual kind; the kind found without a token only a hint), E4 rule: refuse a second server on one host name; gate #533 (design_ok) — approved as recommended.
+S2 (LAD-290): step_ok #532 — approved as recommended; question #7131 — as recommended by the analyst with the lead's two corrections (a redirect refused with no manual kind; the kind found without a token only a hint), E4 rule: refuse a second server on one host name; gate #533 (design_ok) — approved as recommended; gate #534 (merge_ok) — approved as recommended after the human's manual check by an agent (gitlab.com and the company GitLab, all OK).

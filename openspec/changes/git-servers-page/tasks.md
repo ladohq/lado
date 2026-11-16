@@ -23,9 +23,9 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-16-git-servers-
 
 ## 4. The page
 
-- [ ] 4.1 The section in `settingsSections.ts` and `Settings.tsx`; the list (D7). Check:
+- [x] 4.1 The section in `settingsSections.ts` and `Settings.tsx`; the list (D7). Check:
   `web/src/Settings.test.tsx`, `uv run pytest -m ui tests/ui/test_settings_pages.py`.
-- [ ] 4.2 The add form and Remove. Check: `web/src/GitServers.test.tsx`, `make web`.
+- [x] 4.2 The add form and Remove. Check: `web/src/GitServers.test.tsx`, `make web`.
 - [ ] 4.3 The UI e2e test with the fake APIs and the gitlab.com proxy (D8); screenshots for
   the build report. Check: `uv run pytest -m ui tests/ui/test_git_servers_section.py`.
 

@@ -448,6 +448,28 @@ export const checkSessionModel = (cli: string, model: string, project: string | 
 
 export const clearModelDefault = (cli: string) => post<ModelSettings>(modelDefaultPath(cli), undefined, "DELETE");
 
+// Settings → Git servers (docs/design/ui.md): the saved git servers, read anew, no feed. A
+// refusal is a 400 whose `detail` is an EntryRefused.
+export type GitServers = components["schemas"]["GitServers"];
+export type GitServerInfo = components["schemas"]["GitServerInfo"];
+export type GitKindInfo = components["schemas"]["GitKindInfo"];
+export type GitServerCheck = components["schemas"]["GitServerCheck"];
+export type GitServerAdded = components["schemas"]["GitServerAdded"];
+
+export const getGitServers = () => get<GitServers>("/api/git-servers");
+
+// What the add form says of an address before Add, the server asked with no token.
+export const checkGitServer = (address: string) => post<GitServerCheck>("/api/git-servers/check", { address });
+
+// Check and save a server; `kind` only when the human chose one. The token goes in this
+// request's body only, never in an address, and no answer gives it back.
+export const addGitServer = (address: string, token: string, kind: string | null) =>
+  post<GitServerAdded>("/api/git-servers", { address, token, kind });
+
+// Remove the server of `host` (its host and port, as the list gives it) and its token.
+export const removeGitServer = (host: string) =>
+  post<GitServers>(`/api/git-servers/${encodeURIComponent(host)}`, undefined, "DELETE");
+
 // A request LADO's server gave no answer to.
 export const unreachable = (error: unknown) => error instanceof Unreached;
 export const LADO_DOWN = "LADO's server does not answer: your request may or may not have reached it.";

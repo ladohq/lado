@@ -3193,9 +3193,12 @@ them (docs/cli.md), on Model servers' rows and form, with no colour of its own.
   Running agents get a change after a restart.`, then a row per server by host, as `lado
   git-server list` lists them: the address whole (wrapped, never cut), its kind as a `badge`,
   and a second line, `signed in as <login>`, or (in `--warn`) `⚠ not checked: saved without a
-  check` for one saved with its kind chosen, `⚠ its token file is missing: add it again`. A
-  row has nothing to open (no arrow, no ✎); 🗑 at its right (`Remove <address>`). Opening the
-  page asks no server and makes no `lado.db`. Then `+ Add server`.
+  check` for one saved with its kind chosen, `⚠ its token file is missing: add it again`, and
+  a third line `commits as <name> <<email>>` for one with a commit author (nothing of authors
+  without one). A row has no arrow; ✎ (`Commit author of <address>`, title `Commit author`) and
+  🗑 (`Remove <address>`) at its right, each opening its panel under the row, one at a time
+  (opening one closes the other; `aria-pressed` on the open one's button). Opening the page
+  asks no server and makes no `lado.db`. Then `+ Add server`.
 - **Add server** opens a form under the list: Address, holding `https://gitlab.com` selected
   while no server of gitlab.com is saved, else empty, focused either way; Token, the project
   page's secret field (`Paste the token`), with `Make one at <the kind's token page on this
@@ -3225,14 +3228,31 @@ them (docs/cli.md), on Model servers' rows and form, with no colour of its own.
   <address>? Its token is deleted too. This cannot be undone. Running agents keep reaching it
   until they restart.`, `Remove server` and Cancel. Done: `Removed <address>.` in the row's
   place, the focus on `+ Add server`.
+- **Commit author** (decided 2026-11-16, LAD-291, mockup `mockup-commit-author.html`, option
+  1): ✎ opens a form under the row (`mx-form`): the note `Agents' commits to this server's
+  repositories carry this name and email; elsewhere your own git author.`, Name and Email side
+  by side (`launch-grid`; stacked on a phone), holding the saved author or empty, the focus on
+  Name; `Save author` (on once both trimmed values are filled and differ from the saved; Enter
+  in a field saves), `Remove author` (only when one is saved, no question: setting it again is
+  as easy) and Cancel; Esc cancels. It sets and clears as `lado git-server author` does, with
+  its rules; a refusal shows under Name or Email, one of no field (git older than 2.36, a
+  server removed meanwhile) under the buttons, until that field is edited. Done: the form
+  closes, the focus on the row, and above it `Agents commit to <address> as <name> <<email>>.`
+  (or `Agents commit to <address> with your own git author again.`) and `Agents started from
+  now on commit so; restart running agents to give it to them.` until the next change on the
+  page. Add server has no author: it is set on the saved row.
 - **API** (`lado.server.git_entries` over `lado.git_servers`, under the token, no change-feed
   event): `GET /api/git-servers` (`GitServers {servers: GitServerInfo {address, host, kind,
-  kind_title, login, has_token}, kinds: GitKindInfo {name, title, token_path, scopes}}`, asking
+  kind_title, login, has_token, author_name, author_email}, kinds: GitKindInfo {name, title,
+  token_path, scopes}}`, asking
   none; no `lado.db` made), `POST /api/git-servers/check` (`{address}` → `GitServerCheck
   {address, hint, token_page, scopes, choose_kind, unchecked, saved, refusals, warnings}`,
   saving nothing, sending no token), `POST /api/git-servers` (`GitServerAdd {address, token,
-  kind}` → `GitServerAdded {server, line, replaced, warnings}`) and `DELETE
-  /api/git-servers/{host}` (the server's host and port → `GitServers`). A refusal is a 400 whose
+  kind}` → `GitServerAdded {server, line, replaced, warnings}`), `PUT
+  /api/git-servers/{host}/author` (`GitServerAuthor {name, email}`) and `DELETE
+  /api/git-servers/{host}/author`, both → `GitServerAuthorDone {server, line}` (the command's
+  first line), and `DELETE /api/git-servers/{host}` (the server's host and port →
+  `GitServers`). A refusal is a 400 whose
   `detail` is an `EntryRefused`. The token enters only in the body of `POST /api/git-servers`
   (a route of `SECRET_ROUTE`) and is in no answer, log, journal or file but its own.
 

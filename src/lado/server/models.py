@@ -790,6 +790,75 @@ class ServerCheck(BaseModel):
     notes: list[str]
 
 
+class GitServerInfo(BaseModel):
+    """A saved git server as lado.db keeps it, asking it nothing: `host` its key (host and a
+    port other than the scheme's), `login` None for one saved without a check, and whether
+    its token file is there (never the token)."""
+
+    address: str
+    host: str
+    kind: str
+    kind_title: str
+    login: str | None
+    has_token: bool
+
+
+class GitKindInfo(BaseModel):
+    """A kind of git server: its token page under a server's root and what a token needs."""
+
+    name: str
+    title: str
+    token_path: str
+    scopes: str
+
+
+class GitServers(BaseModel):
+    """The saved git servers, by host, and the kinds LADO knows."""
+
+    servers: list[GitServerInfo]
+    kinds: list[GitKindInfo]
+
+
+class GitServerCheckAsked(BaseModel):
+    address: str
+
+
+class GitServerCheck(BaseModel):
+    """What the add form says of an address before Add, asking the server with no token:
+    its root (None when it is no address), the kind it looks like (a hint only) with its
+    token page and scopes, whether the kind must be chosen and why (`unchecked`), whether the
+    address is saved already, the refusals Add would meet and the plain-http warning."""
+
+    address: str | None
+    hint: str | None
+    token_page: str | None
+    scopes: str | None
+    choose_kind: bool
+    unchecked: EntryRefused | None
+    saved: bool
+    refusals: list[EntryRefused]
+    warnings: list[str]
+
+
+class GitServerAdd(BaseModel):
+    """A git server to check and save with its token; `kind` only when the human chose one
+    (--kind). No answer gives the token back."""
+
+    address: str
+    token: str
+    kind: str | None = None
+
+
+class GitServerAdded(BaseModel):
+    """A git server saved or replaced: as saved, the line that says so, and the warnings
+    (its token over plain http://)."""
+
+    server: GitServerInfo
+    line: str
+    replaced: bool
+    warnings: list[str]
+
+
 class LoginInfo(BaseModel):
     """A CLI's login as its own status command says (Provider.login_status); no value."""
 

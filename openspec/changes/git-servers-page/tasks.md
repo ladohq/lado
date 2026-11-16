@@ -18,7 +18,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-16-git-servers-
 
 ## 3. The server API
 
-- [ ] 3.1 `server/git_entries.py`, the models, the four routes, `SECRET_ROUTE`; `make
+- [x] 3.1 `server/git_entries.py`, the models, the four routes, `SECRET_ROUTE`; `make
   web-types` (D4). Check: `tests/test_server_git_servers.py`, `make web`.
 
 ## 4. The page

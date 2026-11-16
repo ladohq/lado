@@ -498,10 +498,16 @@ def save(at: Address, checked: Checked, token: str) -> tuple[state.GitServer, bo
 def remove(at: Address) -> state.GitServer:
     """Remove the server of the host of `at` and its token folder: the server removed.
     Refused for no such server, or a folder the disk refuses to remove (the row then gone)."""
-    known = state.git_server_by_host(at.key)
+    return remove_host(at.key, at.root)
+
+
+def remove_host(key: str, named: str | None = None) -> state.GitServer:
+    """Remove the server of the host `key` (`Address.key`) and its token folder, as `remove`
+    does; `named` the address the human gave, for the refusal (None: the key)."""
+    known = state.git_server_by_host(key)
     if known is None or not state.remove_git_server(known.id):
         raise Refused(
-            f"{at.root} is no saved git server",
+            f"{named or key} is no saved git server",
             "see them: lado git-server list",
             ADDRESS_FIELD,
             page_hint="",

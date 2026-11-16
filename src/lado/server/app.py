@@ -53,7 +53,16 @@ from lado import (
     tmux,
     update,
 )
-from lado.server import clones, feed, launch, model_entries, models, provider_check, terminals
+from lado.server import (
+    clones,
+    feed,
+    git_entries,
+    launch,
+    model_entries,
+    models,
+    provider_check,
+    terminals,
+)
 from lado.server.auth import Guard
 from lado.server.models import (
     AccessInfo,
@@ -149,7 +158,7 @@ STATIC = Path(__file__).parent / "static"  # the built bundle (make web); not in
 BUILD_HINT = "build it with `make web` in a LADO checkout"
 # The routes whose body is a secret's value: a 422 there repeats none of what it was given.
 SECRET_ROUTE = re.compile(
-    r"/api/((projects/[^/]+/secrets|providers/[^/]+/variables)/|model-servers(/|$))"
+    r"/api/((projects/[^/]+/secrets|providers/[^/]+/variables)/|(model|git)-servers(/|$))"
 )
 
 
@@ -1035,6 +1044,41 @@ def create_app(
     def clear_model_default(cli: str) -> models.ModelSettings:
         """Clear an agent CLI's default model, installed or not."""
         return entries(model_entries.clear_default, cli)
+
+    # Settings → Git servers: one route per action of `lado git-server`
+    # (lado.server.git_entries). Reading the list asks no server; a refusal is a 400 with
+    # EntryRefused. A server's token comes in only in the body of POST /api/git-servers
+    # (SECRET_ROUTE) and is in no answer.
+    @app.get("/api/git-servers", dependencies=[Depends(guard)])
+    def git_servers_listing(has_db: bool = Depends(database)) -> models.GitServers:
+        """The saved git servers, asking none; no lado.db made."""
+        return git_entries.listing(has_db)
+
+    @app.post("/api/git-servers/check", dependencies=[Depends(guard.changes)])
+    def check_git_server(
+        given: models.GitServerCheckAsked, has_db: bool = Depends(database)
+    ) -> models.GitServerCheck:
+        """What the add form says of an address before Add, the server asked with no token;
+        saves nothing."""
+        return git_entries.check(given, has_db)
+
+    @app.post(
+        "/api/git-servers",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=entry_refused,
+    )
+    def add_git_server(given: models.GitServerAdd) -> models.GitServerAdded:
+        """Check and save a server with its token as `lado git-server add` does."""
+        return entries(git_entries.add, given)
+
+    @app.delete(
+        "/api/git-servers/{host:path}",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=entry_refused,
+    )
+    def remove_git_server(host: str) -> models.GitServers:
+        """Remove the server of `host` and its token as `lado git-server remove` does."""
+        return entries(git_entries.remove, host)
 
     @app.get("/api/providers/logins", dependencies=[Depends(guard)])
     def provider_logins() -> ProvidersPage:

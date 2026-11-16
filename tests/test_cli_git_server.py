@@ -12,7 +12,7 @@ import fake_git_api as fake
 import pytest
 from test_cli_model_server import Stdin
 
-from lado import state
+from lado import git_kinds, git_servers, state
 from lado.cli import main
 
 TOKEN = "glpat-CANARY-a95c1e"
@@ -239,9 +239,9 @@ def test_list_shows_the_servers_without_asking_them(serve, capsys, lado_home):
     assert main(["git-server", "list"]) == 0
     rows = [line.split() for line in capsys.readouterr().out.splitlines()]
     assert rows == [
-        ["ADDRESS", "KIND", "LOGIN", "TOKEN"],
-        [server.url, "GitLab", fake.LOGIN, "yes"],
-        ["https://git.lan", "GitLab", "not", "checked", "no"],
+        ["ADDRESS", "KIND", "LOGIN", "TOKEN", "AUTHOR"],
+        [server.url, "GitLab", fake.LOGIN, "yes", "-"],
+        ["https://git.lan", "GitLab", "not", "checked", "no", "-"],
     ]
     assert len(server.requests) == asked
 
@@ -300,3 +300,121 @@ def test_the_bare_command_prints_its_help(capsys, lado_home):
     assert main(["git-server"]) == 0
     assert "add" in capsys.readouterr().out
     assert not (lado_home / "lado.db").exists()
+
+
+# The commit author.
+
+AUTHOR_RESTART = (
+    "Agents started from now on commit so; restart running agents to give it to them.\n"
+)
+
+
+def _saved(address="https://gitlab.corp.ru"):
+    checked = git_servers.Checked(git_kinds.by_name("gitlab"), "ivan")
+    return git_servers.save(git_servers.address(address), checked, TOKEN)[0]
+
+
+def _author(*args: str) -> int:
+    return main(["git-server", "author", *args])
+
+
+def test_author_sets_shows_and_clears(capsys):
+    _saved()
+    assert _author("gitlab.corp.ru", "--name", "Ivan Petrov", "--email", "ivan@corp.ru") == 0
+    assert capsys.readouterr().out == (
+        "Agents commit to https://gitlab.corp.ru as Ivan Petrov <ivan@corp.ru>.\n" + AUTHOR_RESTART
+    )
+    assert _author("https://gitlab.corp.ru/") == 0
+    assert capsys.readouterr().out == "Ivan Petrov <ivan@corp.ru>\n"
+    assert _author("gitlab.corp.ru", "--clear") == 0
+    assert capsys.readouterr().out == (
+        "Agents commit to https://gitlab.corp.ru with your own git author again.\n" + AUTHOR_RESTART
+    )
+    assert state.git_servers()[0].author_name is None
+    assert _author("gitlab.corp.ru", "--clear") == 0  # none to clear: the same
+    assert _author("gitlab.corp.ru") == 0
+    assert capsys.readouterr().out.endswith(
+        "https://gitlab.corp.ru has no commit author: agents commit there with your own git "
+        "author.\n"
+    )
+
+
+def test_list_shows_the_author_last(capsys):
+    _saved()
+    _saved("https://git.lan")
+    _author("gitlab.corp.ru", "--name", "Ivan Petrov", "--email", "ivan@corp.ru")
+    capsys.readouterr()
+    assert main(["git-server", "list"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0].split()[-1] == "AUTHOR"
+    assert lines[1].startswith("https://git.lan ") and lines[1].endswith(" -")
+    assert lines[2].startswith("https://gitlab.corp.ru ")
+    assert lines[2].endswith(" Ivan Petrov <ivan@corp.ru>")
+
+
+def test_author_of_no_saved_server_exits_1(capsys):
+    for args in ([], ["--clear"], ["--name", "I", "--email", "i@x"]):
+        assert _author("git.lan", *args) == 1
+        assert capsys.readouterr().err.splitlines() == [
+            "lado: https://git.lan is no saved git server",
+            "lado: see them: lado git-server list",
+        ]
+
+
+@pytest.mark.parametrize(
+    ("args", "err"),
+    [
+        (["--name", "Ivan"], "lado: --name and --email go together\n"),
+        (["--email", "i@corp.ru"], "lado: --name and --email go together\n"),
+        (["--clear", "--name", "Ivan"], "lado: --clear takes no --name or --email\n"),
+        (
+            ["--clear", "--name", "I", "--email", "i@corp.ru"],
+            "lado: --clear takes no --name or --email\n",
+        ),
+    ],
+)
+def test_a_half_author_exits_2_and_changes_nothing(capsys, args, err):
+    _saved()
+    assert _author("gitlab.corp.ru", *args) == 2
+    assert capsys.readouterr().err == err
+    assert state.git_servers()[0].author_name is None
+
+
+def test_author_of_a_bad_address_exits_2(capsys):
+    assert _author("ftp://git.lan") == 2
+    assert capsys.readouterr().err.startswith("lado: not a git server's address: ")
+
+
+@pytest.mark.parametrize(
+    ("name", "email", "err"),
+    [
+        ("Ivan", "ivan.petrov", "lado: not an email address: name@host\n"),
+        ("Ivan <boss>", "i@corp.ru", "lado: the author's name holds no < or > or line break\n"),
+    ],
+)
+def test_a_refused_author_exits_1(capsys, name, email, err):
+    _saved()
+    assert _author("gitlab.corp.ru", "--name", name, "--email", email) == 1
+    assert capsys.readouterr().err == err
+    assert state.git_servers()[0].author_name is None
+
+
+def test_an_old_git_is_refused_by_author(capsys, tmp_path, monkeypatch):
+    _saved()
+    folder = tmp_path / "old-git"
+    folder.mkdir()
+    (folder / "git").write_text("#!/bin/sh\necho 'git version 2.34.1'\n")
+    (folder / "git").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{folder}:{os.environ['PATH']}")
+    assert _author("gitlab.corp.ru", "--name", "I", "--email", "i@corp.ru") == 1
+    assert capsys.readouterr().err == (
+        "lado: git 2.34.1 is older than 2.36, which a commit author of a git server needs; "
+        "update git\n"
+    )
+
+
+def test_author_help_names_its_options(capsys):
+    with pytest.raises(SystemExit):
+        _author("--help")
+    out = capsys.readouterr().out
+    assert all(option in out for option in ("--name", "--email", "--clear"))

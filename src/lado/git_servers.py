@@ -522,7 +522,8 @@ def check_author(name: str, email: str) -> tuple[str, str]:
     return name, email
 
 
-def _saved(at: Address) -> state.GitServer:
+def saved_server(at: Address) -> state.GitServer:
+    """The saved server of `at`'s host; Refused for none."""
     known = state.git_server_by_host(at.key)
     if known is None:
         raise _not_saved(at.root)
@@ -542,7 +543,7 @@ def set_author(at: Address, name: str, email: str) -> state.GitServer:
     """Set the commit author of the saved server of `at`'s host, as `lado git-server author`
     does, for the command and the page alike: the server as saved. Refused for no such
     server, a name or email `check_author` refuses, or a git older than 2.36 here."""
-    known = _saved(at)
+    known = saved_server(at)
     name, email = check_author(name, email)
     check_author_git(os.environ)
     saved = state.set_git_server_author(known.id, name, email)
@@ -554,7 +555,7 @@ def set_author(at: Address, name: str, email: str) -> state.GitServer:
 def clear_author(at: Address) -> state.GitServer:
     """Clear the commit author of the saved server of `at`'s host, also when it has none:
     the server as saved. Refused for no such server."""
-    saved = state.set_git_server_author(_saved(at).id, None, None)
+    saved = state.set_git_server_author(saved_server(at).id, None, None)
     if saved is None:
         raise _not_saved(at.root)
     return saved

@@ -31,7 +31,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-16-git-server-a
 
 ## 5. The command
 
-- [ ] 5.1 `lado git-server author` and list's `AUTHOR` (D9). Check: `tests/test_cli_git_server.py`.
+- [x] 5.1 `lado git-server author` and list's `AUTHOR` (D9). Check: `tests/test_cli_git_server.py`.
 
 ## 6. The server API
 

@@ -1782,9 +1782,48 @@ def cmd_git_server_list(args: argparse.Namespace) -> int:
                 kind.title if kind else server.kind,
                 server.login or "not checked",
                 "yes" if git_servers.has_token(server) else "no",
+                git_servers.author_text(server) or "-",
             ]
         )
-    _table(["ADDRESS", "KIND", "LOGIN", "TOKEN"], rows)
+    _table(["ADDRESS", "KIND", "LOGIN", "TOKEN", "AUTHOR"], rows)
+    return 0
+
+
+def cmd_git_server_author(args: argparse.Namespace) -> int:
+    """`lado git-server author <address> [--name N --email E | --clear]`: set, clear or show
+    the commit author of the server of the address's host (lado.git_servers); exit 1 for a
+    refusal, 2 for an address it does not take or a half author."""
+    from lado import git_servers
+
+    at = _git_address(args.address)
+    if at is None:
+        return 2
+    given = args.name is not None or args.email is not None
+    if args.clear and given:
+        print("lado: --clear takes no --name or --email", file=sys.stderr)
+        return 2
+    if given and (args.name is None or args.email is None):
+        print("lado: --name and --email go together", file=sys.stderr)
+        return 2
+    try:
+        if args.clear:
+            server = git_servers.clear_author(at)
+            print(git_servers.AUTHOR_CLEARED.format(address=server.address))
+        elif given:
+            server = git_servers.set_author(at, args.name, args.email)
+            author = git_servers.author_text(server)
+            print(git_servers.AUTHOR_SET.format(address=server.address, author=author))
+        else:
+            server = git_servers.saved_server(at)
+            print(
+                git_servers.author_text(server)
+                or f"{server.address} has no commit author: agents commit there with your own "
+                "git author."
+            )
+            return 0
+    except git_servers.Refused as exc:
+        return _refused(exc)
+    print(git_servers.AUTHOR_RESTART)
     return 0
 
 
@@ -2581,6 +2620,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     git_server_remove.add_argument("address")
     git_server_remove.set_defaults(func=cmd_git_server_remove)
+    git_server_author = git_server_sub.add_parser(
+        "author",
+        help="the name and email agents commit to a server's repositories with",
+        description="Without options: show the server's commit author.",
+    )
+    git_server_author.add_argument("address")
+    git_server_author.add_argument("--name", help="the author's name, with --email")
+    git_server_author.add_argument("--email", help="the author's email, with --name")
+    git_server_author.add_argument(
+        "--clear", action="store_true", help="agents commit there with your own git author"
+    )
+    git_server_author.set_defaults(func=cmd_git_server_author)
 
     model_cmd = commands.add_parser(
         "model", help="your servers' models under names, and each agent CLI's default model"

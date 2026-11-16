@@ -33,10 +33,10 @@ def closed_port() -> int:
 @pytest.fixture
 def gitlab_com(tmp_path, monkeypatch):
     """The fake GitLab as https://gitlab.com for the server, which takes this environment:
-    asked with no token it answers GitLab's 401, with TOKEN its user. Taken before
-    `server`."""
+    asked with no token it answers GitLab's 401, on GitHub's path too, as gitlab.com does;
+    with TOKEN its user. Taken before `server`."""
     ca, certificate = fake.make_ca_certificate(tmp_path, "gitlab.com")
-    server = fake.Server("gitlab", token=TOKEN, certificate=certificate)
+    server = fake.Server("gitlab-com", token=TOKEN, certificate=certificate)
     proxy = fake.ConnectProxy({"gitlab.com:443": ("127.0.0.1", server.port)})
     for name in ("http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY"):
         monkeypatch.delenv(name, raising=False)
@@ -112,6 +112,8 @@ def test_add_three_servers_and_remove_one(
             "link", name="https://gitlab.com/-/user_settings/personal_access_tokens"
         )
         expect(link).to_be_visible()
+        expect(git.get_by_role("radio")).to_have_count(0)  # no kind to choose
+        expect(form_add(page)).to_have_text("Add server")
         assert gitlab_com.requests and all(
             "PRIVATE-TOKEN" not in r.headers and "Authorization" not in r.headers
             for r in gitlab_com.requests
@@ -122,6 +124,9 @@ def test_add_three_servers_and_remove_one(
         form_add(page).click()
         refused = git.get_by_text("GitLab at https://gitlab.com refuses the token")
         expect(refused).to_be_visible()
+        expect(
+            git.get_by_text(re.compile("make a token at https://gitlab.com/-/user_settings/"))
+        ).to_be_visible()
         expect(form_add(page)).to_be_disabled()
         assert state.git_servers() == []
         shot(page, "wrong-token")

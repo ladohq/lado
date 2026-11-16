@@ -699,6 +699,35 @@ def test_the_hint_asks_for_the_kind_of_one_it_cannot_tell(serve, monkeypatch, pr
     assert _credentials(server) == []
 
 
+def test_gitlab_com_refusing_github_s_path_too_is_told_gitlab(serve):
+    # gitlab.com answers GitLab's 401 on any path of its API, GitHub's included.
+    server = serve("gitlab-com", token=TOKEN)
+    at = git_servers.address(server.url)
+    found = git_servers.hint(at)
+    assert (found.kind.name, found.choose, found.why) == ("gitlab", False, None)
+    refused = _refused(server.url, token="glpat-WRONG")
+    assert str(refused) == f"GitLab at {server.url} refuses the token"
+    assert refused.hint == (
+        f"make a token at {server.url}/-/user_settings/personal_access_tokens "
+        "(scopes read_repository, write_repository, read_api)"
+    )
+    checked = git_servers.probe(at, TOKEN)
+    assert (checked.kind.name, checked.login) == ("gitlab", fake.LOGIN)
+
+
+def test_github_s_refusal_is_told_by_its_documentation_link():
+    from lado.model_servers import Answer
+
+    def answer(body):
+        return Answer(status=401, body=body)
+
+    github, gitlab = git_kinds.by_name("github"), git_kinds.by_name("gitlab")
+    assert github.refusal(answer(fake.GITHUB_401.body)) == "refuses the token"
+    assert github.refusal(answer(fake.GITLAB_401.body)) is None
+    assert gitlab.refusal(answer(fake.GITLAB_401.body)) == "refuses the token"
+    assert gitlab.refusal(answer(fake.GITHUB_401.body)) is None
+
+
 def test_the_hint_refuses_a_server_that_sends_elsewhere(serve):
     server = serve(fake.REDIRECT, location="https://sso.example/login")
     with pytest.raises(git_servers.Refused) as raised:

@@ -39,8 +39,16 @@ class Answer(NamedTuple):
 NOT_FOUND = Answer(404, "<html><body>404 Not Found</body></html>")
 GITLAB_USER = Answer(200, {"id": 7, "username": LOGIN, "name": "Ivan Petrov"})
 GITHUB_USER = Answer(200, {"id": 7, "login": LOGIN, "type": "User"})
+# GitLab answers this on any path of its API, also GitHub's, without a token it takes.
 GITLAB_401 = Answer(401, {"message": "401 Unauthorized"})
-GITHUB_401 = Answer(401, {"message": "Bad credentials", "status": "401"})
+GITHUB_401 = Answer(
+    401,
+    {
+        "message": "Bad credentials",
+        "documentation_url": "https://docs.github.com/enterprise-server@3.14/rest",
+        "status": "401",
+    },
+)
 GITLAB_SCOPE = Answer(
     403,
     {"error": "insufficient_scope", "error_description": "The request requires higher privileges"},
@@ -49,6 +57,8 @@ HANG = Answer(0)  # no answer: the request waits for the server's end
 
 PROFILES: dict[str, dict[str, Answer]] = {
     "gitlab": {GITLAB: GITLAB_USER},
+    # As gitlab.com: GitHub's path refused as any other path of GitLab's API.
+    "gitlab-com": {GITLAB: GITLAB_USER, GITHUB: GITLAB_401},
     "github": {GITHUB: GITHUB_USER},
     "gitlab-refuses": {GITLAB: GITLAB_401},
     "github-refuses": {GITHUB: GITHUB_401},
@@ -70,9 +80,9 @@ class Request(NamedTuple):
 
 def answer_for(profile: str, path: str, token: str | None, headers: Message) -> Answer:
     """The profile's answer to a GET of `path`; with `token`, a request that does not carry
-    it the kind's way gets that kind's 401."""
+    it the kind's way gets that kind's 401; a refusal stays one."""
     found = PROFILES[profile].get(path, NOT_FOUND)
-    if token is not None and found not in (NOT_FOUND, HANG):
+    if token is not None and found.status == 200:
         if path == GITLAB and headers.get("PRIVATE-TOKEN") != token:
             return GITLAB_401
         if path == GITHUB and headers.get("Authorization") != f"token {token}":

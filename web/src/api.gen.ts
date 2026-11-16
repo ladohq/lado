@@ -1016,6 +1016,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/git-servers/{host}/author": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Git Server Author
+         * @description Set the server's commit author as `lado git-server author --name --email` does.
+         */
+        put: operations["set_git_server_author_api_git_servers__host__author_put"];
+        post?: never;
+        /**
+         * Clear Git Server Author
+         * @description Clear the server's commit author as `lado git-server author --clear` does.
+         */
+        delete: operations["clear_git_server_author_api_git_servers__host__author_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/git-servers/{host}": {
         parameters: {
             query?: never;
@@ -2435,6 +2459,26 @@ export interface components {
             warnings: string[];
         };
         /**
+         * GitServerAuthor
+         * @description A git server's commit author to set: both its name and its email.
+         */
+        GitServerAuthor: {
+            /** Name */
+            name: string;
+            /** Email */
+            email: string;
+        };
+        /**
+         * GitServerAuthorDone
+         * @description A git server's commit author set or cleared: the server as saved and the line of
+         *     `lado git-server author` that says so.
+         */
+        GitServerAuthorDone: {
+            server: components["schemas"]["GitServerInfo"];
+            /** Line */
+            line: string;
+        };
+        /**
          * GitServerCheck
          * @description What the add form says of an address before Add, asking the server with no token:
          *     its root (None when it is no address), the kind it looks like (a hint only) with its
@@ -2468,8 +2512,8 @@ export interface components {
         /**
          * GitServerInfo
          * @description A saved git server as lado.db keeps it, asking it nothing: `host` its key (host and a
-         *     port other than the scheme's), `login` None for one saved without a check, and whether
-         *     its token file is there (never the token).
+         *     port other than the scheme's), `login` None for one saved without a check, whether
+         *     its token file is there (never the token), and its commit author (both or neither).
          */
         GitServerInfo: {
             /** Address */
@@ -2484,6 +2528,10 @@ export interface components {
             login: string | null;
             /** Has Token */
             has_token: boolean;
+            /** Author Name */
+            author_name: string | null;
+            /** Author Email */
+            author_email: string | null;
         };
         /**
          * GitServers
@@ -6578,6 +6626,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GitServerCheck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_git_server_author_api_git_servers__host__author_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GitServerAuthor"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitServerAuthorDone"];
+                };
+            };
+            /** @description refused */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryRefused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_git_server_author_api_git_servers__host__author_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitServerAuthorDone"];
+                };
+            };
+            /** @description refused */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryRefused"];
                 };
             };
             /** @description Validation Error */

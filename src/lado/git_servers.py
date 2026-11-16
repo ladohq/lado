@@ -530,6 +530,15 @@ def saved_server(at: Address) -> state.GitServer:
     return known
 
 
+def saved_address(key: str) -> Address:
+    """The address of the saved server of the host `key` (`Address.key`), for the page,
+    which names a server by its key; Refused for none."""
+    known = state.git_server_by_host(key)
+    if known is None:
+        raise _not_saved(key)
+    return address(known.address)
+
+
 def _not_saved(named: str) -> Refused:
     return Refused(
         f"{named} is no saved git server",

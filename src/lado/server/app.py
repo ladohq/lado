@@ -1071,6 +1071,27 @@ def create_app(
         """Check and save a server with its token as `lado git-server add` does."""
         return entries(git_entries.add, given)
 
+    # Before the removal's route, whose `{host:path}` would take `<host>/author` too.
+    @app.put(
+        "/api/git-servers/{host}/author",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=entry_refused,
+    )
+    def set_git_server_author(
+        host: str, given: models.GitServerAuthor
+    ) -> models.GitServerAuthorDone:
+        """Set the server's commit author as `lado git-server author --name --email` does."""
+        return entries(git_entries.set_author, host, given)
+
+    @app.delete(
+        "/api/git-servers/{host}/author",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=entry_refused,
+    )
+    def clear_git_server_author(host: str) -> models.GitServerAuthorDone:
+        """Clear the server's commit author as `lado git-server author --clear` does."""
+        return entries(git_entries.clear_author, host)
+
     @app.delete(
         "/api/git-servers/{host:path}",
         dependencies=[Depends(guard.changes), Depends(database)],

@@ -35,7 +35,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-16-git-server-a
 
 ## 6. The server API
 
-- [ ] 6.1 `PUT`/`DELETE /api/git-servers/{host}/author`, `GitServerInfo`'s author, `make
+- [x] 6.1 `PUT`/`DELETE /api/git-servers/{host}/author`, `GitServerInfo`'s author, `make
   web-types` (D10). Check: `tests/test_server_git_servers.py`, `make web`.
 
 ## 7. The page

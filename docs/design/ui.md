@@ -749,7 +749,8 @@ Sessions for now. The UI's texts are in English.
   the tab's title while above zero: `(<n>) <page> · LADO`. A gate has no page of its
   own: it is a tab of its session's waiting card.
 - **Settings**: a page per section beside the list of their names: General (theme;
-  browser notifications), Agent CLIs, Model servers and Statistics (Settings, below).
+  browser notifications), Agent CLIs, Model servers, Git servers and Statistics (Settings,
+  below).
 - **Placeholders**: one component, with the section's name, one sentence on what it will
   hold, and a link to the plan item that builds it. A placeholder is allowed only when its
   section has an item in ROADMAP.md or in Tasks below: they are Tasks here. Projects was
@@ -2381,7 +2382,8 @@ redirects read; a section's page is `Settings.tsx`'s `PAGES` by its slug.
 
 - **The pages**, in this order: General `/settings/general` (`SettingsIcon`, the cogwheel),
   Agent CLIs `/settings/agent-clis` (`AgentCliIcon`), Model servers `/settings/model-servers`
-  (`ServerIcon`) and Statistics `/settings/statistics` (`ShieldIcon`). On a phone the top bar
+  (`ServerIcon`), Git servers `/settings/git-servers` (`GitIcon`) and Statistics
+  `/settings/statistics` (`ShieldIcon`). On a phone the top bar
   names the section of a page (`Statistics`), on a computer and at the list `Settings`.
 - **The list** (`nav.snav`, "Settings sections"): an icon and a name per section and nothing
   else, no state line, mark or count; the current one `aria-current="page"` with the rail's
@@ -2413,7 +2415,7 @@ redirects read; a section's page is `Settings.tsx`'s `PAGES` by its slug.
 - **General**: two rows, Theme (System, Light, Dark) and Browser notifications (`When
   something waits for you and this tab is hidden.`, the switch; Notifications below).
 - **Not built yet**: groups of sections (from six sections) and Find a setting (from eight),
-  round 5's frame 16; with four sections neither would show.
+  round 5's frame 16; with five sections neither would show.
 
 ### Help (decided 2026-11-08, LAD-238)
 
@@ -3179,6 +3181,60 @@ core's why (`ProbeInfo.cannot`); the CLIs a tick can save a model of are `ProbeI
   body of `POST /api/model-servers` and `POST /api/model-servers/check` (routes of
   `SECRET_ROUTE`: a 422 there repeats none of its input) and is in no answer, log, journal
   or file but its own.
+
+### Git servers (decided 2026-11-16, LAD-290, mockup `mockup-git-servers.html`)
+
+Settings → Git servers (`/settings/git-servers`, `GitServers.tsx`; openspec capability
+git-servers-page): the human's GitLab and GitHub Enterprise servers, as `lado git-server` keeps
+them (docs/cli.md), on Model servers' rows and form, with no colour of its own.
+
+- **The list**: the heading `Servers <n>` (no count with none), the lead `Your GitLab or
+  GitHub Enterprise: agents clone and push there with its token. github.com uses gh's login.
+  Running agents get a change after a restart.`, then a row per server by host, as `lado
+  git-server list` lists them: the address whole (wrapped, never cut), its kind as a `badge`,
+  and a second line, `signed in as <login>`, or (in `--warn`) `⚠ not checked: saved without a
+  check` for one saved with its kind chosen, `⚠ its token file is missing: add it again`. A
+  row has nothing to open (no arrow, no ✎); 🗑 at its right (`Remove <address>`). Opening the
+  page asks no server and makes no `lado.db`. Then `+ Add server`.
+- **Add server** opens a form under the list: Address, holding `https://gitlab.com` selected
+  while no server of gitlab.com is saved, else empty, focused either way; Token, the project
+  page's secret field (`Paste the token`), with `Make one at <the kind's token page on this
+  server> with the <scopes>.` once a kind is known, and `Only LADO reads it; never shown
+  again.`. Once the address's typing settles (`MODEL_DEBOUNCE`; at once for gitlab.com) the
+  form asks `POST /api/git-servers/check`, saying `checking <address> …`: the server is asked
+  with no token (each kind's API path, no credential header, 5 s, no redirect followed), and
+  under Address come the refusals of the address (github.com, a host name held by another
+  server, git older than 2.31 under the buttons, a redirect), the plain-http warning, `Looks
+  like GitLab; the token tells for sure.` (a hint only: it chooses Token's link and is never
+  sent), and `Already saved: Add server replaces its token.`. A server that does not answer,
+  or answers as neither kind or both, shows the warning with `If the server is there for git
+  but its API is not reachable from here, choose its kind to save it without a check.` and
+  the kind as segments (GitHub, GitLab, none chosen); the button is then `Add without a
+  check`, off until one is chosen. An older check's answer is dropped.
+- **Add** is on when the check found no refusal and a token is typed; it sends `{address,
+  token, kind}` (`kind` only when chosen), saying `checking the server…`, and saves as `lado
+  git-server add` does. Done: the form closes, the row stands where the form was, the focus on
+  it, with `Saved git server <address>: GitLab, signed in as <login>.` (`Replaced …`; `… as
+  GitLab without a check (<why>).` for a kind chosen), `Agents started from now on reach it;
+  restart running agents to give it to them.` and the http warning above it, until the next
+  change on the page. A refusal shows under its field (Address, Token, Kind; none under the
+  buttons) in the command's words without a command, until that field is edited. The token is
+  emptied when Add is done or refused for another field, on Cancel and when the form closes; a
+  refused token stays, Add off until it is edited.
+- **Remove** asks under the row (`mx-confirm`, the focus on Cancel, Esc cancels): `Remove
+  <address>? Its token is deleted too. This cannot be undone. Running agents keep reaching it
+  until they restart.`, `Remove server` and Cancel. Done: `Removed <address>.` in the row's
+  place, the focus on `+ Add server`.
+- **API** (`lado.server.git_entries` over `lado.git_servers`, under the token, no change-feed
+  event): `GET /api/git-servers` (`GitServers {servers: GitServerInfo {address, host, kind,
+  kind_title, login, has_token}, kinds: GitKindInfo {name, title, token_path, scopes}}`, asking
+  none; no `lado.db` made), `POST /api/git-servers/check` (`{address}` → `GitServerCheck
+  {address, hint, token_page, scopes, choose_kind, unchecked, saved, refusals, warnings}`,
+  saving nothing, sending no token), `POST /api/git-servers` (`GitServerAdd {address, token,
+  kind}` → `GitServerAdded {server, line, replaced, warnings}`) and `DELETE
+  /api/git-servers/{host}` (the server's host and port → `GitServers`). A refusal is a 400 whose
+  `detail` is an `EntryRefused`. The token enters only in the body of `POST /api/git-servers`
+  (a route of `SECRET_ROUTE`) and is in no answer, log, journal or file but its own.
 
 ### Activity
 

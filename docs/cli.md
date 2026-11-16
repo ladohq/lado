@@ -818,7 +818,11 @@ server recognised as another kind is refused (`<address> answers as GitLab, not 
 `http://` address warns `the token goes to <host> over plain http://, unencrypted; use https://
 if the server has it` and goes on. A server is its host and port: adding one already saved
 replaces its address, kind, login and token, keeping its id (`Replaced git server
-<address>.`). The token is kept in `<LADO_HOME>/git-servers/<id>/token` alone (folders 700,
+<address>.`). One host name holds one server, as git's ssh addresses of a host carry no port:
+a server whose host name a saved server holds on another port is refused before the token is
+asked and before any request (`<host> already has a git server, <its address>; LADO keeps one
+server per host name, as git's ssh addresses (git@<host>:…) carry no port`, hint `remove it
+first: lado git-server remove <its address>`). The token is kept in `<LADO_HOME>/git-servers/<id>/token` alone (folders 700,
 the file 600, written by LADO's secrets writer as a model server's key), never in lado.db,
 an output, a log, a git config file or a worktree. A git older than 2.31 on this PATH is
 refused before the token is asked (`git <version> is older than 2.31, which git servers need;
@@ -828,9 +832,11 @@ update git, or remove the servers (lado git-server remove <address>)`).
 none: `not checked` for one saved with `--kind` unchecked, `yes`/`no` for its token file; with
 none, `No git servers. Add one: lado git-server add <address> --token`. `lado git-server
 remove <address>` finds the server by the host and port of the address, with or without its
-scheme, removes it and its token folder: `Removed git server <address>.`; an address of no
-saved server is refused (exit 1). `lado git-server` alone prints its help; the commands
-migrate lado.db as `lado ls` does.
+scheme, removes it and its token folder, and `<LADO_HOME>/git-servers/` itself with the last
+server: `Removed git server <address>.`; an address of no saved server is refused (exit 1).
+`lado git-server` alone prints its help; the commands migrate lado.db as `lado ls` does.
+Settings → Git servers in the web UI does the same with the same rules (docs/design/ui.md,
+Git servers).
 
 What a saved server gives: each agent at its launch, and LADO's own network git at each call
 (kits, packs, marketplaces, a clone or listing of a URL), gets through `GIT_CONFIG_COUNT`,

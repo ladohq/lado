@@ -49,4 +49,4 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-16-git-server-a
 
 - [x] 8.1 `docs/cli.md`, `docs/design/ui.md`, `docs/design/agents.md`,
   `docs/design/modules.md`, CHANGELOG.md. Check: `uv run pytest tests/test_agents_md.py`.
-- [ ] 8.2 The regression run and the pull request's description with the manual check.
+- [x] 8.2 The regression run and the pull request's description with the manual check.

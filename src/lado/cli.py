@@ -2559,7 +2559,8 @@ def main(argv: list[str] | None = None) -> int:
     git_server_add = git_server_sub.add_parser(
         "add",
         help="tell a server's kind by its API and save it with your token",
-        usage="%(prog)s [-h] --token [--kind {" + ",".join(KIND_NAMES) + "}] address",
+        # The address first: --token takes an optional value and would take it.
+        usage="%(prog)s [-h] address --token [--kind {" + ",".join(KIND_NAMES) + "}]",
     )
     git_server_add.add_argument(
         "address", help="e.g. gitlab.example.com or https://example.com/gitlab (https:// if none)"

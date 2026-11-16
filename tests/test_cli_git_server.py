@@ -157,6 +157,15 @@ def test_kind_offers_the_kinds(capsys):
     assert "{github,gitlab}" in capsys.readouterr().out
 
 
+def test_the_usage_puts_the_address_before_the_token(capsys):
+    # --token takes an optional value: a command typed as `add --token <address>` gives the
+    # address as the token and is refused.
+    with pytest.raises(SystemExit):
+        main(["git-server", "add", "--help"])
+    usage = capsys.readouterr().out.splitlines()[0]
+    assert usage.index("address") < usage.index("--token")
+
+
 @pytest.mark.parametrize(
     "given",
     [

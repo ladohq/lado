@@ -14,6 +14,13 @@ empty helper then LADO's own (lado.git_credential) for each saved server's addre
 rewrites the server's ssh addresses to it; an agent gets them at its launch
 (lado.runtime), LADO's own network git at each call (lado.agent_env.for_git). git reads
 `GIT_CONFIG_COUNT` from 2.31 on: `check_git` refuses an older one where a server is needed.
+
+A server may have a commit author (`set_author`, `clear_author`, checked by `check_author`),
+kept in its row. An agent's launch writes it into a file of the agent's own config folder
+(`author_files`: only `[user]` name and email) and `variables` adds, after the server's
+entries, `includeIf "hasconfig:remote.*.url:…"` entries including it (`author_entries`): git
+takes it in a repository with a remote on the server, and nowhere else. The condition exists
+from git 2.36 (`check_author_git`); LADO's own git gets no author.
 """
 
 from __future__ import annotations
@@ -44,7 +51,12 @@ GITHUB_COM = frozenset({"github.com", "www.github.com", "api.github.com"})
 HELPER = "lado.git_credential"
 ADD = "lado git-server add"
 REMOVE = "lado git-server remove"
+AUTHOR = "lado git-server author"
 RESTART = "Agents started from now on reach it; restart running agents to give it to them."
+AUTHOR_SET = "Agents commit to {address} as {author}."
+AUTHOR_CLEARED = "Agents commit to {address} with your own git author again."
+AUTHOR_RESTART = "Agents started from now on commit so; restart running agents to give it to them."
+AUTHOR_MAX = 256  # characters of the author's name, and of its email
 PLAIN_HTTP = (
     "the token goes to {host} over plain http://, unencrypted; use https:// if the server has it"
 )
@@ -56,6 +68,7 @@ PAGE_KIND_HINT = (
 )
 # The fields of Settings → Git servers' form a refusal concerns ("" for none).
 ADDRESS_FIELD, TOKEN_FIELD, KIND_FIELD = "address", "token", "kind"
+NAME_FIELD, EMAIL_FIELD = "name", "email"  # of a server's commit author form
 
 
 class Refused(Exception):
@@ -373,10 +386,15 @@ def _entries(server: state.GitServer) -> list[tuple[str, str]]:
     ]
 
 
-def variables(env: Mapping[str, str], servers: Sequence[state.GitServer]) -> dict[str, str]:
+def variables(
+    env: Mapping[str, str],
+    servers: Sequence[state.GitServer],
+    authors: Mapping[str, Path] | None = None,
+) -> dict[str, str]:
     """The `GIT_CONFIG_*` variables to lay over `env` for `servers`: the entries of `env`'s
     own `GIT_CONFIG_COUNT` are kept, LADO's coming after them (a count that is no number
-    counts as none). Nothing for no server."""
+    counts as none); after a server's own entries, those of its author file in `authors`
+    (server id → file, `author_files`; an agent's only). Nothing for no server."""
     if not servers:
         return {}
     try:
@@ -385,7 +403,10 @@ def variables(env: Mapping[str, str], servers: Sequence[state.GitServer]) -> dic
         n = 0
     found = {}
     for server in servers:
-        for key, value in _entries(server):
+        entries = _entries(server)
+        if authors and server.id in authors:
+            entries += author_entries(server, authors[server.id])
+        for key, value in entries:
             found[f"GIT_CONFIG_KEY_{n}"] = key
             found[f"GIT_CONFIG_VALUE_{n}"] = value
             n += 1
@@ -420,9 +441,10 @@ def server_for(remote: str, servers: Sequence[state.GitServer]) -> state.GitServ
     return next((s for s in servers if urllib.parse.urlsplit(s.address).hostname == host), None)
 
 
-def check_git(env: Mapping[str, str]) -> None:
-    """Refuse a git on `env`'s PATH older than 2.31, which reads no `GIT_CONFIG_COUNT`; a
-    git that does not run is left to the folder check and git's own error."""
+def _older_git(env: Mapping[str, str], need: tuple[int, int], what: str) -> str | None:
+    """`git <version> is older than <need>, which <what> needs…` for a git on `env`'s PATH
+    older than `need`; None for a newer one, or one that does not run (left to the folder
+    check and git's own error)."""
     from lado import runtime  # runtime lays the variables: imported when asked
 
     try:
@@ -430,15 +452,165 @@ def check_git(env: Mapping[str, str]) -> None:
             ["git", "--version"], env=dict(env), capture_output=True, text=True, check=False
         )
     except OSError:
-        return
+        return None
     line = result.stdout.strip()
     found = runtime.git_numbers(line)
-    if result.returncode != 0 or found is None or found >= runtime.GIT_MIN:
-        return
+    if result.returncode != 0 or found is None or found >= need:
+        return None
     version = line.removeprefix("git version ").split()[0]
-    need = ".".join(map(str, runtime.GIT_MIN))
-    older = f"git {version} is older than {need}, which git servers need; update git"
-    raise Refused(f"{older}, or remove the servers ({REMOVE} <address>)", page=older)
+    return f"git {version} is older than {'.'.join(map(str, need))}, which {what}; update git"
+
+
+def check_git(env: Mapping[str, str]) -> None:
+    """Refuse a git on `env`'s PATH older than 2.31, which reads no `GIT_CONFIG_COUNT`."""
+    from lado import runtime
+
+    older = _older_git(env, runtime.GIT_MIN, "git servers need")
+    if older:
+        raise Refused(f"{older}, or remove the servers ({REMOVE} <address>)", page=older)
+
+
+def check_author_git(env: Mapping[str, str], clear: str | None = None) -> None:
+    """Refuse a git on `env`'s PATH older than 2.36, which skips `includeIf hasconfig:`
+    silently (`author_entries`); `clear` the address of a server with an author, for a
+    launch: the refusal says how to clear it."""
+    from lado import runtime
+
+    older = _older_git(env, runtime.GIT_AUTHOR_MIN, "a commit author of a git server needs")
+    if older:
+        text = f"{older}, or clear the author ({AUTHOR} {clear} --clear)" if clear else older
+        raise Refused(text, page=older)
+
+
+def author_text(server: state.GitServer) -> str | None:
+    """`<name> <<email>>` of the server's commit author; None for none."""
+    if server.author_name is None or server.author_email is None:
+        return None
+    return f"{server.author_name} <{server.author_email}>"
+
+
+def _control(text: str) -> bool:
+    return any(ord(c) < 0x20 or 0x7F <= ord(c) < 0xA0 for c in text)
+
+
+def check_author(name: str, email: str) -> tuple[str, str]:
+    """The commit author's name and email, trimmed; Refused (field `name` or `email`) for a
+    name that is empty or holds `<`, `>` or a control character, an email that is not
+    `local@domain` (one `@`, text on both sides, no space, `<`, `>` or control character),
+    and a value over AUTHOR_MAX characters. git and the server decide the rest."""
+    name, email = name.strip(), email.strip()
+    if not name:
+        raise Refused("the author's name is empty", field=NAME_FIELD)
+    if len(name) > AUTHOR_MAX:
+        raise Refused(f"the author's name is longer than {AUTHOR_MAX} characters", field=NAME_FIELD)
+    if "<" in name or ">" in name or _control(name):
+        raise Refused("the author's name holds no < or > or line break", field=NAME_FIELD)
+    if len(email) > AUTHOR_MAX:
+        raise Refused(
+            f"the author's email is longer than {AUTHOR_MAX} characters", field=EMAIL_FIELD
+        )
+    local, at, domain = email.partition("@")
+    if (
+        not local
+        or not at
+        or not domain
+        or "@" in domain
+        or any(c.isspace() or c in "<>" for c in email)
+        or _control(email)
+    ):
+        raise Refused("not an email address: name@host", field=EMAIL_FIELD)
+    return name, email
+
+
+def _saved(at: Address) -> state.GitServer:
+    known = state.git_server_by_host(at.key)
+    if known is None:
+        raise _not_saved(at.root)
+    return known
+
+
+def _not_saved(named: str) -> Refused:
+    return Refused(
+        f"{named} is no saved git server",
+        "see them: lado git-server list",
+        ADDRESS_FIELD,
+        page_hint="",
+    )
+
+
+def set_author(at: Address, name: str, email: str) -> state.GitServer:
+    """Set the commit author of the saved server of `at`'s host, as `lado git-server author`
+    does, for the command and the page alike: the server as saved. Refused for no such
+    server, a name or email `check_author` refuses, or a git older than 2.36 here."""
+    known = _saved(at)
+    name, email = check_author(name, email)
+    check_author_git(os.environ)
+    saved = state.set_git_server_author(known.id, name, email)
+    if saved is None:  # removed meanwhile
+        raise _not_saved(at.root)
+    return saved
+
+
+def clear_author(at: Address) -> state.GitServer:
+    """Clear the commit author of the saved server of `at`'s host, also when it has none:
+    the server as saved. Refused for no such server."""
+    saved = state.set_git_server_author(_saved(at).id, None, None)
+    if saved is None:
+        raise _not_saved(at.root)
+    return saved
+
+
+def _glob(text: str) -> str:
+    """`text` matched literally by git's wildmatch."""
+    return re.sub(r"([\\*?\[\]])", r"\\\1", text)
+
+
+def author_entries(server: state.GitServer, path: Path) -> list[tuple[str, str]]:
+    """The git config entries that include the author file `path` in a repository with a
+    remote on `server`, as written, in each form `server_for` takes: its address with or
+    without a user, and the ssh addresses `_entries` rewrites to it. git's `**` is a folder
+    wildcard only next to `/`, so the scp form takes `git@host:*` and `git@host:*/**`."""
+    parts = urllib.parse.urlsplit(server.address)
+    netloc, path_part = _glob(parts.netloc), _glob(parts.path)
+    host = parts.hostname or ""
+    host = _glob(f"[{host}]" if ":" in host else host)
+    globs = [
+        f"{parts.scheme}://{netloc}{path_part}/**",
+        f"{parts.scheme}://*@{netloc}{path_part}/**",
+        f"git@{host}:*",
+        f"git@{host}:*/**",
+        f"ssh://git@{host}/**",
+        f"ssh://git@{host}:22/**",
+    ]
+    return [(f"includeIf.hasconfig:remote.*.url:{glob}.path", str(path)) for glob in globs]
+
+
+def _quoted(value: str) -> str:
+    """A value of git's config syntax, in double quotes (check_author refuses line breaks)."""
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def author_files(folder: Path, servers: Sequence[state.GitServer]) -> dict[str, Path]:
+    """Write `<folder>/<id>.gitconfig` for each of `servers` with a commit author, holding
+    only its `[user]` name and email, mode 600, each whole by a rename: the files by server
+    id, for `variables`' `authors`. Nothing, and no folder, when none has an author."""
+    found = {}
+    for server in servers:
+        if author_text(server) is None:
+            continue
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"{server.id}.gitconfig"
+        text = (
+            f"[user]\n\tname = {_quoted(server.author_name or '')}\n"
+            f"\temail = {_quoted(server.author_email or '')}\n"
+        )
+        temp = path.with_name(f".{path.name}.{uuid.uuid4().hex[:8]}")
+        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as file:
+            file.write(text)
+        os.replace(temp, path)
+        found[server.id] = path
+    return found
 
 
 def token_folder(id: str) -> Path:
@@ -494,12 +666,7 @@ def remove_host(key: str, named: str | None = None) -> state.GitServer:
     does; `named` the address the human gave, for the refusal (None: the key)."""
     known = state.git_server_by_host(key)
     if known is None or not state.remove_git_server(known.id):
-        raise Refused(
-            f"{named or key} is no saved git server",
-            "see them: lado git-server list",
-            ADDRESS_FIELD,
-            page_hint="",
-        )
+        raise _not_saved(named or key)
     try:
         _remove_token(known.id)
     except OSError as exc:

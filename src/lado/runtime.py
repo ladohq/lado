@@ -377,6 +377,8 @@ NOT_REPO_HINT = Hint(
 )
 # `rev-parse --path-format=absolute` (providers/gitpaths.py), `GIT_CONFIG_COUNT` (git_servers)
 GIT_MIN = (2, 31)
+# `includeIf "hasconfig:remote.*.url:…"`, a git server's commit author (git_servers)
+GIT_AUTHOR_MIN = (2, 36)
 XCODE_TOOLS = "xcode-select --install"
 
 

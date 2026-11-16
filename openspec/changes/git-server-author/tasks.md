@@ -8,9 +8,9 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-16-git-server-a
 
 ## 2. The rules
 
-- [ ] 2.1 `check_author`, `set_author`, `clear_author`, `check_author_git` (D5, D6). Check:
+- [x] 2.1 `check_author`, `set_author`, `clear_author`, `check_author_git` (D5, D6). Check:
   `tests/test_git_servers.py`.
-- [ ] 2.2 `author_entries`, `variables(…, authors=)`, the author file (D1, D3). Check:
+- [x] 2.2 `author_entries`, `variables(…, authors=)`, the author file (D1, D3). Check:
   `tests/test_git_servers.py` (each form against real git, near-miss hosts, the file read
   back by `git config --file`).
 

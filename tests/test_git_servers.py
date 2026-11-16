@@ -4,6 +4,7 @@ real HTTP on 127.0.0.1."""
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import shlex
 import socket
@@ -816,3 +817,316 @@ def test_an_address_with_a_user_names_the_token_field_on_the_page():
     assert raised.value.page == (
         "a git server's address holds no user or password; put the token in Token"
     )
+
+
+# The commit author.
+
+NAME_EMPTY = "the author's name is empty"
+NAME_CHARS = "the author's name holds no < or > or line break"
+NOT_EMAIL = "not an email address: name@host"
+
+
+@pytest.mark.parametrize(
+    ("name", "email", "text", "field"),
+    [
+        ("", "a@b", NAME_EMPTY, "name"),
+        (" \t ", "a@b", NAME_EMPTY, "name"),
+        ("Ivan <boss>", "a@b", NAME_CHARS, "name"),
+        ("Ivan>", "a@b", NAME_CHARS, "name"),
+        ("Ivan\nPetrov", "a@b", NAME_CHARS, "name"),
+        ("Ivan\x7fPetrov", "a@b", NAME_CHARS, "name"),
+        ("I" * 257, "a@b", "the author's name is longer than 256 characters", "name"),
+        ("Ivan", "", NOT_EMAIL, "email"),
+        ("Ivan", "ivan.petrov", NOT_EMAIL, "email"),
+        ("Ivan", "@corp.ru", NOT_EMAIL, "email"),
+        ("Ivan", "ivan@", NOT_EMAIL, "email"),
+        ("Ivan", "ivan@corp@ru", NOT_EMAIL, "email"),
+        ("Ivan", "ivan petrov@corp.ru", NOT_EMAIL, "email"),
+        ("Ivan", "<ivan@corp.ru>", NOT_EMAIL, "email"),
+        ("Ivan", "ivan\x01@corp.ru", NOT_EMAIL, "email"),
+        ("Ivan", "a@" + "b" * 255, "the author's email is longer than 256 characters", "email"),
+    ],
+)
+def test_an_author_refused(name, email, text, field):
+    with pytest.raises(git_servers.Refused) as raised:
+        git_servers.check_author(name, email)
+    assert (str(raised.value), raised.value.field) == (text, field)
+
+
+def test_an_author_is_trimmed_and_may_be_256_characters_long():
+    assert git_servers.check_author("  Ivan Petrov ", " ivan@corp.ru\n") == (
+        "Ivan Petrov",
+        "ivan@corp.ru",
+    )
+    long = ("И" * 256, "a@" + "b" * 254)
+    assert git_servers.check_author(*long) == long
+
+
+AUTHOR_KEY = "includeIf.hasconfig:remote.*.url:{}.path"
+
+
+@pytest.mark.parametrize(
+    ("address", "host", "globs"),
+    [
+        (
+            "https://gitlab.corp.ru",
+            "gitlab.corp.ru",
+            [
+                "https://gitlab.corp.ru/**",
+                "https://*@gitlab.corp.ru/**",
+                "git@gitlab.corp.ru:*",
+                "git@gitlab.corp.ru:*/**",
+                "ssh://git@gitlab.corp.ru/**",
+                "ssh://git@gitlab.corp.ru:22/**",
+            ],
+        ),
+        (
+            "https://corp.ru:8443/gitlab",
+            "corp.ru:8443",
+            [
+                "https://corp.ru:8443/gitlab/**",
+                "https://*@corp.ru:8443/gitlab/**",
+                "git@corp.ru:*",
+                "git@corp.ru:*/**",
+                "ssh://git@corp.ru/**",
+                "ssh://git@corp.ru:22/**",
+            ],
+        ),
+        (
+            "http://[::1]:8080",
+            "[::1]:8080",
+            [
+                "http://\\[::1\\]:8080/**",
+                "http://*@\\[::1\\]:8080/**",
+                "git@\\[::1\\]:*",
+                "git@\\[::1\\]:*/**",
+                "ssh://git@\\[::1\\]/**",
+                "ssh://git@\\[::1\\]:22/**",
+            ],
+        ),
+        (
+            "https://corp.ru/a*b[c]",
+            "corp.ru",
+            [
+                "https://corp.ru/a\\*b\\[c\\]/**",
+                "https://*@corp.ru/a\\*b\\[c\\]/**",
+                "git@corp.ru:*",
+                "git@corp.ru:*/**",
+                "ssh://git@corp.ru/**",
+                "ssh://git@corp.ru:22/**",
+            ],
+        ),
+    ],
+)
+def test_the_author_entries_of_a_server(tmp_path, address, host, globs):
+    path = tmp_path / "a1.gitconfig"
+    entries = git_servers.author_entries(_server(address=address, host=host), path)
+    assert entries == [(AUTHOR_KEY.format(glob), str(path)) for glob in globs]
+
+
+def test_the_author_entries_come_after_their_servers_own(lado_home, tmp_path):
+    servers = [_server(), _server("b2", "https://g.lan", "g.lan")]
+    path = tmp_path / "a1.gitconfig"
+    without = _entries(git_servers.variables({}, servers))
+    entries = _entries(git_servers.variables({}, servers, authors={"a1": path}))
+    assert entries == [
+        *without[:5],
+        *git_servers.author_entries(servers[0], path),
+        *without[5:],
+    ]
+    assert _entries(git_servers.variables({}, servers, authors={})) == without
+
+
+def _with_author(server, name, email):
+    return dataclasses.replace(server, author_name=name, author_email=email)
+
+
+@pytest.fixture
+def two_authors(git_env, tmp_path, lado_home):
+    """git's environment with the variables of two servers with authors, the human's own
+    author in ~/.gitconfig."""
+    (tmp_path / "home" / ".gitconfig").write_text(
+        "[user]\n\tname = Human\n\temail = human@home.example\n"
+    )
+    servers = [
+        _with_author(_server(), "A One", "a1@corp.ru"),
+        _with_author(_server("b2", "https://corp.ru/gitlab", "corp.ru"), "B Two", "b2@corp.ru"),
+    ]
+    authors = git_servers.author_files(tmp_path / "authors", servers)
+    return git_env | git_servers.variables(git_env, servers, authors=authors)
+
+
+def _author(repo, env) -> str:
+    def value(key):
+        return subprocess.run(
+            ["git", "-C", str(repo), "config", key], env=env, capture_output=True, text=True
+        ).stdout.strip()
+
+    return f"{value('user.name')} <{value('user.email')}>"
+
+
+A_ONE, B_TWO, HUMAN = "A One <a1@corp.ru>", "B Two <b2@corp.ru>", "Human <human@home.example>"
+
+
+@pytest.mark.parametrize(
+    ("remote", "author"),
+    [
+        ("https://gitlab.corp.ru/team/app.git", A_ONE),
+        ("https://oauth2@gitlab.corp.ru/team/app.git", A_ONE),
+        ("http://gitlab.corp.ru/team/app.git", HUMAN),  # another scheme: another origin
+        ("git@gitlab.corp.ru:app.git", A_ONE),
+        ("git@gitlab.corp.ru:team/app.git", A_ONE),
+        ("git@gitlab.corp.ru:group/sub/app.git", A_ONE),
+        ("ssh://git@gitlab.corp.ru/team/app.git", A_ONE),
+        ("ssh://git@gitlab.corp.ru:22/team/app.git", A_ONE),
+        ("https://corp.ru/gitlab/team/app.git", B_TWO),
+        ("git@corp.ru:team/app.git", B_TWO),
+        ("https://gitlab.corp.ru.evil/team/app.git", HUMAN),
+        ("git@gitlab.corp.ru.evil:team/app.git", HUMAN),
+        ("https://gitlab.corp.ru:8443/team/app.git", HUMAN),
+        ("ssh://git@gitlab.corp.ru:2222/team/app.git", HUMAN),
+        ("https://corp.ru/gitlabX/team/app.git", HUMAN),
+        ("https://corp.ru/team/app.git", HUMAN),
+        ("https://evil.example/gitlab.corp.ru/app.git", HUMAN),
+        ("https://evil.example/https://gitlab.corp.ru/app.git", HUMAN),
+    ],
+)
+def test_git_takes_the_author_by_the_remote(two_authors, tmp_path, remote, author):
+    repo = _repo(tmp_path, two_authors, remote)
+    assert _author(repo, two_authors) == author
+
+
+@pytest.mark.parametrize(
+    ("remote", "author"),
+    [
+        ("http://[::1]:8080/team/app.git", "Six <six@lan>"),
+        ("git@[::1]:team/app.git", "Six <six@lan>"),
+        ("http://[::2]:8080/team/app.git", HUMAN),
+    ],
+)
+def test_git_takes_the_author_of_an_ipv6_server(git_env, tmp_path, lado_home, remote, author):
+    (tmp_path / "home" / ".gitconfig").write_text(
+        "[user]\n\tname = Human\n\temail = human@home.example\n"
+    )
+    servers = [
+        _with_author(_server(address="http://[::1]:8080", host="[::1]:8080"), "Six", "six@lan")
+    ]
+    authors = git_servers.author_files(tmp_path / "authors", servers)
+    env = git_env | git_servers.variables(git_env, servers, authors=authors)
+    assert _author(_repo(tmp_path, env, remote), env) == author
+
+
+def test_the_servers_author_wins_over_the_repositorys_own(two_authors, tmp_path):
+    repo = _repo(tmp_path, two_authors, "git@gitlab.corp.ru:team/app.git")
+    for key, value in (("user.name", "Local"), ("user.email", "local@repo.example")):
+        subprocess.run(["git", "-C", str(repo), "config", key, value], env=two_authors, check=True)
+    assert _author(repo, two_authors) == A_ONE
+
+
+def test_a_repository_without_a_remote_keeps_the_humans_author(two_authors, tmp_path):
+    repo = tmp_path / "repo"
+    subprocess.run(["git", "init", "-q", str(repo)], env=two_authors, check=True)
+    assert _author(repo, two_authors) == HUMAN
+
+
+@pytest.mark.parametrize(
+    "name", ['Ivan "the" Petrov', "back\\slash", "hash # and; semicolon", "  inner  spaces"]
+)
+def test_the_author_file_holds_the_name_and_email_alone(tmp_path, name):
+    previous = os.umask(0)
+    try:
+        [(id, path)] = git_servers.author_files(
+            tmp_path / "authors", [_with_author(_server(), name, "i@corp.ru")]
+        ).items()
+    finally:
+        os.umask(previous)
+    assert (id, path) == ("a1", tmp_path / "authors" / "a1.gitconfig")
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    listed = subprocess.run(
+        ["git", "config", "--file", str(path), "--list"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert listed == f"user.name={name}\nuser.email=i@corp.ru\n"
+
+
+def test_only_servers_with_an_author_get_a_file(tmp_path):
+    servers = [_server(), _with_author(_server("b2", "https://g.lan", "g.lan"), "B", "b@g.lan")]
+    found = git_servers.author_files(tmp_path / "authors", servers)
+    assert found == {"b2": tmp_path / "authors" / "b2.gitconfig"}
+    assert sorted(p.name for p in (tmp_path / "authors").iterdir()) == ["b2.gitconfig"]
+    assert git_servers.author_files(tmp_path / "none", [_server()]) == {}
+    assert not (tmp_path / "none").exists()
+
+
+AUTHOR_OLD = (
+    "git 2.34.1 is older than 2.36, which a commit author of a git server needs; update git"
+)
+
+
+def test_an_author_needs_git_2_36(tmp_path):
+    old = _fake_git(tmp_path, "2.34.1")
+    with pytest.raises(git_servers.Refused) as raised:
+        git_servers.check_author_git(old)
+    assert (str(raised.value), raised.value.page, raised.value.field) == (
+        AUTHOR_OLD,
+        AUTHOR_OLD,
+        "",
+    )
+    with pytest.raises(git_servers.Refused) as raised:
+        git_servers.check_author_git(old, "https://gitlab.corp.ru")
+    assert str(raised.value) == (
+        f"{AUTHOR_OLD}, or clear the author (lado git-server author https://gitlab.corp.ru --clear)"
+    )
+
+
+@pytest.mark.parametrize("version", ["2.36.0", "2.47.1 (Apple Git-154)"])
+def test_a_git_for_an_author(tmp_path, version):
+    git_servers.check_author_git(_fake_git(tmp_path, version))
+
+
+def test_set_and_clear_an_author(lado_home):
+    saved, _ = _save()
+    at = git_servers.address("gitlab.corp.ru")
+    server = git_servers.set_author(at, " Ivan Petrov ", "ivan@corp.ru")
+    assert (server.id, server.author_name, server.author_email) == (
+        saved.id,
+        "Ivan Petrov",
+        "ivan@corp.ru",
+    )
+    assert git_servers.author_text(server) == "Ivan Petrov <ivan@corp.ru>"
+    assert state.git_servers() == [server]
+    again, replaced = _save(token="another")  # a new token keeps the author
+    assert replaced and git_servers.author_text(again) == "Ivan Petrov <ivan@corp.ru>"
+    cleared = git_servers.clear_author(at)
+    assert (cleared.author_name, cleared.author_email) == (None, None)
+    assert git_servers.author_text(cleared) is None
+    assert git_servers.clear_author(at) == cleared  # once more: nothing to clear
+
+
+def test_an_author_is_refused_for_no_saved_server(lado_home):
+    for call, args in (
+        (git_servers.set_author, ("Ivan", "ivan@corp.ru")),
+        (git_servers.clear_author, ()),
+    ):
+        with pytest.raises(git_servers.Refused) as raised:
+            call(git_servers.address("git.lan"), *args)
+        assert (str(raised.value), raised.value.hint, raised.value.field) == (
+            "https://git.lan is no saved git server",
+            "see them: lado git-server list",
+            "address",
+        )
+
+
+def test_setting_an_author_checks_it_and_git_first(lado_home, tmp_path, monkeypatch):
+    _save()
+    at = git_servers.address("gitlab.corp.ru")
+    with pytest.raises(git_servers.Refused):
+        git_servers.set_author(at, "Ivan", "ivan.petrov")
+    monkeypatch.setenv("PATH", _fake_git(tmp_path, "2.34.1")["PATH"])
+    with pytest.raises(git_servers.Refused) as raised:
+        git_servers.set_author(at, "Ivan", "ivan@corp.ru")
+    assert str(raised.value) == AUTHOR_OLD
+    assert git_servers.author_text(state.git_servers()[0]) is None
+    git_servers.clear_author(at)  # clearing needs no git

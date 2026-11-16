@@ -8,7 +8,7 @@
 // server that cannot be told. Add server saves as `lado git-server add` does, with the token in
 // its request's body only; a refusal shows under its field. Nothing under the pointer moves
 // (useScrollAnchor).
-import { type RefObject, useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import {
   addGitServer,
@@ -25,6 +25,7 @@ import {
 } from "./api";
 import { ForgetIcon } from "./icons";
 import { MODEL_DEBOUNCE, useDebounced } from "./Launch";
+import { CheckNote, emptyKey } from "./ModelSources";
 import { SecretField } from "./ProjectVariables";
 import { SettingsPage } from "./SettingsPage";
 import { useScrollAnchor } from "./useScrollAnchor";
@@ -238,23 +239,6 @@ function GitRow({
   );
 }
 
-// A refusal under its field, with its hint.
-function Refusal({ note }: { note: EntryRefused }) {
-  return (
-    <span className="field-note bad" role="alert">
-      {note.message}
-      {note.hint && <span className="mx-hint">{note.hint}</span>}
-    </span>
-  );
-}
-
-// Empties the token's field once its form has sent it: Add is done, or refused for another
-// field than the token (a refused token stays, for the human to edit or erase).
-function emptyToken(token: RefObject<HTMLInputElement | null>, setFilled: (filled: boolean) => void) {
-  if (token.current) token.current.value = "";
-  setFilled(false);
-}
-
 // Add server: Address and Token, and Kind only for a server that cannot be told. An older
 // check's answer is dropped.
 function AddGitServer({
@@ -343,11 +327,11 @@ function AddGitServer({
     setRefused(null);
     try {
       const done = await addGitServer(address, given, choose && chosen ? chosen.name : null);
-      emptyToken(token, setFilled);
+      emptyKey(token, setFilled);
       onAdded(done);
     } catch (error) {
       const why = refusalOf(error);
-      if (why.field !== "token") emptyToken(token, setFilled);
+      if (why.field !== "token") emptyKey(token, setFilled);
       setRefused(why);
       setBusy(false);
     }
@@ -381,7 +365,7 @@ function AddGitServer({
           ) : (
             <>
               {addressBad.map((r) => (
-                <Refusal key={r.message} note={r} />
+                <CheckNote key={r.message} note={r} />
               ))}
               {(result?.warnings ?? []).map((line) => (
                 <span key={line} className="field-note warn">{`⚠ ${line}`}</span>
@@ -422,7 +406,7 @@ function AddGitServer({
               </div>
             </fieldset>
             {mine("kind").map((r) => (
-              <Refusal key={r.message} note={r} />
+              <CheckNote key={r.message} note={r} />
             ))}
           </div>
         )}
@@ -439,7 +423,7 @@ function AddGitServer({
             onEnter={() => void add()}
           />
           {mine("token").map((r) => (
-            <Refusal key={r.message} note={r} />
+            <CheckNote key={r.message} note={r} />
           ))}
           {page && (
             <span className="field-note">
@@ -461,7 +445,7 @@ function AddGitServer({
           Cancel
         </button>
         {[...of(""), ...mine("")].map((r) => (
-          <Refusal key={r.message} note={r} />
+          <CheckNote key={r.message} note={r} />
         ))}
       </div>
     </div>

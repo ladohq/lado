@@ -148,18 +148,6 @@ def check_not_github(at: Address) -> None:
         )
 
 
-def same_host(at: Address, servers: Sequence[state.GitServer]) -> state.GitServer | None:
-    """The server of `servers` on the host name of `at` but another port."""
-    return next(
-        (
-            server
-            for server in servers
-            if server.host != at.key and urllib.parse.urlsplit(server.address).hostname == at.host
-        ),
-        None,
-    )
-
-
 def _host_taken(at: Address, server: state.GitServer) -> Refused:
     host = f"[{at.host}]" if ":" in at.host else at.host
     return Refused(
@@ -174,9 +162,9 @@ def _host_taken(at: Address, server: state.GitServer) -> Refused:
 def check_host(at: Address) -> None:
     """Refuse `at` when a saved server holds its host name on another port: git rewrites
     the host's ssh addresses to one server only (`_entries`)."""
-    server = same_host(at, state.git_servers())
-    if server is not None:
-        raise _host_taken(at, server)
+    for server in state.git_servers():
+        if server.host != at.key and urllib.parse.urlsplit(server.address).hostname == at.host:
+            raise _host_taken(at, server)
 
 
 def check_token(token: str) -> None:
@@ -229,11 +217,9 @@ def _silent(answer: model_servers.Answer) -> str:
     return why
 
 
-def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
-    """The kind of the server at `at` and the user `token` signs in as, every kind asked at
-    once; with `kind_name`, that kind for a server no kind recognises (Checked.unchecked says
-    why). Refused for a server that refuses the token, sends elsewhere, answers as two kinds
-    without `kind_name` or as another, or cannot be checked without `kind_name`."""
+def _ask_kinds(at: Address, token: str | None) -> list[model_servers.Answer]:
+    """Each kind's answer at `at`, in KINDS' order, all asked at once with `token` (None:
+    no credential), following no redirect, each request cut at model_servers' TIMEOUT."""
     import urllib.request
 
     from lado import model_servers
@@ -243,7 +229,15 @@ def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
     for kind in git_kinds.KINDS:
         url, headers = kind.request(at.root, token)
         asked.append((url, "GET", headers))
-    answers = model_servers.ask_all(opener, asked, {"User-Agent": "lado"})
+    return model_servers.ask_all(opener, asked, {"User-Agent": "lado"})
+
+
+def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
+    """The kind of the server at `at` and the user `token` signs in as, every kind asked at
+    once; with `kind_name`, that kind for a server no kind recognises (Checked.unchecked says
+    why). Refused for a server that refuses the token, sends elsewhere, answers as two kinds
+    without `kind_name` or as another, or cannot be checked without `kind_name`."""
+    answers = _ask_kinds(at, token)
     by_kind = list(zip(git_kinds.KINDS, answers, strict=True))
     found = [(kind, login) for kind, answer in by_kind if (login := kind.login(answer))]
     chosen = git_kinds.by_name(kind_name) if kind_name else None
@@ -282,29 +276,23 @@ def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
 @dataclass(frozen=True)
 class Hint:
     """What the server at an address looks like without a token: a kind (only a hint: a
-    proxy may answer for any path; the probe with the token decides), or `choose` with
-    `why` it cannot be told (the warning, its page hint for choosing the kind)."""
+    proxy may answer for any path; the probe with the token decides), or none, to be
+    chosen (`choose`), with `why` it cannot be told (the warning, its page hint)."""
 
     kind: Kind | None
-    choose: bool = False
     why: Refused | None = None
+
+    @property
+    def choose(self) -> bool:
+        return self.kind is None
 
 
 def hint(at: Address) -> Hint:
-    """Ask every kind's path of `at` at once with no credential, as the probe does (no
-    redirect followed, TIMEOUT a request): a kind when exactly one answers as that kind (its
-    user, or its refusal of a missing token); `choose` when none answers, or as neither or
-    both. Refused for a server that sends elsewhere: no kind could save it from the page."""
-    import urllib.request
-
-    from lado import model_servers
-
-    opener = urllib.request.build_opener(model_servers.NoRedirect())
-    asked = []
-    for kind in git_kinds.KINDS:
-        url, headers = kind.request(at.root, None)
-        asked.append((url, "GET", headers))
-    answers = model_servers.ask_all(opener, asked, {"User-Agent": "lado"})
+    """Ask every kind's path of `at` at once with no credential, as the probe does: a kind
+    when exactly one answers as that kind (its user, or its refusal of a missing token);
+    none when none answers, or as neither or both. Refused for a server that sends
+    elsewhere: no kind could save it from the page."""
+    answers = _ask_kinds(at, None)
     told = [
         kind
         for kind, answer in zip(git_kinds.KINDS, answers, strict=True)
@@ -315,11 +303,11 @@ def hint(at: Address) -> Hint:
     if told:
         titles = " and as ".join(kind.title for kind in told)
         why = Refused(f"{at.root} answers as {titles}", field=KIND_FIELD, page_hint=PAGE_KIND_HINT)
-        return Hint(None, True, why)
+        return Hint(None, why)
     _, refused = _unanswered(at, answers)
     if any(answer.location for answer in answers):
         raise refused
-    return Hint(None, True, refused)
+    return Hint(None, refused)
 
 
 def _unanswered(at: Address, answers: Sequence[model_servers.Answer]) -> tuple[str, Refused]:

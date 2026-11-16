@@ -79,3 +79,42 @@ def test_codex_s_sandbox_lets_git_take_a_saved_servers_token(
             assert "lado:" not in listed.stderr
     finally:
         server.close()
+
+
+@pytest.mark.parametrize("smoke_provider", ["codex"], indirect=True)
+def test_codex_s_sandbox_lets_git_take_a_servers_commit_author(
+    smoke_provider, smoke_repo, tmp_path
+):
+    """git in the sandbox reads the author file in the agent's config folder under
+    LADO_HOME and commits to a server's repository, by its `git@` address, as its author."""
+    checked = git_servers.Checked(git_kinds.by_name("gitlab"), "ivan")
+    saved, _ = git_servers.save(git_servers.address("gitlab.corp.example"), checked, TOKEN)
+    state.set_git_server_author(saved.id, "Ivan Petrov", "ivan.petrov@corp.example")
+    servers = state.git_servers()
+    folder = state.home_path() / "agents" / "s" / "worker" / "git-authors"
+    authors = git_servers.author_files(folder, servers)
+    env = {**os.environ, **git_servers.variables(os.environ, servers, authors=authors)}
+    subprocess.run(
+        ["git", "remote", "add", "origin", "git@gitlab.corp.example:team/app.git"],
+        cwd=smoke_repo, env=env, check=True,
+    )  # fmt: skip
+    home = tmp_path / "agent-codex-home"
+    home.mkdir()
+    profile = codex._git_profile(smoke_repo)
+    codex._write_config(
+        home, {"default_permissions": codex.PROFILE, "permissions": {codex.PROFILE: profile}}
+    )
+    commit = ["git", "commit", "-q", "--allow-empty", "-m", "in-the-sandbox"]
+    error = SANDBOX_ERROR(home, smoke_repo, env) if sys.platform == "linux" else None
+    if error is not None:
+        print(f"Codex's sandbox cannot start here ({error}): git checked without it")
+        subprocess.run(commit, cwd=smoke_repo, env=env, check=True, timeout=60)
+    else:
+        done = _in_sandbox(home, smoke_repo, env, *commit)
+        assert done.returncode == 0, done.stderr
+    log = subprocess.run(
+        ["git", "log", "-1", "--format=%s|%an <%ae>|%cn <%ce>"],
+        cwd=smoke_repo, env=env, capture_output=True, text=True, check=True,
+    )  # fmt: skip
+    author = "Ivan Petrov <ivan.petrov@corp.example>"
+    assert log.stdout.strip() == f"in-the-sandbox|{author}|{author}"

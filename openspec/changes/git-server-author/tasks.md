@@ -23,11 +23,11 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-16-git-server-a
 
 ## 4. End to end
 
-- [ ] 4.1 Integration test with the fake agent: https and `git@` clones carry the server's
+- [x] 4.1 Integration test with the fake agent: https and `git@` clones carry the server's
   author, other repositories the human's, clear + restart, the file's content, global and
   system configs unchanged. Check: `uv run pytest -m integration
   tests/integration/test_git_server_author.py`.
-- [ ] 4.2 Smoke: a commit inside Codex's sandbox takes the author. Check: CI's smoke job.
+- [x] 4.2 Smoke: a commit inside Codex's sandbox takes the author. Check: CI's smoke job.
 
 ## 5. The command
 

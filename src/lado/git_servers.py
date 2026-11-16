@@ -279,6 +279,49 @@ def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
     return Checked(chosen, None, unchecked)
 
 
+@dataclass(frozen=True)
+class Hint:
+    """What the server at an address looks like without a token: a kind (only a hint: a
+    proxy may answer for any path; the probe with the token decides), or `choose` with
+    `why` it cannot be told (the warning, its page hint for choosing the kind)."""
+
+    kind: Kind | None
+    choose: bool = False
+    why: Refused | None = None
+
+
+def hint(at: Address) -> Hint:
+    """Ask every kind's path of `at` at once with no credential, as the probe does (no
+    redirect followed, TIMEOUT a request): a kind when exactly one answers as that kind (its
+    user, or its refusal of a missing token); `choose` when none answers, or as neither or
+    both. Refused for a server that sends elsewhere: no kind could save it from the page."""
+    import urllib.request
+
+    from lado import model_servers
+
+    opener = urllib.request.build_opener(model_servers.NoRedirect())
+    asked = []
+    for kind in git_kinds.KINDS:
+        url, headers = kind.request(at.root, None)
+        asked.append((url, "GET", headers))
+    answers = model_servers.ask_all(opener, asked, {"User-Agent": "lado"})
+    told = [
+        kind
+        for kind, answer in zip(git_kinds.KINDS, answers, strict=True)
+        if kind.login(answer) or kind.refusal(answer)
+    ]
+    if len(told) == 1:
+        return Hint(told[0])
+    if told:
+        titles = " and as ".join(kind.title for kind in told)
+        why = Refused(f"{at.root} answers as {titles}", field=KIND_FIELD, page_hint=PAGE_KIND_HINT)
+        return Hint(None, True, why)
+    _, refused = _unanswered(at, answers)
+    if any(answer.location for answer in answers):
+        raise refused
+    return Hint(None, True, refused)
+
+
 def _unanswered(at: Address, answers: Sequence[model_servers.Answer]) -> tuple[str, Refused]:
     """For answers of no kind: why the server could not be checked, as the end of "could
     not be checked (…)", and the refusal for an add that chose no kind."""

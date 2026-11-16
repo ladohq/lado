@@ -645,6 +645,77 @@ def test_an_add_whose_folder_goes_under_it_writes_again(lado_home, monkeypatch):
     assert (lado_home / "git-servers" / saved.id / "token").read_text() == TOKEN
 
 
+# The address asked without the token.
+
+
+def _credentials(server) -> list[str]:
+    return [
+        name
+        for request in server.requests
+        for name in request.headers
+        if name.lower() in ("private-token", "authorization")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("profile", "token", "kind"),
+    [
+        ("gitlab", TOKEN, "gitlab"),  # asks for a token: GitLab's 401
+        ("github", TOKEN, "github"),  # GitHub's 401
+        ("gitlab", None, "gitlab"),  # answers its user even without one
+        ("github", None, "github"),
+        ("gitlab-refuses", None, "gitlab"),
+        ("gitlab-github-hangs", None, "gitlab"),
+    ],
+)
+def test_the_hint_tells_a_kind_without_a_credential(serve, monkeypatch, profile, token, kind):
+    monkeypatch.setattr(model_servers, "TIMEOUT", 1)
+    server = serve(profile, token=token)
+    found = git_servers.hint(git_servers.address(server.url))
+    assert (found.kind.name, found.choose, found.why) == (kind, False, None)
+    assert server.paths() == [fake.GITHUB, fake.GITLAB]
+    assert _credentials(server) == []
+
+
+@pytest.mark.parametrize(
+    ("profile", "why"),
+    [
+        ("neither", "{root} answers as neither GitHub nor GitLab"),
+        ("both", "{root} answers as GitHub and as GitLab"),
+        ("hang", "{key} does not answer: it did not answer in 1 s"),
+    ],
+)
+def test_the_hint_asks_for_the_kind_of_one_it_cannot_tell(serve, monkeypatch, profile, why):
+    monkeypatch.setattr(model_servers, "TIMEOUT", 1)
+    server = serve(profile, token=TOKEN if profile == "both" else None)
+    at = git_servers.address(server.url)
+    started = time.monotonic()
+    found = git_servers.hint(at)
+    assert time.monotonic() - started < 3
+    assert (found.kind, found.choose) == (None, True)
+    assert found.why is not None
+    assert found.why.page == why.format(root=at.root, key=at.key)
+    assert found.why.page_hint == git_servers.PAGE_KIND_HINT
+    assert _credentials(server) == []
+
+
+def test_the_hint_refuses_a_server_that_sends_elsewhere(serve):
+    server = serve(fake.REDIRECT, location="https://sso.example/login")
+    with pytest.raises(git_servers.Refused) as raised:
+        git_servers.hint(git_servers.address(server.url))
+    assert str(raised.value) == (
+        f"{server.url} sends to https://sso.example/login; give the server's own address"
+    )
+    assert raised.value.field == "address"
+
+
+def test_a_request_without_a_token_has_no_credential_header():
+    for kind in git_kinds.KINDS:
+        url, headers = kind.request("https://git.lan", None)
+        assert url == "https://git.lan" + kind.path
+        assert headers == {}
+
+
 # The page's words.
 
 

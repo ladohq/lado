@@ -11,8 +11,10 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-16-git-servers-
 
 ## 2. The address check without a token
 
-- [ ] 2.1 `Kind.request` without a token, `git_servers.hint`, the fake API's profiles that
+- [x] 2.1 `Kind.request` without a token, `git_servers.hint`, the fake API's profiles that
   ask for a credential (D3). Check: `tests/test_git_servers.py`, `tests/test_fake_git_api.py`.
+  No new profile: a profile served with a token already answers a request without it with
+  its kind's 401, as the real servers do (`test_fake_git_api.py` covers it).
 
 ## 3. The server API
 

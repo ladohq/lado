@@ -1808,22 +1808,23 @@ def cmd_git_server_author(args: argparse.Namespace) -> int:
     try:
         if args.clear:
             server = git_servers.clear_author(at)
-            print(git_servers.AUTHOR_CLEARED.format(address=server.address))
+            lines = [git_servers.AUTHOR_CLEARED.format(address=server.address)]
         elif given:
             server = git_servers.set_author(at, args.name, args.email)
             author = git_servers.author_text(server)
-            print(git_servers.AUTHOR_SET.format(address=server.address, author=author))
+            lines = [git_servers.AUTHOR_SET.format(address=server.address, author=author)]
         else:
             server = git_servers.saved_server(at)
-            print(
+            lines = [
                 git_servers.author_text(server)
                 or f"{server.address} has no commit author: agents commit there with your own "
                 "git author."
-            )
-            return 0
+            ]
     except git_servers.Refused as exc:
         return _refused(exc)
-    print(git_servers.AUTHOR_RESTART)
+    if args.clear or given:
+        lines.append(git_servers.AUTHOR_RESTART)
+    print("\n".join(lines))
     return 0
 
 

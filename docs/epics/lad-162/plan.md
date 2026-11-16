@@ -2,12 +2,12 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: S2 (LAD-290, run task/lad-290) · Next: S3 · Open checks: the human's check on the company GitLab, on the release candidate that carries S7
+In work: S3 (draft, starts without a gate) · Next: S4 · Open checks: the human's check on the company GitLab, on the release candidate that carries S7
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
 - The statement's decisions (brief.md) are not reopened.
-Last review: 2026-11-16, after S1, base at a76695bc
+Last review: 2026-11-16, after S2, base at 16c5e3e3
 
 ## Steps
 
@@ -65,7 +65,10 @@ entry is not accepted until S5 (plan decision, P6): github.com keeps today's pat
 `gh` until S5 settles which source wins.
 
 ### S2 — Settings → Git servers
-Status: in progress (LAD-290, run task/lad-290)
+Status: done (LAD-290, PR #321, merged 16c5e3e3 on 2026-11-16, in release 0.48.0). The human's
+agent ran the manual check in a browser on gitlab.com and on the company GitLab: all OK; the
+kind hint without a token says "Looks like GitLab" on the company GitLab too. E4 is settled:
+one server per host name (#7131). Leftovers → S4.
 Check: a UI e2e test adds a gitlab.com and a self-hosted server (address, prefilled for
 gitlab.com; token with a "where to get it" link; the kind shown once found, chosen by hand
 only when the server did not answer) and removes one; the list matches
@@ -100,6 +103,18 @@ kind (S1 ledger E2: a gateway that answers 401 on every path); a failed clone fr
 adding it, in the UI too (UI e2e); docs describe what was built.
 Touches: the server kinds module, `doctor.py`, `clone.py`, `server/`, `web/src/` (Settings,
 the clone window), docs.
+Leftovers of S2 (ledger of LAD-290, the human's manual check report):
+- F3: the address check found a kind, then Add gets "does not answer" and says to choose
+  a kind the form does not show; with "Check" the form should offer the choice there too.
+- E2: an address with a trailing dot (`git.corp.example.`) escapes the one-server-per-host
+  rule; normalise the host name.
+- E3, E4 (minor, the page reports them): a removal racing a replacement of the same server
+  can leave it without a token file; a failed removal of the empty `git-servers/` folder
+  reports an error after the server is gone.
+- The page: an empty list shows no "No git servers yet" line; after Esc in the removal
+  dialog the focus goes to the page, not back to 🗑; an old "Removed …" line stays above a
+  new "Saved …"; the `http://` warning is lost among the lines of a server answering as
+  neither kind.
 
 ### S5 — GitHub from the list: today's login becomes the github.com entry, `gh` takes the entry's token
 Status: planned

@@ -2,7 +2,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-16-git-server-a
 
 ## 1. Storage
 
-- [ ] 1.1 Schema 42: `author_name`, `author_email` on `git_servers`, `set_git_server_author`,
+- [x] 1.1 Schema 42: `author_name`, `author_email` on `git_servers`, `set_git_server_author`,
   `previous_schema`; adding a server again keeps its author (D4, D7). Check:
   `tests/test_state.py` (41 → 42, the rollback by the backup, keep on re-add).
 

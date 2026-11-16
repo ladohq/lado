@@ -14,7 +14,7 @@ import pytest
 from playwright.sync_api import Browser, Page, Route, expect
 from test_main_screen import log_in
 
-from lado import state
+from lado import git_kinds, git_servers, state
 from lado.cli import main
 
 pytestmark = pytest.mark.ui
@@ -186,9 +186,9 @@ def test_add_three_servers_and_remove_one(
             ]
         )
         assert listed(capsys) == [
-            [own.url, "GitHub", fake.LOGIN, "yes"],
-            ["https://gitlab.com", "GitLab", fake.LOGIN, "yes"],
-            [silent, "GitLab", "not", "checked", "yes"],
+            [own.url, "GitHub", fake.LOGIN, "yes", "-"],
+            ["https://gitlab.com", "GitLab", fake.LOGIN, "yes", "-"],
+            [silent, "GitLab", "not", "checked", "yes", "-"],
         ]
         page.reload()
         expect(rows).to_have_text(
@@ -238,5 +238,68 @@ def test_add_three_servers_and_remove_one(
         ).to_be_visible()
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
         shot(page, "phone")
+    finally:
+        context.close()
+
+
+AUTHOR_RESTART = "Agents started from now on commit so; restart running agents to give it to them."
+
+
+def test_set_and_remove_a_commit_author(browser: Browser, server, lado_home, capsys, shot):
+    corp = "https://gitlab.corp.example"
+    checked = git_servers.Checked(git_kinds.by_name("gitlab"), "ivan.petrov")
+    git_servers.save(git_servers.address(corp), checked, TOKEN)
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
+    try:
+        page = context.new_page()
+        open_page(page, server)
+        git = section(page)
+        expect(git.get_by_text(re.compile("^commits as"))).to_have_count(0)
+        pencil = git.get_by_role("button", name=f"Commit author of {corp}")
+        pencil.click()
+        name = git.get_by_role("textbox", name="Name")
+        email = git.get_by_role("textbox", name="Email")
+        expect(name).to_be_focused()
+        expect(git.get_by_role("button", name="Remove author")).to_have_count(0)
+        save = git.get_by_role("button", name="Save author")
+        expect(save).to_be_disabled()
+        name.fill("Ivan Petrov")
+        email.fill("ivan.petrov")
+        save.click()
+        under_email = git.locator(".field", has=page.get_by_role("textbox", name="Email"))
+        refused = under_email.get_by_role("alert")
+        expect(refused).to_contain_text("not an email address: name@host")
+        assert state.git_servers()[0].author_name is None
+        shot(page, "refused")
+
+        email.fill("ivan.petrov@corp.example")
+        save.click()
+        line = f"Agents commit to {corp} as Ivan Petrov <ivan.petrov@corp.example>."
+        expect(git.get_by_text(line)).to_be_visible()
+        expect(git.get_by_text(AUTHOR_RESTART)).to_be_visible()
+        expect(name).to_have_count(0)
+        expect(git.get_by_text("commits as Ivan Petrov <ivan.petrov@corp.example>")).to_be_visible()
+        assert listed(capsys)[0][-3:] == ["Ivan", "Petrov", "<ivan.petrov@corp.example>"]
+        shot(page, "saved")
+        page.emulate_media(color_scheme="dark")
+        pencil.click()
+        expect(name).to_have_value("Ivan Petrov")
+        shot(page, "form-dark")
+        page.emulate_media(color_scheme="light")
+        page.set_viewport_size({"width": 390, "height": 844})
+        expect(
+            page.get_by_role("link", name="Settings", exact=True).filter(has_text="‹")
+        ).to_be_visible()
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+        shot(page, "form-phone")
+        page.set_viewport_size({"width": 1440, "height": 900})
+
+        git.get_by_role("button", name="Remove author").click()
+        expect(
+            git.get_by_text(f"Agents commit to {corp} with your own git author again.")
+        ).to_be_visible()
+        expect(git.get_by_text(re.compile("^commits as"))).to_have_count(0)
+        assert listed(capsys)[0][-1] == "-"
+        shot(page, "removed")
     finally:
         context.close()

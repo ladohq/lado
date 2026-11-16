@@ -42,7 +42,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-16-git-server-a
 
 - [x] 7.1 ✎ Commit author, its form, the row's line, the done lines (D10, mockup option 1).
   Check: `web/src/GitServers.test.tsx`, `make web`.
-- [ ] 7.2 UI e2e: set, see, refuse, remove; screenshots. Check: `uv run pytest -m ui
+- [x] 7.2 UI e2e: set, see, refuse, remove; screenshots. Check: `uv run pytest -m ui
   tests/ui/test_git_servers_section.py`.
 
 ## 8. Docs and the pull request

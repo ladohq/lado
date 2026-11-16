@@ -308,8 +308,8 @@ def probe(
     if key is not None and not carriable(key):
         raise ProbeError(NOT_CARRIABLE, field=KEY)
     headers = _headers(key)
-    opener = urllib.request.build_opener(_NoRedirect())
-    (listed,) = _all(opener, [(root + MODELS, "GET", {})], headers)
+    opener = urllib.request.build_opener(NoRedirect())
+    (listed,) = ask_all(opener, [(root + MODELS, "GET", {})], headers)
     if listed.status is None:
         if listed.tls:
             raise ProbeError(
@@ -328,7 +328,7 @@ def probe(
         (root + MODELS, "GET", ANTHROPIC_VERSION),
     ]
     asked += [(root + path, "POST", ANTHROPIC_VERSION) for path in [*API_PATHS.values(), CONTROL]]
-    version, lmstudio, versioned, *posts = _all(opener, asked, headers)
+    version, lmstudio, versioned, *posts = ask_all(opener, asked, headers)
     *posts, control = _with_late_posts(opener, asked[-len(posts) :], posts, headers)
     for answer in (listed, version, lmstudio, versioned, *posts, control):
         if answer.status in (401, 403):
@@ -368,7 +368,7 @@ def _with_late_posts(
     late = [i for i, answer in enumerate(posts) if answer.status is None]
     if not late:
         return posts
-    answers = _all(opener, [asked[i] for i in late], headers, LATE_TIMEOUT)
+    answers = ask_all(opener, [asked[i] for i in late], headers, LATE_TIMEOUT)
     again = dict(zip(late, answers, strict=True))
     return [again.get(i, answer) for i, answer in enumerate(posts)]
 
@@ -380,8 +380,8 @@ def context_limits(root: str, key: str | None) -> dict[str, base.Limit]:
     context and Ollama's running model, what a model has now and not what it could take, and
     a gateway's list. A start waits for this: it never raises."""
     asked = [(root + path, "GET", {}) for path in (MODELS, OLLAMA_RUNNING, LMSTUDIO_MODELS)]
-    opener = urllib.request.build_opener(_NoRedirect())
-    listed, running, lmstudio = _all(opener, asked, _headers(key), LIMIT_TIMEOUT)
+    opener = urllib.request.build_opener(NoRedirect())
+    listed, running, lmstudio = ask_all(opener, asked, _headers(key), LIMIT_TIMEOUT)
     return {**_listed_limits(listed), **_running_limits(running), **_loaded_limits(lmstudio)}
 
 
@@ -558,7 +558,7 @@ def _headers(key: str | None) -> dict[str, str]:
     return headers
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
+class NoRedirect(urllib.request.HTTPRedirectHandler):
     """Follows nothing: a redirect is an answer (urllib's own handler would send the key's
     headers on to the host it names). It does not read the location either, which urllib's
     would refuse with an error of its own: the 3xx goes on to be an HTTPError."""
@@ -569,7 +569,7 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
     http_error_301 = http_error_303 = http_error_307 = http_error_308 = http_error_302
 
 
-def _all(
+def ask_all(
     opener,
     asked: list[tuple[str, str, dict[str, str]]],
     headers: dict[str, str],
@@ -581,11 +581,11 @@ def _all(
     timeout = TIMEOUT if timeout is None else timeout
     answers: list[Answer | None] = [None] * len(asked)
 
-    def ask(i: int, url: str, method: str, own: dict[str, str]) -> None:
-        answers[i] = _ask(opener, url, method, headers | own, timeout)
+    def one(i: int, url: str, method: str, own: dict[str, str]) -> None:
+        answers[i] = ask(opener, url, method, headers | own, timeout)
 
     threads = [
-        threading.Thread(target=ask, args=(i, url, method, own), daemon=True)
+        threading.Thread(target=one, args=(i, url, method, own), daemon=True)
         for i, (url, method, own) in enumerate(asked)
     ]
     deadline = time.monotonic() + timeout
@@ -597,7 +597,7 @@ def _all(
     return [answer or late for answer in answers]
 
 
-def _ask(opener, url: str, method: str, headers: dict[str, str], timeout: float) -> Answer:
+def ask(opener, url: str, method: str, headers: dict[str, str], timeout: float) -> Answer:
     """One request's answer; never raises. A POST's body is `{}`."""
     data = b"{}" if method == "POST" else None
     sent = dict(headers, **({"Content-Type": "application/json"} if data else {}))
@@ -616,9 +616,9 @@ def _ask(opener, url: str, method: str, headers: dict[str, str], timeout: float)
         with e:
             return _read(e.code, e, location)
     except urllib.error.URLError as e:
-        return _no_answer(e.reason)
+        return no_answer(e.reason)
     except Exception as e:  # noqa: BLE001 - a broken answer is no answer, never a crash
-        return _no_answer(e)
+        return no_answer(e)
 
 
 def _read(status: int, answer, location: str) -> Answer:
@@ -635,7 +635,7 @@ def _read(status: int, answer, location: str) -> Answer:
     return Answer(status, body, location=location)
 
 
-def _no_answer(reason: object) -> Answer:
+def no_answer(reason: object) -> Answer:
     """Why there is no HTTP answer, in words: never from a request's headers."""
     if isinstance(reason, ssl.SSLCertVerificationError):
         return Answer(why=reason.verify_message or "certificate verify failed", tls=True)

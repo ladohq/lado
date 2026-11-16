@@ -28,6 +28,7 @@ import yaml
 from lado import (
     agent_env,
     artifacts,
+    git_servers,
     gitcache,
     gui_session,
     kits,
@@ -374,8 +375,15 @@ NOT_REPO_HINT = Hint(
     "Make it a repository with a first commit, in that folder:",
     "git init && git add -A && git commit -m 'First commit'",
 )
-GIT_MIN = (2, 31)  # `rev-parse --path-format=absolute` (providers/gitpaths.py)
+# `rev-parse --path-format=absolute` (providers/gitpaths.py), `GIT_CONFIG_COUNT` (git_servers)
+GIT_MIN = (2, 31)
 XCODE_TOOLS = "xcode-select --install"
+
+
+def git_numbers(version: str) -> tuple[int, int] | None:
+    """(major, minor) of `git version X.Y[.Z]...` (Apple's suffix and all); None else."""
+    found = re.match(r"git version (\d+)\.(\d+)", version)
+    return (int(found[1]), int(found[2])) if found else None
 
 
 def _macos() -> bool:
@@ -3489,11 +3497,17 @@ def agents_env(layers: agent_env.Layers, agent_cli: providers.Provider) -> dict[
 
 def _check_commands(env: kits.Environment, base_env: dict[str, str]) -> None:
     """Refuse a launch while a command the session's kits expect (expects.commands) is not
-    on the agents' PATH; called before the launch changes anything."""
+    on the agents' PATH, or while a git server is saved and the agents' git is older than
+    2.31 (lado.git_servers.check_git); called before the launch changes anything."""
     path = base_env.get("PATH", os.defpath)
     missing = kits.missing_commands(env.kits, path)
     if missing:
         raise LadoError(kits.commands_error(missing, path))
+    if state.git_servers():  # no server, no git asked: the launch goes as before
+        try:
+            git_servers.check_git(base_env)
+        except git_servers.Refused as exc:
+            raise LadoError(str(exc)) from None
 
 
 def _launch_env(
@@ -3512,9 +3526,12 @@ def _ours(
 ) -> dict[str, str]:
     """The variables LADO and the provider set for the agent's launch, over every layer:
     LADO's, the agent's own TMPDIR (its folder under the layers' TMPDIR,
-    providers.base.temp_path), then the provider's."""
+    providers.base.temp_path), git's way to the saved git servers (after the layers' own
+    `GIT_CONFIG_*` entries, lado.git_servers.variables; none without a server), then the
+    provider's."""
     temp_dir = providers.base.temp_path(agent, base_env)
-    return {**providers.agent_env(agent), "TMPDIR": str(temp_dir), **launch.env}
+    git = git_servers.variables(base_env, state.git_servers())
+    return {**providers.agent_env(agent), "TMPDIR": str(temp_dir), **git, **launch.env}
 
 
 def _layer_warnings(

@@ -22,7 +22,7 @@ from lado.flows import IDENTIFIER
 
 # `lado update` of a later LADO reads this line from this release's wheel to learn the schema
 # it knows (update.release_schema): keep its form, `SCHEMA_VERSION = <N>` on a line of its own.
-SCHEMA_VERSION = 40
+SCHEMA_VERSION = 41
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -1055,6 +1055,20 @@ MESSAGES_READ_REMINDED = "ALTER TABLE messages ADD COLUMN read_reminded INTEGER 
 OLD_MESSAGES_READ_REMINDED = "UPDATE messages SET read_reminded = 1"
 SCHEMA += MESSAGES_READ_REMINDED + ";\n"
 MIGRATIONS[39] = [MESSAGES_READ_REMINDED, OLD_MESSAGES_READ_REMINDED]
+
+# From version 41: the human's git servers (lado.git_servers), one per host and port. A
+# server's token is no column: it is the file `<LADO_HOME>/git-servers/<id>/token`.
+GIT_SERVERS_TABLE = """
+CREATE TABLE IF NOT EXISTS git_servers (
+    id TEXT PRIMARY KEY,          -- never changes: the token file's folder
+    address TEXT NOT NULL,        -- the root (lado.git_servers.address)
+    host TEXT NOT NULL UNIQUE,    -- host[:port], the server's identity
+    kind TEXT NOT NULL,           -- a name of lado.git_kinds.KINDS
+    login TEXT,                   -- NULL: saved with --kind, not checked
+    added_at TEXT NOT NULL DEFAULT (datetime('now'))  -- UTC
+)"""
+SCHEMA += GIT_SERVERS_TABLE + ";\n"
+MIGRATIONS[40] = [GIT_SERVERS_TABLE]
 
 # Where an agent's model or effort came from. Each later way of choosing one adds a token;
 # a token this LADO does not know (a newer LADO's row) is shown as itself (source_words).
@@ -4162,6 +4176,55 @@ def remove_model_server(id: str) -> bool:
     it."""
     with connect() as db:
         return db.execute("DELETE FROM model_servers WHERE id = ?", (id,)).rowcount == 1
+
+
+@dataclass(frozen=True)
+class GitServer:
+    id: str
+    address: str  # the root, e.g. https://gitlab.corp.ru
+    host: str  # host[:port]
+    kind: str
+    login: str | None  # None: saved unchecked
+    added_at: str  # UTC, YYYY-MM-DD HH:MM:SS
+
+
+def _git_server(row: sqlite3.Row) -> GitServer:
+    return GitServer(
+        row["id"], row["address"], row["host"], row["kind"], row["login"], row["added_at"]
+    )
+
+
+def save_git_server(id: str, address: str, host: str, kind: str, login: str | None) -> GitServer:
+    """Save a git server under `id`, or, when one of `host` is saved, replace its address,
+    kind and login, keeping its id: the server as saved."""
+    with connect() as db:
+        db.execute(
+            "INSERT INTO git_servers (id, address, host, kind, login) VALUES (?, ?, ?, ?, ?)"
+            " ON CONFLICT(host) DO UPDATE SET address = excluded.address,"
+            " kind = excluded.kind, login = excluded.login",
+            (id, address, host, kind, login),
+        )
+        row = db.execute("SELECT * FROM git_servers WHERE host = ?", (host,)).fetchone()
+    return _git_server(row)
+
+
+def git_servers() -> list[GitServer]:
+    """Every saved git server, by host."""
+    with connect() as db:
+        rows = db.execute("SELECT * FROM git_servers ORDER BY host").fetchall()
+    return [_git_server(row) for row in rows]
+
+
+def git_server_by_host(host: str) -> GitServer | None:
+    with connect() as db:
+        row = db.execute("SELECT * FROM git_servers WHERE host = ?", (host,)).fetchone()
+    return _git_server(row) if row else None
+
+
+def remove_git_server(id: str) -> bool:
+    """False when there was no such server."""
+    with connect() as db:
+        return db.execute("DELETE FROM git_servers WHERE id = ?", (id,)).rowcount == 1
 
 
 class ModelsChanged(Exception):

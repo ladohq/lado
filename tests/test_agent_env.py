@@ -643,6 +643,45 @@ def test_lados_git_lays_the_folder_then_the_project_over_the_process(shell, outd
     assert agent_env.for_git()["BOARD_URL"] == "out"  # no project: no layer
 
 
+def _git_server(address="https://gitlab.corp.ru"):
+    from lado import git_kinds, git_servers
+
+    checked = git_servers.Checked(git_kinds.by_name("gitlab"), "ivan")
+    return git_servers.save(git_servers.address(address), checked, "glpat-x")[0]
+
+
+def test_lados_git_gets_the_git_servers_for_a_remote(monkeypatch):
+    from lado import git_servers, state
+
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "a.b")
+    monkeypatch.delenv("GIT_CONFIG_KEY_1", raising=False)
+    plain = agent_env.for_git()
+    assert agent_env.for_git(remote="https://gitlab.corp.ru/a.git") == plain  # no server
+    _git_server()
+    env = agent_env.for_git(remote="git@gitlab.corp.ru:a.git")
+    expected = git_servers.variables({"GIT_CONFIG_COUNT": "1"}, state.git_servers())
+    assert env == plain | expected
+    assert env["GIT_CONFIG_KEY_0"] == "a.b"
+    assert agent_env.for_git() == plain  # no remote: a local call
+
+
+def test_an_old_git_refuses_lados_git_only_for_a_saved_host(tmp_path, monkeypatch):
+    from lado import git_servers
+
+    folder = tmp_path / "old-git"
+    folder.mkdir()
+    (folder / "git").write_text("#!/bin/sh\necho 'git version 2.30.2'\n")
+    (folder / "git").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
+    _git_server()
+    agent_env.for_git(remote="https://github.com/a/b.git")
+    for remote in ("https://gitlab.corp.ru/a.git", "ssh://git@gitlab.corp.ru/a.git"):
+        with pytest.raises(git_servers.Refused) as raised:
+            agent_env.for_git(remote=remote)
+        assert "git 2.30.2 is older than 2.31" in str(raised.value)
+
+
 def test_lados_git_reads_the_folder_anew_at_each_call(outdir):
     assert "LATE_TOKEN" not in agent_env.for_git()
     write(outdir, "LATE_TOKEN", b"t")

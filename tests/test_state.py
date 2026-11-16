@@ -989,8 +989,8 @@ def test_migrate_backs_up_the_older_schema_first(lado_home):
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(backup)) as db:
         assert db.execute("SELECT name FROM sessions").fetchall() == [("s",)]
-        columns = _message_columns(db)
-    assert "read_reminded" not in columns  # the content before the migration
+        tables = _tables(db)
+    assert "git_servers" not in tables  # the content before the migration
     assert _schema(lado_home / "lado.db") == state.SCHEMA_VERSION
 
 
@@ -1011,7 +1011,7 @@ def test_a_failing_step_leaves_the_schema_and_keeps_the_backup(lado_home, monkey
     assert _schema(lado_home / "lado.db") == old
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
-        assert "read_reminded" not in _message_columns(db)  # rolled back
+        assert "git_servers" not in _tables(db)  # rolled back
 
 
 def test_version_2_database_gets_kits(lado_home):
@@ -1972,3 +1972,56 @@ def test_a_stray_delete_of_a_default_s_model_is_refused_by_the_foreign_key(lado_
     state.set_cli_default(state.ModelRef("opencode", saved.id, None))
     with state.connect() as db, pytest.raises(sqlite3.IntegrityError):
         db.execute("DELETE FROM models WHERE id = ?", (saved.id,))
+
+
+# Git servers (schema 41).
+
+
+def test_a_git_server_kept_by_its_host(lado_home):
+    saved = state.save_git_server(
+        "a1", "https://gitlab.corp.ru", "gitlab.corp.ru", "gitlab", "ivan"
+    )
+    assert (saved.id, saved.address, saved.host, saved.kind, saved.login) == (
+        "a1",
+        "https://gitlab.corp.ru",
+        "gitlab.corp.ru",
+        "gitlab",
+        "ivan",
+    )
+    assert state.git_server_by_host("gitlab.corp.ru") == saved
+    assert state.git_server_by_host("git.lan") is None
+
+
+def test_a_git_server_saved_again_keeps_its_id(lado_home):
+    state.save_git_server("a1", "https://gitlab.corp.ru", "gitlab.corp.ru", "gitlab", "ivan")
+    again = state.save_git_server(
+        "b2", "https://gitlab.corp.ru/x", "gitlab.corp.ru", "github", None
+    )
+    assert (again.id, again.address, again.kind, again.login) == (
+        "a1",
+        "https://gitlab.corp.ru/x",
+        "github",
+        None,
+    )
+    assert [s.id for s in state.git_servers()] == ["a1"]
+
+
+def test_git_servers_by_host_and_removed(lado_home):
+    state.save_git_server("b", "https://z.lan", "z.lan", "gitlab", None)
+    state.save_git_server("a", "https://a.lan:8443", "a.lan:8443", "github", "me")
+    assert [s.host for s in state.git_servers()] == ["a.lan:8443", "z.lan"]
+    assert state.remove_git_server("a") is True
+    assert state.remove_git_server("a") is False
+    assert [s.host for s in state.git_servers()] == ["z.lan"]
+
+
+def test_schema_40_gets_git_servers_and_keeps_the_rest(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    _server()
+    agent_helpers.previous_schema()
+    with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
+        assert "git_servers" not in _tables(db)
+    assert state.migrate().after == 41
+    assert state.git_servers() == []
+    assert state.get_session("s").name == "s"
+    assert [s.id for s in state.model_servers()] == ["s1"]

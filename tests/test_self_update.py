@@ -598,10 +598,71 @@ def warning(copy) -> str:
         f"  lado.db goes back to {copy}, made 2026-10-20 14:03\n"
         f"  by the upgrade from schema {OLD_SCHEMA}. Everything LADO recorded since then is "
         "lost: sessions,\n"
-        "  runs, gates, messages, projects, model servers, models, default models.\n"
+        "  runs, gates, messages, projects, model servers, models, default models, git servers.\n"
         "  Repositories, worktrees and project folders stay on disk.\n"
         "  Sessions not in that copy are not started again: web2\n"
     )
+
+
+TOKENS_STAY = "  Git server tokens stay on disk; remove them when you no longer need them:\n"
+
+
+def saved_token(id: str) -> Path:
+    """A token on disk for the git server `id`; its folder."""
+    folder = state.home() / "git-servers" / id
+    folder.mkdir(parents=True)
+    (folder / "token").write_text("glpat-test")
+    return folder
+
+
+def test_a_copy_without_git_servers_names_every_token_that_stays(older, two_sessions, capsys):
+    with contextlib.closing(sqlite3.connect(two_sessions)) as db:
+        db.execute("DROP TABLE git_servers")
+        db.commit()
+    os.utime(two_sessions, (MADE, MADE))
+    second, first = saved_token("3f9a0c12d4e5"), saved_token("0a1b2c3d4e5f")
+    (state.home() / "git-servers" / "no-token").mkdir()
+    found, err = plan_warning(capsys)
+    assert found.restore.tokens == [first, second]
+    assert f"{warning(two_sessions)}{TOKENS_STAY}    {first}\n    {second}\n" in err
+
+
+def test_a_token_of_a_server_the_copy_has_is_not_named(older, two_sessions, capsys):
+    with contextlib.closing(sqlite3.connect(two_sessions)) as db:
+        db.execute(
+            "INSERT INTO git_servers (id, address, host, kind) "
+            "VALUES ('aaa', 'https://g.lan', 'g.lan', 'gitlab')"
+        )
+        db.commit()
+    kept, left = saved_token("aaa"), saved_token("bbb")
+    found, err = plan_warning(capsys)
+    assert found.restore.tokens == [left]
+    assert f"{TOKENS_STAY}    {left}\n" in err
+    assert str(kept) not in err
+
+
+def test_no_token_folder_no_line(older, two_sessions, capsys):
+    found, err = plan_warning(capsys)
+    assert found.restore.tokens == []
+    assert "Git server tokens" not in err
+
+
+def test_an_unreadable_folder_of_tokens_is_named_and_stops_nothing(
+    older, two_sessions, capsys, monkeypatch
+):
+    saved_token("aaa")
+    folder = state.home() / "git-servers"
+    listdir = os.listdir
+
+    def refuse(path="."):
+        if Path(path) == folder:
+            raise PermissionError(13, "Permission denied", str(path))
+        return listdir(path)
+
+    monkeypatch.setattr(self_update.os, "listdir", refuse)
+    found, err = plan_warning(capsys)
+    assert found.restore.tokens == [folder]
+    assert f"{TOKENS_STAY}    {folder}\n" in err
 
 
 KEYS_STAY = "  Model server keys stay on disk; remove them when you no longer need them:\n"

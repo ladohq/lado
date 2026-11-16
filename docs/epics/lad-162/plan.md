@@ -2,7 +2,7 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: none · Next: S2 (draft waits at step_ok) · Open checks: the human's check on the company GitLab, on the release candidate that carries S7
+In work: S2 (LAD-290, run task/lad-290) · Next: S3 · Open checks: the human's check on the company GitLab, on the release candidate that carries S7
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
@@ -65,7 +65,7 @@ entry is not accepted until S5 (plan decision, P6): github.com keeps today's pat
 `gh` until S5 settles which source wins.
 
 ### S2 — Settings → Git servers
-Status: planned
+Status: in progress (LAD-290, run task/lad-290)
 Check: a UI e2e test adds a gitlab.com and a self-hosted server (address, prefilled for
 gitlab.com; token with a "where to get it" link; the kind shown once found, chosen by hand
 only when the server did not answer) and removes one; the list matches

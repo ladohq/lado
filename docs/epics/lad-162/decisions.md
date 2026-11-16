@@ -14,7 +14,8 @@
 | 2026-11-15 | plan, plan-review P10 | Where the human checks | release candidate carrying S5; `make docker` from main | the release candidate (lead) | approved at plan_ok #528 (human) | yes |
 | 2026-11-15 | plan_ok #528, the human's message | Step numbers S1a, S1b, S2a, S2b | keep letters; renumber in order | — | renumber S1–S8 in order: no step is in the tracker yet (human) | n/a (the human's own) |
 | 2026-11-15 | plan_ok #528, #7090, #7092 | Who names a server's kind | the human chooses it (the statement); LADO finds it from the server's API, `--kind` as the fallback | found by LADO, `--kind` the fallback (lead) | found by LADO, `--kind` the fallback; asked how it works for servers on the local network and whether other kinds can come later — both covered (human) | yes |
-| 2026-11-16 | review after S1 | Where S1's leftovers go | each into the step it belongs to; all into S2 | E4 and the empty folder → S2, E2 → S4, https-vs-ssh and live tests → S7 (lead) | pending (step_ok) | — |
+| 2026-11-16 | review after S1 | Where S1's leftovers go | each into the step it belongs to; all into S2 | E4 and the empty folder → S2, E2 → S4, https-vs-ssh and live tests → S7 (lead) | as recommended, approved at step_ok #532 (human) | yes |
 
 Epic: plan_ok #528 — approved as recommended; questions #7086 (update LAD-162's stages, as recommended).
 S1 (LAD-289): question #7098, gate #529 (design_ok) — approved as recommended; gate #530 (merge_ok) — rejected as recommended (F1–F3 fixed); gate #531 (merge_ok) — approved as recommended after the human's manual check (gitlab.com and the company GitLab, all OK).
+S2 (LAD-290): step_ok #532 — approved as recommended.

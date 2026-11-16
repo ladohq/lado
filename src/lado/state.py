@@ -11,6 +11,7 @@ import os
 import re
 import sqlite3
 import time
+import urllib.parse
 import uuid
 from collections import Counter, defaultdict
 from collections.abc import Callable, Collection, Iterator, Sequence
@@ -4194,10 +4195,26 @@ def _git_server(row: sqlite3.Row) -> GitServer:
     )
 
 
+class HostTaken(Exception):
+    """A git server holds the host name of the one to save on another port: `server`."""
+
+    def __init__(self, server: GitServer):
+        super().__init__(server.address)
+        self.server = server
+
+
 def save_git_server(id: str, address: str, host: str, kind: str, login: str | None) -> GitServer:
     """Save a git server under `id`, or, when one of `host` is saved, replace its address,
-    kind and login, keeping its id: the server as saved."""
+    kind and login, keeping its id: the server as saved. HostTaken, nothing saved, when a
+    server of the address's host name is saved on another port (lado.git_servers.check_host,
+    checked again here inside the write against an add at the same moment)."""
+    hostname = urllib.parse.urlsplit(address).hostname
     with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        for row in db.execute("SELECT * FROM git_servers WHERE host != ?", (host,)).fetchall():
+            if urllib.parse.urlsplit(row["address"]).hostname == hostname:
+                db.execute("ROLLBACK")
+                raise HostTaken(_git_server(row))
         db.execute(
             "INSERT INTO git_servers (id, address, host, kind, login) VALUES (?, ?, ?, ?, ?)"
             " ON CONFLICT(host) DO UPDATE SET address = excluded.address,"
@@ -4205,6 +4222,7 @@ def save_git_server(id: str, address: str, host: str, kind: str, login: str | No
             (id, address, host, kind, login),
         )
         row = db.execute("SELECT * FROM git_servers WHERE host = ?", (host,)).fetchone()
+        db.execute("COMMIT")
     return _git_server(row)
 
 

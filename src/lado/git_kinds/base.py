@@ -26,9 +26,10 @@ class Kind:
     def headers(self, token: str) -> dict[str, str]:
         raise NotImplementedError
 
-    def request(self, root: str, token: str) -> tuple[str, dict[str, str]]:
-        """The URL and the headers of the request that tells this kind, carrying `token`."""
-        return root + self.path, self.headers(token)
+    def request(self, root: str, token: str | None) -> tuple[str, dict[str, str]]:
+        """The URL and the headers of the request that tells this kind, carrying `token`;
+        None sends no header at all, so no credential (the address's check before Add)."""
+        return root + self.path, {} if token is None else self.headers(token)
 
     def login(self, answer: Answer) -> str | None:
         """The user the token signs in as, by the answer to `request`; None when the answer

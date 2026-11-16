@@ -12338,6 +12338,23 @@ section.artifact-group + section.artifact-group {
   padding: 12px 14px 14px;
 }
 
+/* Settings → Git servers: a server's row has nothing to open, so no arrow; the focus comes to
+   it when it was just added. */
+.gx-title {
+  justify-content: center;
+  min-height: 48px;
+  padding: 6px 8px 6px 12px;
+  border-radius: 8px;
+}
+
+.mx-l2.gx-warn {
+  color: var(--warn);
+}
+
+.gx-saved {
+  padding: 10px 12px 0;
+}
+
 .mx-body > .field-note {
   display: block;
 }

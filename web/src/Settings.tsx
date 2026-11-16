@@ -6,6 +6,7 @@ import { useEffect, useRef, type JSX } from "react";
 import { Navigate, NavLink, Outlet, useLocation, useParams } from "react-router";
 
 import { GeneralPage } from "./General";
+import { GitServersPage } from "./GitServers";
 import { ChevronIcon } from "./icons";
 import { ModelSettings } from "./ModelSettings";
 import { GENERAL_PATH } from "./paths";
@@ -19,6 +20,7 @@ const PAGES: Record<SectionSlug, () => JSX.Element> = {
   general: GeneralPage,
   "agent-clis": Providers,
   "model-servers": ModelSettings,
+  "git-servers": GitServersPage,
   statistics: StatisticsSetting,
 };
 

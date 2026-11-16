@@ -20,6 +20,8 @@ class GitLab(Kind):
         if answer.status == 403 and isinstance(body, dict):
             if body.get("error") == "insufficient_scope":
                 return "takes the token, but it lacks the scope read_api"
+        if isinstance(body, dict) and "documentation_url" in body:  # GitHub's (github.py)
+            return None
         return super().refusal(answer)
 
 

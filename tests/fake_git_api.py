@@ -5,13 +5,16 @@ Standard library only.
 
 Each profile says how the two paths answer; every other request gets 404 with a plain text
 body, as a web server would. `make_certificate` makes a self-signed certificate for
-127.0.0.1 with `openssl`, for a server over TLS that only a test trusts.
+127.0.0.1 with `openssl`, for a server over TLS that only a test trusts; `make_ca_certificate`
+and `ConnectProxy` reach a fake as a named host (gitlab.com) with no network.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
 import shutil
+import socket
 import ssl
 import subprocess
 import threading
@@ -36,8 +39,16 @@ class Answer(NamedTuple):
 NOT_FOUND = Answer(404, "<html><body>404 Not Found</body></html>")
 GITLAB_USER = Answer(200, {"id": 7, "username": LOGIN, "name": "Ivan Petrov"})
 GITHUB_USER = Answer(200, {"id": 7, "login": LOGIN, "type": "User"})
+# GitLab answers this on any path of its API, also GitHub's, without a token it takes.
 GITLAB_401 = Answer(401, {"message": "401 Unauthorized"})
-GITHUB_401 = Answer(401, {"message": "Bad credentials", "status": "401"})
+GITHUB_401 = Answer(
+    401,
+    {
+        "message": "Bad credentials",
+        "documentation_url": "https://docs.github.com/enterprise-server@3.14/rest",
+        "status": "401",
+    },
+)
 GITLAB_SCOPE = Answer(
     403,
     {"error": "insufficient_scope", "error_description": "The request requires higher privileges"},
@@ -46,6 +57,8 @@ HANG = Answer(0)  # no answer: the request waits for the server's end
 
 PROFILES: dict[str, dict[str, Answer]] = {
     "gitlab": {GITLAB: GITLAB_USER},
+    # As gitlab.com: GitHub's path refused as any other path of GitLab's API.
+    "gitlab-com": {GITLAB: GITLAB_USER, GITHUB: GITLAB_401},
     "github": {GITHUB: GITHUB_USER},
     "gitlab-refuses": {GITLAB: GITLAB_401},
     "github-refuses": {GITHUB: GITHUB_401},
@@ -67,9 +80,9 @@ class Request(NamedTuple):
 
 def answer_for(profile: str, path: str, token: str | None, headers: Message) -> Answer:
     """The profile's answer to a GET of `path`; with `token`, a request that does not carry
-    it the kind's way gets that kind's 401."""
+    it the kind's way gets that kind's 401; a refusal stays one."""
     found = PROFILES[profile].get(path, NOT_FOUND)
-    if token is not None and found not in (NOT_FOUND, HANG):
+    if token is not None and found.status == 200:
         if path == GITLAB and headers.get("PRIVATE-TOKEN") != token:
             return GITLAB_401
         if path == GITHUB and headers.get("Authorization") != f"token {token}":
@@ -107,6 +120,100 @@ def make_certificate(folder: Path) -> tuple[Path, Path]:
         capture_output=True,
     )  # fmt: skip
     return cert, key
+
+
+def make_ca_certificate(folder: Path, host: str) -> tuple[Path, tuple[Path, Path]]:
+    """A test CA's certificate, and a certificate for `host` it signed with its key, in
+    `folder`: a process that trusts the CA (SSL_CERT_FILE) reaches a fake server as `host`
+    with no network. Skipped, naming why, without `openssl`."""
+    if shutil.which("openssl") is None:
+        pytest.skip("openssl is not installed: no certificate for a TLS server")
+    ca, ca_key = folder / "ca.crt", folder / "ca.key"
+    cert, key, request = folder / f"{host}.crt", folder / f"{host}.key", folder / f"{host}.csr"
+    extensions = folder / f"{host}.ext"
+    extensions.write_text(
+        f"subjectAltName=DNS:{host}\nbasicConstraints=CA:FALSE\n"
+        "keyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n"
+        "subjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid\n"
+    )
+
+    def run(*args: str) -> None:
+        subprocess.run(["openssl", *args], check=True, capture_output=True)
+
+    run(
+        "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2", "-subj", "/CN=LADO test CA",
+        "-addext", "basicConstraints=critical,CA:TRUE",
+        "-addext", "keyUsage=critical,keyCertSign,cRLSign",
+        "-keyout", str(ca_key), "-out", str(ca),
+    )  # fmt: skip
+    run(
+        "req", "-newkey", "rsa:2048", "-nodes", "-subj", f"/CN={host}",
+        "-keyout", str(key), "-out", str(request),
+    )  # fmt: skip
+    run(
+        "x509", "-req", "-in", str(request), "-CA", str(ca), "-CAkey", str(ca_key),
+        "-CAcreateserial", "-days", "2", "-extfile", str(extensions), "-out", str(cert),
+    )  # fmt: skip
+    return ca, (cert, key)
+
+
+class ConnectProxy:
+    """An HTTPS proxy on 127.0.0.1, a free port, that tunnels a CONNECT to a `routes` key
+    (`host:port`) to its address on this machine and refuses any other; `asked` keeps each
+    CONNECT's target. Over a tunnel the client speaks TLS with the server it reaches."""
+
+    def __init__(self, routes: dict[str, tuple[str, int]]):
+        self.routes = routes
+        self.asked: list[str] = []
+        self._listener = socket.create_server(("127.0.0.1", 0))
+        self.port = self._listener.getsockname()[1]
+        self.url = f"http://127.0.0.1:{self.port}"
+        self._closing = threading.Event()
+        threading.Thread(target=self._accept, daemon=True).start()
+
+    def _accept(self) -> None:
+        while not self._closing.is_set():
+            try:
+                client, _ = self._listener.accept()
+            except OSError:
+                return
+            threading.Thread(target=self._tunnel, args=(client,), daemon=True).start()
+
+    def _tunnel(self, client: socket.socket) -> None:
+        with client:
+            head = b""
+            while b"\r\n\r\n" not in head:
+                chunk = client.recv(4096)
+                if not chunk:
+                    return
+                head += chunk
+            method, target, *_ = head.split(b"\r\n", 1)[0].decode().split()
+            self.asked.append(target)
+            to = self.routes.get(target) if method == "CONNECT" else None
+            if to is None:
+                client.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")
+                return
+            with socket.create_connection(to) as upstream:
+                client.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
+                back = threading.Thread(target=_pipe, args=(upstream, client), daemon=True)
+                back.start()
+                _pipe(client, upstream)
+                back.join(10)
+
+    def close(self) -> None:
+        self._closing.set()
+        self._listener.close()
+
+
+def _pipe(source: socket.socket, sink: socket.socket) -> None:
+    """Copy `source` to `sink` until `source` ends, then end `sink`'s writing."""
+    try:
+        while data := source.recv(65536):
+            sink.sendall(data)
+    except OSError:
+        pass
+    with contextlib.suppress(OSError):
+        sink.shutdown(socket.SHUT_WR)
 
 
 class Server:

@@ -1747,14 +1747,9 @@ def cmd_git_server_add(args: argparse.Namespace) -> int:
                 "a server's token is never given on the command line (ps and the shell's "
                 f"history keep it); run {again} and type it, or pipe it in"
             )
-        git_servers.check_git(os.environ)
-        warning = git_servers.plain_http_warning(at)
-        if warning:
-            _warn_line(warning)
-        token = _read_secret("Token of the server (not shown): ")
-        git_servers.check_token(token)
-        checked = git_servers.probe(at, token, args.kind)
-        saved, replaced = git_servers.save(at, checked, token)
+        saved, replaced, checked = git_servers.add(
+            at, lambda: _read_secret("Token of the server (not shown): "), args.kind, _warn_line
+        )
     except git_servers.Refused as exc:
         return _refused(exc)
     kind = git_kinds.by_name(saved.kind)

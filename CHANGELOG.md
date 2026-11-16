@@ -6,7 +6,8 @@
 
 - **Your own GitLab or GitHub Enterprise server.** `lado git-server add <address> --token`
   checks the server and keeps your token; agents and LADO then clone and push there over
-  https without a password, `git@…` addresses included. Needs git 2.31 or newer.
+  https without a password, `git@…` addresses included. Needs git 2.31 or newer. Also in
+  Settings → Git servers, which shows the token page with the rights the token needs.
 
 ## 0.47.0 (2026-11-15)
 

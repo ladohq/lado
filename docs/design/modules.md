@@ -927,12 +927,19 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     is the one list of them (`--kind`'s choices, the probe's requests).
   - `git_servers.py`: the human's git servers (`lado git-server add|list|remove`): `address`
     (`https://` added, a path kept, the default port dropped; its `key`, host and port, is
-    the server's identity), `check_not_github`, `check_token`, `probe` (every kind asked at
-    once through `model_servers.ask_all`, no redirect, the verdicts and their words;
-    `--kind` gives `Checked.unchecked`), `save` and `remove` (the row in lado.db's
-    `git_servers` and the token file `<LADO_HOME>/git-servers/<id>/token` by
+    the server's identity; `BadAddress` with its line for the page), `check_not_github`,
+    `check_host` (one server per host name: git's ssh forms carry no port; checked again by
+    `state.save_git_server` inside its write, `HostTaken`), `check_token`, `probe` (every kind
+    asked at once through `model_servers.ask_all`, no redirect, the verdicts and their words;
+    `--kind` gives `Checked.unchecked`), `hint` (the same requests with no credential: the
+    kind an address looks like, or why it must be chosen; a redirect refused), `add` (the one
+    add sequence of the command and the page: the checks, the plain-http warning, the token
+    read only then, its check, `probe`, `save`), `save` and `remove`/`remove_host` (the row in
+    lado.db's `git_servers` and the token file `<LADO_HOME>/git-servers/<id>/token` by
     `project_secrets.write_at`/`remove_at`: a new server's file first, a replaced one's row
-    first, its id kept), `variables` (per server an empty `credential.<origin>.helper`, then
+    first, its id kept; `git-servers/` itself goes once empty, and a write whose folder went
+    under it tries once more). `Refused` carries the form `field` it concerns and `page`/
+    `page_hint`, its words without a command. `variables` (per server an empty `credential.<origin>.helper`, then
     `helper_command`, then three `url.<root>/.insteadOf` of its ssh forms, numbered after
     the environment's own `GIT_CONFIG_COUNT`; nothing for no server), `server_for` (the
     saved server a remote reaches) and `check_git` (a `Refused` naming the version for a git
@@ -1339,6 +1346,14 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `app.py`; a server's probe kept `KEPT` seconds by its id and address for `check_model`
     only (a failed one not kept); the key comes in only in `ModelServerAdd` and `ModelServerCheck`,
     whose routes are in `app.SECRET_ROUTE`;
+    `git_entries.py`: Settings → Git servers' routes (docs/design/ui.md, Git servers) over
+    `git_servers.py`: `listing` (asks no server; empty with no lado.db), `check` (the add
+    form's check, saving nothing: the address's, host name's and git's refusals, which ask no
+    server, then the plain-http warning, whether it is saved and `git_servers.hint`), `add`
+    (`git_servers.add` with the token of `GitServerAdd`, the saved line) and `remove` (by the
+    server's host and port); each refusal a `model_entries.Refusal` with the core's page words
+    and field; the token comes in only in `GitServerAdd`, whose route is in
+    `app.SECRET_ROUTE`;
     `GET /api/sessions/{name}/about` (`SessionAbout`, `launch.session_about`; docs/design/ui.md,
     Session head) is what the session's head shows besides its settings, read anew: `repos`
     (path, public remote, branch; one now), each kit by `kits.find` with its version and

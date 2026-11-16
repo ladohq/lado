@@ -971,6 +971,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/git-servers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Git Servers Listing
+         * @description The saved git servers, asking none; no lado.db made.
+         */
+        get: operations["git_servers_listing_api_git_servers_get"];
+        put?: never;
+        /**
+         * Add Git Server
+         * @description Check and save a server with its token as `lado git-server add` does.
+         */
+        post: operations["add_git_server_api_git_servers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/git-servers/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Git Server
+         * @description What the add form says of an address before Add, the server asked with no token;
+         *     saves nothing.
+         */
+        post: operations["check_git_server_api_git_servers_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/git-servers/{host}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Git Server
+         * @description Remove the server of `host` and its token as `lado git-server remove` does.
+         */
+        delete: operations["remove_git_server_api_git_servers__host__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/providers/logins": {
         parameters: {
             query?: never;
@@ -2327,6 +2392,108 @@ export interface components {
             /** Note By */
             note_by: string | null;
             recommendation: components["schemas"]["RecommendationInfo"] | null;
+        };
+        /**
+         * GitKindInfo
+         * @description A kind of git server: its token page under a server's root and what a token needs.
+         */
+        GitKindInfo: {
+            /** Name */
+            name: string;
+            /** Title */
+            title: string;
+            /** Token Path */
+            token_path: string;
+            /** Scopes */
+            scopes: string;
+        };
+        /**
+         * GitServerAdd
+         * @description A git server to check and save with its token; `kind` only when the human chose one
+         *     (--kind). No answer gives the token back.
+         */
+        GitServerAdd: {
+            /** Address */
+            address: string;
+            /** Token */
+            token: string;
+            /** Kind */
+            kind?: string | null;
+        };
+        /**
+         * GitServerAdded
+         * @description A git server saved or replaced: as saved, the line that says so, and the warnings
+         *     (its token over plain http://).
+         */
+        GitServerAdded: {
+            server: components["schemas"]["GitServerInfo"];
+            /** Line */
+            line: string;
+            /** Replaced */
+            replaced: boolean;
+            /** Warnings */
+            warnings: string[];
+        };
+        /**
+         * GitServerCheck
+         * @description What the add form says of an address before Add, asking the server with no token:
+         *     its root (None when it is no address), the kind it looks like (a hint only) with its
+         *     token page and scopes, whether the kind must be chosen and why (`unchecked`), whether the
+         *     address is saved already, the refusals Add would meet and the plain-http warning.
+         */
+        GitServerCheck: {
+            /** Address */
+            address: string | null;
+            /** Hint */
+            hint: string | null;
+            /** Token Page */
+            token_page: string | null;
+            /** Scopes */
+            scopes: string | null;
+            /** Choose Kind */
+            choose_kind: boolean;
+            unchecked: components["schemas"]["EntryRefused"] | null;
+            /** Saved */
+            saved: boolean;
+            /** Refusals */
+            refusals: components["schemas"]["EntryRefused"][];
+            /** Warnings */
+            warnings: string[];
+        };
+        /** GitServerCheckAsked */
+        GitServerCheckAsked: {
+            /** Address */
+            address: string;
+        };
+        /**
+         * GitServerInfo
+         * @description A saved git server as lado.db keeps it, asking it nothing: `host` its key (host and a
+         *     port other than the scheme's), `login` None for one saved without a check, and whether
+         *     its token file is there (never the token).
+         */
+        GitServerInfo: {
+            /** Address */
+            address: string;
+            /** Host */
+            host: string;
+            /** Kind */
+            kind: string;
+            /** Kind Title */
+            kind_title: string;
+            /** Login */
+            login: string | null;
+            /** Has Token */
+            has_token: boolean;
+        };
+        /**
+         * GitServers
+         * @description The saved git servers, by host, and the kinds LADO knows.
+         */
+        GitServers: {
+            /** Servers */
+            servers: components["schemas"]["GitServerInfo"][];
+            /** Kinds */
+            kinds: components["schemas"]["GitKindInfo"][];
         };
         /**
          * GuiSession
@@ -6307,6 +6474,141 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelSettings"];
+                };
+            };
+            /** @description refused */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryRefused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    git_servers_listing_api_git_servers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitServers"];
+                };
+            };
+        };
+    };
+    add_git_server_api_git_servers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GitServerAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitServerAdded"];
+                };
+            };
+            /** @description refused */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntryRefused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_git_server_api_git_servers_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GitServerCheckAsked"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitServerCheck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_git_server_api_git_servers__host__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitServers"];
                 };
             };
             /** @description refused */

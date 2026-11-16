@@ -2358,6 +2358,161 @@
         }
       }
     },
+    "/api/git-servers": {
+      "get": {
+        "summary": "Git Servers Listing",
+        "description": "The saved git servers, asking none; no lado.db made.",
+        "operationId": "git_servers_listing_api_git_servers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitServers"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add Git Server",
+        "description": "Check and save a server with its token as `lado git-server add` does.",
+        "operationId": "add_git_server_api_git_servers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitServerAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitServerAdded"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryRefused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/git-servers/check": {
+      "post": {
+        "summary": "Check Git Server",
+        "description": "What the add form says of an address before Add, the server asked with no token;\nsaves nothing.",
+        "operationId": "check_git_server_api_git_servers_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitServerCheckAsked"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitServerCheck"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/git-servers/{host}": {
+      "delete": {
+        "summary": "Remove Git Server",
+        "description": "Remove the server of `host` and its token as `lado git-server remove` does.",
+        "operationId": "remove_git_server_api_git_servers__host__delete",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Host"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitServers"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryRefused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/providers/logins": {
       "get": {
         "summary": "Provider Logins",
@@ -6083,6 +6238,274 @@
         ],
         "title": "GateInfo",
         "description": "A flow run's question to the human: open while `answer` is None."
+      },
+      "GitKindInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "token_path": {
+            "type": "string",
+            "title": "Token Path"
+          },
+          "scopes": {
+            "type": "string",
+            "title": "Scopes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "title",
+          "token_path",
+          "scopes"
+        ],
+        "title": "GitKindInfo",
+        "description": "A kind of git server: its token page under a server's root and what a token needs."
+      },
+      "GitServerAdd": {
+        "properties": {
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          }
+        },
+        "type": "object",
+        "required": [
+          "address",
+          "token"
+        ],
+        "title": "GitServerAdd",
+        "description": "A git server to check and save with its token; `kind` only when the human chose one\n(--kind). No answer gives the token back."
+      },
+      "GitServerAdded": {
+        "properties": {
+          "server": {
+            "$ref": "#/components/schemas/GitServerInfo"
+          },
+          "line": {
+            "type": "string",
+            "title": "Line"
+          },
+          "replaced": {
+            "type": "boolean",
+            "title": "Replaced"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "server",
+          "line",
+          "replaced",
+          "warnings"
+        ],
+        "title": "GitServerAdded",
+        "description": "A git server saved or replaced: as saved, the line that says so, and the warnings\n(its token over plain http://)."
+      },
+      "GitServerCheck": {
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint"
+          },
+          "token_page": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token Page"
+          },
+          "scopes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scopes"
+          },
+          "choose_kind": {
+            "type": "boolean",
+            "title": "Choose Kind"
+          },
+          "unchecked": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EntryRefused"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "saved": {
+            "type": "boolean",
+            "title": "Saved"
+          },
+          "refusals": {
+            "items": {
+              "$ref": "#/components/schemas/EntryRefused"
+            },
+            "type": "array",
+            "title": "Refusals"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "address",
+          "hint",
+          "token_page",
+          "scopes",
+          "choose_kind",
+          "unchecked",
+          "saved",
+          "refusals",
+          "warnings"
+        ],
+        "title": "GitServerCheck",
+        "description": "What the add form says of an address before Add, asking the server with no token:\nits root (None when it is no address), the kind it looks like (a hint only) with its\ntoken page and scopes, whether the kind must be chosen and why (`unchecked`), whether the\naddress is saved already, the refusals Add would meet and the plain-http warning."
+      },
+      "GitServerCheckAsked": {
+        "properties": {
+          "address": {
+            "type": "string",
+            "title": "Address"
+          }
+        },
+        "type": "object",
+        "required": [
+          "address"
+        ],
+        "title": "GitServerCheckAsked"
+      },
+      "GitServerInfo": {
+        "properties": {
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "kind_title": {
+            "type": "string",
+            "title": "Kind Title"
+          },
+          "login": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Login"
+          },
+          "has_token": {
+            "type": "boolean",
+            "title": "Has Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "address",
+          "host",
+          "kind",
+          "kind_title",
+          "login",
+          "has_token"
+        ],
+        "title": "GitServerInfo",
+        "description": "A saved git server as lado.db keeps it, asking it nothing: `host` its key (host and a\nport other than the scheme's), `login` None for one saved without a check, and whether\nits token file is there (never the token)."
+      },
+      "GitServers": {
+        "properties": {
+          "servers": {
+            "items": {
+              "$ref": "#/components/schemas/GitServerInfo"
+            },
+            "type": "array",
+            "title": "Servers"
+          },
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/GitKindInfo"
+            },
+            "type": "array",
+            "title": "Kinds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "servers",
+          "kinds"
+        ],
+        "title": "GitServers",
+        "description": "The saved git servers, by host, and the kinds LADO knows."
       },
       "GuiSession": {
         "properties": {

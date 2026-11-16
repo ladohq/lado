@@ -1,9 +1,10 @@
 """Settings' pages in a browser (openspec change settings-pages; docs/design/ui.md, Settings):
-General, Agent CLIs, Model servers and Statistics beside the list of sections at 1440 and 768,
-the list alone then a page at 390, in the light and the dark theme; no page scrolls sideways,
-a phone's controls are 44 px high and no picked model's name is cut. The old addresses land on
-their pages in place of the history entry, and Help's menu opens beside the rail and in the
-phone's drawer. The arrival at a CLI's row: test_providers_section.py, test_launch.py."""
+General, Agent CLIs, Model servers, Git servers and Statistics beside the list of sections at
+1440 and 768, the list alone then a page at 390, in the light and the dark theme; no page
+scrolls sideways, a phone's controls are 44 px high and no picked model's name is cut. The old
+addresses land on their pages in place of the history entry, and Help's menu opens beside the
+rail and in the phone's drawer. The arrival at a CLI's row: test_providers_section.py,
+test_launch.py."""
 
 import re
 
@@ -12,7 +13,7 @@ import test_models_section as models
 from playwright.sync_api import Browser, Page, expect
 from test_main_screen import log_in
 
-from lado import state
+from lado import git_kinds, git_servers, state
 
 pytestmark = pytest.mark.ui
 
@@ -24,6 +25,7 @@ PAGES = {
     "general": "General",
     "agent-clis": "Agent CLIs",
     "model-servers": "Model servers",
+    "git-servers": "Git servers",
     "statistics": "Statistics",
 }
 SIZES = {"computer": (1440, 900), "tablet": (768, 1024), "phone": (390, 844)}
@@ -31,10 +33,13 @@ SIZES = {"computer": (1440, 900), "tablet": (768, 1024), "phone": (390, 844)}
 
 @pytest.fixture
 def saved(lms):
-    """A server, a model on it, and that model as OpenCode's default: each page has its rows."""
+    """A server, a model on it, that model as OpenCode's default, and a git server: each page
+    has its rows."""
     state.add_model_server("s1", "lmstudio", lms.url, "LM Studio", [models.CHAT])
     model = state.add_model("qwen3-8b · lmstudio", "opencode", "qwen3-8b", "s1")
     state.set_cli_default(state.ModelRef("opencode", model.id, None))
+    gitlab = git_servers.Checked(git_kinds.by_name("gitlab"), "alex")
+    git_servers.save(git_servers.address("gitlab.corp.example"), gitlab, "glpat-test")
 
 
 def no_sideways_scroll(page: Page) -> None:
@@ -124,6 +129,10 @@ def test_each_page_beside_the_list(browser: Browser, clis, saved, server, shot, 
             if slug == "model-servers":
                 expect(page.get_by_role("table", name="Your models")).to_contain_text(
                     "OpenCode · default"
+                )
+            if slug == "git-servers":
+                expect(page.locator(".mx-src")).to_have_text(
+                    ["https://gitlab.corp.exampleGitLabsigned in as alex"]
                 )
             no_sideways_scroll(page)
             box = sections.bounding_box()

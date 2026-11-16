@@ -75,17 +75,23 @@ test("an old section lands on its new page; an unknown one on Settings", () => {
   expect(where(other)).toBe("/settings/general"); // the list's page on a computer
 });
 
-test("a section's page beside the list of the four names, its own marked", () => {
+test("a section's page beside the list of the five names, its own marked", () => {
   mount("/settings/statistics");
   const nav = list()!;
   const items = within(nav).getAllByRole("link");
-  expect(items.map((a) => a.textContent)).toEqual(["General", "Agent CLIs", "Model servers", "Statistics"]);
+  expect(items.map((a) => a.textContent)).toEqual([
+    "General",
+    "Agent CLIs",
+    "Model servers",
+    "Git servers",
+    "Statistics",
+  ]);
   expect(items.map((a) => a.getAttribute("href"))).toEqual(SETTINGS_SECTIONS.map((s) => `/settings/${s.slug}`));
   expect(items.filter((a) => a.getAttribute("aria-current") === "page").map((a) => a.textContent)).toEqual([
     "Statistics",
   ]);
   // Names and icons only: no state line, no mark.
-  expect(nav.textContent).toBe("GeneralAgent CLIsModel serversStatistics");
+  expect(nav.textContent).toBe("GeneralAgent CLIsModel serversGit serversStatistics");
   expect(heading().textContent).toBe("Statistics");
   expect(screen.queryByRole("link", { name: /Settings/ })).toBeNull(); // no back link beside the list
 });
@@ -103,6 +109,13 @@ test("moving to another section focuses its heading", () => {
   fireEvent.click(within(list()!).getByRole("link", { name: "Model servers" }));
   expect(heading().textContent).toBe("Model servers");
   expect(document.activeElement).toBe(heading());
+});
+
+test("Git servers has its own page", () => {
+  const router = mount("/settings/general");
+  fireEvent.click(within(list()!).getByRole("link", { name: "Git servers" }));
+  expect(where(router)).toBe("/settings/git-servers");
+  expect(heading().textContent).toBe("Git servers");
 });
 
 test("on a phone /settings is the list alone, and a section its own page with ‹ Settings", () => {

@@ -2,7 +2,7 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: none · Next: S4 (draft waits at step_ok) · Open checks: the human's check on the company GitLab, on the release candidate that carries S8
+In work: S4 (LAD-292, run ui-design/lad-292) · Next: S5 · Open checks: the human's check on the company GitLab, on the release candidate that carries S8
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
@@ -96,7 +96,7 @@ rollback test; docs describe what was built.
 Touches: the server kinds module, `agent_env.py`, `state.py`, `cli.py`, `web/src/`, docs.
 
 ### S4 — A mockup of the whole Git servers page
-Status: planned (added at the review after S3, the human's decision #7196, #7198)
+Status: in progress (LAD-292, run ui-design/lad-292); added at the review after S3, the human's decision #7196, #7198
 Why: the page grew piece by piece (S2 the list and Add, S3 ✎ for the author) and the human
 finds it not logical (#7194: editing a server changes only the author, a token is replaced
 through Add with the same address); S5–S7 put three more things on it.

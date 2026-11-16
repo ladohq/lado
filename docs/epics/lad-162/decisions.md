@@ -17,6 +17,8 @@
 | 2026-11-16 | review after S1 | Where S1's leftovers go | each into the step it belongs to; all into S2 | E4 and the empty folder → S2, E2 → S4, https-vs-ssh and live tests → S7 (lead) | as recommended, approved at step_ok #532 (human) | yes |
 | 2026-11-16 | review after S2 | Where S2's leftovers go | into S4 (the page and the rules it touches again); a step of their own | into S4 (lead) | into S4: leftovers of a later step need no gate (step-review) | yes |
 | 2026-11-16 | S3 run, #7194, #7196, #7198 | The Git servers page grew piece by piece and is not logical for the user (editing a server: only the author; a token is replaced through Add) — when to work on its usability | a mockup of the whole page after S3, built by S4; a usability step after S6; all inside S4 without a mockup | mockup after S3, S4 builds it (lead) | mockup after S3, S4 builds it (human); the plan is changed at the review after S3 | yes |
+| 2026-11-16 | review after S3 | Numbering after the new mockup step | letters (S4a); renumber the steps without a task | renumber: S4 the mockup, old S4–S8 become S5–S9; rows above keep the numbers of their day (lead) | pending (step_ok) | — |
+| 2026-11-16 | review after S3 | Where S3's leftovers go | into S5 (the page is rebuilt there; the mockup takes the page's remarks) | into S5 (lead) | into S5: leftovers of a later step need no gate (step-review) | yes |
 
 Epic: plan_ok #528 — approved as recommended; questions #7086 (update LAD-162's stages, as recommended).
 S1 (LAD-289): question #7098, gate #529 (design_ok) — approved as recommended; gate #530 (merge_ok) — rejected as recommended (F1–F3 fixed); gate #531 (merge_ok) — approved as recommended after the human's manual check (gitlab.com and the company GitLab, all OK).

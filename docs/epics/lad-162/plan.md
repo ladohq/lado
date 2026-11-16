@@ -7,7 +7,7 @@ Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
 - The statement's decisions (brief.md) are not reopened.
-Last review: 2026-11-16, after S3, base at eb9632eb
+Last review: 2026-11-16, after S4, base at eb9632eb
 
 ## Steps
 
@@ -122,8 +122,11 @@ unreachable), and a server saved with `--kind` unchecked is checked when it answ
 check; a server whose two kinds both refuse the token names the reason without guessing the
 kind (S1 ledger E2: a gateway that answers 401 on every path); a failed clone from a listed host names its entry, from an unlisted host suggests
 adding it, in the UI too (UI e2e); the Git servers page is rebuilt as S4's approved mockup
-and spec say (UI e2e of its scenarios, the human's manual check in a browser), with the
-places of S6 and S7 left out until their step; docs describe what was built.
+and spec say (`ui-design/lad-292-v2/mockup.html` and `spec`: explanations behind ⓘ
+`InfoTip`, one panel per server, Replace token on the server, one result at a time; UI e2e
+of its scenarios, the human's manual check in a browser), with the github.com row (C1) and
+the certificate row (C7) left out until S6 and S7; the spec's C2–C6, C8, C9 built
+(#7234); docs describe what was built.
 Touches: the server kinds module, `doctor.py`, `clone.py`, `server/`, `web/src/` (Settings,
 the clone window), docs.
 Leftovers of S3 (ledger of LAD-291, the human's manual check report):
@@ -132,6 +135,9 @@ Leftovers of S3 (ledger of LAD-291, the human's manual check report):
 - Removing an author asks nothing (removing a server asks first); after Cancel in the
   author form the focus goes to the page, not back to ✎ (the same as Esc in S2) — for the
   mockup.
+- The critique of S4's mockup, F1–F6 (consider): "certificate not trusted" says what to do
+  now; the github.com ⓘ says how to sign in (with S6); the ⓘ outside the `h3`; ⓘ names by
+  the result; the ⓘ hit area not over the field on a phone; the Token tip not over the link.
 - F2: a remote with the host in another case or an explicit `:443` gets no author
   (documented); E2: with git older than 2.36 the refusal names only the first server with
   an author; E4: a failed write leaves a hidden temporary file in the agent's folder.
@@ -163,7 +169,8 @@ it when a GHE server is at hand, or name it as not checked.
 Touches: the server kinds module (github), `logins.py`, `agent_env.py`, `clone.py`
 (`_github_login`), `docker/Dockerfile` (the system helper for github.com), docs.
 Notes: decided at intake (D5). The analyst decides whether the entry is stored or derived
-from the existing login (one source of truth).
+from the existing login (one source of truth). The page's github.com row as S4's mockup and
+spec place it (§10, C1, #7234), with the critique's F2 (how to sign in).
 
 ### S7 — The company certificate
 Status: planned
@@ -174,7 +181,7 @@ the system's trust stores unchanged; the way back (above): after a rollback the
 certificate file stays unused under `LADO_HOME` and git for that host fails as before the
 step, checked by the upgrade and rollback test; docs describe what was built.
 Touches: the server kinds module, `agent_env.py`, `state.py`, `server/`, `web/src/`
-(Settings), docs.
+(Settings: the certificate row as S4's spec §10 places it, C7), docs.
 
 ### S8 — GitLab: `glab` in the image, agents open merge requests
 Status: planned
@@ -210,6 +217,9 @@ only — a candidate to run alongside S8 if the human asks for two at once.
    nothing that works today stops working. Asked when S6's brief is drafted.
 
 ## Later
+
+- An expired token shown on a closed row before Check (S4's mockup F7): its expiry date or a
+  stored last check, a schema change (#7234).
 
 - ssh for a server (an optional "ssh key" field, host key confirmation) — out by the
   statement; the server entry leaves room for it.

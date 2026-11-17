@@ -24,6 +24,26 @@ class GitLab(Kind):
             return None
         return super().refusal(answer)
 
+    def rights(self, root, token, answer, ask):
+        # The token's own facts, from GitLab 15.5 on; an older one answers 404.
+        told = ask(root + TOKEN_SELF, self.headers(token))
+        scopes = told.body.get("scopes") if isinstance(told.body, dict) else None
+        if told.status != 200 or not isinstance(scopes, list):
+            return None
+        return frozenset(scope for scope in scopes if isinstance(scope, str))
+
+    def granted(self, told):
+        # GitLab's docs: `api` grants clone and push over HTTPS; write_repository reads too.
+        granted = set(told)
+        if "api" in told:
+            granted |= {"read_repository", "write_repository"}
+        if "write_repository" in granted:
+            granted.add("read_repository")
+        return frozenset(granted)
+
+
+TOKEN_SELF = "/api/v4/personal_access_tokens/self"
+
 
 KIND = GitLab(
     name="gitlab",
@@ -34,4 +54,5 @@ KIND = GitLab(
     tool="glab",
     token_path="/-/user_settings/personal_access_tokens",
     scopes="scopes read_repository, write_repository, read_api",
+    needs=("read_repository", "write_repository"),  # read_api: its user API refuses without
 )

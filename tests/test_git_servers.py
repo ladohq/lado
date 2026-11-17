@@ -133,13 +133,15 @@ def test_github_is_told_with_its_login(serve):
 def test_both_kinds_are_asked_once_with_the_token_in_their_own_header(serve):
     server = serve("gitlab", token=TOKEN)
     git_servers.probe(git_servers.address(server.url), TOKEN)
-    assert server.paths() == [fake.GITHUB, fake.GITLAB]
+    # After GitLab's user, the token's own facts: its rights.
+    assert server.paths() == [fake.GITHUB, fake.GITLAB_TOKEN, fake.GITLAB]
     by_path = {r.path: r for r in server.requests}
     assert by_path[fake.GITLAB].headers["PRIVATE-TOKEN"] == TOKEN
     assert by_path[fake.GITHUB].headers["Authorization"] == f"token {TOKEN}"
     for request in server.requests:
         held = [name.lower() for name, value in request.headers.items() if TOKEN in value]
-        assert held == (["private-token"] if request.path == fake.GITLAB else ["authorization"])
+        gitlab = request.path in (fake.GITLAB, fake.GITLAB_TOKEN)
+        assert held == (["private-token"] if gitlab else ["authorization"])
         assert TOKEN not in request.path
 
 
@@ -185,6 +187,63 @@ def test_github_refusing_the_token(serve):
     refused = _refused(server.url)
     assert str(refused) == f"GitHub at {server.url} refuses the token"
     assert refused.hint == f"make a token at {server.url}/settings/tokens (scope repo)"
+
+
+NEITHER = "agents can neither clone nor push"
+CLONE_ONLY = "agents can clone but not push"
+
+
+@pytest.mark.parametrize(
+    ("profile", "kind", "missing", "checked", "lacks"),
+    [
+        ("gitlab-full", "gitlab", (), True, None),
+        ("gitlab-read", "gitlab", ("write_repository",), True, CLONE_ONLY),
+        ("gitlab-no-repo", "gitlab", ("read_repository", "write_repository"), True, NEITHER),
+        ("gitlab-api-only", "gitlab", (), True, None),  # api holds both
+        ("gitlab", "gitlab", (), False, None),  # before GitLab 15.5: 404
+        ("github-repo", "github", (), True, None),
+        ("github-no-repo", "github", ("repo",), True, NEITHER),
+        ("github-no-scopes", "github", ("repo",), True, NEITHER),
+        ("github", "github", (), False, None),  # a fine-grained token tells none
+    ],
+)
+def test_the_rights_of_a_token(serve, profile, kind, missing, checked, lacks):
+    server = serve(profile, token=TOKEN)
+    found = git_servers.probe(git_servers.address(server.url), TOKEN)
+    assert (found.kind.name, found.login) == (kind, fake.LOGIN)
+    assert (found.missing_scopes, found.rights_checked) == (missing, checked)
+    expected = f"the token lacks {', '.join(missing)}: {lacks}" if lacks else None
+    assert found.lacks() == expected
+    if kind == "gitlab":  # the token's own facts asked after its user, with the token
+        asked = [r for r in server.requests if r.path == fake.GITLAB_TOKEN]
+        assert [r.headers["PRIVATE-TOKEN"] for r in asked] == [TOKEN]
+
+
+def test_a_gitlab_whose_token_facts_refuse_tells_no_rights(serve):
+    server = serve("gitlab-full", token=TOKEN)
+    at = git_servers.address(server.url)
+    kind = git_kinds.by_name("gitlab")
+    user = model_servers.Answer(200, {"username": "a"})
+    for answer in (model_servers.Answer(401, {}), model_servers.Answer(why="unknown host")):
+        assert kind.rights(at.root, TOKEN, user, lambda url, headers, a=answer: a) is None
+
+
+def test_a_server_saved_without_a_check_has_no_rights(serve):
+    root = f"https://127.0.0.1:{closed_port()}"
+    checked = git_servers.probe(git_servers.address(root), TOKEN, "gitlab")
+    assert (checked.missing_scopes, checked.rights_checked, checked.lacks()) == ((), False, None)
+
+
+def test_add_saves_a_token_without_push_and_says_so(serve, lado_home):
+    server = serve("gitlab-read", token=TOKEN)
+    at = git_servers.address(server.url)
+    saved, replaced, checked = git_servers.add(at, lambda: TOKEN, None, lambda line: None)
+    assert (saved.login, replaced) == (fake.LOGIN, False)
+    assert checked.lacks() == f"the token lacks write_repository: {CLONE_ONLY}"
+    assert checked.replace_hint(at) == (
+        "replace it with a token with the scopes read_repository, write_repository, read_api: "
+        f"lado git-server add {server.url} --token"
+    )
 
 
 def test_a_gateway_refusing_every_kind_names_no_kind(serve):

@@ -253,6 +253,24 @@ def test_list_with_none(capsys):
     )
 
 
+def test_add_saves_a_token_without_push_and_warns(serve, capsys, lado_home):
+    server = serve("gitlab-read", token=TOKEN)
+    assert main(["git-server", "add", server.url, "--token"]) == 0
+    out, err = capsys.readouterr()
+    assert out.splitlines() == [
+        f"GitLab, signed in as {fake.LOGIN}",
+        f"Saved git server {server.url}.",
+        RESTART,
+    ]
+    assert err.splitlines() == [
+        PLAIN,
+        "lado: warning: the token lacks write_repository: agents can clone but not push",
+        "lado: replace it with a token with the scopes read_repository, write_repository, "
+        f"read_api: lado git-server add {server.url} --token",
+    ]
+    assert [s.login for s in state.git_servers()] == [fake.LOGIN]
+
+
 def test_remove_by_address(serve, capsys, lado_home):
     server = serve("gitlab")
     main(["git-server", "add", server.url, "--token"])

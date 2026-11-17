@@ -3,6 +3,7 @@ tests/fake_model_server.py (real HTTP on 127.0.0.1)."""
 
 import socket
 import time
+import urllib.request
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -378,6 +379,24 @@ def test_anthropic_version_goes_with_the_posts_and_one_list(serve):
     )
     assert versioned == sorted([("GET", fake.MODELS)] + [(m, p) for m, p in PROBED if m == "POST"])
     assert {r.headers["anthropic-version"] for r in server.requests} == {None, "2023-06-01"}
+
+
+def test_an_answer_keeps_its_headers_by_lowercase_name():
+    import fake_git_api
+
+    opener = urllib.request.build_opener(ms.NoRedirect())
+    for profile, status in (("github-repo", 200), ("github-refuses", 401)):
+        server = fake_git_api.Server(profile)
+        try:
+            answer = ms.ask(opener, server.url + fake_git_api.GITHUB, "GET", {}, 5)
+        finally:
+            server.close()
+        assert answer.status == status
+        assert answer.headers["content-type"] == "application/json"
+        assert ("x-oauth-scopes" in answer.headers) is (status == 200)
+        if status == 200:
+            assert answer.headers["x-oauth-scopes"] == "repo, read:org"
+    assert ms.ask(opener, f"http://127.0.0.1:{closed_port()}/", "GET", {}, 5).headers == {}
 
 
 def test_headers_of_each_request(serve):

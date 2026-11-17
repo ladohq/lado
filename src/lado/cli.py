@@ -1761,6 +1761,9 @@ def cmd_git_server_add(args: argparse.Namespace) -> int:
     if line := checked.line():
         print(line)
     print(f"{'Replaced' if replaced else 'Saved'} git server {saved.address}.")
+    if lacks := checked.lacks():
+        _warn_line(lacks)
+        print(f"lado: {checked.replace_hint(at)}", file=sys.stderr)
     print(git_servers.RESTART)
     return 0
 

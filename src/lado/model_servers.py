@@ -32,8 +32,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Collection, Iterable
-from dataclasses import dataclass
+from collections.abc import Collection, Iterable, Mapping
+from dataclasses import dataclass, field
 
 import lado
 from lado import providers, update
@@ -114,7 +114,8 @@ class ProbeError(Exception):
 
 @dataclass(frozen=True)
 class Answer:
-    """One request's answer: its status, or why there is none (`why`, `tls`)."""
+    """One request's answer: its status, or why there is none (`why`, `tls`); `headers` by
+    lowercase name, none without an HTTP answer (a git server's token scopes)."""
 
     status: int | None = None
     body: object = None  # the JSON it held; None for none or one too large
@@ -122,6 +123,7 @@ class Answer:
     location: str = ""  # a redirect's, without its query
     why: str = ""
     tls: bool = False
+    headers: Mapping[str, str] = field(default_factory=dict)
 
     def said(self) -> str:
         """The answer in a message: its status, a redirect with where it points."""
@@ -622,17 +624,18 @@ def ask(opener, url: str, method: str, headers: dict[str, str], timeout: float) 
 
 
 def _read(status: int, answer, location: str) -> Answer:
+    headers = {name.lower(): value for name, value in (answer.headers or {}).items()}
     try:
         raw = answer.read(MAX_ANSWER + 1)
     except (OSError, http.client.HTTPException):
         raw = b""
     if len(raw) > MAX_ANSWER:
-        return Answer(status, too_large=True, location=location)
+        return Answer(status, too_large=True, location=location, headers=headers)
     try:
         body = json.loads(raw)
     except ValueError:
         body = None
-    return Answer(status, body, location=location)
+    return Answer(status, body, location=location, headers=headers)
 
 
 def no_answer(reason: object) -> Answer:

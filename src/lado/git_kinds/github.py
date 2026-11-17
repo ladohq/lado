@@ -23,6 +23,13 @@ class GitHub(Kind):
                 return None
         return super().refusal(answer)
 
+    def rights(self, root, token, answer, ask):
+        # A classic token's scopes ride on every answer; a fine-grained token's do not.
+        scopes = answer.headers.get("x-oauth-scopes")
+        if scopes is None:
+            return None
+        return frozenset(scope.strip() for scope in scopes.split(",") if scope.strip())
+
 
 GITLAB_401 = "401 Unauthorized"  # GitLab's message for a missing or refused token
 
@@ -36,4 +43,5 @@ KIND = GitHub(
     tool="gh",
     token_path="/settings/tokens",
     scopes="scope repo",
+    needs=("repo",),  # clone and push alike
 )

@@ -3,6 +3,7 @@ answer is told, and what git and the human need of it."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -22,9 +23,28 @@ class Kind:
     tool: str  # the server's own command-line tool
     token_path: str  # the page where the human makes a token, under the root
     scopes: str  # what a token needs, in words
+    # The rights agents need of a token, the one to clone first; `rights` reads them.
+    needs: tuple[str, ...] = ()
 
     def headers(self, token: str) -> dict[str, str]:
         raise NotImplementedError
+
+    def rights(
+        self, root: str, token: str, answer: Answer, ask: Callable[[str, dict[str, str]], Answer]
+    ) -> frozenset[str] | None:
+        """The rights (scopes) the server says `token` has, by `answer`, its answer to
+        `request` that gave a login, and as many more requests as the kind needs (`ask`: a
+        URL and headers, with no redirect followed); None when it tells none."""
+        return None
+
+    def granted(self, told: frozenset[str]) -> frozenset[str]:
+        """The rights `told` grants: a broader right holds narrower ones."""
+        return told
+
+    def missing(self, told: frozenset[str]) -> tuple[str, ...]:
+        """The rights of `needs` a token with the rights `told` lacks, in `needs`' order."""
+        granted = self.granted(told)
+        return tuple(need for need in self.needs if need not in granted)
 
     def request(self, root: str, token: str | None) -> tuple[str, dict[str, str]]:
         """The URL and the headers of the request that tells this kind, carrying `token`;

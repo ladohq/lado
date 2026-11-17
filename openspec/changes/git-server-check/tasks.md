@@ -20,13 +20,13 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-17-git-server-c
 
 ## 2. The rights of a token
 
-- [ ] 2.1 `Answer.headers` (D2). Check: `tests/test_model_servers.py` (the headers of an
+- [x] 2.1 `Answer.headers` (D2). Check: `tests/test_model_servers.py` (the headers of an
   answer, lowercased; none without an answer).
-- [ ] 2.2 `Kind.needs` and `Kind.rights` for GitHub and GitLab (D3). Check:
+- [x] 2.2 `Kind.needs` and `Kind.rights` for GitHub and GitLab (D3). Check:
   `tests/test_git_servers.py` per kind against the fake API: GitLab's scopes all, without
   `write_repository`, without `read_repository`, `api` alone, 404; GitHub's header with
   `repo`, without, empty, absent.
-- [ ] 2.3 Add reads the rights and warns (D4). Check: `tests/test_git_servers.py`,
+- [x] 2.3 Add reads the rights and warns (D4). Check: `tests/test_git_servers.py`,
   `tests/test_cli_git_server.py` (the warning, exit 0, the server saved).
 
 ## 3. The check

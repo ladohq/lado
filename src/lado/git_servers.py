@@ -204,15 +204,36 @@ def check_token(token: str) -> None:
 @dataclass(frozen=True)
 class Checked:
     """What the probe found: the kind, the user the token signs in as (None: not checked),
-    and why it could not be checked ("" when it was)."""
+    why it could not be checked ("" when it was), the rights agents need that the token
+    lacks, and whether the server told the token's rights."""
 
     kind: Kind
     login: str | None
     unchecked: str = ""
+    missing_scopes: tuple[str, ...] = ()
+    rights_checked: bool = False
 
     def line(self) -> str | None:
         """`GitLab, signed in as <login>`; None for a server not checked."""
         return f"{self.kind.title}, signed in as {self.login}" if self.login else None
+
+    def lacks(self) -> str | None:
+        """`the token lacks <scopes>: agents can …`; None when it lacks none."""
+        return lacks(self.kind, self.missing_scopes)
+
+    def replace_hint(self, at: Address) -> str:
+        return f"replace it with a token with the {self.kind.scopes}: {ADD} {at.root} --token"
+
+
+def lacks(kind: Kind, missing: Sequence[str], page: bool = False) -> str | None:
+    """What a token lacking the rights `missing` of `kind` leaves agents, in the command's
+    words, or the page's (`page`: a sentence); None for none missing."""
+    if not missing:
+        return None
+    can = "neither clone nor push" if kind.needs[0] in missing else "clone but not push"
+    if page:
+        return f"The token lacks {', '.join(missing)}: agents can {can}."
+    return f"the token lacks {', '.join(missing)}: agents can {can}"
 
 
 def _kind_hint(root: str) -> str:
@@ -238,19 +259,44 @@ def _silent(answer: model_servers.Answer) -> str:
     return why
 
 
-def _ask_kinds(at: Address, token: str | None) -> list[model_servers.Answer]:
-    """Each kind's answer at `at`, in KINDS' order, all asked at once with `token` (None:
-    no credential), following no redirect, each request cut at model_servers' TIMEOUT."""
+AGENT = {"User-Agent": "lado"}
+
+
+def _opener():
     import urllib.request
 
     from lado import model_servers
 
-    opener = urllib.request.build_opener(model_servers.NoRedirect())
+    return urllib.request.build_opener(model_servers.NoRedirect())
+
+
+def _ask_kinds(at: Address, token: str | None) -> list[model_servers.Answer]:
+    """Each kind's answer at `at`, in KINDS' order, all asked at once with `token` (None:
+    no credential), following no redirect, each request cut at model_servers' TIMEOUT."""
+    from lado import model_servers
+
     asked = []
     for kind in git_kinds.KINDS:
         url, headers = kind.request(at.root, token)
         asked.append((url, "GET", headers))
-    return model_servers.ask_all(opener, asked, {"User-Agent": "lado"})
+    return model_servers.ask_all(_opener(), asked, AGENT)
+
+
+def _rights(
+    at: Address, token: str, kind: Kind, answer: model_servers.Answer
+) -> tuple[tuple[str, ...], bool]:
+    """The rights `kind`'s token lacks by `answer`, the answer that gave its login, and
+    whether the server told its rights: as `_ask_kinds` asks, one request at a time."""
+    from lado import model_servers
+
+    def ask(url: str, headers: dict[str, str]) -> model_servers.Answer:
+        (found,) = model_servers.ask_all(_opener(), [(url, "GET", headers)], AGENT)
+        return found
+
+    told = kind.rights(at.root, token, answer, ask)
+    if told is None:
+        return (), False
+    return kind.missing(told), True
 
 
 def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
@@ -262,16 +308,21 @@ def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
     by_kind = list(zip(git_kinds.KINDS, answers, strict=True))
     found = [(kind, login) for kind, answer in by_kind if (login := kind.login(answer))]
     chosen = git_kinds.by_name(kind_name) if kind_name else None
+
+    def checked(kind: Kind, login: str) -> Checked:
+        missing, told = _rights(at, token, kind, dict(by_kind)[kind])
+        return Checked(kind, login, missing_scopes=missing, rights_checked=told)
+
     if len(found) == 1:
         kind, login = found[0]
         if chosen is not None and chosen is not kind:
             raise Refused(
                 f"{at.root} answers as {kind.title}, not {chosen.title}", field=KIND_FIELD
             )
-        return Checked(kind, login)
+        return checked(kind, login)
     if found:
         if chosen is not None:
-            return Checked(chosen, dict(found)[chosen])
+            return checked(chosen, dict(found)[chosen])
         titles = " and as ".join(kind.title for kind, _ in found)
         which = " or ".join(f"--kind {kind.name}" for kind, _ in found)
         raise Refused(

@@ -54,9 +54,30 @@ GITLAB_SCOPE = Answer(
     {"error": "insufficient_scope", "error_description": "The request requires higher privileges"},
 )
 HANG = Answer(0)  # no answer: the request waits for the server's end
+GITLAB_TOKEN = "/api/v4/personal_access_tokens/self"  # GitLab 15.5 on: the token's own facts
+GITLAB_SCOPES = ("read_repository", "write_repository", "read_api")
+
+
+def gitlab_token(*scopes: str) -> Answer:
+    return Answer(200, {"id": 9, "name": "lado", "scopes": list(scopes), "active": True})
+
+
+def github_user(scopes: str) -> Answer:
+    """GitHub's user answer for a classic token: its scopes in `X-OAuth-Scopes`."""
+    return GITHUB_USER._replace(headers=(("X-OAuth-Scopes", scopes),))
+
 
 PROFILES: dict[str, dict[str, Answer]] = {
+    # A GitLab older than 15.5: no token's own facts, its rights not told.
     "gitlab": {GITLAB: GITLAB_USER},
+    "gitlab-full": {GITLAB: GITLAB_USER, GITLAB_TOKEN: gitlab_token(*GITLAB_SCOPES)},
+    "gitlab-read": {GITLAB: GITLAB_USER, GITLAB_TOKEN: gitlab_token("read_repository", "read_api")},
+    "gitlab-api-only": {GITLAB: GITLAB_USER, GITLAB_TOKEN: gitlab_token("api")},
+    "gitlab-no-repo": {GITLAB: GITLAB_USER, GITLAB_TOKEN: gitlab_token("read_api")},
+    # GitHub's user with a fine-grained token: no X-OAuth-Scopes.
+    "github-repo": {GITHUB: github_user("repo, read:org")},
+    "github-no-repo": {GITHUB: github_user("read:org")},
+    "github-no-scopes": {GITHUB: github_user("")},
     # As gitlab.com: GitHub's path refused as any other path of GitLab's API.
     "gitlab-com": {GITLAB: GITLAB_USER, GITHUB: GITLAB_401},
     "github": {GITHUB: GITHUB_USER},
@@ -87,7 +108,7 @@ def answer_for(profile: str, path: str, token: str | None, headers: Message) -> 
     it the kind's way gets that kind's 401; a refusal stays one."""
     found = PROFILES[profile].get(path, DEFAULTS.get(profile, NOT_FOUND))
     if token is not None and found.status == 200:
-        if path == GITLAB and headers.get("PRIVATE-TOKEN") != token:
+        if path in (GITLAB, GITLAB_TOKEN) and headers.get("PRIVATE-TOKEN") != token:
             return GITLAB_401
         if path == GITHUB and headers.get("Authorization") != f"token {token}":
             return GITHUB_401

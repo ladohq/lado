@@ -449,12 +449,26 @@ export const checkSessionModel = (cli: string, model: string, project: string | 
 export const clearModelDefault = (cli: string) => post<ModelSettings>(modelDefaultPath(cli), undefined, "DELETE");
 
 // Settings → Git servers (docs/design/ui.md): the saved git servers, read anew, no feed. A
-// refusal is a 400 whose `detail` is an EntryRefused.
+// refusal is a 400 whose `detail` is a GitEntryRefused (refusalOf, gitRefusalOf).
 export type GitServers = components["schemas"]["GitServers"];
 export type GitServerInfo = components["schemas"]["GitServerInfo"];
 export type GitKindInfo = components["schemas"]["GitKindInfo"];
 export type GitServerCheck = components["schemas"]["GitServerCheck"];
 export type GitServerAdded = components["schemas"]["GitServerAdded"];
+export type GitServerRemoved = components["schemas"]["GitServerRemoved"];
+export type GitServerChecked = components["schemas"]["GitServerChecked"];
+export type GitEntryRefused = components["schemas"]["GitEntryRefused"];
+
+// A refusal of the git servers' API, with whether the server's kind may be chosen.
+export function gitRefusalOf(error: unknown): GitEntryRefused {
+  const detail = (error instanceof ApiError ? error.detail : null) as Partial<GitEntryRefused> | null;
+  return { ...refusalOf(error), choose_kind: detail?.choose_kind === true };
+}
+
+// Check a saved server again with its saved token, as `lado git-server check`; a 404 for no
+// such server, a 422 for its token file missing.
+export const checkSavedGitServer = (host: string) =>
+  post<GitServerChecked>(`/api/git-servers/${encodeURIComponent(host)}/check`);
 
 export const getGitServers = () => get<GitServers>("/api/git-servers");
 
@@ -468,7 +482,7 @@ export const addGitServer = (address: string, token: string, kind: string | null
 
 // Remove the server of `host` (its host and port, as the list gives it) and its token.
 export const removeGitServer = (host: string) =>
-  post<GitServers>(`/api/git-servers/${encodeURIComponent(host)}`, undefined, "DELETE");
+  post<GitServerRemoved>(`/api/git-servers/${encodeURIComponent(host)}`, undefined, "DELETE");
 
 export type GitServerAuthorDone = components["schemas"]["GitServerAuthorDone"];
 const gitAuthorPath = (host: string) => `/api/git-servers/${encodeURIComponent(host)}/author`;

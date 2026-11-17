@@ -46,16 +46,16 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-17-git-server-c
 
 ## 4. The page
 
-- [ ] 4.1 `InfoTip`'s `place`, the heading wrapper, the phone field head (D17). Check:
+- [x] 4.1 `InfoTip`'s `place`, the heading wrapper, the phone field head (D17). Check:
   `web/src/InfoTip.test.tsx`, `make web`.
-- [ ] 4.2 The rows and panels, Sign-in with Check and its results, the closed row's line 2
+- [x] 4.2 The rows and panels, Sign-in with Check and its results, the closed row's line 2
   of this visit (D1, D16). Check: `web/src/GitServers.test.tsx`.
-- [ ] 4.3 Replace token with its states, save without a check (D15). Check:
+- [x] 4.3 Replace token with its states, save without a check (D15). Check:
   `web/src/GitServers.test.tsx`.
-- [ ] 4.4 Commit author in the panel with Undo; Remove server in the foot; Add's states
+- [x] 4.4 Commit author in the panel with Undo; Remove server in the foot; Add's states
   (already saved → Replace its token, github.com, lost server, missing scope on done); one
   result at a time; the focus table. Check: `web/src/GitServers.test.tsx`.
-- [ ] 4.5 UI e2e of the specs' scenarios against a fake API, no network: Add (every state),
+- [x] 4.5 UI e2e of the specs' scenarios against a fake API, no network: Add (every state),
   Check (every outcome), Replace token (done, another user, refused, no answer), the author
   with Undo, Remove server, the focus after each action, one result line, the canary token;
   at 1440, 768 and 390 with no horizontal scroll; screenshots. Check: `uv run pytest -m ui
@@ -63,14 +63,15 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-17-git-server-c
 
 ## 5. End to end
 
-- [ ] 5.1 Integration: a worker's commit in its own worktree of a session's repository cloned
+- [x] 5.1 Integration: a worker's commit in its own worktree of a session's repository cloned
   by LADO from the local https server carries the server's author; a remote written
-  `https://GIT.test:8443/…` too. Check: `uv run pytest -m integration
+  `https://GIT.test:8443/…` too (built as `https://LocalHost:<port>/…`: the local server is
+  reached as localhost, the name its certificate holds, with no DNS of its own). Check: `uv run pytest -m integration
   tests/integration/test_git_server_author.py`.
 
 ## 6. Docs and the pull request
 
-- [ ] 6.1 `docs/cli.md` (`lado git-server check`, the rights, the warning, the removal's
+- [x] 6.1 `docs/cli.md` (`lado git-server check`, the rights, the warning, the removal's
   warning, the trailing dot, the author's forms), `docs/design/ui.md` (Git servers by the new
   layout, the routes and fields), `docs/design/modules.md` (`git_servers.check`, `Kind.rights`,
   the lock), CHANGELOG.md (the 0.48.0 git servers entry gains Check). Check: `uv run pytest

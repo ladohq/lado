@@ -919,14 +919,24 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     Ollama's running model, a list's `max_input_tokens`, `context_length` or `max_model_len`, with
     `max_output_tokens` or `top_provider.max_completion_tokens`; never raises); standard library only,
     the key only in the requests' headers. `ask`, `ask_all`, `no_answer`, `NoRedirect` and
-    `Answer` are its request path, shared with the git server probe.
+    `Answer` (its `headers` by lowercase name, read by a git kind's `rights`) are its request
+    path, shared with the git server probe.
   - `git_kinds/`: the kinds of git server, one module each (`github.py`, `gitlab.py`, the
     frozen `base.Kind`: the user API's request with the token in the kind's header, the
     login told from its answer as one line of visible text, the refusal of a token, the user
-    name git sends, the host tool, the token page and its scopes); `KINDS` in `__init__.py`
-    is the one list of them (`--kind`'s choices, the probe's requests).
-  - `git_servers.py`: the human's git servers (`lado git-server add|list|remove`): `address`
-    (`https://` added, a path kept, the default port dropped; its `key`, host and port, is
+    name git sends, the host tool, the token page and its scopes; `needs`, the rights agents
+    need of a token, the one to clone first, and `rights`, the rights the server tells of it:
+    GitHub's `X-OAuth-Scopes`, GitLab's `personal_access_tokens/self`, whose `api` grants both
+    repository rights (`granted`); None when it tells none); `KINDS` in `__init__.py` is the one
+    list of them (`--kind`'s choices, the probe's requests).
+  - `git_servers.py`: the human's git servers (`lado git-server add|list|check|remove`):
+    `check` (a saved server asked again with its saved token, judged by its saved kind: a
+    `Check` with its outcome, the rights it lacks and its lines in the command's and the page's
+    words, the one check of the command and the API; a passing one saves its login), the
+    token's rights read at `add` too (`Checked.missing_scopes`, `lacks`), `_locked` (one flock
+    of `<LADO_HOME>/git-servers.lock` around a save, a removal and a check's login write, 10 s,
+    never while a server is asked), `address`
+    (`https://` added, a path kept, the default port and a trailing dot dropped; its `key`, host and port, is
     the server's identity; `BadAddress` with its line for the page), `check_not_github`,
     `check_host` (one server per host name: git's ssh forms carry no port; checked again by
     `state.save_git_server` inside its write, `HostTaken`), `check_token`, `probe` (every kind
@@ -938,8 +948,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     lado.db's `git_servers` and the token file `<LADO_HOME>/git-servers/<id>/token` by
     `project_secrets.write_at`/`remove_at`: a new server's file first, a replaced one's row
     first, its id kept; `git-servers/` itself goes once empty, and a write whose folder went
-    under it tries once more). `Refused` carries the form `field` it concerns and `page`/
-    `page_hint`, its words without a command. `variables` (per server an empty `credential.<origin>.helper`, then
+    under it tries once more; a removal whose folder stays is `Removed.warning`). `Refused`
+    carries the form `field` it concerns, `page`/`page_hint`, its words without a command, and
+    `choose_kind` for a server that gave no HTTP answer. `variables` (per server an empty `credential.<origin>.helper`, then
     `helper_command`, then three `url.<root>/.insteadOf` of its ssh forms, numbered after
     the environment's own `GIT_CONFIG_COUNT`; nothing for no server; with `authors`, an
     agent's, `author_entries` after each server's own), `server_for` (the
@@ -1357,7 +1368,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `git_servers.py`: `listing` (asks no server; empty with no lado.db), `check` (the add
     form's check, saving nothing: the address's, host name's and git's refusals, which ask no
     server, then the plain-http warning, whether it is saved and `git_servers.hint`), `add`
-    (`git_servers.add` with the token of `GitServerAdd`, the saved line), `set_author`/
+    (`git_servers.add` with the token of `GitServerAdd`, the saved line, the page's warning of
+    a token without a right), `check_saved` (`git_servers.check` by the server's host and port;
+    a 404 for no such server, a 422 for a missing token file: `Refusal.status`), `set_author`/
     `clear_author` (the commit author by the server's host and port, the command's line) and
     `remove` (by the server's host and port); each refusal a `model_entries.Refusal` with the core's page words
     and field; the token comes in only in `GitServerAdd`, whose route is in

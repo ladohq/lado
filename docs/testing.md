@@ -557,3 +557,46 @@ every edit of the file and rarely finds a bug unless it checks a property, so a 
 - **Keeps the guards.** A security setting (an image pinned by digest, a workflow's
   permissions, no piped install), a check that must exist for `ci-ok`, a property of a
   reported bug: these stay as they are, even when they read the text.
+
+## When to add, merge or remove a test
+
+The test audit (docs/research/test-audit.md) found four of five unit test functions
+running no branch of their own, and hundreds that caught no mutant another test did not:
+a test added for each fix, and the one it made redundant left in place. So that the suite
+does not grow back the same way:
+
+- **A new test fails without the change.** Before adding a test for a bug or a behaviour,
+  run the existing tests with the change reverted: when one fails on it, that is its test;
+  extend its assertion or its table instead of adding a function. A new test is added when
+  none fails, and is seen failing once.
+- **One table, not copies.** Tests that differ only in their input and expected result are
+  one `pytest.mark.parametrize`d test, its cases named by `ids` where a value says nothing;
+  tests that check different things on the same path stay apart.
+- **The lowest layer, once.** What a unit test checks is not checked again in an
+  integration or browser test, unless that layer catches what the unit cannot (a process
+  crossing, a real browser's layout, a real CLI). Of a module tested through two layers,
+  the lower one holds the cases, the higher one the path through.
+- **A change takes its stale tests with it.** A change that replaces a behaviour, or moves
+  its check to another layer, rewrites or removes the tests of the old one in the same
+  pull request. A test that the old wording or the old way must not come back is not
+  added, unless it guards a reported bug.
+- **What stays.** A test is removed only under the rules of section 5 of the audit: never
+  one of a reported bug (its task id in `git log`, LAD-...), of SQL in a string, of a
+  layout or of what only a real browser does, nor a guard of a secret; the pull request
+  lists each removed test with its reason.
+
+**The count.** CI's job `unit (3.14)` writes the Python tests per layer, functions and
+cases (`scripts/test_counts.py`, which collects and runs nothing), to the run's summary: a
+pull request's next to main's last run shows what it adds.
+
+**Mutation testing, by hand.** For a module whose tests look too many or too weak, the
+workflow `Mutants` (`.github/workflows/mutants.yml`; `gh workflow run mutants.yml -f
+module=src/lado/flows.py -f tests=tests/test_flows.py`) measures the unit tests' coverage
+per test, runs each mutant of the module against the tests of its line and, with a test
+file, lists that file's tests that catch no mutant and run no branch another test does
+not. The kill matrix and the list are the run's artifact `mutants`; a list is candidates,
+never removals, until the rules above and section 5 say so. Hours for a large module
+(`cli.py` about seven on six jobs), the job's limit six; a run that timed out uploads its
+`kills.json.partial`, from which `scripts/mutants.py run` with the same arguments goes on.
+Locally: `scripts/mutants.py measure <dir>`, then `run` and `removable` (the script's
+docstring; the tests of a module's other layers through `measure <dir> -- -m integration`).

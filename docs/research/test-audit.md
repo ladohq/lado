@@ -889,6 +889,36 @@ functions (454 → 361 cases), 2 614 → 2 074 lines.
   once in the whole run and passed alone and in three runs of its file: a flake of a file
   the removal does not touch.
 
+### Stage 6 (2026-11-18, branch `chore/test-audit-stage-6`): the guardrails, and stage 2
+
+**Stage 2 is a rule, not a pass.** Its 201 groups (514 functions) were measured before
+stages 1, 3, 4 and 5 removed about 730 test functions; what is left of them differs in the
+checks more often than in the data, and turning copies into a table drops functions and
+lines, not checks. So the old groups are not rewritten one by one: the rule "one table,
+not copies" holds for every new test, and a group is turned into a table when its module
+changes.
+
+**The rules** are in docs/testing.md, "When to add, merge or remove a test" (AGENTS.md's
+Testing points to it within its 200 lines): a new test fails without the change, one table
+not copies, the lowest layer once, a change takes its stale tests with it, and what stays
+(section 5). The rules of a test of a file that is not Python are the section before it
+(stage 3).
+
+**The count.** `scripts/test_counts.py` collects the Python tests (no `-m`: every layer)
+and writes their functions and cases per layer as a table; CI's job `unit (3.14)` puts it
+in the run's summary. On this branch: unit 3 905 functions (5 678 cases), integration 298
+(309), ui 482 (619), smoke 32 (67), live 7 (22), container 61 (64); 4 785 (6 759) in all.
+vitest and the plugin's tests count in their own jobs' logs.
+
+**Mutation testing by hand.** The workflow `Mutants` (`.github/workflows/mutants.yml`,
+`workflow_dispatch`: a module, optionally a test file to judge) runs
+`scripts/mutants.py measure`, `run` and `removable` and uploads the kill matrix and the
+candidates. Not nightly: a large module takes hours (`cli.py` about seven on six jobs,
+`claude.py` 2.6), a runner's whole night for one module, and the candidates still need a
+person's reading of section 5. `measure` is new: the recipe of stage 0 (the two coverage
+configs, the subprocesses' context, `ctrace`, the combine) in one command, which exits
+with pytest's code, as a test red without a mutant would kill every mutant it runs.
+
 ## 7. Sources
 
 - coverage.py, Measurement contexts: https://coverage.readthedocs.io/en/latest/contexts.html

@@ -1,9 +1,18 @@
 """Mutation testing for the test audit: which tests catch which bug, and which tests of a
 file catch nothing the others do not.
 
+    python scripts/mutants.py measure <dir> [--package NAME] [-- pytest arguments]
     python scripts/mutants.py run <module> <.coverage> <out.json> [--jobs N] [--timeout S]
         [--kinds compare,...] [--also <file of node ids>] [--judge <test file>] [--enough N]
     python scripts/mutants.py removable <test file> <.coverage> <kills.json>... [--json OUT]
+
+`measure` measures the coverage database `run` and `removable` read: each test's lines and
+branches, also those of the processes it starts, into `<dir>/sub/.coverage` (the recipe of
+docs/research/test-audit.md, stage 0, with its two configs written to `<dir>`). It runs
+pytest with the given arguments (`-n auto` and the default layer when none are given) and
+exits with pytest's code after the database is written: a test that fails without a mutant
+would count as a killer of every mutant it runs, so a red measure is fixed or its tests
+deselected before `run`.
 
 `run` makes each mutant of one module of `src/` (one small change of its code: a
 comparison turned round, a condition negated, a constant changed, a call or a `raise`
@@ -300,6 +309,47 @@ def key(row: dict) -> tuple:
     return row.get("module", ""), row["line"], row["kind"], row["detail"], row["nth"]
 
 
+def configs(out: Path, package: str) -> tuple[Path, Path]:
+    """The coverage configs of a measure: pytest's own processes, and every process they
+    start, whose context is the test that started it (tests/conftest.py's
+    LADO_TEST_ID). `core = ctrace`: from Python 3.14 the default core records no context."""
+    common = f"[run]\nbranch = true\nsource_pkgs = {package}\nparallel = true\ncore = ctrace\n"
+    if Path("scripts").is_dir():
+        common += "source = scripts\n"
+    rc, sub = out / "rc", out / "sub.rc"
+    rc.write_text(common + f"data_file = {out / '.coverage'}\n")
+    sub.write_text(
+        common + f"data_file = {out / 'sub' / '.coverage'}\nsigterm = true\n"
+        "context = ${LADO_TEST_ID}\n"
+    )
+    return rc, sub
+
+
+def measure(args) -> int:
+    out = Path(args.dir).resolve()
+    (out / "sub").mkdir(parents=True, exist_ok=True)
+    rc, sub = configs(out, args.package)
+    env = {**os.environ, "COVERAGE_CORE": "ctrace", "COVERAGE_PROCESS_START": str(sub)}
+    rest = args.pytest or ["-n", "auto"]
+    tests = [sys.executable, "-m", "pytest", "--cov", f"--cov-config={rc}",
+             "--cov-context=test", "--cov-report=", *rest]  # fmt: skip
+    code = subprocess.run(tests, env=env).returncode
+    if not (out / ".coverage").exists():
+        print(f"pytest exited {code} and measured nothing", file=sys.stderr)
+        return code or 1
+    shutil.copy(out / ".coverage", out / "sub" / ".coverage.main")
+    combine = [
+        sys.executable,
+        "-m",
+        "coverage",
+        "combine",
+        f"--data-file={out / 'sub' / '.coverage'}",
+    ]
+    subprocess.run([*combine, str(out / "sub")], env=env, check=True)
+    print(f"{out / 'sub' / '.coverage'}" + (f"; pytest exited {code}" if code else ""))
+    return code
+
+
 def run(args) -> None:
     repo = Path.cwd()
     module = Path(args.module).resolve()
@@ -433,6 +483,11 @@ def report(args) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     commands = parser.add_subparsers(dest="command", required=True)
+    zero = commands.add_parser("measure", help="the coverage database, per test")
+    zero.add_argument("dir", help="where the configs and the database go")
+    zero.add_argument("--package", default="lado", help="the package measured")
+    zero.add_argument("pytest", nargs="*", help="pytest's arguments, after --")
+    zero.set_defaults(go=measure)
     one = commands.add_parser("run", help="the kill matrix of one module")
     one.add_argument("module", help="a module under src/, run from the repository's root")
     one.add_argument("coverage", help="a .coverage file measured per test")
@@ -455,7 +510,7 @@ def main() -> None:
     two.add_argument("--json")
     two.set_defaults(go=report)
     args = parser.parse_args()
-    args.go(args)
+    sys.exit(args.go(args) or 0)
 
 
 if __name__ == "__main__":

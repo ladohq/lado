@@ -76,5 +76,5 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-17-git-server-c
   layout, the routes and fields), `docs/design/modules.md` (`git_servers.check`, `Kind.rights`,
   the lock), CHANGELOG.md (the 0.48.0 git servers entry gains Check). Check: `uv run pytest
   tests/test_agents_md.py`, the docs checks of `make lint`.
-- [ ] 6.2 The regression run and the pull request's description with the manual check of the
+- [x] 6.2 The regression run and the pull request's description with the manual check of the
   design doc.

@@ -49,6 +49,22 @@ GITHUB_401 = Answer(
         "status": "401",
     },
 )
+# GitLab's 401 for a token it knows but no longer takes: OAuth's words, no message.
+GITLAB_REVOKED = Answer(
+    401,
+    {
+        "error": "invalid_token",
+        "error_description": "Token was revoked. You have to re-authorize from the user.",
+    },
+)
+GITLAB_EXPIRED = Answer(
+    401,
+    {
+        "error": "invalid_token",
+        "error_description": "Token is expired. You can either do re-authorization or token "
+        "refresh.",
+    },
+)
 GITLAB_SCOPE = Answer(
     403,
     {"error": "insufficient_scope", "error_description": "The request requires higher privileges"},
@@ -82,6 +98,9 @@ PROFILES: dict[str, dict[str, Answer]] = {
     "gitlab-com": {GITLAB: GITLAB_USER, GITHUB: GITLAB_401},
     "github": {GITHUB: GITHUB_USER},
     "gitlab-refuses": {GITLAB: GITLAB_401},
+    # gitlab.com with a revoked or expired token: GitHub's path refused as any other.
+    "gitlab-revoked": {GITLAB: GITLAB_REVOKED, GITHUB: GITLAB_401},
+    "gitlab-expired": {GITLAB: GITLAB_EXPIRED, GITHUB: GITLAB_401},
     "github-refuses": {GITHUB: GITHUB_401},
     "gitlab-scope": {GITLAB: GITLAB_SCOPE},
     "both": {GITLAB: GITLAB_USER, GITHUB: GITHUB_USER},

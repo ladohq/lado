@@ -795,7 +795,9 @@ https without a password (`git_servers.py`, lado.db's `git_servers`, schema 41; 
 author from schema 42). The address
 takes `https://` when it has none, keeps a path (`https://example.com/gitlab`) and drops a
 trailing dot of the host (`gitlab.corp.ru.` is `https://gitlab.corp.ru`); a user or
-password, a query, a fragment or another scheme is refused with exit 2 (`not a git server's
+password, a query, a fragment, another scheme, a space, tab or control character, or a
+host name with a character other than a letter, a digit, `-`, `.` and `_` is refused with
+exit 2 (`not a git server's
 address: <why>`, never naming the address). `github.com` (and `www.`, `api.`) is refused
 before the token is asked: it is reached through gh's login (`GH_TOKEN` or `gh auth login`)
 as before. The token is asked without echo (`Token of the server (not shown): `) or read from

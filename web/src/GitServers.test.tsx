@@ -633,6 +633,22 @@ test("Cancel closes Add, empties the token and gives the focus back to + Add ser
   expect(addButton).toBeTruthy();
 });
 
+test("one form at a time: a panel's form closes Add, Add closes a panel's form, the panel stays open", async () => {
+  fake.servers = [CORP];
+  await mount();
+  press("Add server");
+  openRow(CORP);
+  press(`Replace the token of ${CORP.address}`);
+  expect(screen.queryByRole("textbox", { name: "Address" })).toBeNull();
+  expect(screen.getByRole("textbox", { name: "New token" })).toBeTruthy();
+  press("Add server");
+  expect(screen.queryByRole("textbox", { name: "New token" })).toBeNull();
+  expect(addressField()).toBeTruthy();
+  press(`Edit the commit author of ${CORP.address}`);
+  expect(screen.queryByRole("textbox", { name: "Address" })).toBeNull();
+  expect(button(CORP.address).getAttribute("aria-expanded")).toBe("true");
+});
+
 // Answers that come late, after another action.
 
 // A fetch answer the test lets go when it says.

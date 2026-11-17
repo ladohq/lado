@@ -131,6 +131,15 @@ its token from Add → the New token field.
 - **WHEN** `✓ Token replaced: …` shows and the human presses `Check` on another server
 - **THEN** only that check's result shows on the page
 
+### Requirement: The page has one form open at a time
+
+At most one form SHALL be open on the page: opening the add form SHALL close a panel's
+form, and opening a panel's form SHALL close the add form; open panels SHALL stay open.
+
+#### Scenario: One form at a time
+- **WHEN** the add form is open and the human presses `Replace token` in an open panel
+- **THEN** the add form closes and the Replace token form opens; the panel stays open
+
 ### Requirement: Add leads an address already saved to its server
 
 For an address already saved the add form SHALL say `Already saved.` with `Replace its

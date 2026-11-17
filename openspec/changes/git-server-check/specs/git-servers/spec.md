@@ -17,7 +17,9 @@ a missing token file, with no request sent for those two; 2 for an address it do
   exit status is 0
 
 #### Scenario: An expired token
-- **WHEN** the server answers the saved token with its own 401
+- **WHEN** the server answers the saved token with its own 401: GitLab's
+  `{"message": "401 Unauthorized"}`, or its `{"error": "invalid_token", "error_description":
+  …}` for a revoked or expired token, or GitHub's `Bad credentials`
 - **THEN** stderr has `lado: GitLab refused the token: it expired or was revoked` and the hint
   `replace it: lado git-server add https://gitlab.corp.ru --token`, and the exit status is 1
 
@@ -148,8 +150,15 @@ as the address as saved does.
 `add` SHALL take an address with or without a scheme, `https://` when none. It SHALL keep
 a path (a server under `https://corp.ru/gitlab`), drop a trailing `/`, drop a trailing `.`
 of the host name, and refuse with exit 2 an address with a user, a password, a query or a
-fragment, or a scheme other than `https` and `http`. `http://` SHALL be taken with the
-warning that the token goes to the host unencrypted.
+fragment, a scheme other than `https` and `http`, a space, tab or control character
+anywhere, or a host name with a character other than a letter, a digit, `-`, `.` and `_`.
+`http://` SHALL be taken with the warning that the token goes to the host unencrypted.
+`check`, `author` and `remove` SHALL take and refuse an address the same way.
+
+#### Scenario: An address with a space
+- **WHEN** the human runs `lado git-server check 'not a url'` or `lado git-server add
+  'not a url' --token`
+- **THEN** it exits 2 with `not a git server's address: …`, and no server is asked
 
 #### Scenario: No scheme
 - **WHEN** the human adds `gitlab.corp.ru/`

@@ -121,6 +121,8 @@ def address(text: str) -> Address:
     text = text.strip()
     if not text:
         raise BadAddress("no address given")
+    if any(char.isspace() or not char.isprintable() for char in text):
+        raise BadAddress("a git server's address holds no space, tab or control character")
     if "://" not in text and "@" not in text.split("/", 1)[0]:
         text = "https://" + text
     try:
@@ -146,6 +148,8 @@ def address(text: str) -> Address:
     host = (host or "").rstrip(".")
     if not host:
         raise BadAddress("the address names no host")
+    if ":" not in host and not all(char.isalnum() or char in "-._" for char in host):
+        raise BadAddress("a host name holds only letters, digits, '-', '.' and '_'")
     shown = f"[{host}]" if ":" in host else host
     if port is not None and port != (443 if scheme == "https" else 80):
         shown += f":{port}"

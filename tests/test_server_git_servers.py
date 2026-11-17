@@ -186,8 +186,9 @@ def test_add_refuses_the_address(client, address, field, message):
     assert state.git_servers() == []
 
 
-def test_a_wrong_token_is_refused_under_token(client, serve, lado_home):
-    server = serve("gitlab-refuses")
+@pytest.mark.parametrize("profile", ["gitlab-refuses", "gitlab-revoked"])
+def test_a_wrong_token_is_refused_under_token(client, serve, lado_home, profile):
+    server = serve(profile)
     detail = refused(add(client, server.url))
     # The page's words: the Token field shows the token page beside it.
     assert detail["message"] == "GitLab refused this token: copy it whole or make a new one."
@@ -498,6 +499,20 @@ def post_check(client, host):
             "gitlab",
             "token_refused",
             "GitLab refused the token: it expired or was revoked.",
+            "",
+        ),
+        (
+            "gitlab-revoked",
+            "gitlab",
+            "token_refused",
+            "GitLab refused the token: it expired or was revoked.",
+            "",
+        ),
+        (
+            "github-refuses",
+            "github",
+            "token_refused",
+            "GitHub refused the token: it expired or was revoked.",
             "",
         ),
         (

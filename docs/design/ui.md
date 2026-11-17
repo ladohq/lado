@@ -1919,6 +1919,8 @@ connection, above).
   scrolling box around it does not cut it: from the button's left edge, Stop's from its
   right edge, and moved along, measured with its own width, so it stays 8px inside both of
   the window's edges (a Copy link near the window's right edge, e.g. an artifact's panel).
+  It is placed again when the window is resized, so it moves with its button (an info
+  button's tip too).
 - **Forget** asks in a modal window: the history is deleted for good, the worktrees and
   branches left on disk (`forget-preview`), and with open runs a box to tick
   ("Also forget its N open runs (…)") before `Forget <name>` can be pressed. After it,

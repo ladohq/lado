@@ -65,6 +65,10 @@ def _refused(address, token=TOKEN, kind=None) -> git_servers.Refused:
         ("gitlab.corp.ru.", "https://gitlab.corp.ru", "gitlab.corp.ru"),
         ("https://GitLab.corp.ru.:443/gitlab", "https://gitlab.corp.ru/gitlab", "gitlab.corp.ru"),
         ("git.test..:8443", "https://git.test:8443", "git.test:8443"),
+        (" gitlab.corp.ru \n", "https://gitlab.corp.ru", "gitlab.corp.ru"),
+        ("git_lab.corp.ru", "https://git_lab.corp.ru", "git_lab.corp.ru"),
+        ("https://[::1]:8443", "https://[::1]:8443", "[::1]:8443"),
+        ("гитлаб.рф", "https://гитлаб.рф", "гитлаб.рф"),
     ],
 )
 def test_an_address_and_its_host(text, root, key):
@@ -85,6 +89,14 @@ def test_an_address_and_its_host(text, root, key):
         ("...", "names no host"),
         ("https://.:8443", "names no host"),
         ("https://gitlab.corp.ru:99999", "port"),
+        ("not a url", "holds no space"),
+        ("https://git lab.corp.ru", "holds no space"),
+        ("gitlab.corp.ru/my group", "holds no space"),
+        ("gitlab.corp.ru\t/x", "holds no space"),
+        ("gitlab.corp.ru/\x00", "holds no space"),
+        ("gitlab,corp.ru", "only letters, digits"),
+        ("git%20lab.corp.ru", "only letters, digits"),
+        ("https://[::1", "port"),
     ],
 )
 def test_an_address_refused(text, why):
@@ -172,8 +184,9 @@ def test_kind_against_the_answer_is_refused(serve):
 
 
 @pytest.mark.parametrize("kind", [None, "gitlab"])
-def test_a_refused_token_is_refused_with_its_page_even_with_kind(serve, kind):
-    server = serve("gitlab-refuses")
+@pytest.mark.parametrize("profile", ["gitlab-refuses", "gitlab-revoked", "gitlab-expired"])
+def test_a_refused_token_is_refused_with_its_page_even_with_kind(serve, kind, profile):
+    server = serve(profile)
     refused = _refused(server.url, kind=kind)
     assert str(refused) == f"GitLab at {server.url} refuses the token"
     assert refused.hint == (
@@ -842,7 +855,12 @@ def test_a_check_of_a_server_that_works(serve, lado_home, profile, kind, text, p
 
 @pytest.mark.parametrize(
     ("profile", "kind", "title"),
-    [("gitlab-refuses", "gitlab", "GitLab"), ("github-refuses", "github", "GitHub")],
+    [
+        ("gitlab-refuses", "gitlab", "GitLab"),
+        ("gitlab-revoked", "gitlab", "GitLab"),
+        ("gitlab-expired", "gitlab", "GitLab"),
+        ("github-refuses", "github", "GitHub"),
+    ],
 )
 def test_a_check_of_a_refused_token(serve, lado_home, profile, kind, title):
     server = serve(profile)
@@ -1236,7 +1254,11 @@ def test_the_page_words_of_the_add_form(serve, monkeypatch):
     with pytest.raises(git_servers.Refused) as raised:
         git_servers.check_not_github(git_servers.address("github.com"))
     assert raised.value.page == "github.com uses the GitHub CLI's login: it is not added here."
-    for profile, title in (("gitlab-refuses", "GitLab"), ("github-refuses", "GitHub")):
+    for profile, title in (
+        ("gitlab-refuses", "GitLab"),
+        ("gitlab-revoked", "GitLab"),
+        ("github-refuses", "GitHub"),
+    ):
         refused = _refused(serve(profile).url)
         assert refused.page == f"{title} refused this token: copy it whole or make a new one."
         assert refused.page_hint == ""

@@ -53,7 +53,7 @@ export function placeAbove(
 // Where the menu or popover `floating` goes: fixed under `anchor` (or over it, `above`), so
 // a scrolling box around it (the session list, the session's page) does not cut it, and
 // inside the window (placeBelow, placeAbove). Placed again after each render, as what it
-// shows may change its width.
+// shows may change its width, and when the window is resized, as its anchor moves then.
 export function useBelow(
   anchor: RefObject<HTMLElement | null>,
   floating: RefObject<HTMLElement | null>,
@@ -62,6 +62,13 @@ export function useBelow(
   above = false,
 ): CSSProperties | undefined {
   const [style, setStyle] = useState<CSSProperties | undefined>(undefined);
+  const [, setResized] = useState(0);
+  useEffect(() => {
+    if (!open) return;
+    const again = () => setResized((count) => count + 1);
+    window.addEventListener("resize", again);
+    return () => window.removeEventListener("resize", again);
+  }, [open]);
   useLayoutEffect(() => {
     const box = anchor.current?.getBoundingClientRect();
     if (!open || !box) return;

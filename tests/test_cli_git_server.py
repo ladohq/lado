@@ -378,8 +378,11 @@ def test_check_with_the_token_file_missing_sends_nothing(serve, capsys, lado_hom
 
 
 def test_check_of_an_address_it_does_not_take(capsys, lado_home):
-    assert main(["git-server", "check", "ssh://git@git.lan"]) == 2
-    assert "not a git server's address" in capsys.readouterr().err
+    for text in ("ssh://git@git.lan", "not a url"):
+        assert main(["git-server", "check", text]) == 2
+        assert "not a git server's address" in capsys.readouterr().err
+    assert main(["git-server", "add", "not a url", "--token"]) == 2
+    assert "holds no space" in capsys.readouterr().err
     with pytest.raises(SystemExit) as raised:
         main(["git-server", "check"])
     assert raised.value.code == 2

@@ -15,6 +15,11 @@
   servers says in one line whether the saved token still works and has the rights agents need
   to clone and push; a token without them is saved with a warning. Replace token on its row.
 
+### Fixed
+
+- **An open tip or menu follows its button.** When the window is resized, an open ⓘ tip or
+  menu moves with its button instead of staying where it was.
+
 ## 0.47.0 (2026-11-15)
 
 ### Fixed

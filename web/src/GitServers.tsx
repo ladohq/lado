@@ -286,11 +286,13 @@ export function GitServersPage() {
     else if (line.way === "undo" && line.undo) undoAuthor(server, line.undo);
     else if (line.way === "replace") {
       act();
+      setAdding(0); // one form at a time on the page
       setForm({ host: server.host, what: "replace" });
     }
   };
   const toggleForm = (host: string, what: Form["what"]) => {
     act();
+    setAdding(0); // one form at a time on the page
     setForm((now) => (now?.host === host && now.what === what ? null : { host, what }));
   };
   const closeForm = (key: string) => {

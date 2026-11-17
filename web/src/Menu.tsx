@@ -41,7 +41,8 @@ export function placeAbove(
   width: number,
   viewport: { width: number; height: number },
 ): CSSProperties {
-  const across = placeBelow({ ...anchor, bottom: 0 }, width, viewport.width);
+  // Its fields by name: a DOMRect's are getters, which a spread leaves out.
+  const across = placeBelow({ left: anchor.left, right: anchor.right, bottom: 0 }, width, viewport.width);
   return { ...across, top: "auto", bottom: viewport.height - anchor.top + 6 };
 }
 

@@ -85,6 +85,11 @@ describe("placeAbove", () => {
     });
   });
 
+  it("takes the anchor's box as the browser gives it, a DOMRect", () => {
+    const box = new DOMRect(300, 300, 24, 24);
+    expect(placeAbove(box, 300, { width: 390, height: 800 })).toMatchObject({ left: 82, bottom: 506 });
+  });
+
   it("keeps it 8px inside the window's edges, as below", () => {
     expect(placeAbove(over(300), 300, { width: 390, height: 800 })).toMatchObject({ left: 82 });
     expect(placeAbove(over(2), 300, { width: 390, height: 800 })).toMatchObject({ left: 8 });

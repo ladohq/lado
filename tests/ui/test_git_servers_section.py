@@ -520,6 +520,7 @@ def test_the_page_at_each_width(browser: Browser, server, lado_home, shot, width
             tip_box,
             link_box,
         )
+        assert 8 <= tip_box["x"] and tip_box["x"] + tip_box["width"] <= width - 8, tip_box
         no_sideways_scroll(page)
         shot(page, "add-token-tip")
     finally:

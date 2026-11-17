@@ -212,12 +212,6 @@ def test_settings_take_each_provider(settings_job, tmp_path, provider):
     assert code == 0 and parts(outputs) == [f"smoke-{provider}"]
 
 
-def test_settings_name_the_providers_of_the_script(settings_job):
-    (step,) = settings_job["steps"]
-    assert f"all | {' | '.join(PINS)})" in step["run"]
-    assert f"providers='{' '.join(PINS)}'" in step["run"]
-
-
 def test_the_probe_is_a_matrix_of_the_parts(probe_job):
     assert probe_job["strategy"] == {
         "fail-fast": False,
@@ -476,11 +470,6 @@ def test_a_smoke_part_runs_node_then_its_providers_smoke_as_a_required_check(
 def test_an_unknown_part_is_red(steps, tmp_path):
     rows = run_wsl_probe(steps, tmp_path, part="smoke-")
     assert rows["wsl part"][1:3] == ["unknown", "required"]
-
-
-def test_a_cells_exit_code_is_its_verdict(steps, tmp_path):
-    rows = run_wsl_probe(steps, tmp_path, part="smoke-kilo", SMOKE_CODE="1")
-    assert rows["wsl smoke-kilo"][1:3] == ["1", "required"]
 
 
 def test_a_failing_cell_keeps_its_code_and_its_evidence(steps, tmp_path):

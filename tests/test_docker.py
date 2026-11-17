@@ -61,14 +61,6 @@ def test_each_clis_default_is_its_pin(provider):
 
 
 @pytest.mark.parametrize("provider", sorted(ARGS))
-def test_each_cli_is_installed_at_that_version_in_a_layer_of_its_own(provider):
-    package = _pins()[provider][0]
-    [install] = [line for line in lines() if f'"{package}@${{{ARGS[provider]}}}"' in line]
-    assert install.startswith("RUN npm install -g --prefix /opt/agents ")
-    assert install.count("@${") == 1, install
-
-
-@pytest.mark.parametrize("provider", sorted(ARGS))
 def test_each_cli_is_run_once_after_its_install(provider):
     """npm drops an optional dependency (a CLI's native binary) that failed to install and
     exits 0: the build runs the CLI so such an image is not built. Its HOME is a folder
@@ -180,16 +172,6 @@ def test_a_wheel_before_a_cli_is_named():
     assert wheel_too_early(cli) == ["no wheel"]
 
 
-def test_opt_tools_is_named_only_where_it_is_made_installed_and_on_path():
-    """openspec is no agent CLI: /opt/agents stays the four of PINS."""
-    named = [line for line in flat() if "/opt/tools" in line]
-    [made] = [line for line in named if line.startswith("RUN useradd")]
-    assert re.search(r"mkdir -p [^&]*/opt/tools", made)
-    assert re.search(r"chown lado:lado [^&]*/opt/tools", made)
-    [path] = [line for line in named if line.startswith("ENV ")]
-    assert named == [made, OPENSPEC_INSTALL, path]
-
-
 # The agents' base tools from Debian (package: command): the kits' scripts and the agent
 # CLIs call them in a new container on a clean home volume.
 BASE_TOOLS = {
@@ -214,18 +196,6 @@ def missing_tools(text: str) -> list[str]:
     installs = [line for line in lines(text) if "apt-get install" in line]
     first = installs[0].split("apt-get install", 1)[1].split("&&", 1)[0].split()
     return sorted(set(BASE_TOOLS) - set(first))
-
-
-def test_the_image_carries_the_agents_base_tools():
-    assert missing_tools(DOCKERFILE) == []
-
-
-def test_a_base_tool_left_out_of_the_first_apt_layer_is_named():
-    first = "RUN apt-get update && apt-get install -y " + " ".join(sorted(set(BASE_TOOLS) - {"jq"}))
-    assert missing_tools(first + " && rm -rf /var/lib/apt/lists/*\n") == ["jq"]
-    # A later apt-get install does not count: the first layer carries them.
-    later = "RUN apt-get update && apt-get install -y jq\n"
-    assert missing_tools(first + "\n" + later) == ["jq"]
 
 
 def missing_uv_binaries(text: str) -> list[str]:
@@ -258,24 +228,6 @@ def test_a_uv_copy_without_uvx_is_named():
 PYTHON_FALLBACK = "/opt/fallback/bin"
 
 
-def test_the_images_python_is_roots_and_the_fallback_of_python3():
-    """Installed as root before `USER lado`, so no agent changes the Python LADO runs on;
-    /opt/uv itself is root's too, or lado could rename the folder away. Without uv's bin
-    links, which would land in root's ~/.local/bin."""
-    [install] = [line for line in lines() if "uv python install" in line]
-    assert " ".join(install.split()).startswith(
-        "RUN UV_PYTHON_INSTALL_DIR=/opt/uv/python uv python install 3.13 --no-bin "
-    )
-    assert lines().index(install) < lines().index("USER lado")
-    for name in ("python3", "python"):
-        assert f'ln -s "$python" {PYTHON_FALLBACK}/{name}' in install, name
-    assert f"{PYTHON_FALLBACK}/python3 --version" in install
-    [made] = [line for line in lines() if line.startswith("RUN useradd")]
-    [chown] = re.findall(r"chown lado:lado ([^&]*)", made)
-    assert "/opt/uv/tools" in chown.split() and "/opt/uv/bin" in chown.split()
-    assert "/opt/uv" not in chown.split() and "/opt/uv/python" not in chown.split()
-
-
 def unpinned(text: str) -> list[str]:
     """Each FROM or COPY --from of `text` that names an image without a digest (a stage of
     the same file, `uv`, `node` or `mise`, is no image)."""
@@ -299,21 +251,6 @@ def test_an_unpinned_base_is_named():
         "FROM jdxcode/mise:2026.10.7 AS mise"
     ]
     assert unpinned("COPY --from=mise /usr/local/bin/mise /usr/local/bin/mise\n") == []
-
-
-def test_mise_comes_from_its_official_image_root_owned():
-    """Copied before `USER lado`, so the binary is root's and `mise self-update` cannot
-    replace it: the version is the pin's, which Dependabot moves with the other bases."""
-    [stage] = [line for line in lines() if line.startswith("FROM jdxcode/mise:")]
-    assert re.fullmatch(r"FROM jdxcode/mise:\d{4}\.\d+\.\d+@sha256:[0-9a-f]{64} AS mise", stage)
-    copy = "COPY --from=mise /usr/local/bin/mise /usr/local/bin/mise"
-    assert copy in lines()
-    assert lines().index(copy) < lines().index("USER lado")
-
-
-def test_the_image_carries_the_build_tools():
-    [install] = [line for line in lines() if "apt-get install" in line and " tmux " in line]
-    assert {"make", "gcc", "g++", "libc6-dev"} <= set(install.split())
 
 
 MISE_TOML = DOCKER / "mise.toml"
@@ -425,24 +362,6 @@ def test_the_image_reads_the_agents_variables_from_the_secrets_folder():
     container's whole environment."""
     assert env()["LADO_ENV_DIR"] == "/run/secrets"
     assert "LADO_AGENT_ENV" not in DOCKERFILE + (DOCKER / "profile.sh").read_text()
-
-
-def test_gh_is_gits_credential_helper_for_github():
-    """What `gh auth setup-git` writes: an empty helper first drops any inherited one."""
-    [run] = [line for line in lines() if "credential.https://github.com.helper" in line]
-    assert "git config --system credential.https://github.com.helper ''" in run
-    assert (
-        "git config --system --add credential.https://github.com.helper "
-        "'!/usr/bin/gh auth git-credential'"
-    ) in run
-    assert run.index("helper ''") < run.index("gh auth git-credential")
-
-
-def test_the_server_listens_on_all_addresses_at_lado_port_under_tini():
-    assert 'ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/lado-entrypoint"]' in lines()
-    [cmd] = [line for line in lines() if line.startswith("CMD ")]
-    assert cmd == 'CMD ["sh", "-c", "exec lado server --host 0.0.0.0 --port \\"$LADO_PORT\\""]'
-    assert "USER lado" in lines()
 
 
 def test_the_build_context_is_an_allowlist():
@@ -564,19 +483,6 @@ def test_the_server_gets_ssh_auth_sock_after_the_socket_is_lados():
     assert body[sourced + 1 :].count('exec "$@"') == 1
 
 
-SSH_WARNING = "lado: warning: lado (uid $(id -u)) cannot use the ssh agent socket of uid $owner:"
-
-
-def test_the_entrypoint_gives_a_root_owned_socket_to_lado_at_every_start():
-    every = ENTRYPOINT.split('if [ -e "$MARK" ]', 1)[1].split("\nfi\n", 1)[1]
-    assert f"SOCK={SOCKET}" in every
-    assert "sudo -n /usr/local/bin/lado-ssh-agent-socket" in every
-    assert every.index("may_become_root") < every.index("sudo -n /usr/local/bin/lado-ssh-agent")
-    assert SSH_WARNING in every
-    assert "ssh-add cannot connect" in every
-    assert "no root to give it to lado (no-new-privileges or dropped capabilities)" in every
-
-
 RULE = "lado ALL=(root) NOPASSWD:SETENV: /usr/local/bin/lado-entrypoint"
 ENTRYPOINT = (DOCKER / "entrypoint.sh").read_text()
 
@@ -634,15 +540,6 @@ def test_the_entrypoint_writes_lado_repos_for_the_agents():
         """printf "export LADO_REPOS='/projects'\\n" > /etc/profile.d/lado-repos.sh""" in line
         for line in lines()
     )
-
-
-def test_the_entrypoint_goes_on_without_root():
-    """A container that may not become root (no-new-privileges, `--cap-drop`) does not try
-    sudo: the first start checks first, so the server starts as uid 1000."""
-    phase1 = ENTRYPOINT.split('if [ -e "$MARK" ]', 1)[1].split("\nfi\n", 1)[0]
-    assert phase1.index("if ! may_become_root; then") < phase1.index("exec sudo -E -n")
-    assert phase1.index("elif read_only_root; then") < phase1.index("exec sudo -E -n")
-    assert "NoNewPrivs:\t1" in ENTRYPOINT
 
 
 GIT_WARNING = (
@@ -755,22 +652,6 @@ def test_the_compose_header_names_the_settings_for_other_devices():
     assert "every device of your network" in text and "unencrypted" in text
 
 
-def test_compose_names_no_container_and_keeps_home_on_its_volume(compose):
-    lado = compose["services"]["lado"]
-    assert "container_name" not in lado
-    assert "build" not in lado
-    assert lado["volumes"][0] == "home:/home/lado"
-
-
-def test_compose_runs_the_published_image_of_lado_version(compose):
-    """No default version: a compose file that took `latest` would leave the image before
-    an update without a name. LADO_IMAGE wins (lado:local, the tests)."""
-    assert compose["services"]["lado"]["image"] == (
-        f"${{LADO_IMAGE:-{update.IMAGE}:${{LADO_VERSION:?set LADO_VERSION to the LADO "
-        "version to run, e.g. in .env next to this file}}"
-    )
-
-
 WORKSPACE = "${LADO_WORKSPACE:-${LADO_PROJECTS:-/set-LADO_WORKSPACE-to-your-workspace-folder}}"
 
 
@@ -802,14 +683,6 @@ def test_the_compose_headers_commands_all_have_the_workspace_and_the_version():
     assert {"LADO_WORKSPACE", "LADO_VERSION"} <= set(env), env
     assert "LADO_PROJECTS" not in env, env
     assert "in .env next to this file" in " ".join(header[:first])
-
-
-def test_the_compose_header_still_accepts_lado_projects():
-    """An installed .env with the name before 0.43.0 keeps working, and says so."""
-    text = header_text()
-    assert "LADO_PROJECTS" in text
-    said = text.split("LADO_PROJECTS")[1][:200]
-    assert "still accepted" in said and "LADO_WORKSPACE wins" in said, said
 
 
 def header_steps(heading: str) -> list[str]:
@@ -873,24 +746,6 @@ def test_the_way_back_keeps_the_newer_compose_file():
     assert "keep this compose.yaml" in header_text().split("Back to the version")[1]
 
 
-def test_the_compose_header_says_how_to_go_back_to_the_backup():
-    assert "put it back in .env" in header_text()
-    down, restore, up = way_back()
-    assert down == "docker compose down"
-    assert restore.startswith("docker compose run --rm lado sh -c '")
-    assert "rm -f lado.db-wal lado.db-shm" in restore
-    assert "cp backups/lado.db.schema-<N> lado.db" in restore
-    assert up == "docker compose up -d"
-
-
-def test_a_second_lado_is_a_folder_with_its_own_env():
-    """`-p` on each command is easy to forget; a folder's .env names the project once."""
-    second = header_text().split("A second LADO beside the first")[1]
-    for name in ("COMPOSE_PROJECT_NAME", "LADO_PORT", "LADO_VERSION", "LADO_WORKSPACE"):
-        assert name in second, name
-    assert " -p " not in header_text()
-
-
 def test_the_dockerfiles_header_names_the_published_image_and_its_update():
     header = " ".join(
         line.lstrip("#").strip() for line in DOCKERFILE.splitlines() if line.startswith("#")
@@ -898,28 +753,6 @@ def test_the_dockerfiles_header_names_the_published_image_and_its_update():
     assert f"{update.IMAGE}:<version>" in header
     for words in ("Update:", "Back:", "A second LADO:"):
         assert words in header, words
-
-
-def test_the_compose_header_says_the_sessions_follow_the_container():
-    text = header_text()
-    for words in (
-        "docker compose down",
-        "stops its sessions",
-        "docker compose up -d",
-        "resumes them",
-        "stopped by hand",
-        "one model turn",
-    ):
-        assert words in text.split("The container's sessions")[1], words
-
-
-def test_the_dockerfiles_header_says_the_sessions_follow_the_container():
-    header = " ".join(
-        line.lstrip("#").strip() for line in DOCKERFILE.splitlines() if line.startswith("#")
-    )
-    sessions = header.split("Sessions:")[1]
-    for words in ("docker stop", "docker start", "stopped by hand", "one model turn"):
-        assert words in sessions, words
 
 
 def leading_comment(path: Path) -> str:
@@ -1160,15 +993,6 @@ def test_the_guide_has_windows_by_install_ps1():
     assert "docs/install.md#docker-on-windows" in (DOCKER / "install.ps1").read_text()
 
 
-def test_the_guides_systems_name_windows_by_install_ps1():
-    [systems] = [
-        line for line in INSTALL.read_text().splitlines() if line.startswith("| Systems |")
-    ]
-    docker = systems.split("|")[2]
-    assert "`install.ps1`" in docker and "WSL2" in docker and "Windows" in docker
-    assert "not checked" not in docker
-
-
 def test_the_compose_header_names_the_installer():
     """The short way, which writes the .env this header describes."""
     assert INSTALL_SH in leading_comment(DOCKER / "compose.yaml")
@@ -1289,33 +1113,6 @@ def test_readme_and_the_headers_point_to_the_guide():
     assert "- [Docker](#docker)" in INSTALL.read_text()
     for name in ("compose.yaml", "Dockerfile"):
         assert "docs/install.md#docker" in leading_comment(DOCKER / name), name
-
-
-def test_docker_is_the_first_and_recommended_way_to_install():
-    """The human's choice (2026-10-16): Docker first, PyPI the other way."""
-    readme = (ROOT / "README.md").read_text()
-    install = readme[readme.index("## Install") :]
-    install = install[: install.index("\n## ", 3)]
-    assert "**Docker** (recommended)" in install
-    assert install.index("### Docker") < install.index("### PyPI")
-    text = INSTALL.read_text()
-    opening = text[: text.index("\n## ")]
-    assert "**Docker**, the recommended one, and **PyPI**" in opening
-    assert text.index("\n## Docker\n") < text.index("\n## macOS\n")
-
-
-def test_update_says_both_ways_docker_first():
-    """The human's comment (2026-10-16): how to update is clear for Docker and for PyPI."""
-    readme = (ROOT / "README.md").read_text()
-    update_part = readme[readme.index("\n## Update\n") :]
-    update_part = update_part[: update_part.index("\n## ", 3)]
-    assert update_part.index("### Docker") < update_part.index("### PyPI")
-    assert INSTALL_SH in update_part and "lado update" in update_part
-    text = INSTALL.read_text()
-    update_part = text[text.index("\n## Update\n") :]
-    update_part = update_part[: update_part.index("\n## ", 3)]
-    assert "[Update the container](#update-the-container)" in update_part
-    assert "- **PyPI**: `lado update`" in update_part
 
 
 def test_no_example_names_a_version_that_goes_stale():

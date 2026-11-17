@@ -762,6 +762,39 @@ real processes, and the one way around the server's start (a server shared by te
 breaks their isolation. The one safe reserve is the start of `lado mcp`, which delays
 every agent's start for users too: task LAD-294, a product change, outside this audit.
 The plugin and the data: outside the repository.
+### Stage 3, part 1 (2026-11-17, branch `chore/test-audit-stage-3-remove`): the removals
+
+**Sorted.** The eight biggest files of tests of files that are not Python, 335 test
+functions (441 cases), each read and sorted by the rules of stage 3, with rule 2 checked
+in the tracker for each removal and rewrite:
+
+| File | Keep | Rewrite | Remove |
+|---|---|---|---|
+| `test_docker.py` | 59 | 14 | 21 |
+| `test_install_sh.py` | 80 | 0 | 1 |
+| `test_install_ps1.py` | 10 | 7 | 3 |
+| `test_smoke_ci.py` | 47 | 1 | 1 |
+| `test_ci_workflow.py` | 23 | 7 | 0 |
+| `test_windows_shell_workflow.py` | 26 | 6 | 2 |
+| `test_release_workflow.py` | 12 | 3 | 0 |
+| `test_workflow_security.py` | 12 | 0 | 0 |
+| In all | 269 | 38 | 28 |
+
+Most stay: `test_install_sh.py` and `test_smoke_ci.py` run their scripts and check what
+they do, and the rest guard a security setting, a pin that two files must agree on or a
+reported bug (LAD-148, LAD-158).
+
+**28 test functions removed (31 cases)**, and the constant `SSH_WARNING` no test used any
+more:
+- a property of the Dockerfile that a container test checks on the built image (the
+  tools, mise, Python, `gh` as git's helper, the server's port under tini, the ssh
+  socket, the start without root, compose's image of `LADO_VERSION`);
+- wording or the order of headings in compose's and the Dockerfile's headers and in
+  docs/install.md, whose behaviour container tests check;
+- a subset of another test of the same file.
+
+The helpers container tests import (`BASE_TOOLS`, `way_back`) stay. The 38 rewrites, one
+file per pull request, follow.
 
 ## 7. Sources
 

@@ -13,6 +13,9 @@ if TYPE_CHECKING:  # the HTTP client is loaded by a probe only, never by a hook
     from lado.model_servers import Answer
 
 
+REFUSES = "refuses the token"  # a kind's own 401: the token expired, was revoked or is wrong
+
+
 @dataclass(frozen=True)
 class Kind:
     name: str  # as `--kind` and lado.db name it
@@ -63,7 +66,7 @@ class Kind:
         """How the answer to `request` refuses the token, as the end of "<title> at <root>
         …"; None when it is no refusal of this kind's."""
         if answer.status == 401 and isinstance(answer.body, dict) and "message" in answer.body:
-            return "refuses the token"
+            return REFUSES
         return None
 
     def token_page(self, root: str) -> str:

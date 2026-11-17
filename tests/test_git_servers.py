@@ -1119,7 +1119,7 @@ def test_the_hint_tells_a_kind_without_a_credential(serve, monkeypatch, profile,
     [
         ("neither", "{root} answers as neither GitHub nor GitLab"),
         ("both", "{root} answers as GitHub and as GitLab"),
-        ("hang", "{key} does not answer: it did not answer in 1 s"),
+        ("hang", "No answer in 1 seconds."),
     ],
 )
 def test_the_hint_asks_for_the_kind_of_one_it_cannot_tell(serve, monkeypatch, profile, why):
@@ -1210,6 +1210,25 @@ def test_each_probe_refusal_has_its_field_and_page_words(
     if page_hint is not None:
         assert refused.page_hint == page_hint
     assert "lado " not in _page_lines(refused) and "--" not in _page_lines(refused)
+
+
+def test_the_page_words_of_the_add_form(serve, monkeypatch):
+    monkeypatch.setattr(model_servers, "TIMEOUT", 1)
+    with pytest.raises(git_servers.Refused) as raised:
+        git_servers.check_not_github(git_servers.address("github.com"))
+    assert raised.value.page == "github.com uses the GitHub CLI's login: it is not added here."
+    for profile, title in (("gitlab-refuses", "GitLab"), ("github-refuses", "GitHub")):
+        refused = _refused(serve(profile).url)
+        assert refused.page == f"{title} refused this token: copy it whole or make a new one."
+        assert refused.page_hint == ""
+    assert _refused(serve("gitlab-scope").url).page.endswith("lacks the scope read_api")
+    silent = _refused(serve("hang").url)
+    assert (silent.page, silent.page_hint) == (
+        "No answer in 1 seconds.",
+        git_servers.PAGE_KIND_HINT,
+    )
+    assert _refused("gitlab.invalid").page == "No answer: the name is not found."
+    assert git_servers.PAGE_KIND_HINT == "Choose its kind to save it without a check."
 
 
 def test_both_kinds_on_the_page_say_choose(serve):

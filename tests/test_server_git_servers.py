@@ -176,7 +176,7 @@ def test_add_with_a_chosen_kind_saves_one_that_does_not_answer(client):
 @pytest.mark.parametrize(
     ("address", "field", "message"),
     [
-        ("github.com", "address", "github.com is reached through gh's login"),
+        ("github.com", "address", "github.com uses the GitHub CLI's login: it is not added here."),
         ("https://me:pw@git.lan", "address", "holds no user or password; put the token in Token"),
     ],
 )
@@ -189,11 +189,9 @@ def test_add_refuses_the_address(client, address, field, message):
 def test_a_wrong_token_is_refused_under_token(client, serve, lado_home):
     server = serve("gitlab-refuses")
     detail = refused(add(client, server.url))
-    assert detail["message"] == f"GitLab at {server.url} refuses the token"
-    assert detail["hint"] == (
-        f"make a token at {server.url}/-/user_settings/personal_access_tokens "
-        "(scopes read_repository, write_repository, read_api)"
-    )
+    # The page's words: the Token field shows the token page beside it.
+    assert detail["message"] == "GitLab refused this token: copy it whole or make a new one."
+    assert detail["hint"] == ""
     assert detail["field"] == "token"
     assert detail["warnings"] == [git_servers.PLAIN_HTTP.format(host="127.0.0.1")]
     assert state.git_servers() == []
@@ -290,7 +288,7 @@ def test_check_of_one_that_does_not_answer_asks_for_the_kind(client):
     found = check(client, root)
     assert (found["choose_kind"], found["hint"], found["refusals"]) == (True, None, [])
     assert found["unchecked"] == {
-        "message": f"{root[8:]} does not answer: the connection is refused",
+        "message": "No answer: the connection is refused.",
         "hint": git_servers.PAGE_KIND_HINT,
         "field": "address",
         "warnings": [],

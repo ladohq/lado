@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 from lado import agent_env, git_kinds, interpreter, project_secrets, state
 from lado.git_kinds import Kind
+from lado.git_kinds.base import REFUSES
 
 if TYPE_CHECKING:  # the HTTP client: loaded by `add` alone, never by a launch or a hook
     from lado import model_servers
@@ -65,10 +66,7 @@ PLAIN_HTTP = (
 )
 
 
-PAGE_KIND_HINT = (
-    "If the server is there for git but its API is not reachable from here, choose its kind "
-    "to save it without a check."
-)
+PAGE_KIND_HINT = "Choose its kind to save it without a check."  # why: the Kind field's ⓘ
 # The fields of Settings → Git servers' form a refusal concerns ("" for none).
 ADDRESS_FIELD, TOKEN_FIELD, KIND_FIELD = "address", "token", "kind"
 NAME_FIELD, EMAIL_FIELD = "name", "email"  # of a server's commit author form
@@ -166,6 +164,7 @@ def check_not_github(at: Address) -> None:
             "github.com is reached through gh's login (GH_TOKEN or gh auth login); "
             "LADO keeps no token for it",
             field=ADDRESS_FIELD,
+            page="github.com uses the GitHub CLI's login: it is not added here.",
         )
 
 
@@ -270,6 +269,15 @@ def _opener():
     return urllib.request.build_opener(model_servers.NoRedirect())
 
 
+def _no_answer_page(answer: model_servers.Answer) -> str:
+    """Why a request got no HTTP answer, as the page's sentence."""
+    if answer.why.startswith("no answer in "):
+        return (
+            f"No answer in {answer.why.removeprefix('no answer in ').removesuffix(' s')} seconds."
+        )
+    return f"No answer: {_silent(answer)}."
+
+
 def _ask_kinds(at: Address, token: str | None) -> list[model_servers.Answer]:
     """Each kind's answer at `at`, in KINDS' order, all asked at once with `token` (None:
     no credential), following no redirect, each request cut at model_servers' TIMEOUT."""
@@ -347,10 +355,15 @@ def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
     if refusals:
         kind, why = next(((k, w) for k, w in refusals if k is chosen), refusals[0])
         page = kind.token_page(at.root)
+        refused = why == REFUSES  # the page's Token field shows the token page beside it
         raise Refused(
             f"{kind.title} at {at.root} {why}",
             f"make a token at {page} ({kind.scopes})",
             TOKEN_FIELD,
+            page=f"{kind.title} refused this token: copy it whole or make a new one."
+            if refused
+            else None,
+            page_hint="" if refused else None,
         )
     unchecked, refusal = _unanswered(at, answers)
     if chosen is None:
@@ -410,6 +423,7 @@ def _unanswered(at: Address, answers: Sequence[model_servers.Answer]) -> tuple[s
             f"{at.key} does not answer: {silent}",
             _kind_hint(at.root),
             ADDRESS_FIELD,
+            page=_no_answer_page(answers[0]),
             page_hint=PAGE_KIND_HINT,
             choose_kind=True,
         )
@@ -553,14 +567,12 @@ def check(at: Address) -> Check:
                 "The server's certificate is not trusted.",
                 PAGE_CERT_HINT,
             )
-        silent = _silent(own)
-        page = f"No answer: {silent}."
-        if own.why.startswith("no answer in "):
-            page = (
-                f"No answer in {own.why.removeprefix('no answer in ').removesuffix(' s')} seconds."
-            )
         return failed(
-            "no_answer", f"{at.key} does not answer: {silent}", REACH_HINT, page, PAGE_REACH_HINT
+            "no_answer",
+            f"{at.key} does not answer: {_silent(own)}",
+            REACH_HINT,
+            _no_answer_page(own),
+            PAGE_REACH_HINT,
         )
     other = next((k for k, answer in by_kind.items() if k is not kind and k.login(answer)), None)
     if other is not None:

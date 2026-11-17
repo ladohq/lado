@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { placeBelow, placeBeside, useDismiss } from "./Menu";
+import { placeAbove, placeBelow, placeBeside, useDismiss } from "./Menu";
 
 afterEach(cleanup);
 
@@ -69,6 +69,25 @@ describe("placeBelow", () => {
       right: 8,
       left: "auto",
     });
+  });
+});
+
+describe("placeAbove", () => {
+  const over = (left: number) => ({ left, right: left + 24, top: 300 });
+
+  it("puts a popover that fits at the anchor's left edge, 6px above it", () => {
+    expect(placeAbove(over(100), 280, { width: 1000, height: 800 })).toEqual({
+      position: "fixed",
+      bottom: 506,
+      top: "auto",
+      left: 100,
+      right: "auto",
+    });
+  });
+
+  it("keeps it 8px inside the window's edges, as below", () => {
+    expect(placeAbove(over(300), 300, { width: 390, height: 800 })).toMatchObject({ left: 82 });
+    expect(placeAbove(over(2), 300, { width: 390, height: 800 })).toMatchObject({ left: 8 });
   });
 });
 

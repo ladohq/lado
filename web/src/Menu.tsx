@@ -33,20 +33,37 @@ export function placeBelow(
     : { position: "fixed", top, left: Math.max(MARGIN, Math.min(anchor.left, room)), right: "auto" };
 }
 
-// Where the menu or popover `floating` goes: fixed under `anchor`, so a scrolling box
-// around it (the session list, the session's page) does not cut it, and inside the window
-// (placeBelow). Placed again after each render, as what it shows may change its width.
+// Where a popover `width` wide goes 6px above `anchor` in a window `viewport` big, its
+// bottom there, from the anchor's left edge and kept inside the window as placeBelow keeps
+// it (an info tip that must leave what is under its button visible).
+export function placeAbove(
+  anchor: { left: number; right: number; top: number },
+  width: number,
+  viewport: { width: number; height: number },
+): CSSProperties {
+  const across = placeBelow({ ...anchor, bottom: 0 }, width, viewport.width);
+  return { ...across, top: "auto", bottom: viewport.height - anchor.top + 6 };
+}
+
+// Where the menu or popover `floating` goes: fixed under `anchor` (or over it, `above`), so
+// a scrolling box around it (the session list, the session's page) does not cut it, and
+// inside the window (placeBelow, placeAbove). Placed again after each render, as what it
+// shows may change its width.
 export function useBelow(
   anchor: RefObject<HTMLElement | null>,
   floating: RefObject<HTMLElement | null>,
   open: boolean,
   end = false,
+  above = false,
 ): CSSProperties | undefined {
   const [style, setStyle] = useState<CSSProperties | undefined>(undefined);
   useLayoutEffect(() => {
     const box = anchor.current?.getBoundingClientRect();
     if (!open || !box) return;
-    const placed = placeBelow(box, floating.current?.offsetWidth ?? 0, window.innerWidth, end);
+    const width = floating.current?.offsetWidth ?? 0;
+    const placed = above
+      ? placeAbove(box, width, { width: window.innerWidth, height: window.innerHeight })
+      : placeBelow(box, width, window.innerWidth, end);
     setStyle((now) => (JSON.stringify(now) === JSON.stringify(placed) ? now : placed));
   });
   return style;

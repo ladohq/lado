@@ -10,13 +10,23 @@ import { useBelow, useDismiss } from "./Menu";
 // The open one closes when another opens: one explanation at a time.
 let closeOpen: (() => void) | null = null;
 
-export function InfoTip({ about, children }: { about: string; children: ReactNode }) {
+// `place` "above" opens the text over its button, so what is under it stays visible and
+// can be pressed (a field's note with a link).
+export function InfoTip({
+  about,
+  place = "below",
+  children,
+}: {
+  about: string;
+  place?: "below" | "above";
+  children: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const id = useId();
   const wrap = useRef<HTMLSpanElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const pop = useRef<HTMLSpanElement>(null);
-  const style = useBelow(button, pop, open);
+  const style = useBelow(button, pop, open, false, place === "above");
   useDismiss(open, wrap, () => setOpen(false));
   useEffect(() => {
     if (!open) return;

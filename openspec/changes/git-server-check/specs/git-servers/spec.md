@@ -17,11 +17,17 @@ a missing token file, with no request sent for those two; 2 for an address it do
   exit status is 0
 
 #### Scenario: An expired token
-- **WHEN** the server answers the saved token with its own 401: GitLab's
-  `{"message": "401 Unauthorized"}`, or its `{"error": "invalid_token", "error_description":
-  …}` for a revoked or expired token, or GitHub's `Bad credentials`
+- **WHEN** `https://gitlab.corp.ru` is saved as GitLab and the server answers the saved token
+  with its own 401: `{"message": "401 Unauthorized"}`, or `{"error": "invalid_token",
+  "error_description": …}` for a revoked or expired token
 - **THEN** stderr has `lado: GitLab refused the token: it expired or was revoked` and the hint
   `replace it: lado git-server add https://gitlab.corp.ru --token`, and the exit status is 1
+
+#### Scenario: A revoked GitHub token
+- **WHEN** `https://ghe.corp.ru` is saved as GitHub and the server answers the saved token
+  with GitHub's 401 `{"message": "Bad credentials", "documentation_url": …}`
+- **THEN** stderr has `lado: GitHub refused the token: it expired or was revoked` and the hint
+  `replace it: lado git-server add https://ghe.corp.ru --token`, and the exit status is 1
 
 #### Scenario: No such server
 - **WHEN** no server is saved for `git.lan` and the human runs `lado git-server check git.lan`

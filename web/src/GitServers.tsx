@@ -143,7 +143,15 @@ export function GitServersPage() {
   }, [reload]);
   // One server as a change gave it back, in its place.
   const put = (server: GitServerInfo) =>
-    setEntries((now) => now && { ...now, servers: now.servers.map((s) => (s.host === server.host ? server : s)) });
+    setEntries(
+      (now) =>
+        now && {
+          ...now,
+          servers: now.servers.some((s) => s.host === server.host)
+            ? now.servers.map((s) => (s.host === server.host ? server : s))
+            : [...now.servers, server],
+        },
+    );
   // The servers by host at the first read, then each one added here at the end, where its form
   // was; a server removed here leaves its line in its place while that line is the result.
   const order = useRef<string[] | null>(null);
@@ -493,6 +501,7 @@ export function GitServersPage() {
                     setForm(null);
                     failedAs(host, null);
                     open(host);
+                    put(done.server); // its row is there for the focus before the list is read
                     void reload();
                     const info = done.server;
                     setResult(

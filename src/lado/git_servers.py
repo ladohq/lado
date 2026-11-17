@@ -221,7 +221,12 @@ class Checked:
         return lacks(self.kind, self.missing_scopes)
 
     def replace_hint(self, at: Address) -> str:
-        return f"replace it with a token with the {self.kind.scopes}: {ADD} {at.root} --token"
+        return replace_hint(self.kind, at)
+
+
+def replace_hint(kind: Kind, at: Address) -> str:
+    """How to replace a token that lacks a right agents need."""
+    return f"replace it with a token with the {kind.scopes}: {ADD} {at.root} --token"
 
 
 def lacks(kind: Kind, missing: Sequence[str], page: bool = False) -> str | None:
@@ -525,7 +530,7 @@ def check(at: Address) -> Check:
                 told,
                 was,
                 lacks(kind, missing) or "",
-                f"replace it with a token with the {kind.scopes}: {ADD} {at.root} --token",
+                replace_hint(kind, at),
                 f"The token lacks {', '.join(missing)}.",
                 f"Agents can {_can(kind, missing)} with it. Make one with the {kind.scopes}.",
             )

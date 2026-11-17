@@ -32,7 +32,7 @@ import {
 import { ChevronIcon } from "./icons";
 import { InfoTip } from "./InfoTip";
 import { MODEL_DEBOUNCE, useDebounced } from "./Launch";
-import { emptyKey } from "./ModelSources";
+import { CheckNote, emptyKey } from "./ModelSources";
 import { SecretField } from "./ProjectVariables";
 import { SettingsPage } from "./SettingsPage";
 import { useScrollAnchor } from "./useScrollAnchor";
@@ -311,6 +311,7 @@ export function GitServersPage() {
               const kind = kindOf(server);
               const isOpen = opened.includes(host);
               const formHere = form?.host === host ? form.what : null;
+              const commits = authorOf(server);
               return (
                 <li key={host} className={`mx-src${isOpen ? " mx-open" : ""}`} data-anchor="">
                   <GitHead
@@ -394,20 +395,20 @@ export function GitServersPage() {
                             <div className="gx-name">
                               Commit author <InfoTip about="Commit author">{TIPS.author}</InfoTip>
                             </div>
-                            <p className="gx-val">{authorOf(server) ? <b>{authorOf(server)}</b> : "Your own git author"}</p>
+                            <p className="gx-val">{commits ? <b>{commits}</b> : "Your own git author"}</p>
                           </div>
                           <div className="gx-ctl">
                             <button
                               ref={target(`edit:${host}`)}
                               type="button"
                               className="quiet"
-                              aria-label={`${authorOf(server) ? "Edit" : "Set"} the commit author of ${server.address}`}
+                              aria-label={`${commits ? "Edit" : "Set"} the commit author of ${server.address}`}
                               aria-pressed={formHere === "author"}
                               onClick={() => toggleForm(host, "author")}
                             >
-                              {authorOf(server) ? "Edit" : "Set author"}
+                              {commits ? "Edit" : "Set author"}
                             </button>
-                            {authorOf(server) && (
+                            {commits && (
                               <button
                                 type="button"
                                 className="quiet"
@@ -646,15 +647,6 @@ function ResultLine({
   );
 }
 
-// A refusal under its field.
-function Refusal({ note }: { note: EntryRefused }) {
-  return (
-    <span className="field-note bad" role="alert">
-      {note.message}
-      {note.hint && <span className="mx-hint">{note.hint}</span>}
-    </span>
-  );
-}
 
 // Make one on its token page with the scopes … (the kind's token page on this server).
 function TokenPage({ root, kind }: { root: string; kind: GitKindInfo }) {
@@ -731,7 +723,7 @@ function ReplaceToken({
           }}
           onEnter={() => void save(silent)}
         />
-        {refused?.field === "token" && <Refusal note={refused} />}
+        {refused?.field === "token" && <CheckNote note={refused} />}
         <TokenPage root={server.address} kind={kind} />
       </div>
       {silent && (
@@ -751,7 +743,7 @@ function ReplaceToken({
         <button type="button" className="quiet" onClick={onCancel}>
           Cancel
         </button>
-        {refused && refused.field !== "token" && !silent && <Refusal note={refused} />}
+        {refused && refused.field !== "token" && !silent && <CheckNote note={refused} />}
       </div>
     </div>
   );
@@ -904,7 +896,7 @@ function AddGitServer({
           ) : (
             <>
               {addressBad.map((r) => (
-                <Refusal key={r.message} note={r} />
+                <CheckNote key={r.message} note={r} />
               ))}
               {(result?.warnings.length ?? 0) > 0 && (
                 <span className="field-note warn">
@@ -967,7 +959,7 @@ function AddGitServer({
               </div>
             </fieldset>
             {mine("kind").map((r) => (
-              <Refusal key={r.message} note={r} />
+              <CheckNote key={r.message} note={r} />
             ))}
           </div>
         )}
@@ -989,7 +981,7 @@ function AddGitServer({
             onEnter={() => void add()}
           />
           {mine("token").map((r) => (
-            <Refusal key={r.message} note={r} />
+            <CheckNote key={r.message} note={r} />
           ))}
           {!checking && !saved && result?.address && linked && <TokenPage root={result.address} kind={linked} />}
         </div>
@@ -1002,7 +994,7 @@ function AddGitServer({
           Cancel
         </button>
         {[...of(""), ...mine("")].map((r) => (
-          <Refusal key={r.message} note={r} />
+          <CheckNote key={r.message} note={r} />
         ))}
       </div>
     </div>
@@ -1071,7 +1063,7 @@ function GitAuthor({
             }}
           />
           {under("name").map((r) => (
-            <Refusal key={r.message} note={r} />
+            <CheckNote key={r.message} note={r} />
           ))}
         </div>
         <div className="field">
@@ -1087,7 +1079,7 @@ function GitAuthor({
             }}
           />
           {under("email").map((r) => (
-            <Refusal key={r.message} note={r} />
+            <CheckNote key={r.message} note={r} />
           ))}
         </div>
       </div>
@@ -1099,7 +1091,7 @@ function GitAuthor({
           Cancel
         </button>
         {other.map((r) => (
-          <Refusal key={r.message} note={r} />
+          <CheckNote key={r.message} note={r} />
         ))}
       </div>
     </div>

@@ -723,6 +723,45 @@ or bugs, which nothing else can. Its time goes into the fixtures (a server, a re
 session per test); making them cheaper is a separate task. Moving tests to vitest was not
 tried: the tests kept by the data are the ones vitest's own mutants say it lacks.
 
+### Stage 5, part 2 (2026-11-17, branch `chore/test-audit-stage-5-fixtures`): the fixtures
+
+**Measured.** All 619 browser tests with a pytest plugin that times each phase, each
+fixture's setup and the calls under them (the helpers of `tests/`, LADO's runtime, the
+server's start and stop, subprocesses, sleeps, Playwright's actions and expects): 49.7 min
+of test time, 16:45 on three workers (5 failed, the layout tests that fail on this
+machine's fonts on main too).
+
+| Where the time goes | Minutes | Share |
+|---|---|---|
+| `lado server` started and stopped for each test | 14.4 | 29% |
+| A session of the fake agent made ready (`running_session`, `gated_session` and the like), 477 tests | about 17 | about 34% |
+| Screenshots (`shot`) | 0.9 | 2% |
+| The rest, mostly the checks in the browser | about 17 | about 35% |
+
+- The server: 0.86 s to start and 0.55 s to stop under the run's load, 0.45 s and 0.25 s
+  alone; half of the start is importing FastAPI. Polling for it costs nearly nothing.
+- A session: `running_session` 1.4 s, `gated_session` 2.3 s, almost all of it waiting for
+  the agent to be idle. The agent is idle once its session-start hook ran, and that hook
+  waits for the launch's `lado mcp` to list its tools: `import lado.mcp_server` takes
+  0.4-0.55 s, 0.35-0.48 s of it the MCP SDK.
+- The browser itself is cheap: the `page` fixture 0.5 min in all.
+
+**Tried.**
+- A gate's state written straight into the database instead of a live session: the state
+  differs from a live agent's (its messages typed and never confirmed, so the gate's
+  recommendation stays asked); 141 tests saw it. Making it the same means running the
+  agent's protocol (its prompt-submit and turn-end hooks) inside the test: a second fake
+  agent, dropped.
+- The integration tests' loop interval (0.25 s instead of 2 s) for the browser tests:
+  `stop_session` 0.97 → 0.2 min, but the whole run 49.7 → 52.3 min, the loops' passes
+  loading the machine; dropped.
+- Waits are no reserve: `wait_for` polls every 0.02 s.
+
+**Conclusion.** No cheap way to speed up the browser tests' fixtures: what costs is the
+real processes, and the one way around the server's start (a server shared by tests)
+breaks their isolation. The one safe reserve is the start of `lado mcp`, which delays
+every agent's start for users too: task LAD-294, a product change, outside this audit.
+The plugin and the data: outside the repository.
 ### Stage 3, part 1 (2026-11-17, branch `chore/test-audit-stage-3-remove`): the removals
 
 **Sorted.** The eight biggest files of tests of files that are not Python, 335 test

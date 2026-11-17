@@ -757,6 +757,28 @@ more:
 The helpers container tests import (`BASE_TOOLS`, `way_back`) stay. The 38 rewrites, one
 file per pull request, follow.
 
+### Stage 3, part 2 (2026-11-17, branch `chore/test-audit-stage-3-docker`): `test_docker.py` rewritten
+
+The 14 rewrites of `test_docker.py`, now 11 tests of properties instead of text:
+- openspec's pin: exactly one package, `@${OPENSPEC_VERSION}`, its ARG before it (no whole
+  line, no order after the CLIs); the wheel after every npm install (no adjacency);
+- the build context: `*`, then exceptions that are exactly what the Dockerfile's COPY
+  lines take (not a fixed list);
+- the scripts run as root (`entrypoint.sh`, `ssh-agent-socket.sh`) stop at an error, one
+  test for both;
+- compose's header sets in .env every variable compose reads (the set, not a hand-picked
+  part), the headers name the published image (not their section words), the phone's
+  settings are compose's and its buttons the UI's;
+- the guide's installer commands are the latest release's assets and its options are ones
+  install.sh takes (no heading order or wording); every link into docs/install.md
+  resolves to a heading, from README, docs, docker/ and LADO's messages (not the presence
+  of a link's text); the workspace's troubleshooting names the placeholder of compose's
+  bind;
+- the headers' login commands and variables stay, without the two checks of old wording.
+
+Each new check was shown to fail on a file broken for it. `test_docker.py` 73 → 70 test
+functions.
+
 ## 7. Sources
 
 - coverage.py, Measurement contexts: https://coverage.readthedocs.io/en/latest/contexts.html

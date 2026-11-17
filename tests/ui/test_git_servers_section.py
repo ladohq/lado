@@ -362,7 +362,6 @@ def test_replace_a_token(browser: Browser, lab, monkeypatch, server, tmp_path, l
         page = context.new_page()
         answers = keeping(page)
         open_page(page, server)
-        git = section(page)
         head(page, lab.url).click()
         panel = row(page, lab.url)
         opener = panel.get_by_role("button", name=f"Replace the token of {lab.url}")

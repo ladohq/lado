@@ -531,3 +531,29 @@ Seven layers; each change gets tests at the lowest layer that can catch its bugs
 What must be green before a release (CI, `live.yml`): [docs/release.md](release.md).
 The Windows probe is not a release step: it runs weekly, and a red run is fixed as any
 other regression.
+
+## Tests of files that are not Python
+
+The Dockerfile, compose.yaml, the installers, the workflows and the documents have unit tests
+too, which read the file (stage 3 of docs/research/test-audit.md). Such a test breaks on
+every edit of the file and rarely finds a bug unless it checks a property, so a new one:
+
+- **Runs what it can run.** A script (install.sh, install.ps1 on a fake Windows, a
+  workflow's shell step, a script of `scripts/`) is run with fakes and its behaviour
+  checked, not grepped. What the image does is a container test's (layer 7), on the built
+  image, not a unit test of the Dockerfile's text.
+- **Parses, then checks the property.** A workflow or compose file is read as YAML and the
+  key that matters is checked (a step's `if`, a job's `needs`, the shards a command divides
+  into), not a whole `run` line, a dict copied from the file or the order of keys where
+  order does not matter.
+- **Derives what it compares from the other file.** Two files that must agree are compared
+  with each other (the build context with the Dockerfile's COPY lines, the variables a
+  header sets with those compose reads, a pin with `scripts/smoke_ci.py`'s), never each
+  with a list in the test, which is a third copy to keep in step.
+- **Checks what a reader or a user is hurt by.** A command or a link a document gives must
+  be real (an anchor resolves, a URL is a release asset, an option is one the script
+  takes, a button a label the UI has); its wording, its headings' order and old wording
+  that must not come back are not tested.
+- **Keeps the guards.** A security setting (an image pinned by digest, a workflow's
+  permissions, no piped install), a check that must exist for `ci-ok`, a property of a
+  reported bug: these stay as they are, even when they read the text.

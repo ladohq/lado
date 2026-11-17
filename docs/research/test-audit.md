@@ -779,6 +779,30 @@ The 14 rewrites of `test_docker.py`, now 11 tests of properties instead of text:
 Each new check was shown to fail on a file broken for it. `test_docker.py` 73 → 70 test
 functions.
 
+### Stage 3, part 3 (2026-11-17, branch `chore/test-audit-stage-3-workflows`): the workflows' tests rewritten
+
+The 17 rewrites of the tests of the workflows and of `test_smoke_ci.py`, as properties:
+- `test_ci_workflow.py` 30 → 29: the browser cache (the key of the runner image and
+  Playwright, restore and save on the same paths and key, saved only outside a pull
+  request: one test of three), a hit asks no mirror and a miss keeps its debs (not the
+  four apt lines), the web job runs `make dist` and the Node tests (not its six steps), the
+  image tested whole on each architecture's own runner (the shards those of the tests'
+  K/N, not the matrix's exact dict), no layer cache (without the Image step's text), a
+  smoke cell's set-up order and its provider (not its exact commands);
+- `test_windows_shell_workflow.py` 34 → 30 (32 after part 1's 2): the triggers by hand and
+  weekly (not the minute), the inputs the settings script reads, typed (not the defaults),
+  the ARM guard's hint names inputs the workflow has (with the guard's test), the probes
+  without the lists of their commands, the verdict's rule of required checks with the
+  verdict's test;
+- `test_release_workflow.py` 15 → 13: one test of the three release gates (after the
+  version check, before the build, given the tag where they need it), and the image job's
+  two outputs parsed (the loaded one is the one tested, the pushed one by digest), not its
+  flags' text;
+- `test_smoke_ci.py`: the test of an install that fails runs no test is part of the test
+  of three failed installs.
+
+Each new check was shown to fail on a workflow broken for it.
+
 ## 7. Sources
 
 - coverage.py, Measurement contexts: https://coverage.readthedocs.io/en/latest/contexts.html

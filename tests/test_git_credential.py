@@ -27,13 +27,13 @@ def server(lado_home):
 def git_env(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
-    system = tmp_path / "gitconfig-system"
-    system.write_text("")
+    # No system config: Apple's git reads its own (osxkeychain, whose keychain a HOME of
+    # the test's has not: macOS asks in a window), which GIT_CONFIG_SYSTEM does not replace.
     return {
         "PATH": os.environ["PATH"],
         "HOME": str(home),
         "GIT_CONFIG_GLOBAL": str(home / ".gitconfig"),
-        "GIT_CONFIG_SYSTEM": str(system),
+        "GIT_CONFIG_NOSYSTEM": "1",
     }
 
 

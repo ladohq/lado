@@ -342,7 +342,12 @@ A test is removed only when all of these hold:
    migration step, a constraint, a trigger) is mutated only as a whole string, which breaks
    everything at once; a wrong default or a missing `REFERENCES` is never made. Tests of
    such code stay whatever the mutation data says.
-5. The pull request lists each removed test with its reason, and the numbers before and
+5. Its subject is not the layout: a browser test of sizes, positions, scrolling, the
+   width of the window or computed styles stays whatever the mutation data says. Stryker
+   does not mutate CSS and vitest runs in jsdom, which lays nothing out, so neither can
+   show that another test fails on a layout bug. The same holds for what only a real
+   browser does (a selection, the focus moving as an element hides).
+6. The pull request lists each removed test with its reason, and the numbers before and
    after go into section 6.
 
 When unsure, keep the test, mark it in the log and come back with mutation data.
@@ -667,6 +672,56 @@ none. **63 test functions removed** and 2 helpers no test used any more:
   143-144 (run by `test_tmux.py` when run alone) and `model_servers.py` 655, the branch of
   an `OSError` with a message, which a fake server's refused connection reaches by chance.
   Unit tests: 5 506 passed (5 576 on main).
+
+### Stage 5 (2026-11-17, branch `chore/test-audit-stage-5`): the browser tests
+
+**Coverage.** The 633 browser test cases ran with V8's precise coverage of the bundle in
+Chromium (a pytest plugin starting it over CDP on each page, the bundle's source map
+mapping it back to `web/src`) and with coverage of the server's subprocesses: 20 757 lines
+of `web/src` run, each test's lines recorded. 627 passed, 6 failed (two of
+`test_narrow_layout.py`, one of `test_providers_section.py`, three of `test_team_head.py`
+on this machine); a failing test stays. vitest, with V8 coverage: 1 916 tests, 97.2% of
+the statements of `web/src`.
+
+**What vitest misses.** Stryker (vitest runner, per-test coverage, static mutants
+skipped) over `web/src`: 26 597 mutants, 15 420 killed, 64 timeouts, 15 errors, 4 390
+survived, 854 on lines no vitest test runs, 726 static. The run was stopped at 81%,
+slowed by components whose mutants run hundreds of tests; the 5 128 mutants it did not
+reach count as missed by vitest. So about one mutant in four is missed, and every browser
+test runs some such line: coverage alone removes none.
+
+**Selection.**
+- Kept by the data, 288: every test that is one of at most five browser tests running a
+  line where vitest misses a mutant, the failing ones, then the fewest more so that each
+  such line stays run by three browser tests and each server line no unit test runs by
+  one.
+- Kept by rule 5 (layout), 265 of the 345 others: they measure boxes, scroll, the window's
+  width or computed styles, directly or through a helper (`box`, `no_sideways_scroll`, a
+  device's size).
+- Kept by rule 2, 60: the bug tasks LAD-70, 78, 85, 109, 122, 126, 207, 226, 254, 271
+  and 281, and LAD-5, 48, 163, 193, 194, 199, 218, 224 and 239, which read both ways.
+- A sample of what vitest misses decided the remaining 28. 250 mutants of the lines they
+  run (150 of lines at most five of them run, 100 of the rest), each built into the bundle
+  and run against these tests until the first failure: 205 survived them all. The 45 they
+  killed were run against the kept browser tests of the same line: 42 killed. The three
+  left (`live.ts` 510, `Chat.tsx` 278 and 359) only
+  `test_team_head.py::test_opening_the_title_field_leaves_the_team_as_it_stands` killed,
+  so it stays (2 cases), though it fails now and then on this machine without a mutant
+  and these kills may be such failures. The real browser's selection keeps
+  `test_selection.py::test_a_triple_click_on_a_messages_last_paragraph_shows_the_bar`
+  (2 cases) and a resize moving the focus keeps
+  `test_team_head.py::test_a_focused_agent_that_goes_behind_the_button_leaves_the_focus_on_it`.
+
+**16 test functions removed (16 cases)**, and the flow `DEMO` of `test_layout.py` no test
+used any more: `test_chat.py` 1, `test_layout.py` 1, `test_live_updates.py` 2,
+`test_main_screen.py` 4, `test_needs_you.py` 1, `test_selection.py` 2,
+`test_share_access.py` 1, `test_stopped_session.py` 1, `test_team_head.py` 2,
+`test_terminal_panel.py` 1. Browser test cases 633 → 617.
+
+**Conclusion.** Removal hardly shortens the browser layer: what it checks is mostly layout
+or bugs, which nothing else can. Its time goes into the fixtures (a server, a repo and a
+session per test); making them cheaper is a separate task. Moving tests to vitest was not
+tried: the tests kept by the data are the ones vitest's own mutants say it lacks.
 
 ## 7. Sources
 

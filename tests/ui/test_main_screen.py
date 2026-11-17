@@ -107,24 +107,6 @@ def test_a_bundle_of_another_version_than_the_servers_shows_a_banner(page: Page,
     shot(page, "restart")
 
 
-def test_a_page_loads_without_a_console_error_and_with_its_icon(page: Page, server, repo, shot):
-    """No 404 for an icon nor anything else: the page links the bundle's icon."""
-    session = running_session(repo)
-    errors: list[str] = []
-    page.on("console", lambda message: message.type == "error" and errors.append(message.text))
-    page.on("pageerror", lambda error: errors.append(str(error)))
-    failed: list[str] = []
-    page.on("response", lambda answer: answer.status >= 400 and failed.append(answer.url))
-    log_in(page, server)
-    page.goto(f"{server['url']}/sessions/{session}")
-    expect(page.get_by_role("log", name="Chat with the session")).to_be_visible()
-    page.wait_for_load_state("networkidle")
-    shot(page)
-    assert (errors, failed) == ([], [])
-    icon = page.locator('link[rel="icon"]').get_attribute("href", timeout=1000)
-    assert page.request.get(f"{server['url']}{icon}").status == 200
-
-
 def test_the_rail_collapses_and_stays_so(page: Page, server, shot):
     page.set_viewport_size({"width": 1600, "height": 900})
     log_in(page, server)
@@ -144,16 +126,6 @@ def test_a_narrow_window_starts_with_the_rail_collapsed(page: Page, server, shot
     log_in(page, server)
     expect(page.get_by_role("button", name="Expand menu")).to_be_visible()
     shot(page)
-
-
-def test_the_rail_works_from_the_keyboard(page: Page, server):
-    log_in(page, server)
-    rail = page.get_by_role("navigation", name="Sections")
-    rail.get_by_role("link", name="Home").focus()
-    for _ in ["Launch", *SECTIONS[1:5]]:  # Launch, Needs you, Sessions, Projects, Kits
-        page.keyboard.press("Tab")
-    page.keyboard.press("Enter")
-    expect(page.get_by_role("banner").get_by_role("heading")).to_have_text("Kits")
 
 
 GROUND = {"light": "rgb(246, 247, 249)", "dark": "rgb(17, 19, 23)"}
@@ -190,14 +162,3 @@ def test_without_the_token_the_page_says_how_to_get_in(page: Page, server, shot)
     expect(page.get_by_role("alert")).to_have_text("no valid token: open the link `lado ui` prints")
     assert page.request.get(f"{server['url']}/api/sessions").status == 401
     shot(page)
-
-
-def test_a_wrong_token_in_the_link_is_refused(page: Page, server):
-    answer = page.goto(f"{server['url']}/sessions?token=nope")
-    assert answer is not None and answer.status == 401
-    assert page.context.cookies() == []
-
-
-def test_a_missing_file_of_the_bundle_is_not_the_page(page: Page, server):
-    assert page.request.get(f"{server['url']}/assets/gone-1234.js").status == 404
-    assert page.request.get(f"{server['url']}/api/nope").status == 404

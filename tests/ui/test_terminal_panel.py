@@ -131,32 +131,6 @@ def test_an_agents_terminal_opens_to_view_and_its_wheel_points_at_take_control(
     shot(page, "control")
 
 
-def test_dont_ask_again_takes_control_at_once_after_a_reload(page: Page, server, repo, shot):
-    session = running_session(repo)
-    log_in(page, server)
-    page.goto(f"{server['url']}/sessions/{session}")
-    panel = page.get_by_role("complementary", name="Terminals")
-    expect(panel.locator(".term")).to_have_attribute("data-link", "open")
-    take = panel.get_by_role("button", name="Take control")
-    assert "goes straight to supervisor" in take.get_attribute("title")
-    take.click()
-    ask = page.get_by_role("dialog", name="Take control of supervisor")
-    page.keyboard.press("Escape")  # Esc is Cancel
-    expect(ask).to_have_count(0)
-    expect(panel).to_contain_text("Viewing")
-    take.click()
-    ask.get_by_role("checkbox", name="Don't ask again").check()
-    shot(page)
-    ask.get_by_role("button", name="Take control").click()
-    expect(panel).to_contain_text("You're typing into supervisor")
-
-    page.reload()
-    expect(panel.locator(".term")).to_have_attribute("data-link", "open")
-    panel.get_by_role("button", name="Take control").click()
-    expect(panel).to_contain_text("You're typing into supervisor")
-    expect(page.get_by_role("dialog")).to_have_count(0)
-
-
 def test_expand_shows_the_terminal_over_the_page_with_the_same_socket(
     page: Page, server, repo, shot
 ):

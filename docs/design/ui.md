@@ -1816,7 +1816,8 @@ connection, above).
 - **Info buttons** (`InfoTip.tsx`): a 16 px (i) in a 24 px target (44 px on a phone) beside a
   label, `About <field>`, `aria-expanded`; a press, Enter or Space opens and closes it, its
   text put in a `role="status"` region placed under it (`Menu.tsx`'s `useBelow`), or above it
-  with `place="above"` (`placeAbove`) where what is under the button must stay visible; Esc closes
+  with `place="above"` (`placeAbove`) where what is under the button must stay visible (below
+  all the same when there is no room above it); Esc closes
   it alone, a press outside, another (i) or Tab away closes it; hover opens nothing.
 - **The window's notes in three levels** (decided 2026-10-21, LAD-120, mockup
   `task/lad-120/mockup-launch-notes.html` variant A): each note under a field is one of
@@ -3272,8 +3273,11 @@ link under the field stays visible and pressable.
   focus back to `+ Add server`.
 - **One result at a time**: the page shows at most one result line (a save, a check, a
   removal, an author line with Undo), kept as page state with its server and place; any next
-  action removes it, opening or closing a row does not. Nothing under the pointer moves
-  (`useScrollAnchor`).
+  action removes it, opening or closing a row does not (Cancel and Esc count). Each action has a
+  number: an answer that comes after a later action (a check, a save, a removal) keeps the list
+  true and touches no result line, form or focus. Each server shows its own `Checking…`, its
+  Check off while its check runs. A check of a server removed elsewhere (404) leaves its line
+  in the row's place. Nothing under the pointer moves (`useScrollAnchor`).
 - **API** (`lado.server.git_entries` over `lado.git_servers`, under the token, no change-feed
   event): `GET /api/git-servers` (`GitServers {servers: GitServerInfo {address, host, kind,
   kind_title, login, has_token, author_name, author_email}, kinds: GitKindInfo {name, title,

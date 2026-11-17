@@ -35,14 +35,18 @@ export function placeBelow(
 
 // Where a popover `width` wide goes 6px above `anchor` in a window `viewport` big, its
 // bottom there, from the anchor's left edge and kept inside the window as placeBelow keeps
-// it (an info tip that must leave what is under its button visible).
+// it (an info tip that must leave what is under its button visible); one `height` high with
+// no room above, MARGIN from the window's top, goes below instead.
 export function placeAbove(
-  anchor: { left: number; right: number; top: number },
+  anchor: { left: number; right: number; top: number; bottom: number },
   width: number,
   viewport: { width: number; height: number },
+  height = 0,
 ): CSSProperties {
   // Its fields by name: a DOMRect's are getters, which a spread leaves out.
-  const across = placeBelow({ left: anchor.left, right: anchor.right, bottom: 0 }, width, viewport.width);
+  const box = { left: anchor.left, right: anchor.right, bottom: anchor.bottom };
+  if (anchor.top - 6 - height < MARGIN) return placeBelow(box, width, viewport.width);
+  const across = placeBelow({ ...box, bottom: 0 }, width, viewport.width);
   return { ...across, top: "auto", bottom: viewport.height - anchor.top + 6 };
 }
 
@@ -63,7 +67,12 @@ export function useBelow(
     if (!open || !box) return;
     const width = floating.current?.offsetWidth ?? 0;
     const placed = above
-      ? placeAbove(box, width, { width: window.innerWidth, height: window.innerHeight })
+      ? placeAbove(
+          box,
+          width,
+          { width: window.innerWidth, height: window.innerHeight },
+          floating.current?.offsetHeight ?? 0,
+        )
       : placeBelow(box, width, window.innerWidth, end);
     setStyle((now) => (JSON.stringify(now) === JSON.stringify(placed) ? now : placed));
   });

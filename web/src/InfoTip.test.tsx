@@ -71,6 +71,7 @@ test("it opens below its button, or above it with place=above", () => {
     </div>,
   );
   const token = screen.getByRole("button", { name: "About Token" });
+  token.getBoundingClientRect = () => new DOMRect(100, 300, 24, 24); // room above it
   fireEvent.click(token);
   expect(region(token).style.top).toBe("auto");
   expect(region(token).style.bottom).not.toBe("");

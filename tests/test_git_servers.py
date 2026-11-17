@@ -891,6 +891,25 @@ def test_a_check_of_a_token_without_a_right(serve, lado_home, profile, kind, mis
     assert state.git_servers() == [before]  # not ok: no login saved
 
 
+def test_a_check_of_a_gitlab_token_without_read_api_names_it(serve, lado_home):
+    # Saved with --kind, unchecked; its user API refuses a token without read_api.
+    server = serve("gitlab-scope")
+    before = _saved(server.url, login=None)
+    found = _check(server.url)
+    assert (found.outcome, found.missing_scopes) == ("scopes_missing", ("read_api",))
+    assert found.text == "GitLab takes the token, but it lacks the scope read_api"
+    assert found.hint == (
+        "replace it with a token with the scopes read_repository, write_repository, read_api: "
+        f"lado git-server add {server.url} --token"
+    )
+    assert found.page == "The token lacks read_api."
+    assert found.page_hint == (
+        "LADO asks the server's API with it. Make one with the scopes read_repository, "
+        "write_repository, read_api."
+    )
+    assert state.git_servers() == [before]
+
+
 def test_a_check_of_a_server_that_does_not_answer(serve, lado_home, monkeypatch):
     monkeypatch.setattr(model_servers, "TIMEOUT", 1)
     server = serve("hang")

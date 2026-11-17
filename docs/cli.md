@@ -851,7 +851,8 @@ check that passes (so a server saved with `--kind` is no longer `not checked`). 
 checked.` when the server tells none), exit 0. Any other outcome is `lado: <line>` and its
 hint on stderr, exit 1: `GitLab refused the token: it expired or was revoked` (`replace it:
 lado git-server add <address> --token`); `the token lacks write_repository: agents can clone
-but not push` (as `add` warns); `<host> does not answer: it did not answer in 5 s` (or `the
+but not push` (as `add` warns); `GitLab takes the token, but it lacks the scope read_api` (a
+server saved with `--kind`; the same hint); `<host> does not answer: it did not answer in 5 s` (or `the
 name is not found`, `the connection is refused`; `check that this computer reaches it: the
 company VPN or proxy; with LADO in Docker, its container`); `the certificate of <address> is
 not trusted` (`ask your IT department to make this computer trust it (with LADO in Docker, its

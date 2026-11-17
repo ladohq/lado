@@ -554,7 +554,21 @@ def check(at: Address) -> Check:
     def failed(outcome: str, text: str, hint: str, page: str, page_hint: str = "") -> Check:
         return Check(outcome, kind, None, (), False, was, text, hint, page, page_hint)
 
-    if kind.refusal(own):
+    why = kind.refusal(own)
+    if why and why != REFUSES:  # GitLab's user API refuses a token without read_api
+        return Check(
+            "scopes_missing",
+            kind,
+            None,
+            ("read_api",),
+            True,
+            was,
+            f"{kind.title} {why}",
+            replace_hint(kind, at),
+            "The token lacks read_api.",
+            f"LADO asks the server's API with it. Make one with the {kind.scopes}.",
+        )
+    if why:
         refused = f"{kind.title} refused the token: it expired or was revoked"
         return failed(
             "token_refused", refused, f"replace it: {ADD} {at.root} --token", refused + "."

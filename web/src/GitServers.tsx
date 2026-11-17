@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import {
+  ApiError,
   addGitServer,
   checkGitServer,
   checkSavedGitServer,
@@ -141,17 +142,18 @@ export function GitServersPage() {
       latest.current++; // no answer counts once the page left
     };
   }, [reload]);
-  // One server as a change gave it back, in its place.
-  const put = (server: GitServerInfo) =>
-    setEntries(
-      (now) =>
-        now && {
-          ...now,
-          servers: now.servers.some((s) => s.host === server.host)
-            ? now.servers.map((s) => (s.host === server.host ? server : s))
-            : [...now.servers, server],
-        },
-    );
+  // One server as a change gave it back, in its place; `added` puts a new one at the end (a
+  // server gone meanwhile is not brought back otherwise).
+  const put = (server: GitServerInfo, added = false) =>
+    setEntries((now) => {
+      if (!now) return now;
+      const there = now.servers.some((s) => s.host === server.host);
+      if (!there && !added) return now;
+      const servers = there
+        ? now.servers.map((s) => (s.host === server.host ? server : s))
+        : [...now.servers, server];
+      return { ...now, servers };
+    });
   // The servers by host at the first read, then each one added here at the end, where its form
   // was; a server removed here leaves its line in its place while that line is the result.
   const order = useRef<string[] | null>(null);
@@ -163,7 +165,7 @@ export function GitServersPage() {
   const [form, setForm] = useState<Form | null>(null);
   const [adding, setAdding] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
-  const [checking, setChecking] = useState<string | null>(null);
+  const [checking, setChecking] = useState<string[]>([]); // the servers being checked
   const [failed, setFailed] = useState<Record<string, string>>({});
   const failedAs = (host: string, line: string | null) =>
     setFailed((now) => {
@@ -183,32 +185,45 @@ export function GitServersPage() {
   useEffect(() => {
     if (focus) targets.current.get(focus.key)?.focus();
   }, [focus]);
-  // An action: the last result goes.
-  const act = () => setResult(null);
+  // An action: the last result goes. Its number: an answer that comes after a later action
+  // (`stale`) keeps the list true and touches no result, form or focus.
+  const actions = useRef(0);
+  const act = () => {
+    setResult(null);
+    return ++actions.current;
+  };
+  const stale = (mine: number) => mine !== actions.current;
   const servers = entries?.servers ?? [];
   const kindOf = (server: GitServerInfo) => entries?.kinds.find((k) => k.name === server.kind);
 
   const check = async (server: GitServerInfo) => {
-    act();
-    setChecking(server.host);
+    const mine = act();
+    const host = server.host;
+    setChecking((now) => [...now, host]);
     try {
-      const found = await checkSavedGitServer(server.host);
+      const found = await checkSavedGitServer(host);
       if (found.server) put(found.server);
       else void reload();
-      failedAs(server.host, found.outcome === "ok" ? null : (FAILED[found.outcome] ?? null));
-      setResult(checkLine(server.host, found));
+      failedAs(host, found.outcome === "ok" ? null : (FAILED[found.outcome] ?? null));
+      if (stale(mine)) return;
+      setResult(checkLine(host, found));
+      focusOn(`check:${host}`);
     } catch (error) {
-      setResult({ host: server.host, place: "signin", tone: "bad", text: refusalOf(error).message });
       void reload();
+      if (stale(mine)) return;
+      // A server gone meanwhile (removed elsewhere): the line stands in its place.
+      const gone = error instanceof ApiError && error.status === 404;
+      setResult({ host, place: gone ? "gone" : "signin", tone: "bad", text: refusalOf(error).message });
+      if (!gone) focusOn(`check:${host}`);
     } finally {
-      setChecking(null);
-      focusOn(`check:${server.host}`);
+      setChecking((now) => now.filter((h) => h !== host));
     }
   };
-  const replaced = (server: GitServerInfo, done: GitServerAdded) => {
-    setForm(null);
+  const replaced = (server: GitServerInfo, done: GitServerAdded, mine: number) => {
     put(done.server);
     failedAs(server.host, null);
+    if (stale(mine)) return;
+    setForm(null);
     const now = done.server.login;
     if (done.warning) setResult({ host: server.host, place: "signin", tone: "warn", text: `⚠ ${done.warning}`, way: "replace" });
     else if (now === null)
@@ -235,13 +250,14 @@ export function GitServersPage() {
     focusOn(`replace:${server.host}`);
   };
   const author = async (server: GitServerInfo, call: () => Promise<{ server: GitServerInfo }>, line: Result) => {
-    act();
+    const mine = act();
     try {
       put((await call()).server);
+      if (stale(mine)) return;
       setResult(line);
       focusOn(line.way === "undo" ? `undo:${server.host}` : `edit:${server.host}`);
     } catch (error) {
-      setResult({ host: server.host, place: "author", tone: "bad", text: refusalOf(error).message });
+      if (!stale(mine)) setResult({ host: server.host, place: "author", tone: "bad", text: refusalOf(error).message });
     }
   };
   const removeAuthor = (server: GitServerInfo) =>
@@ -273,6 +289,7 @@ export function GitServersPage() {
     setForm((now) => (now?.host === host && now.what === what ? null : { host, what }));
   };
   const closeForm = (key: string) => {
+    act(); // a save still under way answers to no form
     setForm(null);
     focusOn(key);
   };
@@ -353,7 +370,7 @@ export function GitServersPage() {
                                 type="button"
                                 className="quiet"
                                 aria-label={`Check ${server.address}`}
-                                disabled={checking === host}
+                                disabled={checking.includes(host)}
                                 onClick={() => void check(server)}
                               >
                                 Check
@@ -371,7 +388,7 @@ export function GitServersPage() {
                             </button>
                           </div>
                           <div className="gx-under">
-                            {checking === host && (
+                            {checking.includes(host) && (
                               <span className="field-note mx-check" role="status">
                                 <span className="mx-spin" aria-hidden="true" /> Checking…
                               </span>
@@ -382,7 +399,7 @@ export function GitServersPage() {
                                 kind={kind}
                                 onTouch={act}
                                 onCancel={() => closeForm(`replace:${host}`)}
-                                onDone={(done) => replaced(server, done)}
+                                onDone={(done, mine) => replaced(server, done, mine)}
                               />
                             )}
                             {mine?.place === "signin" && (
@@ -428,9 +445,10 @@ export function GitServersPage() {
                                 server={server}
                                 onTouch={act}
                                 onCancel={() => closeForm(`edit:${host}`)}
-                                onDone={(done) => {
-                                  setForm(null);
+                                onDone={(done, mine) => {
                                   put(done.server);
+                                  if (stale(mine)) return;
+                                  setForm(null);
                                   setResult({ host, place: "author", tone: "ok", text: "Author saved." });
                                   focusOn(`edit:${host}`);
                                 }}
@@ -448,10 +466,11 @@ export function GitServersPage() {
                             server={server}
                             onTouch={act}
                             onCancel={() => closeForm(`remove:${host}`)}
-                            onGone={(left) => {
+                            onGone={(left, mine) => {
+                              void reload(left);
+                              if (stale(mine)) return;
                               setForm(null);
                               setOpened((now) => now.filter((h) => h !== host));
-                              void reload(left);
                               setResult({
                                 host,
                                 place: "gone",
@@ -487,6 +506,7 @@ export function GitServersPage() {
                   servers={servers}
                   onTouch={act}
                   onCancel={() => {
+                    act(); // an Add still under way answers to no form
                     setAdding(false);
                     focusOn("add");
                   }}
@@ -496,14 +516,15 @@ export function GitServersPage() {
                     open(host);
                     setForm({ host, what: "replace" });
                   }}
-                  onAdded={(done) => {
+                  onAdded={(done, mine) => {
                     const host = done.server.host;
+                    failedAs(host, null);
+                    put(done.server, true); // its row is there for the focus before the list is read
+                    void reload();
+                    if (stale(mine)) return;
                     setAdding(false);
                     setForm(null);
-                    failedAs(host, null);
                     open(host);
-                    put(done.server); // its row is there for the focus before the list is read
-                    void reload();
                     const info = done.server;
                     setResult(
                       done.warning
@@ -673,9 +694,9 @@ function ReplaceToken({
 }: {
   server: GitServerInfo;
   kind: GitKindInfo;
-  onTouch: () => void;
+  onTouch: () => number;
   onCancel: () => void;
-  onDone: (done: GitServerAdded) => void;
+  onDone: (done: GitServerAdded, mine: number) => void;
 }) {
   const id = useId();
   const token = useRef<HTMLInputElement>(null);
@@ -686,12 +707,12 @@ function ReplaceToken({
   useEffect(() => token.current?.focus(), []);
   const save = async (withoutCheck: boolean) => {
     if (busy || !filled || (refused?.field === "token" && !withoutCheck)) return;
-    onTouch();
+    const mine = onTouch();
     setBusy(true);
     try {
       const done = await addGitServer(server.address, token.current?.value ?? "", withoutCheck ? server.kind : null);
       emptyKey(token, setFilled);
-      onDone(done);
+      onDone(done, mine);
     } catch (error) {
       const why = gitRefusalOf(error);
       if (why.field !== "token" && !why.choose_kind) emptyKey(token, setFilled);
@@ -728,7 +749,7 @@ function ReplaceToken({
       </div>
       {silent && (
         <span className="field-note warn" role="alert">
-          {`⚠ ${refused.message.startsWith("No answer in") ? "No answer in 5 seconds" : "No answer"}: save it without a check, as ${server.kind_title}.`}
+          {`⚠ ${refused.message.replace(/\.$/, "")}: save it without a check, as ${server.kind_title}.`}
         </span>
       )}
       <div className="mx-form-acts">
@@ -763,10 +784,10 @@ function AddGitServer({
   initial: string;
   kinds: GitKindInfo[];
   servers: GitServerInfo[];
-  onTouch: () => void;
+  onTouch: () => number;
   onCancel: () => void;
   onReplace: (host: string) => void;
-  onAdded: (done: GitServerAdded) => void;
+  onAdded: (done: GitServerAdded, mine: number) => void;
 }) {
   const id = useId();
   const [address, setAddress] = useState(initial);
@@ -818,7 +839,9 @@ function AddGitServer({
   const checking = !busy && address.trim() !== "" && (address !== settled || (now !== null && !result));
   const choose = !checking && (result?.choose_kind === true || lost);
   const saved = !checking && result?.saved === true;
-  const savedHost = saved && result?.address ? servers.find((s) => s.address === result.address)?.host : undefined;
+  // The saved server of the address's host and port, as LADO tells it (by its key, not its
+  // address: one saved as http:// or under a path is the same server).
+  const savedHost = saved && result?.address ? servers.find((s) => s.host === new URL(result.address!).host)?.host : undefined;
   // Token's link: the hint's kind, or the one chosen.
   const chosen = choose ? kinds.find((k) => k.name === kind) : undefined;
   const hinted = !checking && result?.hint ? kinds.find((k) => k.name === result.hint) : undefined;
@@ -838,14 +861,16 @@ function AddGitServer({
   const edited = (field: string) => setRefused((was) => (was?.field === field ? null : was));
   const add = async (again = false) => {
     if (!ready && !again) return;
-    onTouch();
+    const mine = onTouch();
     const given = token.current?.value ?? "";
+    const as = choose && chosen ? chosen.name : null;
     setBusy(true);
     setRefused(null);
+    setLost(false); // this answer says anew whether it stopped answering
     try {
-      const done = await addGitServer(address, given, choose && chosen ? chosen.name : null);
+      const done = await addGitServer(address, given, as);
       emptyKey(token, setFilled);
-      onAdded(done);
+      onAdded(done, mine);
     } catch (error) {
       const why = gitRefusalOf(error);
       if (why.choose_kind) setLost(true);
@@ -1011,9 +1036,9 @@ function GitAuthor({
   onDone,
 }: {
   server: GitServerInfo;
-  onTouch: () => void;
+  onTouch: () => number;
   onCancel: () => void;
-  onDone: (done: { server: GitServerInfo }) => void;
+  onDone: (done: { server: GitServerInfo }, mine: number) => void;
 }) {
   const id = useId();
   const [name, setName] = useState(server.author_name ?? "");
@@ -1024,11 +1049,11 @@ function GitAuthor({
   const ready = !busy && name.trim() !== "" && email.trim() !== "" && changed;
   const save = async () => {
     if (!ready) return;
-    onTouch();
+    const mine = onTouch();
     setBusy(true);
     setRefused(null);
     try {
-      onDone(await setGitServerAuthor(server.host, name, email));
+      onDone(await setGitServerAuthor(server.host, name, email), mine);
     } catch (error) {
       setRefused(refusalOf(error));
       setBusy(false);
@@ -1106,19 +1131,19 @@ function RemoveGitServer({
   onGone,
 }: {
   server: GitServerInfo;
-  onTouch: () => void;
+  onTouch: () => number;
   onCancel: () => void;
-  onGone: (left: GitServers & { warning: string | null }) => void;
+  onGone: (left: GitServers & { warning: string | null }, mine: number) => void;
 }) {
   const id = useId();
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const remove = async () => {
-    onTouch();
+    const mine = onTouch();
     setBusy(true);
     setProblem(null);
     try {
-      onGone(await removeGitServer(server.host));
+      onGone(await removeGitServer(server.host), mine);
     } catch (error) {
       setProblem(refusalOf(error).message);
       setBusy(false);

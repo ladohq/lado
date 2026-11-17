@@ -65,7 +65,7 @@ of neither kind (`it answers as neither GitHub nor GitLab`).
 
 #### Scenario: No answer
 - **WHEN** the server does not answer in 5 seconds
-- **THEN** stderr has `lado: gitlab.corp.ru does not answer: it did not answer in 5 seconds`
+- **THEN** stderr has `lado: gitlab.corp.ru does not answer: it did not answer in 5 s`
   and the exit status is 1
 
 ### Requirement: A token's rights are read from the server

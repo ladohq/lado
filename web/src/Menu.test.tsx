@@ -73,7 +73,7 @@ describe("placeBelow", () => {
 });
 
 describe("placeAbove", () => {
-  const over = (left: number) => ({ left, right: left + 24, top: 300 });
+  const over = (left: number) => ({ left, right: left + 24, top: 300, bottom: 324 });
 
   it("puts a popover that fits at the anchor's left edge, 6px above it", () => {
     expect(placeAbove(over(100), 280, { width: 1000, height: 800 })).toEqual({
@@ -88,6 +88,12 @@ describe("placeAbove", () => {
   it("takes the anchor's box as the browser gives it, a DOMRect", () => {
     const box = new DOMRect(300, 300, 24, 24);
     expect(placeAbove(box, 300, { width: 390, height: 800 })).toMatchObject({ left: 82, bottom: 506 });
+  });
+
+  it("opens below when it has no room above, as placeBelow puts it", () => {
+    const high = { left: 100, right: 124, top: 40, bottom: 64 };
+    expect(placeAbove(high, 280, { width: 1000, height: 800 }, 90)).toEqual(placeBelow(high, 280, 1000));
+    expect(placeAbove(high, 280, { width: 1000, height: 800 }, 20)).toMatchObject({ bottom: 766 });
   });
 
   it("keeps it 8px inside the window's edges, as below", () => {

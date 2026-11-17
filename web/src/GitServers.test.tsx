@@ -632,3 +632,160 @@ test("Cancel closes Add, empties the token and gives the focus back to + Add ser
   await waitFor(() => expect(document.activeElement).toBe(button("Add server")));
   expect(addButton).toBeTruthy();
 });
+
+// Answers that come late, after another action.
+
+// A fetch answer the test lets go when it says.
+function held() {
+  let let_go: (value: Response) => void = () => {};
+  const answer = new Promise<Response>((done) => (let_go = done));
+  return { answer: () => answer as unknown as Response, let_go };
+}
+
+test("two checks at once: each server keeps its own Checking… and its button off", async () => {
+  fake.servers = [CORP, GHE];
+  const a = held();
+  const b = held();
+  fake.saved[CORP.host] = a.answer;
+  fake.saved[GHE.host] = b.answer;
+  await mount();
+  openRow(CORP);
+  openRow(GHE);
+  press(`Check ${CORP.address}`);
+  press(`Check ${GHE.address}`);
+  expect((button(`Check ${CORP.address}`) as HTMLButtonElement).disabled).toBe(true);
+  expect((button(`Check ${GHE.address}`) as HTMLButtonElement).disabled).toBe(true);
+  a.let_go(json(checked(CORP, { outcome: "ok", message: "Works: signed in as a.sample, may clone and push." })));
+  await waitFor(() => expect((button(`Check ${CORP.address}`) as HTMLButtonElement).disabled).toBe(false));
+  expect((button(`Check ${GHE.address}`) as HTMLButtonElement).disabled).toBe(true);
+  expect(within(row(GHE)).getByText("Checking…")).toBeTruthy();
+  expect(within(row(CORP)).queryByText("Checking…")).toBeNull();
+  b.let_go(json(checked(GHE, { outcome: "redirect", message: "It redirects to https://sso.example: add that address instead." })));
+  await screen.findByText(/It redirects to/);
+  expect(results().length).toBe(1);
+});
+
+test("a check answered after the author's removal leaves its Undo and the focus alone", async () => {
+  fake.servers = [CORP];
+  const late = held();
+  fake.saved[CORP.host] = late.answer;
+  await mount();
+  openRow(CORP);
+  press(`Check ${CORP.address}`);
+  press(`Remove the commit author of ${CORP.address}`);
+  const undo = await screen.findByRole("button", { name: `Undo the removal of the commit author of ${CORP.address}` });
+  await waitFor(() => expect(document.activeElement).toBe(undo));
+  late.let_go(json(checked(CORP, { outcome: "ok", message: "Works: signed in as a.sample, may clone and push." })));
+  await waitFor(() => expect((button(`Check ${CORP.address}`) as HTMLButtonElement).disabled).toBe(false));
+  expect(screen.queryByText("Works: signed in as a.sample, may clone and push.")).toBeNull();
+  expect(screen.getByText("Author removed.")).toBeTruthy();
+  expect(document.activeElement).toBe(undo);
+});
+
+test("a check answered after its server's removal brings no row back", async () => {
+  fake.servers = [CORP];
+  const late = held();
+  fake.saved[CORP.host] = late.answer;
+  await mount();
+  openRow(CORP);
+  press(`Check ${CORP.address}`);
+  press(`Remove ${CORP.address}`);
+  fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Remove server" }));
+  await screen.findByText(`Removed ${CORP.address}.`);
+  late.let_go(json(checked(CORP, { outcome: "ok", message: "Works: signed in as a.sample, may clone and push." })));
+  await new Promise((done) => setTimeout(done, 20));
+  expect(screen.queryByRole("button", { name: CORP.address })).toBeNull();
+  expect(screen.getByText(`Removed ${CORP.address}.`)).toBeTruthy();
+});
+
+test("Replace token cancelled while it saves: no line, no focus moved, the form stays closed", async () => {
+  fake.servers = [CORP, GHE];
+  const late = held();
+  fake.add = late.answer;
+  await mount();
+  openRow(CORP);
+  openRow(GHE);
+  press(`Replace the token of ${CORP.address}`);
+  type(screen.getByRole("textbox", { name: "New token" }), TOKEN);
+  press("Save token");
+  press("Cancel");
+  press(`Set the commit author of ${GHE.address}`);
+  const name = screen.getByRole("textbox", { name: "Name" });
+  late.let_go(json(added(CORP)));
+  await new Promise((done) => setTimeout(done, 20));
+  expect(screen.queryByText("Token replaced: signed in as a.sample.")).toBeNull();
+  expect(screen.getByRole("textbox", { name: "Name" })).toBe(name); // the other form stays open
+});
+
+test("Add cancelled while it saves: the server is listed, nothing else changes", async () => {
+  fake.checks["https://gitlab.com"] = looksLike("https://gitlab.com", "gitlab");
+  const com = { ...CORP, address: "https://gitlab.com", host: "gitlab.com" };
+  const late = held();
+  fake.add = () => {
+    fake.servers = [com];
+    return late.answer();
+  };
+  await mount();
+  press("Add server");
+  await screen.findByText("answers.", { exact: false });
+  type(tokenField(), TOKEN);
+  fireEvent.click(formAdd());
+  press("Cancel");
+  await waitFor(() => expect(document.activeElement).toBe(button("Add server")));
+  late.let_go(json(added(com)));
+  expect(await screen.findByRole("button", { name: "https://gitlab.com" })).toBeTruthy();
+  expect(button("https://gitlab.com").getAttribute("aria-expanded")).toBe("false");
+  expect(results().length).toBe(0);
+  expect(document.activeElement).toBe(button("Add server"));
+});
+
+test("an address saved as http:// or under a path leads to its server all the same", async () => {
+  const lab = { ...GHE, address: "http://git.lab.example", host: "git.lab.example" };
+  fake.servers = [lab];
+  fake.checks["git.lab.example"] = { ...looksLike("https://git.lab.example", "gitlab"), saved: true };
+  await mount();
+  press("Add server");
+  type(addressField(), "git.lab.example");
+  expect(await screen.findByText("Already saved.")).toBeTruthy();
+  press("Replace its token");
+  expect(await screen.findByRole("textbox", { name: "New token" })).toBeTruthy();
+});
+
+test("Try again whose token is refused drops the stopped-answering line and the kind", async () => {
+  fake.checks["https://gitlab.com"] = looksLike("https://gitlab.com", "gitlab");
+  let n = 0;
+  fake.add = () =>
+    ++n === 1
+      ? refused("No answer in 5 seconds.", "address", true)
+      : refused("GitLab refused this token: copy it whole or make a new one.", "token");
+  await mount();
+  press("Add server");
+  await screen.findByText("answers.", { exact: false });
+  type(tokenField(), TOKEN);
+  fireEvent.click(formAdd());
+  await screen.findByText("⚠ It stopped answering when you pressed Add.");
+  press("Try again");
+  await screen.findByText("GitLab refused this token: copy it whole or make a new one.");
+  expect(screen.queryByText("⚠ It stopped answering when you pressed Add.")).toBeNull();
+  expect(screen.queryByRole("radio")).toBeNull();
+  expect(formAdd().textContent).toBe("Add server");
+});
+
+test("a check of a server removed elsewhere says so in its place", async () => {
+  fake.servers = [CORP];
+  fake.saved[CORP.host] = () => {
+    fake.servers = [];
+    return json({ detail: { message: "gitlab.corp.example is no saved git server", hint: "", field: "address", warnings: [], choose_kind: false } }, 404);
+  };
+  await mount();
+  openRow(CORP);
+  press(`Check ${CORP.address}`);
+  expect(await screen.findByText("gitlab.corp.example is no saved git server")).toBeTruthy();
+  await waitFor(() => expect(screen.queryByRole("button", { name: CORP.address })).toBeNull());
+  expect(screen.getByText("gitlab.corp.example is no saved git server")).toBeTruthy();
+});
+
+test("Replace token with no answer says the server's own reason", async () => {
+  await replaceWith(CORP, () => refused("No answer: the name is not found.", "address", true));
+  expect(await screen.findByText("⚠ No answer: the name is not found: save it without a check, as GitLab.")).toBeTruthy();
+});

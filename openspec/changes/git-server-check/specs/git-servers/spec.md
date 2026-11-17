@@ -149,6 +149,17 @@ as the address as saved does.
   `https://GitLab.Corp.ru/team/app.git` or `https://gitlab.corp.ru:443/team/app.git`
 - **THEN** the agent's commit there carries the server's author
 
+### Requirement: An address with a space or a stray character is refused
+
+`add`, `check`, `author` and `remove` SHALL refuse with exit 2 an address with a space, tab
+or control character anywhere, or a host name with a character other than a letter, a
+digit, `-`, `.` and `_`, before any server is asked.
+
+#### Scenario: An address with a space
+- **WHEN** the human runs `lado git-server check 'not a url'` or `lado git-server add
+  'not a url' --token`
+- **THEN** it exits 2 with `not a git server's address: …`, and no server is asked
+
 ## MODIFIED Requirements
 
 ### Requirement: A git server's address
@@ -156,15 +167,8 @@ as the address as saved does.
 `add` SHALL take an address with or without a scheme, `https://` when none. It SHALL keep
 a path (a server under `https://corp.ru/gitlab`), drop a trailing `/`, drop a trailing `.`
 of the host name, and refuse with exit 2 an address with a user, a password, a query or a
-fragment, a scheme other than `https` and `http`, a space, tab or control character
-anywhere, or a host name with a character other than a letter, a digit, `-`, `.` and `_`.
-`http://` SHALL be taken with the warning that the token goes to the host unencrypted.
-`check`, `author` and `remove` SHALL take and refuse an address the same way.
-
-#### Scenario: An address with a space
-- **WHEN** the human runs `lado git-server check 'not a url'` or `lado git-server add
-  'not a url' --token`
-- **THEN** it exits 2 with `not a git server's address: …`, and no server is asked
+fragment, or a scheme other than `https` and `http`. `http://` SHALL be taken with the
+warning that the token goes to the host unencrypted.
 
 #### Scenario: No scheme
 - **WHEN** the human adds `gitlab.corp.ru/`

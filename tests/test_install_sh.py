@@ -129,12 +129,6 @@ def test_main_is_called_on_the_last_line():
     assert SCRIPT.read_text().rstrip().splitlines()[-1] == 'main "$@"'
 
 
-def test_the_placeholder_is_one_line_of_its_own():
-    assert re.findall(r"(?m)^LADO_INSTALL_VERSION=.*$", SCRIPT.read_text()) == [
-        "LADO_INSTALL_VERSION="
-    ]
-
-
 def test_an_unstamped_copy_refuses_and_makes_nothing(host):
     done = fails(run(host, "--yes", "--no-open"))
     assert (

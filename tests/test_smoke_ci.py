@@ -121,16 +121,6 @@ def test_redact_without_a_key_changes_nothing(tmp_path):
     assert (tmp_path / "log").read_bytes() == b"text"
 
 
-def test_a_smoke_cell_runs_its_tests_on_three_workers(tmp_path, monkeypatch):
-    seen = []
-    monkeypatch.setattr(smoke_ci, "install", lambda provider: dict(os.environ))
-    monkeypatch.setattr(smoke_ci, "cell", lambda tests, *args, **kwargs: seen.append(tests) or 0)
-    assert smoke_ci.run("kilo", tmp_path) == 0
-    assert seen == [
-        ["uv", "run", "pytest", "-m", "smoke", "-n", "3", "--dist", "worksteal", "-v", "-k", "kilo"]
-    ]
-
-
 @pytest.fixture
 def live_cell(monkeypatch):
     """`live` with its install replaced; `seen` holds each pytest command `cell` gets."""

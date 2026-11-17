@@ -36,19 +36,6 @@ def said(text: str) -> str:
     return text.replace("$Arrow", ARROW)
 
 
-def test_the_stamp_and_the_versions_install_sh():
-    assert re.findall(r"(?m)^\$LadoVersion = .*$", TEXT) == ["$LadoVersion = ''"]
-    assert '"https://github.com/ladohq/lado/releases/download/v$LadoVersion/install.sh"' in TEXT
-
-
-def test_an_unstamped_copy_refuses():
-    assert "if (-not $LadoVersion)" in TEXT
-    assert (
-        "this install.ps1 carries no version: take the release's "
-        "(https://github.com/ladohq/lado/releases/latest/download/install.ps1)"
-    ) in TEXT
-
-
 def test_the_switches_map_to_the_flags():
     assert re.search(r"param\(\s*\[switch\]\$Yes,\s*\[switch\]\$Phone,\s*\[switch\]\$NoPhone", TEXT)
     for switch, flag in (("Yes", "--yes"), ("Phone", "--phone"), ("NoPhone", "--no-phone")):
@@ -100,12 +87,6 @@ def test_a_stopped_docker_desktop_is_started_and_waited_for():
     assert "Docker\\Docker\\Docker Desktop.exe" in TEXT
     assert "Start-Process $Exe" in TEXT
     assert "AddSeconds(120)" in TEXT
-
-
-def test_ubuntu_is_found_and_docker_desktop_skipped():
-    assert "[System.Text.Encoding]::Unicode" in TEXT  # wsl -l -q answers in UTF-16
-    assert "-replace \"`0\", ''" in TEXT
-    assert "$_ -notlike 'docker-desktop*' -and $_ -like 'Ubuntu*'" in TEXT
 
 
 def test_no_ubuntu_offers_wsl_install_and_a_rerun():

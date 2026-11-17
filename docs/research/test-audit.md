@@ -803,6 +803,18 @@ The 17 rewrites of the tests of the workflows and of `test_smoke_ci.py`, as prop
 
 Each new check was shown to fail on a workflow broken for it.
 
+### Stage 3, part 4 (2026-11-17, branch `chore/test-audit-stage-3-workflows`): `test_install_ps1.py` rewritten
+
+Seven tests that grepped install.ps1's code and messages now run it on a fake Windows
+(docker, wsl.exe and Docker Desktop.exe as scripts, under pwsh, which CI's Linux runners
+have): the switches' flags (all three, -NoPhone too), install.sh's output on the human's
+console (not captured), a stopped Docker Desktop started and waited for, the stops (no
+docker, no Docker Desktop, no WSL, no Ubuntu, no WSL integration) each naming its next
+step and installing nothing, and a yes to its question installing Ubuntu.
+`test_install_ps1.py` 17 → 13 test functions. Each new run was shown to fail on a script
+broken for it; the one that does not, without the `docker-desktop*` exclusion, changes
+nothing, as no such name matches `Ubuntu*`.
+
 ## 7. Sources
 
 - coverage.py, Measurement contexts: https://coverage.readthedocs.io/en/latest/contexts.html

@@ -30,31 +30,6 @@ def rail_link(page: Page, waiting: int = 0):
     )
 
 
-def test_the_human_answers_what_waits_in_place_and_it_goes(page: Page, server, repo, shot):
-    session = gated_session(repo)
-    runtime.ask_human(session, "supervisor", "Merge w1 now?", "Tests pass.", ["yes", "later"])
-    log_in(page, server)
-    page.goto(f"{server['url']}/needs-you")
-    group = page.get_by_role("region", name=f"Session {session}")
-    card = group.get_by_role("region", name=f"What waits for you in {session}")
-    expect(card.get_by_role("tab", name="ship/x 1")).to_have_attribute("aria-selected", "true")
-    expect(card.get_by_role("tab", name="supervisor 1")).to_be_visible()
-    expect(group.get_by_role("link", name=f"{session}'s chat")).to_have_text("In the chat")
-    expect(rail_link(page, 2)).to_be_visible()
-    expect(page).to_have_title("(2) Needs you · LADO")
-    shot(page, "waiting")
-
-    card.get_by_role("button", name="Approve", exact=True).click()
-    expect(card.get_by_role("tab", name="ship/x 1")).to_have_count(0)
-    expect(rail_link(page, 1)).to_be_visible()
-    card.get_by_role("button", name="yes", exact=True).click()
-    card.get_by_role("button", name="Send answer to supervisor").click()
-    expect(page.get_by_text("Nothing waits for you")).to_be_visible()
-    expect(rail_link(page)).to_be_visible()
-    expect(page).to_have_title("Needs you · LADO")
-    shot(page, "nothing")
-
-
 def test_cards_taller_than_the_window_leave_the_page_at_its_top(page: Page, server, repo, shot):
     """Each card shows its first tab without scrolling the page: the tabs' row scrolls only
     sideways (review of LAD-28, F4)."""

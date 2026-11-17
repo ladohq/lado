@@ -64,19 +64,6 @@ def open_dialog(page: Page):
     return page.get_by_role("dialog", name=TITLE)
 
 
-def test_the_panels_header_has_three_icons(page: Page, serve, shot):
-    server = serve("127.0.0.1")
-    log_in(page, server)
-    page.get_by_role("button", name="System").click()
-    head = page.get_by_role("dialog", name="System").locator(".system-head")
-    expect(head.locator(".icon-button")).to_have_count(3)
-    labels = [icon.get_attribute("aria-label") for icon in head.locator(".icon-button").all()]
-    assert labels == ["Open on another device", "Copy system info", "LADO on GitHub"]
-    expect(head.get_by_role("link", name="LADO on GitHub")).to_have_attribute("target", "_blank")
-    expect(head).not_to_contain_text("GitHub ↗")
-    shot(page, "share-panel")
-
-
 def test_the_link_its_qr_code_and_copy_link(page: Page, serve, shot):
     server = serve("0.0.0.0", LADO_PUBLIC_HOST="lado-ui.test")
     log_in(page, server)

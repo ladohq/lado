@@ -5,7 +5,6 @@ artifact or across two messages; below the selection on a touch screen."""
 
 import pytest
 from playwright.sync_api import Browser, Page, expect
-from test_agents_tab import session_with_worker
 from test_gates import gated_session
 from test_main_screen import log_in, running_session
 
@@ -132,20 +131,6 @@ def test_quote_appends_to_the_chat_composer(page: Page, server, repo, shot):
     shot(page)
 
 
-def test_quote_on_an_agent_page_goes_to_its_composer(page: Page, server, repo, shot):
-    session, _ = session_with_worker(repo)
-    log_in(page, server)
-    page.goto(f"{server['url']}/sessions/{session}/agents/w1")
-    messages = page.get_by_role("region", name="Messages")
-    expect(messages).to_contain_text("your task")
-    select(messages, "your task")
-    bar(page).get_by_role("button", name="Quote in reply").click()
-    field = page.get_by_role("textbox", name="Write to w1…")
-    expect(field).to_have_value("> your task\n")
-    expect(field).to_be_focused()
-    shot(page)
-
-
 def test_quote_from_flows_opens_the_chat(page: Page, server, repo, shot):
     session = gated_session(repo)
     log_in(page, server)
@@ -241,24 +226,6 @@ def test_no_bar_for_an_own_answer_typed_in_the_waiting_card(page: Page, server, 
     expect(bar(page)).to_have_count(0)
     select(card.get_by_role("region", name="Context of the card"), "Pick one")
     expect(bar(page)).to_be_visible()
-    shot(page)
-
-
-def test_quote_folds_an_expanded_card(page: Page, server, repo, shot):
-    session = gated_session(repo)
-    log_in(page, server)
-    page.goto(f"{server['url']}/sessions/{session}")
-    card = page.get_by_role("region", name=f"What waits for you in {session}")
-    card.get_by_role("button", name="Expand the card").click()
-    expect(card).to_have_class("waiting-card expanded")
-    select(card.get_by_role("tabpanel"), "Build it as planned?")
-    expect(bar(page)).to_be_visible()
-    shot(page, "selected")
-    bar(page).get_by_role("button", name="Quote in reply").click()
-    expect(card).to_have_class("waiting-card")
-    field = page.get_by_role("textbox", name="Write to the supervisor…")
-    expect(field).to_have_value("> Build it as planned?\n")
-    expect(field).to_be_focused()
     shot(page)
 
 

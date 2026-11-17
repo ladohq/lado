@@ -789,7 +789,7 @@ The 17 rewrites of the tests of the workflows and of `test_smoke_ci.py`, as prop
   image tested whole on each architecture's own runner (the shards those of the tests'
   K/N, not the matrix's exact dict), no layer cache (without the Image step's text), a
   smoke cell's set-up order and its provider (not its exact commands);
-- `test_windows_shell_workflow.py` 34 → 30 (32 after part 1's 2): the triggers by hand and
+- `test_windows_shell_workflow.py` 32 → 30: the triggers by hand and
   weekly (not the minute), the inputs the settings script reads, typed (not the defaults),
   the ARM guard's hint names inputs the workflow has (with the guard's test), the probes
   without the lists of their commands, the verdict's rule of required checks with the

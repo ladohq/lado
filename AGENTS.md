@@ -125,9 +125,9 @@ Seven layers; each change gets tests at the lowest layer that can catch its bugs
    Docker. Not in `make check`; in CI.
 
 Isolation: tests use a temp `LADO_HOME` and their own tmux server
-(`LADO_TMUX_SOCKET=lado-test-...`), never the default `lado` socket, and never the user's
-agent configs; `tests/conftest.py` clears LADO's variables, switches the update check and
-statistics off. Layers, fixtures, CI and the Windows probe in full: [docs/testing.md](docs/testing.md).
+(`LADO_TMUX_SOCKET=lado-test-...`), never the default `lado` socket, nor the user's agent
+configs; `tests/conftest.py` clears LADO's variables, switches the update check and statistics off.
+Layers, fixtures, CI, the Windows probe and when a test is not needed: [docs/testing.md](docs/testing.md).
 
 ## Design principles
 

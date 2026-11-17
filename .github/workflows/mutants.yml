@@ -1,0 +1,74 @@
+name: Mutants
+
+# Mutation testing of one module, by hand (docs/testing.md, When to add, merge or remove a
+# test): scripts/mutants.py measures the unit tests' coverage per test, makes each mutant of
+# the module and runs the tests that run its line. With a test file, that file's tests are
+# judged: the summary lists those that catch no mutant and run no branch another test does
+# not, candidates under the rules of docs/research/test-audit.md, section 5. A large module
+# takes hours (cli.py about seven on six jobs); never in ci-ok.
+on:
+  workflow_dispatch:
+    inputs:
+      module:
+        description: "A module of src/, e.g. src/lado/flows.py"
+        required: true
+        type: string
+      tests:
+        description: "A test file to judge, e.g. tests/test_flows.py (empty: none)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  mutants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      MODULE: ${{ inputs.module }}
+      TESTS: ${{ inputs.tests }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.13"
+      - run: sudo apt-get install -y tmux
+      - run: uv sync --locked
+      # The unit layer, as `make test` runs it; a red test fails here, as it would count as a
+      # killer of every mutant it runs.
+      - name: Coverage per test
+        run: uv run python scripts/mutants.py measure "$RUNNER_TEMP/m"
+      # Its own time limit, short of the job's: the upload below keeps what a run that
+      # timed out did (kills.json.partial; a run with the same arguments goes on from it).
+      - name: Mutants
+        timeout-minutes: 340
+        run: |
+          set -o pipefail
+          judge=()
+          if [ -n "$TESTS" ]; then
+            uv run pytest --collect-only -q "$TESTS" | grep '::' > "$RUNNER_TEMP/m/ids.txt"
+            judge=(--judge "$TESTS" --enough 3 --also "$RUNNER_TEMP/m/ids.txt")
+          fi
+          uv run python scripts/mutants.py run "$MODULE" "$RUNNER_TEMP/m/sub/.coverage" \
+            "$RUNNER_TEMP/m/kills.json" --jobs 4 "${judge[@]}" | tee "$RUNNER_TEMP/m/run.log"
+          { echo "### Mutants of \`$MODULE\`"; echo; echo '```'; tail -1 "$RUNNER_TEMP/m/run.log"
+            echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Removable
+        if: inputs.tests != ''
+        run: |
+          uv run python scripts/mutants.py removable "$TESTS" "$RUNNER_TEMP/m/sub/.coverage" \
+            "$RUNNER_TEMP/m/kills.json" --json "$RUNNER_TEMP/m/removable.json" \
+            > "$RUNNER_TEMP/m/removable.txt"
+          { echo "### Candidates of \`$TESTS\` (kills each)"; echo; echo '```'
+            cat "$RUNNER_TEMP/m/removable.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: mutants
+          path: |
+            ${{ runner.temp }}/m/*.json
+            ${{ runner.temp }}/m/*.partial
+            ${{ runner.temp }}/m/*.txt
+            ${{ runner.temp }}/m/*.log
+          retention-days: 30

@@ -228,3 +228,43 @@ def test_the_mutants_of_two_modules_on_the_same_line_stay_apart():
     a = row(1, "killed", "t::a") | {"module": "src/a.py"}
     b = row(1, "killed", "t::b") | {"module": "src/b.py"}
     assert mutants.merged([[a], [b]]) == [a, b]
+
+
+def test_measure_gives_a_subprocess_s_lines_to_the_test_that_started_it(tmp_path):
+    """A process a test starts counts for that test (its LADO_TEST_ID), and pytest's code
+    comes out: a failing test would kill every mutant it runs."""
+    repo = tmp_path.resolve()
+    (repo / "src" / "pkg").mkdir(parents=True)
+    (repo / "src" / "pkg" / "__init__.py").write_text("")
+    (repo / "src" / "pkg" / "m.py").write_text(
+        "def inside():\n    return 1\n\n\ndef outside():\n    return 2\n"
+    )
+    (repo / "tests").mkdir()
+    (repo / "tests" / "conftest.py").write_text(
+        "import os, pytest\n\n"
+        "@pytest.hookimpl(wrapper=True)\n"
+        "def pytest_runtest_protocol(item):\n"
+        "    os.environ['LADO_TEST_ID'] = item.nodeid\n"
+        "    try:\n        return (yield)\n"
+        "    finally:\n        os.environ.pop('LADO_TEST_ID', None)\n"
+    )
+    (repo / "tests" / "test_m.py").write_text(
+        "import subprocess, sys\nfrom pkg.m import inside\n\n"
+        "def test_inside():\n    assert inside() == 1\n\n"
+        "def test_outside():\n"
+        "    code = 'from pkg.m import outside; outside()'\n"
+        "    subprocess.run([sys.executable, '-c', code], check=True)\n\n"
+        "def test_red():\n    assert False\n"
+    )
+    env = {**os.environ, "PYTHONPATH": str(repo / "src")}
+    out = repo / "m"
+    go = subprocess.run(
+        [sys.executable, str(SCRIPT), "measure", str(out), "--package", "pkg", "--",
+         "-q", "-n0", "-p", "no:randomly", "-o", "addopts=", "tests"],
+        cwd=repo, env=env, capture_output=True, text=True,
+    )  # fmt: skip
+    assert go.returncode == 1, go.stdout + go.stderr
+    assert "1 failed, 2 passed" in go.stdout
+    lines = mutants.tests_by_line(str(out / "sub" / ".coverage"), str(repo / "src/pkg/m.py"))
+    assert lines[2] == {"tests/test_m.py::test_inside"}
+    assert lines[6] == {"tests/test_m.py::test_outside"}

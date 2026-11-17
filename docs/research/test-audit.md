@@ -854,6 +854,41 @@ step and installing nothing, and a yes to its question installing Ubuntu.
 broken for it; the one that does not, without the `docker-desktop*` exclusion, changes
 nothing, as no such name matches `Ubuntu*`.
 
+### Stage 4 (2026-11-17, branch `chore/test-audit-stage-4-providers`): `test_providers.py`
+
+**Coverage** measured again on main 8681e141. `tests/test_providers.py` (181 test
+functions, 454 cases) reaches nine modules, all mutated with the same judge
+(`--judge tests/test_providers.py --enough 3`): `providers/base.py`, `claude.py`,
+`opencode_family.py`, `__init__.py`, `opencode.py`, `kilo.py`, `gitpaths.py`,
+`interpreter.py`, `tmux.py`.
+
+**Mutants.** 1 551 in all: 869 killed by a test of the file, 261 untouched by it, 362
+skipped, 48 on lines no test runs, 10 errors, 1 timeout; no survivor. `claude.py` alone:
+556 (427 killed), about 2.6 hours of the run's four on six jobs.
+
+**Removable.** `removable` over the nine matrices lists 84 test functions (138 cases).
+Rule 2 keeps 28: the bug tasks LAD-170 (a broken login shown as logged in) and LAD-212
+(Kilo's message lost after its start); LAD-106 (Claude's folder-trust question) and
+LAD-211 (OpenCode and Kilo on local models), which read both ways; and ten tests with no
+task whose commit reads as a fix (the folder trust before LAD-106, Kilo's snapshot dialog,
+the hand-over of queued messages in one transaction, a waiting agent busy again after the
+human's answer). Three more stay by choice although other tests kill their mutants: the
+key of a model server never in a refusal, in an error's details or in a cut line
+(LAD-220), the guards of a secret. The others reference feature tasks (LAD-76, 157, 169,
+174, 177, 180, 217, 220, 230) or none. **53 test functions removed** and one helper no
+test used any more (`_NoTurnEndDelivery`): `tests/test_providers.py` 181 → 128 test
+functions (454 → 361 cases), 2 614 → 2 074 lines.
+
+**Rechecks.**
+- Every mutant a removed test killed (185) was run again against its remaining killers:
+  all 185 killed.
+- The branch coverage of the whole unit suite, from the per-test data: no arc of `src/`
+  run only by a removed test.
+- Unit tests: 5 648 on the branch (5 741 on main); one,
+  `test_server_model_settings.py::test_check_server_of_a_change_sends_the_kept_key`, failed
+  once in the whole run and passed alone and in three runs of its file: a flake of a file
+  the removal does not touch.
+
 ## 7. Sources
 
 - coverage.py, Measurement contexts: https://coverage.readthedocs.io/en/latest/contexts.html

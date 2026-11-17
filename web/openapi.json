@@ -2574,7 +2574,7 @@
     "/api/git-servers/{host}": {
       "delete": {
         "summary": "Remove Git Server",
-        "description": "Remove the server of `host` and its token as `lado git-server remove` does.",
+        "description": "Remove the server of `host` and its token as `lado git-server remove` does; a\nfolder of it the disk keeps is a `warning`.",
         "operationId": "remove_git_server_api_git_servers__host__delete",
         "parameters": [
           {
@@ -2593,7 +2593,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GitServers"
+                  "$ref": "#/components/schemas/GitServerRemoved"
                 }
               }
             }
@@ -6650,6 +6650,43 @@
         ],
         "title": "GitServerInfo",
         "description": "A saved git server as lado.db keeps it, asking it nothing: `host` its key (host and a\nport other than the scheme's), `login` None for one saved without a check, whether\nits token file is there (never the token), and its commit author (both or neither)."
+      },
+      "GitServerRemoved": {
+        "properties": {
+          "servers": {
+            "items": {
+              "$ref": "#/components/schemas/GitServerInfo"
+            },
+            "type": "array",
+            "title": "Servers"
+          },
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/GitKindInfo"
+            },
+            "type": "array",
+            "title": "Kinds"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "type": "object",
+        "required": [
+          "servers",
+          "kinds",
+          "warning"
+        ],
+        "title": "GitServerRemoved",
+        "description": "The git servers left after a removal, and why a folder of the removed one stayed\n(`could not remove <path>: <why>`; None when none did)."
       },
       "GitServers": {
         "properties": {

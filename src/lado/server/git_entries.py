@@ -154,10 +154,12 @@ def clear_author(host: str) -> models.GitServerAuthorDone:
     return models.GitServerAuthorDone(server=server_info(saved), line=line)
 
 
-def remove(host: str) -> models.GitServers:
-    """Remove the server of `host` (its key) and its token as `lado git-server remove` does."""
+def remove(host: str) -> models.GitServerRemoved:
+    """Remove the server of `host` (its key) and its token as `lado git-server remove` does:
+    the servers left, and why a folder of it stayed."""
     try:
-        git_servers.remove_host(host)
+        _, warning = git_servers.remove_host(host)
     except git_servers.Refused as exc:
         raise _refusal(exc) from None
-    return listing()
+    left = listing()
+    return models.GitServerRemoved(servers=left.servers, kinds=left.kinds, warning=warning)

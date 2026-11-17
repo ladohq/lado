@@ -1836,10 +1836,12 @@ def cmd_git_server_remove(args: argparse.Namespace) -> int:
     if at is None:
         return 2
     try:
-        removed = git_servers.remove(at)
+        removed, warning = git_servers.remove(at)
     except git_servers.Refused as exc:
         return _refused(exc)
     print(f"Removed git server {removed.address}.")
+    if warning:
+        _warn_line(warning)
     return 0
 
 

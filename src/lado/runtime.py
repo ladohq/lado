@@ -3519,9 +3519,9 @@ def _check_commands(env: kits.Environment, base_env: dict[str, str]) -> None:
     if servers:  # no server, no git asked: the launch goes as before
         try:
             git_servers.check_git(base_env)
-            authored = [s for s in servers if git_servers.author_text(s)]
+            authored = [s.address for s in servers if git_servers.author_text(s)]
             if authored:
-                git_servers.check_author_git(base_env, authored[0].address)
+                git_servers.check_author_git(base_env, authored)
         except git_servers.Refused as exc:
             raise LadoError(str(exc)) from None
 

@@ -2,19 +2,19 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-17-git-server-c
 
 ## 1. The core's small fixes
 
-- [ ] 1.1 A trailing dot dropped from the host (D8). Check: `tests/test_git_servers.py`
+- [x] 1.1 A trailing dot dropped from the host (D8). Check: `tests/test_git_servers.py`
   (`gitlab.corp.ru.` replaces `https://gitlab.corp.ru`; `...` names no host).
-- [ ] 1.2 Author globs in any letter case and with the scheme's port (D8). Check:
+- [x] 1.2 Author globs in any letter case and with the scheme's port (D8). Check:
   `tests/test_git_servers.py` (each glob against real git, the near-miss hosts not matching,
   the ssh forms unchanged).
-- [ ] 1.3 The lock of saving and removing (D9). Check: `tests/test_git_servers.py` (a removal
+- [x] 1.3 The lock of saving and removing (D9). Check: `tests/test_git_servers.py` (a removal
   waits for a save holding the lock; the 10 s refusal with a held lock; the row and the token
   file agree after a removal racing a replacement in two threads).
-- [ ] 1.4 A removal whose folder stays warns (D10); the old-git refusal names every server
+- [x] 1.4 A removal whose folder stays warns (D10); the old-git refusal names every server
   (D11); an author file's failed write leaves no temp file (D12). Check:
   `tests/test_git_servers.py`, `tests/test_runtime_git_servers.py`,
   `tests/test_cli_git_server.py`.
-- [ ] 1.5 A token refused by every kind names no kind (D13); `choose_kind` on Add's refusal
+- [x] 1.5 A token refused by every kind names no kind (D13); `choose_kind` on Add's refusal
   of a server that stopped answering (D14). Check: `tests/test_git_servers.py` against
   `tests/fake_git_api.py`.
 

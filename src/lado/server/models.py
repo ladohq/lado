@@ -821,6 +821,13 @@ class GitServers(BaseModel):
     kinds: list[GitKindInfo]
 
 
+class GitServerRemoved(GitServers):
+    """The git servers left after a removal, and why a folder of the removed one stayed
+    (`could not remove <path>: <why>`; None when none did)."""
+
+    warning: str | None
+
+
 class GitServerCheckAsked(BaseModel):
     address: str
 

@@ -1052,7 +1052,8 @@ export interface paths {
         post?: never;
         /**
          * Remove Git Server
-         * @description Remove the server of `host` and its token as `lado git-server remove` does.
+         * @description Remove the server of `host` and its token as `lado git-server remove` does; a
+         *     folder of it the disk keeps is a `warning`.
          */
         delete: operations["remove_git_server_api_git_servers__host__delete"];
         options?: never;
@@ -2532,6 +2533,19 @@ export interface components {
             author_name: string | null;
             /** Author Email */
             author_email: string | null;
+        };
+        /**
+         * GitServerRemoved
+         * @description The git servers left after a removal, and why a folder of the removed one stayed
+         *     (`could not remove <path>: <why>`; None when none did).
+         */
+        GitServerRemoved: {
+            /** Servers */
+            servers: components["schemas"]["GitServerInfo"][];
+            /** Kinds */
+            kinds: components["schemas"]["GitKindInfo"][];
+            /** Warning */
+            warning: string | null;
         };
         /**
          * GitServers
@@ -6740,7 +6754,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GitServers"];
+                    "application/json": components["schemas"]["GitServerRemoved"];
                 };
             };
             /** @description refused */

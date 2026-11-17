@@ -145,9 +145,10 @@ def test_an_author_reaches_the_agent_through_a_file_in_its_config_folder(
         {"GIT_CONFIG_COUNT": "1"}, [plain, server], authors={server.id: file}
     )
     assert {k: env[k] for k in expected} == expected
-    assert env["GIT_CONFIG_COUNT"] == str(1 + 5 + 5 + 6)
+    # Its author: 4 https forms (any case, with and without :443) and 4 ssh forms.
+    assert env["GIT_CONFIG_COUNT"] == str(1 + 5 + 5 + 8)
     values = [env[f"GIT_CONFIG_VALUE_{n}"] for n in range(1, int(env["GIT_CONFIG_COUNT"]))]
-    assert values.count(str(file)) == 6
+    assert values.count(str(file)) == 8
     assert sorted(p.name for p in file.parent.iterdir()) == [file.name]  # none for git.lan
 
 
@@ -187,6 +188,25 @@ def test_a_git_older_than_2_36_refuses_a_launch_while_an_author_is_set(
     assert str(raised.value) == (
         "git 2.34.1 is older than 2.36, which a commit author of a git server needs; update "
         "git, or clear the author (lado git-server author https://gitlab.corp.ru --clear)"
+    )
+    assert fake_tmux == []
+
+
+def test_an_old_git_names_every_server_with_an_author(
+    repo, fake_tmux, lado_home, monkeypatch, agents_path
+):
+    folder, path = agents_path
+    _git_version(folder, "2.34.1")
+    _shell(monkeypatch, {"PATH": path})
+    _with_author()
+    _save("https://corp.ru")  # no author: not named
+    _with_author("http://git.lan")
+    with pytest.raises(runtime.LadoError) as raised:
+        runtime.start_session(str(repo), "s", None, provider="claude")
+    assert str(raised.value) == (
+        "git 2.34.1 is older than 2.36, which a commit author of a git server needs; update "
+        "git, or clear the authors (lado git-server author http://git.lan --clear, "
+        "lado git-server author https://gitlab.corp.ru --clear)"
     )
     assert fake_tmux == []
 

@@ -68,7 +68,11 @@ PROFILES: dict[str, dict[str, Answer]] = {
     # GitLab's user, and GitHub's path never answering.
     "gitlab-github-hangs": {GITLAB: GITLAB_USER, GITHUB: HANG},
     "hang": {GITLAB: HANG, GITHUB: HANG},
+    "gateway": {},  # GATEWAY_401 on every path (DEFAULTS)
 }
+# A sign-in gateway in front of a server: its own 401 on any path, whatever the token.
+GATEWAY_401 = Answer(401, {"message": "Unauthorized"})
+DEFAULTS: dict[str, Answer] = {"gateway": GATEWAY_401}  # a profile's answer off its paths
 REDIRECT = "redirect"  # 302 to the location given, on every path
 
 
@@ -81,7 +85,7 @@ class Request(NamedTuple):
 def answer_for(profile: str, path: str, token: str | None, headers: Message) -> Answer:
     """The profile's answer to a GET of `path`; with `token`, a request that does not carry
     it the kind's way gets that kind's 401; a refusal stays one."""
-    found = PROFILES[profile].get(path, NOT_FOUND)
+    found = PROFILES[profile].get(path, DEFAULTS.get(profile, NOT_FOUND))
     if token is not None and found.status == 200:
         if path == GITLAB and headers.get("PRIVATE-TOKEN") != token:
             return GITLAB_401

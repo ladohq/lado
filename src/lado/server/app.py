@@ -1097,8 +1097,9 @@ def create_app(
         dependencies=[Depends(guard.changes), Depends(database)],
         responses=entry_refused,
     )
-    def remove_git_server(host: str) -> models.GitServers:
-        """Remove the server of `host` and its token as `lado git-server remove` does."""
+    def remove_git_server(host: str) -> models.GitServerRemoved:
+        """Remove the server of `host` and its token as `lado git-server remove` does; a
+        folder of it the disk keeps is a `warning`."""
         return entries(git_entries.remove, host)
 
     @app.get("/api/providers/logins", dependencies=[Depends(guard)])

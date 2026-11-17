@@ -8,6 +8,8 @@ asked at once, through lado.model_servers' request path (no redirect followed, e
 cut at its TIMEOUT); `--kind` saves one that cannot be checked. Its token is kept in
 `<LADO_HOME>/git-servers/<id>/token` alone, written and removed by the link-refusing writer
 of LADO's secrets (lado.project_secrets), never in lado.db, a message or a git config file.
+A save, a removal and a check's login write hold one lock of LADO_HOME (`_locked`), never
+while a server is asked.
 
 `variables` gives git, through `GIT_CONFIG_*` variables laid over a process's environment, an
 empty helper then LADO's own (lado.git_credential) for each saved server's address, and
@@ -31,9 +33,10 @@ import os
 import re
 import shlex
 import subprocess
+import time
 import urllib.parse
 import uuid
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
@@ -75,7 +78,8 @@ class Refused(Exception):
     """Why a git server is not saved, found or reached, one line; `hint` what the human can
     try ("" for none); `field` the field of the page's form it concerns; `page` and
     `page_hint` the line and the hint for the page, which name no command (None: the same as
-    the command's). Never holds a token."""
+    the command's); `choose_kind` for a server that gave no HTTP answer, which the page may
+    save without a check once its kind is chosen. Never holds a token."""
 
     def __init__(
         self,
@@ -84,12 +88,14 @@ class Refused(Exception):
         field: str = "",
         page: str | None = None,
         page_hint: str | None = None,
+        choose_kind: bool = False,
     ):
         super().__init__(text)
         self.hint = hint
         self.field = field
         self.page = text if page is None else page
         self.page_hint = hint if page_hint is None else page_hint
+        self.choose_kind = choose_kind
 
 
 class BadAddress(ValueError):
@@ -138,6 +144,8 @@ def address(text: str) -> Address:
         raise BadAddress("a git server's address holds no query")
     if parts.fragment:
         raise BadAddress("a git server's address holds no fragment")
+    # `host.` names the same host as `host` (the DNS root): one server per host sees one.
+    host = (host or "").rstrip(".")
     if not host:
         raise BadAddress("the address names no host")
     shown = f"[{host}]" if ":" in host else host
@@ -272,6 +280,19 @@ def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
             page=f"{at.root} answers as {titles}; choose its kind",
         )
     refusals = [(kind, why) for kind, answer in by_kind if (why := kind.refusal(answer))]
+    if chosen is None and len(refusals) == len(by_kind) > 1:
+        # Every kind refused: a gateway in front of the server, or a token cut short; naming
+        # one kind would guess.
+        titles = " and ".join(f"{kind.title}'s" for kind in git_kinds.KINDS)
+        raise Refused(
+            f"{at.root} refuses the token on {titles} API alike",
+            "check that the token was copied whole; a sign-in gateway in front of the server "
+            "refuses any token too",
+            TOKEN_FIELD,
+            page=f"The server refused this token on both {titles} API: copy it whole, or ask "
+            "whether a sign-in gateway stands in front of it.",
+            page_hint="",
+        )
     if refusals:
         kind, why = next(((k, w) for k, w in refusals if k is chosen), refusals[0])
         page = kind.token_page(at.root)
@@ -339,6 +360,7 @@ def _unanswered(at: Address, answers: Sequence[model_servers.Answer]) -> tuple[s
             _kind_hint(at.root),
             ADDRESS_FIELD,
             page_hint=PAGE_KIND_HINT,
+            choose_kind=True,
         )
         return f"it does not answer: {silent}", refused
     titles = " nor ".join(kind.title for kind in git_kinds.KINDS)
@@ -470,15 +492,18 @@ def check_git(env: Mapping[str, str]) -> None:
         raise Refused(f"{older}, or remove the servers ({REMOVE} <address>)", page=older)
 
 
-def check_author_git(env: Mapping[str, str], clear: str | None = None) -> None:
+def check_author_git(env: Mapping[str, str], clear: Sequence[str] = ()) -> None:
     """Refuse a git on `env`'s PATH older than 2.36, which skips `includeIf hasconfig:`
-    silently (`author_entries`); `clear` the address of a server with an author, for a
-    launch: the refusal says how to clear it."""
+    silently (`author_entries`); `clear` the addresses of the servers with an author, for a
+    launch: the refusal says how to clear each."""
     from lado import runtime
 
     older = _older_git(env, runtime.GIT_AUTHOR_MIN, "a commit author of a git server needs")
     if older:
-        text = f"{older}, or clear the author ({AUTHOR} {clear} --clear)" if clear else older
+        text = older
+        if clear:
+            commands = ", ".join(f"{AUTHOR} {address} --clear" for address in clear)
+            text += f", or clear the author{'s' if len(clear) > 1 else ''} ({commands})"
         raise Refused(text, page=older)
 
 
@@ -575,18 +600,34 @@ def _glob(text: str) -> str:
     return re.sub(r"([\\*?\[\]])", r"\\\1", text)
 
 
+def _any_case(glob: str) -> str:
+    """`glob` with each ASCII letter matched in either case (`a` → `[aA]`)."""
+    return re.sub(r"[a-z]", lambda m: f"[{m[0]}{m[0].upper()}]", glob)
+
+
 def author_entries(server: state.GitServer, path: Path) -> list[tuple[str, str]]:
     """The git config entries that include the author file `path` in a repository with a
-    remote on `server`, as written, in each form `server_for` takes: its address with or
-    without a user, and the ssh addresses `_entries` rewrites to it. git's `**` is a folder
-    wildcard only next to `/`, so the scp form takes `git@host:*` and `git@host:*/**`."""
+    remote on `server`, in each form `server_for` takes: its address with or without a
+    user, its host in any letter case and, without a port of its own, with the scheme's
+    written out, as git's credentials and `url.*` take it; and the ssh addresses `_entries`
+    rewrites to it, as written (so is their rewrite). git's `**` is a folder wildcard only
+    next to `/`, so the scp form takes `git@host:*` and `git@host:*/**`."""
     parts = urllib.parse.urlsplit(server.address)
-    netloc, path_part = _glob(parts.netloc), _glob(parts.path)
+    path_part = _glob(parts.path)
     host = parts.hostname or ""
     host = _glob(f"[{host}]" if ":" in host else host)
+    netlocs = [_any_case(host) + (f":{parts.port}" if parts.port else "")]
+    if parts.port is None:
+        netlocs.append(f"{netlocs[0]}:{443 if parts.scheme == 'https' else 80}")
     globs = [
-        f"{parts.scheme}://{netloc}{path_part}/**",
-        f"{parts.scheme}://*@{netloc}{path_part}/**",
+        glob
+        for netloc in netlocs
+        for glob in (
+            f"{parts.scheme}://{netloc}{path_part}/**",
+            f"{parts.scheme}://*@{netloc}{path_part}/**",
+        )
+    ]
+    globs += [
         f"git@{host}:*",
         f"git@{host}:*/**",
         f"ssh://git@{host}/**",
@@ -615,10 +656,14 @@ def author_files(folder: Path, servers: Sequence[state.GitServer]) -> dict[str, 
             f"\temail = {_quoted(server.author_email or '')}\n"
         )
         temp = path.with_name(f".{path.name}.{uuid.uuid4().hex[:8]}")
-        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as file:
-            file.write(text)
-        os.replace(temp, path)
+        try:
+            fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as file:
+                file.write(text)
+            os.replace(temp, path)
+        finally:  # a failed write leaves no file of its own; why it failed goes on
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(temp)
         found[server.id] = path
     return found
 
@@ -631,11 +676,42 @@ def has_token(server: state.GitServer) -> bool:
     return os.path.lexists(token_folder(server.id) / TOKEN)
 
 
+LOCK = "git-servers.lock"  # under LADO_HOME; it stays, as update.lock does
+LOCK_WAIT = 10  # seconds a save or a removal waits for another one
+LOCKED = "another change of the git servers is running; try again"
+
+
+@contextlib.contextmanager
+def _locked() -> Iterator[None]:
+    """One save, removal or login write of a git server at a time in LADO_HOME, the
+    command's and the page's alike: an exclusive flock on LOCK, tried every 50 ms for
+    LOCK_WAIT seconds, then Refused. No server is asked while it is held."""
+    import fcntl
+
+    with open(state.home() / LOCK, "a+") as lock:
+        deadline = time.monotonic() + LOCK_WAIT
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise Refused(LOCKED) from None
+                time.sleep(0.05)
+        yield  # closing the file lets the lock go
+
+
 def save(at: Address, checked: Checked, token: str) -> tuple[state.GitServer, bool]:
     """Save the server at `at` as `checked` with `token`, or replace the one of its host,
-    keeping its id: the server as saved, and whether one was replaced. A new server's token
-    file comes first and goes again when its row fails; a replaced one's row comes first,
-    then its token file is replaced whole, so it holds the old token or the new one."""
+    keeping its id, under the lock: the server as saved, and whether one was replaced. A
+    new server's token file comes first and goes again when its row fails; a replaced one's
+    row comes first, then its token file is replaced whole, so it holds the old token or the
+    new one."""
+    with _locked():
+        return _save(at, checked, token)
+
+
+def _save(at: Address, checked: Checked, token: str) -> tuple[state.GitServer, bool]:
     known = state.git_server_by_host(at.key)
     if known is not None:
         try:
@@ -665,26 +741,34 @@ def save(at: Address, checked: Checked, token: str) -> tuple[state.GitServer, bo
     return saved, False
 
 
-def remove(at: Address) -> state.GitServer:
-    """Remove the server of the host of `at` and its token folder: the server removed.
-    Refused for no such server, or a folder the disk refuses to remove (the row then gone)."""
+class Removed(NamedTuple):
+    """A server removed, and why a folder of it stayed (None when none did)."""
+
+    server: state.GitServer
+    warning: str | None
+
+
+def remove(at: Address) -> Removed:
+    """Remove the server of the host of `at` and its token folder. Refused for no such
+    server; a folder the disk refuses to remove is a warning, the server being gone."""
     return remove_host(at.key, at.root)
 
 
-def remove_host(key: str, named: str | None = None) -> state.GitServer:
-    """Remove the server of the host `key` (`Address.key`) and its token folder, as `remove`
-    does; `named` the address the human gave, for the refusal (None: the key)."""
-    known = state.git_server_by_host(key)
-    if known is None or not state.remove_git_server(known.id):
-        raise _not_saved(named or key)
-    try:
-        _remove_token(known.id)
-    except OSError as exc:
-        raise Refused(
-            f"removed git server {known.address}, but not its folder {token_folder(known.id)} "
-            f"({exc.strerror or type(exc).__name__})"
-        ) from None
-    return known
+def remove_host(key: str, named: str | None = None) -> Removed:
+    """Remove the server of the host `key` (`Address.key`) and its token folder under the
+    lock, as `remove` does; `named` the address the human gave, for the refusal (None: the
+    key). The row goes first: a token folder left holds a token no row names."""
+    with _locked():
+        known = state.git_server_by_host(key)
+        if known is None or not state.remove_git_server(known.id):
+            raise _not_saved(named or key)
+        try:
+            _remove_token(known.id, last=not state.git_servers())
+        except Refused as exc:  # a link on the way
+            return Removed(known, str(exc))
+        except _Left as exc:
+            return Removed(known, f"could not remove {exc.path}: {exc.why}")
+    return Removed(known, None)
 
 
 def add(
@@ -735,21 +819,41 @@ def _write_token(id: str, token: str) -> None:
         ) from None
 
 
-def _remove_token(id: str) -> None:
+class _Left(OSError):
+    """A folder or file of the tokens the disk refused to remove: its path and why."""
+
+    def __init__(self, path: Path, exc: OSError):
+        super().__init__(exc.errno, exc.strerror)
+        self.path = path
+        self.why = (exc.strerror or type(exc).__name__).lower()
+
+
+def _remove_token(id: str, last: bool = False) -> None:
     """Remove the token file of the server `id` and its folder, then git-servers/ itself
-    once it is empty: no server's folder is left in it; OSError (Refused for a link) when
-    the disk refuses it. A server's folder made in it at the same moment keeps it."""
+    once it is empty: no server's folder is left in it; _Left (Refused for a link) when the
+    disk refuses it, and for a git-servers/ holding something else when `last` (no server
+    is left). Otherwise a server's folder made in it at the same moment keeps it."""
+    folder = token_folder(id)
     try:
-        project_secrets.remove_at((TOKENS, id), token_folder(id), TOKEN)
+        try:
+            project_secrets.remove_at((TOKENS, id), folder, TOKEN)
+        except OSError as exc:
+            raise _Left(folder / TOKEN, exc) from None
         with project_secrets.open_chain((TOKENS,), make=False) as fd:
             if fd is not None:
-                with contextlib.suppress(FileNotFoundError):
+                try:
                     os.rmdir(id, dir_fd=fd)
+                except FileNotFoundError:
+                    pass
+                except OSError as exc:
+                    raise _Left(folder, exc) from None
         with project_secrets.open_chain((), make=False) as fd:
             try:
                 os.rmdir(TOKENS, dir_fd=fd)
             except OSError as exc:
-                if exc.errno not in (errno.ENOENT, errno.ENOTEMPTY, errno.EEXIST):
-                    raise
+                if exc.errno == errno.ENOENT:
+                    return
+                if exc.errno not in (errno.ENOTEMPTY, errno.EEXIST) or last:
+                    raise _Left(folder.parent, exc) from None
     except project_secrets.LinkRefused as exc:
         raise _link(exc.path) from None

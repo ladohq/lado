@@ -62,6 +62,9 @@ def _refused(address, token=TOKEN, kind=None) -> git_servers.Refused:
         ("https://git.test:8443", "https://git.test:8443", "git.test:8443"),
         ("http://git.lan:80", "http://git.lan", "git.lan"),
         ("http://git.lan:8080/", "http://git.lan:8080", "git.lan:8080"),
+        ("gitlab.corp.ru.", "https://gitlab.corp.ru", "gitlab.corp.ru"),
+        ("https://GitLab.corp.ru.:443/gitlab", "https://gitlab.corp.ru/gitlab", "gitlab.corp.ru"),
+        ("git.test..:8443", "https://git.test:8443", "git.test:8443"),
     ],
 )
 def test_an_address_and_its_host(text, root, key):
@@ -79,6 +82,8 @@ def test_an_address_and_its_host(text, root, key):
         ("ssh://git@gitlab.corp.ru", "https:// or http://"),
         ("git@gitlab.corp.ru:team/app.git", "https:// or http://"),
         ("https://", "names no host"),
+        ("...", "names no host"),
+        ("https://.:8443", "names no host"),
         ("https://gitlab.corp.ru:99999", "port"),
     ],
 )
@@ -180,6 +185,32 @@ def test_github_refusing_the_token(serve):
     refused = _refused(server.url)
     assert str(refused) == f"GitHub at {server.url} refuses the token"
     assert refused.hint == f"make a token at {server.url}/settings/tokens (scope repo)"
+
+
+def test_a_gateway_refusing_every_kind_names_no_kind(serve):
+    server = serve("gateway")
+    refused = _refused(server.url)
+    assert str(refused) == f"{server.url} refuses the token on GitHub's and GitLab's API alike"
+    assert refused.hint == (
+        "check that the token was copied whole; a sign-in gateway in front of the server "
+        "refuses any token too"
+    )
+    assert (refused.field, refused.choose_kind) == ("token", False)
+    assert refused.page == (
+        "The server refused this token on both GitHub's and GitLab's API: copy it whole, or "
+        "ask whether a sign-in gateway stands in front of it."
+    )
+    assert refused.page_hint == ""
+    assert str(_refused(server.url, kind="gitlab")) == f"GitLab at {server.url} refuses the token"
+
+
+@pytest.mark.parametrize("profile", ["hang", None])
+def test_a_server_that_gives_no_answer_at_add_offers_the_kind(serve, monkeypatch, profile):
+    monkeypatch.setattr(model_servers, "TIMEOUT", 1)
+    root = serve(profile).url if profile else f"http://127.0.0.1:{closed_port()}"
+    assert _refused(root).choose_kind is True
+    for other in ("gitlab-refuses", "neither"):
+        assert _refused(serve(other).url).choose_kind is False
 
 
 def test_a_gitlab_token_without_read_api(serve):
@@ -317,6 +348,13 @@ def test_a_second_save_of_the_host_replaces_and_keeps_the_id(lado_home):
     assert len(state.git_servers()) == 1
 
 
+def test_a_trailing_dot_replaces_the_server_of_its_host(lado_home):
+    first, _ = _save()
+    again, replaced = _save("gitlab.corp.ru.", "glpat-NEW", login="petr")
+    assert (again.id, again.address, replaced) == (first.id, "https://gitlab.corp.ru", True)
+    assert [s.address for s in state.git_servers()] == ["https://gitlab.corp.ru"]
+
+
 def test_a_host_saved_meanwhile_gets_the_new_token_in_its_own_folder(lado_home, monkeypatch):
     first, _ = _save()
     monkeypatch.setattr(state, "git_server_by_host", lambda host: None)  # not seen yet
@@ -338,14 +376,85 @@ def test_a_failed_row_leaves_no_folder_for_a_new_server(lado_home, monkeypatch):
 
 def test_remove_takes_the_row_and_the_folder(lado_home):
     saved, _ = _save()
-    removed = git_servers.remove(git_servers.address("https://gitlab.corp.ru/"))
-    assert removed.id == saved.id
+    removed, warning = git_servers.remove(git_servers.address("https://gitlab.corp.ru/"))
+    assert (removed.id, warning) == (saved.id, None)
     assert state.git_servers() == []
     assert not (lado_home / "git-servers" / saved.id).exists()
     with pytest.raises(git_servers.Refused) as raised:
         git_servers.remove(git_servers.address("gitlab.corp.ru"))
     assert str(raised.value) == "https://gitlab.corp.ru is no saved git server"
     assert raised.value.hint == "see them: lado git-server list"
+
+
+def _hold_lock(lado_home):
+    """The lock of the git servers held by another open file, as another process holds it."""
+    import fcntl
+
+    lado_home.mkdir(exist_ok=True)
+    held = open(lado_home / "git-servers.lock", "a+")  # noqa: SIM115 - closed by the caller
+    fcntl.flock(held, fcntl.LOCK_EX)
+    return held
+
+
+def test_a_removal_waits_for_a_save_holding_the_lock(lado_home):
+    import threading
+
+    _save()
+    held = _hold_lock(lado_home)
+    done = []
+    removal = threading.Thread(
+        target=lambda: done.append(git_servers.remove(git_servers.address("gitlab.corp.ru")))
+    )
+    removal.start()
+    removal.join(0.5)
+    assert done == [] and len(state.git_servers()) == 1
+    held.close()
+    removal.join(5)
+    assert len(done) == 1 and state.git_servers() == []
+
+
+def test_a_held_lock_refuses_after_its_wait(lado_home, monkeypatch):
+    monkeypatch.setattr(git_servers, "LOCK_WAIT", 0.2)
+    _save()
+    with _hold_lock(lado_home):
+        started = time.monotonic()
+        for change in (_save, lambda: git_servers.remove(git_servers.address("gitlab.corp.ru"))):
+            with pytest.raises(git_servers.Refused) as raised:
+                change()
+            assert str(raised.value) == "another change of the git servers is running; try again"
+        assert time.monotonic() - started >= 0.4
+    assert git_servers.LOCK_WAIT == 0.2 and len(state.git_servers()) == 1
+
+
+def test_the_lock_waits_ten_seconds():
+    assert git_servers.LOCK_WAIT == 10
+
+
+def test_a_removal_racing_a_replacement_keeps_the_row_and_the_token_in_step(lado_home, monkeypatch):
+    import threading
+
+    _save()
+    write = git_servers._write_token
+    removals = []
+
+    def slow(id, token):
+        # The replacement's row is written: a removal starts before its token file is.
+        removal = threading.Thread(
+            target=lambda: removals.append(
+                git_servers.remove(git_servers.address("gitlab.corp.ru"))
+            )
+        )
+        removal.start()
+        removals.append(removal)
+        time.sleep(0.3)
+        write(id, token)
+
+    monkeypatch.setattr(git_servers, "_write_token", slow)
+    _save(token="glpat-NEW")
+    removals[0].join(10)
+    assert len(removals) == 2  # the removal ran, after the replacement
+    assert state.git_servers() == []
+    assert not (lado_home / "git-servers").exists()
 
 
 def test_a_server_without_its_token_file_has_none(lado_home):
@@ -626,6 +735,32 @@ def test_the_folder_goes_with_the_last_server(lado_home):
     assert not (lado_home / "git-servers").exists()
 
 
+def test_a_folder_that_cannot_be_removed_warns(lado_home):
+    _save()
+    (lado_home / "git-servers" / "notes.txt").write_text("the human's")
+    removed, warning = git_servers.remove_host("gitlab.corp.ru")
+    assert removed.address == "https://gitlab.corp.ru"
+    assert state.git_servers() == []
+    assert warning == f"could not remove {lado_home / 'git-servers'}: directory not empty"
+    assert [p.name for p in (lado_home / "git-servers").iterdir()] == ["notes.txt"]
+
+
+def test_a_token_folder_that_cannot_be_removed_warns(lado_home):
+    saved, _ = _save()
+    (lado_home / "git-servers" / saved.id / "notes.txt").write_text("the human's")
+    removed, warning = git_servers.remove_host("gitlab.corp.ru")
+    assert (removed.id, state.git_servers()) == (saved.id, [])
+    folder = lado_home / "git-servers" / saved.id
+    assert warning == f"could not remove {folder}: directory not empty"
+    assert not (folder / "token").exists()
+
+
+def test_a_removal_of_one_of_two_does_not_warn(lado_home):
+    _save()
+    _save("git.lan")
+    assert git_servers.remove_host("gitlab.corp.ru")[1] is None
+
+
 def test_an_add_whose_folder_goes_under_it_writes_again(lado_home, monkeypatch):
     # The last server's removal takes git-servers/ between the add's opening of it and the
     # making of the new server's folder in it.
@@ -863,6 +998,8 @@ def test_an_author_is_trimmed_and_may_be_256_characters_long():
 
 
 AUTHOR_KEY = "includeIf.hasconfig:remote.*.url:{}.path"
+GITLAB_CORP = "[gG][iI][tT][lL][aA][bB].[cC][oO][rR][pP].[rR][uU]"
+CORP = "[cC][oO][rR][pP].[rR][uU]"
 
 
 @pytest.mark.parametrize(
@@ -872,8 +1009,10 @@ AUTHOR_KEY = "includeIf.hasconfig:remote.*.url:{}.path"
             "https://gitlab.corp.ru",
             "gitlab.corp.ru",
             [
-                "https://gitlab.corp.ru/**",
-                "https://*@gitlab.corp.ru/**",
+                f"https://{GITLAB_CORP}/**",
+                f"https://*@{GITLAB_CORP}/**",
+                f"https://{GITLAB_CORP}:443/**",
+                f"https://*@{GITLAB_CORP}:443/**",
                 "git@gitlab.corp.ru:*",
                 "git@gitlab.corp.ru:*/**",
                 "ssh://git@gitlab.corp.ru/**",
@@ -884,8 +1023,8 @@ AUTHOR_KEY = "includeIf.hasconfig:remote.*.url:{}.path"
             "https://corp.ru:8443/gitlab",
             "corp.ru:8443",
             [
-                "https://corp.ru:8443/gitlab/**",
-                "https://*@corp.ru:8443/gitlab/**",
+                f"https://{CORP}:8443/gitlab/**",
+                f"https://*@{CORP}:8443/gitlab/**",
                 "git@corp.ru:*",
                 "git@corp.ru:*/**",
                 "ssh://git@corp.ru/**",
@@ -905,11 +1044,27 @@ AUTHOR_KEY = "includeIf.hasconfig:remote.*.url:{}.path"
             ],
         ),
         (
+            "http://git.lan",
+            "git.lan",
+            [
+                "http://[gG][iI][tT].[lL][aA][nN]/**",
+                "http://*@[gG][iI][tT].[lL][aA][nN]/**",
+                "http://[gG][iI][tT].[lL][aA][nN]:80/**",
+                "http://*@[gG][iI][tT].[lL][aA][nN]:80/**",
+                "git@git.lan:*",
+                "git@git.lan:*/**",
+                "ssh://git@git.lan/**",
+                "ssh://git@git.lan:22/**",
+            ],
+        ),
+        (
             "https://corp.ru/a*b[c]",
             "corp.ru",
             [
-                "https://corp.ru/a\\*b\\[c\\]/**",
-                "https://*@corp.ru/a\\*b\\[c\\]/**",
+                f"https://{CORP}/a\\*b\\[c\\]/**",
+                f"https://*@{CORP}/a\\*b\\[c\\]/**",
+                f"https://{CORP}:443/a\\*b\\[c\\]/**",
+                f"https://*@{CORP}:443/a\\*b\\[c\\]/**",
                 "git@corp.ru:*",
                 "git@corp.ru:*/**",
                 "ssh://git@corp.ru/**",
@@ -973,6 +1128,15 @@ A_ONE, B_TWO, HUMAN = "A One <a1@corp.ru>", "B Two <b2@corp.ru>", "Human <human@
     [
         ("https://gitlab.corp.ru/team/app.git", A_ONE),
         ("https://oauth2@gitlab.corp.ru/team/app.git", A_ONE),
+        ("https://GitLab.Corp.ru/team/app.git", A_ONE),
+        ("https://gitlab.corp.ru:443/team/app.git", A_ONE),
+        ("https://oauth2@GITLAB.CORP.RU:443/team/app.git", A_ONE),
+        ("https://gitlab.corp.ru:4430/team/app.git", HUMAN),
+        ("https://gitlab.corp.rux/team/app.git", HUMAN),
+        ("https://GitLab.Corp.ru.evil/team/app.git", HUMAN),
+        ("https://Corp.RU/gitlab/team/app.git", B_TWO),
+        ("https://corp.ru:443/gitlab/team/app.git", B_TWO),
+        ("https://corp.ru/GitLab/team/app.git", HUMAN),  # a path keeps its case
         ("http://gitlab.corp.ru/team/app.git", HUMAN),  # another scheme: another origin
         ("git@gitlab.corp.ru:app.git", A_ONE),
         ("git@gitlab.corp.ru:team/app.git", A_ONE),
@@ -1051,6 +1215,16 @@ def test_the_author_file_holds_the_name_and_email_alone(tmp_path, name):
     assert listed == f"user.name={name}\nuser.email=i@corp.ru\n"
 
 
+def test_a_failed_author_write_leaves_no_temp_file(tmp_path, monkeypatch):
+    def broken(source, target):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(os, "replace", broken)
+    with pytest.raises(OSError, match="No space left"):
+        git_servers.author_files(tmp_path / "authors", [_with_author(_server(), "A", "a@b")])
+    assert list((tmp_path / "authors").iterdir()) == []
+
+
 def test_only_servers_with_an_author_get_a_file(tmp_path):
     servers = [_server(), _with_author(_server("b2", "https://g.lan", "g.lan"), "B", "b@g.lan")]
     found = git_servers.author_files(tmp_path / "authors", servers)
@@ -1075,7 +1249,7 @@ def test_an_author_needs_git_2_36(tmp_path):
         "",
     )
     with pytest.raises(git_servers.Refused) as raised:
-        git_servers.check_author_git(old, "https://gitlab.corp.ru")
+        git_servers.check_author_git(old, ["https://gitlab.corp.ru"])
     assert str(raised.value) == (
         f"{AUTHOR_OLD}, or clear the author (lado git-server author https://gitlab.corp.ru --clear)"
     )

@@ -296,6 +296,20 @@ def test_removing_the_last_server_removes_the_folder(serve, capsys, lado_home):
     assert not (lado_home / "git-servers").exists()
 
 
+def test_a_folder_that_stays_is_a_warning(serve, capsys, lado_home):
+    server = serve("gitlab")
+    main(["git-server", "add", server.url, "--token"])
+    (lado_home / "git-servers" / "notes.txt").write_text("the human's")
+    capsys.readouterr()
+    assert main(["git-server", "remove", server.url]) == 0
+    out, err = capsys.readouterr()
+    assert out == f"Removed git server {server.url}.\n"
+    assert err == (
+        f"lado: warning: could not remove {lado_home / 'git-servers'}: directory not empty\n"
+    )
+    assert state.git_servers() == []
+
+
 def test_the_bare_command_prints_its_help(capsys, lado_home):
     assert main(["git-server"]) == 0
     assert "add" in capsys.readouterr().out

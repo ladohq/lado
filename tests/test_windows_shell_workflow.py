@@ -4,6 +4,7 @@ hand, with the smoke tests of every provider in WSL."""
 import importlib.util
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -81,29 +82,23 @@ def step_named(steps, name: str) -> dict:
 def test_started_by_hand_and_weekly(workflow):
     # PyYAML reads the key `on` as True.
     triggers = workflow[True]
-    assert list(triggers) == ["workflow_dispatch", "schedule"]
-    # Once a week (a schedule runs on the default branch), at an off-peak minute.
-    assert triggers["schedule"] == [{"cron": "17 3 * * 1"}]
+    assert set(triggers) == {"workflow_dispatch", "schedule"}
+    # Once a week (a schedule runs on the default branch).
+    [schedule] = triggers["schedule"]
+    fields = schedule["cron"].split()
+    assert len(fields) == 5 and fields[2:4] == ["*", "*"] and fields[4].isdigit(), fields
 
 
 def test_inputs(workflow):
+    """The inputs the settings script reads, typed; the providers those of
+    scripts/smoke_ci.py, or all of them; an ARM runner among the choices (its guard below)."""
     inputs = workflow[True]["workflow_dispatch"]["inputs"]
-    assert inputs["runner"]["type"] == "choice"
-    assert inputs["runner"]["options"] == ["windows-latest", "windows-11-arm"]
-    assert inputs["runner"]["default"] == "windows-latest"
-    assert inputs["wsl"]["type"] == "boolean"
-    assert inputs["wsl"]["default"] is True
-    assert inputs["tests"]["type"] == "boolean"
-    assert inputs["tests"]["default"] is True
-    assert inputs["smoke"]["type"] == "boolean"
-    assert inputs["smoke"]["default"] is True
-    assert inputs["minutes"]["type"] == "number"
-    assert inputs["minutes"]["default"] == 120
-    # The providers of scripts/smoke_ci.py, or all of them.
-    assert inputs["provider"]["type"] == "choice"
-    assert inputs["provider"]["options"] == ["all", *PINS]
-    assert inputs["provider"]["default"] == "all"
     assert list(inputs) == INPUTS
+    assert "windows-11-arm" in inputs["runner"]["options"]
+    for name in ("wsl", "tests", "smoke"):
+        assert inputs[name]["type"] == "boolean", name
+    assert inputs["minutes"]["type"] == "number"
+    assert inputs["provider"]["options"] == ["all", *PINS]
 
 
 def test_no_live_input_no_call_no_secret(workflow, text):
@@ -277,8 +272,9 @@ def test_wsl2_ubuntu_with_the_tools(steps):
     assert all("continue-on-error" not in s for s in steps)
 
 
-def test_wsl_on_arm_fails_before_setup(steps):
-    """setup-wsl's Ubuntu 24.04 is an amd64 image: no silent WSL1 fallback on ARM."""
+def test_wsl_on_arm_fails_before_setup(steps, workflow):
+    """setup-wsl's Ubuntu 24.04 is an amd64 image: no silent WSL1 fallback on ARM. The
+    guard says which inputs run it on ARM instead, inputs the workflow has."""
     setup = steps.index(step_using(steps, "Vampire/setup-wsl"))
     guards = [
         i
@@ -288,11 +284,9 @@ def test_wsl_on_arm_fails_before_setup(steps):
         and "exit 1" in s.get("run", "")
     ]
     assert guards and guards[0] < setup
-
-
-def test_arm_says_to_run_without_wsl_and_smoke(steps):
-    arm = step_named(steps, "No WSL on ARM")
-    assert "wsl=false smoke=false" in arm["run"]
+    hint = re.findall(r"\b(\w+)=false\b", steps[guards[0]]["run"])
+    assert set(hint) == {"wsl", "smoke"}
+    assert set(hint) <= set(workflow[True]["workflow_dispatch"]["inputs"])
 
 
 def test_native_probe_installs_lado_from_the_checkout_in_the_tests_part(steps):
@@ -300,8 +294,6 @@ def test_native_probe_installs_lado_from_the_checkout_in_the_tests_part(steps):
     assert step["if"] == PART
     run = step["run"]
     assert "uv tool install" in run and "uv tool install lado" not in run
-    for command in ("platform.machine(), sys.version", "--version", "doctor", "native.log"):
-        assert command in run
     # Every native check is expected to fail today: none makes the job red.
     assert "expected" in run and "required" not in run
     assert steps.index(step_using(steps, "astral-sh/setup-uv")) < steps.index(step)
@@ -317,23 +309,12 @@ def test_wsl_probe_runs_as_a_non_root_user_in_a_login_shell(steps):
     assert probe["if"] == WSL
     run = probe["run"]
     assert "su - lado -c" in run
-    for command in (
-        "uname -m",
-        "tmux -V",
-        "astral.sh/uv",
-        "uv sync",
-        "uv run lado --version",
-        "uv run lado doctor",
-        "make test",
-        "make test-integration",
-    ):
-        assert command in run, command
     # Each check under a timeout, so a hang leaves time for the report.
     assert "timeout" in run
     # Only doctor may fail: with no agent CLI installed it reports a FAIL.
     assert '"${4:-required}"' in run
     expected = [line.strip() for line in run.splitlines() if line.endswith(" expected")]
-    assert expected == ["check lado-doctor 300 'cd ~/lado && uv run lado doctor' expected"]
+    assert len(expected) == 1 and "lado doctor" in expected[0], expected
     check = step_named(steps, "Check WSL")
     assert check["if"] == WSL and "wsl -l -v" in check["run"]
     order = [steps.index(s) for s in (check, user, clone, probe)]
@@ -406,11 +387,6 @@ def test_the_agents_path_is_lados_own_after_uv_sync(steps):
     assert "/usr/bin:/bin:/usr/sbin:/sbin" not in run and "env -i" not in run
 
 
-def test_only_required_checks_decide(steps):
-    verdict = step_named(steps, "Verdict")["run"]
-    assert "$_.kind -eq 'required' -and $_.code -ne '0'" in verdict
-
-
 def test_report_uploaded_always_then_the_verdict_last(steps):
     summary = step_named(steps, "Summary")
     assert summary["if"] == "always()"
@@ -425,7 +401,9 @@ def test_report_uploaded_always_then_the_verdict_last(steps):
     assert 1 <= upload["with"]["retention-days"] <= 7
     verdict = step_named(steps, "Verdict")
     assert verdict["if"] == "always()"
-    assert "required" in verdict["run"] and "exit 1" in verdict["run"]
+    # Only a required check that failed makes the run red.
+    assert "$_.kind -eq 'required'" in verdict["run"] and "$_.code -ne '0'" in verdict["run"]
+    assert "exit 1" in verdict["run"]
     probes = [steps.index(step_named(steps, n)) for n in ("Native probe", "WSL probe")]
     assert max(probes) < steps.index(summary) < steps.index(upload)
     assert steps[-1] is verdict

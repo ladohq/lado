@@ -739,6 +739,88 @@ test("Add cancelled while it saves: the server is listed, nothing else changes",
   expect(document.activeElement).toBe(button("Add server"));
 });
 
+test("Replace token answered after a Check closes its form and leaves the check's line and focus", async () => {
+  fake.servers = [CORP];
+  const late = held();
+  fake.add = late.answer;
+  fake.saved[CORP.host] = () => json(checked(CORP, { outcome: "ok", message: "Works: signed in as a.sample, may clone and push." }));
+  await mount();
+  openRow(CORP);
+  press(`Replace the token of ${CORP.address}`);
+  type(screen.getByRole("textbox", { name: "New token" }), TOKEN);
+  press("Save token");
+  press(`Check ${CORP.address}`);
+  await screen.findByText("Works: signed in as a.sample, may clone and push.");
+  await waitFor(() => expect(document.activeElement).toBe(button(`Check ${CORP.address}`)));
+  late.let_go(json(added(CORP)));
+  await waitFor(() => expect(screen.queryByRole("textbox", { name: "New token" })).toBeNull());
+  expect(screen.getByText("Works: signed in as a.sample, may clone and push.")).toBeTruthy();
+  expect(screen.queryByText("Token replaced: signed in as a.sample.")).toBeNull();
+  expect(document.activeElement).toBe(button(`Check ${CORP.address}`));
+});
+
+test("the author saved after a Check closes its form and leaves the check's line", async () => {
+  fake.servers = [GHE];
+  const late = held();
+  fake.author = () => late.answer();
+  fake.saved[GHE.host] = () => json(checked(GHE, { outcome: "unrecognised", message: "It answers as neither GitHub nor GitLab." }));
+  await mount();
+  openRow(GHE);
+  press(`Set the commit author of ${GHE.address}`);
+  type(screen.getByRole("textbox", { name: "Name" }), "Ivan");
+  type(screen.getByRole("textbox", { name: "Email" }), "ivan@corp.example");
+  press("Save author");
+  press(`Check ${GHE.address}`);
+  await screen.findByText("It answers as neither GitHub nor GitLab.");
+  late.let_go(json({ server: { ...GHE, author_name: "Ivan", author_email: "ivan@corp.example" }, line: "" }));
+  await waitFor(() => expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull());
+  expect(screen.getByText("It answers as neither GitHub nor GitLab.")).toBeTruthy();
+  expect(screen.queryByText("Author saved.")).toBeNull();
+});
+
+test("Add answered after a Check closes the form, the server listed, the check's line kept", async () => {
+  fake.servers = [GHE];
+  fake.checks["https://gitlab.com"] = looksLike("https://gitlab.com", "gitlab");
+  const com = { ...CORP, address: "https://gitlab.com", host: "gitlab.com" };
+  const late = held();
+  fake.add = () => {
+    fake.servers = [GHE, com];
+    return late.answer();
+  };
+  fake.saved[GHE.host] = () => json(checked(GHE, { outcome: "redirect", message: "It redirects to https://sso.example: add that address instead." }));
+  await mount();
+  openRow(GHE);
+  press("Add server");
+  await screen.findByText("answers.", { exact: false });
+  type(tokenField(), TOKEN);
+  fireEvent.click(formAdd());
+  press(`Check ${GHE.address}`);
+  await screen.findByText(/It redirects to/);
+  late.let_go(json(added(com)));
+  await waitFor(() => expect(screen.queryByRole("textbox", { name: "Address" })).toBeNull());
+  expect(button("https://gitlab.com")).toBeTruthy();
+  expect(screen.getByText(/It redirects to/)).toBeTruthy();
+  expect(results().length).toBe(1);
+});
+
+test("an Add cancelled and opened again is not closed by the first one's late answer", async () => {
+  fake.checks["https://gitlab.com"] = looksLike("https://gitlab.com", "gitlab");
+  const com = { ...CORP, address: "https://gitlab.com", host: "gitlab.com" };
+  const late = held();
+  fake.add = () => late.answer();
+  await mount();
+  press("Add server");
+  await screen.findByText("answers.", { exact: false });
+  type(tokenField(), TOKEN);
+  fireEvent.click(formAdd());
+  press("Cancel");
+  press("Add server");
+  const again = addressField();
+  late.let_go(json(added(com)));
+  await new Promise((done) => setTimeout(done, 20));
+  expect(addressField()).toBe(again);
+});
+
 test("an address saved as http:// or under a path leads to its server all the same", async () => {
   const lab = { ...GHE, address: "http://git.lab.example", host: "git.lab.example" };
   fake.servers = [lab];

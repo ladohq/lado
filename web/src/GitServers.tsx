@@ -163,7 +163,9 @@ export function GitServersPage() {
   const [opened, setOpened] = useState<string[]>([]);
   const open = (host: string) => setOpened((now) => (now.includes(host) ? now : [...now, host]));
   const [form, setForm] = useState<Form | null>(null);
-  const [adding, setAdding] = useState(false);
+  // The open Add form's number (0: none): a late answer closes only the form it came from.
+  const [adding, setAdding] = useState(0);
+  const addForms = useRef(0);
   const [result, setResult] = useState<Result | null>(null);
   const [checking, setChecking] = useState<string[]>([]); // the servers being checked
   const [failed, setFailed] = useState<Record<string, string>>({});
@@ -219,11 +221,14 @@ export function GitServersPage() {
       setChecking((now) => now.filter((h) => h !== host));
     }
   };
-  const replaced = (server: GitServerInfo, done: GitServerAdded, mine: number) => {
+  // A form whose save is done closes when it is still open, also after a later action; only
+  // the result line and the focus are the latest action's.
+  const closeOwn = (started: Form | null) => setForm((now) => (now === started ? null : now));
+  const replaced = (server: GitServerInfo, done: GitServerAdded, mine: number, started: Form | null) => {
     put(done.server);
     failedAs(server.host, null);
+    closeOwn(started);
     if (stale(mine)) return;
-    setForm(null);
     const now = done.server.login;
     if (done.warning) setResult({ host: server.host, place: "signin", tone: "warn", text: `⚠ ${done.warning}`, way: "replace" });
     else if (now === null)
@@ -399,7 +404,7 @@ export function GitServersPage() {
                                 kind={kind}
                                 onTouch={act}
                                 onCancel={() => closeForm(`replace:${host}`)}
-                                onDone={(done, mine) => replaced(server, done, mine)}
+                                onDone={(done, mine) => replaced(server, done, mine, form)}
                               />
                             )}
                             {mine?.place === "signin" && (
@@ -447,8 +452,8 @@ export function GitServersPage() {
                                 onCancel={() => closeForm(`edit:${host}`)}
                                 onDone={(done, mine) => {
                                   put(done.server);
+                                  closeOwn(form);
                                   if (stale(mine)) return;
-                                  setForm(null);
                                   setResult({ host, place: "author", tone: "ok", text: "Author saved." });
                                   focusOn(`edit:${host}`);
                                 }}
@@ -507,12 +512,12 @@ export function GitServersPage() {
                   onTouch={act}
                   onCancel={() => {
                     act(); // an Add still under way answers to no form
-                    setAdding(false);
+                    setAdding(0);
                     focusOn("add");
                   }}
                   onReplace={(host) => {
                     act();
-                    setAdding(false);
+                    setAdding(0);
                     open(host);
                     setForm({ host, what: "replace" });
                   }}
@@ -521,8 +526,9 @@ export function GitServersPage() {
                     failedAs(host, null);
                     put(done.server, true); // its row is there for the focus before the list is read
                     void reload();
+                    const started = adding;
+                    setAdding((now) => (now === started ? 0 : now)); // its own form only
                     if (stale(mine)) return;
-                    setAdding(false);
                     setForm(null);
                     open(host);
                     const info = done.server;
@@ -549,7 +555,7 @@ export function GitServersPage() {
                   onClick={() => {
                     act();
                     setForm(null);
-                    setAdding(true);
+                    setAdding(++addForms.current);
                   }}
                 >
                   <span aria-hidden="true">+</span> Add server

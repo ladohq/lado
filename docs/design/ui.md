@@ -3275,7 +3275,8 @@ link under the field stays visible and pressable.
   removal, an author line with Undo), kept as page state with its server and place; any next
   action removes it, opening or closing a row does not (Cancel and Esc count). Each action has a
   number: an answer that comes after a later action (a check, a save, a removal) keeps the list
-  true and touches no result line, form or focus. Each server shows its own `Checking…`, its
+  true and closes its own form when that form is still open, touching no result line, other
+  form or focus. Each server shows its own `Checking…`, its
   Check off while its check runs. A check of a server removed elsewhere (404) leaves its line
   in the row's place. Nothing under the pointer moves (`useScrollAnchor`).
 - **API** (`lado.server.git_entries` over `lado.git_servers`, under the token, no change-feed

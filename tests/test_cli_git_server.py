@@ -12,7 +12,7 @@ import fake_git_api as fake
 import pytest
 from test_cli_model_server import Stdin
 
-from lado import git_kinds, git_servers, state
+from lado import git_kinds, git_servers, model_servers, state
 from lado.cli import main
 
 TOKEN = "glpat-CANARY-a95c1e"
@@ -269,6 +269,120 @@ def test_add_saves_a_token_without_push_and_warns(serve, capsys, lado_home):
         f"read_api: lado git-server add {server.url} --token",
     ]
     assert [s.login for s in state.git_servers()] == [fake.LOGIN]
+
+
+# The check of a saved server.
+
+
+def _added(serve, capsys, profile, kind=None):
+    server = serve(profile, token=TOKEN)
+    args = ["git-server", "add", server.url, "--token"] + (["--kind", kind] if kind else [])
+    assert main(args) == 0
+    capsys.readouterr()
+    return server
+
+
+def test_check_of_a_server_that_works(serve, capsys, lado_home):
+    server = _added(serve, capsys, "gitlab-full")
+    assert main(["git-server", "check", server.url.removeprefix("http://") + "/"]) == 0
+    out, err = capsys.readouterr()
+    assert out == f"Works: GitLab, signed in as {fake.LOGIN}, may clone and push.\n"
+    assert err == ""
+    assert TOKEN not in out + err
+
+
+@pytest.mark.parametrize(
+    ("profile", "then", "lines"),
+    [
+        (
+            "gitlab-full",
+            "gitlab-refuses",
+            [
+                "lado: GitLab refused the token: it expired or was revoked",
+                "lado: replace it: lado git-server add {url} --token",
+            ],
+        ),
+        (
+            "gitlab-full",
+            "gitlab-read",
+            [
+                "lado: the token lacks write_repository: agents can clone but not push",
+                "lado: replace it with a token with the scopes read_repository, "
+                "write_repository, read_api: lado git-server add {url} --token",
+            ],
+        ),
+        (
+            "gitlab-full",
+            "neither",
+            ["lado: it answers as neither GitHub nor GitLab"],
+        ),
+        (
+            "gitlab-full",
+            "github",
+            [
+                "lado: it answers as GitHub, not GitLab: remove it and add it again",
+                "lado: lado git-server remove {url}, then lado git-server add {url} --token",
+            ],
+        ),
+    ],
+)
+def test_check_of_a_failure(serve, capsys, lado_home, monkeypatch, profile, then, lines):
+    server = _added(serve, capsys, profile)
+    monkeypatch.setitem(fake.PROFILES, profile, fake.PROFILES[then])
+    assert main(["git-server", "check", server.url]) == 1
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert err.splitlines() == [line.format(url=server.url) for line in lines]
+
+
+def test_check_of_a_server_that_does_not_answer(serve, capsys, lado_home, monkeypatch):
+    monkeypatch.setattr(model_servers, "TIMEOUT", 1)
+    server = _added(serve, capsys, "hang", kind="gitlab")
+    assert main(["git-server", "check", server.url]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        f"lado: 127.0.0.1:{server.port} does not answer: it did not answer in 1 s",
+        "lado: check that this computer reaches it: the company VPN or proxy; with LADO in "
+        "Docker, its container",
+    ]
+
+
+def test_check_of_one_saved_without_a_check_saves_its_login(serve, capsys, lado_home, monkeypatch):
+    server = _added(serve, capsys, "hang", kind="gitlab")
+    monkeypatch.setitem(fake.PROFILES, "hang", fake.PROFILES["gitlab"])
+    assert main(["git-server", "check", server.url]) == 0
+    assert capsys.readouterr().out == (
+        f"Works: GitLab, signed in as {fake.LOGIN}; the token's rights are not checked.\n"
+    )
+    assert main(["git-server", "list"]) == 0
+    assert f"GitLab  {fake.LOGIN}" in capsys.readouterr().out
+
+
+def test_check_of_no_saved_server(serve, capsys, lado_home):
+    assert main(["git-server", "check", "git.lan"]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        "lado: https://git.lan is no saved git server",
+        "lado: see them: lado git-server list",
+    ]
+
+
+def test_check_with_the_token_file_missing_sends_nothing(serve, capsys, lado_home):
+    server = _added(serve, capsys, "gitlab-full")
+    asked = len(server.requests)
+    (lado_home / "git-servers" / state.git_servers()[0].id / "token").unlink()
+    assert main(["git-server", "check", server.url]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        f"lado: the token file of {server.url} is missing",
+        f"lado: replace it: lado git-server add {server.url} --token",
+    ]
+    assert len(server.requests) == asked
+
+
+def test_check_of_an_address_it_does_not_take(capsys, lado_home):
+    assert main(["git-server", "check", "ssh://git@git.lan"]) == 2
+    assert "not a git server's address" in capsys.readouterr().err
+    with pytest.raises(SystemExit) as raised:
+        main(["git-server", "check"])
+    assert raised.value.code == 2
 
 
 def test_remove_by_address(serve, capsys, lado_home):

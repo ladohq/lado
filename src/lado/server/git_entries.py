@@ -17,12 +17,22 @@ from lado.server import models
 from lado.server.model_entries import Refusal
 
 
-def _entry(exc: git_servers.Refused | git_servers.BadAddress) -> models.EntryRefused:
+def _entry(exc: git_servers.Refused | git_servers.BadAddress) -> models.GitEntryRefused:
     if isinstance(exc, git_servers.BadAddress):
-        return models.EntryRefused(
-            message=exc.page, hint="", field=git_servers.ADDRESS_FIELD, warnings=[]
+        return models.GitEntryRefused(
+            message=exc.page,
+            hint="",
+            field=git_servers.ADDRESS_FIELD,
+            warnings=[],
+            choose_kind=False,
         )
-    return models.EntryRefused(message=exc.page, hint=exc.page_hint, field=exc.field, warnings=[])
+    return models.GitEntryRefused(
+        message=exc.page,
+        hint=exc.page_hint,
+        field=exc.field,
+        warnings=[],
+        choose_kind=exc.choose_kind,
+    )
 
 
 def _refusal(
@@ -129,7 +139,40 @@ def add(given: models.GitServerAdd) -> models.GitServerAdded:
     else:
         line = f"{done} git server {saved.address} as {info.kind_title} without a check "
         line += f"({checked.unchecked})."
-    return models.GitServerAdded(server=info, line=line, replaced=replaced, warnings=warnings)
+    return models.GitServerAdded(
+        server=info,
+        line=line,
+        replaced=replaced,
+        warnings=warnings,
+        warning=git_servers.lacks(checked.kind, checked.missing_scopes, page=True),
+        missing_scopes=list(checked.missing_scopes),
+    )
+
+
+def check_saved(host: str) -> models.GitServerChecked:
+    """Check the saved server of `host` (its key) again as `lado git-server check` does: a
+    404 for no such server, a 422 for a token file it cannot read, asking nothing."""
+    try:
+        at = git_servers.saved_address(host)
+        found = git_servers.check(at)
+    except git_servers.Refused as exc:
+        if exc.field == git_servers.ADDRESS_FIELD:  # no such server
+            raise Refusal(_entry(exc), 404) from None
+        entry = _entry(exc)
+        entry.field = ""  # the panel's line, under no field of a form
+        raise Refusal(entry, 422) from None
+    saved = state.git_server_by_host(at.key)
+    return models.GitServerChecked(
+        outcome=found.outcome,
+        kind=found.kind.name,
+        login=found.login,
+        missing_scopes=list(found.missing_scopes),
+        rights_checked=found.rights_checked,
+        was_checked=found.was_checked,
+        message=found.page,
+        hint=found.page_hint,
+        server=server_info(saved) if saved else None,
+    )
 
 
 def set_author(host: str, given: models.GitServerAuthor) -> models.GitServerAuthorDone:

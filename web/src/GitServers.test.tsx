@@ -266,6 +266,7 @@ test("a server that does not answer asks for the kind; Add without a check sends
       hint: "If the server is there for git but its API is not reachable from here, choose its kind to save it without a check.",
       field: "address",
       warnings: [],
+      choose_kind: true,
     },
   };
   let sent: Record<string, unknown> | undefined;
@@ -300,6 +301,7 @@ test("a hint never goes to Add as a kind, and a redirect shows no kind choice", 
         hint: "",
         field: "address",
         warnings: [],
+        choose_kind: false,
       },
     ],
   };
@@ -337,6 +339,7 @@ test("github.com is refused under Address and the plain-http warning shows", asy
         hint: "",
         field: "address",
         warnings: [],
+        choose_kind: false,
       },
     ],
   };

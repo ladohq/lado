@@ -1831,6 +1831,28 @@ def cmd_git_server_author(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_git_server_check(args: argparse.Namespace) -> int:
+    """`lado git-server check <address>`: ask the saved server again with its token
+    (lado.git_servers.check); exit 0 when it works, 1 for any other outcome, 2 for an
+    address it does not take."""
+    from lado import git_servers
+
+    at = _git_address(args.address)
+    if at is None:
+        return 2
+    try:
+        found = git_servers.check(at)
+    except git_servers.Refused as exc:
+        return _refused(exc)
+    if found.outcome == "ok":
+        print(found.text)
+        return 0
+    for line in (found.text, found.hint):
+        if line:
+            print(f"lado: {line}", file=sys.stderr)
+    return 1
+
+
 def cmd_git_server_remove(args: argparse.Namespace) -> int:
     """`lado git-server remove <address>`: the server of the address's host and its token."""
     from lado import git_servers
@@ -2621,6 +2643,11 @@ def main(argv: list[str] | None = None) -> int:
         "list", help="the saved servers, without asking them"
     )
     git_server_list.set_defaults(func=cmd_git_server_list)
+    git_server_check = git_server_sub.add_parser(
+        "check", help="ask a saved server again with its token: does it still work?"
+    )
+    git_server_check.add_argument("address")
+    git_server_check.set_defaults(func=cmd_git_server_check)
     git_server_remove = git_server_sub.add_parser(
         "remove", help="remove a saved server and its token"
     )

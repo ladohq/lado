@@ -230,7 +230,7 @@ def lacks(kind: Kind, missing: Sequence[str], page: bool = False) -> str | None:
     words, or the page's (`page`: a sentence); None for none missing."""
     if not missing:
         return None
-    can = "neither clone nor push" if kind.needs[0] in missing else "clone but not push"
+    can = _can(kind, missing)
     if page:
         return f"The token lacks {', '.join(missing)}: agents can {can}."
     return f"the token lacks {', '.join(missing)}: agents can {can}"
@@ -422,6 +422,174 @@ def _unanswered(at: Address, answers: Sequence[model_servers.Answer]) -> tuple[s
         page_hint=PAGE_KIND_HINT,
     )
     return f"it answers as neither {titles}", refused
+
+
+OUTCOMES = (
+    "ok",
+    "token_refused",
+    "scopes_missing",
+    "no_answer",
+    "cert_untrusted",
+    "redirect",
+    "other_kind",
+    "unrecognised",
+)
+REACH_HINT = (
+    "check that this computer reaches it: the company VPN or proxy; with LADO in Docker, its "
+    "container"
+)
+PAGE_REACH_HINT = (
+    "Check that LADO's computer reaches the server: the company VPN or proxy; with LADO in "
+    "Docker, its container."
+)
+CERT_HINT = (
+    "ask your IT department to make this computer trust it (with LADO in Docker, its "
+    "container), then check again"
+)
+PAGE_CERT_HINT = (
+    "Ask your IT department to make LADO's computer trust it (with LADO in Docker, its "
+    "container), then check again."
+)
+
+
+@dataclass(frozen=True)
+class Check:
+    """What a check of a saved server found: `outcome` one of OUTCOMES, the saved `kind`,
+    the `login` it saw (None but for ok and scopes_missing), the rights the token lacks,
+    whether the server told them, whether the server had a login before (`was_checked`),
+    one line and its hint in the command's words (`text`, `hint`) and in the page's
+    (`page`, a sentence, and `page_hint`, its info tip's: "" for none). Never holds a
+    token."""
+
+    outcome: str
+    kind: Kind
+    login: str | None
+    missing_scopes: tuple[str, ...]
+    rights_checked: bool
+    was_checked: bool
+    text: str
+    hint: str
+    page: str
+    page_hint: str = ""
+
+
+def check(at: Address) -> Check:
+    """Check the saved server of `at`'s host again with its saved token, as `add` asks it
+    (every kind at once, no redirect followed, each request cut at TIMEOUT), judged by its
+    saved kind; a passing check saves the login it saw (under the lock), nothing else is
+    written. Refused, with no request sent, for no such server, a kind this LADO does not
+    know or a token file it cannot read."""
+    from lado import git_credential
+
+    server = saved_server(at)
+    at = address(server.address)
+    kind = git_kinds.by_name(server.kind)
+    if kind is None:
+        raise Refused(f"{server.address} is saved as {server.kind}, a kind this LADO does not know")
+    token = git_credential.read_token(server.id) if has_token(server) else None
+    if token is None:
+        raise Refused(
+            f"the token file of {at.root} is missing",
+            f"replace it: {ADD} {at.root} --token",
+            TOKEN_FIELD,
+            page="Its token file is missing.",
+            page_hint="",
+        )
+    answers = _ask_kinds(at, token)
+    by_kind = dict(zip(git_kinds.KINDS, answers, strict=True))
+    own = by_kind[kind]
+    was = server.login is not None
+
+    if login := kind.login(own):
+        missing, told = _rights(at, token, kind, own)
+        if missing:
+            return Check(
+                "scopes_missing",
+                kind,
+                login,
+                missing,
+                told,
+                was,
+                lacks(kind, missing) or "",
+                f"replace it with a token with the {kind.scopes}: {ADD} {at.root} --token",
+                f"The token lacks {', '.join(missing)}.",
+                f"Agents can {_can(kind, missing)} with it. Make one with the {kind.scopes}.",
+            )
+        _save_login(server, login)
+        rights = ", may clone and push." if told else "; the token's rights are not checked."
+        page = f"Works: signed in as {login}{rights}"
+        if server.login is None:
+            page = f"Works: {kind.title}, signed in as {login}."
+        return Check(
+            "ok",
+            kind,
+            login,
+            (),
+            told,
+            was,
+            f"Works: {kind.title}, signed in as {login}{rights}",
+            "",
+            page,
+        )
+
+    def failed(outcome: str, text: str, hint: str, page: str, page_hint: str = "") -> Check:
+        return Check(outcome, kind, None, (), False, was, text, hint, page, page_hint)
+
+    if kind.refusal(own):
+        refused = f"{kind.title} refused the token: it expired or was revoked"
+        return failed(
+            "token_refused", refused, f"replace it: {ADD} {at.root} --token", refused + "."
+        )
+    moved = next((answer.location for answer in answers if answer.location), "")
+    if moved:
+        moves = f"redirects to {moved}: add that address instead"
+        return failed("redirect", f"it {moves}", "", f"It {moves}.")
+    if own.status is None:
+        if own.tls and "certificate" in own.why:
+            return failed(
+                "cert_untrusted",
+                f"the certificate of {at.root} is not trusted",
+                CERT_HINT,
+                "The server's certificate is not trusted.",
+                PAGE_CERT_HINT,
+            )
+        silent = _silent(own)
+        page = f"No answer: {silent}."
+        if own.why.startswith("no answer in "):
+            page = (
+                f"No answer in {own.why.removeprefix('no answer in ').removesuffix(' s')} seconds."
+            )
+        return failed(
+            "no_answer", f"{at.key} does not answer: {silent}", REACH_HINT, page, PAGE_REACH_HINT
+        )
+    other = next((k for k, answer in by_kind.items() if k is not kind and k.login(answer)), None)
+    if other is not None:
+        answers_as = f"answers as {other.title}, not {kind.title}: remove it and add it again"
+        return failed(
+            "other_kind",
+            f"it {answers_as}",
+            f"{REMOVE} {at.root}, then {ADD} {at.root} --token",
+            f"It {answers_as}.",
+        )
+    titles = " nor ".join(k.title for k in git_kinds.KINDS)
+    return failed(
+        "unrecognised", f"it answers as neither {titles}", "", f"It answers as neither {titles}."
+    )
+
+
+def _can(kind: Kind, missing: Sequence[str]) -> str:
+    return "neither clone nor push" if kind.needs[0] in missing else "clone but not push"
+
+
+def _save_login(server: state.GitServer, login: str) -> None:
+    """Write `login` into the row of `server` under the lock, its address, kind and author
+    kept; not when the server was removed or replaced by another meanwhile."""
+    if login == server.login:
+        return
+    with _locked():
+        now = state.git_server_by_host(server.host)
+        if now is not None and now.id == server.id:
+            state.save_git_server(now.id, now.address, now.host, now.kind, login)
 
 
 def helper_command(server: state.GitServer) -> str:

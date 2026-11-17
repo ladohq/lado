@@ -11,7 +11,7 @@ import fake_git_api as fake
 import pytest
 from fastapi.testclient import TestClient
 
-from lado import agent_env, git_servers, model_servers, state
+from lado import agent_env, git_kinds, git_servers, model_servers, state
 from lado.cli import main
 from lado.server import app as server_app
 from lado.server import auth
@@ -294,6 +294,7 @@ def test_check_of_one_that_does_not_answer_asks_for_the_kind(client):
         "hint": git_servers.PAGE_KIND_HINT,
         "field": "address",
         "warnings": [],
+        "choose_kind": True,
     }
 
 
@@ -431,3 +432,154 @@ def test_the_author_of_no_saved_server_is_refused(client):
             "",
             "address",
         )
+
+
+# A token's rights at Add, and Add's refusals.
+
+
+def test_add_of_a_token_without_push_saves_it_with_a_warning(client, serve):
+    server = serve("gitlab-read", token=TOKEN)
+    added = ok(add(client, server.url))
+    assert added["server"]["login"] == fake.LOGIN
+    assert added["warning"] == ("The token lacks write_repository: agents can clone but not push.")
+    assert added["missing_scopes"] == ["write_repository"]
+    assert len(state.git_servers()) == 1
+    full = serve("gitlab-full", token=TOKEN)
+    added = ok(add(client, full.url.replace("127.0.0.1", "localhost")))
+    assert (added["warning"], added["missing_scopes"]) == (None, [])
+
+
+def test_a_server_that_stops_answering_at_add_offers_the_kind(client, monkeypatch):
+    monkeypatch.setattr(model_servers, "TIMEOUT", 1)
+    detail = refused(add(client, f"https://127.0.0.1:{closed_port()}"))
+    assert (detail["field"], detail["choose_kind"]) == ("address", True)
+    assert refused(add(client, "https://gitlab.invalid"))["choose_kind"] is True
+
+
+def test_a_refused_token_offers_no_kind(client, serve):
+    assert refused(add(client, serve("gitlab-refuses").url))["choose_kind"] is False
+
+
+def test_a_removal_whose_folder_stays_warns(client, lado_home):
+    server = _saved(client)
+    (lado_home / "git-servers" / "notes.txt").write_text("the human's")
+    left = ok(client.delete(f"/api/git-servers/{server.host}"))
+    assert left["servers"] == []
+    assert left["warning"] == (f"could not remove {lado_home / 'git-servers'}: directory not empty")
+    (lado_home / "git-servers" / "notes.txt").unlink()
+    _saved(client)
+    assert ok(client.delete("/api/git-servers/git.lan"))["warning"] is None
+
+
+# The check of a saved server.
+
+
+def post_check(client, host):
+    return client.post(f"/api/git-servers/{host}/check")
+
+
+@pytest.mark.parametrize(
+    ("profile", "kind", "outcome", "message", "hint"),
+    [
+        (
+            "gitlab-full",
+            "gitlab",
+            "ok",
+            f"Works: signed in as {fake.LOGIN}, may clone and push.",
+            "",
+        ),
+        (
+            "github",
+            "github",
+            "ok",
+            f"Works: signed in as {fake.LOGIN}; the token's rights are not checked.",
+            "",
+        ),
+        (
+            "gitlab-refuses",
+            "gitlab",
+            "token_refused",
+            "GitLab refused the token: it expired or was revoked.",
+            "",
+        ),
+        (
+            "gitlab-read",
+            "gitlab",
+            "scopes_missing",
+            "The token lacks write_repository.",
+            "Agents can clone but not push with it. Make one with the scopes read_repository, "
+            "write_repository, read_api.",
+        ),
+        (
+            "gitlab",
+            "github",
+            "other_kind",
+            "It answers as GitLab, not GitHub: remove it and add it again.",
+            "",
+        ),
+        ("neither", "gitlab", "unrecognised", "It answers as neither GitHub nor GitLab.", ""),
+    ],
+)
+def test_the_check_of_a_saved_server(client, serve, profile, kind, outcome, message, hint):
+    server = serve(profile, token=TOKEN)
+    at = git_servers.address(server.url)
+    git_servers.save(at, git_servers.Checked(git_kinds.by_name(kind), "ivan"), TOKEN)
+    found = ok(post_check(client, at.key))
+    assert (found["outcome"], found["kind"], found["message"], found["hint"]) == (
+        outcome,
+        kind,
+        message,
+        hint,
+    )
+    assert found["was_checked"] is True
+    assert found["server"]["address"] == server.url
+    if outcome == "ok":
+        assert (found["login"], found["server"]["login"]) == (fake.LOGIN, fake.LOGIN)
+    if outcome == "scopes_missing":
+        assert found["missing_scopes"] == ["write_repository"]
+
+
+def test_the_check_of_one_saved_without_a_check(client, serve):
+    server = serve("gitlab", token=TOKEN)
+    ok(add(client, server.url, kind="gitlab"))
+    state.save_git_server(state.git_servers()[0].id, server.url, server.url[7:], "gitlab", None)
+    found = ok(post_check(client, server.url[7:]))
+    assert (found["outcome"], found["was_checked"], found["rights_checked"]) == (
+        "ok",
+        False,
+        False,
+    )
+    assert found["message"] == f"Works: GitLab, signed in as {fake.LOGIN}."
+    assert found["server"]["login"] == fake.LOGIN
+
+
+def test_the_check_of_no_saved_server_is_404(client, serve):
+    answer = post_check(client, "git.lan")
+    assert answer.status_code == 404
+    detail = answer.json()["detail"]
+    assert (detail["message"], detail["field"]) == ("git.lan is no saved git server", "address")
+
+
+def test_the_check_without_a_token_file_is_422(client, serve, lado_home):
+    server = serve("gitlab", token=TOKEN)
+    ok(add(client, server.url))
+    (lado_home / "git-servers" / state.git_servers()[0].id / "token").unlink()
+    asked = len(server.requests)
+    answer = post_check(client, server.url[7:])
+    assert answer.status_code == 422
+    detail = answer.json()["detail"]
+    assert (detail["message"], detail["field"]) == ("Its token file is missing.", "")
+    assert len(server.requests) == asked
+
+
+def test_the_check_puts_the_token_in_no_answer_or_log(client, serve, caplog):
+    server = serve("gitlab-full", token=TOKEN)
+    ok(add(client, server.url))
+    refusing = git_servers.address(serve("gitlab-refuses").url.replace("127.0.0.1", "localhost"))
+    git_servers.save(refusing, git_servers.Checked(git_kinds.by_name("gitlab"), "ivan"), TOKEN)
+    with caplog.at_level("DEBUG"):
+        assert ok(post_check(client, server.url[7:]))["outcome"] == "ok"
+        found = ok(post_check(client, refusing.key))
+        assert found["outcome"] == "token_refused"
+        ok(client.get("/api/git-servers"))
+    assert TOKEN not in caplog.text

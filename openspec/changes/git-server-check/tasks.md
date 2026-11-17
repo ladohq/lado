@@ -31,15 +31,15 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-17-git-server-c
 
 ## 3. The check
 
-- [ ] 3.1 `git_servers.check` and its outcomes, the login saved on `ok` (D1, D5). Check:
+- [x] 3.1 `git_servers.check` and its outcomes, the login saved on `ok` (D1, D5). Check:
   `tests/test_git_servers.py`, one test per outcome per kind against the fake API: ok,
   rights not checked, token refused, a scope missing, no answer (timeout, unknown name),
   certificate not trusted (a local TLS server with its own CA), redirect (no request to the
   target), another kind, neither kind; no such server; token missing (no request); the login
   saved on ok only.
-- [ ] 3.2 `lado git-server check <address>` (D6). Check: `tests/test_cli_git_server.py`
+- [x] 3.2 `lado git-server check <address>` (D6). Check: `tests/test_cli_git_server.py`
   (stdout and exit 0; stderr, hint and exit 1 per outcome; exit 2 for a bad address).
-- [ ] 3.3 `POST /api/git-servers/{host}/check`, `GitServerSaved.warning` and
+- [x] 3.3 `POST /api/git-servers/{host}/check`, `GitServerSaved.warning` and
   `missing_scopes`, `EntryRefused.choose_kind` (D4, D7, D14); `make web-types`. Check:
   `tests/test_server_git_servers.py` (each outcome's body, 404, 422, the canary token in no
   answer or log), `make web` (stale types).

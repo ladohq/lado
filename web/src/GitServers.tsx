@@ -332,7 +332,7 @@ function AddGitServer({
             choose_kind: false,
             unchecked: null,
             saved: false,
-            refusals: [refusalOf(error)],
+            refusals: [{ ...refusalOf(error), choose_kind: false }],
             warnings: [],
           },
         }),

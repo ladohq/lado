@@ -2406,7 +2406,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EntryRefused"
+                  "$ref": "#/components/schemas/GitEntryRefused"
                 }
               }
             }
@@ -2463,6 +2463,56 @@
         }
       }
     },
+    "/api/git-servers/{host}/check": {
+      "post": {
+        "summary": "Check Saved Git Server",
+        "description": "Check the saved server of `host` again with its saved token as `lado git-server\ncheck` does; a passing check saves the login it saw. The token is in no answer.",
+        "operationId": "check_saved_git_server_api_git_servers__host__check_post",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Host"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitServerChecked"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "no such server",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitEntryRefused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "its token file is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitEntryRefused"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/git-servers/{host}/author": {
       "put": {
         "summary": "Set Git Server Author",
@@ -2505,7 +2555,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EntryRefused"
+                  "$ref": "#/components/schemas/GitEntryRefused"
                 }
               }
             }
@@ -2553,7 +2603,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EntryRefused"
+                  "$ref": "#/components/schemas/GitEntryRefused"
                 }
               }
             }
@@ -2603,7 +2653,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EntryRefused"
+                  "$ref": "#/components/schemas/GitEntryRefused"
                 }
               }
             }
@@ -6347,6 +6397,43 @@
         "title": "GateInfo",
         "description": "A flow run's question to the human: open while `answer` is None."
       },
+      "GitEntryRefused": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "hint": {
+            "type": "string",
+            "title": "Hint"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "choose_kind": {
+            "type": "boolean",
+            "title": "Choose Kind"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message",
+          "hint",
+          "field",
+          "warnings",
+          "choose_kind"
+        ],
+        "title": "GitEntryRefused",
+        "description": "A refusal of Settings \u2192 Git servers' API; `choose_kind` for a server that gave no\nHTTP answer, whose kind may be chosen to save it without a check."
+      },
       "GitKindInfo": {
         "properties": {
           "name": {
@@ -6425,6 +6512,24 @@
             },
             "type": "array",
             "title": "Warnings"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          },
+          "missing_scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Scopes"
           }
         },
         "type": "object",
@@ -6432,10 +6537,12 @@
           "server",
           "line",
           "replaced",
-          "warnings"
+          "warnings",
+          "warning",
+          "missing_scopes"
         ],
         "title": "GitServerAdded",
-        "description": "A git server saved or replaced: as saved, the line that says so, and the warnings\n(its token over plain http://)."
+        "description": "A git server saved or replaced: as saved, the line that says so, the warnings (its\ntoken over plain http://), and, for a token that lacks a right agents need, the page's\n`warning` and the rights it lacks (`missing_scopes`)."
       },
       "GitServerAuthor": {
         "properties": {
@@ -6527,7 +6634,7 @@
           "unchecked": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/EntryRefused"
+                "$ref": "#/components/schemas/GitEntryRefused"
               },
               {
                 "type": "null"
@@ -6540,7 +6647,7 @@
           },
           "refusals": {
             "items": {
-              "$ref": "#/components/schemas/EntryRefused"
+              "$ref": "#/components/schemas/GitEntryRefused"
             },
             "type": "array",
             "title": "Refusals"
@@ -6580,6 +6687,86 @@
           "address"
         ],
         "title": "GitServerCheckAsked"
+      },
+      "GitServerChecked": {
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "token_refused",
+              "scopes_missing",
+              "no_answer",
+              "cert_untrusted",
+              "redirect",
+              "other_kind",
+              "unrecognised"
+            ],
+            "title": "Outcome"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "login": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Login"
+          },
+          "missing_scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Scopes"
+          },
+          "rights_checked": {
+            "type": "boolean",
+            "title": "Rights Checked"
+          },
+          "was_checked": {
+            "type": "boolean",
+            "title": "Was Checked"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "hint": {
+            "type": "string",
+            "title": "Hint"
+          },
+          "server": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GitServerInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "outcome",
+          "kind",
+          "login",
+          "missing_scopes",
+          "rights_checked",
+          "was_checked",
+          "message",
+          "hint",
+          "server"
+        ],
+        "title": "GitServerChecked",
+        "description": "A saved git server checked again with its saved token (lado.git_servers.check):\n`outcome` one of git_servers.OUTCOMES, its saved kind, the login seen (ok,\nscopes_missing), the rights the token lacks, whether the server told them, whether it\nhad a login before, the page's line (`message`) and its info tip (`hint`, \"\" for none),\nand the server as saved after it (a passing check saves its login; None when it was\nremoved meanwhile)."
       },
       "GitServerInfo": {
         "properties": {

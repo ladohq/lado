@@ -486,7 +486,6 @@ def main() -> None:
     zero = commands.add_parser("measure", help="the coverage database, per test")
     zero.add_argument("dir", help="where the configs and the database go")
     zero.add_argument("--package", default="lado", help="the package measured")
-    zero.add_argument("pytest", nargs="*", help="pytest's arguments, after --")
     zero.set_defaults(go=measure)
     one = commands.add_parser("run", help="the kill matrix of one module")
     one.add_argument("module", help="a module under src/, run from the repository's root")
@@ -509,7 +508,12 @@ def main() -> None:
     two.add_argument("kills", nargs="+")
     two.add_argument("--json")
     two.set_defaults(go=report)
-    args = parser.parse_args()
+    # What follows `--` is pytest's (measure), split off by hand: Python 3.10's argparse
+    # refuses it after a subcommand.
+    argv = sys.argv[1:]
+    cut = argv.index("--") if "--" in argv else len(argv)
+    args = parser.parse_args(argv[:cut])
+    args.pytest = argv[cut + 1 :]
     sys.exit(args.go(args) or 0)
 
 

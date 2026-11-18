@@ -363,7 +363,9 @@ def test_a_private_https_repository_without_a_login():
         "cannot clone https://github.com/acme/private: github.com asks for a login "
         "(fatal: could not read Username for 'https://github.com': terminal prompts disabled)"
     )
-    assert error.hint == runtime.Hint("Log in with GitHub's CLI on this machine:", "gh auth login")
+    assert error.hint == runtime.Hint(
+        "Add it as a git server with a token:", "lado git-server add https://github.com --token"
+    )
     other = clone.failure("clone", "https://git.example.com/a/b", KIND_LINES[2][0])
     assert "git.example.com asks for a login (" in str(other)  # no saved server: add one
     assert other.hint == runtime.Hint(
@@ -378,36 +380,11 @@ def test_a_private_https_repository_without_a_login():
     assert ssh.hint is None
 
 
-def test_a_login_asked_for_in_a_projects_clone_names_its_secret(tmp_path, monkeypatch):
-    monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(tmp_path))  # the project's hint wins
-    error = clone.failure(
-        "clone", "https://github.com/acme/private", KIND_LINES[2][0], project="shop"
-    )
-    assert error.hint == runtime.Hint(
-        "Give the project a GitHub token:", "lado project set shop GH_TOKEN --secret"
-    )
-
-
-def test_a_login_asked_for_with_an_outside_folder_names_its_file(tmp_path, monkeypatch):
+def test_a_github_login_hint_names_no_token_outside_lado(tmp_path, monkeypatch):
     monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(tmp_path))
     error = clone.failure("clone", "https://github.com/acme/private", KIND_LINES[2][0])
-    assert error.hint == runtime.Hint(
-        f"Log in with GitHub's CLI, or put a token into the file GH_TOKEN of {tmp_path} "
-        "(LADO_ENV_DIR):",
-        "gh auth login",
-    )
-    other = clone.failure("clone", "https://git.example.com/a/b", KIND_LINES[2][0]).hint
-    assert other.command == "lado git-server add https://git.example.com --token"
-
-
-@pytest.mark.parametrize("folder", [None, os.devnull, "missing"])
-def test_a_login_asked_for_with_no_outside_folder(folder, tmp_path, monkeypatch):
-    if folder is None:
-        monkeypatch.delenv(agent_env.ENV_DIR_VAR, raising=False)
-    else:
-        monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(tmp_path / folder))
-    error = clone.failure("list", "https://github.com/acme/private", KIND_LINES[2][0])
-    assert error.hint == runtime.Hint("Log in with GitHub's CLI on this machine:", "gh auth login")
+    assert error.hint.command == "lado git-server add https://github.com --token"
+    assert "GH_TOKEN" not in error.hint.text and "gh auth" not in error.hint.command
 
 
 def test_a_repository_github_does_not_show():
@@ -416,9 +393,7 @@ def test_a_repository_github_does_not_show():
         "cannot read git@github.com:acme/app.git: no repository there, or this machine's "
         "account cannot read it (ERROR: Repository not found.)"
     )
-    assert error.hint == runtime.Hint(
-        "See which GitHub account this machine uses:", "gh auth status"
-    )
+    assert error.hint is None
     assert clone.failure("list", "https://gitlab.com/a/b", KIND_LINES[4][0]).hint is None
 
 
@@ -508,11 +483,22 @@ DENIED_LINE = (
     "returned error: 403"
 )
 NOT_FOUND_LINE = "fatal: repository 'https://gitlab.corp.ru/team/app.git/' not found"
-CHECK_HINT = runtime.Hint(
-    "Check the git server; if its token expired or was revoked, replace it "
-    "(lado git-server add https://gitlab.corp.ru --token):",
-    "lado git-server check https://gitlab.corp.ru",
-)
+
+
+def check_hint(root: str) -> runtime.Hint:
+    return runtime.Hint(
+        "Check the git server:",
+        f"lado git-server check {root}",
+        (
+            runtime.Hint(
+                "If its token expired or was revoked, replace it:",
+                f"lado git-server add {root} --token",
+            ),
+        ),
+    )
+
+
+CHECK_HINT = check_hint("https://gitlab.corp.ru")
 CHECK_WAY = clone.ServerWay(
     "check",
     "gitlab.corp.ru",
@@ -526,7 +512,7 @@ def test_a_403_is_access_denied():
     assert clone.kind_of("remote: HTTP Basic: Access denied\n" + LOGIN_LINE) == "login_needed"
 
 
-def test_github_403_points_at_gh_auth_status():
+def test_github_403_without_an_entry_offers_to_add_it():
     stderr = (
         "fatal: unable to access 'https://github.com/acme/app/': The requested URL returned "
         "error: 403"
@@ -538,10 +524,52 @@ def test_github_403_points_at_gh_auth_status():
         "(fatal: unable to access 'https://github.com/acme/app/': The requested URL returned "
         "error: 403)"
     )
-    assert error.hint == runtime.Hint(
-        "See which GitHub account this machine uses:", "gh auth status"
+    assert error.hint == ADD_GITHUB
+    assert error.server == GITHUB_WAY
+
+
+ADD_GITHUB = runtime.Hint(
+    "Add it as a git server with a token:", "lado git-server add https://github.com --token"
+)
+GITHUB_WAY = clone.ServerWay(
+    "add",
+    "github.com",
+    "https://github.com",
+    "Add github.com as a git server with a token: LADO and its agents then sign in to it.",
+)
+
+
+def test_github_com_saved_and_refused_gets_the_two_line_hint(capsys):
+    from lado import git_kinds, git_servers
+
+    checked = git_servers.Checked(git_kinds.by_name("github"), "octo")
+    git_servers.save(git_servers.address("github.com"), checked, "ghp_x")
+    error = clone.failure("clone", "https://github.com/acme/private", KIND_LINES[2][0])
+    assert str(error).startswith(
+        "cannot clone https://github.com/acme/private: github.com refused the token of the git "
+        "server https://github.com ("
     )
-    assert error.server is None
+    assert error.hint == check_hint("https://github.com")
+    assert error.hint.lines() == [
+        "Check the git server: lado git-server check https://github.com",
+        "If its token expired or was revoked, replace it: lado git-server add "
+        "https://github.com --token",
+    ]
+
+
+def test_a_server_with_a_port_is_named_with_its_port():
+    from lado import git_kinds, git_servers
+
+    checked = git_servers.Checked(git_kinds.by_name("gitlab"), "ivan")
+    git_servers.save(git_servers.address("https://git.test:8443"), checked, "glpat-x")
+    error = clone.failure(
+        "list", "https://git.test:8443/team/app.git", "fatal: Authentication failed for 'x'"
+    )
+    assert str(error).startswith(
+        "cannot read https://git.test:8443/team/app.git: git.test:8443 refused the token of the "
+        "git server https://git.test:8443 ("
+    )
+    assert error.hint == check_hint("https://git.test:8443")
 
 
 @pytest.mark.parametrize(
@@ -655,23 +683,26 @@ def test_a_host_saved_under_another_scheme_gets_no_server_hint(url):
     assert (error.hint, error.server) == (None, None)
 
 
-def test_github_texts_are_unchanged_with_a_saved_server():
+def test_github_without_an_entry_is_any_unsaved_host():
     _git_server()
     login = clone.failure("clone", "https://github.com/acme/private", KIND_LINES[2][0])
     assert "github.com asks for a login (" in str(login)
-    assert login.hint == runtime.Hint("Log in with GitHub's CLI on this machine:", "gh auth login")
+    assert (login.hint, login.server) == (ADD_GITHUB, GITHUB_WAY)
     hidden = clone.failure("list", "git@github.com:acme/app.git", KIND_LINES[4][0])
-    assert hidden.hint == runtime.Hint(
-        "See which GitHub account this machine uses:", "gh auth status"
-    )
-    assert (login.server, hidden.server) == (None, None)
+    assert (hidden.hint, hidden.server) == (None, None)
 
 
 def test_a_kits_failure_carries_the_git_server_hints():
     _git_server()
     assert clone.explain("https://gitlab.corp.ru/kits/app.git", LOGIN_LINE) == (
         f"gitlab.corp.ru refused the token of the git server https://gitlab.corp.ru "
-        f"({LOGIN_LINE}). {CHECK_HINT.line()}"
+        f"({LOGIN_LINE}). Check the git server: lado git-server check https://gitlab.corp.ru. "
+        "If its token expired or was revoked, replace it: lado git-server add "
+        "https://gitlab.corp.ru --token"
+    )
+    assert clone.explain("https://github.com/ladohq/kit-epic.git", KIND_LINES[2][0]) == (
+        f"github.com asks for a login ({KIND_LINES[2][0]}). Add it as a git server with a "
+        "token: lado git-server add https://github.com --token"
     )
     assert clone.explain("https://git.acme.example/kits/app.git", KIND_LINES[2][0]).endswith(
         ". Add it as a git server with a token: lado git-server add https://git.acme.example "

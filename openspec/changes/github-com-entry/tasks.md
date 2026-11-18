@@ -30,7 +30,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-18-github-com-e
 
 ## 6. Clone hints
 
-- [ ] 6.1 github.com's hints as a server's, two-line hint, host with port (D8, D10). Check:
+- [x] 6.1 github.com's hints as a server's, two-line hint, host with port (D8, D10). Check:
   `tests/test_clone.py`; `make web` if the API changes.
 
 ## 7. The page

@@ -185,8 +185,8 @@ def _start_clone(args: argparse.Namespace) -> int:
     target = clone.check_target(url, folder)
     if target.state not in clone.CAN_CLONE:
         print(f"lado: {target.text}", file=sys.stderr)
-        if target.hint:
-            print(f"lado: {target.hint.line()}", file=sys.stderr)
+        for line in target.hint.lines() if target.hint else []:
+            print(f"lado: {line}", file=sys.stderr)
         if target.state == "same_repo":
             print(f"lado: To start a session in it as it is: lado start {folder}", file=sys.stderr)
         return 1
@@ -2809,7 +2809,7 @@ def main(argv: list[str] | None = None) -> int:
         hint = exc.hint if isinstance(exc, refusals) else None
         if isinstance(exc, runtime.MigrationFailed) and not removes:
             telemetry.record(f"cli:{_where(args)}", exc.__cause__)  # LADO's bug, no traceback
-        lines = [str(exc), *([hint.line()] if hint else [])]
+        lines = [str(exc), *(hint.lines() if hint else [])]
         for line in [*lines, *getattr(exc, "__notes__", [])]:
             print(f"lado: {line}", file=sys.stderr)
         return 1

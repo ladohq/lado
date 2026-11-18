@@ -350,14 +350,21 @@ FolderProblemKind = Literal[
 
 @dataclass(frozen=True)
 class Hint:
-    """What the human can do about a refusal: a sentence and one command to copy."""
+    """What the human can do about a refusal: a sentence and one command to copy, then
+    `more` steps, each with its own sentence and command (the UI shows the first; a step
+    that needs more has a way of its own there, lado.clone.ServerWay)."""
 
     text: str
     command: str
+    more: tuple["Hint", ...] = ()
+
+    def lines(self) -> list[str]:
+        """Each step as its line, as the CLI prints them."""
+        return [f"{self.text} {self.command}", *(f"{s.text} {s.command}" for s in self.more)]
 
     def line(self) -> str:
-        """The hint as one line, as the CLI and `lado doctor` print it."""
-        return f"{self.text} {self.command}"
+        """The hint as one line, as `lado doctor` and the kits' git failures print it."""
+        return ". ".join(self.lines())
 
 
 class FolderProblem(LadoError):

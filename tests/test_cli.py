@@ -3074,3 +3074,21 @@ def test_project_set_github_variable_warns(shop, capsys, monkeypatch):
     ]
     assert main(["project", "set", "shop", "GH_HOST", "ghe.corp"]) == 0
     assert capsys.readouterr().out.splitlines()[1].startswith("GH_HOST is not given to agents")
+
+
+def test_a_hint_of_two_steps_is_two_lines(capsys, monkeypatch, tmp_path):
+    from lado import clone
+
+    hint = runtime.Hint("Check it:", "lado git-server check X", (runtime.Hint("Or:", "y"),))
+
+    def refused(*args, **kwargs):
+        raise clone.CloneError("login_needed", "cannot read X: refused", hint)
+
+    monkeypatch.setattr(runtime, "start_session", refused)
+    monkeypatch.chdir(tmp_path)
+    assert main(["start", "--provider", "claude"]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        "lado: cannot read X: refused",
+        "lado: Check it: lado git-server check X",
+        "lado: Or: y",
+    ]

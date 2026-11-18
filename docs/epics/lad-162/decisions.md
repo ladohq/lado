@@ -20,6 +20,7 @@
 | 2026-11-16 | review after S3 | Numbering after the new mockup step | letters (S4a); renumber the steps without a task | renumber: S4 the mockup, old S4–S8 become S5–S9; rows above keep the numbers of their day (lead) | as recommended, approved at step_ok #538, with "update the stages in the tracker" (human) | yes |
 | 2026-11-16 | review after S3 | Where S3's leftovers go | into S5 (the page is rebuilt there; the mockup takes the page's remarks) | into S5 (lead) | into S5: leftovers of a later step need no gate (step-review) | yes |
 | 2026-11-16 | S4, #7234 | The mockup's changes below the screen (spec C1–C9) | as listed in the spec | C2–C6, C8, C9 in S5; C1 (github.com row) in S6; C7 (certificate) in S7; an expired token shown before Check: Later (lead) | as recommended (human) | yes |
+| 2026-11-18 | review after S5, #7241 | Where `lado doctor` and the clone hints go after S5 was split at design | a step of their own next; into S6 | S5b, the next step, with S5's leftovers (lead) | split as the analyst asked (#7241, human); S5b proposed at step_ok | yes |
 
 Epic: plan_ok #528 — approved as recommended; questions #7086 (update LAD-162's stages, as recommended).
 S1 (LAD-289): question #7098, gate #529 (design_ok) — approved as recommended; gate #530 (merge_ok) — rejected as recommended (F1–F3 fixed); gate #531 (merge_ok) — approved as recommended after the human's manual check (gitlab.com and the company GitLab, all OK).

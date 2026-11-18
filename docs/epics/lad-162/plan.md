@@ -2,12 +2,12 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: S5 (LAD-293, run task/lad-293) · Next: S6 · Open checks: the human's check on the company GitLab, on the release candidate that carries S8
+In work: none · Next: S5b (waits at step_ok) · Open checks: the human's check on the company GitLab, on the release candidate that carries S8
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
 - The statement's decisions (brief.md) are not reopened.
-Last review: 2026-11-16, after S4, base at eb9632eb
+Last review: 2026-11-18, after S5, base at b66064e5
 
 ## Steps
 
@@ -113,8 +113,12 @@ Touches: nothing in the repository; the run's artifacts (`<run>/mockup.html`, `s
 Notes: one tracker task for the step, as for every step. The page's current code:
 `web/src/GitServers.tsx`, `docs/design/ui.md` (Git servers).
 
-### S5 — The page from the mockup, "Check", `lado doctor` and clone hints from the list
-Status: in progress (LAD-293, run task/lad-293)
+### S5 — The page from the mockup and "Check"
+Status: done (LAD-293, PR #324, merged b66064e5 on 2026-11-18, in release 0.48.0). Split at
+design (#7241): `lado doctor` and the clone hints went to S5b. The human ran the manual check
+in a browser on gitlab.com (rejected at #544: a revoked GitLab token named as neither kind, an
+address with spaces taken; both fixed, the repeat check passed, #545). Leftovers → S5b.
+The check as planned (doctor and clone hints now S5b's):
 Check: unit tests per server kind against a fake API: "Check" in Settings and `lado
 git-server check` check a saved server again (the same request as `add` in S1) and say
 "works, this is <name>" or why not in plain words (wrong token, missing rights, server
@@ -153,6 +157,29 @@ Leftovers of S2 (ledger of LAD-290, the human's manual check report):
   dialog the focus goes to the page, not back to 🗑; an old "Removed …" line stays above a
   new "Saved …"; the `http://` warning is lost among the lines of a server answering as
   neither kind.
+
+### S5b — `lado doctor` and clone hints from the list
+Status: planned (split from S5 at its design, #7241)
+Check: unit tests: `lado doctor` lists the git servers with their check (the same check as
+`lado git-server check`, network failures named, not fatal to the rest of doctor); a failed
+clone from a listed host names its server entry and what to do (Check, Replace token), from
+an unlisted host suggests adding the server, in the CLI and in the UI's clone window (UI e2e,
+no network); the UI's system facts (doctor in the UI) show the same; docs describe what was
+built (docs/cli.md, docs/design/ui.md); the human's manual check in a browser.
+Touches: `doctor.py`, `clone.py`, `server/clones.py`, `web/src/` (the clone window; the Git
+servers page for the leftovers), docs.
+Leftovers of S5 (the human's repeat check #545, ledger of LAD-293):
+- An open ⓘ tip stays at its old place when the page switches between the phone and the wide
+  layout (a phone turned); closing and opening it again helps.
+- After Check a panel shows two Replace token buttons.
+- BACKLOG.md got an entry for the flaky kilo smoke on macOS that LAD-295 now holds: remove it.
+- Ledger E7: docs/cli.md says that a gateway answering OAuth `invalid_token` on every path is
+  named GitLab (declined as a defect, a fair docs line).
+- Ledger, declined minor: the author's Remove and Undo stay enabled during their request; the
+  `✓` prefix also stands before `Works: …`.
+Not checked in S5 (residual risk, for S8's live check on the company GitLab): GitLab's
+answers to a revoked and an expired token came from the human's report and docs; "`api` on
+GitLab gives push over https" only from docs.
 
 ### S6 — GitHub from the list: today's login becomes the github.com entry, `gh` takes the entry's token
 Status: planned
@@ -218,6 +245,9 @@ only — a candidate to run alongside S8 if the human asks for two at once.
 
 ## Later
 
+- Flaky tests met in S5, not the epic's: the kilo smoke on macOS (LAD-295, #7281) and
+  `test_send_text_pastes_multiline_text` in CI (LAD-296, #7294); both in the Backlog, derived
+  from LAD-293.
 - An expired token shown on a closed row before Check (S4's mockup F7): its expiry date or a
   stored last check, a schema change (#7234).
 

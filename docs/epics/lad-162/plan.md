@@ -2,7 +2,7 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: none · Next: S6 (revised after #7389, waits at step_ok) · Open checks: the human's check on the company GitLab, on the release candidate that carries S8
+In work: S6 (LAD-299, run task/lad-299) · Next: S6b · Open checks: the human's check on the company GitLab, on the release candidate that carries S8
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
@@ -186,7 +186,7 @@ answers to a revoked and an expired token came from the human's report and docs;
 GitLab gives push over https" only from docs.
 
 ### S6 — GitHub from the list: today's login moves into the github.com entry once, then the list is the only GitHub login
-Status: planned
+Status: in progress (LAD-299, run task/lad-299)
 Leftovers of S5b (the human's manual check, ledger of LAD-297):
 - The CLI hint of a failed clone from a saved server packs two commands into one line
   ("Check the git server; if its token expired or was revoked, replace it (lado git-server

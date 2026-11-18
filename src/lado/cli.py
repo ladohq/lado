@@ -1190,8 +1190,19 @@ def _print_secrets(id: str) -> None:
         print(f"    {name}")
 
 
-def _print_variable_change(id: str, running: list[str], gets: str = "get it") -> None:
-    """Who gets a project variable's change: the agents started from now on."""
+def _print_variable_change(
+    id: str, running: list[str], gets: str = "get it", name: str = ""
+) -> None:
+    """Who gets a project variable's change: the agents started from now on; none for a
+    GitHub variable (`name`), which no agent gets from a project (lado.agent_env)."""
+    from lado import agent_env
+
+    if name in agent_env.GITHUB_VARIABLES:
+        print(
+            f"{name} is not given to agents: github.com and GitHub Enterprise take their "
+            "token from Settings → Git servers."
+        )
+        return
     if running:
         print(
             f"Agents started from now on {gets}; running sessions of {id} keep the old "
@@ -1268,7 +1279,7 @@ def cmd_project(args: argparse.Namespace) -> int:
     if args.sub == "set" and args.secret:
         running = projects.set_secret(args.id, args.name, _secret_value(args))
         print(f"Set secret {args.name} in project {args.id}.")
-        _print_variable_change(args.id, running)
+        _print_variable_change(args.id, running, name=args.name)
         return 0
     if args.sub == "set":
         if args.value is None:
@@ -1278,7 +1289,7 @@ def cmd_project(args: argparse.Namespace) -> int:
             )
         running = projects.set_variable(args.id, args.name, args.value)
         print(f"Set {args.name} in project {args.id}.")
-        _print_variable_change(args.id, running)
+        _print_variable_change(args.id, running, name=args.name)
         return 0
     if args.sub == "unset":
         running = projects.unset(args.id, args.name)

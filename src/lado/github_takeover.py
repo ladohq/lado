@@ -111,6 +111,31 @@ def gh_token(env: Mapping[str, str]) -> str | None:
     raise Pending(said[:300] or f"the GitHub CLI failed with exit status {result.returncode}")
 
 
+def unused(
+    layers: agent_env.Layers | None, folder: str, projects: Mapping[str, Mapping[str, str]]
+) -> list[str]:
+    """Each GitHub variable a layer of the agents (`layers`, None when the shell could not
+    be read) or a project's variables or secrets (`projects`, by id) sets, which no agent
+    gets: `GH_TOKEN in <folder>`, `GH_TOKEN of your shell`, `GH_TOKEN of project <id>`;
+    never a value. GH_CONFIG_DIR, no login itself, is left to `own_login`."""
+    names = [n for n in agent_env.GITHUB_VARIABLES if n != "GH_CONFIG_DIR"]
+    found = []
+    for index, layer in enumerate(layers[:3] if layers else ()):
+        found += [_words(index, n, folder) for n in names if layer.get(n)]
+    for id, values in sorted(projects.items()):
+        found += [f"{n} of project {id}" for n in names if n in values]
+    return found
+
+
+def own_login(layers: agent_env.Layers) -> bool:
+    """Whether the GitHub CLI holds a login of its own in the agents' layers (no token
+    variable of theirs, their GH_CONFIG_DIR): one agents no longer get."""
+    try:
+        return gh_token(_gh_env(layers)) is not None
+    except Pending:
+        return False
+
+
 def _done(record: state.GithubTakeover | None) -> bool:
     return record is not None and record.outcome != PENDING
 

@@ -25,7 +25,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-18-github-com-e
 
 ## 5. The unused login and doctor
 
-- [ ] 5.1 `unused`, doctor's GitHub lines and busy lado.db, `project set`'s warning (D5,
+- [x] 5.1 `unused`, doctor's GitHub lines and busy lado.db, `project set`'s warning (D5,
   D10). Check: `tests/test_doctor.py`, `tests/test_cli.py`.
 
 ## 6. Clone hints

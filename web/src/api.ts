@@ -329,6 +329,7 @@ export const getScratchTarget = (text: string, path: string | null) =>
 export type RemoteInfo = components["schemas"]["RemoteInfo"];
 export type CloneTarget = components["schemas"]["CloneTarget"];
 export type CloneRefused = components["schemas"]["CloneRefused"];
+export type GitServerWay = components["schemas"]["GitServerWay"];
 export type CloneStart = components["schemas"]["CloneStart"];
 export type CloneJob = components["schemas"]["CloneJob"];
 

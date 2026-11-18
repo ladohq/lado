@@ -8,8 +8,10 @@ import { useLayoutEffect, useId, useRef, useState, type CSSProperties, type Reac
 
 import {
   getFolder,
+  type CloneRefused,
   type CloneTarget,
   type FolderInfo,
+  type GitServerWay,
   type ProjectPlace,
   type RecentFolder,
   type RemoteInfo,
@@ -20,6 +22,7 @@ import { since } from "./ChatText";
 import { useCopy } from "./Copy";
 import { InfoTip } from "./InfoTip";
 import { BRANCH_LIST, cloneRefused, useAsked, useDebounced, valueOf } from "./Launch";
+import { gitServersPath } from "./paths";
 
 // The ways of the list's group Somewhere else; "folder" is Other folder….
 export type Way = "folder" | "url" | "scratch" | "project";
@@ -618,7 +621,7 @@ export function UrlField({
         {failed && (
           <div className="field-note bad">
             <div>{why?.message ?? failed.error}</div>
-            {why?.hint && <FolderHint text={why.hint.text} command={why.hint.command} />}
+            {why && <CloneHint refused={why} />}
           </div>
         )}
       </div>
@@ -799,6 +802,31 @@ function BranchCombo({
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+// A clone's or listing's refusal's way out: its git server's (GitServerNote) when the core
+// gives one, else its hint with Copy.
+export function CloneHint({ refused }: { refused: Pick<CloneRefused, "hint" | "git_server"> }) {
+  if (refused.git_server) return <GitServerNote way={refused.git_server} />;
+  return refused.hint ? <FolderHint text={refused.hint.text} command={refused.hint.command} /> : null;
+}
+
+// An access failure a git server can fix: the core's sentence and a link that opens
+// Settings → Git servers in a new tab, checking the saved server or adding the host there;
+// the window it is in keeps its fields.
+export function GitServerNote({ way }: { way: GitServerWay }) {
+  const label = way.way === "check" ? `Check ${way.host}` : "Add git server";
+  const href = gitServersPath(way.way, way.way === "check" ? way.host : way.address);
+  return (
+    <div className="folder-hint">
+      <div className="muted">{way.text}</div>
+      <div className="git-server-way">
+        <a className="quiet" href={href} target="_blank" rel="noopener" aria-label={`${label} (opens a new tab)`}>
+          {`${label} ↗`}
+        </a>
+      </div>
     </div>
   );
 }

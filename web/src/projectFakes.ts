@@ -122,6 +122,8 @@ export class FakeProjects {
   heldDelete: Promise<void> | null = null;
   // A remote's branches by URL; an unknown URL is refused as git's not_found.
   remotes: Record<string, RemoteInfo> = {};
+  // A listing's refusal by URL, the whole detail of its 400.
+  unlisted: Record<string, object> = {};
   // The clone job's answers to its polls in turn, the last one kept; a job that is done
   // adds its repository to its project.
   polls: CloneJob[] = [];
@@ -216,6 +218,7 @@ export class FakeProjects {
     if (path === "/api/remote-branches") {
       const known = this.remotes[body.url];
       if (known) return json(known);
+      if (this.unlisted[body.url]) return json({ detail: this.unlisted[body.url] }, 400);
       return json({ detail: { message: `${body.url} not found`, kind: "not_found", hint: null } }, 400);
     }
     const preview = path.endsWith("/removal") || path.endsWith("/deletion");

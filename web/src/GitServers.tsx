@@ -9,6 +9,7 @@
 // action takes the last one away, opening or closing a row does not. The focus goes by rule
 // after each action; nothing under the pointer moves (useScrollAnchor).
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 
 import {
   ApiError,
@@ -300,6 +301,31 @@ export function GitServersPage() {
     setForm(null);
     focusOn(key);
   };
+  // A clone's note opens the page to check a saved server (`?check=<host>`) or to add one
+  // (`?add=<address>`, the focus in Token), once the list is read; the query then leaves the
+  // address bar, so a reload does neither again. A host no server is saved for opens nothing.
+  const [params, setParams] = useSearchParams();
+  const [addAt, setAddAt] = useState<string | null>(null);
+  const fromQuery = useRef(false);
+  useEffect(() => {
+    if (!entries || fromQuery.current) return;
+    const host = params.get("check");
+    const at = params.get("add");
+    if (host === null && at === null) return;
+    fromQuery.current = true;
+    setParams({}, { replace: true });
+    const server = host ? entries.servers.find((s) => s.host === host) : undefined;
+    if (server) {
+      open(server.host);
+      void check(server);
+    } else if (at) {
+      act();
+      setForm(null);
+      setAddAt(at);
+      setAdding(++addForms.current);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when the list is read
+  }, [entries, params]);
 
   return (
     <SettingsPage slug="git-servers" className="setting mx" ref={section}>
@@ -508,7 +534,8 @@ export function GitServersPage() {
             <li className="mx-add-slot">
               {adding ? (
                 <AddGitServer
-                  initial={servers.some((s) => s.host === "gitlab.com") ? "" : GITLAB_COM}
+                  initial={addAt ?? (servers.some((s) => s.host === "gitlab.com") ? "" : GITLAB_COM)}
+                  toToken={addAt !== null}
                   kinds={entries.kinds}
                   servers={servers}
                   onTouch={act}
@@ -557,6 +584,7 @@ export function GitServersPage() {
                   onClick={() => {
                     act();
                     setForm(null);
+                    setAddAt(null);
                     setAdding(++addForms.current);
                   }}
                 >
@@ -782,6 +810,7 @@ function ReplaceToken({
 // check's answer is dropped. An address already saved leads to its server's Replace token.
 function AddGitServer({
   initial,
+  toToken,
   kinds,
   servers,
   onTouch,
@@ -790,6 +819,7 @@ function AddGitServer({
   onAdded,
 }: {
   initial: string;
+  toToken: boolean; // the focus in Token, the address given (Settings opened to add it)
   kinds: GitKindInfo[];
   servers: GitServerInfo[];
   onTouch: () => number;
@@ -810,8 +840,9 @@ function AddGitServer({
   const asked = useRef(0);
   const [check, setCheck] = useState<{ for: string; found?: GitServerCheck } | null>(null);
   useEffect(() => {
-    if (initial) field.current?.select(); // typing replaces it
-  }, [initial]);
+    if (toToken) token.current?.focus();
+    else if (initial) field.current?.select(); // typing replaces it
+  }, [initial, toToken]);
   useEffect(() => {
     const mine = ++asked.current;
     if (!settled.trim()) return setCheck(null);

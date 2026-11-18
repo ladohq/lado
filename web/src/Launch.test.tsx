@@ -3219,6 +3219,68 @@ test("a listing failure shows under the URL with its hint and Copy, and Clone an
   expect(cloneButton().disabled).toBe(true);
 });
 
+const SERVER_HINT = { text: "Check the git server; …:", command: "lado git-server check https://gitlab.corp.ru" };
+
+test("a listing refused by a saved git server shows its note and a link that opens Settings in a new tab", async () => {
+  answers["GET /api/clone-target"] = () => json(target());
+  answers["POST /api/remote-branches"] = () =>
+    json(
+      {
+        detail: {
+          message: `cannot read ${URL_}: gitlab.corp.ru refused the token of the git server https://gitlab.corp.ru (fatal: x)`,
+          kind: "login_needed",
+          hint: SERVER_HINT,
+          git_server: {
+            way: "check",
+            host: "gitlab.corp.ru",
+            address: "https://gitlab.corp.ru",
+            text: "Check this git server; if its token expired or was revoked, replace it there.",
+          },
+        },
+      },
+      400,
+    );
+  await cloneSource();
+  expect(await screen.findByText("Check this git server; if its token expired or was revoked, replace it there.")).toBeTruthy();
+  const link = screen.getByRole("link", { name: /Check gitlab.corp.ru/ });
+  expect(link.textContent).toBe("Check gitlab.corp.ru ↗");
+  expect(link.getAttribute("aria-label")).toBe("Check gitlab.corp.ru (opens a new tab)");
+  expect(link.getAttribute("href")).toBe("/settings/git-servers?check=gitlab.corp.ru");
+  expect(link.getAttribute("target")).toBe("_blank");
+  expect(link.getAttribute("rel")).toContain("noopener");
+  expect(screen.queryByText(SERVER_HINT.command)).toBeNull();
+  expect(screen.queryByRole("button", { name: "Copy command" })).toBeNull();
+  expect(cloneButton().disabled).toBe(true);
+});
+
+test("a failed clone of an unsaved host shows the add note with its link", async () => {
+  answers["POST /api/clones"] = () => json(job());
+  answers["GET /api/clones/j1"] = () =>
+    json(
+      job({
+        state: "failed",
+        error: {
+          message: `cannot clone ${URL_}: git.acme.example asks for a login (fatal: x)`,
+          kind: "login_needed",
+          hint: SERVER_HINT,
+          git_server: {
+            way: "add",
+            host: "git.acme.example:8443",
+            address: "https://git.acme.example:8443",
+            text: "Add git.acme.example:8443 as a git server with a token: LADO and its agents then sign in to it.",
+          },
+        },
+      }),
+    );
+  const dialog = await cloneReady();
+  fireEvent.click(cloneButton());
+  expect(await within(dialog).findByText(/Add git.acme.example:8443 as a git server with a token/)).toBeTruthy();
+  const link = within(dialog).getByRole("link", { name: /Add git server/ });
+  expect(link.getAttribute("aria-label")).toBe("Add git server (opens a new tab)");
+  expect(link.getAttribute("href")).toBe("/settings/git-servers?add=https%3A%2F%2Fgit.acme.example%3A8443");
+  expect(within(dialog).queryByRole("button", { name: "Copy command" })).toBeNull();
+});
+
 test("a clone of this repository there offers Use this clone, which switches to Folder and clones nothing", async () => {
   answers["GET /api/clone-target"] = () =>
     json(

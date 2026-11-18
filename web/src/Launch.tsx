@@ -59,6 +59,7 @@ import { LaunchSetup } from "./LaunchSetup";
 import { cannotStart, DEFAULT_MODE, LaunchTeam, modeWords } from "./LaunchTeam";
 import {
   BranchField,
+  CloneHint,
   FolderHint,
   FolderNotes,
   FolderPathField,
@@ -79,7 +80,7 @@ import { agentClisPath, projectPath, sessionPath } from "./paths";
 import { nextFree, sessionName, type NameMode } from "./sessionName";
 import { ActionProblem, Waits } from "./waitingParts";
 
-export { FolderHint };
+export { CloneHint, FolderHint };
 
 // How long the window waits after a keystroke before it asks the server about the folder.
 export const DEBOUNCE = 200;
@@ -1375,9 +1376,7 @@ function LaunchDialog({
                 <p className="problem" role="alert">
                   {cloneEnd.refused.message}
                 </p>
-                {cloneEnd.refused.hint && (
-                  <FolderHint text={cloneEnd.refused.hint.text} command={cloneEnd.refused.hint.command} />
-                )}
+                <CloneHint refused={cloneEnd.refused} />
               </div>
             )}
           </div>

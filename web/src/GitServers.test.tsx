@@ -2,7 +2,7 @@
 // its lines, Replace token, the commit author with Undo, Remove server, Add's states, one
 // result line at a time and where the focus goes.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import type { GitServerAdded, GitServerCheck, GitServerChecked, GitServerInfo, GitServers } from "./api";
@@ -886,4 +886,58 @@ test("a check of a server removed elsewhere says so in its place", async () => {
 test("Replace token with no answer says the server's own reason", async () => {
   await replaceWith(CORP, () => refused("No answer: the name is not found.", "address", true));
   expect(await screen.findByText("⚠ No answer: the name is not found: save it without a check, as GitLab.")).toBeTruthy();
+});
+
+// The page's address: ?check=<host>, ?add=<address> (a clone's note opens them).
+
+function Where() {
+  const at = useLocation();
+  return <output aria-label="Where">{at.pathname + at.search}</output>;
+}
+
+async function mountAt(path: string) {
+  render(
+    <MemoryRouter initialEntries={[path]}>
+      <GitServersPage />
+      <Where />
+    </MemoryRouter>,
+  );
+  await screen.findByRole("button", { name: "About Servers" });
+}
+
+const where = () => screen.getByRole("status", { name: "Where" }).textContent;
+
+test("?check= opens that server's panel and checks it once; the query leaves", async () => {
+  fake.servers = [CORP, GHE];
+  const late = held();
+  fake.saved[CORP.host] = late.answer;
+  await mountAt(`/settings/git-servers?check=${encodeURIComponent(CORP.host)}`);
+  expect(await within(row(CORP)).findByText("Checking…")).toBeTruthy();
+  expect(button(CORP.address).getAttribute("aria-expanded")).toBe("true");
+  expect(button(GHE.address).getAttribute("aria-expanded")).toBe("false");
+  await waitFor(() => expect(where()).toBe("/settings/git-servers"));
+  late.let_go(json(checked(CORP, { outcome: "token_refused", message: "GitLab refused the token: it expired or was revoked." })));
+  expect(await screen.findByText("GitLab refused the token: it expired or was revoked.")).toBeTruthy();
+  await new Promise((done) => setTimeout(done, 20));
+  expect(fake.calls.filter((c) => c.method === "POST" && c.path.endsWith("/check"))).toHaveLength(1);
+});
+
+test("?add= opens Add with the address, checked as typed, the focus in Token; the query leaves", async () => {
+  const at = "https://git.acme.example";
+  fake.checks[at] = looksLike(at, "gitlab");
+  await mountAt(`/settings/git-servers?add=${encodeURIComponent(at)}`);
+  expect((await screen.findByRole("textbox", { name: "Address" }) as HTMLInputElement).value).toBe(at);
+  await waitFor(() => expect(document.activeElement).toBe(tokenField()));
+  await screen.findByText("answers.", { exact: false });
+  expect(fake.calls.some((c) => c.path === "/api/git-servers/check" && c.body?.address === at)).toBe(true);
+  await waitFor(() => expect(where()).toBe("/settings/git-servers"));
+});
+
+test("?check= of a host no server is saved for opens nothing; the query leaves", async () => {
+  fake.servers = [CORP];
+  await mountAt("/settings/git-servers?check=git.acme.example");
+  await waitFor(() => expect(where()).toBe("/settings/git-servers"));
+  expect(button(CORP.address).getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByRole("textbox", { name: "Address" })).toBeNull();
+  expect(fake.calls.filter((c) => c.method === "POST")).toEqual([]);
 });

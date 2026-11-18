@@ -23,7 +23,7 @@ from lado.flows import IDENTIFIER
 
 # `lado update` of a later LADO reads this line from this release's wheel to learn the schema
 # it knows (update.release_schema): keep its form, `SCHEMA_VERSION = <N>` on a line of its own.
-SCHEMA_VERSION = 42
+SCHEMA_VERSION = 43
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -1079,6 +1079,20 @@ GIT_SERVERS_AUTHOR = [
 ]
 SCHEMA += "".join(f"{step};\n" for step in GIT_SERVERS_AUTHOR)
 MIGRATIONS[41] = GIT_SERVERS_AUTHOR
+
+# From version 43: the takeover of the GitHub login into the github.com git server
+# (lado.github_takeover), at most one row, apart from the server, so a removal of the
+# server never makes it run again. Its source in words, never a token.
+GITHUB_TAKEOVER_TABLE = """
+CREATE TABLE IF NOT EXISTS github_takeover (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    ran_at TEXT NOT NULL DEFAULT (datetime('now')),  -- UTC
+    outcome TEXT NOT NULL,        -- saved, unchecked, refused, none, kept; pending: again
+    source TEXT,                  -- e.g. "GH_TOKEN of your shell"; NULL for none found
+    why TEXT                      -- a pending one's: why the GitHub CLI's login was not read
+)"""
+SCHEMA += GITHUB_TAKEOVER_TABLE + ";\n"
+MIGRATIONS[42] = [GITHUB_TAKEOVER_TABLE]
 
 # Where an agent's model or effort came from. Each later way of choosing one adds a token;
 # a token this LADO does not know (a newer LADO's row) is shown as itself (source_words).
@@ -4274,6 +4288,35 @@ def remove_git_server(id: str) -> bool:
     """False when there was no such server."""
     with connect() as db:
         return db.execute("DELETE FROM git_servers WHERE id = ?", (id,)).rowcount == 1
+
+
+@dataclass(frozen=True)
+class GithubTakeover:
+    """The record of the GitHub login's takeover (lado.github_takeover)."""
+
+    ran_at: str  # UTC, YYYY-MM-DD HH:MM:SS
+    outcome: str
+    source: str | None
+    why: str | None = None
+
+
+def github_takeover() -> GithubTakeover | None:
+    with connect() as db:
+        row = db.execute("SELECT * FROM github_takeover").fetchone()
+    if row is None:
+        return None
+    return GithubTakeover(row["ran_at"], row["outcome"], row["source"], row["why"])
+
+
+def record_github_takeover(outcome: str, source: str | None, why: str | None = None) -> None:
+    """Write the takeover's one row, over any before."""
+    with connect() as db:
+        db.execute(
+            "INSERT INTO github_takeover (id, outcome, source, why) VALUES (1, ?, ?, ?)"
+            " ON CONFLICT(id) DO UPDATE SET ran_at = datetime('now'),"
+            " outcome = excluded.outcome, source = excluded.source, why = excluded.why",
+            (outcome, source, why),
+        )
 
 
 class ModelsChanged(Exception):

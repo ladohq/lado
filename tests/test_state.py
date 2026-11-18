@@ -989,8 +989,8 @@ def test_migrate_backs_up_the_older_schema_first(lado_home):
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(backup)) as db:
         assert db.execute("SELECT name FROM sessions").fetchall() == [("s",)]
-        columns = _columns(db, "git_servers")
-    assert "author_name" not in columns  # the content before the migration
+        tables = _tables(db)
+    assert "github_takeover" not in tables  # the content before the migration
     assert _schema(lado_home / "lado.db") == state.SCHEMA_VERSION
 
 
@@ -1011,7 +1011,7 @@ def test_a_failing_step_leaves_the_schema_and_keeps_the_backup(lado_home, monkey
     assert _schema(lado_home / "lado.db") == old
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
-        assert "author_name" not in _columns(db, "git_servers")  # rolled back
+        assert "github_takeover" not in _tables(db)  # rolled back
 
 
 def test_version_2_database_gets_kits(lado_home):
@@ -2052,7 +2052,7 @@ def test_schema_41_gets_author_columns_and_keeps_the_servers(lado_home):
     with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
         assert "author_name" not in _columns(db, "git_servers")
     migrated = state.migrate()
-    assert (migrated.before, migrated.after) == (41, 42)
+    assert (migrated.before, migrated.after) == (41, state.SCHEMA_VERSION)
     [server] = state.git_servers()
     assert (server.id, server.address, server.kind, server.login) == (
         "a1",
@@ -2078,3 +2078,57 @@ def test_the_schema_41_backup_put_back_has_no_author(lado_home):
     state.migrate()
     [server] = state.git_servers()
     assert (server.id, server.author_name, server.author_email) == ("a1", None, None)
+
+
+# The GitHub login's takeover (schema 43).
+
+
+def test_no_takeover_until_recorded(lado_home):
+    assert state.github_takeover() is None
+    state.record_github_takeover("saved", "GH_TOKEN of your shell")
+    found = state.github_takeover()
+    assert (found.outcome, found.source, found.why) == ("saved", "GH_TOKEN of your shell", None)
+    assert len(found.ran_at) == 19  # UTC, YYYY-MM-DD HH:MM:SS
+
+
+def test_a_takeover_is_one_row_the_last_written_wins(lado_home):
+    state.record_github_takeover("pending", "the GitHub CLI's login", "keychain locked")
+    assert state.github_takeover().why == "keychain locked"
+    state.record_github_takeover("none", None)
+    assert (state.github_takeover().outcome, state.github_takeover().source) == ("none", None)
+    with state.connect() as db:
+        assert db.execute("SELECT count(*) FROM github_takeover").fetchone()[0] == 1
+
+
+def test_upgrade_from_42_keeps_servers_and_has_no_takeover(lado_home):
+    state.save_git_server("a1", "https://gitlab.corp.ru", "gitlab.corp.ru", "gitlab", "ivan")
+    agent_helpers.schema_before(43)
+    with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
+        assert "github_takeover" not in _tables(db)
+    migrated = state.migrate()
+    assert (migrated.before, migrated.after) == (42, 43)
+    assert migrated.backup.name == "lado.db.schema-42"
+    assert [s.id for s in state.git_servers()] == ["a1"]
+    assert state.github_takeover() is None
+
+
+def test_the_schema_42_backup_put_back_has_no_github_entry(lado_home):
+    agent_helpers.schema_before(43)
+    backup = state.migrate().backup
+    state.save_git_server("g1", "https://github.com", "github.com", "github", "octo")
+    state.record_github_takeover("saved", "GH_TOKEN of your shell")
+    (lado_home / "lado.db-wal").unlink(missing_ok=True)
+    (lado_home / "lado.db-shm").unlink(missing_ok=True)
+    (lado_home / "lado.db").write_bytes(backup.read_bytes())
+    assert _schema(lado_home / "lado.db") == 42
+    with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
+        assert db.execute("SELECT host FROM git_servers").fetchall() == []
+        assert "github_takeover" not in _tables(db)
+
+
+def test_previous_schema_drops_43(lado_home):
+    state.record_github_takeover("none", None)
+    agent_helpers.previous_schema()
+    assert _schema(lado_home / "lado.db") == 42
+    with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
+        assert "github_takeover" not in _tables(db)

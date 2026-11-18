@@ -8,7 +8,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-18-github-com-e
 
 ## 2. Schema 43
 
-- [ ] 2.1 `github_takeover`, migration 42 → 43,
+- [x] 2.1 `github_takeover`, migration 42 → 43,
   `previous_schema` (D2). Check: `tests/test_state.py`.
 
 ## 3. The takeover

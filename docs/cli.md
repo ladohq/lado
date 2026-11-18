@@ -26,6 +26,25 @@ is exit 1) before any clone or start, stdin read once, and `first message: queue
 supervisor` after the Started or Resumed line. The UI starts sessions too (Launch). Use `LADO_HOME=/tmp/some-dir` and
 `LADO_TMUX_SOCKET=lado-dev` to keep test sessions apart from the LADO you work with.
 
+A clone or listing git refuses says `cannot clone <url>: <reason> (<git's line>)` (`cannot
+read …` for the listing) with a hint by its kind (`lado.clone.KINDS`, git's words under
+`LC_ALL=C`). When the URL's host is a saved git server whose token git took (by host and port
+for https, by host for `git@<host>:` and `ssh://git@<host>[:22]/`) and it refuses access, the
+reason names the server: `<host> refused the token of the git server <address>` (`Authentication
+failed`), `<host> refused access with the token of the git server <address>` (git's `returned
+error: 403`), `no repository there, or the token of the git server <address> cannot read it`
+(not found), with `Check the git server; if its token expired or was revoked, replace it (lado
+git-server add <address> --token): lado git-server check <address>`. An http(s) host that is
+neither github.com nor saved and asks for a login (`<host> asks for a login`) or refuses access
+(`<host> refused access`) gets `Add it as a git server with a token: lado git-server add
+<scheme>://<host>[:<port>] --token`; its not found, ssh failures and the failures that are no
+access failure (unreachable, no branch) keep their texts with no git server hint, and so does a
+host saved under another scheme or port than the URL's, as git took no token from it.
+github.com's texts stay (`gh auth login`, `gh auth status`; its 403 is `github.com refused
+access` with `gh auth status`). A kit's, pack's or marketplace's git failure carries the same
+hint on one line; the UI shows the git server's way out as a link to Settings → Git servers
+(docs/design/ui.md).
+
 `lado start --new [<folder>]` (default: the current folder; relative paths are taken from
 it) starts from scratch (`lado.scratch`): the folder must be new or empty (nothing but
 `.DS_Store`) and in no git repository, and git must know the commits' author (`user.name`
@@ -274,6 +293,19 @@ that cannot start (`OpenCode's default Локальная Qwen: LM Studio дом
 the reason of the server's probe, `…: qwen3-8b is not in LM Studio дома's list of models`, `Codex
 CLI's default gpt-5.4-old: its list no longer has it`), or that it cannot check as the agents'
 environment cannot be read. It never fails either.
+
+With git servers saved (`lado git-server add`), `lado doctor` prints a line per server after
+`git author`, named `git server <address>`, by the check of `lado git-server check`: `ok` with
+its `Works: …` line, `warn` with its line and hint otherwise (`GitHub refused the token: it
+expired or was revoked` with `replace it: lado git-server add <address> --token`; `<host> does
+not answer: …` with the reach hint). A missing token file (no request sent) and a saved
+address this LADO no longer takes (`its saved address is not taken any more (…)`, `remove it:
+lado git-server remove <address>`) are warnings too. The servers are asked at once, while the
+model servers are probed, so doctor waits about one check's time (about 10 s at most). It never
+fails, and saves no login: a server saved with `--kind` that works stays `not checked` in `lado
+git-server list` until `lado git-server check` or Settings' Check. With no server saved there is
+no line; with lado.db at another schema, one `[info] git servers: not checked: lado.db is not
+at this LADO's schema (see lado.db)`.
 
 `lado doctor` prints a login line after each installed agent CLI's version, read by the CLI's
 own status command in the environment its agents get without a project, the login taken
@@ -820,7 +852,9 @@ nothing. Refused, nothing saved, exit 1, with a hint: a token the server refuses
 `insufficient_scope` says the token lacks `read_api`), even with `--kind`; a token every
 kind's API refuses (a sign-in gateway in front of the server, or a token cut short: `<address>
 refuses the token on GitHub's and GitLab's API alike`, hint `check that the token was copied
-whole; a sign-in gateway in front of the server refuses any token too`), naming no kind; a redirect (`<address>
+whole; a sign-in gateway in front of the server refuses any token too`), naming no kind (a
+gateway that answers OAuth's `invalid_token` on every path is taken for GitLab, as one answer
+cannot tell them apart); a redirect (`<address>
 sends to <location>; give the server's own address`, nothing sent there); two kinds
 answering (`… answers as GitHub and as GitLab; say which: --kind github or --kind gitlab`);
 a server that does not answer (`<host> does not answer: the name is not found` / `the

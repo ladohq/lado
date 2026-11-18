@@ -5509,6 +5509,16 @@
                 "type": "null"
               }
             ]
+          },
+          "git_server": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GitServerWay"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -6874,6 +6884,39 @@
         ],
         "title": "GitServerRemoved",
         "description": "The git servers left after a removal, and why a folder of the removed one stayed\n(`could not remove <path>: <why>`; None when none did)."
+      },
+      "GitServerWay": {
+        "properties": {
+          "way": {
+            "type": "string",
+            "enum": [
+              "check",
+              "add"
+            ],
+            "title": "Way"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host"
+          },
+          "address": {
+            "type": "string",
+            "title": "Address"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "way",
+          "host",
+          "address",
+          "text"
+        ],
+        "title": "GitServerWay",
+        "description": "An access failure's way out through Settings \u2192 Git servers (lado.clone.ServerWay):\ncheck the saved server git took the token of, or add the unsaved host."
       },
       "GitServers": {
         "properties": {

@@ -1669,7 +1669,14 @@ connection, above).
   themselves from `POST /api/remote-branches` half a second after the URL stops changing, each
   URL once, `fetching branches…` meanwhile, the default branch chosen and marked
   `(default)`, above 30 a field that filters; a listing failure under the URL with its hint
-  and Copy; **Use this clone** for a clone of the same repository there ("LADO will use it as
+  and Copy, or, for an access failure a git server can fix (the answer's `git_server`), its
+  **git server note** (`GitServerNote`, the same at a failed clone's end and in a project's Add
+  repository): the core's sentence (`Check this git server; if its token expired or was
+  revoked, replace it there.` / `Add <host> as a git server with a token: LADO and its agents
+  then sign in to it.`) and a link that looks as a quiet button, `Check <host> ↗` or `Add git
+  server ↗` (named `… (opens a new tab)`, 44 px high on a phone), opening
+  `/settings/git-servers?check=<host>` or `?add=<address>` in a new tab, so the window keeps its
+  fields; no command to copy there; **Use this clone** for a clone of the same repository there ("LADO will use it as
   it is: no clone, no pull, no branch switch"), which turns Where to that folder; the clone a
   job of the server (`server/clones.py`, `cloneJob.ts`), polled every 500 ms with a progress
   block, **Cancel clone**, a beacon on `pagehide`, the window not closable meanwhile; a start
@@ -1817,7 +1824,9 @@ connection, above).
   label, `About <field>`, `aria-expanded`; a press, Enter or Space opens and closes it, its
   text put in a `role="status"` region placed under it (`Menu.tsx`'s `useBelow`), or above it
   with `place="above"` (`placeAbove`) where what is under the button must stay visible (below
-  all the same when there is no room above it); Esc closes
+  all the same when there is no room above it); placed again on a resize and when the page
+  switches between the phone's and the wide layout (`<html data-phone>`), so an open tip
+  stays by its button when a phone is turned; Esc closes
   it alone, a press outside, another (i) or Tab away closes it; hover opens nothing.
 - **The window's notes in three levels** (decided 2026-10-21, LAD-120, mockup
   `task/lad-120/mockup-launch-notes.html` variant A): each note under a field is one of
@@ -3214,7 +3223,9 @@ link under the field stays visible and pressable.
   buttons under its text): Sign-in (tip; `Signed in as <login>`, `⚠ Not checked` or `⚠ Token
   missing`; `Check` and `Replace token`, or `Replace token` alone as the main button when the
   token file is missing), Commit author (tip; `<name> <<email>>` with `Edit` and `Remove`, or
-  `Your own git author` with `Set author`), and at its foot `Remove server`. Each button's
+  `Your own git author` with `Set author`), and at its foot `Remove server`. One `Replace token`
+  per panel: a line about a refused or short token (a check's, a save's warning) has no button
+  of its own and makes Sign-in's `Replace token` the main one while it shows. Each button's
   accessible name carries the address (`Check <address>`, `Replace the token of <address>`,
   `Set|Edit|Remove the commit author of <address>`, `Remove <address>`); a form-opener whose form
   is open is pressed (`aria-pressed`). One form at a time on the page.
@@ -3223,20 +3234,22 @@ link under the field stays visible and pressable.
   otherwise), the server's sentence with its way out at its end: `Works: signed in as <login>,
   may clone and push.` (`Works: <Kind>, signed in as <login>.` for one saved without a check,
   whose row then shows the login; `…; the token's rights are not checked.`), `<Kind> refused the
-  token: it expired or was revoked.` [Replace token], `The token lacks <scopes>.` ⓘ `About the
-  missing scope` [Replace token], `⚠ No answer in 5 seconds.` (`⚠ No answer: <why>.`) ⓘ `About
+  token: it expired or was revoked.`, `The token lacks <scopes>.` ⓘ `About the missing scope`
+  (both with Sign-in's `Replace token` as the main button), `⚠ No answer in 5 seconds.` (`⚠ No answer: <why>.`) ⓘ `About
   no answer` [Check again], `The server's certificate is not trusted.` ⓘ `About the
   certificate` (ask the IT department to make LADO's computer trust it, then check again)
   [Check again], `It redirects to <target>: add that address instead.`, `It answers as <Kind>,
   not <saved Kind>: remove it and add it again.`, `It answers as neither GitHub nor GitLab.`.
-  The focus stays on Check. Nothing of a check is kept but a passing check's login.
+  A `Works:` line has no `✓` (`gx-result ok works`): it says so in words; the other ok lines of
+  the page keep theirs. The focus stays on Check. Nothing of a check is kept but a passing
+  check's login.
 - **Replace token** opens a form under Sign-in (`gx-form`): New token (the secret field,
   focused), `Make one on its token page with the <scopes>.`, `Save token` (`Checking the
   token…`) and Cancel; Esc cancels, the focus back on Replace token. It posts the saved address
   and the token to `POST /api/git-servers`. Done: `✓ Token replaced: signed in as <login>.`,
   plus `⚠ Before, it was <old>.` ⓘ `About the other user` when the login changed, or `⚠ The token
-  lacks <scopes>: agents can clone but not push.` [Replace token] for a token without a right;
-  the focus on Replace token. A refused token: `<Kind> refused this token: copy it whole or make
+  lacks <scopes>: agents can clone but not push.` for a token without a right (Sign-in's Replace
+  token the main button); the focus on Replace token. A refused token: `<Kind> refused this token: copy it whole or make
   a new one.` under the field, the token kept, Save off until it is edited. A server that does
   not answer: `⚠ No answer in 5 seconds: save it without a check, as <Kind>.` and `Save without a
   check`, which saves it under the saved kind (`✓ Saved without a check as <Kind>.`, the row
@@ -3246,7 +3259,8 @@ link under the field stays visible and pressable.
   author as `lado git-server author` does; a refusal shows under Name or Email (one of no field
   under the buttons). Done: `✓ Author saved.`, the focus on Edit. `Remove` clears it at once:
   `✓ Author removed.` [Undo], the focus on Undo; Undo sets the same name and email again
-  through `PUT …/author` and says `✓ Author saved.`, the focus on Edit.
+  through `PUT …/author` and says `✓ Author saved.`, the focus on Edit. `Remove` and `Undo` are
+  off while their request runs; Undo's line stays meanwhile.
 - **Remove server** asks in the panel's foot (`mx-confirm`, `role=alertdialog`, the focus on
   Cancel, Esc cancels): `Remove <address>?` / `Its token and commit author go too. This cannot
   be undone.`, `Remove server` and Cancel. Done: `Removed <address>.` in the row's place (with
@@ -3271,8 +3285,12 @@ link under the field stays visible and pressable.
   another field, on Cancel and when the form closes. Done: the form closes, the new row stands
   open where it was, the focus on its head, its panel starting with `✓ Saved: <Kind>, signed in
   as <login>.` (`✓ Saved without a check as <Kind>.`; `⚠ The token lacks <scopes>: agents can
-  clone but not push.` [Replace token] for a token without a right). Cancel or Esc gives the
-  focus back to `+ Add server`.
+  clone but not push.` for a token without a right, Sign-in's Replace token the main button).
+  Cancel or Esc gives the focus back to `+ Add server`.
+- **Opened from a clone's note**: `?check=<host>` opens that saved server's panel and checks it
+  as Check does; `?add=<address>` opens Add with that address, checked as typed, the focus in
+  Token. Read once the list is read, then dropped from the address bar (`replace`), so a reload
+  does neither again; a host no server is saved for opens nothing.
 - **One result at a time**: the page shows at most one result line (a save, a check, a
   removal, an author line with Undo), kept as page state with its server and place; any next
   action removes it, opening or closing a row does not (Cancel and Esc count). Each action has a

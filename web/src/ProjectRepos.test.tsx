@@ -245,6 +245,47 @@ test("a failed clone shows its text and hint, the dialog kept", async () => {
   expect(addDialog().textContent).toContain("ssh-add");
 });
 
+const CHECK_WAY = {
+  way: "check" as const,
+  host: "gitlab.corp.ru",
+  address: "https://gitlab.corp.ru",
+  text: "Check this git server; if its token expired or was revoked, replace it there.",
+};
+const CHECK_HINT = { text: "Check the git server; …:", command: "lado git-server check https://gitlab.corp.ru" };
+
+test("a failed clone with a git server's way out shows its note and link, no command", async () => {
+  await cloneReady();
+  const error = { message: "cannot clone x: gitlab.corp.ru refused the token", kind: "login_needed", hint: CHECK_HINT, git_server: CHECK_WAY };
+  server.polls = [cloneJob({ state: "failed", error })];
+  fireEvent.click(dialogButton("Clone"));
+  expect(await within(addDialog()).findByText(CHECK_WAY.text)).toBeTruthy();
+  const link = within(addDialog()).getByRole("link", { name: /Check gitlab.corp.ru/ });
+  expect(link.textContent).toBe("Check gitlab.corp.ru ↗");
+  expect(link.getAttribute("href")).toBe("/settings/git-servers?check=gitlab.corp.ru");
+  expect(link.getAttribute("target")).toBe("_blank");
+  expect(link.getAttribute("rel")).toContain("noopener");
+  expect(addDialog().textContent).not.toContain(CHECK_HINT.command);
+  expect(within(addDialog()).queryByRole("button", { name: "Copy command" })).toBeNull();
+});
+
+test("a listing refused with a git server's way out shows its note under Git URL", async () => {
+  const url = "https://git.acme.example/team/app.git";
+  const way = {
+    way: "add" as const,
+    host: "git.acme.example",
+    address: "https://git.acme.example",
+    text: "Add git.acme.example as a git server with a token: LADO and its agents then sign in to it.",
+  };
+  server.unlisted[url] = { message: `cannot read ${url}: git.acme.example asks for a login`, kind: "login_needed", hint: CHECK_HINT, git_server: way };
+  await addRepository("Clone from URL");
+  fireEvent.change(inDialog("Git URL"), { target: { value: url } });
+  expect(await within(addDialog()).findByText(way.text)).toBeTruthy();
+  const link = within(addDialog()).getByRole("link", { name: /Add git server/ });
+  expect(link.getAttribute("href")).toBe("/settings/git-servers?add=https%3A%2F%2Fgit.acme.example");
+  expect(link.getAttribute("target")).toBe("_blank");
+  expect(within(addDialog()).queryByRole("button", { name: "Copy command" })).toBeNull();
+});
+
 test("a refused clone start shows the core's text under Name", async () => {
   await cloneReady();
   server.refuse = (asked) =>

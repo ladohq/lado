@@ -20,7 +20,7 @@ import {
 } from "./api";
 import { since } from "./ChatText";
 import { useCloneJob, type CloneEnd } from "./cloneJob";
-import { BRANCHES_DEBOUNCE, CloneProgress, cloneRefused, defaultBranch, FolderHint, useDebounced, useLaunch } from "./Launch";
+import { BRANCHES_DEBOUNCE, CloneHint, CloneProgress, cloneRefused, defaultBranch, useDebounced, useLaunch } from "./Launch";
 import { useLive } from "./live";
 import { useModal } from "./modal";
 import { sessionPath } from "./paths";
@@ -178,11 +178,11 @@ function SessionItem({ session }: { session: SessionInfo }) {
 type Source = "url" | "scratch";
 
 // A refusal of the dialog's request: its text, and the core's hint when it gives one.
-type Refusal = { message: string; hint: CloneRefused["hint"] };
+type Refusal = Pick<CloneRefused, "message" | "hint" | "git_server">;
 
 const refusalOf = (error: unknown): Refusal => {
   const why = error && typeof error === "object" && "detail" in error ? cloneRefused(error.detail) : null;
-  return { message: why?.message ?? messageOf(error), hint: why?.hint ?? null };
+  return { message: why?.message ?? messageOf(error), hint: why?.hint ?? null, git_server: why?.git_server ?? null };
 };
 
 // Add a repository: Clone from URL (Git URL, Name from the URL until edited, Branch from the
@@ -252,7 +252,7 @@ function AddRepoDialog({
     if (end.ended === "left") return;
     setBusy(false);
     if (end.ended === "gone") setRefused(refusalOf(end.error));
-    else if (end.job.error) setRefused({ message: end.job.error.message, hint: end.job.error.hint });
+    else if (end.job.error) setRefused(end.job.error);
     else setNote("the clone was cancelled");
   };
 
@@ -293,7 +293,7 @@ function AddRepoDialog({
   const refusal = refused && (
     <div className="field-note bad">
       <div role="alert">{refused.message}</div>
-      {refused.hint && <FolderHint text={refused.hint.text} command={refused.hint.command} />}
+      <CloneHint refused={refused} />
     </div>
   );
   const nameField = (
@@ -380,7 +380,7 @@ function AddRepoDialog({
               {shown && "failed" in shown && (
                 <div className="field-note bad">
                   <div>{shown.failed.message}</div>
-                  {shown.failed.hint && <FolderHint text={shown.failed.hint.text} command={shown.failed.hint.command} />}
+                  <CloneHint refused={shown.failed} />
                 </div>
               )}
             </div>

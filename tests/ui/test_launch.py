@@ -1371,3 +1371,86 @@ def test_on_a_phone_every_field_and_button_of_the_window_is_a_44_px_target(
     # Now `+ Add kit` offers it back.
     assert add_kit(dialog).bounding_box()["height"] == 44
     shot(page, "kit-removed")
+
+
+# A listing refused by a git server's host: the note leads to Settings → Git servers.
+
+GIT_TOKEN = "glpat-CANARY-ui-cl0n"
+
+
+@pytest.fixture
+def git_host(tmp_path, monkeypatch, git_config):
+    """An https git server on 127.0.0.1 that wants GIT_TOKEN, its repository team/app.git
+    and a certificate the server's git and API calls trust; taken before `server`."""
+    from fake_git_api import make_certificate
+    from fake_git_server import Server
+
+    certificate = make_certificate(tmp_path)
+    monkeypatch.setenv("GIT_SSL_CAINFO", str(certificate[0]))
+    monkeypatch.setenv("SSL_CERT_FILE", str(certificate[0]))
+    host = Server(tmp_path / "git-host", GIT_TOKEN, certificate)
+    url = host.repository("team/app.git", agent_helpers.init_repo(tmp_path / "seed"))
+    yield host, url
+    host.close()
+
+
+def clone_url(page: Page, server, url: str) -> Locator:
+    log_in(page, server)
+    dialog = new_session(page)
+    pick_place(dialog, "Clone from URL…")
+    dialog.get_by_role("textbox", name="Repository URL").fill(url)
+    return dialog
+
+
+def test_a_saved_servers_refused_token_leads_to_its_check(
+    page: Page, git_host, tmp_path, request, shot
+):
+    from lado import git_kinds, git_servers
+
+    host, url = git_host
+    at = git_servers.address(host.url)
+    git_servers.save(at, git_servers.Checked(git_kinds.by_name("gitlab"), "ivan"), "glpat-WRONG-1")
+    server = request.getfixturevalue("server")
+    dialog = clone_url(page, server, url)
+    note = dialog.locator(".field-note.bad")
+    expect(note).to_contain_text(f"refused the token of the git server {host.url}")
+    expect(note).to_contain_text(
+        "Check this git server; if its token expired or was revoked, replace it there."
+    )
+    expect(note.get_by_role("button", name="Copy command")).to_have_count(0)
+    link = note.get_by_role("link", name=f"Check {at.key} (opens a new tab)")
+    expect(link).to_have_text(f"Check {at.key} ↗")
+    shot(page, "clone-check-note")
+    with page.context.expect_page() as opened:
+        link.click()
+    settings = opened.value
+    expect(settings).to_have_url(re.compile(r"/settings/git-servers$"))
+    panel = settings.get_by_role("region", name="Git servers")
+    expect(panel.get_by_role("button", name=host.url, exact=True)).to_have_attribute(
+        "aria-expanded", "true"
+    )
+    expect(panel).to_contain_text("GitLab refused the token: it expired or was revoked.")
+    shot(settings, "settings-opened-to-check")
+    # The window stays as it was in its own tab.
+    expect(dialog.get_by_role("textbox", name="Repository URL")).to_have_value(url)
+
+
+def test_an_unsaved_host_asking_for_a_login_leads_to_add(page: Page, git_host, server, shot):
+    host, url = git_host
+    dialog = clone_url(page, server, url)
+    note = dialog.locator(".field-note.bad")
+    key = host.url.removeprefix("https://")
+    expect(note).to_contain_text(f"{key.split(':')[0]} asks for a login")
+    expect(note).to_contain_text(
+        f"Add {key} as a git server with a token: LADO and its agents then sign in to it."
+    )
+    link = note.get_by_role("link", name="Add git server (opens a new tab)")
+    shot(page, "clone-add-note")
+    with page.context.expect_page() as opened:
+        link.click()
+    settings = opened.value
+    expect(settings).to_have_url(re.compile(r"/settings/git-servers$"))
+    panel = settings.get_by_role("region", name="Git servers")
+    expect(panel.get_by_role("textbox", name="Address")).to_have_value(host.url)
+    expect(panel.get_by_role("textbox", name="Token")).to_be_focused()
+    shot(settings, "settings-opened-to-add")

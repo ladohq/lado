@@ -20,12 +20,13 @@ import stat
 import subprocess
 import tempfile
 import threading
+import urllib.parse
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from lado import agent_env, git_servers, gitcache, project_secrets, projects, runtime
+from lado import agent_env, git_servers, gitcache, project_secrets, projects, runtime, state
 
 URL = re.compile(r"(https?|ssh|git|file)://(.+)", re.IGNORECASE)
 # user@host:path, git's scp form; a bare host:path would take a folder with a colon.
@@ -124,14 +125,34 @@ def default_folder(url: str) -> Path:
     return projects.workspace() / name
 
 
+@dataclass(frozen=True)
+class ServerWay:
+    """A failure's way out through Settings → Git servers, for the UI: `way` "check" for the
+    saved server git took the token of, "add" for an unsaved host; `host` the server's key
+    (lado.git_servers.Address.key), `address` its root, `page` the UI's sentence."""
+
+    way: Literal["check", "add"]
+    host: str
+    address: str
+    page: str
+
+
 class CloneError(runtime.LadoError):
     """Why a listing or a clone did not happen, by kind, with a hint when the human can
-    act (LAD-5's `runtime.Hint`)."""
+    act (LAD-5's `runtime.Hint`) and, for an access failure a git server can fix, its
+    `server` way out."""
 
-    def __init__(self, kind: str, text: str, hint: runtime.Hint | None = None) -> None:
+    def __init__(
+        self,
+        kind: str,
+        text: str,
+        hint: runtime.Hint | None = None,
+        server: ServerWay | None = None,
+    ) -> None:
         super().__init__(text)
         self.kind = kind
         self.hint = hint
+        self.server = server
 
 
 def _git_runs() -> None:
@@ -231,6 +252,7 @@ KINDS: tuple[tuple[str, re.Pattern], ...] = (
         "login_needed",
         re.compile(r"could not read Username|Authentication failed|terminal prompts disabled"),
     ),
+    ("access_denied", re.compile(r"The requested URL returned error: 403")),
     (
         "not_found",
         re.compile(
@@ -308,16 +330,82 @@ def _reason(
             f"{host} asks for a login; set up a git credential helper for it on this machine",
             None,
         )
-    if kind == "not_found":
+    if kind in ("access_denied", "not_found"):
         hint = (
             runtime.Hint("See which GitHub account this machine uses:", "gh auth status")
             if github
             else None
         )
+        if kind == "access_denied":
+            return f"{host} refused access", hint
         return "no repository there, or this machine's account cannot read it", hint
     if kind == "unreachable":
         return f"{host} cannot be reached", None
     return f"no branch {branch}", None  # no_branch
+
+
+ACCESS_KINDS = ("login_needed", "access_denied", "not_found")
+CHECK_PAGE = "Check this git server; if its token expired or was revoked, replace it there."
+
+
+def _saved_servers() -> list[state.GitServer] | None:
+    """The saved git servers, none without a lado.db; None (not known) for a lado.db at
+    another schema than this LADO's. A failure's text never makes or migrates lado.db."""
+    version = state.schema_version()
+    if version is None:
+        return []
+    if version != state.SCHEMA_VERSION:
+        return None
+    try:
+        return state.git_servers()
+    except state.SchemaError:
+        return None
+
+
+def _server_way(
+    kind: str, url: str, address: Address, servers: list[state.GitServer]
+) -> tuple[str, runtime.Hint, ServerWay] | None:
+    """An access failure's (`ACCESS_KINDS`) reason, hint and way out through the git
+    servers: the saved server git took the token of (`git_servers.server_for`), else an
+    unsaved http(s) host other than github.com to add; None for neither, as for a host saved
+    under another scheme or port, whose token git did not take and which could not be added
+    again."""
+    host = address.host
+    server = git_servers.server_for(url, servers)
+    if server is not None and (
+        address.scheme == "ssh" or urllib.parse.urlsplit(server.address).scheme == address.scheme
+    ):
+        root = server.address
+        reason = {
+            "login_needed": f"{host} refused the token of the git server {root}",
+            "access_denied": f"{host} refused access with the token of the git server {root}",
+            "not_found": f"no repository there, or the token of the git server {root} cannot "
+            "read it",
+        }[kind]
+        hint = runtime.Hint(
+            "Check the git server; if its token expired or was revoked, replace it "
+            f"({git_servers.ADD} {root} --token):",
+            f"lado git-server check {root}",
+        )
+        return reason, hint, ServerWay("check", server.host, root, CHECK_PAGE)
+    if (
+        kind == "not_found"
+        or address.scheme not in ("https", "http")
+        or host in git_servers.GITHUB_COM
+        or any(urllib.parse.urlsplit(s.address).hostname == host for s in servers)
+    ):
+        return None
+    port = f":{address.port}" if address.port else ""
+    try:
+        at = git_servers.address(f"{address.scheme}://{host}{port}")
+    except git_servers.BadAddress:
+        return None
+    reason = f"{host} asks for a login" if kind == "login_needed" else f"{host} refused access"
+    hint = runtime.Hint(
+        "Add it as a git server with a token:", f"{git_servers.ADD} {at.root} --token"
+    )
+    page = f"Add {at.key} as a git server with a token: LADO and its agents then sign in to it."
+    return reason, hint, ServerWay("add", at.key, at.root, page)
 
 
 def failure(
@@ -325,10 +413,10 @@ def failure(
 ) -> CloneError:
     """git's failure of a listing (`op` "list") or a clone, into `project` when given, as
     LADO tells it: `cannot read <url>: <reason> (<git's line>)` or `cannot clone ...`, with
-    a hint by its kind."""
+    a hint by its kind and, for an access failure a git server can fix, its way out."""
     verb = "read" if op == "list" else "clone"
-    kind, text, hint = _told(url, stderr, branch, project)
-    return CloneError(kind, f"cannot {verb} {runtime.public_remote(url)}: {text}", hint)
+    kind, text, hint, server = _told(url, stderr, branch, project)
+    return CloneError(kind, f"cannot {verb} {runtime.public_remote(url)}: {text}", hint, server)
 
 
 def explain(url: str, stderr: str) -> str:
@@ -336,20 +424,25 @@ def explain(url: str, stderr: str) -> str:
     (lado.gitcache), by the kinds of a clone's, on one line after LADO's head: `<reason>
     (<git's line>)` and `. <hint>` when the kind has one; git's line alone for no known
     kind."""
-    _, text, hint = _told(url, stderr, None, None)
+    _, text, hint, _ = _told(url, stderr, None, None)
     return text + (f". {hint.line()}" if hint else "")
 
 
 def _told(
     url: str, stderr: str, branch: str | None, project: str | None
-) -> tuple[str, str, runtime.Hint | None]:
+) -> tuple[str, str, runtime.Hint | None, ServerWay | None]:
     """git's failure by its kind: the kind, `<reason> (<git's line>)` (git's line alone
-    for no known kind) and the hint."""
+    for no known kind), the hint and the git server's way out."""
     line, kind = _gits_line(stderr), kind_of(stderr)
     if kind == GIT_FAILED:
-        return kind, line, None
-    reason, hint = _reason(kind, Address.parse(url), branch, project)
-    return kind, f"{reason} ({line})", hint
+        return kind, line, None, None
+    address = Address.parse(url)
+    servers = _saved_servers() if kind in ACCESS_KINDS else None
+    if servers is not None and (way := _server_way(kind, url, address, servers)):
+        reason, hint, server = way
+        return kind, f"{reason} ({line})", hint, server
+    reason, found = _reason(kind, address, branch, project)
+    return kind, f"{reason} ({line})", found, None
 
 
 def _environment(project: str | None, url: str) -> dict[str, str]:

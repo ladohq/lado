@@ -250,7 +250,11 @@ def test_add_servers_in_each_state(
         expect(top).to_contain_text(
             "⚠ The token lacks write_repository: agents can clone but not push."
         )
-        expect(top.get_by_role("button", name=f"Replace the token of {own.url}")).to_be_visible()
+        # One Replace token, Sign-in's, as the main button: the warning has none of its own.
+        replace = row(page, own.url).get_by_role("button", name=f"Replace the token of {own.url}")
+        expect(replace).to_have_count(1)
+        expect(replace).to_have_class("primary")
+        expect(top.get_by_role("button")).to_have_count(0)
         expect(row(page, own.url).get_by_text("plain http", exact=True)).to_be_visible()
         expect(results(page)).to_have_count(1)
         shot(page, "missing-scope")
@@ -299,14 +303,17 @@ def test_check_a_saved_server_in_each_outcome(
         shot(page, "works")
         outcome(
             "gitlab-refuses",
-            "GitLab refused the token: it expired or was revoked.Replace token",
+            "GitLab refused the token: it expired or was revoked.",
             "✕ check failed: token refused",
         )
+        replace = panel.get_by_role("button", name=f"Replace the token of {lab.url}")
+        expect(replace).to_have_count(1)
+        expect(replace).to_have_class("primary")
         expect(line).to_have_attribute("role", "alert")
         shot(page, "refused")
         outcome(
             "gitlab-read",
-            "The token lacks write_repository. Replace token",
+            "The token lacks write_repository.",
             "✕ check failed: a scope missing",
         )
         line.get_by_role("button", name="About the missing scope").click()
@@ -523,5 +530,45 @@ def test_the_page_at_each_width(browser: Browser, server, lado_home, shot, width
         assert 8 <= tip_box["x"] and tip_box["x"] + tip_box["width"] <= width - 8, tip_box
         no_sideways_scroll(page)
         shot(page, "add-token-tip")
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize("which", ["Sign-in", "Token"])
+def test_an_open_tip_follows_its_button_across_the_layouts(browser: Browser, server, shot, which):
+    corp = "https://gitlab.corp.example"
+    checked = git_servers.Checked(git_kinds.by_name("gitlab"), "a.sample")
+    git_servers.save(git_servers.address(corp), checked, TOKEN)
+    context = browser.new_context(viewport={"width": 390, "height": 844})
+    try:
+        page = context.new_page()
+        open_page(page, server)
+        git = section(page)
+        if which == "Token":  # its tip opens above it
+            plus_add(page).click()
+        else:  # below it
+            head(page, corp).click()
+        tip = git.get_by_role("button", name=f"About {which}")
+        tip.click()
+        pop = git.locator(".info-pop")
+        expect(pop).to_be_visible()
+
+        def beside() -> None:
+            # The tip's edge just over or under its button, and across it (kept inside the
+            # window, it may not reach the button's middle).
+            box, button = pop.bounding_box(), tip.bounding_box()
+            assert box and button
+            over = button["y"] - (box["y"] + box["height"])
+            under = box["y"] - (button["y"] + button["height"])
+            assert 0 <= over <= 16 or 0 <= under <= 16, (box, button)
+            assert box["x"] < button["x"] + button["width"], (box, button)
+            assert button["x"] < box["x"] + box["width"], (box, button)
+
+        beside()
+        page.set_viewport_size({"width": 900, "height": 844})  # a phone turned, say
+        expect(page.locator("html")).not_to_have_attribute("data-phone", re.compile(".*"))
+        page.wait_for_timeout(100)  # two frames: what the human sees after the switch
+        beside()
+        shot(page, "tip-after-widening")
     finally:
         context.close()

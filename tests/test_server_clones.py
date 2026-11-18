@@ -80,6 +80,7 @@ def test_a_listing_refused_is_400_with_its_kind_and_hint(client, tmp_path):
         "message": "some/folder is not a git URL",
         "kind": "not_url",
         "hint": None,
+        "git_server": None,
     }
 
 
@@ -93,6 +94,80 @@ def test_a_listing_failure_with_a_hint(client, tmp_path, monkeypatch):
         "text": "See which GitHub account this machine uses:",
         "command": "gh auth status",
     }
+
+
+def _git_server():
+    from lado import git_kinds, git_servers
+
+    checked = git_servers.Checked(git_kinds.by_name("gitlab"), "ivan")
+    git_servers.save(git_servers.address("https://gitlab.corp.ru"), checked, "glpat-x")
+
+
+LOGIN_LINE = "fatal: Authentication failed for 'https://gitlab.corp.ru/team/app.git/'"
+
+
+@pytest.fixture
+def failing_git(tmp_path, monkeypatch):
+    for key, value in fake_git(tmp_path / "fake", "fail").items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("FAKE_GIT_STDERR", LOGIN_LINE)
+
+
+@pytest.mark.parametrize(
+    ("url", "way"),
+    [
+        (
+            "https://gitlab.corp.ru/team/app.git",
+            {
+                "way": "check",
+                "host": "gitlab.corp.ru",
+                "address": "https://gitlab.corp.ru",
+                "text": "Check this git server; if its token expired or was revoked, replace "
+                "it there.",
+            },
+        ),
+        (
+            "https://git.acme.example/team/app.git",
+            {
+                "way": "add",
+                "host": "git.acme.example",
+                "address": "https://git.acme.example",
+                "text": "Add git.acme.example as a git server with a token: LADO and its "
+                "agents then sign in to it.",
+            },
+        ),
+    ],
+)
+def test_a_listing_refused_names_its_git_servers_way(client, failing_git, url, way):
+    _git_server()
+    answer = client.post("/api/remote-branches", json={"url": url})
+    assert answer.status_code == 400
+    detail = answer.json()["detail"]
+    assert detail["kind"] == "login_needed"
+    assert detail["git_server"] == way
+    assert detail["hint"]["command"].startswith("lado git-server ")
+
+
+def test_a_clone_jobs_error_carries_its_git_servers_way(client, failing_git, tmp_path):
+    _git_server()
+    url = "https://gitlab.corp.ru/team/app.git"
+    answer = client.post("/api/clones", json={"url": url, "path": str(tmp_path / "app")})
+    assert answer.status_code == 200
+    job = answer.json()
+    done = _until(
+        lambda: (j := client.get(f"/api/clones/{job['id']}").json())["state"] != "running" and j
+    )
+    assert done["state"] == "failed", done
+    assert done["error"]["git_server"]["way"] == "check"
+    assert done["error"]["git_server"]["host"] == "gitlab.corp.ru"
+
+
+def test_no_git_servers_way_for_another_failure(client, failing_git, monkeypatch):
+    monkeypatch.setenv("FAKE_GIT_STDERR", "fatal: unable to access 'x': Could not resolve host")
+    answer = client.post("/api/remote-branches", json={"url": "https://git.acme.example/a.git"})
+    assert answer.json()["detail"]["git_server"] is None
+    answer = client.post("/api/remote-branches", json={"url": "some/folder"})
+    assert answer.json()["detail"]["git_server"] is None
 
 
 def test_the_clone_target_in_the_repositories_folder(client, tmp_path, monkeypatch):
@@ -188,6 +263,7 @@ def test_a_clone_into_a_project_is_400_and_starts_no_job(client, shop):
         "message": IN_SHOP.format(shop / "web"),
         "kind": "in_project",
         "hint": WEB_HINT,
+        "git_server": None,
     }
     assert client.app.state.clones._jobs == {} and list(shop.iterdir()) == []
 

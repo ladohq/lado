@@ -2180,6 +2180,7 @@ export interface components {
             /** Kind */
             kind: string;
             hint: components["schemas"]["HintInfo"] | null;
+            git_server?: components["schemas"]["GitServerWay"] | null;
         };
         /** CloneStart */
         CloneStart: {
@@ -2620,6 +2621,24 @@ export interface components {
             kinds: components["schemas"]["GitKindInfo"][];
             /** Warning */
             warning: string | null;
+        };
+        /**
+         * GitServerWay
+         * @description An access failure's way out through Settings → Git servers (lado.clone.ServerWay):
+         *     check the saved server git took the token of, or add the unsaved host.
+         */
+        GitServerWay: {
+            /**
+             * Way
+             * @enum {string}
+             */
+            way: "check" | "add";
+            /** Host */
+            host: string;
+            /** Address */
+            address: string;
+            /** Text */
+            text: string;
         };
         /**
          * GitServers

@@ -17,7 +17,7 @@ import fake_provider
 import pytest
 from fake_git_server import Server
 
-from lado import git_kinds, git_servers, runtime, state
+from lado import clone, git_kinds, git_servers, runtime, state
 
 pytestmark = pytest.mark.integration
 
@@ -236,3 +236,38 @@ def test_an_old_git_on_the_agents_path_refuses_a_start_while_a_server_is_saved(
     assert "git 2.30.2 is older than 2.31" in str(refused.value)
     assert "lado git-server remove" in str(refused.value)
     assert state.get_session(SESSION) is None
+
+
+def test_a_listing_with_a_refused_saved_token_names_the_server(world, lado_home):
+    listed, _, _, _ = world
+    checked = git_servers.Checked(git_kinds.by_name("gitlab"), fake_git_api.LOGIN)
+    git_servers.save(git_servers.address(listed.url), checked, "glpat-revoked-1")
+    with pytest.raises(clone.CloneError) as refused:
+        clone.list_branches(f"{listed.url}/team/app.git")
+    error = refused.value
+    assert error.kind == "login_needed"
+    assert str(error).startswith(
+        f"cannot read {listed.url}/team/app.git: 127.0.0.1 refused the token of the git server "
+        f"{listed.url} (fatal: Authentication failed for "
+    )
+    assert error.hint == runtime.Hint(
+        "Check the git server; if its token expired or was revoked, replace it "
+        f"(lado git-server add {listed.url} --token):",
+        f"lado git-server check {listed.url}",
+    )
+    assert (error.server.way, error.server.address) == ("check", listed.url)
+
+
+def test_a_listing_of_an_unsaved_host_suggests_adding_it(world, lado_home):
+    _, other, _, _ = world
+    with pytest.raises(clone.CloneError) as refused:
+        clone.list_branches(f"{other.url}/team/app.git")
+    error = refused.value
+    assert error.kind == "login_needed"
+    assert str(error).startswith(
+        f"cannot read {other.url}/team/app.git: 127.0.0.1 asks for a login (fatal: "
+    )
+    assert error.hint == runtime.Hint(
+        "Add it as a git server with a token:", f"lado git-server add {other.url} --token"
+    )
+    assert (error.server.way, error.server.address) == ("add", other.url)

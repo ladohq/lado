@@ -251,6 +251,16 @@ class ScratchTarget(BaseModel):
     project: "ProjectPlace | None" = None  # for in_project: the project the folder is in
 
 
+class GitServerWay(BaseModel):
+    """An access failure's way out through Settings → Git servers (lado.clone.ServerWay):
+    check the saved server git took the token of, or add the unsaved host."""
+
+    way: Literal["check", "add"]
+    host: str  # the server's key, host[:port]: `?check=<host>`
+    address: str  # its root: `?add=<address>`
+    text: str  # the sentence the UI shows instead of the hint's
+
+
 class CloneRefused(BaseModel):
     """The detail of a 400 to a listing or a clone: why, by kind, and what the human can do."""
 
@@ -258,6 +268,7 @@ class CloneRefused(BaseModel):
     # lado.clone's kinds (ssh_denied, login_needed, not_found, ...), a target state, no_git
     kind: str
     hint: "HintInfo | None"
+    git_server: GitServerWay | None = None
 
 
 class CloneStart(BaseModel):

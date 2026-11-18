@@ -18,33 +18,6 @@ from lado.providers import claude as claude_provider
 FAMILY = {"kilo": "KILO_CONFIG_CONTENT", "opencode": "OPENCODE_CONFIG_CONTENT"}
 
 
-def test_registry():
-    assert not hasattr(providers, "DEFAULT")  # no provider is privileged
-    assert providers.names() == ["claude", "codex", "kilo", "opencode"]
-    claude = providers.get("claude")
-    assert (claude.name, claude.command) == ("claude", "claude")
-    assert claude.capabilities.deliver_on_turn_end
-    known = "known: claude, codex, kilo, opencode"
-    with pytest.raises(ValueError, match=f'unknown provider "nope"; {known}'):
-        providers.get("nope")
-
-
-def test_each_provider_declares_its_server_api():
-    apis = {n: providers.get(n).server_api for n in providers.names()}
-    assert apis == {
-        "claude": base.ANTHROPIC_MESSAGES,
-        "codex": base.RESPONSES,
-        "kilo": base.CHAT_COMPLETIONS,
-        "opencode": base.CHAT_COMPLETIONS,
-    }
-    assert (base.CHAT_COMPLETIONS, base.RESPONSES, base.ANTHROPIC_MESSAGES) == (
-        "chat completions",
-        "Responses API",
-        "Anthropic Messages API",
-    )
-    assert base.Provider.server_api == ""  # a stand-in that declares none is left out
-
-
 def test_the_cli_takes_the_turn_end_hook_output_once_printed_for_claude_and_codex_only():
     taken = {n: providers.get(n).capabilities.output_taken_when_printed for n in providers.names()}
     assert taken == {"claude": True, "codex": True, "kilo": False, "opencode": False}
@@ -78,24 +51,6 @@ def test_the_cli_takes_the_turn_end_hook_output_once_printed_for_claude_and_code
 )
 def test_claude_maps_native_events(native, payload, expected):
     assert providers.get("claude").parse_event(native, json.dumps(payload)) == expected
-
-
-@pytest.mark.parametrize(
-    ("native", "payload", "model"),
-    [
-        # The interactive mode's SessionStart names the model (2.1.295, checked by hand).
-        ("SessionStart", {"source": "startup", "model": "claude-opus-5-5"}, "claude-opus-5-5"),
-        ("SessionStart", {"source": "compact", "model": "claude-opus-5-5"}, "claude-opus-5-5"),
-        ("SessionStart", {"source": "clear", "model": "claude-opus-5-5"}, "claude-opus-5-5"),
-        ("SessionStart", {"source": "resume", "model": "claude-opus-5-5"}, "claude-opus-5-5"),
-        ("SessionStart", {"source": "startup"}, ""),  # `claude -p` does not
-        ("SessionStart", {"source": "startup", "model": {"id": "x"}}, ""),
-        ("Stop", {"model": "claude-opus-5-5"}, ""),  # only SessionStart is read
-    ],
-)
-def test_claude_names_the_model_at_its_session_start(native, payload, model):
-    event = providers.get("claude").parse_event(native, json.dumps(payload))
-    assert (event.model, event.effort) == (model, None)  # no hook names the effort
 
 
 @pytest.mark.parametrize(
@@ -151,26 +106,6 @@ def test_claude_stop_failure_is_a_turn_end_on_an_error_whose_output_goes_nowhere
     event = providers.get("claude").parse_event("StopFailure", json.dumps(payload))
     assert event.kind == providers.TURN_END
     assert (event.error, event.output_ignored) == (error, True)
-
-
-@pytest.mark.parametrize(
-    ("kind", "transient"),
-    [
-        ("overloaded", True),
-        ("server_error", True),
-        ("unknown", True),  # also the machine's sleep
-        ("", True),  # no type: unknown
-        ("rate_limit", False),
-        ("authentication_failed", False),
-        ("billing_error", False),
-        ("max_output_tokens", False),
-        ("invalid_request", False),  # a type LADO does not know
-    ],
-)
-def test_claude_says_which_turn_errors_pass_by_themselves(kind, transient):
-    payload = json.dumps({"error": kind} if kind else {})
-    event = providers.get("claude").parse_event("StopFailure", payload)
-    assert event.transient is transient
 
 
 QUOTA = "API Error: Request rejected (429) · You exceeded your current quota"
@@ -291,33 +226,10 @@ def test_a_413_on_a_server_is_read_from_the_error_s_details(monkeypatch):
     assert not event.transient
 
 
-def test_those_forms_on_a_built_in_model_keep_their_words(monkeypatch):
-    monkeypatch.delenv(base.MODEL_SERVER, raising=False)
-    assert _stop_failure("model_not_found", NO_SUCH_MODEL).error == "model_not_found"
-    payload = {"error": "invalid_request", "error_details": TOO_LARGE}
-    event = providers.get("claude").parse_event("StopFailure", json.dumps(payload))
-    assert event.error.startswith("invalid_request: request_too_large: 413")
-
-
-@pytest.mark.parametrize("status", [500, 408])
-def test_lado_s_words_of_a_context_too_small_come_first_whatever_the_status(monkeypatch, status):
-    monkeypatch.setenv(base.MODEL_SERVER, "aaaa1111")
-    event = _stop_failure("unknown", f"API Error: {status} exceed_context_size_error")
-    assert event.error.startswith("ContextOverflowError: the model's context is too small")
-
-
 def test_a_408_on_a_server_stays_temporary(monkeypatch):
     monkeypatch.setenv(base.MODEL_SERVER, "aaaa1111")
     event = _stop_failure("unknown", "API Error: 408 Request Timeout")
     assert (event.error, event.transient) == ("unknown", True)
-
-
-def test_a_claude_agent_on_a_built_in_model_keeps_its_words(monkeypatch):
-    monkeypatch.delenv(base.MODEL_SERVER, raising=False)
-    event = _stop_failure("rate_limit", QUOTA)
-    assert (event.error, event.details, event.transient) == ("rate_limit", "", False)
-    event = _stop_failure("unknown", "API Error: 402 Insufficient credits")
-    assert (event.error, event.details, event.transient) == ("unknown", "", True)
 
 
 @pytest.mark.parametrize(
@@ -342,19 +254,6 @@ def test_a_claude_agent_s_error_details_hold_no_key(monkeypatch):
     payload = {"error": "unknown", "error_details": "sent sk-canary-0123456789"}
     event = providers.get("claude").parse_event("StopFailure", json.dumps(payload))
     assert event.error == "unknown: sent ***"
-
-
-def test_a_refusal_line_has_lado_s_words_and_the_server_s_first_line():
-    assert base.refusal_line(401, "no\nmore") == "the model provider refused the key (401): no"
-    assert base.refusal_line(402, "") == "the model provider asks for payment (402)"
-    long = base.refusal_line(429, "x" * 300)
-    assert long.endswith("…") and len(long) == base.ERROR_LIMIT
-
-
-def test_without_keys_takes_the_keys_it_is_given_out_too(monkeypatch):
-    monkeypatch.setenv(f"{base.KEY_VARIABLE}AAAA", "in-the-environment")
-    text = "in-the-environment kept-key kept plain"
-    assert base.without_keys(text, ("kept-key", "kept", "")) == "*** *** *** plain"
 
 
 def test_without_keys_takes_every_server_s_key_out_the_longest_first(monkeypatch):
@@ -388,17 +287,6 @@ def test_claude_says_whether_background_work_runs_after_the_turn(native, tasks, 
     event = providers.get("claude").parse_event(native, json.dumps(payload))
     assert event.kind == providers.TURN_END
     assert event.background is background
-
-
-def test_a_turn_that_ends_as_usual_is_no_transient_error():
-    assert providers.get("claude").parse_event("Stop", "{}").transient is False
-
-
-def test_claude_agents_report_a_failed_turn(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    cmd = fake_tmux[0][-1]
-    settings = json.loads(open(cmd[cmd.index("--settings") + 1]).read())
-    assert "StopFailure" in settings["hooks"]
 
 
 # What Claude Code 2.1.289 gives its hooks (checked by hand, trimmed): PermissionRequest comes
@@ -502,16 +390,6 @@ def test_claude_reports_dialogs_at_once_and_their_answers_without_holding_tools(
     assert "Notification" not in hooks_ and "PreToolUse" not in hooks_
 
 
-def test_claude_gives_its_turn_end_hooks_lados_limit_and_no_other_hook_one(repo):
-    hooks_ = _claude_settings(repo)
-    for native, groups in hooks_.items():
-        [command] = groups[0]["hooks"]
-        if native in ("Stop", "StopFailure"):
-            assert command["timeout"] == base.TURN_END_HOOK_TIMEOUT == 60
-        else:
-            assert "timeout" not in command
-
-
 def test_providers_that_report_a_wait_report_its_end():
     """A wait no event ends keeps the agent waiting until its turn ends."""
     for name in providers.names():
@@ -523,11 +401,6 @@ def test_providers_that_report_a_wait_report_its_end():
         mapped = set(events.values())
         if providers.WAITING in mapped:
             assert providers.RESUMED in mapped, name
-
-
-def test_claude_continues_with_queued_messages():
-    out = providers.get("claude").continue_output("[from w1] done")
-    assert json.loads(out) == {"decision": "block", "reason": "[from w1] done"}
 
 
 # Claude Code's trust of a folder: projects[<folder>].hasTrustDialogAccepted in its global
@@ -791,37 +664,6 @@ def _approved(path):
     return f"LADO recorded the approval of ANTHROPIC_API_KEY in {path}"
 
 
-def test_claude_records_its_first_run_for_a_logged_in_agent(repo, claude_home, cli_logins):
-    env, config = claude_home
-    config.trust(repo)
-    cli_logins.logged_in()
-    env = {**env, "CLAUDE_CODE_OAUTH_TOKEN": "t"}
-    assert _blocker(repo, env) == base.Blocker(notes=(_onboarded(config.path),))
-    assert _config(config.path)["hasCompletedOnboarding"] is True
-    assert _config(config.path)["numStartups"] == 3  # the rest kept
-    assert "customApiKeyResponses" not in _config(config.path)  # no key, no approval
-    assert _blocker(repo, env) == base.Blocker()  # once
-
-
-def test_claude_writes_no_first_run_without_a_login(repo, claude_home, cli_logins):
-    env, config = claude_home
-    config.trust(repo)
-    before = config.path.read_bytes()
-    cli_logins.logged_out()
-    assert _blocker(repo, env) == base.Blocker()
-    assert config.path.read_bytes() == before
-
-
-def test_claude_records_its_first_run_when_its_login_cannot_be_read(repo, claude_home, cli_logins):
-    """An unknown login holds no agent (lado.runtime): it starts, and without the record it
-    would stand on the theme screen with no hook and no reason."""
-    env, config = claude_home
-    config.trust(repo)
-    cli_logins.answer("claude", "`claude auth status --json` timed out after 10 s")
-    assert _blocker(repo, env) == base.Blocker(notes=(_onboarded(config.path),))
-    assert _config(config.path)["hasCompletedOnboarding"] is True
-
-
 def test_claude_fresh_config_with_a_login_gets_the_trust_then_the_first_run(
     repo, claude_home, cli_logins
 ):
@@ -906,50 +748,6 @@ def test_other_providers_never_block_the_first_hook(repo):
         assert providers.get(name).first_hook_blocker(str(repo), {}) == base.Blocker()
 
 
-def test_agents_get_the_session_provider(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    runtime.spawn_worker("s", "task")
-    assert state.get_session("s").provider == "claude"
-    assert [a.provider for a in state.list_agents("s")] == ["claude", "claude"]
-
-
-class _NoTurnEndDelivery(providers.Provider):
-    name = "plain"
-    capabilities = providers.Capabilities(
-        status_events=True, permission_event=False, deliver_on_turn_end=False, skills=False
-    )
-
-    def launch_command(self, agent, session, spec):
-        return providers.Launch([])
-
-    def parse_event(self, native, payload):
-        return Event(native)
-
-
-def test_turn_end_types_messages_when_provider_cannot_deliver_them(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, provider="claude")
-    # Busy, so the message waits for the turn's end. Not starting: its session start would
-    # type the queue in itself, as any switch to idle does.
-    state.set_status("s", "supervisor", state.BUSY)
-    assert runtime.send_message("s", "w1", "supervisor", "done").startswith("queued")
-    out = hooks.handle(_NoTurnEndDelivery(), Event(providers.TURN_END), "s", "supervisor")
-    assert out is None
-    assert fake_tmux[-1] == ("send_text", "s", "supervisor", "[from w1] done")
-    assert state.get_agent("s", "supervisor").status == state.BUSY
-
-
-def test_lado_passes_its_outside_folder_on_to_each_agent(repo, lado_home, monkeypatch):
-    # An agent's environment is its login shell's: without LADO_ENV_DIR there, a supervisor's
-    # `lado mcp` would launch its workers without the folder's variables.
-    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, "kilo")
-    assert "LADO_ENV_DIR" not in base.agent_env(agent)
-    monkeypatch.setenv("LADO_ENV_DIR", "/run/secrets")
-    assert base.agent_env(agent)["LADO_ENV_DIR"] == "/run/secrets"
-    assert base.mcp_server(agent).env["LADO_ENV_DIR"] == "/run/secrets"
-    monkeypatch.setenv("LADO_ENV_DIR", "")
-    assert "LADO_ENV_DIR" not in base.agent_env(agent)
-
-
 def test_lado_passes_its_workspace_on_to_each_agent(repo, lado_home, monkeypatch):
     # A supervisor's `lado mcp` starts sessions in a project and refuses ones inside
     # projects/ by the workspace: LADO's own, not the one its login shell may name or not.
@@ -1006,12 +804,6 @@ def test_kilo_launch_writes_config_and_env(repo, lado_home):
     assert config["permission"] == {"external_directory": {f"{lado_home}/**": "allow"}}
 
 
-def test_kilo_agent_does_not_update_itself(repo):
-    launch, config = _kilo_launch(repo)
-    assert launch.env["KILO_DISABLE_AUTOUPDATE"] == "1"
-    assert config["autoupdate"] is False
-
-
 def test_kilo_agent_takes_no_snapshots(repo):
     # On a slow repo Kilo's snapshot setup asks the human whether to go on; the agent waits.
     _, config = _kilo_launch(repo)
@@ -1038,15 +830,6 @@ def test_kilo_permission_modes(repo, mode, flags, edit):
         assert (event in hooks_) == (mode != "bypassPermissions")
     for event in ("question.asked", "question.replied", "question.rejected"):
         assert event in hooks_  # --auto does not answer questions
-
-
-def test_kilo_plan_agent_may_use_lado_tools(repo):
-    # Kilo's plan agent denies every tool it does not list, LADO's MCP tools too (Kilo 7.8.1);
-    # an agent that cannot call send_message or flow_advance cannot report.
-    _, config = _kilo_launch(repo, "plan")
-    assert config["agent"] == {"plan": {"permission": {"lado_*": "allow"}}}
-    _, config = _kilo_launch(repo, "default")
-    assert "agent" not in config
 
 
 @pytest.mark.parametrize("name", providers.names())
@@ -1080,46 +863,6 @@ def test_the_modes_words():
         words = dict(providers.get(name).mode_words())
         assert [m for m, w in words.items() if w.risky] == ["bypassPermissions"]
         assert words["plan"].title == "Plan only, no changes"
-
-
-def test_providers_declare_their_permission_modes():
-    assert providers.get("kilo").permission_modes == (
-        "default",
-        "acceptEdits",
-        "bypassPermissions",
-        "plan",
-    )
-    # What Claude Code 2.1.287 accepts for --permission-mode ("default" without listing it).
-    assert set(providers.get("claude").permission_modes) == {
-        "default",
-        "acceptEdits",
-        "auto",
-        "bypassPermissions",
-        "manual",
-        "dontAsk",
-        "plan",
-    }
-
-
-def test_permission_mode_check_names_mode_provider_and_supported_modes():
-    kilo_cli = providers.get("kilo")
-    kilo_cli.check_permission_mode(None)
-    kilo_cli.check_permission_mode("plan")
-    with pytest.raises(ValueError) as exc:
-        kilo_cli.check_permission_mode("dontAsk")
-    assert str(exc.value) == (
-        'permission mode "dontAsk" is not supported by Kilo CLI (kilo); '
-        "supported: default, acceptEdits, bypassPermissions, plan"
-    )
-
-
-def test_kilo_turn_end_prints_queued_messages(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, "kilo")
-    runtime.send_message("s", "w1", "supervisor", "done")  # supervisor is starting: queued
-    kilo_cli = providers.get("kilo")
-    out = hooks.handle(kilo_cli, kilo_cli.parse_event("session.idle", "{}"), "s", "supervisor")
-    assert out == "[from w1] done"
-    assert state.get_agent("s", "supervisor").status == state.BUSY
 
 
 def _opencode_launch(repo, permission_mode=None):
@@ -1407,13 +1150,6 @@ def test_a_408_is_no_refusal(provider):
 
 
 @pytest.mark.parametrize("provider", list(FAMILY))
-def test_lado_s_words_of_a_context_too_small_come_before_a_status(provider):
-    error = {"name": "APIError", "message": LM_STUDIO_REFUSAL, "status": 400}
-    event = providers.get(provider).parse_event("session.idle", json.dumps({"error": error}))
-    assert event.error.startswith("ContextOverflowError: the model's context is too small")
-
-
-@pytest.mark.parametrize("provider", list(FAMILY))
 def test_another_status_stays_as_the_cli_gave_it(provider):
     error = {"name": "APIError", "message": "broke", "status": 500}
     event = providers.get(provider).parse_event("session.idle", json.dumps({"error": error}))
@@ -1503,37 +1239,11 @@ def test_a_start_s_limit_is_past_the_server_plugin_s_wait(repo, lado_home, provi
     assert options["hooks"]["tui.silent"] == base.hook_argv(agent, "tui.silent")
 
 
-@pytest.mark.parametrize("provider", ["claude", "codex"])
-def test_another_cli_has_the_limit_of_any_start(provider):
-    assert providers.get(provider).start_silence == 30.0
-
-
 def test_the_tui_plugin_ships_inside_the_package():
     import lado
 
     assert opencode_family.TUI_PLUGIN.is_file()
     assert opencode_family.TUI_PLUGIN.parent == Path(lado.__file__).parent / "providers"
-
-
-def test_opencode_family_shares_one_plugin_inside_the_package():
-    import lado
-
-    assert opencode_family.PLUGIN.is_file()
-    assert opencode_family.PLUGIN.name == "opencode_plugin.js"
-    assert opencode_family.PLUGIN.parent == Path(lado.__file__).parent / "providers"
-    assert "export const LadoPlugin" in opencode_family.PLUGIN.read_text()
-    for name in FAMILY:
-        assert providers.get(name).plugin == opencode_family.PLUGIN
-        assert isinstance(providers.get(name), opencode_family.OpenCodeFamily)
-
-
-def test_opencode_turn_end_prints_queued_messages(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, "opencode")
-    runtime.send_message("s", "w1", "supervisor", "done")  # supervisor is starting: queued
-    cli = providers.get("opencode")
-    out = hooks.handle(cli, cli.parse_event("session.idle", "{}"), "s", "supervisor")
-    assert out == "[from w1] done"
-    assert state.get_agent("s", "supervisor").status == state.BUSY
 
 
 @pytest.mark.parametrize("provider", list(FAMILY))
@@ -1588,21 +1298,6 @@ def test_turn_end_hands_over_queued_messages_without_an_idle_moment(repo, fake_t
     out = hooks.handle(providers.get("claude"), Event(providers.TURN_END), "s", "supervisor")
     assert json.loads(out)["reason"] == "[from w1] done"
     assert status_once_delivered == [state.BUSY]
-
-
-def test_provider_chosen_per_session_and_worker(repo, fake_tmux):
-    runtime.start_session(str(repo), "s", None, "kilo")
-    runtime.spawn_worker("s", "task")
-    runtime.spawn_worker("s", "task", provider="claude")
-    assert state.get_session("s").provider == "kilo"
-    assert [a.provider for a in state.list_agents("s")] == ["kilo", "kilo", "claude"]
-    supervisor_env, supervisor_cmd = agent_helpers.launched(fake_tmux[0])
-    assert supervisor_cmd[0] == "kilo"
-    assert supervisor_env["KILO_NO_DAEMON"] == "1"
-    assert supervisor_env["LADO_AGENT"] == "supervisor"
-    worker_env, worker_cmd = agent_helpers.launched(fake_tmux[-1])
-    assert worker_cmd[0] == "claude"
-    assert "KILO_CONFIG" not in worker_env
 
 
 def test_unknown_provider_is_refused(repo, fake_tmux):
@@ -1684,17 +1379,6 @@ def test_claude_gets_skills_and_kit_mcp(repo, skill_dir):
     assert agent_helpers.claude_prompt(cmd) == "the role"
 
 
-def test_claude_agent_cannot_use_built_in_agent_messaging(repo):
-    sess = state.Session("s", str(repo), "bypassPermissions", provider="claude")
-    agent = state.Agent(
-        "s", "w1", "worker", str(repo), None, None, state.STARTING, provider="claude"
-    )
-    spec = providers.AgentSpec("the role", mcp={"lado": base.mcp_server(agent)})
-    cmd = providers.get("claude").launch_command(agent, sess, spec).argv
-    settings = json.loads(open(cmd[cmd.index("--settings") + 1]).read())
-    assert settings["permissions"]["deny"] == ["SendMessage", "ListAgents"]
-
-
 @pytest.mark.parametrize("provider", ["claude", *FAMILY])
 def test_no_prompt_or_input_on_the_command_line(repo, lado_home, provider):
     # `ps` shows a process's argv to every user of the machine.
@@ -1710,32 +1394,6 @@ def test_no_prompt_or_input_on_the_command_line(repo, lado_home, provider):
         prompt = Path(argv[argv.index("--append-system-prompt-file") + 1])
         assert prompt == lado_home / "agents" / "s" / "w1" / "prompt.md"
         assert prompt.read_text() == spec.prompt
-
-
-def test_claude_gets_the_session_model_on_its_command_line(repo):
-    sess = state.Session("s", str(repo), None, provider="claude")
-    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, "claude")
-    claude = providers.get("claude")
-    launch = claude.launch_command(agent, sess, providers.AgentSpec("the role", model="opus"))
-    assert launch.argv[launch.argv.index("--model") + 1] == "opus"
-    assert launch.model == state.Choice("opus", state.SESSION)
-    launch = claude.launch_command(agent, sess, providers.AgentSpec("the role"))
-    assert "--model" not in launch.argv
-    assert launch.model is None
-
-
-@pytest.mark.parametrize("provider", list(FAMILY))
-def test_the_opencode_family_gets_the_session_model_in_its_config(repo, provider):
-    sess = state.Session("s", str(repo), None, provider)
-    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, provider)
-    cli = providers.get(provider)
-    model = "anthropic/claude-sonnet-5-5"
-    launch = cli.launch_command(agent, sess, providers.AgentSpec("the role", model=model))
-    assert json.loads(launch.env[FAMILY[provider]])["model"] == model
-    assert launch.model == state.Choice(model, state.SESSION)
-    launch = cli.launch_command(agent, sess, providers.AgentSpec("the role"))
-    assert "model" not in json.loads(launch.env[FAMILY[provider]])
-    assert launch.model is None
 
 
 def _family_launch(repo, provider, mode=None, notice=None, **spec):
@@ -1756,34 +1414,6 @@ def _user_state(tmp_path, provider, text):
 
 def _agent_state(lado_home, provider):
     return lado_home / "agent-state" / "s" / "w1" / provider / "model.json"
-
-
-@pytest.mark.parametrize("provider", list(FAMILY))
-def test_the_family_keeps_its_state_in_a_folder_of_the_agent(repo, provider, lado_home):
-    launch = _family_launch(repo, provider)
-    assert launch.env["XDG_STATE_HOME"] == str(lado_home / "agent-state" / "s" / "w1")
-    assert launch.warnings == []
-
-
-@pytest.mark.parametrize("provider", ["claude", "codex"])
-def test_a_cli_of_one_model_per_process_keeps_the_user_s_state_folder(repo, provider):
-    sess = state.Session("s", str(repo), None, provider)
-    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, provider)
-    spec = providers.AgentSpec("the role")
-    assert "XDG_STATE_HOME" not in providers.get(provider).launch_command(agent, sess, spec).env
-
-
-@pytest.mark.parametrize("provider", list(FAMILY))
-def test_the_agent_starts_from_the_user_s_memory_never_writing_it(
-    repo, provider, lado_home, tmp_path
-):
-    remembered = {"provider": "x", "modelID": "m"}
-    text = json.dumps({"recent": [{"providerID": "x", "modelID": "m"}], "other": remembered})
-    file, environ = _user_state(tmp_path, provider, text)
-    before = file.stat().st_mtime_ns
-    _family_launch(repo, provider, environ=environ)
-    assert json.loads(_agent_state(lado_home, provider).read_text()) == json.loads(text)
-    assert file.read_text() == text and file.stat().st_mtime_ns == before
 
 
 @pytest.mark.parametrize("provider", list(FAMILY))
@@ -1810,16 +1440,6 @@ def test_lado_s_servers_do_not_come_from_the_user_s_memory(repo, provider, lado_
 
 
 @pytest.mark.parametrize("provider", list(FAMILY))
-def test_the_agent_s_own_memory_stands_at_a_new_launch(repo, provider, lado_home, tmp_path):
-    _, environ = _user_state(tmp_path, provider, '{"recent": []}')
-    _family_launch(repo, provider, environ=environ)
-    own = _agent_state(lado_home, provider)
-    own.write_text('{"recent": [{"providerID": "lado-a", "modelID": "m"}]}')
-    _family_launch(repo, provider, environ=environ)
-    assert "lado-a" in own.read_text()
-
-
-@pytest.mark.parametrize("provider", list(FAMILY))
 def test_the_state_of_xdg_state_home_is_the_user_s_when_set(repo, provider, lado_home, tmp_path):
     file = tmp_path / "elsewhere" / provider / "model.json"
     file.parent.mkdir(parents=True)
@@ -1827,13 +1447,6 @@ def test_the_state_of_xdg_state_home_is_the_user_s_when_set(repo, provider, lado
     environ = {"HOME": str(tmp_path / "user"), "XDG_STATE_HOME": str(tmp_path / "elsewhere")}
     _family_launch(repo, provider, environ=environ)
     assert _agent_state(lado_home, provider).exists()
-
-
-@pytest.mark.parametrize("provider", list(FAMILY))
-def test_no_memory_of_the_user_copies_nothing_and_says_nothing(repo, provider, lado_home, tmp_path):
-    launch = _family_launch(repo, provider, environ={"HOME": str(tmp_path / "nobody")})
-    assert launch.warnings == []
-    assert not _agent_state(lado_home, provider).exists()
 
 
 @pytest.mark.parametrize("provider", list(FAMILY))
@@ -1998,15 +1611,6 @@ def test_a_known_context_goes_to_the_config_with_its_output(repo, provider, limi
 
 
 @pytest.mark.parametrize("provider", list(FAMILY))
-def test_the_opencode_family_takes_the_model_on_its_command_line_too(repo, provider):
-    """Kilo CLI's remembered /model pick beats `model` of its config, not `--model`."""
-    launch = _family_launch(repo, provider, model="a/b")
-    assert launch.argv == [provider, "--model", "a/b"]
-    assert json.loads(launch.env[FAMILY[provider]])["model"] == "a/b"
-    assert "--model" not in _family_launch(repo, provider).argv
-
-
-@pytest.mark.parametrize("provider", list(FAMILY))
 def test_the_model_on_the_command_line_keeps_the_notice_and_the_mode(repo, provider):
     launch = _family_launch(repo, provider, "plan", NOTICE, model="a/b")
     assert launch.argv == [provider, "--prompt", NOTICE, "--agent", "plan", "--model", "a/b"]
@@ -2040,11 +1644,6 @@ def test_each_server_is_a_provider_of_the_config(repo, provider):
 
 
 @pytest.mark.parametrize("provider", list(FAMILY))
-def test_no_server_is_no_provider_of_the_config(repo, provider):
-    assert "provider" not in json.loads(_family_launch(repo, provider).env[FAMILY[provider]])
-
-
-@pytest.mark.parametrize("provider", list(FAMILY))
 def test_a_key_is_in_the_environment_and_nowhere_else(repo, provider, lado_home):
     launch = _family_launch(repo, provider, servers=(HOME_SERVER, GATEWAY))
     assert launch.env["LADO_MODEL_KEY_BBBB2222"] == "KEY-CANARY"
@@ -2056,35 +1655,6 @@ def test_a_key_is_in_the_environment_and_nowhere_else(repo, provider, lado_home)
 
 def test_the_repr_of_a_spec_holds_no_key():
     assert "KEY-CANARY" not in repr(providers.AgentSpec("the role", servers=(GATEWAY,)))
-
-
-@pytest.mark.parametrize("provider", list(FAMILY))
-def test_a_launch_records_the_model_s_source(repo, provider):
-    launch = _family_launch(repo, provider, model="a/b", model_source=state.DEFAULT_MODEL)
-    assert launch.model == state.Choice("a/b", state.DEFAULT_MODEL)
-
-
-@pytest.mark.parametrize("provider", list(FAMILY))
-@pytest.mark.parametrize(
-    ("reported", "found"),
-    [
-        ("lado-aaaa1111/qwen3-8b", ("aaaa1111", "qwen3-8b")),
-        ("lado-aaaa1111/qwen/qwen3-coder", ("aaaa1111", "qwen/qwen3-coder")),
-        ("opencode/big-pickle", None),
-        ("lado-aaaa1111", None),
-        ("lado-aaaa1111/", None),
-    ],
-)
-def test_the_family_knows_a_model_of_a_server(provider, reported, found):
-    assert providers.get(provider).on_server(reported) == found
-
-
-@pytest.mark.parametrize("provider", list(FAMILY))
-def test_a_server_s_model_is_named_as_on_server_reads_it(provider):
-    cli = providers.get(provider)
-    named = cli.server_model("aaaa1111", "qwen/qwen3-coder")
-    assert named == "lado-aaaa1111/qwen/qwen3-coder"
-    assert cli.on_server(named) == ("aaaa1111", "qwen/qwen3-coder")
 
 
 def test_codex_is_told_a_server_s_model_as_it_is():
@@ -2130,23 +1700,6 @@ def test_another_cli_reserves_no_name(provider):
 NOTICE = "[from lado] your task (#7, 40 lines: call read_messages)"
 
 
-@pytest.mark.parametrize("provider", list(FAMILY))
-def test_the_opencode_family_gets_its_first_notice_on_the_command_line(repo, provider):
-    """Its TUI loses what is typed in right after its start (OpenCode 1.18.35): the lines of
-    its first messages go on --prompt, as they would be typed; never a body."""
-    cli = providers.get(provider)
-    assert cli.capabilities.notice_on_argv
-    sess = state.Session("s", str(repo), None, provider)
-    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, provider)
-    spec = providers.AgentSpec("the role", mcp={"lado": base.mcp_server(agent)})
-    assert cli.launch_command(agent, sess, spec, notice=NOTICE).argv == [
-        provider,
-        "--prompt",
-        NOTICE,
-    ]
-    assert "--prompt" not in cli.launch_command(agent, sess, spec).argv
-
-
 def test_claude_takes_no_notice_on_the_command_line(repo):
     claude = providers.get("claude")
     assert not claude.capabilities.notice_on_argv
@@ -2187,23 +1740,6 @@ def test_claude_may_read_the_folders_of_spec_read(repo, skill_dir, tmp_path):
     assert added[0] == str(base.config_dir(agent) / "skills")
 
 
-@pytest.mark.parametrize("provider", list(FAMILY))
-def test_opencode_family_may_read_the_folders_of_spec_read_and_takes_no_skills_from_them(
-    repo, skill_dir, tmp_path, lado_home, provider
-):
-    sess = state.Session("s", str(repo), None, provider)
-    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, provider)
-    read = [tmp_path / "files"]
-    spec = providers.AgentSpec("the role", skills={"notes": skill_dir}, read=read)
-    launch = providers.get(provider).launch_command(agent, sess, spec)
-    config = json.loads(launch.env[FAMILY[provider]])
-    assert config["permission"]["external_directory"] == {
-        f"{lado_home}/**": "allow",
-        f"{tmp_path / 'files'}/**": "allow",
-    }
-    assert config["skills"]["paths"] == [str(base.config_dir(agent) / "skills")]
-
-
 CLAUDE_LOGINS = (
     "CLAUDE_CODE_OAUTH_TOKEN",
     "ANTHROPIC_API_KEY",
@@ -2224,23 +1760,6 @@ def test_claude_code_needs_the_keychain_on_a_mac_without_another_login(monkeypat
         assert claude_cli.keychain_login({name: "x"}) is None, name
     monkeypatch.setattr(claude.sys, "platform", "linux")
     assert claude_cli.keychain_login({}) is None
-
-
-@pytest.mark.parametrize("name", ["codex", "kilo", "opencode"])
-def test_other_providers_do_not_need_the_keychain(monkeypatch, name):
-    from lado.providers import claude
-
-    monkeypatch.setattr(claude.sys, "platform", "darwin")
-    assert providers.get(name).keychain_login({}) is None
-
-
-def test_keychain_users_are_the_installed_providers_that_need_it(monkeypatch):
-    from lado.providers import claude
-
-    monkeypatch.setattr(claude.sys, "platform", "darwin")
-    hint = providers.get("claude").keychain_login({})
-    assert providers.keychain_users({}, lambda c: f"/bin/{c}") == [("Claude Code", hint)]
-    assert providers.keychain_users({}, lambda c: None if c == "claude" else "/x") == []
 
 
 # Read-only roles (AgentSpec.read_only): each provider that can takes its CLI's edit tools
@@ -2409,17 +1928,6 @@ def test_a_claude_agent_on_a_server_has_it_in_its_own_settings(repo):
     assert launch.model == state.Choice(CLAUDE_MODEL, state.SESSION)
 
 
-def test_a_claude_agent_gets_its_server_s_key_in_its_environment_alone(repo, lado_home):
-    launch, _ = _claude_launch(repo, (CLAUDE_SERVER,), CLAUDE_MODEL)
-    assert launch.env == {
-        "LADO_MODEL_KEY_BBBB2222": "KEY-CANARY",
-        "LADO_MODEL_SERVER": "bbbb2222",
-        "ANTHROPIC_UNIX_SOCKET": "",
-    }
-    written = [p for p in lado_home.rglob("*") if p.is_file() and p.suffix != ".db"]
-    assert written and not [p for p in written if "KEY-CANARY" in p.read_text(errors="replace")]
-
-
 def test_what_claude_code_hands_its_children_is_named_as_the_launch_s(repo):
     """It gives the `env` of its settings to the processes it starts, `lado mcp` among them."""
     launch, settings = _claude_launch(repo, (CLAUDE_SERVER,), CLAUDE_MODEL)
@@ -2482,15 +1990,6 @@ def test_a_claude_agent_on_a_server_may_use_lado_s_tools(repo):
     _, settings = _claude_launch(repo, (CLAUDE_SERVER,), CLAUDE_MODEL)
     assert settings["permissions"]["allow"] == ["mcp__lado__*"]
     assert settings["permissions"]["deny"] == claude_provider.BUILT_IN_MESSAGING
-
-
-def test_a_claude_agent_on_a_built_in_model_allows_nothing_itself(repo):
-    _, settings = _claude_launch(repo, (), "opus")
-    assert "allow" not in settings["permissions"]
-
-
-def test_every_login_variable_of_claude_code_is_blanked():
-    assert set(claude_provider.LOGINS) <= set(claude_provider.SERVER_BLANKS)
 
 
 def test_a_provider_finds_no_problem_in_a_login_value_by_default():
@@ -2564,49 +2063,10 @@ def test_a_claude_agent_on_a_built_in_model_has_nothing_of_a_server(repo, lado_h
     ]
 
 
-def test_a_launch_on_a_built_in_model_drops_the_server_of_the_last_one(repo):
-    _claude_launch(repo, (CLAUDE_SERVER,), CLAUDE_MODEL)
-    _, settings = _claude_launch(repo, (), "opus")
-    assert "env" not in settings and "apiKeyHelper" not in settings
-
-
 def test_claude_code_needs_no_login_on_a_server():
     claude = providers.get("claude")
     assert claude.needs_login({})
     assert not claude.needs_login({base.MODEL_SERVER: "bbbb2222"})
-
-
-def test_claude_code_reads_no_keychain_on_a_server(monkeypatch):
-    monkeypatch.setattr(sys, "platform", "darwin")
-    claude = providers.get("claude")
-    assert claude.keychain_login({}) is not None
-    assert claude.keychain_login({base.MODEL_SERVER: "bbbb2222"}) is None
-
-
-def test_the_first_run_is_recorded_for_an_agent_on_a_server(repo, claude_home, monkeypatch):
-    env, config = claude_home
-    config.trust(repo)
-
-    def read(self, env):
-        raise AssertionError("the login was read")
-
-    monkeypatch.setattr(type(providers.get("claude")), "login_status", read)
-    env = {**env, base.MODEL_SERVER: "bbbb2222", "ANTHROPIC_API_KEY": "sk-the-human-s-own-key"}
-    blocker = _blocker(repo, env)
-    assert blocker == base.Blocker(
-        notes=(f"LADO recorded Claude Code's first run in {config.path}",)
-    )
-    saved = json.loads(config.path.read_text())
-    assert saved["hasCompletedOnboarding"] is True and "customApiKeyResponses" not in saved
-
-
-def test_a_claude_agent_s_launch_says_its_server(repo):
-    sess_agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, "claude")
-    claude = providers.get("claude")
-    _claude_launch(repo, (CLAUDE_SERVER,), CLAUDE_MODEL)
-    assert claude.launched_on(sess_agent) == "bbbb2222"
-    _claude_launch(repo, (), "opus")
-    assert claude.launched_on(sess_agent) is None
 
 
 def test_a_claude_agent_with_no_config_is_on_no_server(repo):

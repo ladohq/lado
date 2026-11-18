@@ -42,6 +42,9 @@ def world(tmp_path, monkeypatch):
     system_config.write_text("")
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(global_config))
     monkeypatch.setenv("GIT_CONFIG_SYSTEM", str(system_config))
+    # Apple's git reads a system config of its own besides (osxkeychain, whose keychain a
+    # HOME of the test's has not: macOS asks in a window), which only this turns off.
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
     monkeypatch.setenv("GIT_SSL_CAINFO", str(certificate[0]))
     monkeypatch.setenv("SSL_CERT_FILE", str(certificate[0]))
     work = agent_helpers.init_repo(tmp_path / "seed")

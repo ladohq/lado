@@ -19,7 +19,13 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     start's own look, `scratch.author_problem("/")`: `OK` with both `user.name` and
     `user.email`, else `WARN` with its hint (the `.env` one in LADO's container); it never
     prints them.
-    `Workspace` (after `git author`, `check_workspace`, always; the workspace,
+    `git server <address>` (after `git author`, `check_git_servers`, one per saved server,
+    none without one): `git_servers.check` with `save_login=False`, as doctor writes nothing;
+    all in a pool started before the model servers' probes and collected after them; `OK` with
+    its `Works:` line, else `WARN` with its line and hint (also a `Refused`, a saved address the
+    address rule no longer takes, an `OSError`), never `FAIL`; one `INFO` `git servers` line
+    `NOT_AT_SCHEMA` at another schema.
+    `Workspace` (after the git servers, `check_workspace`, always; the workspace,
     `projects.workspace`: [projects.md](projects.md)): `<path> (LADO_REPOS)` or `<path>
     (default)`, `OK` for a folder, `INFO` for one not made yet, `WARN` for a path that is no
     folder or LADO may not look at (one `stat`, never `exists()`, which raises there on some
@@ -335,8 +341,15 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     with `kind` and a `runtime.Hint`) by git's words, `KINDS`, the first that matches
     (`failure`: `cannot read|clone <url>: <reason> (<git's line>)`; github.com's login hint
     names the project's `GH_TOKEN` secret for a clone into a project, else the outside
-    folder's `GH_TOKEN` file when that folder is a folder, else `gh auth login`; `explain`
-    tells gitcache's failures by the same kinds on one line), a URL in any text only
+    folder's `GH_TOKEN` file when that folder is a folder, else `gh auth login`; git's 403 is
+    `access_denied`. An access failure (`ACCESS_KINDS`) of the saved git server git took the
+    token of (`git_servers.server_for`, the scheme the URL's) names it and hints `lado git-server
+    check`; one of an unsaved http(s) host other than github.com hints `lado git-server add`
+    (not for `not_found`, nor for a host saved under another scheme or port); the error's
+    `server` (`ServerWay`: `check` or `add`, the host, the address, the UI's sentence) is the
+    API's `CloneRefused.git_server`. The saved servers are read only at this LADO's schema,
+    never made or migrated; `explain` tells gitcache's failures by the same kinds on one line),
+    a URL in any text only
     through `runtime.public_remote`; git missing or not running is LAD-5's `no_git` /
     `git_broken`, a folder LADO may not look at or write in `no_access`, a URL that names
     no repository (no default folder) `no_repo_name`. `ABANDONED` and `KEPT` are the server's clone jobs' times.

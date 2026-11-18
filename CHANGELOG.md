@@ -14,11 +14,16 @@
 - **Check a git server again.** `lado git-server check <address>` or Check in Settings → Git
   servers says in one line whether the saved token still works and has the rights agents need
   to clone and push; a token without them is saved with a warning. Replace token on its row.
+- **`lado doctor` checks your git servers.** One line per saved server says whether its token
+  still works, all asked at once; a server that does not answer is a warning, never a failure.
+- **A failed clone says which git server to check.** When a saved server refuses the token,
+  the clone names it and how to check it; a host not in the list that asks for a login
+  suggests adding it. In New session and Add repository a button opens Settings → Git servers.
 
 ### Fixed
 
-- **An open tip or menu follows its button.** When the window is resized, an open ⓘ tip or
-  menu moves with its button instead of staying where it was.
+- **An open tip or menu follows its button.** When the window is resized or a phone is
+  turned, an open ⓘ tip or menu moves with its button instead of staying where it was.
 
 ## 0.47.0 (2026-11-15)
 

@@ -2,7 +2,7 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: none · Next: S6 (waits at step_ok) · Open checks: the human's check on the company GitLab, on the release candidate that carries S8
+In work: none · Next: S6 (revised after #7389, waits at step_ok) · Open checks: the human's check on the company GitLab, on the release candidate that carries S8
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
@@ -185,7 +185,7 @@ Not checked in S5 (residual risk, for S8's live check on the company GitLab): Gi
 answers to a revoked and an expired token came from the human's report and docs; "`api` on
 GitLab gives push over https" only from docs.
 
-### S6 — GitHub from the list: today's login becomes the github.com entry, `gh` takes the entry's token
+### S6 — GitHub from the list: today's login moves into the github.com entry once, then the list is the only GitHub login
 Status: planned
 Leftovers of S5b (the human's manual check, ledger of LAD-297):
 - The CLI hint of a failed clone from a saved server packs two commands into one line
@@ -196,21 +196,48 @@ Leftovers of S5b (the human's manual check, ledger of LAD-297):
 - Ledger F1: the clone failure names the host without its port next to a server named with
   it; F2: doctor does not catch an sqlite error when lado.db stays locked over 10 s
   (declined, consider).
-Check: an integration test of an upgrade: a user with `GH_TOKEN` (an outside variable or a
-project's secret) or `gh auth login` on the home volume sees a github.com entry that
-"Check" confirms, and agents clone, push and run `gh` as before; a GitHub Enterprise entry
-(kind GitHub, own address) gives `gh` its token and host (`GH_ENTERPRISE_TOKEN`,
-`GH_HOST`) so an agent can open a pull request there (against a fake API); a project's own
-`GH_TOKEN` is handled as the human decides (open question 1); nothing is deleted
-(`GH_TOKEN` and gh's login stay), so after a rollback (the way back above) the old path
-works — checked by running it after the rollback; the docs say where the GitHub login is now.
+Check: an integration test of an upgrade: a user with `GH_TOKEN` (the outside `secrets/`
+or variable) or `gh auth login` on the home volume gets, once, a github.com entry made from
+it, which "Check" confirms; agents clone, push and run `gh` as before, with the entry's
+token only. After the move the outside login is ignored: a changed or removed outside
+`GH_TOKEN` or gh login changes nothing, it does not reach the agents' `gh`, and `lado
+doctor` and Settings say loudly that it is set but not used. A project's own `GH_TOKEN`
+secret is ignored for git and `gh`, said loudly, not moved (#7389). With no entry and no
+old login, github.com is a host not in the list (the clone hint suggests adding it). A
+GitHub Enterprise entry (kind GitHub, own address) gives `gh` its token and host
+(`GH_ENTERPRISE_TOKEN`, `GH_HOST`) so an agent can open a pull request there (against a
+fake API). Nothing is deleted (`GH_TOKEN` and gh's login stay), so after a rollback (the way
+back above) the previous version works the old way — checked by running it after the
+rollback. `compose.yaml`, `install.sh`, the Dockerfile's comments and the docs no longer
+offer `GH_TOKEN` or `gh auth login` as the GitHub login and say where it is now; the
+CHANGELOG says the outside login is moved once and then ignored.
 The kind hint without a token (S2) on a real GitHub Enterprise was never seen live: check
 it when a GHE server is at hand, or name it as not checked.
 Touches: the server kinds module (github), `logins.py`, `agent_env.py`, `clone.py`
-(`_github_login`), `docker/Dockerfile` (the system helper for github.com), docs.
-Notes: decided at intake (D5). The analyst decides whether the entry is stored or derived
-from the existing login (one source of truth). The page's github.com row as S4's mockup and
+(`_github_login`), `docker/Dockerfile` (the system helper for github.com gives way to
+LADO's helper from the entry), `docker/compose.yaml`, `docker/install.sh`, docs.
+Notes: decided at intake (D5); changed at #7389 (option 1 of #7388): moved once, then
+ignored, so there is one source and no "which wins". The analyst decides when the move runs
+(an update, a start, a migration) and how the human learns it happened, and covers LADO
+outside Docker (gh's own login on the host). The page's github.com row as S4's mockup and
 spec place it (§10, C1, #7234), with the critique's F2 (how to sign in).
+
+### S6b — The host's ssh agent switched off
+Status: planned
+Check: `LADO_SSH_AGENT` is no longer mounted or read (`compose.yaml`, the entrypoint,
+`ssh-agent-env.sh`, `install.sh`); a container with it still set in `.env` starts and says
+loudly (`docker compose logs`, `lado doctor`) that it is ignored and that git goes over
+https through Settings → Git servers; the ssh addresses of a listed server go over https
+as since S1; an ssh address of a host not in the list fails with the hint to add the
+server; a container test (`make test-container`) starts the image with the variable set;
+`docs/install.md` and the CHANGELOG say it is gone and what to do instead. The way back:
+nothing is deleted, the previous version's compose reads the variable from `.env` again.
+Touches: `docker/` (compose.yaml, entrypoint.sh, ssh-agent-env.sh, install.sh,
+Dockerfile), the clone hints for ssh, `docs/install.md`.
+Notes: decided at #7389 (the human: switch off the outside setting of the host's agent
+too), which changes the brief's "where it is set up it keeps working". A step of its own:
+it touches the image and its docs only and merges on its own after S6. LADO outside Docker
+keeps the user's own ssh as today (the variable exists only in the image).
 
 ### S7 — The company certificate
 Status: planned
@@ -254,11 +281,7 @@ only — a candidate to run alongside S8 if the human asks for two at once.
 
 ## Open questions
 
-1. A project's own `GH_TOKEN` secret after S6 (`clone.py` suggests `lado project set
-   <project> GH_TOKEN --secret` today): which wins for that project's git and `gh` — the
-   project's token or the github.com entry? Recommended: the project's token while it
-   exists, with Settings and `lado doctor` naming the project that overrides the entry, so
-   nothing that works today stops working. Asked when S6's brief is drafted.
+None (the project's `GH_TOKEN` was settled at #7389: ignored).
 
 ## Later
 
@@ -273,8 +296,6 @@ only — a candidate to run alongside S8 if the human asks for two at once.
 - Bitbucket and Gitea as new server kinds — out by the statement; the kinds module is
   meant for them.
 - Several accounts on one server — out: LADO is single-user.
-- The host's ssh agent (`LADO_SSH_AGENT`): not developed further; whether to remove it is
-  decided apart.
 - Kit sdlc: a `.lado/sdlc.md` example for GitLab and "merge request" wording — in the
   kit-sdlc repository; its task is created on the human's yes after S8 (D6).
 - A company certificate for model servers inside the company — the same file may serve

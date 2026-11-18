@@ -30,7 +30,7 @@ The statement's decisions (not reopened):
   optional field of a server.
 - The company certificate is needed now.
 - The host's ssh agent (`LADO_SSH_AGENT`) is not developed further; where it is set up it
-  keeps working.
+  keeps working. Changed before S6 (2026-11-18, #7389): it is switched off (S6b).
 - GitHub and GitLab first; the server kind is an extensible module (Bitbucket, Gitea later).
 - Changed at plan_ok (2026-11-15, #7092): LADO finds a server's kind itself by asking
   its API with the token; the human names it (`--kind`, a choice in Settings) only when
@@ -38,7 +38,8 @@ The statement's decisions (not reopened):
 - The user's global git config is never touched: everything is given to the agent's
   process (`GIT_CONFIG_*`, LADO's own credential helper, `GIT_AUTHOR_*`, `GIT_COMMITTER_*`).
 - Today's GitHub login (`GH_TOKEN`, `gh auth login`) becomes the github.com entry; nothing
-  breaks for existing users.
+  breaks for existing users. Changed before S6 (2026-11-18, #7388, #7389): it is moved into
+  the entry once, then ignored (said loudly); a project's own `GH_TOKEN` is ignored.
 - Explain to the human in plain words.
 
 Proposed steps: 1 Git servers (Settings section, credentials for agents, ssh addresses over

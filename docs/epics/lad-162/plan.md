@@ -2,7 +2,7 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: none · Next: S5b (waits at step_ok) · Open checks: the human's check on the company GitLab, on the release candidate that carries S8
+In work: S5b (LAD-297, run task/lad-297) · Next: S6 · Open checks: the human's check on the company GitLab, on the release candidate that carries S8
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
@@ -159,7 +159,7 @@ Leftovers of S2 (ledger of LAD-290, the human's manual check report):
   neither kind.
 
 ### S5b — `lado doctor` and clone hints from the list
-Status: planned (split from S5 at its design, #7241)
+Status: in progress (LAD-297, run task/lad-297); split from S5 at its design (#7241)
 Check: unit tests: `lado doctor` lists the git servers with their check (the same check as
 `lado git-server check`, network failures named, not fatal to the rest of doctor); a failed
 clone from a listed host names its server entry and what to do (Check, Replace token), from

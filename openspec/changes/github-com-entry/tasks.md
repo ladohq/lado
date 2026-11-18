@@ -35,7 +35,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-18-github-com-e
 
 ## 7. The page
 
-- [ ] 7.1 github.com listed and added as any server; Servers' ⓘ; the Add refusal of
+- [x] 7.1 github.com listed and added as any server; Servers' ⓘ; the Add refusal of
   github.com gone; Edit and Set author off while asking (D7, D10). Check:
   `tests/test_server_git_entries.py`, vitest `GitServers.test.tsx`, UI e2e
   `tests/ui/test_git_servers_section.py`, screenshots.

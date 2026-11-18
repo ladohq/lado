@@ -551,16 +551,35 @@ test("an address already saved leads to its server's Replace token, the focus in
   await waitFor(() => expect(document.activeElement).toBe(field));
 });
 
-test("github.com is refused under Address, Add off", async () => {
-  fake.checks["github.com"] = {
-    ...nothing,
-    refusals: [{ message: "github.com uses the GitHub CLI's login: it is not added here.", hint: "", field: "address", warnings: [], choose_kind: false }],
-  };
+test("github.com is added as any server: GitHub answers, its token page with the scope repo", async () => {
+  fake.checks["github.com"] = { ...looksLike("https://github.com", "github"), address: "https://github.com" };
   await mount();
   press("Add server");
   type(addressField(), "github.com");
-  expect(await screen.findByText("github.com uses the GitHub CLI's login: it is not added here.")).toBeTruthy();
-  expect((formAdd() as HTMLButtonElement).disabled).toBe(true);
+  expect(await screen.findByText("answers.", { exact: false })).toBeTruthy();
+  expect(screen.getByText("GitHub").tagName).toBe("B");
+  const link = screen.getByRole("link", { name: "its token page" });
+  expect(link.getAttribute("href")).toBe("https://github.com/settings/tokens");
+  expect(link.parentElement!.textContent).toContain("scope repo");
+  expect((formAdd() as HTMLButtonElement).disabled).toBe(true); // no token yet
+});
+
+test("github.com is a row like any other, with any server's panel", async () => {
+  const dotcom: GitServerInfo = { ...GHE, address: "https://github.com", host: "github.com", login: "octo" };
+  fake.servers = [dotcom, CORP];
+  await mount();
+  openRow(dotcom);
+  expect(button(`Check ${dotcom.address}`)).toBeTruthy();
+  expect(button(`Replace the token of ${dotcom.address}`)).toBeTruthy();
+  expect(button(`Set the commit author of ${dotcom.address}`)).toBeTruthy();
+  expect(button(`Remove ${dotcom.address}`).textContent).toBe("Remove server");
+  expect(document.body.textContent).not.toMatch(/GH_TOKEN|not signed in|taken over/);
+});
+
+test("the Servers tip names GitHub and gh", () => {
+  expect(TIPS.servers).toBe(
+    "Your GitLab, gitlab.com, GitHub or GitHub Enterprise: agents clone and push there, and run gh, with the token you give. Running agents get a change after they restart.",
+  );
 });
 
 test("no answer asks for the kind; Add without a check saves it as not checked", async () => {
@@ -652,17 +671,22 @@ test("Remove and Undo of the author are off while they ask; a second press sends
   await mount();
   openRow(CORP);
   const remove = button(`Remove the commit author of ${CORP.address}`) as HTMLButtonElement;
+  const edit = button(`Edit the commit author of ${CORP.address}`) as HTMLButtonElement;
   fireEvent.click(remove);
   await waitFor(() => expect(remove.disabled).toBe(true));
+  expect(edit.disabled).toBe(true);
   fireEvent.click(remove);
   expect(fake.calls.filter((c) => c.method === "DELETE")).toHaveLength(1);
   fake.authorHeld = null;
   removal.let_go(new Response());
   const undo = (await screen.findByRole("button", { name: `Undo the removal of the commit author of ${CORP.address}` })) as HTMLButtonElement;
+  const set = button(`Set the commit author of ${CORP.address}`) as HTMLButtonElement;
+  expect(set.disabled).toBe(false);
   const again = held();
   fake.authorHeld = again.answer;
   fireEvent.click(undo);
   await waitFor(() => expect(undo.disabled).toBe(true));
+  expect(set.disabled).toBe(true);
   fireEvent.click(undo);
   expect(fake.calls.filter((c) => c.method === "PUT")).toHaveLength(1);
   fake.authorHeld = null;

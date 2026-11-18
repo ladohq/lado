@@ -30,20 +30,42 @@ A clone or listing git refuses says `cannot clone <url>: <reason> (<git's line>)
 read …` for the listing) with a hint by its kind (`lado.clone.KINDS`, git's words under
 `LC_ALL=C`). When the URL's host is a saved git server whose token git took (by host and port
 for https, by host for `git@<host>:` and `ssh://git@<host>[:22]/`) and it refuses access, the
-reason names the server: `<host> refused the token of the git server <address>` (`Authentication
-failed`), `<host> refused access with the token of the git server <address>` (git's `returned
-error: 403`), `no repository there, or the token of the git server <address> cannot read it`
-(not found), with `Check the git server; if its token expired or was revoked, replace it (lado
-git-server add <address> --token): lado git-server check <address>`. An http(s) host that is
-neither github.com nor saved and asks for a login (`<host> asks for a login`) or refuses access
-(`<host> refused access`) gets `Add it as a git server with a token: lado git-server add
-<scheme>://<host>[:<port>] --token`; its not found, ssh failures and the failures that are no
-access failure (unreachable, no branch) keep their texts with no git server hint, and so does a
-host saved under another scheme or port than the URL's, as git took no token from it.
-github.com's texts stay (`gh auth login`, `gh auth status`; its 403 is `github.com refused
-access` with `gh auth status`). A kit's, pack's or marketplace's git failure carries the same
-hint on one line; the UI shows the git server's way out as a link to Settings → Git servers
-(docs/design/ui.md).
+reason names the server, its host with its port: `<host[:port]> refused the token of the git
+server <address>` (`Authentication failed`), `<host[:port]> refused access with the token of the
+git server <address>` (git's `returned error: 403`), `no repository there, or the token of the
+git server <address> cannot read it` (not found), with two lines, `Check the git server: lado
+git-server check <address>` and `If its token expired or was revoked, replace it: lado
+git-server add <address> --token`. An http(s) host that is not saved, github.com included, and
+asks for a login (`<host> asks for a login`) or refuses access (`<host> refused access`) gets
+`Add it as a git server with a token: lado git-server add <scheme>://<host>[:<port>] --token`;
+its not found, ssh failures and the failures that are no access failure (unreachable, no
+branch) keep their texts with no git server hint, and so does a host saved under another
+scheme or port than the URL's, as git took no token from it. A kit's, pack's or marketplace's
+git failure carries the same hint on one line, its lines joined by `. `; the UI shows the git
+server's way out as a link to Settings → Git servers (docs/design/ui.md).
+
+The first `lado start` or `lado ui` of a `LADO_HOME` takes the GitHub login agents used over
+once, before any agent starts (lado.github_takeover): `GH_TOKEN`, else
+`GITHUB_TOKEN`, of the agents' environment (the outside folder over the login shell), else
+`gh auth token --hostname github.com`; checked on GitHub, it is saved as the github.com git
+server and the command prints `LADO took your GitHub login (<source>) into Settings → Git
+servers: github.com, signed in as <login>.` (`not checked yet` when GitHub does not answer in
+5 s; `GitHub refused the token of <source>: add github.com in Settings → Git servers.` when
+it refuses, nothing saved). The UI server's start does the same, its line in server.log, and
+so does any launch of agents. It runs once per `LADO_HOME`, recorded in lado.db: an entry
+saved before is kept, a github.com removed later is not taken again, and a login made outside
+LADO later is not taken. A `gh` that cannot read its login for another reason than none (a
+keychain closed to an ssh session, more than 10 s) records nothing final: the next start
+tries again, and `lado doctor` says why. Nothing outside LADO is changed: the outside folder,
+the shell, `gh`'s login and a project's secrets stay, for the human's own terminal and for
+going back to an older LADO.
+
+From then on agents and LADO's own git get no `GH_TOKEN`, `GITHUB_TOKEN`,
+`GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`, `GH_HOST` or `GH_CONFIG_DIR` from the login
+shell, the outside folder or a project: each agent's `gh` gets a config folder of its own with
+no login (`GH_CONFIG_DIR=<its config folder>/gh`), `GH_TOKEN` of the github.com server, and
+`GH_ENTERPRISE_TOKEN` of the GitHub Enterprise server its repository's `origin` is on (else of
+the only one saved), with `GH_HOST` its host and port for the origin's server only.
 
 `lado start --new [<folder>]` (default: the current folder; relative paths are taken from
 it) starts from scratch (`lado.scratch`): the folder must be new or empty (nothing but
@@ -108,11 +130,15 @@ written beside its name and renamed over it, so a reader finds the old value or 
 one whole) and never shown again; every agent of the project's sessions gets it as it gets
 a plain variable. On a terminal it asks `Value of <NAME> (not shown): ` and reads one line
 without echo; otherwise it reads the whole of stdin, one line break at its end (`\n` or
-`\r\n`) dropped (`printf '%s' "$TOKEN" | lado project set shop GH_TOKEN --secret`); the
+`\r\n`) dropped (`printf '%s' "$KEY" | lado project set shop YOUGILE_API_KEY --secret`); the
 agents get the value so read whole, its own line breaks kept (its file holds one more when
 it ends in one, as the reader drops one, so such a value counts a byte more against 64
 KiB). It
-prints `Set secret <NAME> in project <id>.` and the agents' line above. It refuses, exit 1,
+prints `Set secret <NAME> in project <id>.` and the agents' line above; for a GitHub variable
+(`GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`, `GH_HOST`,
+`GH_CONFIG_DIR`, plain or secret), saved all the same, `<NAME> is not given to agents:
+github.com and GitHub Enterprise take their token from Settings → Git servers.` instead, as
+no agent gets one from a project. It refuses, exit 1,
 storing nothing: a value on the command line, before it reads anything (`a secret's value
 is never given on the command line (ps and the shell's history keep it); run lado project
 set <id> <NAME> --secret and type it, or pipe it in`), an empty value, Ctrl-D at the prompt
@@ -305,7 +331,21 @@ model servers are probed, so doctor waits about one check's time (about 10 s at 
 fails, and saves no login: a server saved with `--kind` that works stays `not checked` in `lado
 git-server list` until `lado git-server check` or Settings' Check. With no server saved there is
 no line; with lado.db at another schema, one `[info] git servers: not checked: lado.db is not
-at this LADO's schema (see lado.db)`.
+at this LADO's schema (see lado.db)`; with lado.db locked by another process for longer than
+its 10-second wait, one `[warn] git servers: not checked: lado.db is busy` for these and the
+GitHub lines below, and the other checks follow.
+
+After them come the GitHub login's lines (lado.github_takeover). Its takeover: `[info]
+GitHub login: taken over from <source> on <date>` once a token was saved, `[warn] GitHub
+login: GitHub refused the token of <source>`, and before it ran `[info] GitHub login: taken
+over at the next lado ui or lado start` (with `; the last try could not read the GitHub CLI's
+login: <gh's words>` after a `gh` that failed); none once nothing was found or an entry was
+kept. The login outside LADO, never a value: `[warn] GitHub login outside LADO: <names> set
+but not used: github.com takes its token from Settings → Git servers` naming each GitHub
+token or host variable of the outside folder (`GH_TOKEN in <folder>`), the login shell
+(`GH_TOKEN of your shell`) or a project (`GH_TOKEN of project <id>`), and `[info] GitHub login
+outside LADO: the GitHub CLI's own login is not used by agents` while `gh auth token` finds a
+login of its own in the agents' environment. Neither changes the exit status.
 
 `lado doctor` prints a login line after each installed agent CLI's version, read by the CLI's
 own status command in the environment its agents get without a project, the login taken
@@ -821,23 +861,27 @@ Settings → Model servers`), a name only another CLI's configured model has (`"
 or not: `<CLI>'s default model is cleared.`, or `<CLI> has no default model.`; a model with
 `--clear`, or `--clear` with no CLI, exits 2.
 
-`lado git-server add <address> --token [--kind github|gitlab]` saves a GitLab or GitHub
-Enterprise server with the human's token, so that agents and LADO's own git reach it over
-https without a password (`git_servers.py`, lado.db's `git_servers`, schema 41; its commit
-author from schema 42). The address
+`lado git-server add <address> --token [--kind github|gitlab]` saves a GitLab, github.com or
+GitHub Enterprise server with the human's token, so that agents and LADO's own git reach it
+over https without a password, and their `gh` with it (`git_servers.py`, lado.db's
+`git_servers`, schema 41; its commit author from schema 42; the GitHub login's takeover,
+schema 43). The address
 takes `https://` when it has none, keeps a path (`https://example.com/gitlab`) and drops a
 trailing dot of the host (`gitlab.corp.ru.` is `https://gitlab.corp.ru`); a user or
 password, a query, a fragment, another scheme, a space, tab or control character, or a
 host name with a character other than a letter, a digit, `-`, `.` and `_` is refused with
 exit 2 (`not a git server's
-address: <why>`, never naming the address). `github.com` (and `www.`, `api.`) is refused
-before the token is asked: it is reached through gh's login (`GH_TOKEN` or `gh auth login`)
-as before. The token is asked without echo (`Token of the server (not shown): `) or read from
+address: <why>`, never naming the address). `github.com`, `www.github.com` and
+`api.github.com` are `https://github.com`; another port, a path or `http://` there is refused,
+exit 2 (`github.com is signed in to at https://github.com`), and so is `--kind` with it, exit
+1, before the token is asked (`github.com's kind is GitHub: add it without --kind`). The
+token is asked without echo (`Token of the server (not shown): `) or read from
 stdin when that is no terminal; one given on the command line (`--token <value>`, `--token=…`,
 a stray word) is refused without its value, as a model server's key, and an empty one too.
 Then LADO asks each kind's API at once, one GET each, cut at 5 s and following no redirect
 (the kind modules of `git_kinds/`): GitLab's `<address>/api/v4/user` with `PRIVATE-TOKEN`,
-GitHub's `<address>/api/v3/user` with `Authorization: token`. One kind that answers with its
+GitHub's `<address>/api/v3/user` with `Authorization: token` (for github.com
+`https://api.github.com/user`, the only request). One kind that answers with its
 user prints `GitLab, signed in as <login>` (`GitHub, …`), then `Saved git server <address>.`
 and `Agents started from now on reach it; restart running agents to give it to them.`, exit
 0. The token's rights are read too: GitLab's `<address>/api/v4/personal_access_tokens/self`

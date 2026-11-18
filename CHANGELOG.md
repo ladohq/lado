@@ -4,10 +4,13 @@
 
 ### New
 
-- **Your own GitLab or GitHub Enterprise server.** `lado git-server add <address> --token`
-  checks the server and keeps your token; agents and LADO then clone and push there over
-  https without a password, `git@…` addresses included. Needs git 2.31 or newer. Also in
-  Settings → Git servers, which shows the token page with the rights the token needs.
+- **Your own GitLab, GitHub or GitHub Enterprise server.** `lado git-server add <address>
+  --token` checks the server and keeps your token; agents and LADO then clone, push and run
+  `gh` there without a password, `git@…` addresses included. Needs git 2.31+. Also in Settings
+  → Git servers, which shows the token page with the rights the token needs.
+- **github.com in Settings → Git servers.** The GitHub login agents used (`GH_TOKEN`, or `gh
+  auth login`) is moved there once, at the first start of this version; `lado doctor` says so.
+  From then on a `GH_TOKEN` or `gh` login outside LADO is not used: change it in Settings.
 - **Your commit name and email per git server.** `lado git-server author` or Commit author in
   Settings → Git servers: agents commit to that server's repositories with this name and
   email, and elsewhere as before. Your global git settings stay untouched. Needs git 2.36+.
@@ -17,8 +20,8 @@
 - **`lado doctor` checks your git servers.** One line per saved server says whether its token
   still works, all asked at once; a server that does not answer is a warning, never a failure.
 - **A failed clone says which git server to check.** When a saved server refuses the token,
-  the clone names it and how to check it; a host not in the list that asks for a login
-  suggests adding it. In New session and Add repository a button opens Settings → Git servers.
+  the clone names it and how to check it; a host not in the list that asks for a login,
+  github.com too, suggests adding it. In New session a button opens Settings → Git servers.
 
 ### Fixed
 

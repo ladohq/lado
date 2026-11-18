@@ -47,12 +47,12 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-18-github-com-e
 
 ## 9. End to end
 
-- [x] 9.1 `tests/integration/test_github_takeover.py` (the design doc's cases 1–6) and the
+- [x] 9.1 `tests/integration/test_github_login_takeover.py` (the design doc's cases 1–6) and the
   rollback in `tests/integration/test_update_process.py` (D11). Check: `uv run pytest -m
   integration -n auto` on those files.
 
 ## 10. Docs
 
-- [ ] 10.1 `docs/cli.md`, `docs/design/ui.md`, `docs/design/modules.md`,
+- [x] 10.1 `docs/cli.md`, `docs/design/ui.md`, `docs/design/modules.md`,
   `docs/install.md`, `docs/design/projects.md`, AGENTS.md's module line, CHANGELOG.md
   0.48.0. Check: `tests/test_agents_md.py`, the docs checks of `make test`.

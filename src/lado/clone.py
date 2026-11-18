@@ -365,12 +365,11 @@ def _saved_servers() -> list[state.GitServer] | None:
 def _server_way(
     kind: str, url: str, address: Address, servers: list[state.GitServer]
 ) -> tuple[str, runtime.Hint, ServerWay] | None:
-    """An access failure's reason, hint and way out through the git servers: the saved
-    server git took the token of (`git_servers.server_for`), else an unsaved http(s) host
-    other than github.com to add; None for neither, as for a host saved under another
-    scheme or port, whose token git did not take and which could not be added again."""
-    if kind not in ACCESS_KINDS:
-        return None
+    """An access failure's (`ACCESS_KINDS`) reason, hint and way out through the git
+    servers: the saved server git took the token of (`git_servers.server_for`), else an
+    unsaved http(s) host other than github.com to add; None for neither, as for a host saved
+    under another scheme or port, whose token git did not take and which could not be added
+    again."""
     host = address.host
     server = git_servers.server_for(url, servers)
     if server is not None and (

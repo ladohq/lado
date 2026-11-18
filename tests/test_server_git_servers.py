@@ -176,7 +176,7 @@ def test_add_with_a_chosen_kind_saves_one_that_does_not_answer(client):
 @pytest.mark.parametrize(
     ("address", "field", "message"),
     [
-        ("github.com", "address", "github.com uses the GitHub CLI's login: it is not added here."),
+        ("github.com/acme", "address", "github.com is signed in to at https://github.com"),
         ("https://me:pw@git.lan", "address", "holds no user or password; put the token in Token"),
     ],
 )
@@ -307,7 +307,7 @@ def test_check_refuses_a_redirect_with_no_choice(client, serve):
 
 
 def test_check_refuses_the_address_and_its_host_name_asking_no_server(client, serve):
-    assert [r["field"] for r in check(client, "github.com")["refusals"]] == ["address"]
+    assert [r["field"] for r in check(client, "github.com:8443")["refusals"]] == ["address"]
     assert check(client, "ftp://git.lan")["refusals"][0]["field"] == "address"
     server = serve("gitlab", token=TOKEN)
     ok(add(client, server.url))
@@ -320,8 +320,28 @@ def test_check_refuses_the_address_and_its_host_name_asking_no_server(client, se
 def test_check_of_nothing_says_nothing_and_makes_no_lado_db(client, lado_home):
     found = check(client, "  ")
     assert (found["address"], found["refusals"]) == (None, [])
-    check(client, "github.com")
+    check(client, "github.com/acme")
     assert not (lado_home / "lado.db").exists()
+
+
+def test_github_com_is_checked_added_and_listed(client, monkeypatch, tmp_path):
+    with fake.reached_as(monkeypatch, tmp_path, "api.github.com", "github-com", token=TOKEN):
+        found = check(client, "github.com")
+        assert (found["address"], found["hint"], found["refusals"]) == (
+            "https://github.com",
+            "github",
+            [],
+        )
+        assert (found["token_page"], found["scopes"]) == (
+            "https://github.com/settings/tokens",
+            "scope repo",
+        )
+        added = ok(add(client, "github.com"))
+    assert (
+        added["line"] == f"Saved git server https://github.com: GitHub, signed in as {fake.LOGIN}."
+    )
+    listed = ok(client.get("/api/git-servers"))
+    assert [s["address"] for s in listed["servers"]] == ["https://github.com"]
 
 
 # Remove.

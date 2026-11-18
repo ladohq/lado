@@ -27,6 +27,7 @@ import pytest
 
 GITLAB = "/api/v4/user"
 GITHUB = "/api/v3/user"
+GITHUB_COM = "/user"  # github.com's user API, at https://api.github.com
 LOGIN = "ivan.petrov"
 
 
@@ -109,6 +110,9 @@ PROFILES: dict[str, dict[str, Answer]] = {
     "gitlab-github-hangs": {GITLAB: GITLAB_USER, GITHUB: HANG},
     "hang": {GITLAB: HANG, GITHUB: HANG},
     "gateway": {},  # GATEWAY_401 on every path (DEFAULTS)
+    # api.github.com: the user of a classic token with repo, or its refusal.
+    "github-com": {GITHUB_COM: github_user("repo")},
+    "github-com-refuses": {GITHUB_COM: GITHUB_401},
 }
 # A sign-in gateway in front of a server: its own 401 on any path, whatever the token.
 GATEWAY_401 = Answer(401, {"message": "Unauthorized"})
@@ -129,7 +133,7 @@ def answer_for(profile: str, path: str, token: str | None, headers: Message) -> 
     if token is not None and found.status == 200:
         if path in (GITLAB, GITLAB_TOKEN) and headers.get("PRIVATE-TOKEN") != token:
             return GITLAB_401
-        if path == GITHUB and headers.get("Authorization") != f"token {token}":
+        if path in (GITHUB, GITHUB_COM) and headers.get("Authorization") != f"token {token}":
             return GITHUB_401
     return found
 
@@ -247,6 +251,29 @@ class ConnectProxy:
     def close(self) -> None:
         self._closing.set()
         self._listener.close()
+
+
+@contextlib.contextmanager
+def reached_as(monkeypatch, folder: Path, host: str, profile: str, **kwargs):
+    """The fake of `profile` over TLS as https://<host> for this process and the processes
+    it starts (HTTPS_PROXY to a ConnectProxy, SSL_CERT_FILE a test CA), with no network:
+    the server, its `proxy` attribute set."""
+    ca, certificate = make_ca_certificate(folder, host)
+    server = Server(profile, certificate=certificate, **kwargs)
+    proxy = ConnectProxy({f"{host}:443": ("127.0.0.1", server.port)})
+    for name in ("http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY"):
+        monkeypatch.delenv(name, raising=False)
+    for name in ("https_proxy", "HTTPS_PROXY"):
+        monkeypatch.setenv(name, proxy.url)
+    for name in ("no_proxy", "NO_PROXY"):
+        monkeypatch.setenv(name, "127.0.0.1,localhost")
+    monkeypatch.setenv("SSL_CERT_FILE", str(ca))
+    server.proxy = proxy
+    try:
+        yield server
+    finally:
+        proxy.close()
+        server.close()
 
 
 def _pipe(source: socket.socket, sink: socket.socket) -> None:

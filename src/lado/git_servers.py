@@ -1,8 +1,11 @@
-"""The human's git servers (openspec capability `git-servers`): a GitLab or GitHub Enterprise
-server, its kind told by its API, and the token agents and LADO's own git reach it with.
+"""The human's git servers (openspec capability `git-servers`): a GitLab, github.com or
+GitHub Enterprise server, its kind told by its API, and the token agents and LADO's own git
+reach it with.
 
 A server is identified by its host and port (`Address.key`), one per host name
-(`check_host`: git's ssh addresses carry no port). It is saved in
+(`check_host`: git's ssh addresses carry no port). github.com is one like any other, at
+`https://github.com` alone (www. and api. taken as it), asked as GitHub only (`kinds`). It
+is saved in
 lado.db (lado.state: `git_servers`) only after its probe: each kind of lado.git_kinds is
 asked at once, through lado.model_servers' request path (no redirect followed, each request
 cut at its TIMEOUT); `--kind` saves one that cannot be checked. Its token is kept in
@@ -42,7 +45,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 from lado import agent_env, git_kinds, interpreter, project_secrets, state
-from lado.git_kinds import Kind
+from lado.git_kinds import Kind, github
 from lado.git_kinds.base import REFUSES
 
 if TYPE_CHECKING:  # the HTTP client: loaded by `add` alone, never by a launch or a hook
@@ -154,6 +157,10 @@ def address(text: str) -> Address:
     if port is not None and port != (443 if scheme == "https" else 80):
         shown += f":{port}"
     path = parts.path.rstrip("/")
+    if host.lower() in GITHUB_COM:
+        if scheme != "https" or shown.lower() != host.lower() or path:
+            raise BadAddress(f"github.com is signed in to at {github.DOTCOM}")
+        return Address(github.DOTCOM, "github.com", "github.com", "https")
     return Address(f"{scheme}://{shown}{path}", shown, host, scheme)
 
 
@@ -161,14 +168,19 @@ def plain_http_warning(at: Address) -> str | None:
     return PLAIN_HTTP.format(host=at.host) if at.scheme == "http" else None
 
 
-def check_not_github(at: Address) -> None:
-    """Refuse github.com: it is reached through gh's login, as in LADO's image."""
-    if at.host in GITHUB_COM:
+def kinds(at: Address) -> tuple[Kind, ...]:
+    """The kinds asked at `at`: GitHub alone for github.com, whose API is elsewhere
+    (api.github.com) and which is no GitLab; every kind for any other server."""
+    return (github.KIND,) if at.root == github.DOTCOM else git_kinds.KINDS
+
+
+def check_kind(at: Address, kind_name: str | None) -> None:
+    """Refuse `--kind` for github.com: its kind is known."""
+    if kind_name is not None and at.root == github.DOTCOM:
         raise Refused(
-            "github.com is reached through gh's login (GH_TOKEN or gh auth login); "
-            "LADO keeps no token for it",
-            field=ADDRESS_FIELD,
-            page="github.com uses the GitHub CLI's login: it is not added here.",
+            "github.com's kind is GitHub: add it without --kind",
+            field=KIND_FIELD,
+            page="github.com's kind is GitHub: add it without a kind.",
         )
 
 
@@ -293,7 +305,7 @@ def _ask_kinds(at: Address, token: str | None) -> list[model_servers.Answer]:
     from lado import model_servers
 
     asked = []
-    for kind in git_kinds.KINDS:
+    for kind in kinds(at):
         url, headers = kind.request(at.root, token)
         asked.append((url, "GET", headers))
     return model_servers.ask_all(_opener(), asked, AGENT)
@@ -322,7 +334,7 @@ def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
     why). Refused for a server that refuses the token, sends elsewhere, answers as two kinds
     without `kind_name` or as another, or cannot be checked without `kind_name`."""
     answers = _ask_kinds(at, token)
-    by_kind = list(zip(git_kinds.KINDS, answers, strict=True))
+    by_kind = list(zip(kinds(at), answers, strict=True))
     found = [(kind, login) for kind, answer in by_kind if (login := kind.login(answer))]
     chosen = git_kinds.by_name(kind_name) if kind_name else None
 
@@ -351,7 +363,7 @@ def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
     if chosen is None and len(refusals) == len(by_kind) > 1:
         # Every kind refused: a gateway in front of the server, or a token cut short; naming
         # one kind would guess.
-        titles = " and ".join(f"{kind.title}'s" for kind in git_kinds.KINDS)
+        titles = " and ".join(f"{kind.title}'s" for kind in kinds(at))
         raise Refused(
             f"{at.root} refuses the token on {titles} API alike",
             "check that the token was copied whole; a sign-in gateway in front of the server "
@@ -402,7 +414,7 @@ def hint(at: Address) -> Hint:
     answers = _ask_kinds(at, None)
     told = [
         kind
-        for kind, answer in zip(git_kinds.KINDS, answers, strict=True)
+        for kind, answer in zip(kinds(at), answers, strict=True)
         if kind.login(answer) or kind.refusal(answer)
     ]
     if len(told) == 1:
@@ -437,7 +449,7 @@ def _unanswered(at: Address, answers: Sequence[model_servers.Answer]) -> tuple[s
             choose_kind=True,
         )
         return f"it does not answer: {silent}", refused
-    titles = " nor ".join(kind.title for kind in git_kinds.KINDS)
+    titles = " nor ".join(kind.title for kind in kinds(at))
     refused = Refused(
         f"{at.root} answers as neither {titles}",
         _kind_hint(at.root),
@@ -520,7 +532,7 @@ def check(at: Address, save_login: bool = True) -> Check:
             page_hint="",
         )
     answers = _ask_kinds(at, token)
-    by_kind = dict(zip(git_kinds.KINDS, answers, strict=True))
+    by_kind = dict(zip(kinds(at), answers, strict=True))
     own = by_kind[kind]
     was = server.login is not None
 
@@ -608,7 +620,7 @@ def check(at: Address, save_login: bool = True) -> Check:
             f"{REMOVE} {at.root}, then {ADD} {at.root} --token",
             f"It {answers_as}.",
         )
-    titles = " nor ".join(k.title for k in git_kinds.KINDS)
+    titles = " nor ".join(k.title for k in kinds(at))
     return failed(
         "unrecognised", f"it answers as neither {titles}", "", f"It answers as neither {titles}."
     )
@@ -1039,7 +1051,7 @@ def add(
             f"{kind_name} is no kind of git server LADO knows: {' or '.join(KIND_NAMES)}",
             field=KIND_FIELD,
         )
-    check_not_github(at)
+    check_kind(at, kind_name)
     check_host(at)
     check_git(os.environ)
     warning = plain_http_warning(at)

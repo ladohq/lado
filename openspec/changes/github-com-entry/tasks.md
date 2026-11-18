@@ -2,7 +2,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-18-github-com-e
 
 ## 1. github.com as a server
 
-- [ ] 1.1 The GitHub kind asks `https://api.github.com/user` for github.com; add, remove,
+- [x] 1.1 The GitHub kind asks `https://api.github.com/user` for github.com; add, remove,
   check, author of github.com; www./api. taken, port, path and `--kind` refused (D1).
   Check: `tests/test_git_kinds.py`, `tests/test_git_servers.py`, `tests/test_cli.py`.
 

@@ -114,15 +114,65 @@ def test_plain_http_is_warned_about():
     assert git_servers.plain_http_warning(git_servers.address("git.lan")) is None
 
 
-@pytest.mark.parametrize("text", ["github.com", "https://www.github.com/", "api.github.com"])
-def test_github_com_is_refused(text):
+@pytest.mark.parametrize(
+    "text",
+    ["github.com", "https://www.github.com/", "api.github.com", "GitHub.com.", "github.com:443"],
+)
+def test_www_and_api_are_github_com(text):
+    assert git_servers.address(text) == ("https://github.com", "github.com", "github.com", "https")
+
+
+@pytest.mark.parametrize(
+    "text", ["github.com:8443", "https://github.com/acme", "http://github.com", "www.github.com/x"]
+)
+def test_github_com_with_a_port_or_path_is_refused(text):
+    with pytest.raises(git_servers.BadAddress) as raised:
+        git_servers.address(text)
+    assert str(raised.value) == "github.com is signed in to at https://github.com"
+
+
+def test_kind_with_github_com_is_refused(lado_home):
+    asked = []
     with pytest.raises(git_servers.Refused) as raised:
-        git_servers.check_not_github(git_servers.address(text))
-    assert str(raised.value) == (
-        "github.com is reached through gh's login (GH_TOKEN or gh auth login); "
-        "LADO keeps no token for it"
+        git_servers.add(git_servers.address("github.com"), asked.append, "gitlab", print)
+    assert (str(raised.value), raised.value.field) == (
+        "github.com's kind is GitHub: add it without --kind",
+        "kind",
     )
-    git_servers.check_not_github(git_servers.address("github.corp.ru"))
+    assert asked == [] and state.git_servers() == []
+
+
+@pytest.fixture
+def github_com(monkeypatch, tmp_path):
+    """The fake GitHub API as https://api.github.com, taking TOKEN."""
+    with fake.reached_as(monkeypatch, tmp_path, "api.github.com", "github-com", token=TOKEN) as s:
+        yield s
+
+
+def test_github_com_is_added_through_the_proxy(github_com, lado_home):
+    saved, replaced, checked = git_servers.add(
+        git_servers.address("github.com"), lambda: TOKEN, None, print
+    )
+    assert (saved.address, saved.host, saved.kind, saved.login) == (
+        "https://github.com",
+        "github.com",
+        "github",
+        fake.LOGIN,
+    )
+    assert (replaced, checked.rights_checked, checked.missing_scopes) == (False, True, ())
+    assert github_com.paths() == [fake.GITHUB_COM]
+    assert github_com.proxy.asked == ["api.github.com:443"]
+    found = git_servers.check(git_servers.address("www.github.com"))
+    assert (found.outcome, found.login) == ("ok", fake.LOGIN)
+    assert git_servers.remove(git_servers.address("github.com")).server.id == saved.id
+    assert state.git_servers() == []
+
+
+def test_github_com_probe_asks_one_request(github_com, lado_home):
+    hint = git_servers.hint(git_servers.address("github.com"))
+    assert hint.kind.name == "github"
+    assert github_com.paths() == [fake.GITHUB_COM]
+    assert "Authorization" not in github_com.requests[0].headers
 
 
 # The probe.
@@ -1260,9 +1310,6 @@ def test_each_probe_refusal_has_its_field_and_page_words(
 
 def test_the_page_words_of_the_add_form(serve, monkeypatch):
     monkeypatch.setattr(model_servers, "TIMEOUT", 1)
-    with pytest.raises(git_servers.Refused) as raised:
-        git_servers.check_not_github(git_servers.address("github.com"))
-    assert raised.value.page == "github.com uses the GitHub CLI's login: it is not added here."
     for profile, title in (
         ("gitlab-refuses", "GitLab"),
         ("gitlab-revoked", "GitLab"),
@@ -1302,8 +1349,8 @@ def test_the_other_refusals_have_their_fields(lado_home, tmp_path):
         assert "--" not in _page_lines(raised.value)
         return raised.value
 
-    assert refusal(git_servers.check_not_github, git_servers.address("github.com")).field == (
-        "address"
+    assert refusal(git_servers.check_kind, git_servers.address("github.com"), "github").field == (
+        "kind"
     )
     for token in ("", "a\nb"):
         assert refusal(git_servers.check_token, token).field == "token"

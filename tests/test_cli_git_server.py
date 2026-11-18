@@ -199,12 +199,39 @@ def test_add_without_token_is_refused(capsys):
     assert "--token" in capsys.readouterr().err
 
 
-def test_github_com_is_refused_before_the_token(capsys, monkeypatch):
+def test_github_com_with_kind_is_refused_before_the_token(capsys, monkeypatch):
     stdin = Stdin(TOKEN)
     monkeypatch.setattr("sys.stdin", stdin)
-    assert main(["git-server", "add", "github.com", "--token"]) == 1
-    assert "github.com is reached through gh's login" in capsys.readouterr().err
+    assert main(["git-server", "add", "github.com", "--token", "--kind", "github"]) == 1
+    assert "github.com's kind is GitHub: add it without --kind" in capsys.readouterr().err
     assert not stdin.touched
+
+
+def test_github_com_with_a_path_exits_2(capsys):
+    assert main(["git-server", "add", "github.com/acme", "--token"]) == 2
+    assert capsys.readouterr().err == (
+        "lado: not a git server's address: github.com is signed in to at https://github.com\n"
+    )
+
+
+def test_add_list_and_remove_github_com(capsys, monkeypatch, tmp_path):
+    with fake.reached_as(monkeypatch, tmp_path, "api.github.com", "github-com", token=TOKEN):
+        assert main(["git-server", "add", "www.github.com", "--token"]) == 0
+    out = capsys.readouterr().out
+    assert out.splitlines()[:2] == [
+        f"GitHub, signed in as {fake.LOGIN}",
+        "Saved git server https://github.com.",
+    ]
+    assert main(["git-server", "list"]) == 0
+    assert capsys.readouterr().out.splitlines()[1].split() == [
+        "https://github.com",
+        "GitHub",
+        fake.LOGIN,
+        "yes",
+        "-",
+    ]
+    assert main(["git-server", "remove", "github.com"]) == 0
+    assert capsys.readouterr().out == "Removed git server https://github.com.\n"
 
 
 def test_a_bad_address_exits_2(capsys):

@@ -1737,7 +1737,7 @@ def cmd_git_server_add(args: argparse.Namespace) -> int:
         return 2
     again = f"{git_servers.ADD} {at.root} --token"
     try:
-        git_servers.check_not_github(at)
+        git_servers.check_kind(at, args.kind)
         if args.token is None:
             raise git_servers.Refused(
                 f"a git server is added with its token: run {again} and type it, or pipe it in"

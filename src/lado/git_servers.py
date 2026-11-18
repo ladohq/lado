@@ -8,6 +8,8 @@ asked at once, through lado.model_servers' request path (no redirect followed, e
 cut at its TIMEOUT); `--kind` saves one that cannot be checked. Its token is kept in
 `<LADO_HOME>/git-servers/<id>/token` alone, written and removed by the link-refusing writer
 of LADO's secrets (lado.project_secrets), never in lado.db, a message or a git config file.
+A save, a removal and a check's login write hold one lock of LADO_HOME (`_locked`), never
+while a server is asked.
 
 `variables` gives git, through `GIT_CONFIG_*` variables laid over a process's environment, an
 empty helper then LADO's own (lado.git_credential) for each saved server's address, and
@@ -31,15 +33,17 @@ import os
 import re
 import shlex
 import subprocess
+import time
 import urllib.parse
 import uuid
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 from lado import agent_env, git_kinds, interpreter, project_secrets, state
 from lado.git_kinds import Kind
+from lado.git_kinds.base import REFUSES
 
 if TYPE_CHECKING:  # the HTTP client: loaded by `add` alone, never by a launch or a hook
     from lado import model_servers
@@ -62,10 +66,7 @@ PLAIN_HTTP = (
 )
 
 
-PAGE_KIND_HINT = (
-    "If the server is there for git but its API is not reachable from here, choose its kind "
-    "to save it without a check."
-)
+PAGE_KIND_HINT = "Choose its kind to save it without a check."  # why: the Kind field's ⓘ
 # The fields of Settings → Git servers' form a refusal concerns ("" for none).
 ADDRESS_FIELD, TOKEN_FIELD, KIND_FIELD = "address", "token", "kind"
 NAME_FIELD, EMAIL_FIELD = "name", "email"  # of a server's commit author form
@@ -75,7 +76,8 @@ class Refused(Exception):
     """Why a git server is not saved, found or reached, one line; `hint` what the human can
     try ("" for none); `field` the field of the page's form it concerns; `page` and
     `page_hint` the line and the hint for the page, which name no command (None: the same as
-    the command's). Never holds a token."""
+    the command's); `choose_kind` for a server that gave no HTTP answer, which the page may
+    save without a check once its kind is chosen. Never holds a token."""
 
     def __init__(
         self,
@@ -84,12 +86,14 @@ class Refused(Exception):
         field: str = "",
         page: str | None = None,
         page_hint: str | None = None,
+        choose_kind: bool = False,
     ):
         super().__init__(text)
         self.hint = hint
         self.field = field
         self.page = text if page is None else page
         self.page_hint = hint if page_hint is None else page_hint
+        self.choose_kind = choose_kind
 
 
 class BadAddress(ValueError):
@@ -117,6 +121,8 @@ def address(text: str) -> Address:
     text = text.strip()
     if not text:
         raise BadAddress("no address given")
+    if any(char.isspace() or not char.isprintable() for char in text):
+        raise BadAddress("a git server's address holds no space, tab or control character")
     if "://" not in text and "@" not in text.split("/", 1)[0]:
         text = "https://" + text
     try:
@@ -138,8 +144,12 @@ def address(text: str) -> Address:
         raise BadAddress("a git server's address holds no query")
     if parts.fragment:
         raise BadAddress("a git server's address holds no fragment")
+    # `host.` names the same host as `host` (the DNS root): one server per host sees one.
+    host = (host or "").rstrip(".")
     if not host:
         raise BadAddress("the address names no host")
+    if ":" not in host and not all(char.isalnum() or char in "-._" for char in host):
+        raise BadAddress("a host name holds only letters, digits, '-', '.' and '_'")
     shown = f"[{host}]" if ":" in host else host
     if port is not None and port != (443 if scheme == "https" else 80):
         shown += f":{port}"
@@ -158,6 +168,7 @@ def check_not_github(at: Address) -> None:
             "github.com is reached through gh's login (GH_TOKEN or gh auth login); "
             "LADO keeps no token for it",
             field=ADDRESS_FIELD,
+            page="github.com uses the GitHub CLI's login: it is not added here.",
         )
 
 
@@ -196,15 +207,41 @@ def check_token(token: str) -> None:
 @dataclass(frozen=True)
 class Checked:
     """What the probe found: the kind, the user the token signs in as (None: not checked),
-    and why it could not be checked ("" when it was)."""
+    why it could not be checked ("" when it was), the rights agents need that the token
+    lacks, and whether the server told the token's rights."""
 
     kind: Kind
     login: str | None
     unchecked: str = ""
+    missing_scopes: tuple[str, ...] = ()
+    rights_checked: bool = False
 
     def line(self) -> str | None:
         """`GitLab, signed in as <login>`; None for a server not checked."""
         return f"{self.kind.title}, signed in as {self.login}" if self.login else None
+
+    def lacks(self) -> str | None:
+        """`the token lacks <scopes>: agents can …`; None when it lacks none."""
+        return lacks(self.kind, self.missing_scopes)
+
+    def replace_hint(self, at: Address) -> str:
+        return replace_hint(self.kind, at)
+
+
+def replace_hint(kind: Kind, at: Address) -> str:
+    """How to replace a token that lacks a right agents need."""
+    return f"replace it with a token with the {kind.scopes}: {ADD} {at.root} --token"
+
+
+def lacks(kind: Kind, missing: Sequence[str], page: bool = False) -> str | None:
+    """What a token lacking the rights `missing` of `kind` leaves agents, in the command's
+    words, or the page's (`page`: a sentence); None for none missing."""
+    if not missing:
+        return None
+    can = _can(kind, missing)
+    if page:
+        return f"The token lacks {', '.join(missing)}: agents can {can}."
+    return f"the token lacks {', '.join(missing)}: agents can {can}"
 
 
 def _kind_hint(root: str) -> str:
@@ -230,19 +267,53 @@ def _silent(answer: model_servers.Answer) -> str:
     return why
 
 
-def _ask_kinds(at: Address, token: str | None) -> list[model_servers.Answer]:
-    """Each kind's answer at `at`, in KINDS' order, all asked at once with `token` (None:
-    no credential), following no redirect, each request cut at model_servers' TIMEOUT."""
+AGENT = {"User-Agent": "lado"}
+
+
+def _opener():
     import urllib.request
 
     from lado import model_servers
 
-    opener = urllib.request.build_opener(model_servers.NoRedirect())
+    return urllib.request.build_opener(model_servers.NoRedirect())
+
+
+def _no_answer_page(answer: model_servers.Answer) -> str:
+    """Why a request got no HTTP answer, as the page's sentence."""
+    if answer.why.startswith("no answer in "):
+        return (
+            f"No answer in {answer.why.removeprefix('no answer in ').removesuffix(' s')} seconds."
+        )
+    return f"No answer: {_silent(answer)}."
+
+
+def _ask_kinds(at: Address, token: str | None) -> list[model_servers.Answer]:
+    """Each kind's answer at `at`, in KINDS' order, all asked at once with `token` (None:
+    no credential), following no redirect, each request cut at model_servers' TIMEOUT."""
+    from lado import model_servers
+
     asked = []
     for kind in git_kinds.KINDS:
         url, headers = kind.request(at.root, token)
         asked.append((url, "GET", headers))
-    return model_servers.ask_all(opener, asked, {"User-Agent": "lado"})
+    return model_servers.ask_all(_opener(), asked, AGENT)
+
+
+def _rights(
+    at: Address, token: str, kind: Kind, answer: model_servers.Answer
+) -> tuple[tuple[str, ...], bool]:
+    """The rights `kind`'s token lacks by `answer`, the answer that gave its login, and
+    whether the server told its rights: as `_ask_kinds` asks, one request at a time."""
+    from lado import model_servers
+
+    def ask(url: str, headers: dict[str, str]) -> model_servers.Answer:
+        (found,) = model_servers.ask_all(_opener(), [(url, "GET", headers)], AGENT)
+        return found
+
+    told = kind.rights(at.root, token, answer, ask)
+    if told is None:
+        return (), False
+    return kind.missing(told), True
 
 
 def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
@@ -254,16 +325,21 @@ def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
     by_kind = list(zip(git_kinds.KINDS, answers, strict=True))
     found = [(kind, login) for kind, answer in by_kind if (login := kind.login(answer))]
     chosen = git_kinds.by_name(kind_name) if kind_name else None
+
+    def checked(kind: Kind, login: str) -> Checked:
+        missing, told = _rights(at, token, kind, dict(by_kind)[kind])
+        return Checked(kind, login, missing_scopes=missing, rights_checked=told)
+
     if len(found) == 1:
         kind, login = found[0]
         if chosen is not None and chosen is not kind:
             raise Refused(
                 f"{at.root} answers as {kind.title}, not {chosen.title}", field=KIND_FIELD
             )
-        return Checked(kind, login)
+        return checked(kind, login)
     if found:
         if chosen is not None:
-            return Checked(chosen, dict(found)[chosen])
+            return checked(chosen, dict(found)[chosen])
         titles = " and as ".join(kind.title for kind, _ in found)
         which = " or ".join(f"--kind {kind.name}" for kind, _ in found)
         raise Refused(
@@ -272,13 +348,31 @@ def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
             page=f"{at.root} answers as {titles}; choose its kind",
         )
     refusals = [(kind, why) for kind, answer in by_kind if (why := kind.refusal(answer))]
+    if chosen is None and len(refusals) == len(by_kind) > 1:
+        # Every kind refused: a gateway in front of the server, or a token cut short; naming
+        # one kind would guess.
+        titles = " and ".join(f"{kind.title}'s" for kind in git_kinds.KINDS)
+        raise Refused(
+            f"{at.root} refuses the token on {titles} API alike",
+            "check that the token was copied whole; a sign-in gateway in front of the server "
+            "refuses any token too",
+            TOKEN_FIELD,
+            page=f"The server refused this token on both {titles} API: copy it whole, or ask "
+            "whether a sign-in gateway stands in front of it.",
+            page_hint="",
+        )
     if refusals:
         kind, why = next(((k, w) for k, w in refusals if k is chosen), refusals[0])
         page = kind.token_page(at.root)
+        refused = why == REFUSES  # the page's Token field shows the token page beside it
         raise Refused(
             f"{kind.title} at {at.root} {why}",
             f"make a token at {page} ({kind.scopes})",
             TOKEN_FIELD,
+            page=f"{kind.title} refused this token: copy it whole or make a new one."
+            if refused
+            else None,
+            page_hint="" if refused else None,
         )
     unchecked, refusal = _unanswered(at, answers)
     if chosen is None:
@@ -338,7 +432,9 @@ def _unanswered(at: Address, answers: Sequence[model_servers.Answer]) -> tuple[s
             f"{at.key} does not answer: {silent}",
             _kind_hint(at.root),
             ADDRESS_FIELD,
+            page=_no_answer_page(answers[0]),
             page_hint=PAGE_KIND_HINT,
+            choose_kind=True,
         )
         return f"it does not answer: {silent}", refused
     titles = " nor ".join(kind.title for kind in git_kinds.KINDS)
@@ -349,6 +445,186 @@ def _unanswered(at: Address, answers: Sequence[model_servers.Answer]) -> tuple[s
         page_hint=PAGE_KIND_HINT,
     )
     return f"it answers as neither {titles}", refused
+
+
+OUTCOMES = (
+    "ok",
+    "token_refused",
+    "scopes_missing",
+    "no_answer",
+    "cert_untrusted",
+    "redirect",
+    "other_kind",
+    "unrecognised",
+)
+REACH_HINT = (
+    "check that this computer reaches it: the company VPN or proxy; with LADO in Docker, its "
+    "container"
+)
+PAGE_REACH_HINT = (
+    "Check that LADO's computer reaches the server: the company VPN or proxy; with LADO in "
+    "Docker, its container."
+)
+CERT_HINT = (
+    "ask your IT department to make this computer trust it (with LADO in Docker, its "
+    "container), then check again"
+)
+PAGE_CERT_HINT = (
+    "Ask your IT department to make LADO's computer trust it (with LADO in Docker, its "
+    "container), then check again."
+)
+
+
+@dataclass(frozen=True)
+class Check:
+    """What a check of a saved server found: `outcome` one of OUTCOMES, the saved `kind`,
+    the `login` it saw (None but for ok and scopes_missing), the rights the token lacks,
+    whether the server told them, whether the server had a login before (`was_checked`),
+    one line and its hint in the command's words (`text`, `hint`) and in the page's
+    (`page`, a sentence, and `page_hint`, its info tip's: "" for none). Never holds a
+    token."""
+
+    outcome: str
+    kind: Kind
+    login: str | None
+    missing_scopes: tuple[str, ...]
+    rights_checked: bool
+    was_checked: bool
+    text: str
+    hint: str
+    page: str
+    page_hint: str = ""
+
+
+def check(at: Address) -> Check:
+    """Check the saved server of `at`'s host again with its saved token, as `add` asks it
+    (every kind at once, no redirect followed, each request cut at TIMEOUT), judged by its
+    saved kind; a passing check saves the login it saw (under the lock), nothing else is
+    written. Refused, with no request sent, for no such server, a kind this LADO does not
+    know or a token file it cannot read."""
+    from lado import git_credential
+
+    server = saved_server(at)
+    at = address(server.address)
+    kind = git_kinds.by_name(server.kind)
+    if kind is None:
+        raise Refused(f"{server.address} is saved as {server.kind}, a kind this LADO does not know")
+    token = git_credential.read_token(server.id) if has_token(server) else None
+    if token is None:
+        raise Refused(
+            f"the token file of {at.root} is missing",
+            f"replace it: {ADD} {at.root} --token",
+            TOKEN_FIELD,
+            page="Its token file is missing.",
+            page_hint="",
+        )
+    answers = _ask_kinds(at, token)
+    by_kind = dict(zip(git_kinds.KINDS, answers, strict=True))
+    own = by_kind[kind]
+    was = server.login is not None
+
+    if login := kind.login(own):
+        missing, told = _rights(at, token, kind, own)
+        if missing:
+            return Check(
+                "scopes_missing",
+                kind,
+                login,
+                missing,
+                told,
+                was,
+                lacks(kind, missing) or "",
+                replace_hint(kind, at),
+                f"The token lacks {', '.join(missing)}.",
+                f"Agents can {_can(kind, missing)} with it. Make one with the {kind.scopes}.",
+            )
+        _save_login(server, login)
+        rights = ", may clone and push." if told else "; the token's rights are not checked."
+        page = f"Works: signed in as {login}{rights}"
+        if server.login is None:
+            page = f"Works: {kind.title}, signed in as {login}."
+        return Check(
+            "ok",
+            kind,
+            login,
+            (),
+            told,
+            was,
+            f"Works: {kind.title}, signed in as {login}{rights}",
+            "",
+            page,
+        )
+
+    def failed(outcome: str, text: str, hint: str, page: str, page_hint: str = "") -> Check:
+        return Check(outcome, kind, None, (), False, was, text, hint, page, page_hint)
+
+    why = kind.refusal(own)
+    if why and why != REFUSES:  # GitLab's user API refuses a token without read_api
+        return Check(
+            "scopes_missing",
+            kind,
+            None,
+            ("read_api",),
+            True,
+            was,
+            f"{kind.title} {why}",
+            replace_hint(kind, at),
+            "The token lacks read_api.",
+            f"LADO asks the server's API with it. Make one with the {kind.scopes}.",
+        )
+    if why:
+        refused = f"{kind.title} refused the token: it expired or was revoked"
+        return failed(
+            "token_refused", refused, f"replace it: {ADD} {at.root} --token", refused + "."
+        )
+    moved = next((answer.location for answer in answers if answer.location), "")
+    if moved:
+        moves = f"redirects to {moved}: add that address instead"
+        return failed("redirect", f"it {moves}", "", f"It {moves}.")
+    if own.status is None:
+        if own.tls and "certificate" in own.why:
+            return failed(
+                "cert_untrusted",
+                f"the certificate of {at.root} is not trusted",
+                CERT_HINT,
+                "The server's certificate is not trusted.",
+                PAGE_CERT_HINT,
+            )
+        return failed(
+            "no_answer",
+            f"{at.key} does not answer: {_silent(own)}",
+            REACH_HINT,
+            _no_answer_page(own),
+            PAGE_REACH_HINT,
+        )
+    other = next((k for k, answer in by_kind.items() if k is not kind and k.login(answer)), None)
+    if other is not None:
+        answers_as = f"answers as {other.title}, not {kind.title}: remove it and add it again"
+        return failed(
+            "other_kind",
+            f"it {answers_as}",
+            f"{REMOVE} {at.root}, then {ADD} {at.root} --token",
+            f"It {answers_as}.",
+        )
+    titles = " nor ".join(k.title for k in git_kinds.KINDS)
+    return failed(
+        "unrecognised", f"it answers as neither {titles}", "", f"It answers as neither {titles}."
+    )
+
+
+def _can(kind: Kind, missing: Sequence[str]) -> str:
+    return "neither clone nor push" if kind.needs[0] in missing else "clone but not push"
+
+
+def _save_login(server: state.GitServer, login: str) -> None:
+    """Write `login` into the row of `server` under the lock, its address, kind and author
+    kept; not when the server was removed or replaced by another meanwhile."""
+    if login == server.login:
+        return
+    with _locked():
+        now = state.git_server_by_host(server.host)
+        if now is not None and now.id == server.id:
+            state.save_git_server(now.id, now.address, now.host, now.kind, login)
 
 
 def helper_command(server: state.GitServer) -> str:
@@ -470,15 +746,18 @@ def check_git(env: Mapping[str, str]) -> None:
         raise Refused(f"{older}, or remove the servers ({REMOVE} <address>)", page=older)
 
 
-def check_author_git(env: Mapping[str, str], clear: str | None = None) -> None:
+def check_author_git(env: Mapping[str, str], clear: Sequence[str] = ()) -> None:
     """Refuse a git on `env`'s PATH older than 2.36, which skips `includeIf hasconfig:`
-    silently (`author_entries`); `clear` the address of a server with an author, for a
-    launch: the refusal says how to clear it."""
+    silently (`author_entries`); `clear` the addresses of the servers with an author, for a
+    launch: the refusal says how to clear each."""
     from lado import runtime
 
     older = _older_git(env, runtime.GIT_AUTHOR_MIN, "a commit author of a git server needs")
     if older:
-        text = f"{older}, or clear the author ({AUTHOR} {clear} --clear)" if clear else older
+        text = older
+        if clear:
+            commands = ", ".join(f"{AUTHOR} {address} --clear" for address in clear)
+            text += f", or clear the author{'s' if len(clear) > 1 else ''} ({commands})"
         raise Refused(text, page=older)
 
 
@@ -575,18 +854,34 @@ def _glob(text: str) -> str:
     return re.sub(r"([\\*?\[\]])", r"\\\1", text)
 
 
+def _any_case(glob: str) -> str:
+    """`glob` with each ASCII letter matched in either case (`a` → `[aA]`)."""
+    return re.sub(r"[a-z]", lambda m: f"[{m[0]}{m[0].upper()}]", glob)
+
+
 def author_entries(server: state.GitServer, path: Path) -> list[tuple[str, str]]:
     """The git config entries that include the author file `path` in a repository with a
-    remote on `server`, as written, in each form `server_for` takes: its address with or
-    without a user, and the ssh addresses `_entries` rewrites to it. git's `**` is a folder
-    wildcard only next to `/`, so the scp form takes `git@host:*` and `git@host:*/**`."""
+    remote on `server`, in each form `server_for` takes: its address with or without a
+    user, its host in any letter case and, without a port of its own, with the scheme's
+    written out, as git's credentials and `url.*` take it; and the ssh addresses `_entries`
+    rewrites to it, as written (so is their rewrite). git's `**` is a folder wildcard only
+    next to `/`, so the scp form takes `git@host:*` and `git@host:*/**`."""
     parts = urllib.parse.urlsplit(server.address)
-    netloc, path_part = _glob(parts.netloc), _glob(parts.path)
+    path_part = _glob(parts.path)
     host = parts.hostname or ""
     host = _glob(f"[{host}]" if ":" in host else host)
+    netlocs = [_any_case(host) + (f":{parts.port}" if parts.port else "")]
+    if parts.port is None:
+        netlocs.append(f"{netlocs[0]}:{443 if parts.scheme == 'https' else 80}")
     globs = [
-        f"{parts.scheme}://{netloc}{path_part}/**",
-        f"{parts.scheme}://*@{netloc}{path_part}/**",
+        glob
+        for netloc in netlocs
+        for glob in (
+            f"{parts.scheme}://{netloc}{path_part}/**",
+            f"{parts.scheme}://*@{netloc}{path_part}/**",
+        )
+    ]
+    globs += [
         f"git@{host}:*",
         f"git@{host}:*/**",
         f"ssh://git@{host}/**",
@@ -615,10 +910,14 @@ def author_files(folder: Path, servers: Sequence[state.GitServer]) -> dict[str, 
             f"\temail = {_quoted(server.author_email or '')}\n"
         )
         temp = path.with_name(f".{path.name}.{uuid.uuid4().hex[:8]}")
-        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as file:
-            file.write(text)
-        os.replace(temp, path)
+        try:
+            fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as file:
+                file.write(text)
+            os.replace(temp, path)
+        finally:  # a failed write leaves no file of its own; why it failed goes on
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(temp)
         found[server.id] = path
     return found
 
@@ -631,11 +930,42 @@ def has_token(server: state.GitServer) -> bool:
     return os.path.lexists(token_folder(server.id) / TOKEN)
 
 
+LOCK = "git-servers.lock"  # under LADO_HOME; it stays, as update.lock does
+LOCK_WAIT = 10  # seconds a save or a removal waits for another one
+LOCKED = "another change of the git servers is running; try again"
+
+
+@contextlib.contextmanager
+def _locked() -> Iterator[None]:
+    """One save, removal or login write of a git server at a time in LADO_HOME, the
+    command's and the page's alike: an exclusive flock on LOCK, tried every 50 ms for
+    LOCK_WAIT seconds, then Refused. No server is asked while it is held."""
+    import fcntl
+
+    with open(state.home() / LOCK, "a+") as lock:
+        deadline = time.monotonic() + LOCK_WAIT
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise Refused(LOCKED) from None
+                time.sleep(0.05)
+        yield  # closing the file lets the lock go
+
+
 def save(at: Address, checked: Checked, token: str) -> tuple[state.GitServer, bool]:
     """Save the server at `at` as `checked` with `token`, or replace the one of its host,
-    keeping its id: the server as saved, and whether one was replaced. A new server's token
-    file comes first and goes again when its row fails; a replaced one's row comes first,
-    then its token file is replaced whole, so it holds the old token or the new one."""
+    keeping its id, under the lock: the server as saved, and whether one was replaced. A
+    new server's token file comes first and goes again when its row fails; a replaced one's
+    row comes first, then its token file is replaced whole, so it holds the old token or the
+    new one."""
+    with _locked():
+        return _save(at, checked, token)
+
+
+def _save(at: Address, checked: Checked, token: str) -> tuple[state.GitServer, bool]:
     known = state.git_server_by_host(at.key)
     if known is not None:
         try:
@@ -665,26 +995,34 @@ def save(at: Address, checked: Checked, token: str) -> tuple[state.GitServer, bo
     return saved, False
 
 
-def remove(at: Address) -> state.GitServer:
-    """Remove the server of the host of `at` and its token folder: the server removed.
-    Refused for no such server, or a folder the disk refuses to remove (the row then gone)."""
+class Removed(NamedTuple):
+    """A server removed, and why a folder of it stayed (None when none did)."""
+
+    server: state.GitServer
+    warning: str | None
+
+
+def remove(at: Address) -> Removed:
+    """Remove the server of the host of `at` and its token folder. Refused for no such
+    server; a folder the disk refuses to remove is a warning, the server being gone."""
     return remove_host(at.key, at.root)
 
 
-def remove_host(key: str, named: str | None = None) -> state.GitServer:
-    """Remove the server of the host `key` (`Address.key`) and its token folder, as `remove`
-    does; `named` the address the human gave, for the refusal (None: the key)."""
-    known = state.git_server_by_host(key)
-    if known is None or not state.remove_git_server(known.id):
-        raise _not_saved(named or key)
-    try:
-        _remove_token(known.id)
-    except OSError as exc:
-        raise Refused(
-            f"removed git server {known.address}, but not its folder {token_folder(known.id)} "
-            f"({exc.strerror or type(exc).__name__})"
-        ) from None
-    return known
+def remove_host(key: str, named: str | None = None) -> Removed:
+    """Remove the server of the host `key` (`Address.key`) and its token folder under the
+    lock, as `remove` does; `named` the address the human gave, for the refusal (None: the
+    key). The row goes first: a token folder left holds a token no row names."""
+    with _locked():
+        known = state.git_server_by_host(key)
+        if known is None or not state.remove_git_server(known.id):
+            raise _not_saved(named or key)
+        try:
+            _remove_token(known.id, last=not state.git_servers())
+        except Refused as exc:  # a link on the way
+            return Removed(known, str(exc))
+        except _Left as exc:
+            return Removed(known, f"could not remove {exc.path}: {exc.why}")
+    return Removed(known, None)
 
 
 def add(
@@ -735,21 +1073,41 @@ def _write_token(id: str, token: str) -> None:
         ) from None
 
 
-def _remove_token(id: str) -> None:
+class _Left(OSError):
+    """A folder or file of the tokens the disk refused to remove: its path and why."""
+
+    def __init__(self, path: Path, exc: OSError):
+        super().__init__(exc.errno, exc.strerror)
+        self.path = path
+        self.why = (exc.strerror or type(exc).__name__).lower()
+
+
+def _remove_token(id: str, last: bool = False) -> None:
     """Remove the token file of the server `id` and its folder, then git-servers/ itself
-    once it is empty: no server's folder is left in it; OSError (Refused for a link) when
-    the disk refuses it. A server's folder made in it at the same moment keeps it."""
+    once it is empty: no server's folder is left in it; _Left (Refused for a link) when the
+    disk refuses it, and for a git-servers/ holding something else when `last` (no server
+    is left). Otherwise a server's folder made in it at the same moment keeps it."""
+    folder = token_folder(id)
     try:
-        project_secrets.remove_at((TOKENS, id), token_folder(id), TOKEN)
+        try:
+            project_secrets.remove_at((TOKENS, id), folder, TOKEN)
+        except OSError as exc:
+            raise _Left(folder / TOKEN, exc) from None
         with project_secrets.open_chain((TOKENS,), make=False) as fd:
             if fd is not None:
-                with contextlib.suppress(FileNotFoundError):
+                try:
                     os.rmdir(id, dir_fd=fd)
+                except FileNotFoundError:
+                    pass
+                except OSError as exc:
+                    raise _Left(folder, exc) from None
         with project_secrets.open_chain((), make=False) as fd:
             try:
                 os.rmdir(TOKENS, dir_fd=fd)
             except OSError as exc:
-                if exc.errno not in (errno.ENOENT, errno.ENOTEMPTY, errno.EEXIST):
-                    raise
+                if exc.errno == errno.ENOENT:
+                    return
+                if exc.errno not in (errno.ENOTEMPTY, errno.EEXIST) or last:
+                    raise _Left(folder.parent, exc) from None
     except project_secrets.LinkRefused as exc:
         raise _link(exc.path) from None

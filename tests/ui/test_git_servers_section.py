@@ -1,10 +1,10 @@
-"""Settings → Git servers in a browser (openspec change git-servers-page): a real `lado server`
-and the fake git APIs of tests/fake_git_api.py in the test's process, with no network:
+"""Settings → Git servers in a browser (openspec capability git-servers-page): a real `lado
+server` and the fake git APIs of tests/fake_git_api.py in the test's process, with no network:
 gitlab.com is a fake reached through a local proxy (HTTPS_PROXY) with a certificate of a test
-CA the server trusts (SSL_CERT_FILE). Add gitlab.com with a wrong token then the right one, a
-server of the human's own, one that does not answer with its kind chosen, then remove one;
-the list is the one `lado git-server list` prints, and the token is in no answer of the API,
-not in the page after the save, in no log of the server and in no file but its own."""
+CA the server trusts (SSL_CERT_FILE). Add's states, Check's outcomes, Replace token, the
+commit author with Undo and Remove server, the focus after each action and one result line at
+a time; the token is in no answer of the API, not in the page, in no log of the server and in
+no file but its own; at 1440, 768 and 390 the page scrolls no sideways."""
 
 import re
 import socket
@@ -21,7 +21,7 @@ pytestmark = pytest.mark.ui
 
 TOKEN = "glpat-CANARY-ui-5b1d"
 WRONG = "glpat-WRONG-ui-77aa"
-RESTART = "Agents started from now on reach it; restart running agents to give it to them."
+SLOW = 12_000  # ms: a server that does not answer takes the server's 5 s
 
 
 def closed_port() -> int:
@@ -51,11 +51,18 @@ def gitlab_com(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def own():
-    """A GitHub Enterprise of the human's own over plain http on 127.0.0.1."""
-    server = fake.Server("github", token=TOKEN)
+def lab(monkeypatch):
+    """A GitLab of the human's own over plain http on 127.0.0.1 whose answers the test
+    changes as it goes (the profile `ui-lab`, read at each request): at first all rights."""
+    monkeypatch.setitem(fake.PROFILES, "ui-lab", fake.PROFILES["gitlab-full"])
+    server = fake.Server("ui-lab", token=TOKEN)
     yield server
     server.close()
+
+
+def answers_as(monkeypatch, profile: str | dict) -> None:
+    found = fake.PROFILES[profile] if isinstance(profile, str) else profile
+    monkeypatch.setitem(fake.PROFILES, "ui-lab", found)
 
 
 def section(page: Page):
@@ -65,17 +72,34 @@ def section(page: Page):
 def open_page(page: Page, server) -> None:
     log_in(page, server)
     page.goto(f"{server['url']}/settings/git-servers")
-    expect(section(page).get_by_role("heading", name=re.compile("^Servers"))).to_be_visible()
+    expect(section(page).get_by_role("button", name="About Servers")).to_be_visible()
 
 
 def form_add(page: Page):
-    return section(page).get_by_role(
-        "button", name=re.compile("^(Add server|Add without a check)$")
+    return (
+        section(page)
+        .locator(".mx-form")
+        .get_by_role("button", name=re.compile("^(Add server|Add without a check)$"))
     )
 
 
 def plus_add(page: Page):
     return section(page).locator(".mx-add")
+
+
+def row(page: Page, address: str):
+    return section(page).locator(
+        "li.mx-src", has=page.get_by_role("button", name=address, exact=True)
+    )
+
+
+def head(page: Page, address: str):
+    """A server's head: the button named by its address alone."""
+    return section(page).get_by_role("button", name=address, exact=True)
+
+
+def results(page: Page):
+    return section(page).locator(".gx-result, .mx-done")
 
 
 def listed(capsys) -> list[list[str]]:
@@ -84,222 +108,420 @@ def listed(capsys) -> list[list[str]]:
     return [line.split() for line in capsys.readouterr().out.splitlines()[1:]]
 
 
-def test_add_three_servers_and_remove_one(
-    browser: Browser, gitlab_com, own, server, tmp_path, lado_home, capsys, shot
-):
-    context = browser.new_context(viewport={"width": 1440, "height": 900})
-    answers: list[tuple[str, str]] = []  # each answer of the git servers' API the page got
+def no_sideways_scroll(page: Page) -> None:
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+
+
+def keeping(page: Page) -> list[tuple[str, str]]:
+    """Each answer of the git servers' API the page gets, kept."""
+    answers: list[tuple[str, str]] = []
 
     def keep(route: Route) -> None:
         answer = route.fetch()
         answers.append((route.request.url, answer.text()))
         route.fulfill(response=answer)
 
+    page.route(re.compile(r"/api/git-servers"), keep)
+    return answers
+
+
+def token_nowhere(page: Page, answers, tmp_path, lado_home) -> None:
+    for url, text in answers:
+        assert TOKEN not in text and WRONG not in text, url
+    assert TOKEN not in page.content() and WRONG not in page.content()
+    for log in (tmp_path / "server.out", lado_home / "server.log"):
+        if log.exists():
+            text = log.read_text(errors="replace")
+            assert TOKEN not in text and WRONG not in text, log
+    held = sorted(
+        str(p.relative_to(lado_home))
+        for p in lado_home.rglob("*")
+        if p.is_file() and TOKEN.encode() in p.read_bytes()
+    )
+    assert held == sorted(f"git-servers/{s.id}/token" for s in state.git_servers())
+
+
+def test_add_servers_in_each_state(
+    browser: Browser, gitlab_com, monkeypatch, server, tmp_path, lado_home, capsys, shot
+):
+    # A GitLab of the human's own whose token lacks the push right, over plain http.
+    monkeypatch.setitem(fake.PROFILES, "ui-read", fake.PROFILES["gitlab-read"])
+    own = fake.Server("ui-read", token=TOKEN)
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
     try:
         page = context.new_page()
-        page.route(re.compile(r"/api/git-servers"), keep)
+        answers = keeping(page)
         open_page(page, server)
         git = section(page)
-        expect(git.get_by_role("heading", name="Servers", exact=True)).to_be_visible()
+        expect(git.get_by_text("No git servers yet.")).to_be_visible()
         shot(page, "empty")
 
-        # gitlab.com, filled in: its hint and token page, asked with no token.
+        # gitlab.com, filled in: GitLab answers, its token page, asked with no token.
         plus_add(page).click()
         address = git.get_by_role("textbox", name="Address")
+        token = git.get_by_role("textbox", name="Token")
         expect(address).to_have_value("https://gitlab.com")
-        expect(git.get_by_text("Looks like GitLab; the token tells for sure.")).to_be_visible()
-        link = git.get_by_role(
-            "link", name="https://gitlab.com/-/user_settings/personal_access_tokens"
+        expect(address).to_be_focused()
+        expect(git.locator(".mx-found")).to_have_text("GitLab answers.")
+        link = git.get_by_role("link", name="its token page")
+        expect(link).to_have_attribute(
+            "href", "https://gitlab.com/-/user_settings/personal_access_tokens"
         )
-        expect(link).to_be_visible()
-        expect(git.get_by_role("radio")).to_have_count(0)  # no kind to choose
-        expect(form_add(page)).to_have_text("Add server")
+        expect(link.locator("..")).to_contain_text("read_repository, write_repository, read_api")
+        expect(git.get_by_role("radio")).to_have_count(0)
         assert gitlab_com.requests and all(
             "PRIVATE-TOKEN" not in r.headers and "Authorization" not in r.headers
             for r in gitlab_com.requests
         )
-        shot(page, "gitlab-com")
-        token = git.get_by_role("textbox", name="Token")
+        shot(page, "answered")
+
+        # A wrong token: under Token, kept, Add off until edited.
         token.fill(WRONG)
         form_add(page).click()
-        refused = git.get_by_text("GitLab at https://gitlab.com refuses the token")
+        refused = git.get_by_text("GitLab refused this token: copy it whole or make a new one.")
         expect(refused).to_be_visible()
-        expect(
-            git.get_by_text(re.compile("make a token at https://gitlab.com/-/user_settings/"))
-        ).to_be_visible()
         expect(form_add(page)).to_be_disabled()
         assert state.git_servers() == []
-        shot(page, "wrong-token")
+        shot(page, "refused")
         token.fill(TOKEN)
         form_add(page).click()
-        expect(
-            git.get_by_text(
-                f"Saved git server https://gitlab.com: GitLab, signed in as {fake.LOGIN}."
-            )
-        ).to_be_visible()
-        expect(git.get_by_text(RESTART)).to_be_visible()
+
+        # Done: the new row stands open, the focus on its head, its line at the panel's top.
+        com = row(page, "https://gitlab.com")
+        expect(com.locator(".gx-top")).to_have_text(f"Saved: GitLab, signed in as {fake.LOGIN}.")
+        expect(head(page, "https://gitlab.com")).to_be_focused()
+        expect(head(page, "https://gitlab.com")).to_have_attribute("aria-expanded", "true")
+        expect(address).to_have_count(0)
         assert TOKEN not in page.content()
-        shot(page, "gitlab-com-saved")
+        shot(page, "saved")
 
-        # A server of the human's own: Address starts empty now.
+        # Already saved: Replace its token, the focus in New token; Cancel.
         plus_add(page).click()
-        expect(address).to_have_value("")
-        address.fill(own.url)
-        expect(git.get_by_text("Looks like GitHub; the token tells for sure.")).to_be_visible()
-        expect(git.get_by_text(re.compile("over plain http://, unencrypted"))).to_be_visible()
-        token.fill(TOKEN)
-        form_add(page).click()
+        expect(results(page)).to_have_count(0)  # the next action took the last line
+        address.fill("gitlab.com")
+        expect(git.get_by_text("Already saved.")).to_be_visible()
+        expect(form_add(page)).to_be_disabled()
+        shot(page, "already-saved")
+        git.get_by_role("button", name="Replace its token").click()
+        expect(address).to_have_count(0)
+        expect(git.get_by_role("textbox", name="New token")).to_be_focused()
+        git.get_by_role("textbox", name="New token").press("Escape")
         expect(
-            git.get_by_text(f"Saved git server {own.url}: GitHub, signed in as {fake.LOGIN}.")
-        ).to_be_visible()
+            git.get_by_role("button", name="Replace the token of https://gitlab.com")
+        ).to_be_focused()
 
-        # One that does not answer: its kind chosen by hand.
-        silent = f"http://localhost:{closed_port()}"
+        # github.com: refused under Address.
         plus_add(page).click()
+        address.fill("github.com")
+        expect(
+            git.get_by_text("github.com uses the GitHub CLI's login: it is not added here.")
+        ).to_be_visible()
+        expect(form_add(page)).to_be_disabled()
+        shot(page, "github-com")
+
+        # No answer: the kind chosen by hand, saved without a check.
+        silent = f"http://localhost:{closed_port()}"
         address.fill(silent)
         expect(
-            git.get_by_text(re.compile("does not answer: the connection is refused"))
+            git.get_by_text(
+                "⚠ No answer: the connection is refused. Choose its kind to save it without a "
+                "check."
+            )
         ).to_be_visible()
         expect(form_add(page)).to_have_text("Add without a check")
         token.fill(TOKEN)
         expect(form_add(page)).to_be_disabled()
         git.locator(".segments label", has_text="GitLab").click()
-        expect(
-            git.get_by_role("link", name=f"{silent}/-/user_settings/personal_access_tokens")
-        ).to_be_visible()
-        shot(page, "kind-chosen")
+        shot(page, "kind")
         form_add(page).click()
+        expect(row(page, silent).locator(".gx-top")).to_have_text(
+            "Saved without a check as GitLab."
+        )
+        expect(row(page, silent).locator(".gx-val").first).to_have_text("⚠ Not checked")
+
+        # Plain http, a token without the push right: saved, with the warning.
+        plus_add(page).click()
+        address.fill(own.url)
+        expect(git.get_by_text("the token travels unencrypted.", exact=False)).to_be_visible()
+        expect(git.get_by_role("button", name="About plain http")).to_be_visible()
+        token.fill(TOKEN)
+        form_add(page).click()
+        top = row(page, own.url).locator(".gx-top")
+        expect(top).to_contain_text(
+            "⚠ The token lacks write_repository: agents can clone but not push."
+        )
+        expect(top.get_by_role("button", name=f"Replace the token of {own.url}")).to_be_visible()
+        expect(row(page, own.url).get_by_text("plain http", exact=True)).to_be_visible()
+        expect(results(page)).to_have_count(1)
+        shot(page, "missing-scope")
+
+        # The list is the command's.
+        assert sorted(r[0] for r in listed(capsys)) == sorted(
+            ["https://gitlab.com", silent, own.url]
+        )
+        token_nowhere(page, answers, tmp_path, lado_home)
+    finally:
+        context.close()
+        own.close()
+
+
+def test_check_a_saved_server_in_each_outcome(
+    browser: Browser, lab, monkeypatch, server, tmp_path, lado_home, shot
+):
+    at = git_servers.address(lab.url)
+    git_servers.save(at, git_servers.Checked(git_kinds.by_name("gitlab"), fake.LOGIN), TOKEN)
+    certified = fake.Server("gitlab", token=TOKEN, certificate=fake.make_certificate(tmp_path))
+    cert_at = git_servers.address(certified.url.replace("127.0.0.1", "localhost"))
+    git_servers.save(cert_at, git_servers.Checked(git_kinds.by_name("gitlab"), "b.sample"), TOKEN)
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
+    try:
+        page = context.new_page()
+        answers = keeping(page)
+        open_page(page, server)
+        git = section(page)
+        head(page, lab.url).click()
+        panel = row(page, lab.url)
+        check = panel.get_by_role("button", name=f"Check {lab.url}", exact=True)
+        line = panel.locator(".gx-result")
+
+        def outcome(profile, text: str, closed: str | None, timeout: float = 5_000) -> None:
+            answers_as(monkeypatch, profile)
+            check.click()
+            expect(line).to_have_text(text, timeout=timeout)
+            expect(check).to_be_focused()
+            if closed:  # the closed row's second line follows the check
+                head(page, lab.url).click()
+                expect(panel.locator(".mx-l2").first).to_have_text(closed)
+                head(page, lab.url).click()
+
+        outcome("gitlab-full", f"Works: signed in as {fake.LOGIN}, may clone and push.", None)
+        expect(line).to_have_attribute("role", "status")
+        shot(page, "works")
+        outcome(
+            "gitlab-refuses",
+            "GitLab refused the token: it expired or was revoked.Replace token",
+            "✕ check failed: token refused",
+        )
+        expect(line).to_have_attribute("role", "alert")
+        shot(page, "refused")
+        outcome(
+            "gitlab-read",
+            "The token lacks write_repository. Replace token",
+            "✕ check failed: a scope missing",
+        )
+        line.get_by_role("button", name="About the missing scope").click()
         expect(
-            git.get_by_text(
-                f"Saved git server {silent} as GitLab without a check (it does not answer: the "
-                "connection is refused)."
-            )
+            git.get_by_text(re.compile("^Agents can clone but not push with it"))
         ).to_be_visible()
-
-        # Each added where its form was; read anew, the list is the command's, by host.
-        rows = git.locator(".mx-head")
-        expect(rows).to_have_text(
-            [
-                f"https://gitlab.comGitLabsigned in as {fake.LOGIN}",
-                f"{own.url}GitHubsigned in as {fake.LOGIN}",
-                f"{silent}GitLab⚠ not checked: saved without a check",
-            ]
+        shot(page, "missing-scope")
+        outcome(
+            "gitlab",
+            f"Works: signed in as {fake.LOGIN}; the token's rights are not checked.",
+            f"signed in as {fake.LOGIN}",
         )
-        assert listed(capsys) == [
-            [own.url, "GitHub", fake.LOGIN, "yes", "-"],
-            ["https://gitlab.com", "GitLab", fake.LOGIN, "yes", "-"],
-            [silent, "GitLab", "not", "checked", "yes", "-"],
-        ]
-        page.reload()
-        expect(rows).to_have_text(
-            [
-                f"{own.url}GitHubsigned in as {fake.LOGIN}",
-                f"https://gitlab.comGitLabsigned in as {fake.LOGIN}",
-                f"{silent}GitLab⚠ not checked: saved without a check",
-            ]
+        outcome(
+            {fake.GITLAB: fake.Answer(302, "moved", (("Location", "https://sso.example/login"),))},
+            "It redirects to https://sso.example/login: add that address instead.",
+            "✕ check failed: redirect",
         )
-        shot(page, "three")
-
-        # Remove asks first.
-        removed = state.git_server_by_host(own.url.removeprefix("http://"))
-        git.get_by_role("button", name=f"Remove {own.url}").click()
-        ask = git.get_by_role("alertdialog")
-        expect(ask).to_contain_text(f"Remove {own.url}?")
-        expect(ask.get_by_role("button", name="Cancel")).to_be_focused()
-        shot(page, "remove-asks")
-        ask.get_by_role("button", name="Remove server").click()
-        expect(git.get_by_text(f"Removed {own.url}.")).to_be_visible()
-        expect(plus_add(page)).to_be_focused()
-        assert not (lado_home / "git-servers" / removed.id).exists()
-        assert [row[0] for row in listed(capsys)] == ["https://gitlab.com", silent]
-        shot(page, "removed")
-
-        # The token: in no answer, the page, a log, or a file but the servers' own.
-        posted = [url for url, _ in answers if url.endswith("/api/git-servers")]
-        assert len(posted) >= 5  # the list read, the four Adds
-        for url, text in answers:
-            assert TOKEN not in text and WRONG not in text, url
-        assert TOKEN not in page.content()
-        for log in (tmp_path / "server.out", lado_home / "server.log"):
-            if log.exists():
-                text = log.read_text(errors="replace")
-                assert TOKEN not in text and WRONG not in text, log
-        held = sorted(
-            str(p.relative_to(lado_home))
-            for p in lado_home.rglob("*")
-            if p.is_file() and TOKEN.encode() in p.read_bytes()
+        outcome(
+            "github",
+            "It answers as GitHub, not GitLab: remove it and add it again.",
+            "✕ check failed: another kind",
         )
-        assert held == sorted(f"git-servers/{s.id}/token" for s in state.git_servers())
+        outcome("neither", "It answers as neither GitHub nor GitLab.", None)
+        outcome("hang", "⚠ No answer in 5 seconds. Check again", "⚠ check: no answer", timeout=SLOW)
+        line.get_by_role("button", name="About no answer").click()
+        expect(git.get_by_text(re.compile("^Check that LADO's computer reaches"))).to_be_visible()
+        shot(page, "no-answer")
+        answers_as(monkeypatch, "gitlab-full")
+        line.get_by_role("button", name=f"Check {lab.url} again").click()
+        expect(line).to_have_text(f"Works: signed in as {fake.LOGIN}, may clone and push.")
 
-        page.set_viewport_size({"width": 390, "height": 844})
-        # The page stands alone on a phone: measured once it does.
+        # The certificate this machine does not trust: its tip and Check again.
+        cert_head = head(page, cert_at.root)
+        cert_head.click()
+        row(page, cert_at.root).get_by_role("button", name=f"Check {cert_at.root}").click()
+        cert_line = row(page, cert_at.root).locator(".gx-result")
+        expect(cert_line).to_have_text("The server's certificate is not trusted. Check again")
+        expect(results(page)).to_have_count(1)  # one result line on the page
+        cert_line.get_by_role("button", name="About the certificate").click()
+        expect(git.get_by_text(re.compile("^Ask your IT department"))).to_be_visible()
+        shot(page, "certificate")
+        token_nowhere(page, answers, tmp_path, lado_home)
+    finally:
+        context.close()
+        certified.close()
+
+
+def test_replace_a_token(browser: Browser, lab, monkeypatch, server, tmp_path, lado_home, shot):
+    at = git_servers.address(lab.url)
+    git_servers.save(at, git_servers.Checked(git_kinds.by_name("gitlab"), "old.login"), TOKEN)
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
+    try:
+        page = context.new_page()
+        answers = keeping(page)
+        open_page(page, server)
+        head(page, lab.url).click()
+        panel = row(page, lab.url)
+        opener = panel.get_by_role("button", name=f"Replace the token of {lab.url}")
+        new = panel.get_by_role("textbox", name="New token")
+
+        def replace(value: str) -> None:
+            opener.click()
+            expect(new).to_be_focused()
+            new.fill(value)
+            panel.get_by_role("button", name="Save token").click()
+
+        # Refused: under the field, kept.
+        replace(WRONG)
         expect(
-            page.get_by_role("link", name="Settings", exact=True).filter(has_text="‹")
+            panel.get_by_text("GitLab refused this token: copy it whole or make a new one.")
         ).to_be_visible()
-        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
-        shot(page, "phone")
+        expect(new).to_have_value(WRONG)
+        expect(panel.get_by_role("button", name="Save token")).to_be_disabled()
+        shot(page, "refused")
+        panel.get_by_role("button", name="Cancel").click()
+        expect(opener).to_be_focused()
+
+        # Another user than before.
+        replace(TOKEN)
+        line = panel.locator(".gx-result")
+        expect(line).to_have_text(f"Token replaced: signed in as {fake.LOGIN}.")
+        expect(panel.get_by_text("⚠ Before, it was old.login.", exact=False)).to_be_visible()
+        expect(opener).to_be_focused()
+        expect(new).to_have_count(0)
+        shot(page, "other-user")
+
+        # No answer: save it without a check, as GitLab.
+        answers_as(monkeypatch, "hang")
+        replace(TOKEN)
+        expect(
+            panel.get_by_text("⚠ No answer in 5 seconds: save it without a check, as GitLab.")
+        ).to_be_visible(timeout=SLOW)
+        assert state.git_servers()[0].login == fake.LOGIN  # nothing saved yet
+        shot(page, "no-answer")
+        panel.get_by_role("button", name="Save without a check").click()
+        expect(line).to_have_text("Saved without a check as GitLab.", timeout=SLOW)
+        assert state.git_servers()[0].login is None
+        head(page, lab.url).click()
+        expect(panel.locator(".mx-l2").first).to_have_text("⚠ not checked")
+        token_nowhere(page, answers, tmp_path, lado_home)
     finally:
         context.close()
 
 
-AUTHOR_RESTART = "Agents started from now on commit so; restart running agents to give it to them."
-
-
-def test_set_and_remove_a_commit_author(browser: Browser, server, lado_home, capsys, shot):
+def test_the_author_with_undo_and_remove_server(browser: Browser, server, lado_home, capsys, shot):
     corp = "https://gitlab.corp.example"
-    checked = git_servers.Checked(git_kinds.by_name("gitlab"), "ivan.petrov")
-    git_servers.save(git_servers.address(corp), checked, TOKEN)
+    other = "https://git.lab.example"
+    for address in (corp, other):
+        checked = git_servers.Checked(git_kinds.by_name("gitlab"), "ivan.petrov")
+        git_servers.save(git_servers.address(address), checked, TOKEN)
     context = browser.new_context(viewport={"width": 1440, "height": 900})
     try:
         page = context.new_page()
         open_page(page, server)
         git = section(page)
-        expect(git.get_by_text(re.compile("^commits as"))).to_have_count(0)
-        pencil = git.get_by_role("button", name=f"Commit author of {corp}")
-        pencil.click()
-        name = git.get_by_role("textbox", name="Name")
-        email = git.get_by_role("textbox", name="Email")
+        head(page, corp).click()
+        panel = row(page, corp)
+        expect(panel.get_by_text("Your own git author")).to_be_visible()
+        panel.get_by_role("button", name=f"Set the commit author of {corp}").click()
+        name = panel.get_by_role("textbox", name="Name")
+        email = panel.get_by_role("textbox", name="Email")
         expect(name).to_be_focused()
-        expect(git.get_by_role("button", name="Remove author")).to_have_count(0)
-        save = git.get_by_role("button", name="Save author")
-        expect(save).to_be_disabled()
         name.fill("Ivan Petrov")
         email.fill("ivan.petrov")
-        save.click()
-        under_email = git.locator(".field", has=page.get_by_role("textbox", name="Email"))
-        refused = under_email.get_by_role("alert")
-        expect(refused).to_contain_text("not an email address: name@host")
-        assert state.git_servers()[0].author_name is None
-        shot(page, "refused")
-
+        panel.get_by_role("button", name="Save author").click()
+        expect(
+            panel.locator(".field", has=page.get_by_role("textbox", name="Email")).get_by_role(
+                "alert"
+            )
+        ).to_contain_text("not an email address: name@host")
         email.fill("ivan.petrov@corp.example")
-        save.click()
-        line = f"Agents commit to {corp} as Ivan Petrov <ivan.petrov@corp.example>."
-        expect(git.get_by_text(line)).to_be_visible()
-        expect(git.get_by_text(AUTHOR_RESTART)).to_be_visible()
-        expect(name).to_have_count(0)
-        expect(git.get_by_text("commits as Ivan Petrov <ivan.petrov@corp.example>")).to_be_visible()
-        assert listed(capsys)[0][-3:] == ["Ivan", "Petrov", "<ivan.petrov@corp.example>"]
-        shot(page, "saved")
-        page.emulate_media(color_scheme="dark")
-        pencil.click()
-        expect(name).to_have_value("Ivan Petrov")
-        shot(page, "form-dark")
-        page.emulate_media(color_scheme="light")
-        page.set_viewport_size({"width": 390, "height": 844})
-        expect(
-            page.get_by_role("link", name="Settings", exact=True).filter(has_text="‹")
-        ).to_be_visible()
-        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
-        shot(page, "form-phone")
-        page.set_viewport_size({"width": 1440, "height": 900})
+        panel.get_by_role("button", name="Save author").click()
+        expect(panel.locator(".gx-result")).to_have_text("Author saved.")
+        edit = panel.get_by_role("button", name=f"Edit the commit author of {corp}")
+        expect(edit).to_be_focused()
+        expect(panel.locator(".gx-val b").last).to_have_text(
+            "Ivan Petrov <ivan.petrov@corp.example>"
+        )
+        assert listed(capsys)[1][-3:] == ["Ivan", "Petrov", "<ivan.petrov@corp.example>"]
+        shot(page, "author-saved")
 
-        git.get_by_role("button", name="Remove author").click()
-        expect(
-            git.get_by_text(f"Agents commit to {corp} with your own git author again.")
-        ).to_be_visible()
-        expect(git.get_by_text(re.compile("^commits as"))).to_have_count(0)
-        assert listed(capsys)[0][-1] == "-"
+        panel.get_by_role("button", name=f"Remove the commit author of {corp}").click()
+        expect(panel.locator(".gx-result")).to_contain_text("Author removed.")
+        undo = panel.get_by_role("button", name=f"Undo the removal of the commit author of {corp}")
+        expect(undo).to_be_focused()
+        assert listed(capsys)[1][-1] == "-"
+        shot(page, "author-removed")
+        undo.click()
+        expect(panel.locator(".gx-result")).to_have_text("Author saved.")
+        expect(edit).to_be_focused()
+        assert state.git_server_by_host("gitlab.corp.example").author_name == "Ivan Petrov"
+
+        # Remove server: asked in the foot, the focus on Cancel; done, + Add server.
+        removed = state.git_server_by_host("gitlab.corp.example")
+        panel.get_by_role("button", name=f"Remove {corp}").click()
+        ask = git.get_by_role("alertdialog")
+        expect(ask).to_contain_text(f"Remove {corp}?")
+        expect(ask).to_contain_text("Its token and commit author go too. This cannot be undone.")
+        expect(ask.get_by_role("button", name="Cancel")).to_be_focused()
+        shot(page, "remove-asks")
+        ask.get_by_role("button", name="Remove server").click()
+        expect(git.get_by_text(f"Removed {corp}.")).to_be_visible()
+        expect(plus_add(page)).to_be_focused()
+        assert not (lado_home / "git-servers" / removed.id).exists()
+        assert [r[0] for r in listed(capsys)] == [other]
         shot(page, "removed")
+    finally:
+        context.close()
+
+
+@pytest.mark.parametrize(("width", "height"), [(1440, 900), (768, 1024), (390, 844)])
+def test_the_page_at_each_width(browser: Browser, server, lado_home, shot, width, height):
+    corp = "https://gitlab.corp.example"
+    checked = git_servers.Checked(git_kinds.by_name("gitlab"), "a.sample")
+    saved = git_servers.save(git_servers.address(corp), checked, TOKEN)[0]
+    state.set_git_server_author(saved.id, "Sample Name", "sample.name@corp.example.com")
+    git_servers.save(
+        git_servers.address("https://ghe.example.com:8443"),
+        git_servers.Checked(git_kinds.by_name("github"), None),
+        TOKEN,
+    )
+    context = browser.new_context(viewport={"width": width, "height": height})
+    try:
+        page = context.new_page()
+        open_page(page, server)
+        git = section(page)
+        head(page, corp).click()
+        expect(row(page, corp).get_by_role("button", name=f"Check {corp}")).to_be_visible()
+        no_sideways_scroll(page)
+        shot(page, "page")
+        git.get_by_role("button", name="About Servers").click()
+        expect(git.get_by_text(re.compile("^Your GitLab, gitlab.com or GitHub"))).to_be_visible()
+        git.get_by_role("button", name="About Servers").press("Escape")
+
+        # Add: the Token tip opens above, leaving the token page link pressable, and a
+        # press on a tip never focuses its field.
+        plus_add(page).click()
+        address = git.get_by_role("textbox", name="Address")
+        address.fill(f"http://localhost:{closed_port()}")
+        git.locator(".segments label", has_text="GitLab").click()
+        link = git.get_by_role("link", name="its token page")
+        expect(link).to_be_visible()
+        tip = git.get_by_role("button", name="About Token")
+        tip.click()
+        expect(git.get_by_text(re.compile("^Only LADO reads it"))).to_be_visible()
+        expect(git.get_by_role("textbox", name="Token")).not_to_be_focused()
+        link.click(trial=True)  # visible, nothing over it
+        tip_box = git.locator(".info-pop").bounding_box()
+        link_box = link.bounding_box()
+        assert tip_box and link_box and tip_box["y"] + tip_box["height"] <= link_box["y"], (
+            tip_box,
+            link_box,
+        )
+        assert 8 <= tip_box["x"] and tip_box["x"] + tip_box["width"] <= width - 8, tip_box
+        no_sideways_scroll(page)
+        shot(page, "add-token-tip")
     finally:
         context.close()

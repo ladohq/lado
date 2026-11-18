@@ -1016,6 +1016,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/git-servers/{host}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Saved Git Server
+         * @description Check the saved server of `host` again with its saved token as `lado git-server
+         *     check` does; a passing check saves the login it saw. The token is in no answer.
+         */
+        post: operations["check_saved_git_server_api_git_servers__host__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/git-servers/{host}/author": {
         parameters: {
             query?: never;
@@ -1052,7 +1073,8 @@ export interface paths {
         post?: never;
         /**
          * Remove Git Server
-         * @description Remove the server of `host` and its token as `lado git-server remove` does.
+         * @description Remove the server of `host` and its token as `lado git-server remove` does; a
+         *     folder of it the disk keeps is a `warning`.
          */
         delete: operations["remove_git_server_api_git_servers__host__delete"];
         options?: never;
@@ -2418,6 +2440,23 @@ export interface components {
             recommendation: components["schemas"]["RecommendationInfo"] | null;
         };
         /**
+         * GitEntryRefused
+         * @description A refusal of Settings → Git servers' API; `choose_kind` for a server that gave no
+         *     HTTP answer, whose kind may be chosen to save it without a check.
+         */
+        GitEntryRefused: {
+            /** Message */
+            message: string;
+            /** Hint */
+            hint: string;
+            /** Field */
+            field: string;
+            /** Warnings */
+            warnings: string[];
+            /** Choose Kind */
+            choose_kind: boolean;
+        };
+        /**
          * GitKindInfo
          * @description A kind of git server: its token page under a server's root and what a token needs.
          */
@@ -2446,8 +2485,9 @@ export interface components {
         };
         /**
          * GitServerAdded
-         * @description A git server saved or replaced: as saved, the line that says so, and the warnings
-         *     (its token over plain http://).
+         * @description A git server saved or replaced: as saved, the line that says so, the warnings (its
+         *     token over plain http://), and, for a token that lacks a right agents need, the page's
+         *     `warning` and the rights it lacks (`missing_scopes`).
          */
         GitServerAdded: {
             server: components["schemas"]["GitServerInfo"];
@@ -2457,6 +2497,10 @@ export interface components {
             replaced: boolean;
             /** Warnings */
             warnings: string[];
+            /** Warning */
+            warning: string | null;
+            /** Missing Scopes */
+            missing_scopes: string[];
         };
         /**
          * GitServerAuthor
@@ -2496,11 +2540,11 @@ export interface components {
             scopes: string | null;
             /** Choose Kind */
             choose_kind: boolean;
-            unchecked: components["schemas"]["EntryRefused"] | null;
+            unchecked: components["schemas"]["GitEntryRefused"] | null;
             /** Saved */
             saved: boolean;
             /** Refusals */
-            refusals: components["schemas"]["EntryRefused"][];
+            refusals: components["schemas"]["GitEntryRefused"][];
             /** Warnings */
             warnings: string[];
         };
@@ -2508,6 +2552,37 @@ export interface components {
         GitServerCheckAsked: {
             /** Address */
             address: string;
+        };
+        /**
+         * GitServerChecked
+         * @description A saved git server checked again with its saved token (lado.git_servers.check):
+         *     `outcome` one of git_servers.OUTCOMES, its saved kind, the login seen (ok,
+         *     scopes_missing), the rights the token lacks, whether the server told them, whether it
+         *     had a login before, the page's line (`message`) and its info tip (`hint`, "" for none),
+         *     and the server as saved after it (a passing check saves its login; None when it was
+         *     removed meanwhile).
+         */
+        GitServerChecked: {
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "ok" | "token_refused" | "scopes_missing" | "no_answer" | "cert_untrusted" | "redirect" | "other_kind" | "unrecognised";
+            /** Kind */
+            kind: string;
+            /** Login */
+            login: string | null;
+            /** Missing Scopes */
+            missing_scopes: string[];
+            /** Rights Checked */
+            rights_checked: boolean;
+            /** Was Checked */
+            was_checked: boolean;
+            /** Message */
+            message: string;
+            /** Hint */
+            hint: string;
+            server: components["schemas"]["GitServerInfo"] | null;
         };
         /**
          * GitServerInfo
@@ -2532,6 +2607,19 @@ export interface components {
             author_name: string | null;
             /** Author Email */
             author_email: string | null;
+        };
+        /**
+         * GitServerRemoved
+         * @description The git servers left after a removal, and why a folder of the removed one stayed
+         *     (`could not remove <path>: <why>`; None when none did).
+         */
+        GitServerRemoved: {
+            /** Servers */
+            servers: components["schemas"]["GitServerInfo"][];
+            /** Kinds */
+            kinds: components["schemas"]["GitKindInfo"][];
+            /** Warning */
+            warning: string | null;
         };
         /**
          * GitServers
@@ -6592,7 +6680,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EntryRefused"];
+                    "application/json": components["schemas"]["GitEntryRefused"];
                 };
             };
             /** @description Validation Error */
@@ -6639,6 +6727,46 @@ export interface operations {
             };
         };
     };
+    check_saved_git_server_api_git_servers__host__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitServerChecked"];
+                };
+            };
+            /** @description no such server */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitEntryRefused"];
+                };
+            };
+            /** @description its token file is missing */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitEntryRefused"];
+                };
+            };
+        };
+    };
     set_git_server_author_api_git_servers__host__author_put: {
         parameters: {
             query?: never;
@@ -6669,7 +6797,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EntryRefused"];
+                    "application/json": components["schemas"]["GitEntryRefused"];
                 };
             };
             /** @description Validation Error */
@@ -6709,7 +6837,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EntryRefused"];
+                    "application/json": components["schemas"]["GitEntryRefused"];
                 };
             };
             /** @description Validation Error */
@@ -6740,7 +6868,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GitServers"];
+                    "application/json": components["schemas"]["GitServerRemoved"];
                 };
             };
             /** @description refused */
@@ -6749,7 +6877,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EntryRefused"];
+                    "application/json": components["schemas"]["GitEntryRefused"];
                 };
             };
             /** @description Validation Error */

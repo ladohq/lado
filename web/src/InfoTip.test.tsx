@@ -61,6 +61,39 @@ test("a press outside closes it; opening another closes the first", () => {
   expect(team.getAttribute("aria-expanded")).toBe("true");
 });
 
+test("it opens below its button, or above it with place=above", () => {
+  render(
+    <div>
+      <InfoTip about="Token" place="above">
+        Only LADO reads it.
+      </InfoTip>
+      <InfoTip about="Address">The address.</InfoTip>
+    </div>,
+  );
+  const token = screen.getByRole("button", { name: "About Token" });
+  token.getBoundingClientRect = () => new DOMRect(100, 300, 24, 24); // room above it
+  fireEvent.click(token);
+  expect(region(token).style.top).toBe("auto");
+  expect(region(token).style.bottom).not.toBe("");
+  const address = screen.getByRole("button", { name: "About Address" });
+  fireEvent.click(address);
+  expect(region(address).style.top).not.toBe("auto");
+  expect(region(address).style.bottom).toBe("");
+});
+
+test("an open tip moves with its button when the window's width changes", () => {
+  render(<InfoTip about="Address">The address.</InfoTip>);
+  const address = screen.getByRole("button", { name: "About Address" });
+  address.getBoundingClientRect = () => new DOMRect(300, 100, 24, 24);
+  fireEvent.click(address);
+  expect(region(address).style.left).toBe("300px");
+  address.getBoundingClientRect = () => new DOMRect(120, 140, 24, 24); // the layout reflowed
+  fireEvent(window, new Event("resize"));
+  expect(region(address).style.left).toBe("120px");
+  expect(region(address).style.top).toBe(`${140 + 24 + 6}px`);
+  expect(address.getAttribute("aria-expanded")).toBe("true");
+});
+
 test("hover opens nothing, and Tab away closes it", () => {
   const { task, team } = two();
   fireEvent.mouseEnter(task);

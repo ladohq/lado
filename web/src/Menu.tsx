@@ -33,20 +33,54 @@ export function placeBelow(
     : { position: "fixed", top, left: Math.max(MARGIN, Math.min(anchor.left, room)), right: "auto" };
 }
 
-// Where the menu or popover `floating` goes: fixed under `anchor`, so a scrolling box
-// around it (the session list, the session's page) does not cut it, and inside the window
-// (placeBelow). Placed again after each render, as what it shows may change its width.
+// Where a popover `width` wide goes 6px above `anchor` in a window `viewport` big, its
+// bottom there, from the anchor's left edge and kept inside the window as placeBelow keeps
+// it (an info tip that must leave what is under its button visible); one `height` high with
+// no room above, MARGIN from the window's top, goes below instead.
+export function placeAbove(
+  anchor: { left: number; right: number; top: number; bottom: number },
+  width: number,
+  viewport: { width: number; height: number },
+  height = 0,
+): CSSProperties {
+  // Its fields by name: a DOMRect's are getters, which a spread leaves out.
+  const box = { left: anchor.left, right: anchor.right, bottom: anchor.bottom };
+  if (anchor.top - 6 - height < MARGIN) return placeBelow(box, width, viewport.width);
+  const across = placeBelow({ ...box, bottom: 0 }, width, viewport.width);
+  return { ...across, top: "auto", bottom: viewport.height - anchor.top + 6 };
+}
+
+// Where the menu or popover `floating` goes: fixed under `anchor` (or over it, `above`), so
+// a scrolling box around it (the session list, the session's page) does not cut it, and
+// inside the window (placeBelow, placeAbove). Placed again after each render, as what it
+// shows may change its width, and when the window is resized, as its anchor moves then.
 export function useBelow(
   anchor: RefObject<HTMLElement | null>,
   floating: RefObject<HTMLElement | null>,
   open: boolean,
   end = false,
+  above = false,
 ): CSSProperties | undefined {
   const [style, setStyle] = useState<CSSProperties | undefined>(undefined);
+  const [, setResized] = useState(0);
+  useEffect(() => {
+    if (!open) return;
+    const again = () => setResized((count) => count + 1);
+    window.addEventListener("resize", again);
+    return () => window.removeEventListener("resize", again);
+  }, [open]);
   useLayoutEffect(() => {
     const box = anchor.current?.getBoundingClientRect();
     if (!open || !box) return;
-    const placed = placeBelow(box, floating.current?.offsetWidth ?? 0, window.innerWidth, end);
+    const width = floating.current?.offsetWidth ?? 0;
+    const placed = above
+      ? placeAbove(
+          box,
+          width,
+          { width: window.innerWidth, height: window.innerHeight },
+          floating.current?.offsetHeight ?? 0,
+        )
+      : placeBelow(box, width, window.innerWidth, end);
     setStyle((now) => (JSON.stringify(now) === JSON.stringify(placed) ? now : placed));
   });
   return style;

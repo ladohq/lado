@@ -793,8 +793,11 @@ or not: `<CLI>'s default model is cleared.`, or `<CLI> has no default model.`; a
 Enterprise server with the human's token, so that agents and LADO's own git reach it over
 https without a password (`git_servers.py`, lado.db's `git_servers`, schema 41; its commit
 author from schema 42). The address
-takes `https://` when it has none and keeps a path (`https://example.com/gitlab`); a user or
-password, a query, a fragment or another scheme is refused with exit 2 (`not a git server's
+takes `https://` when it has none, keeps a path (`https://example.com/gitlab`) and drops a
+trailing dot of the host (`gitlab.corp.ru.` is `https://gitlab.corp.ru`); a user or
+password, a query, a fragment, another scheme, a space, tab or control character, or a
+host name with a character other than a letter, a digit, `-`, `.` and `_` is refused with
+exit 2 (`not a git server's
 address: <why>`, never naming the address). `github.com` (and `www.`, `api.`) is refused
 before the token is asked: it is reached through gh's login (`GH_TOKEN` or `gh auth login`)
 as before. The token is asked without echo (`Token of the server (not shown): `) or read from
@@ -805,9 +808,19 @@ Then LADO asks each kind's API at once, one GET each, cut at 5 s and following n
 GitHub's `<address>/api/v3/user` with `Authorization: token`. One kind that answers with its
 user prints `GitLab, signed in as <login>` (`GitHub, …`), then `Saved git server <address>.`
 and `Agents started from now on reach it; restart running agents to give it to them.`, exit
-0. Refused, nothing saved, exit 1, with a hint: a token the server refuses (`GitLab at
+0. The token's rights are read too: GitLab's `<address>/api/v4/personal_access_tokens/self`
+(GitLab 15.5 on; a token needs `read_repository` and `write_repository`, or `api`, which
+holds both) and GitHub's `X-OAuth-Scopes` header of the user answer (a classic token needs
+`repo`; a fine-grained token tells none). A token that lacks one is saved all the same, with
+`lado: warning: the token lacks write_repository: agents can clone but not push` (`…neither
+clone nor push` without the read right) and the hint `replace it with a token with the scopes
+…: lado git-server add <address> --token`, exit 0; a server that tells no rights warns of
+nothing. Refused, nothing saved, exit 1, with a hint: a token the server refuses (`GitLab at
 <address> refuses the token` and the kind's token page with the scopes it needs; GitLab's 403
-`insufficient_scope` says the token lacks `read_api`), even with `--kind`; a redirect (`<address>
+`insufficient_scope` says the token lacks `read_api`), even with `--kind`; a token every
+kind's API refuses (a sign-in gateway in front of the server, or a token cut short: `<address>
+refuses the token on GitHub's and GitLab's API alike`, hint `check that the token was copied
+whole; a sign-in gateway in front of the server refuses any token too`), naming no kind; a redirect (`<address>
 sends to <location>; give the server's own address`, nothing sent there); two kinds
 answering (`… answers as GitHub and as GitLab; say which: --kind github or --kind gitlab`);
 a server that does not answer (`<host> does not answer: the name is not found` / `the
@@ -827,7 +840,30 @@ first: lado git-server remove <its address>`). The token is kept in `<LADO_HOME>
 the file 600, written by LADO's secrets writer as a model server's key), never in lado.db,
 an output, a log, a git config file or a worktree. A git older than 2.31 on this PATH is
 refused before the token is asked (`git <version> is older than 2.31, which git servers need;
-update git, or remove the servers (lado git-server remove <address>)`).
+update git, or remove the servers (lado git-server remove <address>)`). A save, a removal
+and a check's login write hold one lock, `<LADO_HOME>/git-servers.lock` (never while a server
+is asked); one waiting more than 10 s for another is refused (`another change of the git
+servers is running; try again`).
+
+`lado git-server check <address>` asks the saved server of the address's host and port again
+with its saved token, as `add` does (every kind at once, 5 s each, no redirect followed), judges
+the answers by its saved kind and reads the token's rights, storing nothing but the login of a
+check that passes (so a server saved with `--kind` is no longer `not checked`). It works:
+`Works: GitLab, signed in as <login>, may clone and push.` (`…; the token's rights are not
+checked.` when the server tells none), exit 0. Any other outcome is `lado: <line>` and its
+hint on stderr, exit 1: `GitLab refused the token: it expired or was revoked` (`replace it:
+lado git-server add <address> --token`); `the token lacks write_repository: agents can clone
+but not push` (as `add` warns); `GitLab takes the token, but it lacks the scope read_api` (a
+server saved with `--kind`; the same hint); `<host> does not answer: it did not answer in 5 s` (or `the
+name is not found`, `the connection is refused`; `check that this computer reaches it: the
+company VPN or proxy; with LADO in Docker, its container`); `the certificate of <address> is
+not trusted` (`ask your IT department to make this computer trust it (with LADO in Docker, its
+container), then check again`); `it redirects to <location>: add that address instead`; `it
+answers as GitLab, not GitHub: remove it and add it again` (`lado git-server remove <address>,
+then lado git-server add <address> --token`); `it answers as neither GitHub nor GitLab`. An
+address of no saved server (`<address> is no saved git server`, `see them: lado git-server
+list`) and a missing token file (`the token file of <address> is missing`, `replace it: …`)
+send no request, exit 1; an address it does not take exits 2.
 
 `lado git-server list` prints `ADDRESS KIND LOGIN TOKEN AUTHOR`, one line per server by host,
 asking none: `not checked` for one saved with `--kind` unchecked, `yes`/`no` for its token
@@ -852,6 +888,8 @@ than 2.36, which a commit author of a git server needs; update git`); clearing n
 remove <address>` finds the server by the host and port of the address, with or without its
 scheme, removes it and its token folder, and `<LADO_HOME>/git-servers/` itself with the last
 server: `Removed git server <address>.`; an address of no saved server is refused (exit 1).
+The server goes first: a folder the disk keeps (a file of the human's in `git-servers/`) is
+`lado: warning: could not remove <path>: <why>`, exit 0.
 `lado git-server` alone prints its help; the commands migrate lado.db as `lado ls` does.
 Settings → Git servers in the web UI does the same with the same rules (docs/design/ui.md,
 Git servers).
@@ -879,18 +917,20 @@ server, as git wrote the remote: `<address>/…`, the same with a user before th
 (`https://oauth2@host/…`), `git@<host>:…` and `ssh://git@<host>[:22]/…`, the forms whose
 token LADO gives. The agent's launch writes `<its config folder>/git-authors/<server id>.gitconfig`
 (only `[user]` `name` and `email`, mode 600, gone with the folder when the agent stops) and
-adds, after the server's entries, six `includeIf.hasconfig:remote.*.url:<pattern>.path`
-entries pointing to it. In such a repository the server's author wins over the repository's
+adds, after the server's entries, `includeIf.hasconfig:remote.*.url:<pattern>.path` entries
+pointing to it: eight for an address without a port, six for one with its own. In such a repository the server's author wins over the repository's
 own `user.name`/`user.email`; `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME` and
 `GIT_COMMITTER_EMAIL` in the agent's environment win over it, and the launch warns `<VAR> is
 set for <agent>: it wins over the commit author of the git servers`. A repository with no
 remote yet (`git init` before `git remote add`) commits with the human's own author; one with
 remotes on two servers with authors takes the author of the server later by host. A
-repository's remote whose host is written in another case (`GitLab.Corp.example`) or with the
-scheme's own port (`:443`) does not match. The condition needs git 2.36: while a server has a
-commit author, a launch whose agents' git is older is refused before anything starts (`git
-<version> is older than 2.36, which a commit author of a git server needs; update git, or clear
-the author (lado git-server author <address> --clear)`); without one, 2.31 is enough. A
+https remote whose host is written in another letter case (`GitLab.Corp.example`) or with the
+scheme's own port (`:443`, `:80`) matches too, as git gives such a remote the token; an ssh
+remote matches as written only, as git rewrites it to https only so. The condition needs git
+2.36: while a server has a commit author, a launch whose agents' git is older is refused
+before anything starts (`git <version> is older than 2.36, which a commit author of a git
+server needs; update git, or clear the author (lado git-server author <address> --clear)`,
+`the authors (…, …)` naming each server with one); without one, 2.31 is enough. A
 running agent keeps the author of its launch until it restarts.
 
 `lado ui` prints (or opens) the local link with the token, then, when the running server

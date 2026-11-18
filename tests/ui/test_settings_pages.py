@@ -91,7 +91,9 @@ def phone_targets(page: Page) -> None:
         f"[...document.querySelectorAll({TARGETS!r})]"
         ".filter((e) => e.getClientRects().length && e.offsetParent !== null)"
         ".map((e) => [e.textContent.trim() || e.getAttribute('aria-label'),"
-        " e.getBoundingClientRect().height])"
+        # An info button is drawn 24 px; its hit area is its ::after, `inset` beyond it.
+        " e.getBoundingClientRect().height + (e.classList.contains('info-tip')"
+        " ? -2 * (parseFloat(getComputedStyle(e, '::after').top) || 0) : 0)])"
         ".filter(([, h]) => h < 44)"
     )
     assert small == [], small

@@ -553,6 +553,18 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
+## Flaky: the Kilo smoke on macOS times out on `kilo models`
+
+Size: S. Why here: a pull request's CI goes red with no cause in its work, and a rerun is
+needed before the merge.
+
+`tests/smoke/test_smoke.py::test_the_session_s_model_reaches_the_cli[kilo]` on the
+`smoke macos-latest kilo` job failed with "`kilo models` timed out after 15 s" and passed on a
+rerun of the failed jobs (run 44075941136, PR #324, which touches no provider). Wanted: the
+cause of the slow `kilo models` on CI's macOS found, and the check's wait or the smoke made
+to stand it, so the job is green on its first run.
+Found: 2026-11-17, branch lado/lad-162/task-lad-293 (LAD-293).
+
 ## A LADO agent's `make test` is red on a temp-dir test: `LADO_LAUNCH_VARS` leaks in
 
 Size: S. Why here: every developer agent that runs the unit tests inside LADO sees one red

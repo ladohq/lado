@@ -3,6 +3,7 @@ answer is told, and what git and the human need of it."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -10,6 +11,9 @@ from lado import text as visible
 
 if TYPE_CHECKING:  # the HTTP client is loaded by a probe only, never by a hook
     from lado.model_servers import Answer
+
+
+REFUSES = "refuses the token"  # a kind's own 401: the token expired, was revoked or is wrong
 
 
 @dataclass(frozen=True)
@@ -22,9 +26,28 @@ class Kind:
     tool: str  # the server's own command-line tool
     token_path: str  # the page where the human makes a token, under the root
     scopes: str  # what a token needs, in words
+    # The rights agents need of a token, the one to clone first; `rights` reads them.
+    needs: tuple[str, ...] = ()
 
     def headers(self, token: str) -> dict[str, str]:
         raise NotImplementedError
+
+    def rights(
+        self, root: str, token: str, answer: Answer, ask: Callable[[str, dict[str, str]], Answer]
+    ) -> frozenset[str] | None:
+        """The rights (scopes) the server says `token` has, by `answer`, its answer to
+        `request` that gave a login, and as many more requests as the kind needs (`ask`: a
+        URL and headers, with no redirect followed); None when it tells none."""
+        return None
+
+    def granted(self, told: frozenset[str]) -> frozenset[str]:
+        """The rights `told` grants: a broader right holds narrower ones."""
+        return told
+
+    def missing(self, told: frozenset[str]) -> tuple[str, ...]:
+        """The rights of `needs` a token with the rights `told` lacks, in `needs`' order."""
+        granted = self.granted(told)
+        return tuple(need for need in self.needs if need not in granted)
 
     def request(self, root: str, token: str | None) -> tuple[str, dict[str, str]]:
         """The URL and the headers of the request that tells this kind, carrying `token`;
@@ -43,7 +66,7 @@ class Kind:
         """How the answer to `request` refuses the token, as the end of "<title> at <root>
         …"; None when it is no refusal of this kind's."""
         if answer.status == 401 and isinstance(answer.body, dict) and "message" in answer.body:
-            return "refuses the token"
+            return REFUSES
         return None
 
     def token_page(self, root: str) -> str:

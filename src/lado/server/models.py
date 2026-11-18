@@ -779,6 +779,13 @@ class EntryRefused(BaseModel):
     warnings: list[str]
 
 
+class GitEntryRefused(EntryRefused):
+    """A refusal of Settings → Git servers' API; `choose_kind` for a server that gave no
+    HTTP answer, whose kind may be chosen to save it without a check."""
+
+    choose_kind: bool
+
+
 class ServerCheck(BaseModel):
     """What the server form says before Add: the probe of its address (None when it was not
     probed or failed), the refusals Add would meet, each under its field, the warnings (a
@@ -821,6 +828,13 @@ class GitServers(BaseModel):
     kinds: list[GitKindInfo]
 
 
+class GitServerRemoved(GitServers):
+    """The git servers left after a removal, and why a folder of the removed one stayed
+    (`could not remove <path>: <why>`; None when none did)."""
+
+    warning: str | None
+
+
 class GitServerCheckAsked(BaseModel):
     address: str
 
@@ -836,9 +850,9 @@ class GitServerCheck(BaseModel):
     token_page: str | None
     scopes: str | None
     choose_kind: bool
-    unchecked: EntryRefused | None
+    unchecked: GitEntryRefused | None
     saved: bool
-    refusals: list[EntryRefused]
+    refusals: list[GitEntryRefused]
     warnings: list[str]
 
 
@@ -852,13 +866,44 @@ class GitServerAdd(BaseModel):
 
 
 class GitServerAdded(BaseModel):
-    """A git server saved or replaced: as saved, the line that says so, and the warnings
-    (its token over plain http://)."""
+    """A git server saved or replaced: as saved, the line that says so, the warnings (its
+    token over plain http://), and, for a token that lacks a right agents need, the page's
+    `warning` and the rights it lacks (`missing_scopes`)."""
 
     server: GitServerInfo
     line: str
     replaced: bool
     warnings: list[str]
+    warning: str | None
+    missing_scopes: list[str]
+
+
+class GitServerChecked(BaseModel):
+    """A saved git server checked again with its saved token (lado.git_servers.check):
+    `outcome` one of git_servers.OUTCOMES, its saved kind, the login seen (ok,
+    scopes_missing), the rights the token lacks, whether the server told them, whether it
+    had a login before, the page's line (`message`) and its info tip (`hint`, "" for none),
+    and the server as saved after it (a passing check saves its login; None when it was
+    removed meanwhile)."""
+
+    outcome: Literal[
+        "ok",
+        "token_refused",
+        "scopes_missing",
+        "no_answer",
+        "cert_untrusted",
+        "redirect",
+        "other_kind",
+        "unrecognised",
+    ]
+    kind: str
+    login: str | None
+    missing_scopes: list[str]
+    rights_checked: bool
+    was_checked: bool
+    message: str
+    hint: str
+    server: GitServerInfo | None
 
 
 class GitServerAuthor(BaseModel):

@@ -62,6 +62,13 @@ def _refused(address, token=TOKEN, kind=None) -> git_servers.Refused:
         ("https://git.test:8443", "https://git.test:8443", "git.test:8443"),
         ("http://git.lan:80", "http://git.lan", "git.lan"),
         ("http://git.lan:8080/", "http://git.lan:8080", "git.lan:8080"),
+        ("gitlab.corp.ru.", "https://gitlab.corp.ru", "gitlab.corp.ru"),
+        ("https://GitLab.corp.ru.:443/gitlab", "https://gitlab.corp.ru/gitlab", "gitlab.corp.ru"),
+        ("git.test..:8443", "https://git.test:8443", "git.test:8443"),
+        (" gitlab.corp.ru \n", "https://gitlab.corp.ru", "gitlab.corp.ru"),
+        ("git_lab.corp.ru", "https://git_lab.corp.ru", "git_lab.corp.ru"),
+        ("https://[::1]:8443", "https://[::1]:8443", "[::1]:8443"),
+        ("гитлаб.рф", "https://гитлаб.рф", "гитлаб.рф"),
     ],
 )
 def test_an_address_and_its_host(text, root, key):
@@ -79,7 +86,17 @@ def test_an_address_and_its_host(text, root, key):
         ("ssh://git@gitlab.corp.ru", "https:// or http://"),
         ("git@gitlab.corp.ru:team/app.git", "https:// or http://"),
         ("https://", "names no host"),
+        ("...", "names no host"),
+        ("https://.:8443", "names no host"),
         ("https://gitlab.corp.ru:99999", "port"),
+        ("not a url", "holds no space"),
+        ("https://git lab.corp.ru", "holds no space"),
+        ("gitlab.corp.ru/my group", "holds no space"),
+        ("gitlab.corp.ru\t/x", "holds no space"),
+        ("gitlab.corp.ru/\x00", "holds no space"),
+        ("gitlab,corp.ru", "only letters, digits"),
+        ("git%20lab.corp.ru", "only letters, digits"),
+        ("https://[::1", "port"),
     ],
 )
 def test_an_address_refused(text, why):
@@ -128,13 +145,15 @@ def test_github_is_told_with_its_login(serve):
 def test_both_kinds_are_asked_once_with_the_token_in_their_own_header(serve):
     server = serve("gitlab", token=TOKEN)
     git_servers.probe(git_servers.address(server.url), TOKEN)
-    assert server.paths() == [fake.GITHUB, fake.GITLAB]
+    # After GitLab's user, the token's own facts: its rights.
+    assert server.paths() == [fake.GITHUB, fake.GITLAB_TOKEN, fake.GITLAB]
     by_path = {r.path: r for r in server.requests}
     assert by_path[fake.GITLAB].headers["PRIVATE-TOKEN"] == TOKEN
     assert by_path[fake.GITHUB].headers["Authorization"] == f"token {TOKEN}"
     for request in server.requests:
         held = [name.lower() for name, value in request.headers.items() if TOKEN in value]
-        assert held == (["private-token"] if request.path == fake.GITLAB else ["authorization"])
+        gitlab = request.path in (fake.GITLAB, fake.GITLAB_TOKEN)
+        assert held == (["private-token"] if gitlab else ["authorization"])
         assert TOKEN not in request.path
 
 
@@ -165,8 +184,9 @@ def test_kind_against_the_answer_is_refused(serve):
 
 
 @pytest.mark.parametrize("kind", [None, "gitlab"])
-def test_a_refused_token_is_refused_with_its_page_even_with_kind(serve, kind):
-    server = serve("gitlab-refuses")
+@pytest.mark.parametrize("profile", ["gitlab-refuses", "gitlab-revoked", "gitlab-expired"])
+def test_a_refused_token_is_refused_with_its_page_even_with_kind(serve, kind, profile):
+    server = serve(profile)
     refused = _refused(server.url, kind=kind)
     assert str(refused) == f"GitLab at {server.url} refuses the token"
     assert refused.hint == (
@@ -180,6 +200,89 @@ def test_github_refusing_the_token(serve):
     refused = _refused(server.url)
     assert str(refused) == f"GitHub at {server.url} refuses the token"
     assert refused.hint == f"make a token at {server.url}/settings/tokens (scope repo)"
+
+
+NEITHER = "agents can neither clone nor push"
+CLONE_ONLY = "agents can clone but not push"
+
+
+@pytest.mark.parametrize(
+    ("profile", "kind", "missing", "checked", "lacks"),
+    [
+        ("gitlab-full", "gitlab", (), True, None),
+        ("gitlab-read", "gitlab", ("write_repository",), True, CLONE_ONLY),
+        ("gitlab-no-repo", "gitlab", ("read_repository", "write_repository"), True, NEITHER),
+        ("gitlab-api-only", "gitlab", (), True, None),  # api holds both
+        ("gitlab", "gitlab", (), False, None),  # before GitLab 15.5: 404
+        ("github-repo", "github", (), True, None),
+        ("github-no-repo", "github", ("repo",), True, NEITHER),
+        ("github-no-scopes", "github", ("repo",), True, NEITHER),
+        ("github", "github", (), False, None),  # a fine-grained token tells none
+    ],
+)
+def test_the_rights_of_a_token(serve, profile, kind, missing, checked, lacks):
+    server = serve(profile, token=TOKEN)
+    found = git_servers.probe(git_servers.address(server.url), TOKEN)
+    assert (found.kind.name, found.login) == (kind, fake.LOGIN)
+    assert (found.missing_scopes, found.rights_checked) == (missing, checked)
+    expected = f"the token lacks {', '.join(missing)}: {lacks}" if lacks else None
+    assert found.lacks() == expected
+    if kind == "gitlab":  # the token's own facts asked after its user, with the token
+        asked = [r for r in server.requests if r.path == fake.GITLAB_TOKEN]
+        assert [r.headers["PRIVATE-TOKEN"] for r in asked] == [TOKEN]
+
+
+def test_a_gitlab_whose_token_facts_refuse_tells_no_rights(serve):
+    server = serve("gitlab-full", token=TOKEN)
+    at = git_servers.address(server.url)
+    kind = git_kinds.by_name("gitlab")
+    user = model_servers.Answer(200, {"username": "a"})
+    for answer in (model_servers.Answer(401, {}), model_servers.Answer(why="unknown host")):
+        assert kind.rights(at.root, TOKEN, user, lambda url, headers, a=answer: a) is None
+
+
+def test_a_server_saved_without_a_check_has_no_rights(serve):
+    root = f"https://127.0.0.1:{closed_port()}"
+    checked = git_servers.probe(git_servers.address(root), TOKEN, "gitlab")
+    assert (checked.missing_scopes, checked.rights_checked, checked.lacks()) == ((), False, None)
+
+
+def test_add_saves_a_token_without_push_and_says_so(serve, lado_home):
+    server = serve("gitlab-read", token=TOKEN)
+    at = git_servers.address(server.url)
+    saved, replaced, checked = git_servers.add(at, lambda: TOKEN, None, lambda line: None)
+    assert (saved.login, replaced) == (fake.LOGIN, False)
+    assert checked.lacks() == f"the token lacks write_repository: {CLONE_ONLY}"
+    assert checked.replace_hint(at) == (
+        "replace it with a token with the scopes read_repository, write_repository, read_api: "
+        f"lado git-server add {server.url} --token"
+    )
+
+
+def test_a_gateway_refusing_every_kind_names_no_kind(serve):
+    server = serve("gateway")
+    refused = _refused(server.url)
+    assert str(refused) == f"{server.url} refuses the token on GitHub's and GitLab's API alike"
+    assert refused.hint == (
+        "check that the token was copied whole; a sign-in gateway in front of the server "
+        "refuses any token too"
+    )
+    assert (refused.field, refused.choose_kind) == ("token", False)
+    assert refused.page == (
+        "The server refused this token on both GitHub's and GitLab's API: copy it whole, or "
+        "ask whether a sign-in gateway stands in front of it."
+    )
+    assert refused.page_hint == ""
+    assert str(_refused(server.url, kind="gitlab")) == f"GitLab at {server.url} refuses the token"
+
+
+@pytest.mark.parametrize("profile", ["hang", None])
+def test_a_server_that_gives_no_answer_at_add_offers_the_kind(serve, monkeypatch, profile):
+    monkeypatch.setattr(model_servers, "TIMEOUT", 1)
+    root = serve(profile).url if profile else f"http://127.0.0.1:{closed_port()}"
+    assert _refused(root).choose_kind is True
+    for other in ("gitlab-refuses", "neither"):
+        assert _refused(serve(other).url).choose_kind is False
 
 
 def test_a_gitlab_token_without_read_api(serve):
@@ -317,6 +420,13 @@ def test_a_second_save_of_the_host_replaces_and_keeps_the_id(lado_home):
     assert len(state.git_servers()) == 1
 
 
+def test_a_trailing_dot_replaces_the_server_of_its_host(lado_home):
+    first, _ = _save()
+    again, replaced = _save("gitlab.corp.ru.", "glpat-NEW", login="petr")
+    assert (again.id, again.address, replaced) == (first.id, "https://gitlab.corp.ru", True)
+    assert [s.address for s in state.git_servers()] == ["https://gitlab.corp.ru"]
+
+
 def test_a_host_saved_meanwhile_gets_the_new_token_in_its_own_folder(lado_home, monkeypatch):
     first, _ = _save()
     monkeypatch.setattr(state, "git_server_by_host", lambda host: None)  # not seen yet
@@ -338,14 +448,85 @@ def test_a_failed_row_leaves_no_folder_for_a_new_server(lado_home, monkeypatch):
 
 def test_remove_takes_the_row_and_the_folder(lado_home):
     saved, _ = _save()
-    removed = git_servers.remove(git_servers.address("https://gitlab.corp.ru/"))
-    assert removed.id == saved.id
+    removed, warning = git_servers.remove(git_servers.address("https://gitlab.corp.ru/"))
+    assert (removed.id, warning) == (saved.id, None)
     assert state.git_servers() == []
     assert not (lado_home / "git-servers" / saved.id).exists()
     with pytest.raises(git_servers.Refused) as raised:
         git_servers.remove(git_servers.address("gitlab.corp.ru"))
     assert str(raised.value) == "https://gitlab.corp.ru is no saved git server"
     assert raised.value.hint == "see them: lado git-server list"
+
+
+def _hold_lock(lado_home):
+    """The lock of the git servers held by another open file, as another process holds it."""
+    import fcntl
+
+    lado_home.mkdir(exist_ok=True)
+    held = open(lado_home / "git-servers.lock", "a+")  # noqa: SIM115 - closed by the caller
+    fcntl.flock(held, fcntl.LOCK_EX)
+    return held
+
+
+def test_a_removal_waits_for_a_save_holding_the_lock(lado_home):
+    import threading
+
+    _save()
+    held = _hold_lock(lado_home)
+    done = []
+    removal = threading.Thread(
+        target=lambda: done.append(git_servers.remove(git_servers.address("gitlab.corp.ru")))
+    )
+    removal.start()
+    removal.join(0.5)
+    assert done == [] and len(state.git_servers()) == 1
+    held.close()
+    removal.join(5)
+    assert len(done) == 1 and state.git_servers() == []
+
+
+def test_a_held_lock_refuses_after_its_wait(lado_home, monkeypatch):
+    monkeypatch.setattr(git_servers, "LOCK_WAIT", 0.2)
+    _save()
+    with _hold_lock(lado_home):
+        started = time.monotonic()
+        for change in (_save, lambda: git_servers.remove(git_servers.address("gitlab.corp.ru"))):
+            with pytest.raises(git_servers.Refused) as raised:
+                change()
+            assert str(raised.value) == "another change of the git servers is running; try again"
+        assert time.monotonic() - started >= 0.4
+    assert git_servers.LOCK_WAIT == 0.2 and len(state.git_servers()) == 1
+
+
+def test_the_lock_waits_ten_seconds():
+    assert git_servers.LOCK_WAIT == 10
+
+
+def test_a_removal_racing_a_replacement_keeps_the_row_and_the_token_in_step(lado_home, monkeypatch):
+    import threading
+
+    _save()
+    write = git_servers._write_token
+    removals = []
+
+    def slow(id, token):
+        # The replacement's row is written: a removal starts before its token file is.
+        removal = threading.Thread(
+            target=lambda: removals.append(
+                git_servers.remove(git_servers.address("gitlab.corp.ru"))
+            )
+        )
+        removal.start()
+        removals.append(removal)
+        time.sleep(0.3)
+        write(id, token)
+
+    monkeypatch.setattr(git_servers, "_write_token", slow)
+    _save(token="glpat-NEW")
+    removals[0].join(10)
+    assert len(removals) == 2  # the removal ran, after the replacement
+    assert state.git_servers() == []
+    assert not (lado_home / "git-servers").exists()
 
 
 def test_a_server_without_its_token_file_has_none(lado_home):
@@ -614,6 +795,272 @@ def test_add_refuses_a_kind_it_does_not_know(lado_home):
     )
 
 
+# The check of a saved server.
+
+
+def _saved(url, kind="gitlab", login="ivan.petrov"):
+    at = git_servers.address(url)
+    return git_servers.save(at, git_servers.Checked(git_kinds.by_name(kind), login), TOKEN)[0]
+
+
+def _check(url) -> git_servers.Check:
+    found = git_servers.check(git_servers.address(url))
+    assert TOKEN not in found.text + found.hint + found.page + found.page_hint
+    return found
+
+
+@pytest.mark.parametrize(
+    ("profile", "kind", "text", "page"),
+    [
+        (
+            "gitlab-full",
+            "gitlab",
+            "Works: GitLab, signed in as ivan.petrov, may clone and push.",
+            "Works: signed in as ivan.petrov, may clone and push.",
+        ),
+        (
+            "gitlab-api-only",
+            "gitlab",
+            "Works: GitLab, signed in as ivan.petrov, may clone and push.",
+            "Works: signed in as ivan.petrov, may clone and push.",
+        ),
+        (
+            "gitlab",
+            "gitlab",
+            "Works: GitLab, signed in as ivan.petrov; the token's rights are not checked.",
+            "Works: signed in as ivan.petrov; the token's rights are not checked.",
+        ),
+        (
+            "github-repo",
+            "github",
+            "Works: GitHub, signed in as ivan.petrov, may clone and push.",
+            "Works: signed in as ivan.petrov, may clone and push.",
+        ),
+        (
+            "github",
+            "github",
+            "Works: GitHub, signed in as ivan.petrov; the token's rights are not checked.",
+            "Works: signed in as ivan.petrov; the token's rights are not checked.",
+        ),
+    ],
+)
+def test_a_check_of_a_server_that_works(serve, lado_home, profile, kind, text, page):
+    server = serve(profile, token=TOKEN)
+    _saved(server.url, kind)
+    found = _check(server.url)
+    assert (found.outcome, found.kind.name, found.login) == ("ok", kind, fake.LOGIN)
+    assert (found.text, found.hint, found.page, found.was_checked) == (text, "", page, True)
+    assert found.rights_checked is ("rights are not checked" not in text)
+
+
+@pytest.mark.parametrize(
+    ("profile", "kind", "title"),
+    [
+        ("gitlab-refuses", "gitlab", "GitLab"),
+        ("gitlab-revoked", "gitlab", "GitLab"),
+        ("gitlab-expired", "gitlab", "GitLab"),
+        ("github-refuses", "github", "GitHub"),
+    ],
+)
+def test_a_check_of_a_refused_token(serve, lado_home, profile, kind, title):
+    server = serve(profile)
+    before = _saved(server.url, kind)
+    found = _check(server.url)
+    assert found.outcome == "token_refused"
+    assert found.text == f"{title} refused the token: it expired or was revoked"
+    assert found.hint == f"replace it: lado git-server add {server.url} --token"
+    assert found.page == f"{title} refused the token: it expired or was revoked."
+    assert state.git_servers() == [before]  # a failed check changes nothing
+    assert (lado_home / "git-servers" / before.id / "token").read_text() == TOKEN
+
+
+@pytest.mark.parametrize(
+    ("profile", "kind", "missing", "can", "scopes"),
+    [
+        (
+            "gitlab-read",
+            "gitlab",
+            "write_repository",
+            "clone but not push",
+            "scopes read_repository, write_repository, read_api",
+        ),
+        (
+            "gitlab-no-repo",
+            "gitlab",
+            "read_repository, write_repository",
+            "neither clone nor push",
+            "scopes read_repository, write_repository, read_api",
+        ),
+        ("github-no-repo", "github", "repo", "neither clone nor push", "scope repo"),
+        ("github-no-scopes", "github", "repo", "neither clone nor push", "scope repo"),
+    ],
+)
+def test_a_check_of_a_token_without_a_right(serve, lado_home, profile, kind, missing, can, scopes):
+    server = serve(profile, token=TOKEN)
+    before = _saved(server.url, kind, login=None)
+    found = _check(server.url)
+    assert (found.outcome, found.missing_scopes) == ("scopes_missing", tuple(missing.split(", ")))
+    assert found.text == f"the token lacks {missing}: agents can {can}"
+    assert found.hint == (
+        f"replace it with a token with the {scopes}: lado git-server add {server.url} --token"
+    )
+    assert found.page == f"The token lacks {missing}."
+    assert found.page_hint == f"Agents can {can} with it. Make one with the {scopes}."
+    assert state.git_servers() == [before]  # not ok: no login saved
+
+
+def test_a_check_of_a_gitlab_token_without_read_api_names_it(serve, lado_home):
+    # Saved with --kind, unchecked; its user API refuses a token without read_api.
+    server = serve("gitlab-scope")
+    before = _saved(server.url, login=None)
+    found = _check(server.url)
+    assert (found.outcome, found.missing_scopes) == ("scopes_missing", ("read_api",))
+    assert found.text == "GitLab takes the token, but it lacks the scope read_api"
+    assert found.hint == (
+        "replace it with a token with the scopes read_repository, write_repository, read_api: "
+        f"lado git-server add {server.url} --token"
+    )
+    assert found.page == "The token lacks read_api."
+    assert found.page_hint == (
+        "LADO asks the server's API with it. Make one with the scopes read_repository, "
+        "write_repository, read_api."
+    )
+    assert state.git_servers() == [before]
+
+
+def test_a_check_of_a_server_that_does_not_answer(serve, lado_home, monkeypatch):
+    monkeypatch.setattr(model_servers, "TIMEOUT", 1)
+    server = serve("hang")
+    _saved(server.url)
+    found = _check(server.url)
+    assert found.outcome == "no_answer"
+    assert found.text == f"127.0.0.1:{server.port} does not answer: it did not answer in 1 s"
+    assert found.hint == (
+        "check that this computer reaches it: the company VPN or proxy; with LADO in Docker, "
+        "its container"
+    )
+    assert found.page == "No answer in 1 seconds."
+    assert found.page_hint == (
+        "Check that LADO's computer reaches the server: the company VPN or proxy; with LADO "
+        "in Docker, its container."
+    )
+
+
+def test_a_check_of_a_name_not_found(lado_home):
+    _saved("https://gitlab.invalid")
+    found = _check("gitlab.invalid")
+    assert found.outcome == "no_answer"
+    assert found.text == "gitlab.invalid does not answer: the name is not found"
+    assert found.page == "No answer: the name is not found."
+
+
+def test_a_check_of_an_untrusted_certificate(serve, lado_home, tmp_path):
+    server = serve("gitlab", certificate=fake.make_certificate(tmp_path))
+    _saved(server.url)
+    found = _check(server.url)
+    assert found.outcome == "cert_untrusted"
+    assert found.text == f"the certificate of {server.url} is not trusted"
+    assert found.hint == (
+        "ask your IT department to make this computer trust it (with LADO in Docker, its "
+        "container), then check again"
+    )
+    assert found.page == "The server's certificate is not trusted."
+    assert found.page_hint == (
+        "Ask your IT department to make LADO's computer trust it (with LADO in Docker, its "
+        "container), then check again."
+    )
+
+
+def test_a_check_of_a_redirect_follows_none(serve, lado_home):
+    sso = serve("gitlab")
+    server = serve(fake.REDIRECT, location=sso.url + "/login?next=x")
+    _saved(server.url)
+    found = _check(server.url)
+    assert found.outcome == "redirect"
+    assert found.text == f"it redirects to {sso.url}/login: add that address instead"
+    assert found.page == f"It redirects to {sso.url}/login: add that address instead."
+    assert (found.hint, sso.requests) == ("", [])
+
+
+def test_a_check_of_another_kind(serve, lado_home):
+    server = serve("gitlab", token=TOKEN)
+    before = _saved(server.url, "github")
+    found = _check(server.url)
+    assert (found.outcome, found.kind.name) == ("other_kind", "github")
+    assert found.text == "it answers as GitLab, not GitHub: remove it and add it again"
+    assert found.hint == (
+        f"lado git-server remove {server.url}, then lado git-server add {server.url} --token"
+    )
+    assert found.page == "It answers as GitLab, not GitHub: remove it and add it again."
+    assert state.git_servers() == [before]
+
+
+def test_a_check_of_neither_kind(serve, lado_home):
+    server = serve("neither")
+    _saved(server.url)
+    found = _check(server.url)
+    assert found.outcome == "unrecognised"
+    assert found.text == "it answers as neither GitHub nor GitLab"
+    assert found.page == "It answers as neither GitHub nor GitLab."
+
+
+def test_a_check_of_no_saved_server_asks_nothing(serve, lado_home):
+    server = serve("gitlab")
+    with pytest.raises(git_servers.Refused) as raised:
+        git_servers.check(git_servers.address(server.url))
+    assert str(raised.value) == f"{server.url} is no saved git server"
+    assert raised.value.hint == "see them: lado git-server list"
+    assert server.requests == []
+
+
+def test_a_check_with_its_token_file_missing_asks_nothing(serve, lado_home):
+    server = serve("gitlab")
+    saved = _saved(server.url)
+    (lado_home / "git-servers" / saved.id / "token").unlink()
+    with pytest.raises(git_servers.Refused) as raised:
+        git_servers.check(git_servers.address(server.url))
+    assert str(raised.value) == f"the token file of {server.url} is missing"
+    assert raised.value.hint == f"replace it: lado git-server add {server.url} --token"
+    assert raised.value.page == "Its token file is missing."
+    assert server.requests == []
+
+
+def test_a_passing_check_saves_the_login_of_one_saved_without_a_check(serve, lado_home):
+    server = serve("gitlab-full", token=TOKEN)
+    before = _saved(server.url, login=None)
+    found = _check(server.url)
+    assert (found.outcome, found.was_checked) == ("ok", False)
+    assert found.page == "Works: GitLab, signed in as ivan.petrov."
+    [after] = state.git_servers()
+    assert (after.id, after.login, after.kind) == (before.id, fake.LOGIN, "gitlab")
+    assert (lado_home / "git-servers" / before.id / "token").read_text() == TOKEN
+
+
+def test_a_check_keeps_the_author_and_writes_no_removed_server_back(serve, lado_home, monkeypatch):
+    server = serve("gitlab-full", token=TOKEN)
+    saved = _saved(server.url, login="old")
+    state.set_git_server_author(saved.id, "A", "a@b")
+    assert _check(server.url).outcome == "ok"
+    [after] = state.git_servers()
+    assert (after.login, after.author_name) == (fake.LOGIN, "A")
+    ask = git_servers._ask_kinds
+
+    def removed_meanwhile(at, token):
+        answers = ask(at, token)
+        state.remove_git_server(saved.id)
+        return answers
+
+    monkeypatch.setattr(git_servers, "_ask_kinds", removed_meanwhile)
+    assert _check(server.url).outcome == "ok"
+    assert state.git_servers() == []
+
+
+def test_a_check_finds_the_server_by_any_form_of_its_address(lado_home):
+    _saved("https://gitlab.invalid")
+    for text in ("gitlab.invalid.", "GitLab.Invalid", "https://gitlab.invalid:443/"):
+        assert git_servers.check(git_servers.address(text)).outcome == "no_answer"
+
+
 # The folder of the tokens.
 
 
@@ -624,6 +1071,32 @@ def test_the_folder_goes_with_the_last_server(lado_home):
     assert [p.name for p in (lado_home / "git-servers").iterdir()] == [other.id]
     git_servers.remove(git_servers.address("git.lan"))
     assert not (lado_home / "git-servers").exists()
+
+
+def test_a_folder_that_cannot_be_removed_warns(lado_home):
+    _save()
+    (lado_home / "git-servers" / "notes.txt").write_text("the human's")
+    removed, warning = git_servers.remove_host("gitlab.corp.ru")
+    assert removed.address == "https://gitlab.corp.ru"
+    assert state.git_servers() == []
+    assert warning == f"could not remove {lado_home / 'git-servers'}: directory not empty"
+    assert [p.name for p in (lado_home / "git-servers").iterdir()] == ["notes.txt"]
+
+
+def test_a_token_folder_that_cannot_be_removed_warns(lado_home):
+    saved, _ = _save()
+    (lado_home / "git-servers" / saved.id / "notes.txt").write_text("the human's")
+    removed, warning = git_servers.remove_host("gitlab.corp.ru")
+    assert (removed.id, state.git_servers()) == (saved.id, [])
+    folder = lado_home / "git-servers" / saved.id
+    assert warning == f"could not remove {folder}: directory not empty"
+    assert not (folder / "token").exists()
+
+
+def test_a_removal_of_one_of_two_does_not_warn(lado_home):
+    _save()
+    _save("git.lan")
+    assert git_servers.remove_host("gitlab.corp.ru")[1] is None
 
 
 def test_an_add_whose_folder_goes_under_it_writes_again(lado_home, monkeypatch):
@@ -683,7 +1156,7 @@ def test_the_hint_tells_a_kind_without_a_credential(serve, monkeypatch, profile,
     [
         ("neither", "{root} answers as neither GitHub nor GitLab"),
         ("both", "{root} answers as GitHub and as GitLab"),
-        ("hang", "{key} does not answer: it did not answer in 1 s"),
+        ("hang", "No answer in 1 seconds."),
     ],
 )
 def test_the_hint_asks_for_the_kind_of_one_it_cannot_tell(serve, monkeypatch, profile, why):
@@ -776,6 +1249,29 @@ def test_each_probe_refusal_has_its_field_and_page_words(
     assert "lado " not in _page_lines(refused) and "--" not in _page_lines(refused)
 
 
+def test_the_page_words_of_the_add_form(serve, monkeypatch):
+    monkeypatch.setattr(model_servers, "TIMEOUT", 1)
+    with pytest.raises(git_servers.Refused) as raised:
+        git_servers.check_not_github(git_servers.address("github.com"))
+    assert raised.value.page == "github.com uses the GitHub CLI's login: it is not added here."
+    for profile, title in (
+        ("gitlab-refuses", "GitLab"),
+        ("gitlab-revoked", "GitLab"),
+        ("github-refuses", "GitHub"),
+    ):
+        refused = _refused(serve(profile).url)
+        assert refused.page == f"{title} refused this token: copy it whole or make a new one."
+        assert refused.page_hint == ""
+    assert _refused(serve("gitlab-scope").url).page.endswith("lacks the scope read_api")
+    silent = _refused(serve("hang").url)
+    assert (silent.page, silent.page_hint) == (
+        "No answer in 1 seconds.",
+        git_servers.PAGE_KIND_HINT,
+    )
+    assert _refused("gitlab.invalid").page == "No answer: the name is not found."
+    assert git_servers.PAGE_KIND_HINT == "Choose its kind to save it without a check."
+
+
 def test_both_kinds_on_the_page_say_choose(serve):
     server = serve("both")
     assert _refused(server.url).page == (
@@ -863,6 +1359,8 @@ def test_an_author_is_trimmed_and_may_be_256_characters_long():
 
 
 AUTHOR_KEY = "includeIf.hasconfig:remote.*.url:{}.path"
+GITLAB_CORP = "[gG][iI][tT][lL][aA][bB].[cC][oO][rR][pP].[rR][uU]"
+CORP = "[cC][oO][rR][pP].[rR][uU]"
 
 
 @pytest.mark.parametrize(
@@ -872,8 +1370,10 @@ AUTHOR_KEY = "includeIf.hasconfig:remote.*.url:{}.path"
             "https://gitlab.corp.ru",
             "gitlab.corp.ru",
             [
-                "https://gitlab.corp.ru/**",
-                "https://*@gitlab.corp.ru/**",
+                f"https://{GITLAB_CORP}/**",
+                f"https://*@{GITLAB_CORP}/**",
+                f"https://{GITLAB_CORP}:443/**",
+                f"https://*@{GITLAB_CORP}:443/**",
                 "git@gitlab.corp.ru:*",
                 "git@gitlab.corp.ru:*/**",
                 "ssh://git@gitlab.corp.ru/**",
@@ -884,8 +1384,8 @@ AUTHOR_KEY = "includeIf.hasconfig:remote.*.url:{}.path"
             "https://corp.ru:8443/gitlab",
             "corp.ru:8443",
             [
-                "https://corp.ru:8443/gitlab/**",
-                "https://*@corp.ru:8443/gitlab/**",
+                f"https://{CORP}:8443/gitlab/**",
+                f"https://*@{CORP}:8443/gitlab/**",
                 "git@corp.ru:*",
                 "git@corp.ru:*/**",
                 "ssh://git@corp.ru/**",
@@ -905,11 +1405,27 @@ AUTHOR_KEY = "includeIf.hasconfig:remote.*.url:{}.path"
             ],
         ),
         (
+            "http://git.lan",
+            "git.lan",
+            [
+                "http://[gG][iI][tT].[lL][aA][nN]/**",
+                "http://*@[gG][iI][tT].[lL][aA][nN]/**",
+                "http://[gG][iI][tT].[lL][aA][nN]:80/**",
+                "http://*@[gG][iI][tT].[lL][aA][nN]:80/**",
+                "git@git.lan:*",
+                "git@git.lan:*/**",
+                "ssh://git@git.lan/**",
+                "ssh://git@git.lan:22/**",
+            ],
+        ),
+        (
             "https://corp.ru/a*b[c]",
             "corp.ru",
             [
-                "https://corp.ru/a\\*b\\[c\\]/**",
-                "https://*@corp.ru/a\\*b\\[c\\]/**",
+                f"https://{CORP}/a\\*b\\[c\\]/**",
+                f"https://*@{CORP}/a\\*b\\[c\\]/**",
+                f"https://{CORP}:443/a\\*b\\[c\\]/**",
+                f"https://*@{CORP}:443/a\\*b\\[c\\]/**",
                 "git@corp.ru:*",
                 "git@corp.ru:*/**",
                 "ssh://git@corp.ru/**",
@@ -973,6 +1489,15 @@ A_ONE, B_TWO, HUMAN = "A One <a1@corp.ru>", "B Two <b2@corp.ru>", "Human <human@
     [
         ("https://gitlab.corp.ru/team/app.git", A_ONE),
         ("https://oauth2@gitlab.corp.ru/team/app.git", A_ONE),
+        ("https://GitLab.Corp.ru/team/app.git", A_ONE),
+        ("https://gitlab.corp.ru:443/team/app.git", A_ONE),
+        ("https://oauth2@GITLAB.CORP.RU:443/team/app.git", A_ONE),
+        ("https://gitlab.corp.ru:4430/team/app.git", HUMAN),
+        ("https://gitlab.corp.rux/team/app.git", HUMAN),
+        ("https://GitLab.Corp.ru.evil/team/app.git", HUMAN),
+        ("https://Corp.RU/gitlab/team/app.git", B_TWO),
+        ("https://corp.ru:443/gitlab/team/app.git", B_TWO),
+        ("https://corp.ru/GitLab/team/app.git", HUMAN),  # a path keeps its case
         ("http://gitlab.corp.ru/team/app.git", HUMAN),  # another scheme: another origin
         ("git@gitlab.corp.ru:app.git", A_ONE),
         ("git@gitlab.corp.ru:team/app.git", A_ONE),
@@ -1051,6 +1576,16 @@ def test_the_author_file_holds_the_name_and_email_alone(tmp_path, name):
     assert listed == f"user.name={name}\nuser.email=i@corp.ru\n"
 
 
+def test_a_failed_author_write_leaves_no_temp_file(tmp_path, monkeypatch):
+    def broken(source, target):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(os, "replace", broken)
+    with pytest.raises(OSError, match="No space left"):
+        git_servers.author_files(tmp_path / "authors", [_with_author(_server(), "A", "a@b")])
+    assert list((tmp_path / "authors").iterdir()) == []
+
+
 def test_only_servers_with_an_author_get_a_file(tmp_path):
     servers = [_server(), _with_author(_server("b2", "https://g.lan", "g.lan"), "B", "b@g.lan")]
     found = git_servers.author_files(tmp_path / "authors", servers)
@@ -1075,7 +1610,7 @@ def test_an_author_needs_git_2_36(tmp_path):
         "",
     )
     with pytest.raises(git_servers.Refused) as raised:
-        git_servers.check_author_git(old, "https://gitlab.corp.ru")
+        git_servers.check_author_git(old, ["https://gitlab.corp.ru"])
     assert str(raised.value) == (
         f"{AUTHOR_OLD}, or clear the author (lado git-server author https://gitlab.corp.ru --clear)"
     )

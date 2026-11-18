@@ -24,9 +24,9 @@ from lado import agent_env, project_secrets
 TOKENS, TOKEN = "git-servers", "token"  # lado.git_servers' folder and file
 
 
-def _token(server: str) -> str | None:
+def read_token(server: str) -> str | None:
     """The token of the server `server`, None for none LADO reads (missing, a link, not a
-    regular file, too large, a disk error)."""
+    regular file, too large, a disk error); also lado.git_servers' check's."""
     try:
         with project_secrets.open_chain((TOKENS, server), make=False) as fd:
             if fd is None:
@@ -56,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.operation != "get":
         return 0
     os.environ["LADO_HOME"] = args.home  # where project_secrets looks, for this process only
-    token = _token(args.server)
+    token = read_token(args.server)
     if token is None:
         sys.stdout.write("quit=1\n")
         sys.stderr.write(

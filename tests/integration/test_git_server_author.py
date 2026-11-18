@@ -2,12 +2,15 @@
 author` on a server saved by `lado git-server add`, then an agent of the fake agent commits
 to the server's repository, cloned by its https and its `git@` address, as that author
 (author and committer, in the pushed commit too), and to any other repository as the human's
-own git settings say; once the author is cleared and the agent restarted, as before. The
-global and system git configs stay as they were."""
+own git settings say; once the author is cleared and the agent restarted, as before. A
+worker's commit in its own worktree of a repository LADO cloned carries the author too, also
+with the remote's host in another letter case. The global and system git configs stay as
+they were."""
 
 import subprocess
 from pathlib import Path
 
+import agent_helpers
 import fake_git_api
 import pytest
 from test_git_server_access import (
@@ -135,6 +138,57 @@ def test_an_agent_commits_to_a_listed_servers_repositories_as_its_author(
     runtime.stop_session(SESSION)
 
     # Nothing written to git's global and system configs.
+    assert {p: p.read_bytes() for p in before} == before
+
+
+def test_a_workers_commit_in_its_worktree_of_lados_clone_carries_the_author(
+    world,  # noqa: F811 - the fixture imported
+    tmp_path,
+    lado_home,
+):
+    listed, _, _, before = world
+    # By the name its certificate also holds, so a remote may write it in another case.
+    address = listed.url.replace("127.0.0.1", "localhost")
+    port = address.rsplit(":", 1)[1]
+    assert lado("git-server", "add", address, "--token", token=TOKEN + "\n").returncode == 0
+    authored = lado("git-server", "author", address, "--name", NAME, "--email", EMAIL)
+    assert authored.returncode == 0, authored.stderr
+
+    # LADO clones the session's repository; a worker commits in its own worktree of it.
+    clone_into = tmp_path / "work" / "app"
+    started = lado(
+        "start", f"{address}/team/app.git", str(clone_into), "--provider", "fake", "--no-attach"
+    )
+    assert started.returncode == 0, started.stderr
+    session = "app"
+    try:
+        out = tmp_path / "worker-out"
+        task = script(
+            tmp_path / "worker.sh",
+            out,
+            [
+                "run toplevel git rev-parse --show-toplevel",
+                "git commit -q --allow-empty -m by-the-worker",
+                f"run worktree {LOG}",
+                # The same remote with its host in another case: still the server's.
+                f"git remote set-url origin https://LocalHost:{port}/team/app.git",
+                "git commit -q --allow-empty -m by-another-case",
+                f"run other_case {LOG}",
+            ],
+        )
+        worker = runtime.spawn_worker(session, f"sh sh {task}", name="w1")
+        agent_helpers.wait_for(lambda: (out / "done").exists(), "the worker's script", session)
+        worktree = Path(state.get_agent(session, "w1").cwd)
+        assert worktree != clone_into and (worktree / ".git").is_file()  # a worktree of it
+        assert Path(_log(out, "toplevel")).resolve() == worktree.resolve()
+        assert worker.name == "w1"
+        assert {name: _log(out, name) for name in ("worktree", "other_case")} == {
+            "worktree": SERVERS,
+            "other_case": SERVERS,
+        }
+    finally:
+        if state.get_session(session):
+            runtime.stop_session(session)
     assert {p: p.read_bytes() for p in before} == before
 
 

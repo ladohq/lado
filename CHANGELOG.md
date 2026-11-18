@@ -8,9 +8,17 @@
   checks the server and keeps your token; agents and LADO then clone and push there over
   https without a password, `git@…` addresses included. Needs git 2.31 or newer. Also in
   Settings → Git servers, which shows the token page with the rights the token needs.
-- **Your commit name and email per git server.** `lado git-server author` or ✎ in Settings →
-  Git servers: agents commit to that server's repositories with this name and email, and
-  elsewhere as before. Your global git settings stay untouched. Needs git 2.36 or newer.
+- **Your commit name and email per git server.** `lado git-server author` or Commit author in
+  Settings → Git servers: agents commit to that server's repositories with this name and
+  email, and elsewhere as before. Your global git settings stay untouched. Needs git 2.36+.
+- **Check a git server again.** `lado git-server check <address>` or Check in Settings → Git
+  servers says in one line whether the saved token still works and has the rights agents need
+  to clone and push; a token without them is saved with a warning. Replace token on its row.
+
+### Fixed
+
+- **An open tip or menu follows its button.** When the window is resized, an open ⓘ tip or
+  menu moves with its button instead of staying where it was.
 
 ## 0.47.0 (2026-11-15)
 

@@ -1489,7 +1489,18 @@ def _open() -> sqlite3.Connection:
         conn = sqlite3.connect(home() / "lado.db", timeout=10, isolation_level=None)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
+    # Switching a new lado.db to WAL takes no busy wait: another process opening it at the
+    # same moment makes it "locked" at once. Tried again within the connection's timeout.
+    deadline = time.monotonic() + 10
+    while True:
+        try:
+            conn.execute("PRAGMA journal_mode = WAL")
+            break
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc) or time.monotonic() >= deadline:
+                conn.close()
+                raise
+            time.sleep(0.05)
     # In WAL a commit then holds the write lock without an fsync (a busy disk stretched it
     # to seconds); a power cut may lose the last commits, never the database.
     conn.execute("PRAGMA synchronous = NORMAL")
@@ -1540,18 +1551,43 @@ def read_schema_refusal() -> tuple[str, str] | None:
 
 
 @contextmanager
+def _making() -> Iterator[None]:
+    """One process at a time opens a lado.db that is not at this LADO's schema, and makes
+    it when there is none: an exclusive flock on LADO_HOME itself (no file of its own),
+    released when the folder's descriptor closes. None while LADO_HOME is not there and
+    must not be made (home_not_made: no lado.db to make either)."""
+    import fcntl
+
+    if _not_made and not home_path().is_dir():
+        yield
+        return
+    fd = os.open(home(), os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
+
+
+@contextmanager
 def connect() -> Iterator[sqlite3.Connection]:
     """lado.db, made when there is none. It never migrates: another schema version is a
     SchemaError, so no process opening it upgrades the database under a running session
-    (only migrate() does, which the CLI calls when no session runs)."""
-    conn = _open()
-    if conn.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION:
-        refused = schema_refusal(conn)
-        if refused is not None:
+    (only migrate() does, which the CLI calls when no session runs). One process makes it at
+    a time (`_making`): another that opens it meanwhile waits and finds it whole."""
+    conn = _open() if _not_made or (home_path() / "lado.db").exists() else None
+    if conn is None or conn.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION:
+        if conn is not None:
             conn.close()
-            raise SchemaError(refused[1])
-        conn.executescript(SCHEMA)
-        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        with _making():
+            conn = _open()
+            if conn.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION:
+                refused = schema_refusal(conn)
+                if refused is not None:
+                    conn.close()
+                    raise SchemaError(refused[1])
+                conn.executescript(SCHEMA)
+                conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     try:
         yield conn
     finally:

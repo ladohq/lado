@@ -2080,6 +2080,32 @@ def test_the_schema_41_backup_put_back_has_no_author(lado_home):
     assert (server.id, server.author_name, server.author_email) == ("a1", None, None)
 
 
+def test_processes_opening_a_new_lado_db_at_once_make_it_once(lado_home):
+    """A fresh LADO_HOME opened by several processes at the same moment (a server's start
+    and the page's first requests): each finds the schema whole, none half made."""
+    import subprocess
+    import sys
+
+    script = (
+        "import sys, time\n"
+        "from lado import state\n"
+        "time.sleep(float(sys.argv[1]) - time.time())\n"
+        "state.git_servers()\n"
+    )
+    for _ in range(3):
+        (lado_home / "lado.db").unlink(missing_ok=True)
+        for extra in ("lado.db-wal", "lado.db-shm"):
+            (lado_home / extra).unlink(missing_ok=True)
+        at = str(time.time() + 1.5)
+        runs = [
+            subprocess.Popen([sys.executable, "-c", script, at], stderr=subprocess.PIPE, text=True)
+            for _ in range(8)
+        ]
+        errors = [r.communicate()[1] for r in runs]
+        assert [e for e in errors if e] == []
+        assert state.schema_version() == state.SCHEMA_VERSION
+
+
 # The GitHub login's takeover (schema 43).
 
 

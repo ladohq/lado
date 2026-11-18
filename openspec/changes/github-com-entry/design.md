@@ -202,7 +202,9 @@ is checked against a real server; the pull request names them as not verified.
 
 - `runtime.Hint` takes several commands, each on its own line with its own words: `Check
   the git server:` `lado git-server check <root>` and `If its token expired or was revoked,
-  replace it:` `lado git-server add <root> --token`. The UI's FolderHint shows each.
+  replace it:` `lado git-server add <root> --token`. The CLI prints each on its own line;
+  the UI shows the saved server's way out instead, a link to its panel in Settings → Git
+  servers, where Check and Replace token are (the API's hint keeps the first step).
 - The author's Edit and Set author are off while its Remove or Undo asks.
 - A saved server's failure reason names `Address.key` (host with its port).
 - doctor's git servers and GitHub lines catch `sqlite3.OperationalError` (locked longer than

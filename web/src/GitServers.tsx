@@ -59,10 +59,12 @@ export const TIPS = {
 };
 
 type Tip = { about: string; text: string };
-type Way = "replace" | "check" | "undo";
+type Way = "check" | "undo";
 // The one result line of the page: the server it is about, where it stands (the panel's top,
 // under Sign-in or Commit author, or in a removed server's place), its sentence, an info tip
-// at its end, its way out, a second line, and the author Undo sets again.
+// at its end, its way out, a second line, and the author Undo sets again. A line about a
+// refused or short token has no way of its own: it makes Sign-in's Replace token the main
+// button (`tokenBad`), so the panel offers one. A check's `Works:` has no ✓ (`works`).
 type Result = {
   host: string;
   place: "top" | "signin" | "author" | "gone";
@@ -70,6 +72,8 @@ type Result = {
   text: string;
   tip?: Tip;
   way?: Way;
+  tokenBad?: boolean;
+  works?: boolean;
   then?: { text: string; tip?: Tip };
   undo?: { name: string; email: string };
 };
@@ -91,11 +95,11 @@ function checkLine(host: string, found: GitServerChecked): Result {
   const line: Result = { host, place: "signin", tone: "bad", text: found.message };
   switch (found.outcome) {
     case "ok":
-      return { ...line, tone: "ok" };
+      return { ...line, tone: "ok", works: true };
     case "token_refused":
-      return { ...line, way: "replace" };
+      return { ...line, tokenBad: true };
     case "scopes_missing":
-      return { ...line, tip: { about: "the missing scope", text: found.hint }, way: "replace" };
+      return { ...line, tip: { about: "the missing scope", text: found.hint }, tokenBad: true };
     case "no_answer":
       return { ...line, tone: "warn", text: `⚠ ${found.message}`, tip: { about: "no answer", text: found.hint }, way: "check" };
     case "cert_untrusted":
@@ -231,7 +235,7 @@ export function GitServersPage() {
     closeOwn(started);
     if (stale(mine)) return;
     const now = done.server.login;
-    if (done.warning) setResult({ host: server.host, place: "signin", tone: "warn", text: `⚠ ${done.warning}`, way: "replace" });
+    if (done.warning) setResult({ host: server.host, place: "signin", tone: "warn", text: `⚠ ${done.warning}`, tokenBad: true });
     else if (now === null)
       setResult({ host: server.host, place: "signin", tone: "ok", text: `Saved without a check as ${done.server.kind_title}.` });
     else {
@@ -255,8 +259,13 @@ export function GitServersPage() {
     }
     focusOn(`replace:${server.host}`);
   };
-  const author = async (server: GitServerInfo, call: () => Promise<{ server: GitServerInfo }>, line: Result) => {
-    const mine = act();
+  // The servers whose author's Remove or Undo is asking: their buttons are off meanwhile.
+  const [authorBusy, setAuthorBusy] = useState<string[]>([]);
+  // Undo keeps its line, its button off, until the answer (`keep`).
+  const author = async (server: GitServerInfo, call: () => Promise<{ server: GitServerInfo }>, line: Result, keep = false) => {
+    if (authorBusy.includes(server.host)) return;
+    const mine = keep ? ++actions.current : act();
+    setAuthorBusy((now) => [...now, server.host]);
     try {
       put((await call()).server);
       if (stale(mine)) return;
@@ -264,6 +273,8 @@ export function GitServersPage() {
       focusOn(line.way === "undo" ? `undo:${server.host}` : `edit:${server.host}`);
     } catch (error) {
       if (!stale(mine)) setResult({ host: server.host, place: "author", tone: "bad", text: refusalOf(error).message });
+    } finally {
+      setAuthorBusy((now) => now.filter((h) => h !== server.host));
     }
   };
   const removeAuthor = (server: GitServerInfo) =>
@@ -281,15 +292,10 @@ export function GitServersPage() {
       place: "author",
       tone: "ok",
       text: "Author saved.",
-    });
+    }, true);
   const way = (server: GitServerInfo, line: Result) => {
     if (line.way === "check") void check(server);
     else if (line.way === "undo" && line.undo) undoAuthor(server, line.undo);
-    else if (line.way === "replace") {
-      act();
-      setAdding(0); // one form at a time on the page
-      setForm({ host: server.host, what: "replace" });
-    }
   };
   const toggleForm = (host: string, what: Form["what"]) => {
     act();
@@ -375,7 +381,7 @@ export function GitServersPage() {
                     <div className="gx-body">
                       {mine?.place === "top" && (
                         <div className="gx-top">
-                          <ResultLine line={mine} server={server} target={target} onWay={() => way(server, mine)} />
+                          <ResultLine line={mine} server={server} target={target} busy={authorBusy.includes(host)} onWay={() => way(server, mine)} />
                         </div>
                       )}
                       <ul className="gx-rows">
@@ -412,7 +418,7 @@ export function GitServersPage() {
                             <button
                               ref={target(`replace:${host}`)}
                               type="button"
-                              className={server.has_token ? "quiet" : "primary"}
+                              className={server.has_token && !mine?.tokenBad ? "quiet" : "primary"}
                               aria-label={`Replace the token of ${server.address}`}
                               aria-pressed={formHere === "replace"}
                               onClick={() => toggleForm(host, "replace")}
@@ -436,7 +442,7 @@ export function GitServersPage() {
                               />
                             )}
                             {mine?.place === "signin" && (
-                              <ResultLine line={mine} server={server} target={target} onWay={() => way(server, mine)} />
+                              <ResultLine line={mine} server={server} target={target} busy={authorBusy.includes(host)} onWay={() => way(server, mine)} />
                             )}
                           </div>
                         </li>
@@ -463,6 +469,7 @@ export function GitServersPage() {
                                 type="button"
                                 className="quiet"
                                 aria-label={`Remove the commit author of ${server.address}`}
+                                disabled={authorBusy.includes(host)}
                                 onClick={() => {
                                   setForm(null);
                                   removeAuthor(server);
@@ -488,7 +495,7 @@ export function GitServersPage() {
                               />
                             )}
                             {mine?.place === "author" && (
-                              <ResultLine line={mine} server={server} target={target} onWay={() => way(server, mine)} />
+                              <ResultLine line={mine} server={server} target={target} busy={authorBusy.includes(host)} onWay={() => way(server, mine)} />
                             )}
                           </div>
                         </li>
@@ -563,7 +570,7 @@ export function GitServersPage() {
                     const info = done.server;
                     setResult(
                       done.warning
-                        ? { host, place: "top", tone: "warn", text: `⚠ ${done.warning}`, way: "replace" }
+                        ? { host, place: "top", tone: "warn", text: `⚠ ${done.warning}`, tokenBad: true }
                         : {
                             host,
                             place: "top",
@@ -652,22 +659,23 @@ function ResultLine({
   line,
   server,
   target,
+  busy,
   onWay,
 }: {
   line: Result;
   server: GitServerInfo;
   target: (key: string) => (node: HTMLElement | null) => void;
+  busy: boolean; // the author's request runs: Undo is off
   onWay: () => void;
 }) {
-  const label = { replace: "Replace token", check: "Check again", undo: "Undo" } as const;
+  const label = { check: "Check again", undo: "Undo" } as const;
   const named = {
-    replace: `Replace the token of ${server.address}`,
     check: `Check ${server.address} again`,
     undo: `Undo the removal of the commit author of ${server.address}`,
   } as const;
   return (
     <>
-      <p className={`gx-result ${line.tone}`} role={line.tone === "ok" ? "status" : "alert"}>
+      <p className={`gx-result ${line.tone}${line.works ? " works" : ""}`} role={line.tone === "ok" ? "status" : "alert"}>
         <span className="t">
           {line.text}
           {line.tip && (
@@ -683,6 +691,7 @@ function ResultLine({
             type="button"
             className="quiet"
             aria-label={named[line.way]}
+            disabled={line.way === "undo" && busy}
             onClick={onWay}
           >
             {label[line.way]}

@@ -12528,7 +12528,8 @@ section.artifact-group + section.artifact-group {
   background: var(--done-ground);
 }
 
-.gx-result.ok > .t::before {
+/* A check's `Works: …` says it in words: no ✓ before it. */
+.gx-result.ok:not(.works) > .t::before {
   content: "✓ ";
   color: var(--done);
   font-weight: 600;

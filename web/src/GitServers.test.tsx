@@ -90,6 +90,7 @@ class Fake {
   saved: Record<string, () => Response> = {}; // a saved server's check, by host
   add: (body: Record<string, unknown>) => Response = () => new Response("{}", { status: 500 });
   removal: string | null = null;
+  authorHeld: (() => Response) | null = null; // while set, a change of the author waits for it
   author(method: string, path: string, body: Record<string, unknown> | undefined): Response {
     const host = decodeURIComponent(path.slice("/api/git-servers/".length, -"/author".length));
     const server = this.servers.find((s) => s.host === host)!;
@@ -114,7 +115,10 @@ class Fake {
         if (path === "/api/git-servers" && method === "GET") return json(listing());
         if (path === "/api/git-servers/check") return json(this.checks[(body as { address: string }).address] ?? nothing);
         if (path === "/api/git-servers" && method === "POST") return this.add(body!);
-        if (path.endsWith("/author")) return this.author(method, path, body);
+        if (path.endsWith("/author")) {
+          if (this.authorHeld) await this.authorHeld(); // answers once let go
+          return this.author(method, path, body);
+        }
         if (path.endsWith("/check") && method === "POST") {
           const host = decodeURIComponent(path.slice("/api/git-servers/".length, -"/check".length));
           return this.saved[host]();
@@ -214,14 +218,14 @@ const outcomes: [Partial<GitServerChecked>, string, string | null, string | null
   [
     { outcome: "token_refused", message: "GitLab refused the token: it expired or was revoked." },
     "bad",
-    "Replace token",
+    null,
     null,
     "✕ check failed: token refused",
   ],
   [
     { outcome: "scopes_missing", message: "The token lacks write_repository.", hint: "Agents can clone but not push with it." },
     "bad",
-    "Replace token",
+    null,
     "About the missing scope",
     "✕ check failed: a scope missing",
   ],
@@ -263,7 +267,10 @@ test.each(outcomes)("Check shows %o as one line with its way out", async (found,
   press(`Check ${CORP.address}`);
   const line = await screen.findByText(found.message!, { exact: false });
   const result = line.closest(".gx-result") as HTMLElement;
-  expect(result.className).toBe(`gx-result ${tone}`);
+  expect(result.className).toBe(`gx-result ${tone}${found.outcome === "ok" ? " works" : ""}`);
+  const replace = button(`Replace the token of ${CORP.address}`);
+  expect(replace.className).toBe(["token_refused", "scopes_missing"].includes(found.outcome!) ? "primary" : "quiet");
+  expect(within(row(CORP)).getAllByRole("button", { name: `Replace the token of ${CORP.address}` })).toHaveLength(1);
   expect(result.getAttribute("role")).toBe(tone === "ok" ? "status" : "alert");
   expect(within(result).queryAllByRole("button").filter((b) => !b.classList.contains("info-tip")).map((b) => b.textContent)).toEqual(
     way ? [way] : [],
@@ -308,7 +315,8 @@ test("Check again checks again; a refused token's Replace token opens the form",
   await screen.findByText("GitLab refused the token: it expired or was revoked.");
   expect(n).toBe(2);
   expect(screen.queryByText("⚠ No answer in 5 seconds.")).toBeNull();
-  fireEvent.click(within(document.querySelector(".gx-result") as HTMLElement).getByRole("button", { name: `Replace the token of ${CORP.address}` }));
+  expect(button(`Replace the token of ${CORP.address}`).className).toBe("primary");
+  press(`Replace the token of ${CORP.address}`);
   expect(await screen.findByRole("textbox", { name: "New token" })).toBeTruthy();
 });
 
@@ -357,7 +365,9 @@ test("a token without the push right is saved with a warning and Replace token",
   );
   const line = await screen.findByText("⚠ The token lacks write_repository: agents can clone but not push.");
   expect(line.closest(".gx-result")!.className).toBe("gx-result warn");
-  expect(within(line.closest(".gx-result") as HTMLElement).getByRole("button").textContent).toBe("Replace token");
+  expect(within(line.closest(".gx-result") as HTMLElement).queryByRole("button")).toBeNull();
+  expect(within(row(CORP)).getAllByRole("button", { name: `Replace the token of ${CORP.address}` })).toHaveLength(1);
+  expect(button(`Replace the token of ${CORP.address}`).className).toBe("primary");
 });
 
 test("a refused token stays, Save token off until it is edited", async () => {
@@ -620,6 +630,44 @@ test("a refused token stays under Token; the done form opens the new row with it
   expect(warn.closest(".gx-top")).toBeTruthy();
   expect(document.body.innerHTML).not.toContain(TOKEN);
   await waitFor(() => expect(document.activeElement).toBe(button("https://gitlab.com")));
+  // One Replace token: the warning at the panel's top has none, Sign-in's is the main one.
+  expect(within(warn.closest(".gx-result") as HTMLElement).queryByRole("button")).toBeNull();
+  expect(within(row(com)).getAllByRole("button", { name: "Replace the token of https://gitlab.com" })).toHaveLength(1);
+  expect(button("Replace the token of https://gitlab.com").className).toBe("primary");
+});
+
+test("Author saved. keeps its ✓, a check's Works: has none", async () => {
+  fake.servers = [CORP];
+  await mount();
+  openRow(CORP);
+  press(`Remove the commit author of ${CORP.address}`);
+  const done = await screen.findByText("Author removed.");
+  expect(done.closest(".gx-result")!.className).toBe("gx-result ok");
+});
+
+test("Remove and Undo of the author are off while they ask; a second press sends nothing", async () => {
+  fake.servers = [CORP];
+  const removal = held();
+  fake.authorHeld = removal.answer;
+  await mount();
+  openRow(CORP);
+  const remove = button(`Remove the commit author of ${CORP.address}`) as HTMLButtonElement;
+  fireEvent.click(remove);
+  await waitFor(() => expect(remove.disabled).toBe(true));
+  fireEvent.click(remove);
+  expect(fake.calls.filter((c) => c.method === "DELETE")).toHaveLength(1);
+  fake.authorHeld = null;
+  removal.let_go(new Response());
+  const undo = (await screen.findByRole("button", { name: `Undo the removal of the commit author of ${CORP.address}` })) as HTMLButtonElement;
+  const again = held();
+  fake.authorHeld = again.answer;
+  fireEvent.click(undo);
+  await waitFor(() => expect(undo.disabled).toBe(true));
+  fireEvent.click(undo);
+  expect(fake.calls.filter((c) => c.method === "PUT")).toHaveLength(1);
+  fake.authorHeld = null;
+  again.let_go(new Response());
+  expect(await screen.findByText("Author saved.")).toBeTruthy();
 });
 
 test("Cancel closes Add, empties the token and gives the focus back to + Add server", async () => {

@@ -53,7 +53,8 @@ export function placeAbove(
 // Where the menu or popover `floating` goes: fixed under `anchor` (or over it, `above`), so
 // a scrolling box around it (the session list, the session's page) does not cut it, and
 // inside the window (placeBelow, placeAbove). Placed again after each render, as what it
-// shows may change its width, and when the window is resized, as its anchor moves then.
+// shows may change its width, and when the window is resized or the layout switches between
+// the phone's and the wide one, as its anchor moves then.
 export function useBelow(
   anchor: RefObject<HTMLElement | null>,
   floating: RefObject<HTMLElement | null>,
@@ -67,7 +68,14 @@ export function useBelow(
     if (!open) return;
     const again = () => setResized((count) => count + 1);
     window.addEventListener("resize", again);
-    return () => window.removeEventListener("resize", again);
+    // The phone's and the wide layout switch on <html data-phone>, which the Shell sets
+    // after the resize, once it rendered again: the anchor moves only then.
+    const layout = new MutationObserver(again);
+    layout.observe(document.documentElement, { attributes: true, attributeFilter: ["data-phone"] });
+    return () => {
+      window.removeEventListener("resize", again);
+      layout.disconnect();
+    };
   }, [open]);
   useLayoutEffect(() => {
     const box = anchor.current?.getBoundingClientRect();

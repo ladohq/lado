@@ -13,7 +13,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-18-github-com-e
 
 ## 3. The takeover
 
-- [ ] 3.1 `github_takeover.run()` before agents and at the UI server's start; sources,
+- [x] 3.1 `github_takeover.run()` before agents and at the UI server's start; sources,
   outcomes, once, retry after a gh failure, the line (D3). Check:
   `tests/test_github_takeover.py`.
 

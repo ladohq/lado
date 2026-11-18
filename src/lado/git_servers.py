@@ -11,7 +11,7 @@ asked at once, through lado.model_servers' request path (no redirect followed, e
 cut at its TIMEOUT); `--kind` saves one that cannot be checked. Its token is kept in
 `<LADO_HOME>/git-servers/<id>/token` alone, written and removed by the link-refusing writer
 of LADO's secrets (lado.project_secrets), never in lado.db, a message or a git config file.
-A save, a removal and a check's login write hold one lock of LADO_HOME (`_locked`), never
+A save, a removal and a check's login write hold one lock of LADO_HOME (`locked`), never
 while a server is asked.
 
 `variables` gives git, through `GIT_CONFIG_*` variables laid over a process's environment, an
@@ -635,7 +635,7 @@ def _save_login(server: state.GitServer, login: str) -> None:
     kept; not when the server was removed or replaced by another meanwhile."""
     if login == server.login:
         return
-    with _locked():
+    with locked():
         now = state.git_server_by_host(server.host)
         if now is not None and now.id == server.id:
             state.save_git_server(now.id, now.address, now.host, now.kind, login)
@@ -950,7 +950,7 @@ LOCKED = "another change of the git servers is running; try again"
 
 
 @contextlib.contextmanager
-def _locked() -> Iterator[None]:
+def locked() -> Iterator[None]:
     """One save, removal or login write of a git server at a time in LADO_HOME, the
     command's and the page's alike: an exclusive flock on LOCK, tried every 50 ms for
     LOCK_WAIT seconds, then Refused. No server is asked while it is held."""
@@ -975,11 +975,12 @@ def save(at: Address, checked: Checked, token: str) -> tuple[state.GitServer, bo
     new server's token file comes first and goes again when its row fails; a replaced one's
     row comes first, then its token file is replaced whole, so it holds the old token or the
     new one."""
-    with _locked():
-        return _save(at, checked, token)
+    with locked():
+        return save_locked(at, checked, token)
 
 
-def _save(at: Address, checked: Checked, token: str) -> tuple[state.GitServer, bool]:
+def save_locked(at: Address, checked: Checked, token: str) -> tuple[state.GitServer, bool]:
+    """`save` inside `locked`, held by the caller (lado.github_takeover)."""
     known = state.git_server_by_host(at.key)
     if known is not None:
         try:
@@ -1026,7 +1027,7 @@ def remove_host(key: str, named: str | None = None) -> Removed:
     """Remove the server of the host `key` (`Address.key`) and its token folder under the
     lock, as `remove` does; `named` the address the human gave, for the refusal (None: the
     key). The row goes first: a token folder left holds a token no row names."""
-    with _locked():
+    with locked():
         known = state.git_server_by_host(key)
         if known is None or not state.remove_git_server(known.id):
             raise _not_saved(named or key)

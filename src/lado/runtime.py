@@ -3493,11 +3493,16 @@ def _add_agent(agent: state.Agent, kit: str) -> None:
 def agent_layers(project: str | None) -> agent_env.Layers:
     """The layers agents start from (lado.agent_env), read anew for each launch, with the
     layer of the session's `project` as it is now (lado.project_secrets.layer). Each agent
-    merges them with its own provider's login (agents_env)."""
+    merges them with its own provider's login (agents_env). The GitHub login they had is
+    taken over first, once (lado.github_takeover: the command that started LADO says so)."""
+    from lado import github_takeover
+
     try:
-        return agent_env.layers(project_secrets.layer(project) if project else None)
+        layers = agent_env.layers(project_secrets.layer(project) if project else None)
     except agent_env.AgentEnvError as exc:
         raise LadoError(str(exc)) from exc
+    github_takeover.run(layers, make=False)
+    return layers
 
 
 def agents_env(layers: agent_env.Layers, agent_cli: providers.Provider) -> dict[str, str]:

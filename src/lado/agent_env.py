@@ -92,6 +92,18 @@ RESERVED = frozenset({"HOME", "USER", "LOGNAME", "SHELL", "PATH", *SHELL_OWN, *P
 RESERVED_PREFIX = "LADO_"
 SUBFOLDER = "in a subfolder"
 
+# The GitHub CLI's (and git's helper's) login and host: taken from no layer (`merge`,
+# `for_git`), as github.com and GitHub Enterprise get their tokens from the saved git
+# servers alone (lado.git_servers.gh_variables).
+GITHUB_VARIABLES = (
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
+    "GH_ENTERPRISE_TOKEN",
+    "GITHUB_ENTERPRISE_TOKEN",
+    "GH_HOST",
+    "GH_CONFIG_DIR",
+)
+
 INHERIT_HINT = (
     f"set {SOURCE_VAR}={INHERIT} to give agents the environment of the process that starts them"
 )

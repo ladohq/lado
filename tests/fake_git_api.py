@@ -113,6 +113,7 @@ PROFILES: dict[str, dict[str, Answer]] = {
     # api.github.com: the user of a classic token with repo, or its refusal.
     "github-com": {GITHUB_COM: github_user("repo")},
     "github-com-refuses": {GITHUB_COM: GITHUB_401},
+    "github-com-hangs": {GITHUB_COM: HANG},
 }
 # A sign-in gateway in front of a server: its own 401 on any path, whatever the token.
 GATEWAY_401 = Answer(401, {"message": "Unauthorized"})

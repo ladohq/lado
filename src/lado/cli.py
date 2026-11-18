@@ -88,6 +88,7 @@ def cmd_start(args: argparse.Namespace) -> int:
         _check_project_args(args)
         telemetry.ask_if_needed()
         args.prompt_text = _read_prompt(args)
+        _take_over_github()  # before a clone too: it may be of github.com
     if args.project is None and args.path is None:
         args.path = "."
     if args.new:
@@ -141,6 +142,19 @@ def cmd_start(args: argparse.Namespace) -> int:
         print(f"Attach with: lado attach {sess.name}")
         return 0
     return _attach(sess.name)
+
+
+def _take_over_github() -> None:
+    """Take the GitHub login agents had over once, before LADO starts agents or its UI
+    (lado.github_takeover), saying so on stdout."""
+    from lado import agent_env, github_takeover
+
+    try:
+        line = github_takeover.run()
+    except agent_env.AgentEnvError:
+        return  # the launch says why the shell failed
+    if line:
+        print(line)
 
 
 def _read_prompt(args: argparse.Namespace) -> str | None:
@@ -1999,6 +2013,7 @@ def cmd_ui(args: argparse.Namespace) -> int:
     from lado.server import run as server_run
 
     telemetry.ask_if_needed()
+    _take_over_github()
 
     info = server_run.running()
     if info and args.host is not None and server_run.address(args.host) != info["host"]:

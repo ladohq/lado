@@ -1,10 +1,12 @@
 import dataclasses
 import os
 import re
+import socket
 import sqlite3
 import time
 
 import agent_helpers
+import fake_git_api
 import fake_model_server
 import pytest
 
@@ -14,6 +16,8 @@ from lado import (
     artifacts,
     artifacts_local,
     doctor,
+    git_kinds,
+    git_servers,
     gui_session,
     logins,
     model_servers,
@@ -1715,3 +1719,168 @@ def test_the_line_of_the_defaults_is_in_the_checks(monkeypatch):
     state.set_cli_default(state.ModelRef("codex", None, "gpt-5.6-sol"))
     _listing(monkeypatch, "gpt-5.6-sol")
     assert "Default models" in [c.name for c in doctor.run_checks(which=lambda cmd: cmd)]
+
+
+# The saved git servers.
+
+GIT_TOKEN = "glpat-CANARY-d0c70r"  # a canary: no line of doctor may hold it
+
+
+@pytest.fixture
+def git_api():
+    servers = []
+
+    def start(profile, **kwargs):
+        server = fake_git_api.Server(profile, **kwargs)
+        servers.append(server)
+        return server
+
+    yield start
+    for server in servers:
+        server.close()
+
+
+def _git_saved(url, kind="gitlab", login="ivan.petrov") -> state.GitServer:
+    at = git_servers.address(url)
+    checked = git_servers.Checked(git_kinds.by_name(kind), login)
+    return git_servers.save(at, checked, GIT_TOKEN)[0]
+
+
+def _git_lines() -> list[doctor.Check]:
+    found = doctor.check_git_servers()
+    assert GIT_TOKEN not in "\n".join(f"{c.detail} {c.hint}" for c in found)
+    return found
+
+
+def test_a_working_and_a_refused_git_server(git_api, lado_home):
+    works = git_api("gitlab-full", token=GIT_TOKEN)
+    refuses = git_api("github-refuses")
+    _git_saved(works.url)
+    _git_saved(refuses.url.replace("127.0.0.1", "localhost"), "github")
+    refused_root = refuses.url.replace("127.0.0.1", "localhost")
+    assert _git_lines() == [
+        doctor.Check(
+            f"git server {works.url}",
+            doctor.OK,
+            "Works: GitLab, signed in as ivan.petrov, may clone and push.",
+        ),
+        doctor.Check(
+            f"git server {refused_root}",
+            doctor.WARN,
+            "GitHub refused the token: it expired or was revoked",
+            f"replace it: lado git-server add {refused_root} --token",
+        ),
+    ]
+
+
+def test_no_saved_git_server_prints_no_line(lado_home):
+    assert doctor.check_git_servers() == []
+    assert not (lado_home / "lado.db").exists()
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    assert doctor.check_git_servers() == []
+
+
+def test_lado_db_at_another_schema_asks_no_git_server(git_api, lado_home):
+    server = git_api("gitlab-full", token=GIT_TOKEN)
+    _git_saved(server.url)
+    agent_helpers.previous_schema()
+    assert doctor.check_git_servers() == [
+        doctor.Check("git servers", doctor.INFO, doctor.NOT_AT_SCHEMA)
+    ]
+    assert server.requests == []
+    _unchanged(lado_home, OLDER)
+
+
+def _closed_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def test_a_git_server_that_does_not_answer_is_a_warning(git_api, lado_home):
+    works = git_api("gitlab-full", token=GIT_TOKEN)
+    silent = f"http://localhost:{_closed_port()}"
+    _git_saved(silent)
+    _git_saved(works.url)
+    first, second = _git_lines()  # by host: 127.0.0.1 before localhost
+    assert (first.name, first.level) == (f"git server {works.url}", doctor.OK)
+    assert (second.name, second.level) == (f"git server {silent}", doctor.WARN)
+    assert second.detail.startswith(f"localhost:{silent.rsplit(':', 1)[1]} does not answer: ")
+    assert second.hint == git_servers.REACH_HINT
+
+
+def test_a_missing_token_file_sends_nothing(git_api, lado_home):
+    server = git_api("gitlab-full", token=GIT_TOKEN)
+    saved = _git_saved(server.url)
+    (lado_home / "git-servers" / saved.id / "token").unlink()
+    assert _git_lines() == [
+        doctor.Check(
+            f"git server {server.url}",
+            doctor.WARN,
+            f"the token file of {server.url} is missing",
+            f"replace it: lado git-server add {server.url} --token",
+        )
+    ]
+    assert server.requests == []
+
+
+def test_a_saved_address_no_longer_taken_is_its_own_warning(git_api, lado_home):
+    works = git_api("gitlab-full", token=GIT_TOKEN)
+    _git_saved(works.url)
+    state.save_git_server(
+        "old1", "https://aaa.corp.example?x=1", "aaa.corp.example", "gitlab", None
+    )
+    first, second = _git_lines()  # by host: 127.0.0.1 before aaa.corp.example
+    assert (first.name, first.level) == (f"git server {works.url}", doctor.OK)
+    assert second == doctor.Check(
+        "git server https://aaa.corp.example?x=1",
+        doctor.WARN,
+        "its saved address is not taken any more (a git server's address holds no query)",
+        "remove it: lado git-server remove https://aaa.corp.example?x=1",
+    )
+
+
+def test_git_servers_are_asked_at_once(git_api, lado_home, monkeypatch):
+    monkeypatch.setattr(model_servers, "TIMEOUT", 2)
+    _git_saved(git_api("hang").url)
+    _git_saved(git_api("hang").url.replace("127.0.0.1", "localhost"))
+    started = time.monotonic()
+    found = _git_lines()
+    assert [c.level for c in found] == [doctor.WARN, doctor.WARN]
+    assert time.monotonic() - started < 3.5  # one after the other: 4 s
+
+
+def test_the_git_server_lines_follow_git_author(git_api, lado_home, monkeypatch):
+    _versions(monkeypatch)
+    server = git_api("gitlab-full", token=GIT_TOKEN)
+    _git_saved(server.url)
+    names = [c.name for c in doctor.run_checks(which=lambda cmd: cmd)]
+    assert names[names.index("git author") + 1] == f"git server {server.url}"
+
+
+def test_git_server_lines_never_change_the_exit_status(git_api, lado_home, monkeypatch, capsys):
+    _versions(monkeypatch)
+    status_before, out = _doctor_output(monkeypatch, capsys)
+    assert "git server" not in out
+    refuses = git_api("gitlab-refuses")
+    _git_saved(refuses.url)
+    _git_saved(f"http://localhost:{_closed_port()}")
+    status = doctor.main()
+    out = capsys.readouterr().out
+    assert status == status_before
+    assert (
+        f"[warn] git server {refuses.url}: GitLab refused the token: it expired or was revoked\n"
+        f"       replace it: lado git-server add {refuses.url} --token\n"
+    ) in out
+    assert "[FAIL] git server" not in out
+
+
+def test_doctor_saves_no_git_login(git_api, lado_home):
+    server = git_api("gitlab-full", token=GIT_TOKEN)
+    before = _git_saved(server.url, login=None)
+    [line] = _git_lines()
+    assert (line.level, line.detail) == (
+        doctor.OK,
+        "Works: GitLab, signed in as ivan.petrov, may clone and push.",
+    )
+    assert state.git_servers() == [before]

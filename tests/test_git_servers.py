@@ -1036,6 +1036,15 @@ def test_a_passing_check_saves_the_login_of_one_saved_without_a_check(serve, lad
     assert (lado_home / "git-servers" / before.id / "token").read_text() == TOKEN
 
 
+def test_a_check_without_save_login_writes_nothing(serve, lado_home):
+    server = serve("gitlab-full", token=TOKEN)
+    before = _saved(server.url, login=None)
+    found = git_servers.check(git_servers.address(server.url), save_login=False)
+    assert (found.outcome, found.login) == ("ok", fake.LOGIN)
+    assert found.text == "Works: GitLab, signed in as ivan.petrov, may clone and push."
+    assert state.git_servers() == [before]
+
+
 def test_a_check_keeps_the_author_and_writes_no_removed_server_back(serve, lado_home, monkeypatch):
     server = serve("gitlab-full", token=TOKEN)
     saved = _saved(server.url, login="old")

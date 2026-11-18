@@ -496,12 +496,13 @@ class Check:
     page_hint: str = ""
 
 
-def check(at: Address) -> Check:
+def check(at: Address, save_login: bool = True) -> Check:
     """Check the saved server of `at`'s host again with its saved token, as `add` asks it
     (every kind at once, no redirect followed, each request cut at TIMEOUT), judged by its
-    saved kind; a passing check saves the login it saw (under the lock), nothing else is
-    written. Refused, with no request sent, for no such server, a kind this LADO does not
-    know or a token file it cannot read."""
+    saved kind; a passing check saves the login it saw (under the lock) unless `save_login`
+    is False (lado doctor, which writes nothing), nothing else is written. Refused, with no
+    request sent, for no such server, a kind this LADO does not know or a token file it
+    cannot read."""
     from lado import git_credential
 
     server = saved_server(at)
@@ -538,7 +539,8 @@ def check(at: Address) -> Check:
                 f"The token lacks {', '.join(missing)}.",
                 f"Agents can {_can(kind, missing)} with it. Make one with the {kind.scopes}.",
             )
-        _save_login(server, login)
+        if save_login:
+            _save_login(server, login)
         rights = ", may clone and push." if told else "; the token's rights are not checked."
         page = f"Works: signed in as {login}{rights}"
         if server.login is None:

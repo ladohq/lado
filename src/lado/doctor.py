@@ -15,6 +15,7 @@ import lado
 from lado import (
     agent_env,
     artifacts,
+    git_servers,
     gui_session,
     kits,
     logins,
@@ -905,6 +906,44 @@ def check_default_models(probes: dict[str, model_servers.Probe | str]) -> Check 
     return Check(name, OK, "; ".join(words))
 
 
+def check_git_servers() -> list[Check]:
+    """A line per saved git server, by the check of `lado git-server check`, all asked at
+    once (git_servers.check: at most about 10 s each), saving no login: doctor writes
+    nothing. Never FAIL: a server that does not answer, a token file that is gone or an
+    address this LADO no longer takes is its own warning. No line with no server; lado.db is
+    read as it is, never made or migrated."""
+    if state.schema_version() is None:
+        return []
+    try:
+        servers = state.git_servers()
+    except state.SchemaError:
+        return [Check("git servers", INFO, NOT_AT_SCHEMA)]
+    if not servers:
+        return []
+
+    def checked(server: state.GitServer) -> Check:
+        name = f"git server {server.address}"
+        try:
+            found = git_servers.check(git_servers.address(server.address), save_login=False)
+        except git_servers.Refused as refused:
+            return Check(name, WARN, str(refused), refused.hint)
+        except ValueError as exc:  # BadAddress: the address rule changed since it was saved
+            return Check(
+                name,
+                WARN,
+                f"its saved address is not taken any more ({exc})",
+                f"remove it: {git_servers.REMOVE} {server.address}",
+            )
+        except OSError as exc:
+            return Check(name, WARN, f"not checked: {exc}")
+        if found.outcome == "ok":
+            return Check(name, OK, found.text)
+        return Check(name, WARN, found.text, found.hint)
+
+    with ThreadPoolExecutor(max_workers=len(servers)) as pool:
+        return list(pool.map(checked, servers))
+
+
 def _key_file_problem(server: state.ModelServer) -> str:
     """What is wrong with the key file of `server`, "" for nothing or no file."""
     path = model_settings.key_folder(server.id) / model_settings.KEY
@@ -930,7 +969,12 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
     overridden = check_project_variables()
     unused_secrets = check_project_secrets()
     probes: dict[str, model_servers.Probe | str] = {}
-    servers = check_model_servers(probes)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        # The git servers are asked while the model servers are: doctor waits for the
+        # longer of the two, not for both.
+        git_lines = pool.submit(check_git_servers)
+        servers = check_model_servers(probes)
+        git_servers_found = git_lines.result()
     default_models = check_default_models(probes)
     author = check_git_author()
     database = check_database()
@@ -941,6 +985,7 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
         check_tmux(which),
         check_git(),
         *([author] if author else []),
+        *git_servers_found,
         check_workspace(),
         *([projects_found] if projects_found else []),
         *([outside] if outside else []),

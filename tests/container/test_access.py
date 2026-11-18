@@ -113,19 +113,55 @@ def test_a_new_git_email_on_the_same_home_volume(start):
     assert got.split() == ["Ann", "b@example.com"]
 
 
-def test_gh_gives_github_its_token(start, tmp_path):
+FAKE_ENTRY = "fake-entry-456-not-a-token"
+GITHUB_ACCESS = """
+import pathlib, subprocess, tempfile
+from lado import agent_env, git_kinds, git_servers, state
+
+def fill(env):
+    asked = "protocol=https\\nhost=github.com\\n\\n"
+    done = subprocess.run(["git", "credential", "fill"], env={**env, "GIT_TERMINAL_PROMPT": "0"},
+                          text=True, capture_output=True, input=asked)
+    return done.stdout.replace("\\n", " ")
+
+def gh(env):
+    done = subprocess.run(["gh", "auth", "token"], env=env, text=True, capture_output=True)
+    return done.stdout.strip() or "none"
+
+def launched():
+    env, servers = agent_env.resolve(), state.git_servers()
+    folder = pathlib.Path(tempfile.mkdtemp()) / "gh"
+    return {**env, **git_servers.variables(env, servers),
+            **git_servers.gh_variables(servers, folder, lambda: None)}
+
+import time
+for _ in range(100):  # the server's start takes the GitHub login over first: let it end
+    if state.github_takeover() is not None:
+        break
+    time.sleep(0.2)
+if state.git_server_by_host("github.com"):  # whatever GitHub said of the fake GH_TOKEN
+    git_servers.remove(git_servers.address("github.com"))
+print("before", fill(launched()), "|", gh(launched()))
+checked = git_servers.Checked(git_kinds.by_name("github"), "octo")
+git_servers.save(git_servers.address("github.com"), checked, "%s")
+print("after", fill(launched()), "|", gh(launched()))
+"""
+
+
+def test_github_com_takes_the_token_of_its_git_server_alone(start, tmp_path):
+    """No credential helper of the image's and no login outside LADO: a GH_TOKEN in the
+    secrets folder and gh's own login on the home volume give github.com nothing; once
+    github.com is saved, the agents' git and the real gh take its token."""
     c = served(start, *with_secrets(tmp_path, GH_TOKEN=FAKE_GH))
-    # The environment an agent starts from (agent_env.resolve), with the folder's GH_TOKEN.
-    script = (
-        "import subprocess; from lado import agent_env; env = agent_env.resolve(); "
-        "print(subprocess.run(['git', 'credential', 'fill'], env=env, text=True, "
-        "capture_output=True, check=True, input='protocol=https\\nhost=github.com\\n\\n').stdout); "
-        "print(subprocess.run(['gh', 'auth', 'token'], env=env, text=True, "
-        "capture_output=True).stdout)"
+    c.sh(
+        "mkdir -p ~/.config/gh && printf 'github.com:\\n    oauth_token: gho-home-volume\\n"
+        "    user: someone\\n' > ~/.config/gh/hosts.yml"
     )
-    out = c.python(script)
-    assert f"password={FAKE_GH}" in out.splitlines(), out
-    assert out.splitlines()[-1] == FAKE_GH, out
+    out = c.python(GITHUB_ACCESS % FAKE_ENTRY).splitlines()
+    before, after = out[-2], out[-1]
+    assert "password=" not in before and before.endswith("| none"), out
+    assert f"password={FAKE_ENTRY}" in after and after.endswith(f"| {FAKE_ENTRY}"), out
+    assert FAKE_GH not in "\n".join(out)
     assert FAKE_GH not in docker("inspect", c.name).stdout
 
 

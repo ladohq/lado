@@ -42,7 +42,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-18-github-com-e
 
 ## 8. Docker
 
-- [ ] 8.1 No system helper for github.com; headers of Dockerfile, compose.yaml,
+- [x] 8.1 No system helper for github.com; headers of Dockerfile, compose.yaml,
   install.sh (D6). Check: `tests/test_docker.py`; container tests in CI.
 
 ## 9. End to end

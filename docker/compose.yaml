@@ -41,9 +41,7 @@
 # than make it. A file's name is the variable's, its content the value (one trailing
 # newline dropped). LADO reads them at each agent's start, so a new file reaches the agents
 # started after it, with no restart; they never show in `docker inspect`, and `lado doctor`
-# lists the names it uses. E.g. `printf %s "$TOKEN" > secrets/GH_TOKEN`:
-#   GH_TOKEN                  git over https to github.com and gh (or `gh auth login`
-#                             inside: docker compose exec -it lado gh auth login)
+# lists the names it uses. E.g. `printf %s "$KEY" > secrets/YOUGILE_API_KEY`:
 #   CLAUDE_CODE_OAUTH_TOKEN   Claude Code's login, from `claude setup-token` (or log in once
 #                             inside: docker compose exec -it lado claude)
 #   CODEX_ACCESS_TOKEN        Codex's login, a ChatGPT Business or Enterprise access token;
@@ -58,7 +56,10 @@
 # folder.
 #
 # git: LADO_GIT_NAME and LADO_GIT_EMAIL are written to git's global config at every start;
-# without them `docker compose logs lado` warns that agents cannot commit. ssh: set
+# without them `docker compose logs lado` warns that agents cannot commit. GitHub and your
+# other git servers over https: Settings → Git servers (or `docker compose exec -it lado lado
+# git-server add github.com --token`); the agents' git and gh get their tokens from there.
+# ssh: set
 # LADO_SSH_AGENT to the host's ssh agent socket, on a Mac Docker Desktop's
 # /run/host-services/ssh-auth.sock, on Linux the host's $SSH_AUTH_SOCK (its path changes per
 # login: point it at a stable socket, or `up -d` again after a new login); every agent of

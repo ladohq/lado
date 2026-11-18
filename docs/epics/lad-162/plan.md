@@ -224,6 +224,8 @@ the human's ssh key (S1's manual check could not tell them apart there): the age
 `GIT_SSH_COMMAND=false git push …`, or the human's ssh key is set aside for the check. The
 release candidate's live tests (each RC, docs/release.md) include an agent with a model
 pushing through a listed server, for Claude Code and Codex (S1 had none).
+Also on the company GitLab (S5's residual risk): "Check" with a revoked and with an expired
+token says "token refused", and a token with `api` only pushes over https.
 Touches: `docker/Dockerfile`, `scripts/` pins, the server kinds module (gitlab),
 `agent_env.py`, `tests/container/`, `tests/live/` (a push through a listed server), docs/install.md.
 

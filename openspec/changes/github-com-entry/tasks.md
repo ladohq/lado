@@ -19,7 +19,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-18-github-com-e
 
 ## 4. GitHub variables of agents and LADO's own git
 
-- [ ] 4.1 The GitHub names dropped from every layer; `gh_variables` (github.com, GitHub
+- [x] 4.1 The GitHub names dropped from every layer; `gh_variables` (github.com, GitHub
   Enterprise, `GH_CONFIG_DIR`) (D4); agent-variables' examples moved off `GH_TOKEN`. Check:
   `tests/test_agent_env.py`, `tests/test_runtime.py`.
 

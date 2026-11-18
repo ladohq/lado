@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 
 import pytest
 
@@ -248,3 +249,102 @@ def test_an_author_variable_without_an_author_is_not_named(
     _save()
     started = runtime.start_session(str(repo), "s", None, provider="claude")
     assert not [w for w in started.warnings if "GIT_AUTHOR_EMAIL" in w]
+
+
+# GitHub's variables: from the saved servers alone.
+
+GH = ("GH_TOKEN", "GH_ENTERPRISE_TOKEN", "GH_HOST")
+
+
+def _github(address, token):
+    checked = git_servers.Checked(git_kinds.by_name("github"), "octo")
+    return git_servers.save(git_servers.address(address), checked, token)[0]
+
+
+def _origin(repo, url):
+    subprocess.run(["git", "-C", str(repo), "remote", "add", "origin", url], check=True)
+
+
+def _gh(env):
+    return {name: env[name] for name in GH if name in env}
+
+
+def test_gh_token_from_the_entry(repo, fake_tmux, lado_home, monkeypatch, agents_path):
+    _, path = agents_path
+    _shell(monkeypatch, {"PATH": path, "GH_TOKEN": "shell", "GITHUB_TOKEN": "shell"})
+    _github("github.com", "ghp_entry")
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    env = _launched(lado_home)
+    assert _gh(env) == {"GH_TOKEN": "ghp_entry"}
+    assert "GITHUB_TOKEN" not in env
+    assert {"GH_TOKEN", "GH_CONFIG_DIR"} <= set(env[agent_env.LAUNCH_VARS].split(","))
+
+
+def test_gh_config_dir_is_the_agents_own_and_empty(
+    repo, fake_tmux, lado_home, monkeypatch, agents_path
+):
+    _, path = agents_path
+    _shell(monkeypatch, {"PATH": path, "GH_CONFIG_DIR": "/home/me/.config/gh"})
+    folder = lado_home / "agents" / "s" / "supervisor" / "gh"
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    env = _launched(lado_home)
+    assert env["GH_CONFIG_DIR"] == str(folder)
+    assert list(folder.iterdir()) == []
+    assert _gh(env) == {}  # no server saved
+
+
+def test_a_login_left_in_the_gh_folder_goes(tmp_path):
+    folder = tmp_path / "gh"
+    folder.mkdir()
+    (folder / "hosts.yml").write_text("github.com:\n  oauth_token: left\n")
+    (folder / "config.yml").write_text("prompt: disabled\n")
+    assert git_servers.gh_variables([], folder, lambda: None) == {"GH_CONFIG_DIR": str(folder)}
+    assert sorted(p.name for p in folder.iterdir()) == ["config.yml"]
+
+
+def test_ghe_token_of_the_origins_server(repo, fake_tmux, lado_home, monkeypatch, agents_path):
+    _, path = agents_path
+    _shell(monkeypatch, {"PATH": path, "GH_ENTERPRISE_TOKEN": "shell", "GH_HOST": "x"})
+    _origin(repo, "https://ghe.test:8443/team/app.git")
+    _github("https://ghe.other", "ghe_other")
+    _github("https://ghe.test:8443", "ghe_entry")
+    _github("github.com", "ghp_entry")
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    assert _gh(_launched(lado_home)) == {
+        "GH_TOKEN": "ghp_entry",
+        "GH_ENTERPRISE_TOKEN": "ghe_entry",
+        "GH_HOST": "ghe.test:8443",
+    }
+
+
+def test_the_only_ghe(repo, fake_tmux, lado_home, monkeypatch, agents_path):
+    _, path = agents_path
+    _shell(monkeypatch, {"PATH": path})
+    _origin(repo, "https://gitlab.corp.ru/team/app.git")
+    _save()
+    _github("https://ghe.test", "ghe_entry")
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    assert _gh(_launched(lado_home)) == {"GH_ENTERPRISE_TOKEN": "ghe_entry"}
+
+
+def test_two_ghe_neither_origin(repo, fake_tmux, lado_home, monkeypatch, agents_path):
+    _, path = agents_path
+    _shell(monkeypatch, {"PATH": path})
+    _github("https://ghe.one", "ghe_1")
+    _github("https://ghe.two", "ghe_2")
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    assert _gh(_launched(lado_home)) == {}
+
+
+def test_a_worker_gets_its_own_gh_variables(repo, fake_tmux, lado_home, monkeypatch, agents_path):
+    _, path = agents_path
+    _shell(monkeypatch, {"PATH": path})
+    _github("github.com", "ghp_entry")
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    launched = _launched(lado_home)
+    back = agent_env.without_launch(launched)
+    assert [name for name in agent_env.GITHUB_VARIABLES if name in back] == []
+    runtime.spawn_worker("s", "task", name="w1")
+    worker = json.loads((lado_home / "agents" / "s" / "w1" / "env.json").read_text())
+    assert worker["GH_TOKEN"] == "ghp_entry"
+    assert worker["GH_CONFIG_DIR"] == str(lado_home / "agents" / "s" / "w1" / "gh")

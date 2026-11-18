@@ -24,7 +24,11 @@ LADO's secrets by the CLI's own order of its variables.
 
 LADO's own network git calls (kits, skill packs, marketplaces, a clone of a URL) get the
 same layers over LADO's process environment instead of the login shell's (`for_git`), so
-they reach what the agents reach: the outside folder's GH_TOKEN, a project's secrets.
+they reach what the agents reach: the outside folder's GIT_SSH_COMMAND, a project's secrets.
+
+GitHub's variables (GITHUB_VARIABLES: its tokens, host and the GitHub CLI's config folder)
+come from no layer: github.com and GitHub Enterprise get their tokens from the saved git
+servers alone (lado.git_servers.gh_variables, laid by lado.runtime).
 
 A tmux window starts with its server's environment, so the launch does not rely on it: the
 window runs the module `lado.agent_env <file> <argv>` (`interpreter.run_module`), which
@@ -165,10 +169,13 @@ def merge(
 ) -> dict[str, str]:
     """`found`'s layers, each over the one before, but for the names of `login` (an agent
     CLI's login variables): a login comes whole from one layer, the highest that sets any
-    of them, and none of them is taken from a lower one. Without `login`, name by name."""
+    of them, and none of them is taken from a lower one. Without `login`, name by name. No
+    GITHUB_VARIABLES from any layer."""
     env: dict[str, str] = {}
     for layer in found:
         env.update(layer)
+    for name in GITHUB_VARIABLES:
+        env.pop(name, None)
     names = set(login)
     if names:
         top = next((layer for layer in reversed(found) if any(layer.get(n) for n in names)), {})
@@ -191,8 +198,13 @@ def for_git(project: Mapping[str, str] | None = None, remote: str | None = None)
     would cost a shell's start per call; the folder's unused files are named by `lado
     doctor` and each launch, not here. A call to a `remote` gets git's way to the saved git
     servers, read now (lado.git_servers.variables); lado.git_servers.Refused when the
-    remote is a saved server's and the git on that PATH is older than 2.31."""
+    remote is a saved server's and the git on that PATH is older than 2.31. No
+    GITHUB_VARIABLES of any layer: git reaches github.com by its saved server, and `gh`
+    gets LADO's own empty config folder (`<LADO_HOME>/gh`)."""
     env = {**os.environ, **outside().values, **(project or {})}
+    for name in GITHUB_VARIABLES:
+        env.pop(name, None)
+    env["GH_CONFIG_DIR"] = str(state.home_path() / "gh")
     if remote is None:
         return env
     from lado import git_servers  # it builds on this module's secrets reader

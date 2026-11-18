@@ -153,6 +153,24 @@ def lado_home(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_gh_login(monkeypatch):
+    """No unit test reads the GitHub CLI's login of the machine (lado.github_takeover), also
+    one whose layers carry no GH_CONFIG_DIR; the takeover's tests take `real_gh_token`."""
+    from lado import github_takeover
+
+    real = github_takeover.gh_token
+    monkeypatch.setattr(github_takeover, "gh_token", lambda env: None)
+    return real
+
+
+@pytest.fixture
+def real_gh_token(_no_gh_login, monkeypatch):
+    from lado import github_takeover
+
+    monkeypatch.setattr(github_takeover, "gh_token", _no_gh_login)
+
+
+@pytest.fixture(autouse=True)
 def agents_tmp(tmp_path_factory, monkeypatch):
     """The parent of the agents' temporary folders (providers.base.temp_path): the test's
     own TMPDIR, outside tmp_path (which tests list), never the real /tmp; also where an

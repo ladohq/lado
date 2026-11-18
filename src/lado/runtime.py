@@ -380,6 +380,7 @@ GIT_MIN = (2, 31)
 # `includeIf "hasconfig:remote.*.url:…"`, a git server's commit author (git_servers)
 GIT_AUTHOR_MIN = (2, 36)
 GIT_AUTHORS = "git-authors"  # in an agent's config folder: its servers' author files
+GH_CONFIG = "gh"  # in an agent's config folder: the GitHub CLI's own (GH_CONFIG_DIR)
 GIT_AUTHOR_VARIABLES = (
     "GIT_AUTHOR_NAME",
     "GIT_AUTHOR_EMAIL",
@@ -3549,12 +3550,16 @@ def _ours(
     LADO's, the agent's own TMPDIR (its folder under the layers' TMPDIR,
     providers.base.temp_path), git's way to the saved git servers (after the layers' own
     `GIT_CONFIG_*` entries, lado.git_servers.variables; none without a server, with the
-    servers' commit authors written into the agent's config folder), then the provider's."""
+    servers' commit authors written into the agent's config folder), the GitHub CLI's
+    config folder and tokens of the saved servers (lado.git_servers.gh_variables), then the
+    provider's."""
     temp_dir = providers.base.temp_path(agent, base_env)
     servers = state.git_servers()
-    authors = git_servers.author_files(providers.base.config_dir(agent) / GIT_AUTHORS, servers)
+    config = providers.base.config_dir(agent)
+    authors = git_servers.author_files(config / GIT_AUTHORS, servers)
     git = git_servers.variables(base_env, servers, authors=authors)
-    return {**providers.agent_env(agent), "TMPDIR": str(temp_dir), **git, **launch.env}
+    gh = git_servers.gh_variables(servers, config / GH_CONFIG, lambda: remote(agent.cwd))
+    return {**providers.agent_env(agent), "TMPDIR": str(temp_dir), **git, **gh, **launch.env}
 
 
 def _author_warnings(agent: state.Agent, base_env: Mapping[str, str]) -> list[str]:

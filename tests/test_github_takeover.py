@@ -25,7 +25,7 @@ def github(monkeypatch, tmp_path):
 
 
 @pytest.fixture
-def gh(tmp_path, monkeypatch):
+def gh(tmp_path, monkeypatch, real_gh_token):
     """A stub `gh` on PATH: `gh auth token` prints the file `token` of its folder, or exits
     as `fail` says (`status`, a line on stderr), or sleeps `sleep` seconds first."""
     folder = tmp_path / "gh-stub"
@@ -130,7 +130,7 @@ def test_nothing_found(gh):
     assert (state.github_takeover().outcome, state.github_takeover().source) == ("none", None)
 
 
-def test_no_gh_installed_is_nothing_found(monkeypatch, tmp_path):
+def test_no_gh_installed_is_nothing_found(monkeypatch, tmp_path, real_gh_token):
     monkeypatch.setenv("PATH", str(tmp_path / "empty"))
     assert github_takeover.run() is None
     assert state.github_takeover().outcome == "none"

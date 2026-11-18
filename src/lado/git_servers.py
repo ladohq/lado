@@ -707,6 +707,46 @@ def variables(
     return found
 
 
+GH_LOGIN_FILE = "hosts.yml"  # where gh keeps a login in its config folder
+
+
+def gh_variables(
+    servers: Sequence[state.GitServer], config: Path, remote: Callable[[], str | None]
+) -> dict[str, str]:
+    """The GitHub CLI's variables of an agent's launch, from the saved servers alone:
+    `GH_CONFIG_DIR` its own folder `config`, made, with no login of gh's own in it; `GH_TOKEN`
+    the github.com server's token; `GH_ENTERPRISE_TOKEN` the token of the GitHub Enterprise
+    server of the repository's origin (`remote()`, asked only while one is saved), else of
+    the only one saved, and `GH_HOST` its host for the origin's server only. A token is in
+    the launch's environment alone, as an API key is."""
+    from lado import git_credential
+
+    config.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with contextlib.suppress(FileNotFoundError):
+        (config / GH_LOGIN_FILE).unlink()  # a login made by hand there is no saved server's
+    found = {"GH_CONFIG_DIR": str(config)}
+
+    def token(server: state.GitServer) -> str | None:
+        return git_credential.read_token(server.id) if has_token(server) else None
+
+    dotcom = next((s for s in servers if s.address == github.DOTCOM), None)
+    if dotcom is not None and (value := token(dotcom)):
+        found["GH_TOKEN"] = value
+    enterprise = [s for s in servers if s.kind == github.KIND.name and s is not dotcom]
+    if not enterprise:
+        return found
+    url = remote()
+    origin = server_for(url, servers) if url else None
+    chosen = origin if origin in enterprise else None
+    if chosen is None and len(enterprise) == 1:
+        chosen = enterprise[0]
+    if chosen is not None and (value := token(chosen)):
+        found["GH_ENTERPRISE_TOKEN"] = value
+        if chosen is origin:
+            found["GH_HOST"] = chosen.host
+    return found
+
+
 def server_for(remote: str, servers: Sequence[state.GitServer]) -> state.GitServer | None:
     """The server of `servers` git reaches for `remote` with `variables`: by its host and
     port for an https:// or http:// URL, by its host for an ssh address it rewrites

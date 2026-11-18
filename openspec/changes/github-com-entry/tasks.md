@@ -47,7 +47,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-18-github-com-e
 
 ## 9. End to end
 
-- [ ] 9.1 `tests/integration/test_github_takeover.py` (the design doc's cases 1–6) and the
+- [x] 9.1 `tests/integration/test_github_takeover.py` (the design doc's cases 1–6) and the
   rollback in `tests/integration/test_update_process.py` (D11). Check: `uv run pytest -m
   integration -n auto` on those files.
 

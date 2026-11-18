@@ -8,6 +8,7 @@ runs this working copy for everything else."""
 import contextlib
 import json
 import os
+import socket
 import sqlite3
 import subprocess
 import sys
@@ -349,6 +350,51 @@ def test_update_to_an_older_schema_names_the_git_server_tokens_that_stay(
     with contextlib.closing(sqlite3.connect(state.home() / "lado.db")) as db:
         assert db.execute("SELECT id FROM git_servers").fetchall() == []
     assert (folder / "token").exists()  # the older LADO does not know it: left to the human
+
+
+def test_update_to_an_older_schema_forgets_the_github_entry(
+    tmp_path, repo, session, install, monkeypatch
+):
+    """The LADO before this one knows schema 42: going back to it restores the copy made
+    before the GitHub login was taken over, with no github.com server, and the login
+    outside LADO is there as it was, for the older LADO to use as before."""
+    outside = tmp_path / "secrets"
+    outside.mkdir()
+    (outside / "GH_TOKEN").write_text("ghp_outside_kept\n")
+    monkeypatch.setenv("LADO_ENV_DIR", str(outside))
+    # GitHub does not answer here (a closed port as the proxy): saved, not checked.
+    monkeypatch.setenv("HTTPS_PROXY", f"http://127.0.0.1:{closed_port()}")
+    monkeypatch.setenv("https_proxy", f"http://127.0.0.1:{closed_port()}")
+    state.add_session(state.Session(session, str(repo), None, provider="fake"))
+    state.stop_session(session)
+    agent_helpers.previous_schema()  # as the LADO before left it, with its session
+    before = state.SCHEMA_VERSION - 1
+    assert lado_cli("ls").returncode == 0  # migrated, the copy first; ls takes nothing over
+    assert state.github_takeover() is None
+    start(repo, session)  # the login taken over before the supervisor starts
+    assert state.github_takeover().outcome == "unchecked"
+    assert [s.host for s in state.git_servers()] == ["github.com"]
+    stopped(session)
+    publish(tmp_path, before)
+    done = lado_cli("update", OLD, "--yes")
+    assert done.returncode == 0, done.stdout + done.stderr
+    copy = state.home() / "backups" / f"lado.db.schema-{before}"
+    assert f"Restored lado.db from {copy} (schema {before})" in done.stdout
+    with contextlib.closing(sqlite3.connect(state.home() / "lado.db")) as db:
+        assert db.execute("PRAGMA user_version").fetchone()[0] == before
+        assert db.execute("SELECT host FROM git_servers").fetchall() == []
+        tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master")}
+    assert "github_takeover" not in tables
+    assert (outside / "GH_TOKEN").read_text() == "ghp_outside_kept\n"
+    with contextlib.closing(sqlite3.connect(state.home() / "lado.db")) as db:
+        names = [row[0] for row in db.execute("SELECT name FROM sessions")]
+    assert session in names  # the older LADO finds its session (run by hand: the PR's check)
+
+
+def closed_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
 
 
 def test_update_to_an_older_schema_without_its_copy_stops_nothing(tmp_path, repo, session, install):

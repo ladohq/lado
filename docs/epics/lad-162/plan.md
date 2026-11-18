@@ -2,12 +2,12 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: S5b (LAD-297, run task/lad-297) · Next: S6 · Open checks: the human's check on the company GitLab, on the release candidate that carries S8
+In work: none · Next: S6 (waits at step_ok) · Open checks: the human's check on the company GitLab, on the release candidate that carries S8
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
 - The statement's decisions (brief.md) are not reopened.
-Last review: 2026-11-18, after S5, base at b66064e5
+Last review: 2026-11-18, after S5b, base at 13a0158a
 
 ## Steps
 
@@ -159,7 +159,11 @@ Leftovers of S2 (ledger of LAD-290, the human's manual check report):
   neither kind.
 
 ### S5b — `lado doctor` and clone hints from the list
-Status: in progress (LAD-297, run task/lad-297); split from S5 at its design (#7241)
+Status: done (LAD-297, PR #338, merged 13a0158a on 2026-11-18, in release 0.48.0); split from
+S5 at its design (#7241). The System panel left unchanged (#7332 q1), the ssh hint of an
+unsaved host stays alone (#7332 q4). The human's manual check by an agent: 14 of 14 steps OK
+(gitlab.com saved, the company GitLab as the unsaved host; doctor 4.3 s with a refused
+connection, 8.5 s with a silent server). Leftovers → S6.
 Check: unit tests: `lado doctor` lists the git servers with their check (the same check as
 `lado git-server check`, network failures named, not fatal to the rest of doctor); a failed
 clone from a listed host names its server entry and what to do (Check, Replace token), from
@@ -183,6 +187,15 @@ GitLab gives push over https" only from docs.
 
 ### S6 — GitHub from the list: today's login becomes the github.com entry, `gh` takes the entry's token
 Status: planned
+Leftovers of S5b (the human's manual check, ledger of LAD-297):
+- The CLI hint of a failed clone from a saved server packs two commands into one line
+  ("Check the git server; if its token expired or was revoked, replace it (lado git-server
+  add … --token): lado git-server check …"): one command per line; S6 changes the clone
+  hints of github.com anyway.
+- While the author's Remove or Undo request runs, Edit and Set author stay enabled.
+- Ledger F1: the clone failure names the host without its port next to a server named with
+  it; F2: doctor does not catch an sqlite error when lado.db stays locked over 10 s
+  (declined, consider).
 Check: an integration test of an upgrade: a user with `GH_TOKEN` (an outside variable or a
 project's secret) or `gh auth login` on the home volume sees a github.com entry that
 "Check" confirms, and agents clone, push and run `gh` as before; a GitHub Enterprise entry
@@ -228,6 +241,8 @@ Also on the company GitLab (S5's residual risk): "Check" with a revoked and with
 token says "token refused", and a token with `api` only pushes over https.
 Touches: `docker/Dockerfile`, `scripts/` pins, the server kinds module (gitlab),
 `agent_env.py`, `tests/container/`, `tests/live/` (a push through a listed server), docs/install.md.
+Notes: the image's Debian base was bumped by dependabot on 2026-11-18 (#331); measure glab's
+growth against the base the step starts from.
 
 ### S9 — The guide "Connect your own git server"
 Status: planned
@@ -247,9 +262,9 @@ only — a candidate to run alongside S8 if the human asks for two at once.
 
 ## Later
 
-- Flaky tests met in S5, not the epic's: the kilo smoke on macOS (LAD-295, #7281) and
-  `test_send_text_pastes_multiline_text` in CI (LAD-296, #7294); both in the Backlog, derived
-  from LAD-293.
+- Flaky tests met in S5 and S5b, not the epic's: the kilo smoke on macOS (LAD-295, #7281),
+  `test_send_text_pastes_multiline_text` in CI (LAD-296, #7294), the 44 px phone test of the
+  launch window (LAD-298, #7361); all in the Backlog, derived from LAD-293 or LAD-297.
 - An expired token shown on a closed row before Check (S4's mockup F7): its expiry date or a
   stored last check, a schema change (#7234).
 

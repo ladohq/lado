@@ -40,7 +40,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-19-git-server-h
 
 ## 8. The image
 
-- [ ] 8.1 glab 1.130.0 by SHA-256 per architecture in its own layer, update check and
+- [x] 8.1 glab 1.130.0 by SHA-256 per architecture in its own layer, update check and
   statistics off; the unit pin tests; the container test (version, auth status under a test
   CA, another host, configs unchanged, growth ≤ 60 MB) (D8). Check: `tests/test_docker.py`,
   `uv run pytest -m container -n0 tests/container/test_glab.py`.

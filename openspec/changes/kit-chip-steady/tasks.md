@@ -14,7 +14,7 @@
 
 ## 3. Docs and CHANGELOG
 
-- [ ] 3.1 docs/design/ui.md: Kits' line says that the chips keep the last kit list while the
+- [x] 3.1 docs/design/ui.md: Kits' line says that the chips keep the last kit list while the
   next is asked; CHANGELOG 0.48.0 Fixed: a line that a kit chip no longer blinks its version
   when Where changes. Check: read both.
 

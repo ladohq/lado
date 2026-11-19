@@ -26,6 +26,12 @@ kept in its row. An agent's launch writes it into a file of the agent's own conf
 entries, `includeIf "hasconfig:remote.*.url:…"` entries including it (`author_entries`): git
 takes it in a repository with a remote on the server, and nowhere else. The condition exists
 from git 2.36 (`check_author_git`); LADO's own git gets no author.
+
+An agent's GitLab CLI gets a configuration folder of its own (`glab_variables`), with an
+entry per saved GitLab server whose token header comes from LADO's helper at each call
+(`glab_command`): no token is written there. The server of the session repository's origin
+names its kind's tool to every agent (`tool_line`), from one check of that tool on the
+agents' PATH (`tool_state`), which also gives the launch's warning (`tool_warning`).
 """
 
 from __future__ import annotations

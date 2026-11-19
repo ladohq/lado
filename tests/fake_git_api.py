@@ -17,6 +17,7 @@ import shutil
 import socket
 import ssl
 import subprocess
+import sys
 import threading
 from email.message import Message
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -288,6 +289,15 @@ def _pipe(source: socket.socket, sink: socket.socket) -> None:
         sink.shutdown(socket.SHUT_WR)
 
 
+class _QuietServer(ThreadingHTTPServer):
+    """Prints no traceback for a client that closes without a request (lado.git_certificates
+    reads a certificate chain by a handshake alone), into the test's captured stderr."""
+
+    def handle_error(self, request, client_address):
+        if not isinstance(sys.exc_info()[1], OSError):
+            super().handle_error(request, client_address)
+
+
 class Server:
     """The fake on 127.0.0.1, a free port, over TLS with `certificate` (cert, key);
     `requests` keeps each request it received."""
@@ -321,7 +331,7 @@ class Server:
             def log_message(self, *args):
                 pass
 
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server = _QuietServer(("127.0.0.1", 0), Handler)
         self.port = self.server.server_address[1]
         scheme = "http"
         if certificate is not None:

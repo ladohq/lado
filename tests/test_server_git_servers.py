@@ -121,6 +121,7 @@ def test_the_list_is_the_commands(client, serve, capsys, lado_home):
             r["kind_title"],
             *(r["login"] or "not checked").split(),
             "yes" if r["has_token"] else "no",
+            *(f"until {r['certificate']['not_after']}" if r["certificate"] else "-").split(),
             *(f"{r['author_name']} <{r['author_email']}>" if r["author_name"] else "-").split(),
         ]
         for r in rows

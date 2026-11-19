@@ -1879,17 +1879,10 @@ def cmd_git_server_list(args: argparse.Namespace) -> int:
     return 0
 
 
-def _saved_certificate(server):
-    """The first certificate of the server's file (lado.git_certificates), None for none."""
-    from lado import git_certificates, git_servers
-
-    pem = git_servers.certificate(server)
-    found = git_certificates.parse(pem) if pem is not None else []
-    return found[0] if found else None
-
-
 def _certificate_cell(server) -> str:
-    found = _saved_certificate(server)
+    from lado import git_servers
+
+    found = git_servers.certificate_info(server)
     if found is None:
         return "-"
     return f"{'expired' if found.expired else 'until'} {found.not_after.date()}"
@@ -1914,7 +1907,7 @@ def cmd_git_server_certificate(args: argparse.Namespace) -> int:
             print(git_servers.RESTART)
             return 0
         if args.file is None:
-            found = _saved_certificate(git_servers.saved_server(at))
+            found = git_servers.certificate_info(git_servers.saved_server(at))
             if found is None:
                 print(f"No certificate: LADO trusts this computer's authorities for {at.root}.")
             else:
@@ -1926,7 +1919,7 @@ def cmd_git_server_certificate(args: argparse.Namespace) -> int:
         server = git_servers.set_certificate(at, pem)
     except git_servers.Refused as exc:
         return _refused(exc)
-    print(f"Trusted {_saved_certificate(server).subject} for {server.address}.")
+    print(f"Trusted {git_servers.certificate_info(server).subject} for {server.address}.")
     try:
         checked = git_servers.check(at)
     except git_servers.Refused as exc:

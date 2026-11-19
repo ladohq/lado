@@ -63,19 +63,12 @@ def server_info(server: state.GitServer) -> models.GitServerInfo:
 
 
 def _saved_certificate(server: state.GitServer) -> models.GitServerCertificate | None:
-    """The first certificate of the server's file, as the page's Certificate row names it."""
-    pem = git_servers.certificate(server)
-    if pem is None:
-        return None
-    from lado import git_certificates
-
-    found = git_certificates.parse(pem)
-    if not found:
+    """The server's certificate as the page's Certificate row names it."""
+    found = git_servers.certificate_info(server)
+    if found is None:
         return None
     return models.GitServerCertificate(
-        name=found[0].subject,
-        not_after=found[0].not_after.date().isoformat(),
-        expired=found[0].expired,
+        name=found.subject, not_after=found.not_after.date().isoformat(), expired=found.expired
     )
 
 

@@ -471,7 +471,6 @@ def _unanswered(
         if _untrusted(answers[0]):
             command = f"{ADD} {at.root} --token --certificate <file>"
             found = _trust(at, certificate, command, answers[0].why, given=True)
-            # given: an add's certificate is the human's file, nothing saved has changed
             refused = Refused(
                 found.text,
                 found.hint,
@@ -594,14 +593,7 @@ def _trust(at: Address, trusted: str | None, command: str, why: str, given: bool
                 f"The server's certificate {expired}: ask the server's administrator to renew it.",
                 "",
             )
-        failed = f"TLS failed ({exc.why or why})"
-        return _Trust(
-            "no_answer",
-            f"{at.key} does not answer: {failed}",
-            REACH_HINT,
-            f"No answer: {failed}.",
-            PAGE_REACH_HINT,
-        )
+        return _tls_failed(at, exc.why or why)
     hint = TRUST_HINT.format(command=command)
     if trusted is None:
         return _Trust(
@@ -634,7 +626,11 @@ def _trust(at: Address, trusted: str | None, command: str, why: str, given: bool
             offer,
             before,
         )
-    failed = f"TLS failed ({why})"  # the saved authority reaches it now: a passing failure
+    return _tls_failed(at, why)  # the saved authority reaches it now: a passing failure
+
+
+def _tls_failed(at: Address, why: str) -> _Trust:
+    failed = f"TLS failed ({why})"
     return _Trust(
         "no_answer",
         f"{at.key} does not answer: {failed}",
@@ -1182,6 +1178,18 @@ def certificate(server: state.GitServer) -> str | None:
         return certificate_file(server.id).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return None
+
+
+def certificate_info(server: state.GitServer) -> git_certificates.Certificate | None:
+    """The first certificate of the server's file, as the list and the page name it (its
+    name and expiry); None for none, or a file LADO cannot read."""
+    pem = certificate(server)
+    if pem is None:
+        return None
+    from lado import git_certificates
+
+    found = git_certificates.parse(pem)
+    return found[0] if found else None
 
 
 def set_certificate(at: Address, pem: str) -> state.GitServer:

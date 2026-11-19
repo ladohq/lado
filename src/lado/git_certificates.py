@@ -32,6 +32,8 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.x509.oid import AuthorityInformationAccessOID, ExtensionOID, NameOID
 
+from lado import model_servers
+
 TIMEOUT = 5  # seconds of a handshake, its connection included
 LINKS = 3  # issuer links followed at most
 LINK_TIMEOUT = 5  # seconds per issuer link
@@ -153,7 +155,7 @@ def _unverified(tls: ssl.SSLSocket) -> list[bytes]:
     return [cert.public_bytes(ssl._ssl.ENCODING_DER) for cert in found]  # type: ignore[attr-defined]
 
 
-def chain(host: str, port: int, timeout: float | None = None) -> list[bytes]:
+def chain(host: str, port: int) -> list[bytes]:
     """The DER certificates the server at `host`:`port` shows, its own first, from a TLS
     handshake that checks nothing; nothing is written after it. OSError (ssl.SSLError among
     them) for a server not reached."""
@@ -161,7 +163,7 @@ def chain(host: str, port: int, timeout: float | None = None) -> list[bytes]:
     unchecked.check_hostname = False
     unchecked.verify_mode = ssl.CERT_NONE
     with (
-        socket.create_connection((host, port), TIMEOUT if timeout is None else timeout) as raw,
+        socket.create_connection((host, port), TIMEOUT) as raw,
         unchecked.wrap_socket(raw, server_hostname=host) as tls,
     ):
         return _unverified(tls)
@@ -194,15 +196,10 @@ def _link(cert: x509.Certificate) -> str | None:
     return None
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *args, **kwargs):
-        return None
-
-
 def _fetch(url: str) -> list[x509.Certificate]:
     """The certificates at an issuer link, DER or PEM; none for no answer, one larger than
     LINK_MAX, a redirect or anything else (a PKCS#7 bundle)."""
-    opener = urllib.request.build_opener(_NoRedirect())
+    opener = urllib.request.build_opener(model_servers.NoRedirect())
     request = urllib.request.Request(url, headers={"User-Agent": "lado"})
     try:
         with opener.open(request, timeout=LINK_TIMEOUT) as answer:
@@ -267,17 +264,8 @@ def _reaches(host: str, port: int, found: Certificate, sent: list[x509.Certifica
 
 
 def _why(exc: BaseException) -> str:
-    if isinstance(exc, ssl.SSLError):
-        return (exc.reason or "handshake failed").lower().replace("_", " ")
-    if isinstance(exc, ConnectionRefusedError):
-        return "connection refused"
-    if isinstance(exc, socket.gaierror):
-        return "unknown host"
-    if isinstance(exc, (TimeoutError, socket.timeout)):
-        return f"no answer in {TIMEOUT:g} s"
-    if isinstance(exc, OSError) and exc.strerror:
-        return exc.strerror.lower()
-    return type(exc).__name__
+    """Why a connection failed, in the words of LADO's requests (model_servers.no_answer)."""
+    return model_servers.no_answer(exc).why
 
 
 def offer(host: str, port: int) -> Certificate:

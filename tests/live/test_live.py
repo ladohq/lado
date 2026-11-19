@@ -910,3 +910,51 @@ def test_a_worker_commits_unless_its_task_says_not_to(live_repo, live_provider):
     assert runtime.git(str(repo), "show", f"{w2.branch}:hello.txt").strip() == "OK"
     check_supervisor_kept_still()
     runtime.stop_session(SESSION)
+
+
+PUSH_WORKER = (
+    "Create a file pushed.txt containing exactly OK, commit it, and push your branch with "
+    "`git push origin HEAD`. Then report to the supervisor with send_message. Do nothing else."
+)
+GIT_TOKEN = "glpat-LIVE-CANARY-3f8a"
+
+
+def test_an_agent_pushes_through_a_saved_git_server(live_repo, live_provider, tmp_path):
+    """A worker with a model pushes over https to a saved git server (a local git server
+    under a test authority, saved as GitLab with its token and certificate), with nothing
+    of its own: LADO's helper gives git the token, the saved certificate is git's trust."""
+    if live_provider not in ("claude", "codex"):
+        pytest.skip("a push through a saved git server is tested with Claude Code and Codex")
+    import certificates as made
+    from fake_git_server import Server
+
+    from lado import git_kinds, git_servers
+
+    root = made.authority("LADO Live CA", "LADO Tests")
+    chain = made.write_chain(tmp_path / "tls", made.server("localhost", root), root)
+    server = Server(tmp_path / "git-server", GIT_TOKEN, chain)
+    try:
+        server.url = server.url.replace("127.0.0.1", "localhost")
+        url = server.repository("team/app.git", live_repo)
+        runtime.git(str(live_repo), "remote", "add", "origin", url)
+        checked = git_servers.Checked(git_kinds.by_name("gitlab"), "ivan.petrov")
+        git_servers.save(git_servers.address(server.url), checked, GIT_TOKEN, root.pem)
+        start_session(live_repo, live_provider)
+        worker = runtime.spawn_worker(SESSION, PUSH_WORKER, name="w1")
+        reported = answering(live_provider, "w1", lambda: messages("w1", "supervisor"))
+        wait_for(reported, "w1's report", 240)
+        bare = str(server.root / "team/app.git")
+        pushed = subprocess.run(
+            ["git", "-C", bare, "show", f"{worker.branch}:pushed.txt"],
+            capture_output=True,
+            text=True,
+        )
+        print(f"{live_provider}: {[(r.method, r.path, r.user) for r in server.git_requests()]}")
+        assert pushed.returncode == 0, pushed.stderr
+        assert pushed.stdout.strip() == "OK"
+        receive = [r for r in server.git_requests() if "git-receive-pack" in r.path]
+        assert receive and all((r.user, r.password) == ("oauth2", GIT_TOKEN) for r in receive)
+        check_supervisor_kept_still()
+        runtime.stop_session(SESSION)
+    finally:
+        server.close()

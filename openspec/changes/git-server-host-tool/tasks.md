@@ -47,7 +47,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-19-git-server-h
 
 ## 9. Live
 
-- [ ] 9.1 An agent pushes through a saved git server, Claude Code and Codex (D9). Check:
+- [x] 9.1 An agent pushes through a saved git server, Claude Code and Codex (D9). Check:
   written, not run; `make test-live` on the RC.
 
 ## 10. Docs

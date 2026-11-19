@@ -230,10 +230,10 @@ spec place it (§10, C1, #7234), with the critique's F2 (how to sign in).
 ### S6b — The host's ssh agent switched off
 Status: planned
 Leftovers of S6 (the human's manual check, ledger of LAD-299):
-- The token hint of Add for GitHub asks for `repo` only; `gh pr view` needs `read:org`, a
-  push of `.github/workflows/` needs `workflow`: ask for `repo, read:org, workflow`.
+- The token hint of Add for GitHub stays at the minimum, `repo` (#7446: the rest is the
+  user's choice); the docs may name, in one line, what `read:org` and `workflow` add.
 - The Add form on an empty list prefills gitlab.com, now that github.com is an ordinary entry
-  too: the analyst proposes the rule (both, none, or the one not saved yet).
+  too: the address is empty, with a placeholder only (#7446).
 - Ledger F8: `docs/install.md` ("git over ssh") says `git@github.com:` goes with the ssh
   key; a saved server's ssh addresses go over its token — S6b rewrites this part anyway.
 - Docker was not checked by hand in S6: S6b's manual check runs in Docker and also covers

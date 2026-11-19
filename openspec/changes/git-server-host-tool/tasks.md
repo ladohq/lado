@@ -24,7 +24,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-19-git-server-h
 
 ## 5. doctor
 
-- [ ] 5.1 The tool lines and `GitLab login outside LADO` (D6, D7). Check: `tests/test_doctor.py`.
+- [x] 5.1 The tool lines and `GitLab login outside LADO` (D6, D7). Check: `tests/test_doctor.py`.
 
 ## 6. The token's right for merge requests
 

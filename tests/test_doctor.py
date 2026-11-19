@@ -2041,3 +2041,170 @@ def test_a_certificate_trust_cannot_fix_keeps_the_checks_hint(git_api, lado_home
             "ask the server's administrator",
         )
     ]
+
+
+# The saved servers' tools (openspec capability doctor).
+
+
+@pytest.fixture
+def agents_tools(monkeypatch, tmp_path):
+    """The agents' environment is LADO's own, its PATH a folder of the test's tools and git."""
+    import shutil
+
+    monkeypatch.setenv(agent_env.SOURCE_VAR, agent_env.INHERIT)
+    folder = tmp_path / "tools"
+    folder.mkdir()
+    (folder / "git").symlink_to(shutil.which("git"))
+    monkeypatch.setenv("PATH", str(folder))
+
+    def tool(name, line):
+        (folder / name).write_text(f"#!/bin/sh\necho '{line}'\n")
+        (folder / name).chmod(0o755)
+
+    return tool
+
+
+def test_glab_of_a_saved_gitlab_is_ok_with_its_version(agents_tools, lado_home):
+    agents_tools("glab", "glab 1.130.0 (206ebab4f)")
+    _git_saved("https://gitlab.corp.example")
+    assert doctor.check_host_tools() == [
+        doctor.Check("glab", doctor.OK, "glab 1.130.0 (206ebab4f)")
+    ]
+
+
+def test_a_missing_glab_warns_with_what_to_install(agents_tools, lado_home):
+    _git_saved("https://gitlab.corp.example")
+    _git_saved("https://git.lan")
+    assert doctor.check_host_tools() == [
+        doctor.Check(
+            "glab",
+            doctor.WARN,
+            "not on the agents' PATH: agents cannot open merge requests on "
+            "https://git.lan, https://gitlab.corp.example",
+            "install glab 1.114.0 or newer",
+        )
+    ]
+
+
+def test_an_old_glab_warns(agents_tools, lado_home):
+    agents_tools("glab", "glab 1.80.0 (x)")
+    _git_saved("https://gitlab.corp.example")
+    assert doctor.check_host_tools() == [
+        doctor.Check(
+            "glab",
+            doctor.WARN,
+            "glab 1.80.0 is older than 1.114.0, which LADO needs to sign it in",
+            "update glab",
+        )
+    ]
+
+
+def test_only_github_saved_gives_a_gh_line_alone(agents_tools, lado_home):
+    agents_tools("gh", "gh version 2.83.0 (2026-10-01)")
+    agents_tools("glab", "glab 1.130.0 (x)")
+    _git_saved("https://github.com", "github")
+    assert doctor.check_host_tools() == [
+        doctor.Check("gh", doctor.OK, "gh version 2.83.0 (2026-10-01)")
+    ]
+
+
+def test_no_saved_server_no_tool_line(agents_tools, lado_home):
+    assert doctor.check_host_tools() == []
+    assert not (lado_home / "lado.db").exists()
+
+
+def test_a_missing_tool_never_changes_the_exit_status(agents_tools, lado_home, monkeypatch, capsys):
+    _git_saved("https://gitlab.corp.example")
+    monkeypatch.setattr(doctor, "check_git_servers", lambda: [])
+    monkeypatch.setattr(doctor, "run_checks", lambda: doctor.check_host_tools())
+    assert doctor.main() == 0
+    assert "[warn] glab: not on the agents' PATH" in capsys.readouterr().out
+
+
+# The GitLab login outside LADO (openspec capability doctor).
+
+GITLAB_OUTSIDE = "GitLab login outside LADO"
+GITLAB_NOT_USED = "set but not used: a GitLab takes its token from Settings → Git servers"
+GLAB_OWN = (doctor.INFO, f"{GITLAB_OUTSIDE}: the GitLab CLI's own login is not used by agents")
+
+
+@pytest.fixture
+def no_gitlab(monkeypatch, tmp_path):
+    for name in agent_env.GITLAB_VARIABLES:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv(agent_env.ENV_DIR_VAR, raising=False)
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setenv(agent_env.SOURCE_VAR, agent_env.INHERIT)
+    home = tmp_path / "human"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    return home
+
+
+def _gitlab_lines() -> list[tuple[str, str]]:
+    return [(c.level, f"{c.name}: {c.detail}") for c in doctor.check_gitlab_login()]
+
+
+def test_a_gitlab_token_of_the_shell_is_named(no_gitlab, monkeypatch):
+    monkeypatch.setenv("GITLAB_TOKEN", "glpat-CANARY")
+    lines = _gitlab_lines()
+    assert lines == [
+        (doctor.WARN, f"{GITLAB_OUTSIDE}: GITLAB_TOKEN of your shell {GITLAB_NOT_USED}")
+    ]
+    assert "CANARY" not in str(lines)
+
+
+def test_a_gitlab_variable_of_the_folder_and_a_project_are_named(
+    no_gitlab, monkeypatch, tmp_path, ws
+):
+    folder = tmp_path / "secrets"
+    folder.mkdir()
+    (folder / "GITLAB_TOKEN").write_text("glpat-CANARY\n")
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(folder))
+    projects.create("shop", None)
+    projects.set_secret("shop", "GL_HOST", "gitlab.corp.example")
+    assert _gitlab_lines() == [
+        (
+            doctor.WARN,
+            f"{GITLAB_OUTSIDE}: GITLAB_TOKEN in {folder}, GL_HOST of project shop "
+            f"{GITLAB_NOT_USED}",
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "hosts:\n    gitlab.com:\n        token: glpat-CANARY\n",
+        "hosts:\n    gitlab.com:\n        use_keyring: true\n",
+    ],
+)
+@pytest.mark.parametrize("xdg", [False, True])
+def test_the_gitlab_clis_own_login_is_named(no_gitlab, monkeypatch, tmp_path, text, xdg):
+    config = tmp_path / "xdg" if xdg else no_gitlab / ".config"
+    if xdg:
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(config))
+    (config / "glab-cli").mkdir(parents=True)
+    (config / "glab-cli" / "config.yml").write_text(text)
+    assert _gitlab_lines() == [GLAB_OWN]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        'hosts:\n    gitlab.com:\n        token: ""\n        use_keyring: false\n',
+        # glab's own first configuration: empty keys, each after its comment.
+        "hosts:\n    gitlab.com:\n        # Your GitLab access token.\n        token:\n"
+        "        # CI job token used for Job-Token authentication.\n        job_token:\n"
+        "        # Store the host's credentials in the keyring (true/false).\n"
+        "        use_keyring:\n        # A token-helper, valueFromCommand: x\n",
+    ],
+)
+def test_glab_without_a_login_is_not_named(no_gitlab, text):
+    (no_gitlab / ".config" / "glab-cli").mkdir(parents=True)
+    (no_gitlab / ".config" / "glab-cli" / "config.yml").write_text(text)
+    assert _gitlab_lines() == []
+
+
+def test_no_gitlab_login_no_line(no_gitlab):
+    assert _gitlab_lines() == []

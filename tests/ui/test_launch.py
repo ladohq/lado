@@ -1365,9 +1365,12 @@ def test_on_a_phone_every_field_and_button_of_the_window_is_a_44_px_target(
     pick_place(dialog, "Other folder…")
     chip = dialog.locator(".kits-box-chip", has_text="default")
     assert chip.bounding_box()["height"] == 32
-    drawn = chip.get_by_role("button", name="Remove default").bounding_box()
+    remove = chip.get_by_role("button", name="Remove default")
+    drawn = remove.bounding_box()
     assert (drawn["width"], drawn["height"]) == (32, 32)
-    page.mouse.click(drawn["x"] + drawn["width"] + 5, drawn["y"] + drawn["height"] / 2)
+    # Relative to the button when pressed: Playwright waits for it to stand still and checks
+    # that the press lands on it, its ::after past the drawn edge.
+    remove.click(position={"x": drawn["width"] + 5, "y": drawn["height"] / 2})
     expect(chip).to_have_count(0)
     # Now `+ Add kit` offers it back.
     assert add_kit(dialog).bounding_box()["height"] == 44

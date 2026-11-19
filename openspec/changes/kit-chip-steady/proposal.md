@@ -23,7 +23,8 @@ The human chose to fix the window and the test together (#7562).
 - **A kit chip keeps its look while the kit list is asked again.** Until the answer for the
   new place comes, Kits shows the chips by the last kit list the window has: version,
   strike-through of an invalid kit, its problem as the title, and the kits `+ Add kit` offers.
-  The new answer then replaces it. A failed ask still shows its error at once.
+  The new answer then replaces it. A failed ask still shows its error at once, and drops the
+  kept list.
 - **The test presses the × through the button.** It clicks the button at a position 5 px past
   its drawn right edge, relative to the button at the moment of the press, instead of page
   coordinates measured earlier. Playwright waits for the button to stand still and checks

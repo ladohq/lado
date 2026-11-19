@@ -211,15 +211,16 @@ export function useAsked<T>(key: string | null, ask: (key: string) => Promise<T>
   return asked !== null && asked.key === key ? asked.answer : null;
 }
 
-// The value of the last answer that had one, kept while the next key is asked or failed:
-// for a view that must not blink, where useAsked's null means "asking".
+// The value of the last answer, kept while the next key is asked (useAsked's null): for a
+// view that must not blink. A failed answer drops it.
 function useLastValue<T>(asked: Asked<T>): T | null {
   const value = valueOf(asked);
+  const failed = asked !== null && "error" in asked;
   const [last, setLast] = useState<T | null>(null);
   useEffect(() => {
-    if (value !== null) setLast(value);
-  }, [value]);
-  return value ?? last;
+    if (value !== null || failed) setLast(value);
+  }, [value, failed]);
+  return asked === null ? last : value;
 }
 
 function useOnce<T>(ask: () => Promise<T>, skip = false): Asked<T> {

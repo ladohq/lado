@@ -15,6 +15,8 @@ empties `known` for 15–30 ms on a normal machine, longer under CI's load.
 `Launch.tsx` keeps the last kit list that answered with a value (a `useState` set by an
 effect on `kitList`, or a small `useLast` helper next to `useAsked`) and passes
 `known={valueOf(kitList) ?? lastKits}`. `kitsError` stays tied to the current answer only.
+A failed ask drops the kept list (the human's choice at merge_ok, option (a) of the review's
+F1): the chips do not show another place's kits next to the error.
 Reason: other users of `useAsked` (the folder check, providers, models) need "no answer while
 asking" for their `Checking…` states. A change of `useAsked` itself would touch them all.
 

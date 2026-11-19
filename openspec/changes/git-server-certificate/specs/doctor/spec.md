@@ -4,8 +4,9 @@
 
 doctor's line of a saved server SHALL be `warn` with the check's line for a certificate not
 trusted, changed or one trust cannot fix, with the hint `trust it: lado git-server check
-<address>, or Check in Settings → Git servers`, never asking to trust; a GitHub server with a
-certificate SHALL get an `info` line that `gh` does not get it.
+<address>, or Check in Settings → Git servers` (the check's own hint for one trust cannot
+fix), never asking to trust; a GitHub server with a certificate SHALL get an `info` line that
+`gh` does not get it.
 
 #### Scenario: Not trusted
 - **WHEN** `https://gitlab.corp.example`'s certificate is not trusted

@@ -2024,3 +2024,20 @@ def test_a_github_server_with_a_certificate_says_gh_does_not_get_it(git_api, lad
             f"does not get the certificate of {url}: agents' gh cannot reach it; git can",
         ),
     ]
+
+
+def test_a_certificate_trust_cannot_fix_keeps_the_checks_hint(git_api, lado_home, tmp_path):
+    root = certificates.authority("Corp Root CA")
+    leaf = certificates.server("other.corp.example", root)
+    chain = certificates.write_chain(tmp_path / "other", leaf, root)
+    url = git_api("gitlab-full", token=GIT_TOKEN, certificate=chain).url
+    url = url.replace("127.0.0.1", "localhost")
+    _git_saved(url)
+    assert _git_lines() == [
+        doctor.Check(
+            f"git server {url}",
+            doctor.WARN,
+            f"the certificate of {url} is not issued for localhost: trusting it would not help",
+            "ask the server's administrator",
+        )
+    ]

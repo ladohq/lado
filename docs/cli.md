@@ -40,7 +40,11 @@ asks for a login (`<host> asks for a login`) or refuses access (`<host> refused 
 `Add it as a git server with a token: lado git-server add <scheme>://<host>[:<port>] --token`;
 its not found, ssh failures and the failures that are no access failure (unreachable, no
 branch) keep their texts with no git server hint, and so does a host saved under another
-scheme or port than the URL's, as git took no token from it. LADO's container has no ssh:
+scheme or port than the URL's, as git took no token from it. git's refusal of a server's
+certificate (`SSL certificate problem`, `server certificate verification failed`) is the kind
+`cert_untrusted`, `the certificate of <host> is not trusted`: for a saved server's URL with
+`Check the git server and trust its certificate: lado git-server check <address>`, for an
+unsaved http(s) host with the hint to add it. LADO's container has no ssh:
 there both ssh failures of a `git@<host>:` or `ssh://git@<host>[:22]/` address of a host no
 server is saved for say `LADO's container has no ssh key for <host>` with `Add it as a git
 server with a token: lado git-server add https://<host> --token`, and those of any other ssh
@@ -329,7 +333,11 @@ With git servers saved (`lado git-server add`), `lado doctor` prints a line per 
 `git author`, named `git server <address>`, by the check of `lado git-server check`: `ok` with
 its `Works: …` line, `warn` with its line and hint otherwise (`GitHub refused the token: it
 expired or was revoked` with `replace it: lado git-server add <address> --token`; `<host> does
-not answer: …` with the reach hint). A missing token file (no request sent) and a saved
+not answer: …` with the reach hint; a certificate not trusted or changed with its line and
+`trust it: lado git-server check <address>, or Check in Settings → Git servers`, never trusting
+it itself; one trust cannot fix with the check's hint). A GitHub server with a certificate
+gets after its line `[info] gh: does not get the certificate of <address>: agents' gh cannot
+reach it; git can`. A missing token file (no request sent) and a saved
 address this LADO no longer takes (`its saved address is not taken any more (…)`, `remove it:
 lado git-server remove <address>`) are warnings too. The servers are asked at once, while the
 model servers are probed, so doctor waits about one check's time (about 10 s at most). It never
@@ -907,8 +915,14 @@ cannot tell them apart); a redirect (`<address>
 sends to <location>; give the server's own address`, nothing sent there); two kinds
 answering (`… answers as GitHub and as GitLab; say which: --kind github or --kind gitlab`);
 a server that does not answer (`<host> does not answer: the name is not found` / `the
-connection is refused` / `it did not answer in 5 s` / `its certificate is not trusted on this
-machine (…)`) or answers as neither kind; those two name `--kind` in their hint. With
+connection is refused` / `it did not answer in 5 s`) or answers as neither kind; those two
+name `--kind` in their hint. A certificate this computer does not trust is refused as `check`
+tells it (below), with the authority it offers and the hint `trust it in Settings → Git
+servers (Check), or give its certificate: lado git-server add <address> --token --certificate
+<file>`. `--certificate <file>` (`-`: stdin) is checked as `lado git-server certificate` checks
+it, before the token is asked; the server is then asked trusting that certificate alone, and
+it is saved with the server, or neither is (`the certificate of <address> is not signed by
+the given certificate`, with the offer). With
 `--kind`, a server that does not answer or answers as neither is saved as that kind with no
 login, after `lado: warning: <address> could not be checked (<why>); saved as GitLab`; a
 server recognised as another kind is refused (`<address> answers as GitLab, not GitHub`). An
@@ -940,18 +954,49 @@ but not push` (as `add` warns); `GitLab takes the token, but it lacks the scope 
 server saved with `--kind`; the same hint); `<host> does not answer: it did not answer in 5 s` (or `the
 name is not found`, `the connection is refused`; `check that this computer reaches it: the
 company VPN or proxy; with LADO in Docker, its container`); `the certificate of <address> is
-not trusted` (`ask your IT department to make this computer trust it (with LADO in Docker, its
-container), then check again`); `it redirects to <location>: add that address instead`; `it
+not trusted` or, for a server with a certificate that no longer fits, `the certificate of
+<address> has changed since you trusted it` with `  Before     <name> · <first 8 bytes of its
+SHA-256>…`, each followed by the authority to trust as three lines (`  Signed by  <subject> ·
+<issuer>` — `  Certificate  <host> · signed by itself` and a fourth line for the server's own,
+a note for an intermediate —, `  Valid      <from> to <until>`, `  SHA-256    <AA:BB:…>`) and
+the hint `trust it in Settings → Git servers (Check), or give its certificate: lado git-server
+certificate <address> <file>`; nothing is saved and nothing is asked. The authority comes from
+the chain of a bare TLS handshake to the server (no request, no token; lado.git_certificates):
+the chain's top when it signed itself, else its issuer by `CA Issuers` links (at most 3, 5 s
+and 64 KB each, no header but `User-Agent`), else the highest one sent; it is offered only when
+a connection trusting it alone reaches the server. Otherwise trust would not help: `the
+certificate of <address> is not issued for <host>: trusting it would not help` (`ask the
+server's administrator`), `… names its host only in the old Common Name field, which LADO
+refuses` (`… to reissue it`), `… expired on <date>` (`… to renew it`), or `<host> does not
+answer: TLS failed (<why>)`; `it redirects to <location>: add that address instead`; `it
 answers as GitLab, not GitHub: remove it and add it again` (`lado git-server remove <address>,
 then lado git-server add <address> --token`); `it answers as neither GitHub nor GitLab`. An
 address of no saved server (`<address> is no saved git server`, `see them: lado git-server
 list`) and a missing token file (`the token file of <address> is missing`, `replace it: …`)
 send no request, exit 1; an address it does not take exits 2.
 
-`lado git-server list` prints `ADDRESS KIND LOGIN TOKEN AUTHOR`, one line per server by host,
-asking none: `not checked` for one saved with `--kind` unchecked, `yes`/`no` for its token
-file, its commit author `<name> <<email>>` or `-`; with none, `No git servers. Add one: lado
-git-server add <address> --token`.
+`lado git-server list` prints `ADDRESS KIND LOGIN TOKEN CERTIFICATE AUTHOR`, one line per
+server by host, asking none: `not checked` for one saved with `--kind` unchecked, `yes`/`no`
+for its token file, `until <date>` or `expired <date>` for its certificate (`-` for none), its
+commit author `<name> <<email>>` or `-`; with none, `No git servers. Add one: lado git-server
+add <address> --token`.
+
+`lado git-server certificate <address> <file>` trusts the certificate file (`-`: stdin) for
+the saved server of the address's host and port alone, replacing its certificate: `Trusted
+<name> for <address>.`, the line of a check that follows (on stderr, with its offer, when the
+check fails; exit 0 all the same) and the restart line. The file is a company's authority from
+IT, PEM, one certificate or a chain: refused, nothing saved, exit 1, when it is larger than 1
+MB (`<file> is larger than 1 MB`), holds no PEM certificate (`<file> holds no certificate`) or
+every certificate in it expired (`<file>: the certificate expired on <date>`); LADO keeps its
+certificates alone, no key or text, in `<LADO_HOME>/git-servers/<id>/ca.pem` beside the token
+(600, the same writer, never in lado.db). `--clear` removes it (`<address> is trusted by this
+computer's authorities again.`); with neither it prints `<name>, valid until <date>` (`expired
+on`) or `No certificate: LADO trusts this computer's authorities for <address>.`. An address of
+no saved server exits 1, a file with `--clear` 2 (`--clear takes no file`). A new token by
+`add` keeps the certificate; removing the server removes it. A LADO before certificates reads
+no `ca.pem`: after going back, git to that host fails as before and the file stays unused,
+and removing the server there leaves its folder with `could not remove <folder>: directory not
+empty`.
 
 `lado git-server author <address> --name <name> --email <email>` sets the commit author of
 the saved server of the address's host and port, without its token again: `Agents commit to
@@ -984,7 +1029,13 @@ What a saved server gives: each agent at its launch, and LADO's own network git 
 no other helper, a `store` of the global config included, keeps the token), LADO's helper
 (`lado.git_credential`, run with LADO's own Python by its absolute path, so no `lado` on the
 agent's PATH is needed), and `git@<host>:`, `ssh://git@<host>/` and `ssh://git@<host>:22/`
-rewritten to the server's address; an ssh address with another port goes over ssh as before.
+rewritten to the server's address; an ssh address with another port goes over ssh as before;
+for a server with a certificate, `http.<address>/.sslCAInfo` naming its `ca.pem`, which git
+takes for that address alone (its rewritten ssh addresses too; the trailing `/` keeps `/git`
+from matching `/gitlab`) instead of the computer's authorities. No `GIT_SSL_CAINFO`,
+`SSL_CERT_FILE` or trust store is set. `gh` gets no certificate: a launch with a GitHub server
+that has one warns `gh does not get the certificate of <address>: agents' gh cannot reach it;
+git can`.
 The entries come after the `GIT_CONFIG_*` entries the agent's layers already hold; with no
 server saved none is set. A host not in the list goes as before, and the global and system
 git configs are never written. An agent gets the list at its launch: a server added or

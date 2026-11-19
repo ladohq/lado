@@ -977,9 +977,18 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `project_secrets.write_at`/`remove_at`: a new server's file first, a replaced one's row
     first, its id kept; `git-servers/` itself goes once empty, and a write whose folder went
     under it tries once more; a removal whose folder stays is `Removed.warning`). `Refused`
-    carries the form `field` it concerns, `page`/`page_hint`, its words without a command, and
-    `choose_kind` for a server that gave no HTTP answer. `variables` (per server an empty `credential.<origin>.helper`, then
-    `helper_command`, then three `url.<root>/.insteadOf` of its ssh forms, numbered after
+    carries the form `field` it concerns, `page`/`page_hint`, its words without a command,
+    `choose_kind` for a server that gave no HTTP answer, and `offer`/`before` for a certificate
+    not trusted. A server's certificate (`ca.pem` beside its token, written and removed by the
+    same writer, kept by a token's replacement, gone with the server; no lado.db column):
+    `certificate`, `set_certificate`, `clear_certificate` (it returns the PEM for Undo); with
+    one, LADO's requests to the server trust it alone (`_opener`, lado.git_certificates'
+    context) and a check whose request fails on the certificate becomes `cert_untrusted` with
+    the offer, `cert_changed` (the saved one's fingerprint differs) with `before`, `cert_name`
+    or `cert_expired` (`_trust`); `gh_without_certificate` the line of a GitHub server with one,
+    for the launch and doctor. `variables` (per server an empty `credential.<origin>.helper`, then
+    `helper_command`, then three `url.<root>/.insteadOf` of its ssh forms and, with a
+    certificate file, `http.<address>/.sslCAInfo`, numbered after
     the environment's own `GIT_CONFIG_COUNT`; nothing for no server; with `authors`, an
     agent's, `author_entries` after each server's own), `gh_variables` (an agent's `gh`:
     `GH_CONFIG_DIR` its own folder, made, with no `hosts.yml`; `GH_TOKEN` the github.com
@@ -995,6 +1004,17 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     files, only `[user]` name and email) and `author_entries` (the `includeIf` entries of a
     server's address forms, escaped for git's wildmatch). The HTTP client is imported by `probe`
     alone: hooks and launches import this module.
+  - `git_certificates.py`: a git server's certificates, with `cryptography`: `chain` (the DER
+    certificates of a bare TLS handshake that checks and sends nothing; the private
+    `_sslobj.get_unverified_chain` before Python 3.13, pinned by a test), `offer` (the authority
+    to trust: the chain's top when it signed itself, else its issuer by `CA Issuers` links, at
+    most `LINKS`, `LINK_TIMEOUT` and `LINK_MAX` each, no header but `User-Agent`, no redirect,
+    a certificate kept only when it signed the one below; else the highest held, `intermediate`,
+    or the server's own, `own`; offered only once a connection trusting it alone reaches the
+    server, else `NoOffer` with `NAME`, `EXPIRED` or `TLS`), `context` (that PEM alone, an
+    intermediate taken as the last authority, the Common Name never a host name), `from_file`
+    (a file's checks: 1 MB, a PEM certificate, not all expired; the certificates alone kept),
+    `parse` and `describe`. Loaded by a check, an add and the listing, never by a launch.
   - `git_credential.py`: LADO's git credential helper, run by git with LADO's Python
     (`interpreter.run_module`) and its arguments (`--home`, `--server`, `--user`,
     `--address`): `get` prints the user and the token read by the link-refusing reader of

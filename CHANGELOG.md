@@ -22,6 +22,9 @@
 - **A failed clone says which git server to check.** When a saved server refuses the token,
   the clone names it and how to check it; a host not in the list that asks for a login,
   github.com too, suggests adding it. In New session a button opens Settings → Git servers.
+- **Trust your company's git server.** When a server's certificate is signed by your company,
+  Check in Settings → Git servers shows it with its fingerprint: Trust it, and LADO and agents'
+  git trust it for that server only. A file from IT: `lado git-server certificate`.
 
 ### Fixed
 

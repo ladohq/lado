@@ -26,16 +26,6 @@ after their restart.
 - **THEN** the page shows `No git servers yet.` and `+ Add server`, and opening it makes no
   lado.db
 
-### Requirement: The add form starts with gitlab.com
-
-`+ Add server` SHALL open a form with Address and Token; Address SHALL hold
-`https://gitlab.com`, selected so that typing replaces it, while no server of gitlab.com is
-saved, and be empty otherwise.
-
-#### Scenario: gitlab.com saved already
-- **WHEN** `https://gitlab.com` is saved and the human presses `+ Add server`
-- **THEN** Address is empty and focused
-
 ### Requirement: The add form checks the address without the token
 
 Once the typing settles the page SHALL check the address without the token, at most 5 s a
@@ -46,9 +36,9 @@ and SHALL choose Token's link: the kind's token page on that server and the righ
 needs.
 
 #### Scenario: gitlab.com
-- **WHEN** no gitlab.com server is saved and the human presses `+ Add server`
-- **THEN** Address holds `https://gitlab.com`, the line says `GitLab answers.`, and Token's
-  link is `https://gitlab.com/-/user_settings/personal_access_tokens` with the scopes
+- **WHEN** the human types `gitlab.com` in Address and no gitlab.com server is saved
+- **THEN** the line says `GitLab answers.`, and Token's link is
+  `https://gitlab.com/-/user_settings/personal_access_tokens` with the scopes
   `read_repository, write_repository, read_api`
 
 #### Scenario: github.com
@@ -414,3 +404,19 @@ the takeover or a login outside LADO. Without an entry it SHALL not be listed.
 #### Scenario: Removed
 - **WHEN** the human removes github.com
 - **THEN** it is no longer listed, as any removed server
+
+### Requirement: The add form starts empty
+
+`+ Add server` SHALL open a form with Address and Token; Address SHALL be empty and
+focused, with the placeholder `github.com or gitlab.example.com`, whichever servers are
+saved. Opened by the way out of a failure (`Add git server`), it SHALL hold that server's
+address.
+
+#### Scenario: An empty list
+- **WHEN** no git server is saved and the human presses `+ Add server`
+- **THEN** Address is empty and focused, shows the placeholder `github.com or
+  gitlab.example.com`, and no `<Kind> answers.` line shows
+
+#### Scenario: gitlab.com saved already
+- **WHEN** `https://gitlab.com` is saved and the human presses `+ Add server`
+- **THEN** Address is empty and focused

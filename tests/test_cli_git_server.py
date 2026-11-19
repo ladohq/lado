@@ -8,6 +8,7 @@ import io
 import os
 import socket
 
+import certificates as made
 import fake_git_api as fake
 import pytest
 from test_cli_model_server import Stdin
@@ -229,6 +230,7 @@ def test_add_list_and_remove_github_com(capsys, monkeypatch, tmp_path):
         fake.LOGIN,
         "yes",
         "-",
+        "-",
     ]
     assert main(["git-server", "remove", "github.com"]) == 0
     assert capsys.readouterr().out == "Removed git server https://github.com.\n"
@@ -266,9 +268,9 @@ def test_list_shows_the_servers_without_asking_them(serve, capsys, lado_home):
     assert main(["git-server", "list"]) == 0
     rows = [line.split() for line in capsys.readouterr().out.splitlines()]
     assert rows == [
-        ["ADDRESS", "KIND", "LOGIN", "TOKEN", "AUTHOR"],
-        [server.url, "GitLab", fake.LOGIN, "yes", "-"],
-        ["https://git.lan", "GitLab", "not", "checked", "no", "-"],
+        ["ADDRESS", "KIND", "LOGIN", "TOKEN", "CERTIFICATE", "AUTHOR"],
+        [server.url, "GitLab", fake.LOGIN, "yes", "-", "-"],
+        ["https://git.lan", "GitLab", "not", "checked", "no", "-", "-"],
     ]
     assert len(server.requests) == asked
 
@@ -594,3 +596,223 @@ def test_author_help_names_its_options(capsys):
         _author("--help")
     out = capsys.readouterr().out
     assert all(option in out for option in ("--name", "--email", "--clear"))
+
+
+# A server's certificate.
+
+
+@pytest.fixture
+def corp(serve, tmp_path):
+    """A GitLab at https://localhost:<port> under Corp Root CA, which no process trusts:
+    the server, the root and the root's file."""
+    root = made.authority("Corp Root CA")
+    leaf = made.server("localhost", root)
+    server = serve("gitlab-full", token=TOKEN, certificate=made.write_chain(tmp_path, leaf, root))
+    server.url = server.url.replace("127.0.0.1", "localhost")
+    return server, root, made.write_pem(tmp_path / "corp-ca.pem", root)
+
+
+def _until(made_one) -> str:
+    return made_one.certificate.not_valid_after_utc.date().isoformat()
+
+
+def _offer_lines(made_one) -> list[str]:
+    found = made_one.certificate
+    fingerprint = ":".join(f"{b:02X}" for b in found.fingerprint(made.hashes.SHA256()))
+    return [
+        "  Signed by  Corp Root CA · Corp Example Ltd",
+        f"  Valid      {found.not_valid_before_utc.date()} to {_until(made_one)}",
+        f"  SHA-256    {fingerprint}",
+    ]
+
+
+def test_certificate_sets_shows_and_clears(corp, capsys, lado_home):
+    server, root, path = corp
+    git_servers.save(
+        git_servers.address(server.url),
+        git_servers.Checked(git_kinds.by_name("gitlab"), fake.LOGIN),
+        TOKEN,
+    )
+    assert main(["git-server", "certificate", server.url, str(path)]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        f"Trusted Corp Root CA for {server.url}.",
+        f"Works: GitLab, signed in as {fake.LOGIN}, may clone and push.",
+        RESTART,
+    ]
+    assert main(["git-server", "certificate", server.url]) == 0
+    assert capsys.readouterr().out == f"Corp Root CA, valid until {_until(root)}\n"
+    assert main(["git-server", "certificate", server.url, "--clear"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        f"{server.url} is trusted by this computer's authorities again.",
+        RESTART,
+    ]
+    assert git_servers.certificate(state.git_servers()[0]) is None
+    assert main(["git-server", "certificate", server.url]) == 0
+    assert capsys.readouterr().out == (
+        f"No certificate: LADO trusts this computer's authorities for {server.url}.\n"
+    )
+
+
+def test_certificate_from_stdin(corp, capsys, monkeypatch):
+    server, root, _ = corp
+    _saved(server.url)
+    monkeypatch.setattr("sys.stdin", Stdin(root.pem))
+    assert main(["git-server", "certificate", server.url, "-"]) == 0
+    assert git_servers.certificate(state.git_servers()[0]) == root.pem
+
+
+def test_a_certificate_that_does_not_fit_is_saved_with_the_checks_line(corp, capsys, tmp_path):
+    server, _, _ = corp
+    _saved(server.url)
+    other = made.write_pem(tmp_path / "other.pem", made.authority("Other Root"))
+    assert main(["git-server", "certificate", server.url, str(other)]) == 0
+    out, err = capsys.readouterr()
+    assert out.splitlines()[0] == f"Trusted Other Root for {server.url}."
+    assert f"lado: the certificate of {server.url} has changed since you trusted it" in err
+
+
+def test_a_file_that_is_no_certificate_is_refused(capsys, tmp_path):
+    _saved()
+    notes = tmp_path / "notes.txt"
+    notes.write_text("just notes\n")
+    assert main(["git-server", "certificate", "gitlab.corp.ru", str(notes)]) == 1
+    assert capsys.readouterr().err == f"lado: {notes} holds no certificate\n"
+    assert git_servers.certificate(state.git_servers()[0]) is None
+
+
+def test_an_expired_or_large_or_missing_file_is_refused(capsys, tmp_path):
+    _saved()
+    ended = made.NOW - 10 * made.DAY
+    old = made.write_pem(
+        tmp_path / "old.pem",
+        made.authority("Old CA", not_before=ended - 30 * made.DAY, not_after=ended),
+    )
+    assert main(["git-server", "certificate", "gitlab.corp.ru", str(old)]) == 1
+    assert capsys.readouterr().err == (
+        f"lado: {old}: the certificate expired on {ended.date().isoformat()}\n"
+    )
+    big = tmp_path / "big.pem"
+    big.write_bytes(b"#" * (1024 * 1024 + 1))
+    assert main(["git-server", "certificate", "gitlab.corp.ru", str(big)]) == 1
+    assert capsys.readouterr().err == f"lado: {big} is larger than 1 MB\n"
+    missing = tmp_path / "missing.pem"
+    assert main(["git-server", "certificate", "gitlab.corp.ru", str(missing)]) == 1
+    assert capsys.readouterr().err == f"lado: cannot read {missing}: no such file or directory\n"
+
+
+def test_certificate_of_no_saved_server_exits_1(capsys, tmp_path):
+    path = made.write_pem(tmp_path / "ca.pem", made.authority("Corp Root CA"))
+    assert main(["git-server", "certificate", "git.lan", str(path)]) == 1
+    assert capsys.readouterr().err.startswith("lado: https://git.lan is no saved git server\n")
+    assert main(["git-server", "certificate", "git.lan"]) == 1
+
+
+def test_a_file_with_clear_exits_2(capsys, tmp_path):
+    _saved()
+    assert main(["git-server", "certificate", "gitlab.corp.ru", "ca.pem", "--clear"]) == 2
+    assert capsys.readouterr().err == "lado: --clear takes no file\n"
+
+
+def test_add_with_a_certificate(corp, capsys):
+    server, root, path = corp
+    assert main(["git-server", "add", server.url, "--token", "--certificate", str(path)]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[:2] == [f"GitLab, signed in as {fake.LOGIN}", f"Saved git server {server.url}."]
+    assert git_servers.certificate(state.git_servers()[0]) == root.pem
+
+
+def test_add_checks_the_file_before_the_token(capsys, tmp_path, monkeypatch, serve):
+    notes = tmp_path / "notes.txt"
+    notes.write_text("just notes\n")
+    monkeypatch.setattr("sys.stdin", None)  # no token is read
+    code = main(["git-server", "add", "gitlab.corp.ru", "--token", "--certificate", str(notes)])
+    assert code == 1
+    assert capsys.readouterr().err == f"lado: {notes} holds no certificate\n"
+
+
+def test_add_of_an_untrusted_certificate_shows_the_offer_and_saves_nothing(corp, capsys):
+    server, root, _ = corp
+    assert main(["git-server", "add", server.url, "--token"]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        f"lado: the certificate of {server.url} is not trusted",
+        *_offer_lines(root),
+        "lado: trust it in Settings → Git servers (Check), or give its certificate: lado "
+        f"git-server add {server.url} --token --certificate <file>",
+    ]
+    assert state.git_servers() == []
+
+
+def test_check_of_an_untrusted_certificate_shows_the_offer(corp, capsys):
+    server, root, _ = corp
+    _saved(server.url)
+    assert main(["git-server", "check", server.url]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        f"lado: the certificate of {server.url} is not trusted",
+        *_offer_lines(root),
+        "lado: trust it in Settings → Git servers (Check), or give its certificate: lado "
+        f"git-server certificate {server.url} <file>",
+    ]
+    assert git_servers.certificate(state.git_servers()[0]) is None
+
+
+def test_check_of_a_changed_certificate_names_the_old_one(corp, capsys, tmp_path):
+    server, root, _ = corp
+    old = made.authority("Old Root")
+    git_servers.save(
+        git_servers.address(server.url),
+        git_servers.Checked(git_kinds.by_name("gitlab"), "ivan"),
+        TOKEN,
+        old.pem,
+    )
+    assert main(["git-server", "check", server.url]) == 1
+    lines = capsys.readouterr().err.splitlines()
+    before = old.certificate.fingerprint(made.hashes.SHA256())[:8]
+    assert lines[:2] == [
+        f"lado: the certificate of {server.url} has changed since you trusted it",
+        "  Before     Old Root · " + ":".join(f"{b:02X}" for b in before) + "…",
+    ]
+    assert lines[2:5] == _offer_lines(root)
+
+
+def test_list_shows_the_certificate_before_the_author(capsys, tmp_path):
+    _saved()
+    _saved("https://git.lan")
+    root = made.authority("Corp Root CA")
+    git_servers.set_certificate(git_servers.address("gitlab.corp.ru"), root.pem)
+    capsys.readouterr()
+    assert main(["git-server", "list"]) == 0
+    rows = [line.split() for line in capsys.readouterr().out.splitlines()]
+    assert rows[0] == ["ADDRESS", "KIND", "LOGIN", "TOKEN", "CERTIFICATE", "AUTHOR"]
+    assert rows[1] == ["https://git.lan", "GitLab", "ivan", "yes", "-", "-"]
+    assert rows[2] == [
+        "https://gitlab.corp.ru",
+        "GitLab",
+        "ivan",
+        "yes",
+        "until",
+        _until(root),
+        "-",
+    ]
+
+
+def test_add_takes_no_certificate_from_stdin(capsys, serve):
+    server = serve("gitlab")
+    assert main(["git-server", "add", "gitlab.corp.ru", "--token", "--certificate", "-"]) == 2
+    assert capsys.readouterr().err == (
+        "lado: add reads the token from stdin: give the certificate as a file, or add the server "
+        "first and give it with lado git-server certificate <address> -\n"
+    )
+    assert server.requests == [] and state.git_servers() == []
+
+
+def test_check_of_a_server_sending_its_certificate_alone_warns_of_renewals(serve, capsys, tmp_path):
+    root = made.authority("Corp Root CA")
+    leaf = made.server("localhost", root)
+    server = serve("gitlab-full", token=TOKEN, certificate=made.write_chain(tmp_path, leaf))
+    url = server.url.replace("127.0.0.1", "localhost")
+    _saved(url)
+    assert main(["git-server", "check", url]) == 1
+    lines = capsys.readouterr().err.splitlines()
+    assert lines[1] == "  Certificate  localhost · signed by Corp Example Ltd"
+    assert lines[4] == ("  the server's own certificate, not an authority: it changes when renewed")
+    assert "signed by itself" not in "\n".join(lines)

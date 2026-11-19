@@ -275,6 +275,14 @@ git-server`). `repo` is the minimum; add `read:org` when the agents run `gh` on 
 requests of an organization's repository, and `workflow` when they push `.github/workflows/`.
 A saved server's ssh addresses (`git@github.com:…`) go over https with its token too.
 
+A company's server whose certificate the computer, or LADO's container, does not trust is
+trusted from its Check in Settings → Git servers: LADO shows the authority that signed it with
+its fingerprint, and Trust makes LADO and the agents' git trust it for that server alone;
+nothing is added to the image or the computer. Or ask your IT department for the company's
+root certificate as PEM (a text file starting with `-----BEGIN CERTIFICATE-----`, often
+`.pem` or `.crt`; a binary DER `.crt` is refused) and give it: `lado git-server certificate
+<address> <file>`. The agents' `gh` does not get it ([cli.md](cli.md)).
+
 Coming from a version before 0.48.0, where the agents used a `GH_TOKEN` in `secrets/` or `gh
 auth login` inside, nothing is to do: the first start of the new version moves that login
 into Settings → Git servers once, as the row `https://github.com`, and says so in `docker

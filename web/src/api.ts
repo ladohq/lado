@@ -473,13 +473,29 @@ export const checkSavedGitServer = (host: string) =>
 
 export const getGitServers = () => get<GitServers>("/api/git-servers");
 
-// What the add form says of an address before Add, the server asked with no token.
-export const checkGitServer = (address: string) => post<GitServerCheck>("/api/git-servers/check", { address });
+// What the add form says of an address before Add, the server asked with no token; trusting
+// `certificate` (the PEM the human trusted in the form) alone when given.
+export const checkGitServer = (address: string, certificate?: string) =>
+  post<GitServerCheck>("/api/git-servers/check", certificate === undefined ? { address } : { address, certificate });
 
-// Check and save a server; `kind` only when the human chose one. The token goes in this
-// request's body only, never in an address, and no answer gives it back.
-export const addGitServer = (address: string, token: string, kind: string | null) =>
-  post<GitServerAdded>("/api/git-servers", { address, token, kind });
+// Check and save a server; `kind` only when the human chose one, `certificate` the PEM
+// trusted for it, saved with it. The token goes in this request's body only, never in an
+// address, and no answer gives it back.
+export const addGitServer = (address: string, token: string, kind: string | null, certificate?: string) =>
+  post<GitServerAdded>("/api/git-servers", certificate === undefined ? { address, token, kind } : { address, token, kind, certificate });
+
+export type CertificateOffer = components["schemas"]["CertificateOffer"];
+export type GitServerCertificateRemoved = components["schemas"]["GitServerCertificateRemoved"];
+const gitCertificatePath = (host: string) => `/api/git-servers/${encodeURIComponent(host)}/certificate`;
+
+// Trust the PEM a check offered (or Undo gives back) for the server of `host`; the server is
+// checked again with it.
+export const setGitServerCertificate = (host: string, pem: string) =>
+  post<GitServerChecked>(gitCertificatePath(host), { pem }, "PUT");
+
+// Remove it; the answer holds its PEM for Undo.
+export const clearGitServerCertificate = (host: string) =>
+  post<GitServerCertificateRemoved>(gitCertificatePath(host), undefined, "DELETE");
 
 // Remove the server of `host` (its host and port, as the list gives it) and its token.
 export const removeGitServer = (host: string) =>

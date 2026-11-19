@@ -14,10 +14,11 @@ import subprocess
 import sys
 import time
 
+import certificates as made
 import fake_git_api as fake
 import pytest
 
-from lado import git_kinds, git_servers, model_servers, state
+from lado import git_certificates, git_kinds, git_servers, model_servers, state
 
 TOKEN = "glpat-CANARY-7f3e9a"  # a canary: no output or file but its own may hold it
 
@@ -388,9 +389,8 @@ def test_a_hanging_server_does_not_answer(serve, monkeypatch):
 def test_an_untrusted_certificate(serve, tmp_path):
     server = serve("gitlab", certificate=fake.make_certificate(tmp_path))
     refused = _refused(server.url)
-    assert str(refused).startswith(
-        f"127.0.0.1:{server.port} does not answer: its certificate is not trusted on this machine"
-    )
+    assert str(refused) == f"the certificate of {server.url} is not trusted"
+    assert refused.offer is not None and refused.offer.own
 
 
 def test_kind_saves_one_that_cannot_be_checked(serve):
@@ -1011,14 +1011,12 @@ def test_a_check_of_an_untrusted_certificate(serve, lado_home, tmp_path):
     assert found.outcome == "cert_untrusted"
     assert found.text == f"the certificate of {server.url} is not trusted"
     assert found.hint == (
-        "ask your IT department to make this computer trust it (with LADO in Docker, its "
-        "container), then check again"
+        "trust it in Settings → Git servers (Check), or give its certificate: lado git-server "
+        f"certificate {server.url} <file>"
     )
     assert found.page == "The server's certificate is not trusted."
-    assert found.page_hint == (
-        "Ask your IT department to make LADO's computer trust it (with LADO in Docker, its "
-        "container), then check again."
-    )
+    assert found.offer.own  # a self-signed server offers its own certificate
+    assert found.offer.subject == "127.0.0.1"
 
 
 def test_a_check_of_a_redirect_follows_none(serve, lado_home):
@@ -1104,8 +1102,8 @@ def test_a_check_keeps_the_author_and_writes_no_removed_server_back(serve, lado_
     assert (after.login, after.author_name) == (fake.LOGIN, "A")
     ask = git_servers._ask_kinds
 
-    def removed_meanwhile(at, token):
-        answers = ask(at, token)
+    def removed_meanwhile(at, token, certificate=None):
+        answers = ask(at, token, certificate)
         state.remove_git_server(saved.id)
         return answers
 
@@ -1721,3 +1719,317 @@ def test_setting_an_author_checks_it_and_git_first(lado_home, tmp_path, monkeypa
     assert str(raised.value) == AUTHOR_OLD
     assert git_servers.author_text(state.git_servers()[0]) is None
     git_servers.clear_author(at)  # clearing needs no git
+
+
+# A server's certificate.
+
+
+@pytest.fixture
+def corp_ca():
+    return made.authority("Corp Root CA")
+
+
+def test_a_certificate_is_kept_in_the_servers_folder_and_not_in_lado_db(lado_home, corp_ca):
+    saved, _ = _save()
+    database = (lado_home / "lado.db").read_bytes()
+    previous = os.umask(0)
+    try:
+        git_servers.set_certificate(git_servers.address("gitlab.corp.ru"), corp_ca.pem)
+    finally:
+        os.umask(previous)
+    path = lado_home / "git-servers" / saved.id / "ca.pem"
+    assert path.read_text() == corp_ca.pem
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert (lado_home / "lado.db").read_bytes() == database
+    assert git_servers.certificate(saved) == corp_ca.pem
+    assert sorted(p.name for p in path.parent.iterdir()) == ["ca.pem", "token"]
+
+
+def test_a_certificate_is_refused_through_a_link(lado_home, tmp_path, corp_ca):
+    saved, _ = _save()
+    elsewhere = tmp_path / "elsewhere.pem"
+    (lado_home / "git-servers" / saved.id / "ca.pem").symlink_to(elsewhere)
+    with pytest.raises(git_servers.Refused, match="symbolic link"):
+        git_servers.set_certificate(git_servers.address("gitlab.corp.ru"), corp_ca.pem)
+    assert not elsewhere.exists()
+
+
+def test_a_certificate_of_no_saved_server_is_refused(lado_home, corp_ca):
+    with pytest.raises(git_servers.Refused, match="is no saved git server"):
+        git_servers.set_certificate(git_servers.address("gitlab.corp.ru"), corp_ca.pem)
+    assert not (lado_home / "git-servers").exists()
+
+
+def test_a_new_token_keeps_the_certificate(lado_home, corp_ca):
+    saved, _ = _save()
+    git_servers.set_certificate(git_servers.address("gitlab.corp.ru"), corp_ca.pem)
+    again, replaced = _save(token="glpat-NEW")
+    assert replaced and again.id == saved.id
+    assert git_servers.certificate(again) == corp_ca.pem
+
+
+def test_a_save_with_a_certificate_writes_it(lado_home, corp_ca):
+    at = git_servers.address("gitlab.corp.ru")
+    saved, _ = git_servers.save(at, git_servers.Checked(GITLAB, "ivan"), TOKEN, corp_ca.pem)
+    assert git_servers.certificate(saved) == corp_ca.pem
+
+
+def test_clearing_a_certificate_gives_it_back(lado_home, corp_ca):
+    saved, _ = _save()
+    at = git_servers.address("gitlab.corp.ru")
+    git_servers.set_certificate(at, corp_ca.pem)
+    assert git_servers.clear_certificate(at) == corp_ca.pem
+    assert git_servers.certificate(saved) is None
+    assert git_servers.clear_certificate(at) is None  # once more: nothing to clear
+    assert (lado_home / "git-servers" / saved.id / "token").exists()
+
+
+def test_remove_takes_the_certificate_and_the_folder(lado_home, corp_ca):
+    saved, _ = _save()
+    git_servers.set_certificate(git_servers.address("gitlab.corp.ru"), corp_ca.pem)
+    assert git_servers.remove_host("gitlab.corp.ru").warning is None
+    assert not (lado_home / "git-servers").exists()
+
+
+def test_a_previous_lado_leaves_the_folder_of_a_server_with_a_certificate(
+    lado_home, corp_ca, monkeypatch
+):
+    """The way back: a LADO before certificates removes the token alone, so the folder with
+    its ca.pem stays, with the warning."""
+    saved, _ = _save()
+    git_servers.set_certificate(git_servers.address("gitlab.corp.ru"), corp_ca.pem)
+    monkeypatch.setattr(git_servers, "_remove_certificate", lambda id: None)
+    removed, warning = git_servers.remove_host("gitlab.corp.ru")
+    folder = lado_home / "git-servers" / saved.id
+    assert state.git_servers() == []
+    assert warning == f"could not remove {folder}: directory not empty"
+    assert [p.name for p in folder.iterdir()] == ["ca.pem"]
+
+
+def test_git_gets_the_certificate_of_a_server_that_has_one(lado_home, corp_ca):
+    saved, _ = _save("https://corp.ru:8443/git")
+    plain = _entries(git_servers.variables({}, [saved]))
+    assert not any("sslCAInfo" in key for key, _ in plain)
+    git_servers.set_certificate(git_servers.address("https://corp.ru:8443/git"), corp_ca.pem)
+    entries = _entries(git_servers.variables({}, [saved]))
+    path = lado_home / "git-servers" / saved.id / "ca.pem"
+    assert entries[: len(plain)] == plain
+    assert entries[len(plain) :] == [("http.https://corp.ru:8443/git/.sslCAInfo", str(path))]
+
+
+def test_git_takes_the_certificate_for_the_server_alone(lado_home, corp_ca, git_env):
+    saved, _ = _save("https://corp.ru/git")
+    git_servers.set_certificate(git_servers.address("https://corp.ru/git"), corp_ca.pem)
+    env = git_env | git_servers.variables(git_env, [saved])
+
+    def ca_for(url: str) -> str:
+        done = subprocess.run(
+            ["git", "config", "--get-urlmatch", "http.sslCAInfo", url],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return done.stdout.strip()
+
+    path = str(lado_home / "git-servers" / saved.id / "ca.pem")
+    assert ca_for("https://corp.ru/git/team/app.git") == path
+    assert ca_for("https://corp.ru/gitlab/team/app.git") == ""
+    assert ca_for("https://other.corp.ru/git/team/app.git") == ""
+
+
+def _api(start, tmp_path, issuer, profile="gitlab-full"):
+    leaf = made.server("localhost", issuer)
+    chain = made.write_chain(tmp_path / f"chain-{leaf.certificate.serial_number}", leaf)
+    return start(profile, token=TOKEN, certificate=chain)
+
+
+def test_the_probe_trusts_the_given_certificate_alone(serve, tmp_path, corp_ca):
+    server = _api(serve, tmp_path, corp_ca)
+    at = git_servers.address(server.url.replace("127.0.0.1", "localhost"))
+    assert git_servers.probe(at, TOKEN, certificate=corp_ca.pem).login == "ivan.petrov"
+    with pytest.raises(git_servers.Refused, match="is not signed by the given certificate"):
+        git_servers.probe(at, TOKEN, certificate=made.authority("Other Root").pem)
+
+
+def test_a_check_trusts_the_saved_certificate_alone(serve, lado_home, tmp_path, corp_ca):
+    server = _api(serve, tmp_path, corp_ca)
+    url = server.url.replace("127.0.0.1", "localhost")
+    at = git_servers.address(url)
+    git_servers.save(at, git_servers.Checked(GITLAB, "ivan.petrov"), TOKEN, corp_ca.pem)
+    assert _check(url).outcome == "ok"
+
+
+# The check of a certificate.
+
+TRUST_HINT = (
+    "trust it in Settings → Git servers (Check), or give its certificate: lado git-server "
+    "certificate {root} <file>"
+)
+
+
+def _local(server) -> str:
+    return server.url.replace("127.0.0.1", "localhost")
+
+
+def test_a_check_of_an_untrusted_certificate_offers_its_authority(serve, lado_home, tmp_path):
+    root = made.authority("Corp Root CA")
+    leaf = made.server("localhost", root)
+    server = serve("gitlab-full", token=TOKEN, certificate=made.write_chain(tmp_path, leaf, root))
+    url = _local(server)
+    saved = _saved(url)
+    for _ in range(2):  # refusing remembers nothing: the next check offers it again
+        found = _check(url)
+        assert found.outcome == "cert_untrusted"
+        assert found.text == f"the certificate of {url} is not trusted"
+        assert found.hint == TRUST_HINT.format(root=url)
+        assert found.page == "The server's certificate is not trusted."
+        assert found.page_hint == (
+            "The server's certificate is signed by an authority LADO's computer does not know, "
+            "often your company's own. If you trust it, LADO and agents' git trust it for this "
+            "server only; nothing else on the computer changes."
+        )
+        assert found.offer is not None and found.offer.pem == root.pem
+        assert found.before is None
+        assert git_servers.certificate(saved) is None
+    git_servers.set_certificate(git_servers.address(url), found.offer.pem)
+    assert _check(url).outcome == "ok"
+
+
+def test_a_check_of_a_changed_certificate_names_the_old_one(serve, lado_home, tmp_path):
+    old, new = made.authority("Corp Root CA"), made.authority("Corp Root CA G2")
+    leaf = made.server("localhost", new)
+    server = serve("gitlab-full", token=TOKEN, certificate=made.write_chain(tmp_path, leaf, new))
+    url = _local(server)
+    saved = _saved(url)
+    git_servers.set_certificate(git_servers.address(url), old.pem)
+    found = _check(url)
+    assert found.outcome == "cert_changed"
+    assert found.text == f"the certificate of {url} has changed since you trusted it"
+    assert found.hint == TRUST_HINT.format(root=url)
+    assert found.page == "The server's certificate has changed since you trusted it."
+    assert found.page_hint == (
+        "LADO and agents' git trusted the old certificate for this server. Until you trust the "
+        "new one, they cannot clone or push here."
+    )
+    assert (found.before.subject, found.offer.subject) == ("Corp Root CA", "Corp Root CA G2")
+    assert git_servers.certificate(saved) == old.pem  # nothing changed
+
+
+@pytest.mark.parametrize(
+    ("leaf_of", "outcome", "text", "hint", "page"),
+    [
+        (
+            lambda root: made.server("other.corp.example", root),
+            "cert_name",
+            "the certificate of {url} is not issued for localhost: trusting it would not help",
+            "ask the server's administrator",
+            "The server's certificate is not issued for localhost: trusting it would not help. "
+            "Ask the server's administrator.",
+        ),
+        (
+            lambda root: made.server("localhost", root, names=()),
+            "cert_name",
+            "the certificate of {url} names its host only in the old Common Name field, which "
+            "LADO refuses",
+            "ask the server's administrator to reissue it",
+            "The server's certificate names its host only in the old Common Name field, which "
+            "LADO refuses: ask the server's administrator to reissue it.",
+        ),
+        (
+            lambda root: made.server(
+                "localhost",
+                root,
+                not_before=made.NOW - 40 * made.DAY,
+                not_after=made.NOW - 10 * made.DAY,
+            ),
+            "cert_expired",
+            "the certificate of {url} expired on {date}",
+            "ask the server's administrator to renew it",
+            "The server's certificate expired on {date}: ask the server's administrator to "
+            "renew it.",
+        ),
+    ],
+)
+def test_a_certificate_trust_cannot_fix_gets_no_offer(
+    serve, lado_home, tmp_path, leaf_of, outcome, text, hint, page
+):
+    root = made.authority("Corp Root CA")
+    leaf = leaf_of(root)
+    server = serve("gitlab-full", token=TOKEN, certificate=made.write_chain(tmp_path, leaf, root))
+    url = _local(server)
+    _saved(url)
+    found = _check(url)
+    date = leaf.certificate.not_valid_after_utc.date().isoformat()
+    assert found.outcome == outcome
+    assert (found.text, found.hint) == (text.format(url=url, date=date), hint)
+    assert (found.page, found.page_hint) == (page.format(date=date), "")
+    assert found.offer is None
+
+
+def test_add_of_an_untrusted_certificate_refuses_with_the_offer(serve, lado_home, tmp_path):
+    root = made.authority("Corp Root CA")
+    leaf = made.server("localhost", root)
+    server = serve("gitlab-full", token=TOKEN, certificate=made.write_chain(tmp_path, leaf, root))
+    url = _local(server)
+    with pytest.raises(git_servers.Refused) as raised:
+        git_servers.add(git_servers.address(url), lambda: TOKEN, None, print)
+    assert str(raised.value) == f"the certificate of {url} is not trusted"
+    assert raised.value.hint == (
+        "trust it in Settings → Git servers (Check), or give its certificate: lado git-server "
+        f"add {url} --token --certificate <file>"
+    )
+    assert raised.value.offer.pem == root.pem
+    assert raised.value.choose_kind
+    assert state.git_servers() == []
+    saved, _, checked = git_servers.add(
+        git_servers.address(url), lambda: TOKEN, None, print, root.pem
+    )
+    assert checked.login == fake.LOGIN
+    assert git_servers.certificate(saved) == root.pem
+
+
+def test_add_with_a_certificate_that_does_not_fit_saves_nothing(serve, lado_home, tmp_path):
+    root = made.authority("Corp Root CA")
+    leaf = made.server("localhost", root)
+    server = serve("gitlab-full", token=TOKEN, certificate=made.write_chain(tmp_path, leaf, root))
+    url = _local(server)
+    other = made.authority("Other Root")
+    with pytest.raises(git_servers.Refused) as raised:
+        git_servers.add(git_servers.address(url), lambda: TOKEN, None, print, other.pem)
+    assert str(raised.value) == f"the certificate of {url} is not signed by the given certificate"
+    assert raised.value.offer.pem == root.pem
+    assert state.git_servers() == []
+    assert not (lado_home / "git-servers").exists()
+
+
+def test_the_address_check_offers_the_authority(serve, lado_home, tmp_path):
+    root = made.authority("Corp Root CA")
+    leaf = made.server("localhost", root)
+    server = serve("gitlab", certificate=made.write_chain(tmp_path, leaf, root))
+    found = git_servers.hint(git_servers.address(_local(server)))
+    assert found.choose
+    assert found.why.offer.pem == root.pem
+    assert found.why.page == "The server's certificate is not trusted."
+
+
+def test_a_python_that_gives_no_chain_makes_the_check_say_so(
+    serve, lado_home, tmp_path, monkeypatch
+):
+    root = made.authority("Corp Root CA")
+    leaf = made.server("localhost", root)
+    server = serve("gitlab-full", token=TOKEN, certificate=made.write_chain(tmp_path, leaf, root))
+    url = _local(server)
+    _saved(url)
+
+    def missing(tls):
+        raise AttributeError("get_unverified_chain")
+
+    monkeypatch.setattr(git_certificates, "_unverified", missing)
+    found = _check(url)
+    key = git_servers.address(url).key
+    assert found.outcome == "no_answer"
+    assert found.text == (
+        f"{key} does not answer: TLS failed (this Python cannot read the server's certificates)"
+    )
+    assert found.offer is None

@@ -808,10 +808,38 @@ class ServerCheck(BaseModel):
     notes: list[str]
 
 
+class GitServerCertificate(BaseModel):
+    """The certificate trusted for a saved server, from its file: its name, the date its
+    validity ends (YYYY-MM-DD) and whether it has."""
+
+    name: str
+    not_after: str
+    expired: bool
+
+
+class CertificateOffer(BaseModel):
+    """A certificate a check shows (lado.git_certificates.Certificate): its subject, its
+    issuer's organization, its validity (YYYY-MM-DD), its SHA-256 as colon hex, whether it
+    is the server's own signed by itself (`own`), the server's own at all (`leaf`: renewed
+    with the server) or an authority below the root (`intermediate`), and its PEM, which `PUT
+    /api/git-servers/{host}/certificate` takes back when the human trusts it."""
+
+    subject: str
+    issuer: str
+    valid_from: str
+    valid_until: str
+    sha256: str
+    own: bool
+    intermediate: bool
+    leaf: bool
+    pem: str
+
+
 class GitServerInfo(BaseModel):
     """A saved git server as lado.db keeps it, asking it nothing: `host` its key (host and a
     port other than the scheme's), `login` None for one saved without a check, whether
-    its token file is there (never the token), and its commit author (both or neither)."""
+    its token file is there (never the token), its commit author (both or neither), and
+    the certificate trusted for it (None for none)."""
 
     address: str
     host: str
@@ -821,6 +849,7 @@ class GitServerInfo(BaseModel):
     has_token: bool
     author_name: str | None
     author_email: str | None
+    certificate: GitServerCertificate | None = None
 
 
 class GitKindInfo(BaseModel):
@@ -847,14 +876,20 @@ class GitServerRemoved(GitServers):
 
 
 class GitServerCheckAsked(BaseModel):
+    """An address the add form checks; `certificate` the PEM the human trusted for it,
+    which the check trusts alone."""
+
     address: str
+    certificate: str | None = None
 
 
 class GitServerCheck(BaseModel):
     """What the add form says of an address before Add, asking the server with no token:
     its root (None when it is no address), the kind it looks like (a hint only) with its
     token page and scopes, whether the kind must be chosen and why (`unchecked`), whether the
-    address is saved already, the refusals Add would meet and the plain-http warning."""
+    address is saved already, the refusals Add would meet and the plain-http warning; for a
+    certificate not trusted, the authority to trust (`certificate_offer`) and the one given
+    that did not fit (`certificate_before`)."""
 
     address: str | None
     hint: str | None
@@ -865,15 +900,34 @@ class GitServerCheck(BaseModel):
     saved: bool
     refusals: list[GitEntryRefused]
     warnings: list[str]
+    certificate_offer: CertificateOffer | None = None
+    certificate_before: CertificateOffer | None = None
 
 
 class GitServerAdd(BaseModel):
     """A git server to check and save with its token; `kind` only when the human chose one
-    (--kind). No answer gives the token back."""
+    (--kind); `certificate` the PEM the human trusted for it, saved with it. No answer gives
+    the token back."""
 
     address: str
     token: str
     kind: str | None = None
+    certificate: str | None = None
+
+
+class GitServerCertificateSet(BaseModel):
+    """The certificate to trust for a saved server: the PEM a check offered (or Undo gives
+    back)."""
+
+    pem: str
+
+
+class GitServerCertificateRemoved(BaseModel):
+    """A server's certificate removed: the server as saved and the PEM it held, for Undo
+    (None when it held none)."""
+
+    server: GitServerInfo
+    pem: str | None
 
 
 class GitServerAdded(BaseModel):
@@ -895,7 +949,8 @@ class GitServerChecked(BaseModel):
     scopes_missing), the rights the token lacks, whether the server told them, whether it
     had a login before, the page's line (`message`) and its info tip (`hint`, "" for none),
     and the server as saved after it (a passing check saves its login; None when it was
-    removed meanwhile)."""
+    removed meanwhile); for a certificate not trusted or changed, the authority to trust and
+    the saved one that no longer fits."""
 
     outcome: Literal[
         "ok",
@@ -903,6 +958,9 @@ class GitServerChecked(BaseModel):
         "scopes_missing",
         "no_answer",
         "cert_untrusted",
+        "cert_changed",
+        "cert_name",
+        "cert_expired",
         "redirect",
         "other_kind",
         "unrecognised",
@@ -915,6 +973,8 @@ class GitServerChecked(BaseModel):
     message: str
     hint: str
     server: GitServerInfo | None
+    certificate_offer: CertificateOffer | None = None
+    certificate_before: CertificateOffer | None = None
 
 
 class GitServerAuthor(BaseModel):

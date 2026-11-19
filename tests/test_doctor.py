@@ -6,6 +6,7 @@ import sqlite3
 import time
 
 import agent_helpers
+import certificates
 import fake_git_api
 import fake_model_server
 import pytest
@@ -1978,3 +1979,65 @@ def test_a_busy_lado_db_is_one_warning(no_github, monkeypatch, capsys):
     assert out.count("lado.db is busy") == 1
     assert "[warn] git servers: not checked: lado.db is busy\n" in out
     assert "Python" in out.split("lado.db is busy")[0] + out.split("lado.db is busy")[1]
+
+
+# A git server's certificate.
+
+
+def _corp(git_api, tmp_path, profile="gitlab-full"):
+    root = certificates.authority("Corp Root CA")
+    leaf = certificates.server("localhost", root)
+    chain = certificates.write_chain(tmp_path / profile, leaf, root)
+    server = git_api(profile, token=GIT_TOKEN, certificate=chain)
+    return server.url.replace("127.0.0.1", "localhost"), root
+
+
+def test_an_untrusted_certificate_is_a_warning_that_trusts_nothing(git_api, lado_home, tmp_path):
+    url, _ = _corp(git_api, tmp_path)
+    saved = _git_saved(url)
+    assert _git_lines() == [
+        doctor.Check(
+            f"git server {url}",
+            doctor.WARN,
+            f"the certificate of {url} is not trusted",
+            f"trust it: lado git-server check {url}, or Check in Settings → Git servers",
+        )
+    ]
+    assert git_servers.certificate(saved) is None
+
+
+def test_a_github_server_with_a_certificate_says_gh_does_not_get_it(git_api, lado_home, tmp_path):
+    url, root = _corp(git_api, tmp_path, "github-repo")
+    at = git_servers.address(url)
+    git_servers.save(
+        at, git_servers.Checked(git_kinds.by_name("github"), "ivan"), GIT_TOKEN, root.pem
+    )
+    assert _git_lines() == [
+        doctor.Check(
+            f"git server {url}",
+            doctor.OK,
+            "Works: GitHub, signed in as ivan.petrov, may clone and push.",
+        ),
+        doctor.Check(
+            "gh",
+            doctor.INFO,
+            f"does not get the certificate of {url}: agents' gh cannot reach it; git can",
+        ),
+    ]
+
+
+def test_a_certificate_trust_cannot_fix_keeps_the_checks_hint(git_api, lado_home, tmp_path):
+    root = certificates.authority("Corp Root CA")
+    leaf = certificates.server("other.corp.example", root)
+    chain = certificates.write_chain(tmp_path / "other", leaf, root)
+    url = git_api("gitlab-full", token=GIT_TOKEN, certificate=chain).url
+    url = url.replace("127.0.0.1", "localhost")
+    _git_saved(url)
+    assert _git_lines() == [
+        doctor.Check(
+            f"git server {url}",
+            doctor.WARN,
+            f"the certificate of {url} is not issued for localhost: trusting it would not help",
+            "ask the server's administrator",
+        )
+    ]

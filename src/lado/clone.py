@@ -255,6 +255,15 @@ KINDS: tuple[tuple[str, re.Pattern], ...] = (
     ),
     ("access_denied", re.compile(r"The requested URL returned error: 403")),
     (
+        "cert_untrusted",
+        # curl with OpenSSL; with GnuTLS ("server certificate …" before curl 8, "SSL
+        # certificate …" from it); a certificate of another host
+        re.compile(
+            r"SSL certificate problem|(SSL|server) (certificate )?verification failed"
+            r"|no alternative certificate subject name|does not match target host name"
+        ),
+    ),
+    (
         "not_found",
         re.compile(
             r"Repository not found|does not appear to be a git repository"
@@ -311,6 +320,8 @@ def _reason(kind: str, address: Address, branch: str | None) -> tuple[str, runti
         )
     if kind == "access_denied":
         return f"{host} refused access", None
+    if kind == "cert_untrusted":
+        return f"the certificate of {host} is not trusted", None
     if kind == "not_found":
         return "no repository there, or this machine's account cannot read it", None
     if kind == "unreachable":
@@ -318,8 +329,9 @@ def _reason(kind: str, address: Address, branch: str | None) -> tuple[str, runti
     return f"no branch {branch}", None  # no_branch
 
 
-ACCESS_KINDS = ("login_needed", "access_denied", "not_found")
+ACCESS_KINDS = ("login_needed", "access_denied", "not_found", "cert_untrusted")
 CHECK_PAGE = "Check this git server; if its token expired or was revoked, replace it there."
+CHECK_CERTIFICATE_PAGE = "Check the git server and trust its certificate there."
 
 
 def _saved_servers() -> list[state.GitServer] | None:
@@ -350,6 +362,12 @@ def _server_way(
         address.scheme == "ssh" or urllib.parse.urlsplit(server.address).scheme == address.scheme
     ):
         root, key = server.address, server.host  # the host with its port
+        if kind == "cert_untrusted":
+            hint = runtime.Hint(
+                "Check the git server and trust its certificate:", f"lado git-server check {root}"
+            )
+            way = ServerWay("check", server.host, root, CHECK_CERTIFICATE_PAGE)
+            return f"the certificate of {host} is not trusted", hint, way
         reason = {
             "login_needed": f"{key} refused the token of the git server {root}",
             "access_denied": f"{key} refused access with the token of the git server {root}",
@@ -378,7 +396,11 @@ def _server_way(
         at = git_servers.address(f"{address.scheme}://{host}{port}")
     except git_servers.BadAddress:
         return None
-    reason = f"{host} asks for a login" if kind == "login_needed" else f"{host} refused access"
+    reason = {
+        "login_needed": f"{host} asks for a login",
+        "access_denied": f"{host} refused access",
+        "cert_untrusted": f"the certificate of {host} is not trusted",
+    }[kind]
     hint = runtime.Hint(
         "Add it as a git server with a token:", f"{git_servers.ADD} {at.root} --token"
     )

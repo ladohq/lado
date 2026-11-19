@@ -179,10 +179,14 @@ def write(id: str, name: str, value: str) -> None:
     write_at((DATA, id, SECRETS), folder(id), name, value)
 
 
-def write_at(parts: tuple[str, ...], where: Path, name: str, value: str) -> None:
+def write_at(
+    parts: tuple[str, ...], where: Path, name: str, value: str, *, fixed: bool = False
+) -> None:
     """Set `name` in the folder `parts` (at `where`) to `value`, as `write` says. Also the
-    writer of a model server's key file (lado.model_settings)."""
-    if not _is_name(name):
+    writer of a model server's key file (lado.model_settings) and of a git server's token
+    and certificate (lado.git_servers); `fixed`: `name` is a file name of LADO's own, not a
+    variable name (`ca.pem`), and `value` is written as it is, read by no variable reader."""
+    if not fixed and not _is_name(name):
         raise ValueError(f"{name!r} is not a variable name")
     with open_chain(parts, make=True) as fd:
         assert fd is not None
@@ -194,7 +198,7 @@ def write_at(parts: tuple[str, ...], where: Path, name: str, value: str) -> None
         try:
             try:
                 os.fchmod(out, FILE_MODE)
-                data = memoryview(stored(value))
+                data = memoryview(value.encode() if fixed else stored(value))
                 while data:
                     data = data[os.write(out, data) :]
                 os.fsync(out)
@@ -214,10 +218,11 @@ def remove(id: str, name: str) -> bool:
     return remove_at((DATA, id, SECRETS), folder(id), name)
 
 
-def remove_at(parts: tuple[str, ...], where: Path, name: str) -> bool:
+def remove_at(parts: tuple[str, ...], where: Path, name: str, *, fixed: bool = False) -> bool:
     """Remove `name` from the folder `parts` (at `where`), as `remove` says. Also the
-    remover of a model server's key file (lado.model_settings)."""
-    if not _is_name(name):
+    remover of a model server's key file (lado.model_settings) and of a git server's token
+    and certificate; `fixed` as `write_at` takes it."""
+    if not fixed and not _is_name(name):
         return False
     with open_chain(parts, make=False) as fd:
         if fd is None:

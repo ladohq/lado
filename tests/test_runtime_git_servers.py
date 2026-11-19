@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 
+import certificates
 import pytest
 
 from lado import agent_env, git_kinds, git_servers, runtime, state
@@ -348,3 +349,33 @@ def test_a_worker_gets_its_own_gh_variables(repo, fake_tmux, lado_home, monkeypa
     worker = json.loads((lado_home / "agents" / "s" / "w1" / "env.json").read_text())
     assert worker["GH_TOKEN"] == "ghp_entry"
     assert worker["GH_CONFIG_DIR"] == str(lado_home / "agents" / "s" / "w1" / "gh")
+
+
+# A server's certificate.
+
+GH_NOTE = (
+    "gh does not get the certificate of https://ghe.corp.example: agents' gh cannot reach it; "
+    "git can"
+)
+
+
+def test_a_github_server_with_a_certificate_is_named_at_the_launch(
+    repo, fake_tmux, lado_home, monkeypatch, agents_path
+):
+    _, path = agents_path
+    _shell(monkeypatch, {"PATH": path})
+    root = certificates.authority("Corp Root CA")
+    ghe = _github("https://ghe.corp.example", "ghp-CANARY")
+    _save()  # a GitLab with a certificate: gh does not reach it anyway
+    git_servers.set_certificate(git_servers.address("gitlab.corp.ru"), root.pem)
+    git_servers.set_certificate(git_servers.address(ghe.address), root.pem)
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    assert started.warnings.count(GH_NOTE) == 1
+    assert not [w for w in started.warnings if "gitlab.corp.ru" in w]
+    env = _launched(lado_home)
+    ca = str(git_servers.certificate_file(ghe.id))
+    assert ca in env.values()  # git gets it
+    assert not {"SSL_CERT_FILE", "GIT_SSL_CAINFO", "NODE_EXTRA_CA_CERTS"} & env.keys()
+    warnings = []
+    runtime.spawn_worker("s", "task", name="w1", warnings=warnings)
+    assert warnings.count(GH_NOTE) == 1

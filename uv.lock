@@ -775,6 +775,7 @@ name = "lado"
 version = "0.47.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "mcp" },
     { name = "pyyaml" },
@@ -797,6 +798,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", specifier = ">=42" },
     { name = "fastapi", specifier = ">=0.142" },
     { name = "mcp", specifier = ">=2.2,<3" },
     { name = "pyyaml", specifier = ">=6" },

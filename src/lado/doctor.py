@@ -941,10 +941,23 @@ def check_git_servers() -> list[Check]:
             return Check(name, WARN, f"not checked: {exc}")
         if found.outcome == "ok":
             return Check(name, OK, found.text)
+        if found.offer is not None:  # trusted only by the human's choice, never here
+            trust = (
+                f"trust it: lado git-server check {server.address}, or Check in Settings → "
+                "Git servers"
+            )
+            return Check(name, WARN, found.text, trust)
         return Check(name, WARN, found.text, found.hint)
 
+    def gh(server: state.GitServer) -> list[Check]:
+        # gh gets no certificate: said for a GitHub server that has one, as a launch says it.
+        return [Check("gh", INFO, line) for line in git_servers.gh_without_certificate([server])]
+
     with ThreadPoolExecutor(max_workers=len(servers)) as pool:
-        return list(pool.map(checked, servers))
+        lines = list(pool.map(checked, servers))
+    return [
+        found for server, line in zip(servers, lines, strict=True) for found in (line, *gh(server))
+    ]
 
 
 BUSY = Check("git servers", WARN, "not checked: lado.db is busy")

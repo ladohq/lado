@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import type { GitServerAdded, GitServerCheck, GitServerChecked, GitServerInfo, GitServers } from "./api";
+import type { CertificateOffer, GitServerAdded, GitServerCheck, GitServerChecked, GitServerInfo, GitServers } from "./api";
 import { GitServersPage, TIPS } from "./GitServers";
 
 const TOKEN = "glpat-CANARY-vitest";
@@ -38,6 +38,21 @@ const GHE: GitServerInfo = {
   author_name: null,
   author_email: null,
 };
+
+const ROOT: CertificateOffer = {
+  subject: "Corp Root CA",
+  issuer: "Corp Example Ltd",
+  valid_from: "2021-03-01",
+  valid_until: "2031-03-01",
+  sha256: "3F:9A:1C:07:B2:44:E8:5D:90:6A:C1:2F:7E:03:D9:58:AA:61:0B:4C:93:E7:25:F8:1D:C6:72:08:BE:39:54:A0",
+  own: false,
+  intermediate: false,
+  leaf: false,
+  pem: "-----BEGIN CERTIFICATE-----\nROOT\n-----END CERTIFICATE-----\n",
+};
+const ROOT_SAVED = { name: "Corp Root CA", not_after: "2031-03-01", expired: false };
+const ABOUT_TRUST =
+  "The server's certificate is signed by an authority LADO's computer does not know, often your company's own.";
 
 const nothing: GitServerCheck = {
   address: null,
@@ -91,6 +106,17 @@ class Fake {
   add: (body: Record<string, unknown>) => Response = () => new Response("{}", { status: 500 });
   removal: string | null = null;
   authorHeld: (() => Response) | null = null; // while set, a change of the author waits for it
+  pems: Record<string, string> = {}; // a server's trusted PEM, by host
+  // A PUT of a certificate: saved, then the check's answer (works, by default).
+  trusted = (host: string, pem: string): Response => {
+    this.pems[host] = pem;
+    const server = { ...this.servers.find((s) => s.host === host)!, certificate: ROOT_SAVED };
+    this.servers = this.servers.map((s) => (s.host === host ? server : s));
+    return new Response(
+      JSON.stringify(checked(server, { outcome: "ok", message: "Works: signed in as a.sample, may clone and push." })),
+      { status: 200 },
+    );
+  };
   author(method: string, path: string, body: Record<string, unknown> | undefined): Response {
     const host = decodeURIComponent(path.slice("/api/git-servers/".length, -"/author".length));
     const server = this.servers.find((s) => s.host === host)!;
@@ -115,6 +141,16 @@ class Fake {
         if (path === "/api/git-servers" && method === "GET") return json(listing());
         if (path === "/api/git-servers/check") return json(this.checks[(body as { address: string }).address] ?? nothing);
         if (path === "/api/git-servers" && method === "POST") return this.add(body!);
+        if (path.endsWith("/certificate")) {
+          const host = decodeURIComponent(path.slice("/api/git-servers/".length, -"/certificate".length));
+          if (method === "PUT") return this.trusted(host, String(body!.pem));
+          const server = this.servers.find((s) => s.host === host)!;
+          const pem = this.pems[host] ?? null;
+          delete this.pems[host];
+          const now = { ...server, certificate: null };
+          this.servers = this.servers.map((s) => (s.host === host ? now : s));
+          return json({ server: now, pem });
+        }
         if (path.endsWith("/author")) {
           if (this.authorHeld) await this.authorHeld(); // answers once let go
           return this.author(method, path, body);
@@ -237,11 +273,22 @@ const outcomes: [Partial<GitServerChecked>, string, string | null, string | null
     "⚠ check: no answer",
   ],
   [
-    { outcome: "cert_untrusted", message: "The server's certificate is not trusted.", hint: "Ask your IT department." },
+    {
+      outcome: "cert_name",
+      message:
+        "The server's certificate is not issued for gitlab.corp.example: trusting it would not help. Ask the server's administrator.",
+    },
     "bad",
-    "Check again",
-    "About the certificate",
-    "✕ check failed: certificate not trusted",
+    null,
+    null,
+    "✕ check failed: certificate not for this host",
+  ],
+  [
+    { outcome: "cert_expired", message: "The server's certificate expired on 2025-10-01: ask the server's administrator to renew it." },
+    "bad",
+    null,
+    null,
+    "✕ check failed: certificate expired",
   ],
   [
     { outcome: "redirect", message: "It redirects to https://sso.example/login: add that address instead." },
@@ -462,7 +509,7 @@ test("Remove server asks in the foot, the focus on Cancel; done, its line and th
   press(`Remove ${CORP.address}`);
   const ask = screen.getByRole("alertdialog");
   expect(within(ask).getByText(`Remove ${CORP.address}?`)).toBeTruthy();
-  expect(within(ask).getByText("Its token and commit author go too. This cannot be undone.")).toBeTruthy();
+  expect(within(ask).getByText("Its token, commit author and certificate go too. This cannot be undone.")).toBeTruthy();
   expect(document.activeElement).toBe(within(ask).getByRole("button", { name: "Cancel" }));
   fireEvent.click(within(ask).getByRole("button", { name: "Remove server" }));
   expect(await screen.findByText(`Removed ${CORP.address}.`)).toBeTruthy();
@@ -1028,4 +1075,236 @@ test("?check= of a host no server is saved for opens nothing; the query leaves",
   expect(button(CORP.address).getAttribute("aria-expanded")).toBe("false");
   expect(screen.queryByRole("textbox", { name: "Address" })).toBeNull();
   expect(fake.calls.filter((c) => c.method === "POST")).toEqual([]);
+});
+
+// A server's certificate.
+
+const untrusted = (server: GitServerInfo, offer: Partial<CertificateOffer> = {}) =>
+  checked(server, {
+    outcome: "cert_untrusted",
+    message: "The server's certificate is not trusted.",
+    hint: ABOUT_TRUST,
+    certificate_offer: { ...ROOT, ...offer },
+    certificate_before: null,
+  });
+const card = () => document.querySelector(".gx-trust") as HTMLElement;
+
+test("Check of an untrusted certificate asks; Trust saves the offered one and checks again", async () => {
+  fake.servers = [CORP];
+  fake.saved[CORP.host] = () => json(untrusted(CORP));
+  await mount();
+  openRow(CORP);
+  press(`Check ${CORP.address}`);
+  expect(await screen.findByText("⚠ The server's certificate is not trusted.")).toBeTruthy();
+  expect(card().className).toBe("gx-trust");
+  expect(card().getAttribute("role")).toBe("alert");
+  const facts = within(card());
+  expect(facts.getByText("Signed by")).toBeTruthy();
+  expect(card().querySelector("dd")!.textContent).toBe("Corp Root CA · Corp Example Ltd");
+  expect(facts.getByText("2021-03-01 to 2031-03-01")).toBeTruthy();
+  expect(facts.getByText(ROOT.sha256)).toBeTruthy();
+  expect(
+    facts.getByText("Trust it only if you expected this authority. In a company network your IT department can confirm the fingerprint."),
+  ).toBeTruthy();
+  fireEvent.click(facts.getByRole("button", { name: "About the certificate" }));
+  expect(facts.getByText(ABOUT_TRUST)).toBeTruthy();
+  expect(button("Trust this server").className).toBe("primary");
+  expect(within(row(CORP)).queryByText("Certificate", { selector: ".gx-name" })).toBeNull();
+  press("Trust this server");
+  expect(await screen.findByText("Certificate trusted. Works: signed in as a.sample, may clone and push.")).toBeTruthy();
+  expect(fake.calls.filter((c) => c.method === "PUT").map((c) => [c.path, c.body])).toEqual([
+    [`/api/git-servers/${CORP.host}/certificate`, { pem: ROOT.pem }],
+  ]);
+  expect(within(row(CORP)).getByText("valid until 2031-03-01", { exact: false }).textContent).toBe(
+    "Corp Root CA · valid until 2031-03-01",
+  );
+  await waitFor(() => expect(document.activeElement).toBe(button(`Check ${CORP.address}`)));
+});
+
+test("Don't trust saves nothing: the line, Check again with the focus, the closed row's mark", async () => {
+  fake.servers = [CORP];
+  fake.saved[CORP.host] = () => json(untrusted(CORP));
+  await mount();
+  openRow(CORP);
+  press(`Check ${CORP.address}`);
+  await screen.findByText("⚠ The server's certificate is not trusted.");
+  press("Don't trust");
+  expect(await screen.findByText("Not trusted: LADO and agents cannot clone or push here over https.")).toBeTruthy();
+  expect(card()).toBeNull();
+  expect(fake.calls.filter((c) => c.method === "PUT")).toEqual([]);
+  await waitFor(() => expect(document.activeElement).toBe(button(`Check ${CORP.address} again`)));
+  press(`Check ${CORP.address} again`);
+  expect(await screen.findByText("⚠ The server's certificate is not trusted.")).toBeTruthy(); // asked again
+  openRow(CORP);
+  expect(within(row(CORP)).getByText("✕ check failed: certificate not trusted")).toBeTruthy();
+});
+
+test("a changed certificate asks in red with the one before; Keep the old one changes nothing", async () => {
+  const saved = { ...CORP, certificate: ROOT_SAVED };
+  fake.servers = [saved];
+  fake.saved[CORP.host] = () =>
+    json(
+      checked(saved, {
+        outcome: "cert_changed",
+        message: "The server's certificate has changed since you trusted it.",
+        hint: "LADO and agents' git trusted the old certificate for this server.",
+        certificate_offer: { ...ROOT, subject: "Corp Root CA G2", sha256: "C4:02:7B:E1:56:9D:3A:F0:18:62" },
+        certificate_before: ROOT,
+      }),
+    );
+  await mount();
+  openRow(saved);
+  press(`Check ${saved.address}`);
+  expect(await screen.findByText("⚠ The server's certificate has changed since you trusted it.")).toBeTruthy();
+  expect(card().className).toBe("gx-trust changed");
+  expect([...card().querySelectorAll("dt")].map((d) => d.textContent)).toEqual(["Before", "Now", "Valid", "SHA-256"]);
+  expect(card().querySelector("dd")!.textContent).toBe("Corp Root CA · 3F:9A:1C:07:B2:44:E8:5D…");
+  expect(within(card()).getByText("If your IT department did not announce a new certificate, do not trust it:")).toBeTruthy();
+  expect(button("Trust the new certificate").className).toBe("danger");
+  press("Keep the old one");
+  expect(
+    await screen.findByText("The saved certificate does not fit the server: LADO and agents cannot clone or push here over https."),
+  ).toBeTruthy();
+  expect(fake.calls.filter((c) => c.method !== "GET" && c.method !== "POST")).toEqual([]);
+  openRow(saved);
+  expect(within(row(saved)).getByText("✕ check failed: certificate changed")).toBeTruthy();
+});
+
+test.each([
+  [
+    { own: true, leaf: true, subject: "gitlab.lan" },
+    "Certificate",
+    "gitlab.lan · signed by itself",
+    "This is the server's own certificate, not an authority: when the server renews it, LADO asks again.",
+  ],
+  [
+    { leaf: true, subject: "gitlab.corp.example" },
+    "Certificate",
+    "gitlab.corp.example · signed by Corp Example Ltd",
+    "This is the server's own certificate, not an authority: when the server renews it, LADO asks again.",
+  ],
+  [
+    { intermediate: true, subject: "Corp Issuing CA 2" },
+    "Signed by",
+    "Corp Issuing CA 2 · Corp Example Ltd",
+    "The server does not send its root authority, so LADO offers the highest one it got. Trust it only if you expected it.",
+  ],
+])("the offer of %o says what it is", async (offer, first, value, note) => {
+  fake.servers = [CORP];
+  fake.saved[CORP.host] = () => json(untrusted(CORP, offer));
+  await mount();
+  openRow(CORP);
+  press(`Check ${CORP.address}`);
+  await screen.findByText("⚠ The server's certificate is not trusted.");
+  expect(card().querySelector("dt")!.textContent).toBe(first);
+  expect(card().querySelector("dd")!.textContent).toBe(value);
+  expect(within(card()).getByText(note)).toBeTruthy();
+});
+
+test("the certificate row: Remove at once with Undo, which puts the same one back", async () => {
+  const saved = { ...CORP, certificate: ROOT_SAVED };
+  fake.servers = [saved];
+  fake.pems[CORP.host] = ROOT.pem;
+  await mount();
+  openRow(saved);
+  expect(within(row(saved)).getByText("Certificate", { selector: ".gx-name", exact: false })).toBeTruthy();
+  fireEvent.click(within(row(saved)).getByRole("button", { name: "About Certificate" }));
+  expect(
+    within(row(saved)).getByText("The authority you trusted for this server. LADO and agents' git trust it for this server only."),
+  ).toBeTruthy();
+  press(`Remove the certificate of ${saved.address}`);
+  expect(await screen.findByText("Certificate removed.")).toBeTruthy();
+  expect(within(row(saved)).getByText("None")).toBeTruthy();
+  const undo = button(`Undo the removal of the certificate of ${saved.address}`);
+  await waitFor(() => expect(document.activeElement).toBe(undo));
+  fireEvent.click(undo);
+  expect(await screen.findByText("Certificate saved.")).toBeTruthy();
+  expect(fake.calls.filter((c) => c.method === "PUT").map((c) => c.body)).toEqual([{ pem: ROOT.pem }]);
+  expect(within(row(saved)).getByText("valid until 2031-03-01", { exact: false })).toBeTruthy();
+  await waitFor(() => expect(document.activeElement).toBe(button(`Remove the certificate of ${saved.address}`)));
+});
+
+test("an expired certificate is a warning on its row and on the closed row", async () => {
+  const saved = { ...CORP, certificate: { name: "Corp Root CA", not_after: "2025-10-01", expired: true } };
+  fake.servers = [saved];
+  await mount();
+  expect(within(row(saved)).getByText("⚠ certificate expired")).toBeTruthy();
+  openRow(saved);
+  expect(within(row(saved)).getByText("⚠ Corp Root CA · expired on 2025-10-01")).toBeTruthy();
+});
+
+test("a server without a certificate has no certificate row", async () => {
+  fake.servers = [CORP];
+  await mount();
+  openRow(CORP);
+  expect(within(row(CORP)).queryByText("Certificate", { selector: ".gx-name", exact: false })).toBeNull();
+});
+
+test("Add asks under Address; Trust checks the address again with it and Add saves it", async () => {
+  const at = "https://gitlab.corp.example";
+  fake.checks["gitlab.corp.example"] = {
+    ...nothing,
+    address: at,
+    choose_kind: true,
+    unchecked: { message: "The server's certificate is not trusted.", hint: ABOUT_TRUST, field: "address", warnings: [], choose_kind: true },
+    certificate_offer: ROOT,
+  };
+  let sent: Record<string, unknown> | undefined;
+  fake.add = (body) => {
+    sent = body;
+    const saved = { ...CORP, certificate: ROOT_SAVED };
+    fake.servers = [saved];
+    return json(added(saved));
+  };
+  await mount();
+  press("Add server");
+  type(addressField(), "gitlab.corp.example");
+  expect(await screen.findByText("⚠ The server's certificate is not trusted.")).toBeTruthy();
+  expect(screen.queryByRole("radio", { name: "GitLab" })).toBeNull();
+  type(tokenField(), TOKEN);
+  expect((formAdd() as HTMLButtonElement).disabled).toBe(true);
+  fake.checks["gitlab.corp.example"] = looksLike(at, "gitlab");
+  press("Trust this server");
+  expect(await screen.findByText("answers.", { exact: false })).toBeTruthy();
+  expect(fake.calls.filter((c) => c.path === "/api/git-servers/check").at(-1)!.body).toEqual({
+    address: "gitlab.corp.example",
+    certificate: ROOT.pem,
+  });
+  expect(screen.getByText("trusted for this server.", { exact: false }).textContent).toBe(
+    "Certificate: Corp Root CA · valid until 2031-03-01, trusted for this server.",
+  );
+  fireEvent.click(formAdd());
+  await screen.findByText("Saved: GitLab, signed in as a.sample.");
+  expect(sent).toEqual({ address: "gitlab.corp.example", token: TOKEN, kind: null, certificate: ROOT.pem });
+});
+
+test("Add's Don't trust offers the kind to save it without a check", async () => {
+  const at = "https://gitlab.corp.example";
+  fake.checks["gitlab.corp.example"] = {
+    ...nothing,
+    address: at,
+    choose_kind: true,
+    unchecked: { message: "The server's certificate is not trusted.", hint: ABOUT_TRUST, field: "address", warnings: [], choose_kind: true },
+    certificate_offer: ROOT,
+  };
+  await mount();
+  press("Add server");
+  type(addressField(), "gitlab.corp.example");
+  await screen.findByText("⚠ The server's certificate is not trusted.");
+  press("Don't trust");
+  expect(
+    await screen.findByText("⚠ Not trusted, so LADO cannot ask the server. Choose its kind to save it without a check."),
+  ).toBeTruthy();
+  expect(screen.getByRole("radio", { name: "GitLab" })).toBeTruthy();
+  expect(formAdd().textContent).toBe("Add without a check");
+});
+
+test("a certificate removed elsewhere already: the line has no Undo", async () => {
+  const saved = { ...CORP, certificate: ROOT_SAVED };
+  fake.servers = [saved]; // no PEM kept: the removal answers pem null
+  await mount();
+  openRow(saved);
+  press(`Remove the certificate of ${saved.address}`);
+  const line = (await screen.findByText("Certificate removed.")).closest(".gx-result") as HTMLElement;
+  expect(within(line).queryByRole("button", { name: /Undo/ })).toBeNull();
 });

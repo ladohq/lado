@@ -12572,6 +12572,64 @@ section.artifact-group + section.artifact-group {
   flex: none;
 }
 
+/* Trust this server? A check's offer of an authority: who signed it, its validity and its
+   fingerprint, the buttons under them; a changed certificate louder, with a border. */
+.gx-trust {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--warn-ground);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.gx-trust.changed {
+  border: 2px solid var(--danger);
+  background: var(--danger-ground);
+}
+
+.setting .gx-trust-h {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.gx-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 8px 0;
+}
+
+.gx-facts dt {
+  color: var(--muted);
+}
+
+.gx-facts dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+}
+
+.gx-fp {
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.setting .gx-trust-n {
+  margin: 4px 0 8px;
+  color: var(--ink);
+}
+
+@media (max-width: 600px) {
+  .gx-trust .primary,
+  .gx-trust .danger,
+  .gx-trust .quiet {
+    height: 44px;
+    min-width: 44px;
+    font-size: 14px;
+  }
+}
+
 @media (max-width: 600px) {
   .gx-body {
     padding: 0 12px;

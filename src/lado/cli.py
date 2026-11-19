@@ -1581,9 +1581,9 @@ _ADD_TAKES_NO_MORE = (
     "run lado model-server add <name> <address> --key and type it, or pipe it in"
 )
 _GIT_ADD_TAKES_NO_MORE = (
-    "lado git-server add takes an address, --token and --kind, nothing more; a server's token "
-    "is never given on the command line (ps and the shell's history keep it): run lado "
-    "git-server add <address> --token and type it, or pipe it in"
+    "lado git-server add takes an address, --token, --kind and --certificate, nothing more; a "
+    "server's token is never given on the command line (ps and the shell's history keep it): "
+    "run lado git-server add <address> --token and type it, or pipe it in"
 )
 _TAKES_NO_MORE = {
     "model-server probe": _PROBE_TAKES_NO_MORE,
@@ -1750,15 +1750,81 @@ def _git_address(text: str):
         return None
 
 
+def _certificate_file(given: str) -> str:
+    """The PEM LADO keeps of the certificate file `given` (`-`: stdin), checked by
+    lado.git_certificates.from_file; Refused naming the file."""
+    from lado import git_certificates, git_servers
+
+    try:
+        if given == "-":
+            data = sys.stdin.buffer.read(git_certificates.MAX_FILE + 1)
+        else:
+            with open(given, "rb") as file:
+                data = file.read(git_certificates.MAX_FILE + 1)
+    except OSError as exc:
+        why = (exc.strerror or type(exc).__name__).lower()
+        raise git_servers.Refused(f"cannot read {given}: {why}") from None
+    try:
+        return git_certificates.from_file(data, "stdin" if given == "-" else given)
+    except git_certificates.BadFile as exc:
+        raise git_servers.Refused(str(exc)) from None
+
+
+def _offer_lines(offer, before) -> list[str]:
+    """A certificate a check offers to trust, as `check` and `add` print it under their
+    refusal: the saved one it replaces, who signed it, its validity, its fingerprint."""
+    lines = []
+    if before is not None:
+        lines.append(f"  Before     {before.subject} · {before.sha256[:23]}…")
+    signer = f"{offer.subject} · {offer.issuer}" if offer.issuer else offer.subject
+    if offer.own:
+        lines.append(f"  Certificate  {offer.subject} · signed by itself")
+    elif offer.leaf:  # the server's own, signed by an authority it does not send
+        by = offer.issuer or "another authority"
+        lines.append(f"  Certificate  {offer.subject} · signed by {by}")
+    else:
+        lines.append(f"  Signed by  {signer}")
+    lines.append(f"  Valid      {offer.not_before.date()} to {offer.not_after.date()}")
+    lines.append(f"  SHA-256    {offer.sha256}")
+    if offer.leaf:
+        lines.append("  the server's own certificate, not an authority: it changes when renewed")
+    elif offer.intermediate:
+        lines.append("  the server does not send its root authority: the highest one it sent")
+    return lines
+
+
+def _failed(text: str, hint: str, offer=None, before=None) -> int:
+    """A git server's refusal or a check's failure on stderr, with the certificate it offers
+    between its line and its hint; exit 1."""
+    print(f"lado: {text}", file=sys.stderr)
+    if offer is not None:
+        for line in _offer_lines(offer, before):
+            print(line, file=sys.stderr)
+    if hint:
+        print(f"lado: {hint}", file=sys.stderr)
+    return 1
+
+
+def _refused_with_offer(exc) -> int:
+    return _failed(str(exc), exc.hint, exc.offer, exc.before)
+
+
 def cmd_git_server_add(args: argparse.Namespace) -> int:
-    """`lado git-server add <address> --token [--kind K]`: tell the server's kind by its API
-    and save it with its token (lado.git_servers); exit 1 for a refusal, 2 for an address it
-    does not take. The token is asked without echo or read from stdin, never taken from
-    argv."""
+    """`lado git-server add <address> --token [--kind K] [--certificate F]`: tell the
+    server's kind by its API, trusting the certificate file F alone when given, and save it
+    with its token (and F); exit 1 for a refusal, 2 for an address it does not take. The
+    token is asked without echo or read from stdin, never taken from argv."""
     from lado import git_kinds, git_servers
 
     at = _git_address(args.address)
     if at is None:
+        return 2
+    if args.certificate == "-":  # stdin holds the token
+        print(
+            "lado: add reads the token from stdin: give the certificate as a file, or add the "
+            "server first and give it with lado git-server certificate <address> -",
+            file=sys.stderr,
+        )
         return 2
     again = f"{git_servers.ADD} {at.root} --token"
     try:
@@ -1772,11 +1838,16 @@ def cmd_git_server_add(args: argparse.Namespace) -> int:
                 "a server's token is never given on the command line (ps and the shell's "
                 f"history keep it); run {again} and type it, or pipe it in"
             )
+        certificate = _certificate_file(args.certificate) if args.certificate else None
         saved, replaced, checked = git_servers.add(
-            at, lambda: _read_secret("Token of the server (not shown): "), args.kind, _warn_line
+            at,
+            lambda: _read_secret("Token of the server (not shown): "),
+            args.kind,
+            _warn_line,
+            certificate,
         )
     except git_servers.Refused as exc:
-        return _refused(exc)
+        return _refused_with_offer(exc)
     kind = git_kinds.by_name(saved.kind)
     if checked.unchecked:
         _warn_line(
@@ -1810,10 +1881,65 @@ def cmd_git_server_list(args: argparse.Namespace) -> int:
                 kind.title if kind else server.kind,
                 server.login or "not checked",
                 "yes" if git_servers.has_token(server) else "no",
+                _certificate_cell(server),
                 git_servers.author_text(server) or "-",
             ]
         )
-    _table(["ADDRESS", "KIND", "LOGIN", "TOKEN", "AUTHOR"], rows)
+    _table(["ADDRESS", "KIND", "LOGIN", "TOKEN", "CERTIFICATE", "AUTHOR"], rows)
+    return 0
+
+
+def _certificate_cell(server) -> str:
+    from lado import git_servers
+
+    found = git_servers.certificate_info(server)
+    if found is None:
+        return "-"
+    return f"{'expired' if found.expired else 'until'} {found.not_after.date()}"
+
+
+def cmd_git_server_certificate(args: argparse.Namespace) -> int:
+    """`lado git-server certificate <address> [<file>|-|--clear]`: trust the certificate
+    file for the saved server of the address's host, then check it; clear it; or show it.
+    Exit 1 for a refusal, 2 for an address it does not take or a file with --clear."""
+    from lado import git_servers
+
+    at = _git_address(args.address)
+    if at is None:
+        return 2
+    if args.clear and args.file is not None:
+        print("lado: --clear takes no file", file=sys.stderr)
+        return 2
+    try:
+        if args.clear:
+            git_servers.clear_certificate(at)
+            print(f"{at.root} is trusted by this computer's authorities again.")
+            print(git_servers.RESTART)
+            return 0
+        if args.file is None:
+            found = git_servers.certificate_info(git_servers.saved_server(at))
+            if found is None:
+                print(f"No certificate: LADO trusts this computer's authorities for {at.root}.")
+            else:
+                ends = "expired on" if found.expired else "valid until"
+                print(f"{found.subject}, {ends} {found.not_after.date()}")
+            return 0
+        git_servers.saved_server(at)  # no file is read for an address of no server
+        pem = _certificate_file(args.file)
+        server = git_servers.set_certificate(at, pem)
+    except git_servers.Refused as exc:
+        return _refused(exc)
+    print(f"Trusted {git_servers.certificate_info(server).subject} for {server.address}.")
+    try:
+        checked = git_servers.check(at)
+    except git_servers.Refused as exc:
+        _refused_with_offer(exc)
+    else:
+        if checked.outcome == "ok":
+            print(checked.text)
+        else:
+            _failed(checked.text, checked.hint, checked.offer, checked.before)
+    print(git_servers.RESTART)
     return 0
 
 
@@ -1872,10 +1998,7 @@ def cmd_git_server_check(args: argparse.Namespace) -> int:
     if found.outcome == "ok":
         print(found.text)
         return 0
-    for line in (found.text, found.hint):
-        if line:
-            print(f"lado: {line}", file=sys.stderr)
-    return 1
+    return _failed(found.text, found.hint, found.offer, found.before)
 
 
 def cmd_git_server_remove(args: argparse.Namespace) -> int:
@@ -2648,7 +2771,9 @@ def main(argv: list[str] | None = None) -> int:
         "add",
         help="tell a server's kind by its API and save it with your token",
         # The address first: --token takes an optional value and would take it.
-        usage="%(prog)s [-h] address --token [--kind {" + ",".join(KIND_NAMES) + "}]",
+        usage="%(prog)s [-h] address --token [--kind {"
+        + ",".join(KIND_NAMES)
+        + "}] [--certificate FILE]",
     )
     git_server_add.add_argument(
         "address", help="e.g. gitlab.example.com or https://example.com/gitlab (https:// if none)"
@@ -2663,6 +2788,11 @@ def main(argv: list[str] | None = None) -> int:
         "--kind",
         choices=KIND_NAMES,
         help="save a server whose API cannot be asked from here as this kind, unchecked",
+    )
+    git_server_add.add_argument(
+        "--certificate",
+        metavar="FILE",
+        help="the server's authority (PEM, from your IT department): trusted for it alone",
     )
     git_server_add.set_defaults(func=cmd_git_server_add)
     git_server_list = git_server_sub.add_parser(
@@ -2691,6 +2821,19 @@ def main(argv: list[str] | None = None) -> int:
         "--clear", action="store_true", help="agents commit there with your own git author"
     )
     git_server_author.set_defaults(func=cmd_git_server_author)
+    git_server_certificate = git_server_sub.add_parser(
+        "certificate",
+        help="the authority LADO and agents' git trust for a server alone",
+        description="Without a file or --clear: show the server's certificate.",
+    )
+    git_server_certificate.add_argument("address")
+    git_server_certificate.add_argument(
+        "file", nargs="?", help="a PEM file of the authority (from your IT department); - stdin"
+    )
+    git_server_certificate.add_argument(
+        "--clear", action="store_true", help="trust this computer's authorities for it again"
+    )
+    git_server_certificate.set_defaults(func=cmd_git_server_certificate)
 
     model_cmd = commands.add_parser(
         "model", help="your servers' models under names, and each agent CLI's default model"

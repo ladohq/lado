@@ -3224,15 +3224,20 @@ link under the field stays visible and pressable.
   opens and closes its panel: the address whole (wrapped, never cut), its kind as a `badge`,
   `plain http` (`badge-warn`) for an http address; while closed (described by them) its second
   line, the first of `✕ check failed: <reason>` (`bad`, a failed Check of this visit: token
-  refused, a scope missing, certificate not trusted, redirect, another kind, neither GitHub nor
-  GitLab), `⚠ check: no answer`, `⚠ token missing`, `⚠ not checked` (`warn`), `signed in as
-  <login>`, and `commits as <name> <<email>>` when an author is set. An open row hides those
+  refused, a scope missing, certificate not trusted, certificate changed, certificate not for
+  this host, certificate expired, redirect, another kind, neither GitHub nor GitLab), `⚠ check:
+  no answer`, `⚠ token missing`, `⚠ certificate expired` (its saved certificate), `⚠ not
+  checked` (`warn`), `signed in as <login>`, and `commits as <name> <<email>>` when an author
+  is set. An open row hides those
   lines (`.mx-open .mx-l2`): its panel says the same just below.
 - **The panel** (`gx-body`, rows text | buttons, a panel narrower than 460 px puts a row's
   buttons under its text): Sign-in (tip; `Signed in as <login>`, `⚠ Not checked` or `⚠ Token
   missing`; `Check` and `Replace token`, or `Replace token` alone as the main button when the
   token file is missing), Commit author (tip; `<name> <<email>>` with `Edit` and `Remove`, or
-  `Your own git author` with `Set author`), and at its foot `Remove server`. One `Replace token`
+  `Your own git author` with `Set author`), Certificate only when one is trusted (tip: the
+  authority you trusted for this server, trusted for it only; `<name> · valid until <date>` or
+  `⚠ <name> · expired on <date>`, with `Remove <the certificate of <address>>`), and at its foot
+  `Remove server`. One `Replace token`
   per panel: a line about a refused or short token (a check's, a save's warning) has no button
   of its own and makes Sign-in's `Replace token` the main one while it shows. Each button's
   accessible name carries the address (`Check <address>`, `Replace the token of <address>`,
@@ -3245,13 +3250,44 @@ link under the field stays visible and pressable.
   whose row then shows the login; `…; the token's rights are not checked.`), `<Kind> refused the
   token: it expired or was revoked.`, `The token lacks <scopes>.` ⓘ `About the missing scope`
   (both with Sign-in's `Replace token` as the main button), `⚠ No answer in 5 seconds.` (`⚠ No answer: <why>.`) ⓘ `About
-  no answer` [Check again], `The server's certificate is not trusted.` ⓘ `About the
-  certificate` (ask the IT department to make LADO's computer trust it, then check again)
-  [Check again], `It redirects to <target>: add that address instead.`, `It answers as <Kind>,
+  no answer` [Check again], the trust question (below), `The server's certificate is not
+  issued for <host>: trusting it would not help. Ask the server's administrator.`, `… names its
+  host only in the old Common Name field, which LADO refuses: ask the server's administrator to
+  reissue it.`, `… expired on <date>: ask the server's administrator to renew it.` (no button),
+  `It redirects to <target>: add that address instead.`, `It answers as <Kind>,
   not <saved Kind>: remove it and add it again.`, `It answers as neither GitHub nor GitLab.`.
   A `Works:` line has no `✓` (`gx-result ok works`): it says so in words; the other ok lines of
   the page keep theirs. The focus stays on Check. Nothing of a check is kept but a passing
   check's login.
+- **Trust this server?** (LAD-301, mockup `mockup-certificate.html`): a check whose server's
+  certificate is not trusted shows under Sign-in the trust card (`TrustCard`, `gx-trust`,
+  `role=alert`, on `warn` ground) instead of a line: `⚠ The server's certificate is not
+  trusted.` ⓘ `About the certificate` (signed by an authority LADO's computer does not know,
+  often the company's own; trusted, it is trusted for this server only, nothing else on the
+  computer changes), then `Signed by <subject> · <issuer>` (`Certificate <host> · signed by
+  itself` for the server's own, `… · signed by <issuer>` when the server sends its own
+  certificate alone, both with the renewal line), `Valid <from> to <until>`, `SHA-256 <fingerprint>` (mono,
+  wrapped by character), a line (`Trust it only if you expected this authority. In a company
+  network your IT department can confirm the fingerprint.`; for the server's own certificate
+  that LADO asks again when it is renewed; for an intermediate that the server sends no root),
+  and `Trust this server` (main) and `Don't trust`. Trust sends the offered PEM to `PUT
+  …/certificate`, which saves it and checks again: `Certificate trusted. <the check's line>`,
+  the Certificate row shown, the focus on Check. Don't trust saves and remembers nothing: `Not
+  trusted: LADO and agents cannot clone or push here over https.` [Check again], the focus on
+  Check again, the closed row `✕ check failed: certificate not trusted`; the next check asks
+  again. A saved certificate that no longer fits asks louder (`gx-trust changed`: danger ground,
+  2 px border): `⚠ The server's certificate has changed since you trusted it.` ⓘ, `Before
+  <name> · <first 8 bytes of its fingerprint>…`, `Now <subject> · <issuer>`, `Valid`, `SHA-256`,
+  bold `If your IT department did not announce a new certificate, do not trust it:` `someone may
+  be between LADO and the server.`, `Trust the new certificate` (`.danger`) and `Keep the old
+  one`, which changes nothing (`The saved certificate does not fit the server: LADO and agents
+  cannot clone or push here over https.` [Check again]). There is no file upload: a file from
+  IT goes in by `lado git-server certificate`.
+- **Certificate** row: `Remove` removes it at once (`DELETE …/certificate`): `✓ Certificate
+  removed.` [Undo], the value `None` while that line shows, the focus on Undo; Undo sends the
+  removed PEM back through `PUT …/certificate` (an expired one too) and says `✓ Certificate
+  saved.`, the focus on Remove. Both are off while their request runs. A removal that found no
+  certificate (gone by the command meanwhile) has no Undo.
 - **Replace token** opens a form under Sign-in (`gx-form`): New token (the secret field,
   focused), `Make one on its token page with the <scopes>.`, `Save token` (`Checking the
   token…`) and Cancel; Esc cancels, the focus back on Replace token. It posts the saved address
@@ -3272,8 +3308,8 @@ link under the field stays visible and pressable.
   off while their request runs, and so are `Edit` and `Set author`; Undo's line stays
   meanwhile.
 - **Remove server** asks in the panel's foot (`mx-confirm`, `role=alertdialog`, the focus on
-  Cancel, Esc cancels): `Remove <address>?` / `Its token and commit author go too. This cannot
-  be undone.`, `Remove server` and Cancel. Done: `Removed <address>.` in the row's place (with
+  Cancel, Esc cancels): `Remove <address>?` / `Its token, commit author and certificate go too.
+  This cannot be undone.`, `Remove server` and Cancel. Done: `Removed <address>.` in the row's place (with
   the removal's warning under it when a folder stayed), the focus on `+ Add server`.
 - **Add server** opens a form under the list: Address ⓘ (empty with the placeholder
   `github.com or gitlab.example.com`, whichever servers are saved; the address of a failure's
@@ -3288,7 +3324,12 @@ link under the field stays visible and pressable.
   Replace token, the focus in New token. A server that does not answer, or answers as neither
   kind or both, shows `⚠ No answer in 5 seconds. Choose its kind to save it without a check.`
   and the kind as segments, none chosen; the button is then `Add without a check`, off until one
-  is chosen. Add sends `{address, token, kind}` (`Checking the token…`); a server that answered
+  is chosen. A certificate not trusted shows the trust card under Address, Add off meanwhile:
+  Trust keeps its PEM in the form and checks the address again trusting it alone (`<Kind>
+  answers.` and `Certificate: <name> · valid until <date>, trusted for this server.`, the focus
+  in Token), and Add saves it with the server; Don't trust shows `⚠ Not trusted, so LADO cannot
+  ask the server. Choose its kind to save it without a check.` and the kind. Editing the address
+  drops either. Add sends `{address, token, kind, certificate}` (`Checking the token…`); a server that answered
   the address check and not Add (`choose_kind` in the refusal) shows `⚠ It stopped answering
   when you pressed Add.` [Try again] and the kind, the token kept. A refusal shows under its
   field in the page's words (`<Kind> refused this token: copy it whole or make a new one.` under
@@ -3312,15 +3353,22 @@ link under the field stays visible and pressable.
   in the row's place. Nothing under the pointer moves (`useScrollAnchor`).
 - **API** (`lado.server.git_entries` over `lado.git_servers`, under the token, no change-feed
   event): `GET /api/git-servers` (`GitServers {servers: GitServerInfo {address, host, kind,
-  kind_title, login, has_token, author_name, author_email}, kinds: GitKindInfo {name, title,
-  token_path, scopes}}`, asking none; no `lado.db` made), `POST /api/git-servers/check`
-  (`{address}` → `GitServerCheck {address, hint, token_page, scopes, choose_kind, unchecked,
-  saved, refusals, warnings}`, saving nothing, sending no token), `POST /api/git-servers`
-  (`GitServerAdd {address, token, kind}` → `GitServerAdded {server, line, replaced, warnings,
-  warning, missing_scopes}`: `warning` the page's line for a token without a right), `POST
-  /api/git-servers/{host}/check` (→ `GitServerChecked {outcome, kind, login, missing_scopes,
-  rights_checked, was_checked, message, hint, server}`: `message` the page's line, `hint` its
-  tip, `server` as saved after it; a 404 for no such server, a 422 for a missing token file),
+  kind_title, login, has_token, author_name, author_email, certificate: {name, not_after,
+  expired} | null}, kinds: GitKindInfo {name, title, token_path, scopes}}`, asking none; no
+  `lado.db` made), `POST /api/git-servers/check` (`{address, certificate?}` → `GitServerCheck
+  {address, hint, token_page, scopes, choose_kind, unchecked, saved, refusals, warnings,
+  certificate_offer, certificate_before}`, saving nothing, sending no token), `POST
+  /api/git-servers` (`GitServerAdd {address, token, kind, certificate?}` → `GitServerAdded
+  {server, line, replaced, warnings, warning, missing_scopes}`: `warning` the page's line for a
+  token without a right), `POST /api/git-servers/{host}/check` (→ `GitServerChecked {outcome,
+  kind, login, missing_scopes, rights_checked, was_checked, message, hint, server,
+  certificate_offer, certificate_before}`: `message` the page's line, `hint` its tip, `server`
+  as saved after it, the offer a `CertificateOffer {subject, issuer, valid_from, valid_until,
+  sha256, own, intermediate, leaf, pem}`; a 404 for no such server, a 422 for a missing token file),
+  `PUT /api/git-servers/{host}/certificate` (`{pem}`, checked as a certificate file but an
+  expired one taken, as Undo puts back what Remove took → the check's `GitServerChecked`)
+  and `DELETE /api/git-servers/{host}/certificate` (→ `GitServerCertificateRemoved {server,
+  pem}`, the PEM for Undo, null when there was none),
   `PUT /api/git-servers/{host}/author` (`GitServerAuthor {name, email}`) and `DELETE
   /api/git-servers/{host}/author`, both → `GitServerAuthorDone {server, line}`, and `DELETE
   /api/git-servers/{host}` (→ `GitServerRemoved`, the servers left and `warning` when a folder

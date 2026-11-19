@@ -2513,6 +2513,114 @@
         }
       }
     },
+    "/api/git-servers/{host}/certificate": {
+      "put": {
+        "summary": "Set Git Server Certificate",
+        "description": "Trust the certificate a check offered for the server (or Undo gives back), then\ncheck it again with it, as `lado git-server certificate <address> <file>` does.",
+        "operationId": "set_git_server_certificate_api_git_servers__host__certificate_put",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Host"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitServerCertificateSet"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitServerChecked"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitEntryRefused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Clear Git Server Certificate",
+        "description": "Remove the server's certificate as `lado git-server certificate --clear` does;\nthe answer holds its PEM for Undo.",
+        "operationId": "clear_git_server_certificate_api_git_servers__host__certificate_delete",
+        "parameters": [
+          {
+            "name": "host",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Host"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitServerCertificateRemoved"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitEntryRefused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/git-servers/{host}/author": {
       "put": {
         "summary": "Set Git Server Author",
@@ -5280,6 +5388,60 @@
         "title": "BugReport",
         "description": "The Report a bug page (lado.bug_report.Report): the whole report to show and copy,\nand GitHub's new issue form with it, the oldest kinds of errors left out until the link\nfits."
       },
+      "CertificateOffer": {
+        "properties": {
+          "subject": {
+            "type": "string",
+            "title": "Subject"
+          },
+          "issuer": {
+            "type": "string",
+            "title": "Issuer"
+          },
+          "valid_from": {
+            "type": "string",
+            "title": "Valid From"
+          },
+          "valid_until": {
+            "type": "string",
+            "title": "Valid Until"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "own": {
+            "type": "boolean",
+            "title": "Own"
+          },
+          "intermediate": {
+            "type": "boolean",
+            "title": "Intermediate"
+          },
+          "leaf": {
+            "type": "boolean",
+            "title": "Leaf"
+          },
+          "pem": {
+            "type": "string",
+            "title": "Pem"
+          }
+        },
+        "type": "object",
+        "required": [
+          "subject",
+          "issuer",
+          "valid_from",
+          "valid_until",
+          "sha256",
+          "own",
+          "intermediate",
+          "leaf",
+          "pem"
+        ],
+        "title": "CertificateOffer",
+        "description": "A certificate a check shows (lado.git_certificates.Certificate): its subject, its\nissuer's organization, its validity (YYYY-MM-DD), its SHA-256 as colon hex, whether it\nis the server's own signed by itself (`own`), the server's own at all (`leaf`: renewed\nwith the server) or an authority below the root (`intermediate`), and its PEM, which `PUT\n/api/git-servers/{host}/certificate` takes back when the human trusts it."
+      },
       "CliApi": {
         "properties": {
           "name": {
@@ -6493,6 +6655,17 @@
               }
             ],
             "title": "Kind"
+          },
+          "certificate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Certificate"
           }
         },
         "type": "object",
@@ -6501,7 +6674,7 @@
           "token"
         ],
         "title": "GitServerAdd",
-        "description": "A git server to check and save with its token; `kind` only when the human chose one\n(--kind). No answer gives the token back."
+        "description": "A git server to check and save with its token; `kind` only when the human chose one\n(--kind); `certificate` the PEM the human trusted for it, saved with it. No answer gives\nthe token back."
       },
       "GitServerAdded": {
         "properties": {
@@ -6591,6 +6764,69 @@
         "title": "GitServerAuthorDone",
         "description": "A git server's commit author set or cleared: the server as saved and the line of\n`lado git-server author` that says so."
       },
+      "GitServerCertificate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "not_after": {
+            "type": "string",
+            "title": "Not After"
+          },
+          "expired": {
+            "type": "boolean",
+            "title": "Expired"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "not_after",
+          "expired"
+        ],
+        "title": "GitServerCertificate",
+        "description": "The certificate trusted for a saved server, from its file: its name, the date its\nvalidity ends (YYYY-MM-DD) and whether it has."
+      },
+      "GitServerCertificateRemoved": {
+        "properties": {
+          "server": {
+            "$ref": "#/components/schemas/GitServerInfo"
+          },
+          "pem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pem"
+          }
+        },
+        "type": "object",
+        "required": [
+          "server",
+          "pem"
+        ],
+        "title": "GitServerCertificateRemoved",
+        "description": "A server's certificate removed: the server as saved and the PEM it held, for Undo\n(None when it held none)."
+      },
+      "GitServerCertificateSet": {
+        "properties": {
+          "pem": {
+            "type": "string",
+            "title": "Pem"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pem"
+        ],
+        "title": "GitServerCertificateSet",
+        "description": "The certificate to trust for a saved server: the PEM a check offered (or Undo gives\nback)."
+      },
       "GitServerCheck": {
         "properties": {
           "address": {
@@ -6668,6 +6904,26 @@
             },
             "type": "array",
             "title": "Warnings"
+          },
+          "certificate_offer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CertificateOffer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "certificate_before": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CertificateOffer"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -6683,20 +6939,32 @@
           "warnings"
         ],
         "title": "GitServerCheck",
-        "description": "What the add form says of an address before Add, asking the server with no token:\nits root (None when it is no address), the kind it looks like (a hint only) with its\ntoken page and scopes, whether the kind must be chosen and why (`unchecked`), whether the\naddress is saved already, the refusals Add would meet and the plain-http warning."
+        "description": "What the add form says of an address before Add, asking the server with no token:\nits root (None when it is no address), the kind it looks like (a hint only) with its\ntoken page and scopes, whether the kind must be chosen and why (`unchecked`), whether the\naddress is saved already, the refusals Add would meet and the plain-http warning; for a\ncertificate not trusted, the authority to trust (`certificate_offer`) and the one given\nthat did not fit (`certificate_before`)."
       },
       "GitServerCheckAsked": {
         "properties": {
           "address": {
             "type": "string",
             "title": "Address"
+          },
+          "certificate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Certificate"
           }
         },
         "type": "object",
         "required": [
           "address"
         ],
-        "title": "GitServerCheckAsked"
+        "title": "GitServerCheckAsked",
+        "description": "An address the add form checks; `certificate` the PEM the human trusted for it,\nwhich the check trusts alone."
       },
       "GitServerChecked": {
         "properties": {
@@ -6708,6 +6976,9 @@
               "scopes_missing",
               "no_answer",
               "cert_untrusted",
+              "cert_changed",
+              "cert_name",
+              "cert_expired",
               "redirect",
               "other_kind",
               "unrecognised"
@@ -6761,6 +7032,26 @@
                 "type": "null"
               }
             ]
+          },
+          "certificate_offer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CertificateOffer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "certificate_before": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CertificateOffer"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -6776,7 +7067,7 @@
           "server"
         ],
         "title": "GitServerChecked",
-        "description": "A saved git server checked again with its saved token (lado.git_servers.check):\n`outcome` one of git_servers.OUTCOMES, its saved kind, the login seen (ok,\nscopes_missing), the rights the token lacks, whether the server told them, whether it\nhad a login before, the page's line (`message`) and its info tip (`hint`, \"\" for none),\nand the server as saved after it (a passing check saves its login; None when it was\nremoved meanwhile)."
+        "description": "A saved git server checked again with its saved token (lado.git_servers.check):\n`outcome` one of git_servers.OUTCOMES, its saved kind, the login seen (ok,\nscopes_missing), the rights the token lacks, whether the server told them, whether it\nhad a login before, the page's line (`message`) and its info tip (`hint`, \"\" for none),\nand the server as saved after it (a passing check saves its login; None when it was\nremoved meanwhile); for a certificate not trusted or changed, the authority to trust and\nthe saved one that no longer fits."
       },
       "GitServerInfo": {
         "properties": {
@@ -6832,6 +7123,16 @@
               }
             ],
             "title": "Author Email"
+          },
+          "certificate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GitServerCertificate"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -6846,7 +7147,7 @@
           "author_email"
         ],
         "title": "GitServerInfo",
-        "description": "A saved git server as lado.db keeps it, asking it nothing: `host` its key (host and a\nport other than the scheme's), `login` None for one saved without a check, whether\nits token file is there (never the token), and its commit author (both or neither)."
+        "description": "A saved git server as lado.db keeps it, asking it nothing: `host` its key (host and a\nport other than the scheme's), `login` None for one saved without a check, whether\nits token file is there (never the token), its commit author (both or neither), and\nthe certificate trusted for it (None for none)."
       },
       "GitServerRemoved": {
         "properties": {

@@ -2,13 +2,13 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: S6b (LAD-300, run task/lad-300) · Next: S7 · Open checks: the human's check on the company GitLab, on the release candidate that carries S8; live tests on the release candidate (S6 changed the agents' environment, never run live)
+In work: none · Next: S7 · Open checks: the human's check on the company GitLab, on the release candidate that carries S8; live tests on the release candidate (S6 changed the agents' environment, never run live); 0.48.0's release checklist names what going back loses (S6b: the host's ssh agent returns only with `compose.yaml.bak`, not with the new `compose.yaml` that docs/release.md 4.6 keeps)
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
 - The statement's decisions (brief.md) are not reopened.
 - Backward compatibility is not a goal of its own: a user can replace a token with the needed rights in Settings (2026-11-19, #7422).
-Last review: 2026-11-19, after S6, base at 44fdb6fb
+Last review: 2026-11-19, after S6b, base at 5c312f77
 
 ## Steps
 
@@ -228,7 +228,16 @@ outside Docker (gh's own login on the host). The page's github.com row as S4's m
 spec place it (§10, C1, #7234), with the critique's F2 (how to sign in).
 
 ### S6b — The host's ssh agent switched off
-Status: in progress (LAD-300, run task/lad-300)
+Status: done (LAD-300, PR #340, merged 5c312f77 on 2026-11-19, in release 0.48.0). Changed at
+#7446 (the token hint stays `repo`, the empty Add form has a placeholder only) and #7451/#7456
+(no line about `LADO_SSH_AGENT` in the container's log or doctor, nothing passed into the
+container: the installer's note, the clone hint and the CHANGELOG say it). The human's agent
+ran the manual check in Docker on a Mac: steps 0–10 OK — the update from 0.47.0 keeps the
+`.env` line and notes it once; the GitHub login taken over from `secrets/GH_TOKEN` once
+(S6's Docker check); no ssh agent, socket or host keys in the container; clone, push and PR
+over `git@github.com:`; the add-server hint for an unsaved ssh host; the rollback to 0.47.0
+with `compose.yaml.bak` brings the agent back. No leftovers for later steps (F3, E1 declined,
+minor).
 Leftovers of S6 (the human's manual check, ledger of LAD-299):
 - The token hint of Add for GitHub stays at the minimum, `repo` (#7446: the rest is the
   user's choice); the docs may name, in one line, what `read:org` and `workflow` add.
@@ -315,6 +324,9 @@ None (the project's `GH_TOKEN` was settled at #7389: ignored).
   reaches agents, so OpenCode/Kilo's GitHub Models through it stop (E2, named by doctor);
   a takeover error other than a refusal stops `lado start` (F7); a pending takeover asks
   `gh` at every agent's start (F5); `flock` on NFS for a new lado.db (E3, not verified).
+- Met in S6b, not the epic's: the human answered a question with the choice "as recommended,
+  except the points in the comment" and no comment (#7451), so the analyst had to ask again
+  (#7456); a choice that refers to a comment could ask for one. A task on the human's yes.
 - An expired token shown on a closed row before Check (S4's mockup F7): its expiry date or a
   stored last check, a schema change (#7234).
 

@@ -923,6 +923,17 @@ def gh_variables(
     return found
 
 
+def gh_without_certificate(servers: Sequence[state.GitServer]) -> list[str]:
+    """What an agent's launch and lado doctor say of each GitHub server of `servers` with a
+    certificate: `gh` reads no authority per host, and one for the whole agent
+    (`SSL_CERT_FILE`) would take this computer's from its own CLI, so gh does not get it."""
+    return [
+        f"does not get the certificate of {server.address}: agents' gh cannot reach it; git can"
+        for server in servers
+        if server.kind == github.KIND.name and certificate_file(server.id).is_file()
+    ]
+
+
 def server_for(remote: str, servers: Sequence[state.GitServer]) -> state.GitServer | None:
     """The server of `servers` git reaches for `remote` with `variables`: by its host and
     port for an https:// or http:// URL, by its host for an ssh address it rewrites

@@ -1079,3 +1079,60 @@ def test_a_url_that_names_no_repository_has_no_default_folder(url, tmp_path, mon
         clone.default_folder(url)
     assert refused.value.kind == "no_repo_name"
     assert str(refused.value) == f"{url} names no repository: give the folder to clone into"
+
+
+# A git server's certificate.
+
+CERT_LINE = (
+    "fatal: unable to access 'https://gitlab.corp.ru/team/app.git/': SSL certificate problem: "
+    "unable to get local issuer certificate"
+)
+
+
+@pytest.mark.parametrize(
+    "stderr",
+    [
+        CERT_LINE,
+        "fatal: unable to access 'https://gitlab.corp.ru/team/app.git/': server certificate "
+        "verification failed. CAfile: none CRLfile: none",
+    ],
+)
+def test_a_saved_servers_untrusted_certificate_points_to_its_check(stderr):
+    _git_server()
+    error = clone.failure("clone", "https://gitlab.corp.ru/team/app.git", stderr)
+    assert error.kind == "cert_untrusted"
+    assert str(error) == (
+        "cannot clone https://gitlab.corp.ru/team/app.git: the certificate of gitlab.corp.ru is "
+        f"not trusted ({stderr})"
+    )
+    assert error.hint == runtime.Hint(
+        "Check the git server and trust its certificate:",
+        "lado git-server check https://gitlab.corp.ru",
+    )
+    assert error.server == clone.ServerWay(
+        "check",
+        "gitlab.corp.ru",
+        "https://gitlab.corp.ru",
+        "Check the git server and trust its certificate there.",
+    )
+
+
+def test_an_ssh_address_of_a_saved_server_with_an_untrusted_certificate():
+    _git_server()
+    error = clone.failure("clone", "git@gitlab.corp.ru:team/app.git", CERT_LINE)
+    assert error.kind == "cert_untrusted"
+    assert error.server.way == "check"
+
+
+def test_an_unsaved_hosts_untrusted_certificate_points_to_add():
+    error = clone.failure("list", "https://git.lab.example/app.git", CERT_LINE)
+    assert error.kind == "cert_untrusted"
+    assert str(error).startswith(
+        "cannot read https://git.lab.example/app.git: the certificate of git.lab.example is not "
+        "trusted ("
+    )
+    assert error.hint == runtime.Hint(
+        "Add it as a git server with a token:",
+        "lado git-server add https://git.lab.example --token",
+    )
+    assert error.server.way == "add"

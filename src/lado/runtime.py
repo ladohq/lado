@@ -1043,7 +1043,7 @@ def start_session(
         launch = _launch_command(agent_cli, agent, sess, spec, start.note)
         started.warnings += launch.warnings
         started.warnings += _layer_warnings(agent, launch, sess.project, files=True)
-        started.warnings += _author_warnings(agent, base_env)
+        started.warnings += _git_server_warnings(agent, base_env)
         blocker, command = _before_window(
             agent_cli, agent, base_env, layers.shell, launch, sess.project
         )
@@ -1331,7 +1331,7 @@ def spawn_worker(
         launch = _launch_command(agent_cli, agent, sess, spec, start.note)
         held = [*server_warnings, *launch.warnings]
         held += _layer_warnings(agent, launch, sess.project, files=False)
-        held += _author_warnings(agent, base_env)
+        held += _git_server_warnings(agent, base_env)
         before, command = _before_window(
             agent_cli, agent, base_env, layers.shell, launch, sess.project
         )
@@ -3569,16 +3569,19 @@ def _ours(
     return {**providers.agent_env(agent), "TMPDIR": str(temp_dir), **git, **gh, **launch.env}
 
 
-def _author_warnings(agent: state.Agent, base_env: Mapping[str, str]) -> list[str]:
+def _git_server_warnings(agent: state.Agent, base_env: Mapping[str, str]) -> list[str]:
     """One line per variable of `base_env` that sets git's author or committer over every
-    config, while a git server has a commit author: LADO leaves them, the human's choice."""
-    if not any(git_servers.author_text(s) for s in state.git_servers()):
-        return []
+    config, while a git server has a commit author: LADO leaves them, the human's choice;
+    then one per GitHub server with a certificate, which the agent's gh does not get."""
+    servers = state.git_servers()
+    gh = [f"gh {line}" for line in git_servers.gh_without_certificate(servers)]
+    if not any(git_servers.author_text(s) for s in servers):
+        return gh
     return [
         f"{name} is set for {agent.name}: it wins over the commit author of the git servers"
         for name in GIT_AUTHOR_VARIABLES
         if name in base_env
-    ]
+    ] + gh
 
 
 def _layer_warnings(

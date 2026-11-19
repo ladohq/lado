@@ -3247,7 +3247,9 @@ link under the field stays visible and pressable.
   Sign-in meanwhile, then one line there (`gx-result`, `role=status` when it works, `alert`
   otherwise), the server's sentence with its way out at its end: `Works: signed in as <login>,
   may clone and push.` (`Works: <Kind>, signed in as <login>.` for one saved without a check,
-  whose row then shows the login; `…; the token's rights are not checked.`), `<Kind> refused the
+  whose row then shows the login; `…; the token's rights are not checked.`; a GitLab token that
+  works for git without `api` ends its `Works:` line with `; glab cannot open merge requests: the
+  token lacks api.`), `<Kind> refused the
   token: it expired or was revoked.`, `The token lacks <scopes>.` ⓘ `About the missing scope`
   (both with Sign-in's `Replace token` as the main button), `⚠ No answer in 5 seconds.` (`⚠ No answer: <why>.`) ⓘ `About
   no answer` [Check again], the trust question (below), `The server's certificate is not
@@ -3291,7 +3293,9 @@ link under the field stays visible and pressable.
 - **Replace token** opens a form under Sign-in (`gx-form`): New token (the secret field,
   focused), `Make one on its token page with the <scopes>.`, `Save token` (`Checking the
   token…`) and Cancel; Esc cancels, the focus back on Replace token. It posts the saved address
-  and the token to `POST /api/git-servers`. Done: `✓ Token replaced: signed in as <login>.`,
+  and the token to `POST /api/git-servers`. Done: `✓ Token replaced: signed in as <login>.`
+  (`…; glab cannot open merge requests: the token lacks api.` when the answer's `tool_cannot`
+  says so),
   plus `⚠ Before, it was <old>.` ⓘ `About the other user` when the login changed, or `⚠ The token
   lacks <scopes>: agents can clone but not push.` for a token without a right (Sign-in's Replace
   token the main button); the focus on Replace token. A refused token: `<Kind> refused this token: copy it whole or make
@@ -3336,7 +3340,8 @@ link under the field stays visible and pressable.
   Token, kept, Add off until edited); the token is emptied when Add is done or refused for
   another field, on Cancel and when the form closes. Done: the form closes, the new row stands
   open where it was, the focus on its head, its panel starting with `✓ Saved: <Kind>, signed in
-  as <login>.` (`✓ Saved without a check as <Kind>.`; `⚠ The token lacks <scopes>: agents can
+  as <login>.` (`…; glab cannot open merge requests: the token lacks api.` when the answer's
+  `tool_cannot` says so; `✓ Saved without a check as <Kind>.`; `⚠ The token lacks <scopes>: agents can
   clone but not push.` for a token without a right, Sign-in's Replace token the main button).
   Cancel or Esc gives the focus back to `+ Add server`.
 - **Opened from a clone's note**: `?check=<host>` opens that saved server's panel and checks it

@@ -27,11 +27,8 @@
 # LADO_GIT_NAME and LADO_GIT_EMAIL are git's identity for the agents' commits, written at
 # every start (without them `docker logs` warns). GitHub and your other git servers over
 # https: Settings → Git servers (or `docker exec -it lado lado git-server add github.com
-# --token`); the agents' git and gh get their tokens from there. The host's ssh agent, for
-# git over ssh: on a Mac add
-# `-v /run/host-services/ssh-auth.sock:/run/lado/ssh-agent.sock` (Docker Desktop's), on
-# Linux `-v "$SSH_AUTH_SOCK:/run/lado/ssh-agent.sock"`; every agent may then use the
-# host's keys. compose.yaml names it LADO_SSH_AGENT.
+# --token`); the agents' git and gh get their tokens from there. The container has no ssh:
+# a git server's ssh addresses go over https with its token.
 #
 # Update: `docker rm -f lado`, then the same `docker run` with the new version; the home
 # volume keeps LADO's state, and the new version upgrades its lado.db after a backup. Back:
@@ -47,8 +44,7 @@
 # a running container: `docker exec -u 0`. Another port: -e LADO_PORT=8766 -p
 # 127.0.0.1:8766:8766. compose.yaml runs the same image. The build context is the
 # repository through Dockerfile.dockerignore's allowlist: one wheel (dist/), profile.sh,
-# entrypoint.sh, ssh-agent-socket.sh, ssh-agent-env.sh, ssh_known_hosts (GitHub's
-# public host keys, the only keys in the image) and mise.toml.
+# entrypoint.sh and mise.toml. The image holds no key of anyone's.
 #
 # The repositories' toolchains: make, gcc and g++ are here, and mise installs the rest (Go,
 # Rust, Java, a Python, ...) into the home volume, where it stays for every agent after a
@@ -67,9 +63,10 @@ FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472
 FROM jdxcode/mise:2026.11.6@sha256:d4de1845114f6d73e90e15f7642885f74f3ca93074491038a2b9c43e4b897f21 AS mise
 FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
 
-# tmux 3.3a and git 2.39 from Debian 12; tini reaps what tmux and the agents leave; gh and
-# the ssh client for the agents' pushes; curl fetches gh's keyring (a binary .gpg); make,
-# gcc and g++ build the repositories' Makefiles, Go's cgo and native modules of Node and Python.
+# tmux 3.3a and git 2.39 from Debian 12; tini reaps what tmux and the agents leave; gh; the
+# ssh client, with no key and no agent, so git on an ssh address fails with ssh's own error,
+# which the clone's hint tells (without it git says only `cannot run ssh`); curl fetches
+# gh's keyring (a binary .gpg); make, gcc and g++ build the repositories' Makefiles, Go's cgo and native modules of Node and Python.
 # The agents' base tools, which the kits' scripts and the agent CLIs call before any repository
 # installs a thing: jq (JSON), ripgrep (Codex, OpenCode and Kilo search with rg), archives
 # (unzip, zip, xz, bzip2), patch, file, rsync, sqlite3, tree, lsof and nc.
@@ -143,22 +140,6 @@ RUN printf '%s\n' 'lado ALL=(root) NOPASSWD:SETENV: /usr/local/bin/lado-entrypoi
  && visudo -cf /etc/sudoers.d/lado-entrypoint \
  && mkdir -p /etc/lado && touch /etc/lado/first-start \
  && printf "export LADO_REPOS='/projects'\n" > /etc/profile.d/lado-repos.sh
-# The host's ssh agent: compose binds its socket at /run/lado/ssh-agent.sock, in a folder
-# root's so no agent plants a file there. Docker Desktop's socket is root's in the
-# container; at every start the entrypoint gives it to lado by this program, through a rule
-# of its own that the first start leaves (no SETENV: the program gets a clean environment).
-COPY --chmod=755 docker/ssh-agent-socket.sh /usr/local/bin/lado-ssh-agent-socket
-# SSH_AUTH_SOCK when that is a socket: every login shell reads it, the entrypoint sources it
-# for the server (Clone from URL over ssh).
-COPY docker/ssh-agent-env.sh /etc/profile.d/lado-ssh-agent.sh
-RUN printf '%s\n' 'lado ALL=(root) NOPASSWD: /usr/local/bin/lado-ssh-agent-socket' > /etc/sudoers.d/lado-ssh-agent \
- && chmod 0440 /etc/sudoers.d/lado-ssh-agent \
- && visudo -cf /etc/sudoers.d/lado-ssh-agent \
- && mkdir -p /run/lado && chmod 755 /run/lado
-# GitHub's public host keys, so an agent's first ssh to github.com asks nothing (its shell
-# cannot answer) and ssh still refuses a key that is not GitHub's. The only keys in the
-# image: the human's own come at run time.
-COPY --chmod=644 docker/ssh_known_hosts /etc/ssh/ssh_known_hosts
 # git trusts every repository: the workspace's owner may seem another user (git 2.39 has no
 # `<path>/*` form, and the container has one user). No credential helper of the image's:
 # github.com's token, as any git server's, comes from Settings → Git servers.

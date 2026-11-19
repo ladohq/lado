@@ -27,16 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from lado import (
-    agent_env,
-    git_servers,
-    gitcache,
-    project_secrets,
-    projects,
-    runtime,
-    state,
-    update,
-)
+from lado import agent_env, git_servers, gitcache, project_secrets, projects, runtime, state
 
 URL = re.compile(r"(https?|ssh|git|file)://(.+)", re.IGNORECASE)
 # user@host:path, git's scp form; a bare host:path would take a folder with a colon.
@@ -455,6 +446,8 @@ def _told(
     line, kind = _gits_line(stderr), kind_of(stderr)
     if kind == GIT_FAILED:
         return kind, line, None, None
+    from lado import update  # only here: the CLI's commands do not import it (cli.py)
+
     address = Address.parse(url)
     if kind in SSH_KINDS and address.scheme == "ssh" and update.in_container():
         reason, hint, server = _container_ssh(address)

@@ -321,10 +321,13 @@ shell's `glab --version` is the Dockerfile's `GLAB_VERSION`, its layer (`docker 
 most 60 MB; a GitLab user API run inside the container over https under a test authority,
 saved with LADO's own Python as a GitLab with that authority, and the agent's configuration
 written by `git_servers.glab_variables`: `glab auth status` is logged in, `glab api user`
-carries the token, another host of the same authority is refused and gets no token, and
+carries the token, another host of the same authority gets no token by its whole URL from
+the repository and is refused on the certificate outside it, and
 `~/.config/glab-cli` and `git config --global --list` are as before. The integration test
 `test_git_server_host_tool.py` runs the same against the fake git server when a glab 1.114.0
-or newer is on PATH, and skips otherwise. A
+or newer is on PATH, and skips otherwise; there besides, two saved GitLab servers each get
+their own token while the shell's `GITLAB_API_HOST` and `GITLAB_REPO` name a third host the
+agents' trust store accepts, which gets no request. A
 test that fails in its setup or its
 call keeps, for each container it started (a compose project's too), `docker logs` and
 LADO's logs in `real_clis.EVIDENCE`: the container is registered on the test before

@@ -120,8 +120,8 @@ def test_an_agents_glab_is_signed_in_to_the_saved_gitlab_alone(container, tmp_pa
     )
     container.exec(*CLEAN, *env, "bash", "-lc", script)
 
-    def glab(*args: str):
-        command = f"cd {repo} && glab {shlex.join(args)}"
+    def glab(*args: str, cwd: str = repo):
+        command = f"cd {cwd} && glab {shlex.join(args)}"
         return container.exec(*CLEAN, *env, "bash", "-lc", command, check=False, timeout=60)
 
     status = glab("auth", "status")
@@ -130,12 +130,18 @@ def test_an_agents_glab_is_signed_in_to_the_saved_gitlab_alone(container, tmp_pa
     assert f"Logged in to localhost:{LISTED} as ivan.petrov" in said
     user = glab("api", "user")
     assert user.returncode == 0 and '"ivan.petrov"' in user.stdout, user.stdout + user.stderr
-    other = glab("api", "--hostname", f"127.0.0.1:{OTHER}", "user")
-    assert other.returncode != 0
+    # glab takes no port in --hostname: the other host by its whole URL. From the saved
+    # server's repository glab sends it with that server's certificate, but no token.
+    other = glab("api", f"https://127.0.0.1:{OTHER}/api/v4/user")
+    assert other.returncode != 0 and "401 Unauthorized" in other.stdout + other.stderr
+    outside = glab("api", f"https://127.0.0.1:{OTHER}/api/v4/version", cwd="/tmp")
+    said = " ".join((outside.stdout + outside.stderr).split())  # glab wraps its error
+    assert outside.returncode != 0 and "x509: certificate signed by unknown authority" in said
 
     listed_log = container.exec("cat", f"{WORK}/listed.log").stdout.splitlines()
     assert listed_log and all(json.loads(line)[1] for line in listed_log)
     other_log = container.exec("cat", f"{WORK}/other.log", check=False).stdout.splitlines()
-    assert not any(json.loads(line)[2] for line in other_log)  # no token went there
+    assert other_log and not any(json.loads(line)[2] for line in other_log)  # no token
+    assert not [line for line in other_log if json.loads(line)[0] == "/api/v4/version"]
     after = container.exec(*CLEAN, "bash", "-lc", snapshot, check=False).stdout
     assert after == before

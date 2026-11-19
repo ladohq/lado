@@ -58,7 +58,11 @@ false`, `telemetry: false` (glab sends usage to the GitLab instance otherwise),
 [{name: PRIVATE-TOKEN, valueFromCommand: <command>}]`. `<key>` is the server's
 `host[:port]` (`state.GitServer.host`). Written with `yaml.safe_dump` (PyYAML is already a dependency of
 LADO's); the command is one `shlex.join` string (glab splits it as a shell does: checked with
-a quoted `-c` argument).
+a quoted `-c` argument). glab makes one client per repository: from a saved server's
+repository a call by another host's whole URL (`glab api https://<host>/…`) trusts that
+server's `ca_cert` too, but carries no token (checked on glab 1.131 in the review); a host
+with no entry, outside such a repository, gets the system's authorities alone. Taken as
+glab's way, the scenario worded so (the human's choice, #7573).
 
 ### D2. The header's command is git's helper in a `token` mode
 

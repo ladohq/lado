@@ -108,7 +108,9 @@ host entry only; no variable SHALL set an authority for the agent's whole `glab`
 
 #### Scenario: Another host
 - **WHEN** another server under the same authority is not saved with it
-- **THEN** an agent's `glab` call to it fails on the certificate
+- **THEN** an agent's `glab` call to it outside a repository of a saved server fails on the
+  certificate, and one by its whole URL from such a repository, which glab sends with that
+  server's certificate, carries no token
 
 ### Requirement: Agents get no GitLab variable from outside LADO
 

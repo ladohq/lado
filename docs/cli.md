@@ -1078,7 +1078,10 @@ https, no prompt, and per saved GitLab server a host entry by its `host[:port]` 
 Python), which reads the token file at each call: a token replaced in Settings works at the
 agent's next `glab` call, a removed server's sends none. No token is in the file. glab sends
 such a header from 1.114.0 on. `glab auth status` says logged in, with its own note `No token
-found` (the token comes by the header).
+found` (the token comes by the header). glab has one client per repository: a call by a whole
+URL of another host (`glab api https://<host>/…`) from a saved server's repository trusts
+that server's certificate too, but carries no token; outside such a repository a host with
+no entry gets the computer's authorities alone.
 
 When the session repository's `origin` is on a saved server, every agent's instructions carry
 one line about it, by the kind's tool (`gh`, `glab`): `The repository's origin is on GitLab

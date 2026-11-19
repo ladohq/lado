@@ -216,14 +216,19 @@ def test_a_real_glab_is_signed_in_to_the_saved_server_alone(world, repo, tmp_pat
     origin(repo, f"{listed.url}/team/app.git")
     runtime.start_session(str(repo), SESSION, None, "fake")
     wait_idle("supervisor")
+    outside = tmp_path / "no-repository"
+    outside.mkdir()
     result = run_glab(
         tmp_path,
         [
             f'cd "{repo}"',
             f"run status {glab} auth status",
             f"run user {glab} api user",
-            # glab takes no port in --hostname: the other host by its whole URL.
+            # glab takes no port in --hostname: the other host by its whole URL. From the
+            # saved server's repository glab sends it with that server's certificate.
             f"run other {glab} api {other.url}/api/v4/user",
+            f'cd "{outside}"',
+            f"run outside {glab} api {other.url}/api/v4/version",
         ],
     )
     code, said = result("status")
@@ -232,8 +237,12 @@ def test_a_real_glab_is_signed_in_to_the_saved_server_alone(world, repo, tmp_pat
     code, said = result("user")
     assert code == 0 and '"username": "ivan.petrov"' in said, said
     code, said = result("other")
+    assert code != 0 and "401 Unauthorized" in said, said
+    assert other.requests and all(r.private_token is None for r in other.requests)
+    code, said = result("outside")
+    said = " ".join(said.split())  # glab wraps its error at the terminal's width
     assert code != 0 and "x509: certificate signed by unknown authority" in said, said
-    assert other.requests == []  # refused at TLS: not even a request without a token
+    assert not [r for r in other.requests if r.path == "/api/v4/version"]  # refused at TLS
     api = [r for r in listed.requests if r.path.startswith("/api/")]
     assert api and {r.private_token for r in api} == {TOKEN}
     assert own.read_text() == "hosts:\n    gitlab.com:\n        token: glpat-HUMANS-OWN\n"

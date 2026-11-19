@@ -1034,18 +1034,9 @@ def check_host_tools() -> list[Check]:
         if not theirs:
             continue
         found = git_servers.tool_state(kind, env)
-        if not found.found:
-            newer = f" {kind.tool_oldest} or newer" if kind.tool_oldest else ""
-            detail = (
-                f"not on the agents' PATH: agents cannot open {kind.changes} on {', '.join(theirs)}"
-            )
-            lines.append(Check(kind.tool, WARN, detail, f"install {kind.tool}{newer}"))
-        elif found.too_old:
-            detail = (
-                f"{kind.tool} {found.version} is older than {kind.tool_oldest}, which LADO "
-                "needs to sign it in"
-            )
-            lines.append(Check(kind.tool, WARN, detail, f"update {kind.tool}"))
+        what, hint = git_servers.tool_problem(kind, found, theirs)
+        if what:
+            lines.append(Check(kind.tool, WARN, what, hint))
         else:
             lines.append(Check(kind.tool, OK, found.line or "on the agents' PATH"))
     return lines

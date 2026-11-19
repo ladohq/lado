@@ -1071,24 +1071,37 @@ def tool_line(server: state.GitServer, found: ToolState) -> str | None:
     return line
 
 
-def tool_warning(server: state.GitServer, found: ToolState) -> str | None:
-    """What a launch says when the tool of the repository's server `server` is missing or
-    too old by `found`; None when it is fit, or for a kind this LADO does not know."""
-    kind = git_kinds.by_name(server.kind)
-    if kind is None:
-        return None
+def tool_problem(kind: Kind, found: ToolState, addresses: Sequence[str]) -> tuple[str, str]:
+    """What is wrong with `kind`'s tool by `found`, for its servers `addresses`, and what to
+    do, as lado doctor says them; ("", "") when it is fit."""
     if not found.found:
         newer = f" {kind.tool_oldest} or newer" if kind.tool_oldest else ""
         return (
-            f"{kind.tool} is not on the agents' PATH: agents cannot open {kind.changes} on "
-            f"{server.address}; install {kind.tool}{newer}"
+            f"not on the agents' PATH: agents cannot open {kind.changes} on {', '.join(addresses)}",
+            f"install {kind.tool}{newer}",
         )
     if found.too_old:
         return (
             f"{kind.tool} {found.version} is older than {kind.tool_oldest}, which LADO needs "
-            f"to sign it in to {server.address}; update {kind.tool}"
+            "to sign it in",
+            f"update {kind.tool}",
         )
-    return None
+    return "", ""
+
+
+def tool_warning(server: state.GitServer, found: ToolState) -> str | None:
+    """What a launch says when the tool of the repository's server `server` is missing or
+    too old by `found` (`tool_problem` in one line); None when it is fit, or for a kind this
+    LADO does not know."""
+    kind = git_kinds.by_name(server.kind)
+    if kind is None:
+        return None
+    what, hint = tool_problem(kind, found, [server.address])
+    if not what:
+        return None
+    if not found.found:
+        return f"{kind.tool} is {what}; {hint}"
+    return f"{what} to {server.address}; {hint}"
 
 
 def gh_without_certificate(servers: Sequence[state.GitServer]) -> list[str]:

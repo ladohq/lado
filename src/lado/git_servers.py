@@ -45,7 +45,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 from lado import agent_env, git_kinds, interpreter, project_secrets, state
-from lado.git_kinds import Kind, github
+from lado.git_kinds import Kind, github, gitlab
 from lado.git_kinds.base import REFUSES
 
 if TYPE_CHECKING:  # the HTTP client: loaded by `add` alone, never by a launch or a hook
@@ -811,16 +811,22 @@ def helper_command(server: state.GitServer) -> str:
     """git's `credential.<url>.helper` value for LADO's helper of `server`: LADO's own Python
     by its absolute path, so no `lado` on the PATH is needed, with all it needs as
     arguments, so it never opens lado.db; no token, only ids (a `ps` line shows them)."""
+    return "!" + shlex.join(_helper(server))
+
+
+def _helper(server: state.GitServer, *operation: str) -> list[str]:
+    """LADO's helper of `server` (lado.git_credential), with `operation` when one is given
+    (git appends its own)."""
     kind = git_kinds.by_name(server.kind)
     user = kind.git_user if kind is not None else "token"  # a kind this LADO does not know
-    command = interpreter.run_module(
+    return interpreter.run_module(
         HELPER,
         "--home", str(state.home_path().absolute()),
         "--server", server.id,
         "--user", user,
         "--address", server.address,
+        *operation,
     )  # fmt: skip
-    return "!" + shlex.join(command)
 
 
 def _entries(server: state.GitServer) -> list[tuple[str, str]]:
@@ -917,6 +923,58 @@ def gh_variables(
         if chosen is origin:
             found["GH_HOST"] = chosen.host
     return found
+
+
+GLAB_CONFIG_FILE = "config.yml"  # glab's configuration in its folder (GLAB_CONFIG_DIR)
+GLAB_HEADER = "PRIVATE-TOKEN"  # GitLab's header of a token
+
+
+def glab_command(server: state.GitServer) -> str:
+    """The command glab runs for the token header of `server` (`valueFromCommand`): LADO's
+    helper in its `token` mode, LADO's own Python by its absolute path, with ids only, one
+    string glab splits as a shell does."""
+    from lado import git_credential
+
+    return shlex.join(_helper(server, git_credential.HEADER))
+
+
+def glab_config(servers: Sequence[state.GitServer]) -> str:
+    """glab's `config.yml` for the GitLab servers of `servers`: its update check and usage
+    statistics off, git over https, no prompt, and per server (by `host[:port]`) its scheme,
+    its path (`subfolder`), its certificate file when there is one and the token header from
+    `glab_command`. Never a token."""
+    import yaml  # only a launch writes it
+
+    hosts = {}
+    for server in servers:
+        if server.kind != gitlab.KIND.name:
+            continue
+        parts = urllib.parse.urlsplit(server.address)
+        entry: dict[str, object] = {"api_protocol": parts.scheme}
+        if path := parts.path.strip("/"):
+            entry["subfolder"] = path
+        if (ca := certificate_file(server.id)).is_file():
+            entry["ca_cert"] = str(ca)
+        entry["custom_headers"] = [{"name": GLAB_HEADER, "valueFromCommand": glab_command(server)}]
+        hosts[server.host] = entry
+    config = {
+        "check_update": False,
+        "telemetry": False,
+        "git_protocol": "https",
+        "no_prompt": True,
+        "hosts": hosts,
+    }
+    return yaml.safe_dump(config, sort_keys=False, allow_unicode=True, width=10**6)
+
+
+def glab_variables(servers: Sequence[state.GitServer], folder: Path) -> dict[str, str]:
+    """The GitLab CLI's variables of an agent's launch: `GLAB_CONFIG_DIR` its own `folder`
+    (700), where `glab_config` is written whole (600: glab refuses another mode), even with
+    no GitLab saved, so the human's own glab configuration is never read."""
+    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    folder.chmod(0o700)
+    _write_whole(folder / GLAB_CONFIG_FILE, glab_config(servers))
+    return {"GLAB_CONFIG_DIR": str(folder)}
 
 
 def gh_without_certificate(servers: Sequence[state.GitServer]) -> list[str]:
@@ -1146,17 +1204,22 @@ def author_files(folder: Path, servers: Sequence[state.GitServer]) -> dict[str, 
             f"[user]\n\tname = {_quoted(server.author_name or '')}\n"
             f"\temail = {_quoted(server.author_email or '')}\n"
         )
-        temp = path.with_name(f".{path.name}.{uuid.uuid4().hex[:8]}")
-        try:
-            fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as file:
-                file.write(text)
-            os.replace(temp, path)
-        finally:  # a failed write leaves no file of its own; why it failed goes on
-            with contextlib.suppress(FileNotFoundError):
-                os.unlink(temp)
+        _write_whole(path, text)
         found[server.id] = path
     return found
+
+
+def _write_whole(path: Path, text: str) -> None:
+    """Write `text` into `path` whole, mode 600, by a rename of a file of its own."""
+    temp = path.with_name(f".{path.name}.{uuid.uuid4().hex[:8]}")
+    try:
+        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as file:
+            file.write(text)
+        os.replace(temp, path)
+    finally:  # a failed write leaves no file of its own; why it failed goes on
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(temp)
 
 
 def token_folder(id: str) -> Path:

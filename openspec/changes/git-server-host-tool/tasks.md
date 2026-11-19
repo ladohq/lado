@@ -7,7 +7,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-19-git-server-h
 
 ## 2. glab's configuration
 
-- [ ] 2.1 `glab_config`, `glab_command`, `glab_variables`: `config.yml` 600 in a 700 folder,
+- [x] 2.1 `glab_config`, `glab_command`, `glab_variables`: `config.yml` 600 in a 700 folder,
   whole by a rename, per host `api_protocol`, `subfolder`, `ca_cert`, the header command, no
   token (D1). Check: `tests/test_git_servers.py`.
 

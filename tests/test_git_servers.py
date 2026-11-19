@@ -17,6 +17,7 @@ import time
 import certificates as made
 import fake_git_api as fake
 import pytest
+import yaml
 
 from lado import git_certificates, git_kinds, git_servers, model_servers, state
 
@@ -2033,3 +2034,87 @@ def test_a_python_that_gives_no_chain_makes_the_check_say_so(
         f"{key} does not answer: TLS failed (this Python cannot read the server's certificates)"
     )
     assert found.offer is None
+
+
+# glab's configuration of an agent.
+
+GLAB_TOP = {"check_update": False, "telemetry": False, "git_protocol": "https", "no_prompt": True}
+
+
+def _glab(servers, folder):
+    found = git_servers.glab_variables(servers, folder)
+    assert found == {"GLAB_CONFIG_DIR": str(folder)}
+    text = (folder / "config.yml").read_text()
+    assert TOKEN not in text
+    return yaml.safe_load(text)
+
+
+def _header(server):
+    return [{"name": "PRIVATE-TOKEN", "valueFromCommand": git_servers.glab_command(server)}]
+
+
+def test_glab_gets_an_entry_per_gitlab_server(lado_home, tmp_path):
+    one = _saved("https://gitlab.corp.ru")
+    two = _saved("http://git.example:8443/gitlab/")
+    _saved("https://ghe.corp.ru", kind="github")
+    assert _glab(state.git_servers(), tmp_path / "glab") == {
+        **GLAB_TOP,
+        "hosts": {
+            "gitlab.corp.ru": {"api_protocol": "https", "custom_headers": _header(one)},
+            "git.example:8443": {
+                "api_protocol": "http",
+                "subfolder": "gitlab",
+                "custom_headers": _header(two),
+            },
+        },
+    }
+
+
+def test_glab_without_a_gitlab_server_gets_no_host(lado_home, tmp_path):
+    _saved("https://ghe.corp.ru", kind="github")
+    assert _glab(state.git_servers(), tmp_path / "glab") == {**GLAB_TOP, "hosts": {}}
+    assert _glab([], tmp_path / "none") == {**GLAB_TOP, "hosts": {}}
+
+
+def test_glab_gets_a_certificate_for_its_server_alone(lado_home, tmp_path, corp_ca):
+    one = _saved("https://gitlab.corp.ru")
+    _saved("https://git.lan")
+    git_servers.set_certificate(git_servers.address("gitlab.corp.ru"), corp_ca.pem)
+    hosts = _glab(state.git_servers(), tmp_path / "glab")["hosts"]
+    assert hosts["gitlab.corp.ru"]["ca_cert"] == str(git_servers.certificate_file(one.id))
+    assert "ca_cert" not in hosts["git.lan"]
+
+
+def test_glabs_config_is_600_in_a_700_folder_written_whole(lado_home, tmp_path):
+    _saved("https://gitlab.corp.ru")
+    folder = tmp_path / "glab"
+    folder.mkdir(mode=0o755)
+    (folder / "config.yml").write_text(f"hosts:\n  gitlab.com:\n    token: {TOKEN}\n")
+    previous = os.umask(0)
+    try:
+        _glab(state.git_servers(), folder)
+    finally:
+        os.umask(previous)
+    assert stat.S_IMODE(folder.stat().st_mode) == 0o700
+    assert stat.S_IMODE((folder / "config.yml").stat().st_mode) == 0o600
+    assert sorted(p.name for p in folder.iterdir()) == ["config.yml"]
+
+
+def test_glabs_header_command_is_lados_python_with_ids_alone(lado_home):
+    server = _saved("https://gitlab.corp.ru")
+    words = shlex.split(git_servers.glab_command(server))
+    assert words[:2] == [sys.executable, "-c"]
+    assert words[3:] == [
+        "lado.git_credential",
+        "--home",
+        str(lado_home.absolute()),
+        "--server",
+        server.id,
+        "--user",
+        "oauth2",
+        "--address",
+        "https://gitlab.corp.ru",
+        "token",
+    ]
+    result = subprocess.run(words, capture_output=True, text=True, check=True, timeout=30)
+    assert result.stdout == TOKEN + "\n"

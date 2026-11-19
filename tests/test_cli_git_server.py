@@ -793,3 +793,13 @@ def test_list_shows_the_certificate_before_the_author(capsys, tmp_path):
         _until(root),
         "-",
     ]
+
+
+def test_add_takes_no_certificate_from_stdin(capsys, serve):
+    server = serve("gitlab")
+    assert main(["git-server", "add", "gitlab.corp.ru", "--token", "--certificate", "-"]) == 2
+    assert capsys.readouterr().err == (
+        "lado: add reads the token from stdin: give the certificate as a file, or add the server "
+        "first and give it with lado git-server certificate <address> -\n"
+    )
+    assert server.requests == [] and state.git_servers() == []

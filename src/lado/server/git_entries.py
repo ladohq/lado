@@ -155,15 +155,15 @@ def check(given: models.GitServerCheckAsked, has_db: bool = True) -> models.GitS
     return found
 
 
-def _checked_pem(pem: str | None) -> str | None:
+def _checked_pem(pem: str | None, expired_ok: bool = False) -> str | None:
     """The PEM the page sent, as lado.git_certificates keeps a file; Refused (under no
-    field) for one that is not a certificate or has expired."""
+    field) for one that is not a certificate or, unless `expired_ok`, has expired."""
     if pem is None:
         return None
     from lado import git_certificates
 
     try:
-        return git_certificates.from_file(pem.encode(), "the PEM")
+        return git_certificates.from_file(pem.encode(), "the PEM", expired_ok)
     except git_certificates.BadFile as exc:
         text = str(exc)
         raise git_servers.Refused(text, page=f"{text[0].upper()}{text[1:]}.") from None
@@ -235,7 +235,8 @@ def set_certificate(host: str, given: models.GitServerCertificateSet) -> models.
     git-server certificate <address> <file>` does, then check the server again with it."""
     try:
         at = git_servers.saved_address(host)
-        git_servers.set_certificate(at, _checked_pem(given.pem) or "")
+        # An expired one is taken: Undo puts back the certificate a Remove took, as it was.
+        git_servers.set_certificate(at, _checked_pem(given.pem, expired_ok=True) or "")
         found = git_servers.check(at)
     except git_servers.Refused as exc:
         raise _refusal(exc) from None

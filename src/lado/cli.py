@@ -1816,6 +1816,13 @@ def cmd_git_server_add(args: argparse.Namespace) -> int:
     at = _git_address(args.address)
     if at is None:
         return 2
+    if args.certificate == "-":  # stdin holds the token
+        print(
+            "lado: add reads the token from stdin: give the certificate as a file, or add the "
+            "server first and give it with lado git-server certificate <address> -",
+            file=sys.stderr,
+        )
+        return 2
     again = f"{git_servers.ADD} {at.root} --token"
     try:
         git_servers.check_kind(at, args.kind)

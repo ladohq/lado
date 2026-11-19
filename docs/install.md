@@ -279,8 +279,9 @@ A company's server whose certificate the computer, or LADO's container, does not
 trusted from its Check in Settings → Git servers: LADO shows the authority that signed it with
 its fingerprint, and Trust makes LADO and the agents' git trust it for that server alone;
 nothing is added to the image or the computer. Or ask your IT department for the company's
-root certificate (`.pem` or `.crt`) and give it: `lado git-server certificate <address>
-<file>`. The agents' `gh` does not get it ([cli.md](cli.md)).
+root certificate as PEM (a text file starting with `-----BEGIN CERTIFICATE-----`, often
+`.pem` or `.crt`; a binary DER `.crt` is refused) and give it: `lado git-server certificate
+<address> <file>`. The agents' `gh` does not get it ([cli.md](cli.md)).
 
 Coming from a version before 0.48.0, where the agents used a `GH_TOKEN` in `secrets/` or `gh
 auth login` inside, nothing is to do: the first start of the new version moves that login

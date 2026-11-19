@@ -919,8 +919,8 @@ connection is refused` / `it did not answer in 5 s`) or answers as neither kind;
 name `--kind` in their hint. A certificate this computer does not trust is refused as `check`
 tells it (below), with the authority it offers and the hint `trust it in Settings → Git
 servers (Check), or give its certificate: lado git-server add <address> --token --certificate
-<file>`. `--certificate <file>` (`-`: stdin) is checked as `lado git-server certificate` checks
-it, before the token is asked; the server is then asked trusting that certificate alone, and
+<file>`. `--certificate <file>` is checked as `lado git-server certificate` checks it, before
+the token is asked (`-` is refused with exit 2: stdin holds the token); the server is then asked trusting that certificate alone, and
 it is saved with the server, or neither is (`the certificate of <address> is not signed by
 the given certificate`, with the offer). With
 `--kind`, a server that does not answer or answers as neither is saved as that kind with no

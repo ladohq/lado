@@ -359,7 +359,9 @@ export function GitServersPage() {
       async () => {
         const done = await clearGitServerCertificate(server.host);
         put(done.server);
-        return { host: server.host, place: "cert", tone: "ok", text: "Certificate removed.", way: "restore", pem: done.pem ?? undefined };
+        const line: Result = { host: server.host, place: "cert", tone: "ok", text: "Certificate removed." };
+        // Undo only for a certificate this removal took (none: it was gone already).
+        return done.pem ? { ...line, way: "restore", pem: done.pem } : line;
       },
       `restore:${server.host}`,
     );

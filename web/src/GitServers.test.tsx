@@ -1286,3 +1286,13 @@ test("Add's Don't trust offers the kind to save it without a check", async () =>
   expect(screen.getByRole("radio", { name: "GitLab" })).toBeTruthy();
   expect(formAdd().textContent).toBe("Add without a check");
 });
+
+test("a certificate removed elsewhere already: the line has no Undo", async () => {
+  const saved = { ...CORP, certificate: ROOT_SAVED };
+  fake.servers = [saved]; // no PEM kept: the removal answers pem null
+  await mount();
+  openRow(saved);
+  press(`Remove the certificate of ${saved.address}`);
+  const line = (await screen.findByText("Certificate removed.")).closest(".gx-result") as HTMLElement;
+  expect(within(line).queryByRole("button", { name: /Undo/ })).toBeNull();
+});

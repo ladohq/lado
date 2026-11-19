@@ -3284,8 +3284,9 @@ link under the field stays visible and pressable.
   IT goes in by `lado git-server certificate`.
 - **Certificate** row: `Remove` removes it at once (`DELETE …/certificate`): `✓ Certificate
   removed.` [Undo], the value `None` while that line shows, the focus on Undo; Undo sends the
-  removed PEM back through `PUT …/certificate` and says `✓ Certificate saved.`, the focus on
-  Remove. Both are off while their request runs.
+  removed PEM back through `PUT …/certificate` (an expired one too) and says `✓ Certificate
+  saved.`, the focus on Remove. Both are off while their request runs. A removal that found no
+  certificate (gone by the command meanwhile) has no Undo.
 - **Replace token** opens a form under Sign-in (`gx-form`): New token (the secret field,
   focused), `Make one on its token page with the <scopes>.`, `Save token` (`Checking the
   token…`) and Cancel; Esc cancels, the focus back on Replace token. It posts the saved address
@@ -3363,9 +3364,10 @@ link under the field stays visible and pressable.
   certificate_offer, certificate_before}`: `message` the page's line, `hint` its tip, `server`
   as saved after it, the offer a `CertificateOffer {subject, issuer, valid_from, valid_until,
   sha256, own, intermediate, pem}`; a 404 for no such server, a 422 for a missing token file),
-  `PUT /api/git-servers/{host}/certificate` (`{pem}`, checked as a certificate file → the
-  check's `GitServerChecked`) and `DELETE /api/git-servers/{host}/certificate` (→
-  `GitServerCertificateRemoved {server, pem}`, the PEM for Undo),
+  `PUT /api/git-servers/{host}/certificate` (`{pem}`, checked as a certificate file but an
+  expired one taken, as Undo puts back what Remove took → the check's `GitServerChecked`)
+  and `DELETE /api/git-servers/{host}/certificate` (→ `GitServerCertificateRemoved {server,
+  pem}`, the PEM for Undo, null when there was none),
   `PUT /api/git-servers/{host}/author` (`GitServerAuthor {name, email}`) and `DELETE
   /api/git-servers/{host}/author`, both → `GitServerAuthorDone {server, line}`, and `DELETE
   /api/git-servers/{host}` (→ `GitServerRemoved`, the servers left and `warning` when a folder

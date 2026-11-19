@@ -754,3 +754,15 @@ def test_the_list_shows_an_expired_certificate(client, lado_home):
         "not_after": ended.date().isoformat(),
         "expired": True,
     }
+
+
+def test_undo_puts_back_an_expired_certificate(client, lado_home):
+    ended = made.NOW - 10 * made.DAY
+    old = made.authority("Old Root", not_before=ended - 30 * made.DAY, not_after=ended)
+    at = git_servers.address(f"https://git.lan:{closed_port()}")
+    git_servers.save(at, git_servers.Checked(git_kinds.by_name("gitlab"), "ivan"), TOKEN, old.pem)
+    removed = ok(client.delete(f"/api/git-servers/{at.key}/certificate"))
+    back = client.put(f"/api/git-servers/{at.key}/certificate", json={"pem": removed["pem"]})
+    assert back.status_code == 200, back.text
+    assert back.json()["server"]["certificate"]["expired"] is True
+    assert git_servers.certificate(state.git_servers()[0]) == old.pem

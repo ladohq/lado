@@ -820,7 +820,8 @@ class GitServerCertificate(BaseModel):
 class CertificateOffer(BaseModel):
     """A certificate a check shows (lado.git_certificates.Certificate): its subject, its
     issuer's organization, its validity (YYYY-MM-DD), its SHA-256 as colon hex, whether it
-    is the server's own or an authority below the root, and its PEM, which `PUT
+    is the server's own signed by itself (`own`), the server's own at all (`leaf`: renewed
+    with the server) or an authority below the root (`intermediate`), and its PEM, which `PUT
     /api/git-servers/{host}/certificate` takes back when the human trusts it."""
 
     subject: str
@@ -830,6 +831,7 @@ class CertificateOffer(BaseModel):
     sha256: str
     own: bool
     intermediate: bool
+    leaf: bool
     pem: str
 
 

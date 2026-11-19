@@ -177,20 +177,19 @@ def test_a_self_signed_server_offers_its_own_certificate(start, tmp_path):
     server = _tls(start, tmp_path, own)
     offer = git_certificates.offer("localhost", server.port)
     assert offer.pem == own.pem
-    assert offer.own and not offer.intermediate
+    assert offer.own and offer.leaf and not offer.intermediate
     assert offer.subject == "localhost"
 
 
-def test_a_server_sending_its_certificate_alone_offers_it_as_the_highest_sent(
-    start, tmp_path, corp
-):
-    """Signed by an authority it does not send: not the server's own, which it did not sign."""
+def test_a_server_sending_its_certificate_alone_offers_that_certificate(start, tmp_path, corp):
+    """Signed by an authority it does not send: the server's certificate (`leaf`, renewed
+    with the server), but not signed by itself (`own`)."""
     root, _ = corp
     leaf = made.server("localhost", root)
     server = _tls(start, tmp_path, leaf)
     offer = git_certificates.offer("localhost", server.port)
     assert offer.pem == leaf.pem
-    assert offer.intermediate and not offer.own
+    assert offer.leaf and not offer.own and not offer.intermediate
 
 
 def test_cross_signed_authorities_end_the_walk(start, tmp_path):

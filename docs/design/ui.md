@@ -3265,7 +3265,8 @@ link under the field stays visible and pressable.
   trusted.` ⓘ `About the certificate` (signed by an authority LADO's computer does not know,
   often the company's own; trusted, it is trusted for this server only, nothing else on the
   computer changes), then `Signed by <subject> · <issuer>` (`Certificate <host> · signed by
-  itself` for the server's own), `Valid <from> to <until>`, `SHA-256 <fingerprint>` (mono,
+  itself` for the server's own, `… · signed by <issuer>` when the server sends its own
+  certificate alone, both with the renewal line), `Valid <from> to <until>`, `SHA-256 <fingerprint>` (mono,
   wrapped by character), a line (`Trust it only if you expected this authority. In a company
   network your IT department can confirm the fingerprint.`; for the server's own certificate
   that LADO asks again when it is renewed; for an intermediate that the server sends no root),
@@ -3363,7 +3364,7 @@ link under the field stays visible and pressable.
   kind, login, missing_scopes, rights_checked, was_checked, message, hint, server,
   certificate_offer, certificate_before}`: `message` the page's line, `hint` its tip, `server`
   as saved after it, the offer a `CertificateOffer {subject, issuer, valid_from, valid_until,
-  sha256, own, intermediate, pem}`; a 404 for no such server, a 422 for a missing token file),
+  sha256, own, intermediate, leaf, pem}`; a 404 for no such server, a 422 for a missing token file),
   `PUT /api/git-servers/{host}/certificate` (`{pem}`, checked as a certificate file but an
   expired one taken, as Undo puts back what Remove took → the check's `GitServerChecked`)
   and `DELETE /api/git-servers/{host}/certificate` (→ `GitServerCertificateRemoved {server,

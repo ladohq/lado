@@ -1095,6 +1095,15 @@ CERT_LINE = (
         CERT_LINE,
         "fatal: unable to access 'https://gitlab.corp.ru/team/app.git/': server certificate "
         "verification failed. CAfile: none CRLfile: none",
+        # curl 8 with GnuTLS (Ubuntu 24.04's git)
+        "fatal: unable to access 'https://gitlab.corp.ru/team/app.git/': server verification "
+        "failed: certificate signer not trusted. (CAfile: /etc/ssl/certs/ca-certificates.crt "
+        "CRLfile: none)",
+        # a certificate of another host: curl with OpenSSL, then with GnuTLS
+        "fatal: unable to access 'https://gitlab.corp.ru/team/app.git/': SSL: no alternative "
+        "certificate subject name matches target host name 'gitlab.corp.ru'",
+        "fatal: unable to access 'https://gitlab.corp.ru/team/app.git/': SSL: certificate "
+        "subject name (other.corp.ru) does not match target host name 'gitlab.corp.ru'",
     ],
 )
 def test_a_saved_servers_untrusted_certificate_points_to_its_check(stderr):

@@ -803,3 +803,16 @@ def test_add_takes_no_certificate_from_stdin(capsys, serve):
         "first and give it with lado git-server certificate <address> -\n"
     )
     assert server.requests == [] and state.git_servers() == []
+
+
+def test_check_of_a_server_sending_its_certificate_alone_warns_of_renewals(serve, capsys, tmp_path):
+    root = made.authority("Corp Root CA")
+    leaf = made.server("localhost", root)
+    server = serve("gitlab-full", token=TOKEN, certificate=made.write_chain(tmp_path, leaf))
+    url = server.url.replace("127.0.0.1", "localhost")
+    _saved(url)
+    assert main(["git-server", "check", url]) == 1
+    lines = capsys.readouterr().err.splitlines()
+    assert lines[1] == "  Certificate  localhost · signed by Corp Example Ltd"
+    assert lines[4] == ("  the server's own certificate, not an authority: it changes when renewed")
+    assert "signed by itself" not in "\n".join(lines)

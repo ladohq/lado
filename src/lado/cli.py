@@ -1779,11 +1779,14 @@ def _offer_lines(offer, before) -> list[str]:
     signer = f"{offer.subject} · {offer.issuer}" if offer.issuer else offer.subject
     if offer.own:
         lines.append(f"  Certificate  {offer.subject} · signed by itself")
+    elif offer.leaf:  # the server's own, signed by an authority it does not send
+        by = offer.issuer or "another authority"
+        lines.append(f"  Certificate  {offer.subject} · signed by {by}")
     else:
         lines.append(f"  Signed by  {signer}")
     lines.append(f"  Valid      {offer.not_before.date()} to {offer.not_after.date()}")
     lines.append(f"  SHA-256    {offer.sha256}")
-    if offer.own:
+    if offer.leaf:
         lines.append("  the server's own certificate, not an authority: it changes when renewed")
     elif offer.intermediate:
         lines.append("  the server does not send its root authority: the highest one it sent")

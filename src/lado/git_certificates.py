@@ -52,7 +52,8 @@ class Certificate:
     """A certificate as the human sees it: its subject (its Common Name, else its
     organization, else its whole name), its issuer's organization ("" for none), its
     validity, the SHA-256 of its DER as colon hex, its PEM; offered, whether it is the
-    server's own (`own`) or an authority below the root (`intermediate`)."""
+    server's own signed by itself (`own`), the server's own certificate at all (`leaf`:
+    renewed with the server), or an authority below the root (`intermediate`)."""
 
     subject: str
     issuer: str
@@ -62,6 +63,7 @@ class Certificate:
     pem: str
     own: bool = False
     intermediate: bool = False
+    leaf: bool = False
 
     @property
     def expired(self) -> bool:
@@ -96,7 +98,9 @@ def _text(name: x509.Name, oid: x509.ObjectIdentifier) -> str:
     return str(found[0].value) if found else ""
 
 
-def describe(cert: x509.Certificate, own: bool = False, intermediate: bool = False) -> Certificate:
+def describe(
+    cert: x509.Certificate, own: bool = False, intermediate: bool = False, leaf: bool = False
+) -> Certificate:
     subject = (
         _text(cert.subject, NameOID.COMMON_NAME)
         or _text(cert.subject, NameOID.ORGANIZATION_NAME)
@@ -111,6 +115,7 @@ def describe(cert: x509.Certificate, own: bool = False, intermediate: bool = Fal
         cert.public_bytes(serialization.Encoding.PEM).decode(),
         own,
         intermediate,
+        leaf,
     )
 
 
@@ -298,9 +303,11 @@ def offer(host: str, port: int) -> Certificate:
     if not sent:
         raise NoOffer(TLS, "the server sent no certificate")
     top = _top(sent)
-    signed_itself = _self_signed(top)
-    # The server's own certificate only when it signed itself; any other top is the highest
-    # authority LADO got, the server's certificate too when nothing above it was found.
-    found = describe(top, own=signed_itself and top is sent[0], intermediate=not signed_itself)
+    signed_itself, leaf = _self_signed(top), top is sent[0]
+    # The server's certificate itself when nothing above it was found (`leaf`, `own` when it
+    # signed itself); else a root, or the highest authority LADO got (`intermediate`).
+    found = describe(
+        top, own=signed_itself and leaf, intermediate=not signed_itself and not leaf, leaf=leaf
+    )
     _reaches(host, port, found, sent)
     return found

@@ -83,6 +83,7 @@ def _offer(found: git_certificates.Certificate | None) -> models.CertificateOffe
         sha256=found.sha256,
         own=found.own,
         intermediate=found.intermediate,
+        leaf=found.leaf,
         pem=found.pem,
     )
 

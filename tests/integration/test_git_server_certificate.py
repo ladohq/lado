@@ -139,7 +139,7 @@ def test_a_trusted_certificate_lets_lado_and_agents_reach_the_server_alone(
     assert added.returncode == 0, added.stderr
     with pytest.raises(clone.CloneError) as untrusted:
         clone.list_branches(url)
-    assert untrusted.value.kind == "cert_untrusted"
+    assert untrusted.value.kind == "cert_untrusted", str(untrusted.value)  # git's own words
     assert str(untrusted.value).startswith(
         f"cannot read {url}: the certificate of localhost is not trusted ("
     )

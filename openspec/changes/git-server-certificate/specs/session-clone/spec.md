@@ -2,8 +2,8 @@
 
 ### Requirement: An untrusted certificate of a git server points to its check
 
-git's refusal of a server's certificate (`SSL certificate problem`, `server certificate
-verification failed`) SHALL be the kind `cert_untrusted`, `the certificate of <host> is not
+git's refusal of a server's certificate (OpenSSL's and GnuTLS's words, a certificate of
+another host too) SHALL be the kind `cert_untrusted`, `the certificate of <host> is not
 trusted`. For a saved server's URL its hint SHALL be `Check the git server and trust its
 certificate:` `lado git-server check <address>`, and its UI way out `Check <host> ↗`; for an
 unsaved http(s) host, the hint to add it.

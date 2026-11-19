@@ -1742,7 +1742,7 @@ def test_a_certificate_is_kept_in_the_servers_folder_and_not_in_lado_db(lado_hom
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert (lado_home / "lado.db").read_bytes() == database
     assert git_servers.certificate(saved) == corp_ca.pem
-    assert [p.name for p in path.parent.iterdir()] == sorted(["ca.pem", "token"])
+    assert sorted(p.name for p in path.parent.iterdir()) == ["ca.pem", "token"]
 
 
 def test_a_certificate_is_refused_through_a_link(lado_home, tmp_path, corp_ca):

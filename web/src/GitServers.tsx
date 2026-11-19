@@ -881,10 +881,14 @@ export function TrustCard({
             </dd>
           </>
         )}
-        <dt>{changed ? "Now" : offer.own ? "Certificate" : "Signed by"}</dt>
+        <dt>{changed ? "Now" : offer.leaf ? "Certificate" : "Signed by"}</dt>
         <dd>
           <b>{offer.subject}</b>
-          {offer.own && !changed ? " · signed by itself" : signer}
+          {changed || !offer.leaf
+            ? signer
+            : offer.own
+              ? " · signed by itself"
+              : ` · signed by ${offer.issuer || "another authority"}`}
         </dd>
         <dt>Valid</dt>
         <dd>{`${offer.valid_from} to ${offer.valid_until}`}</dd>
@@ -899,7 +903,7 @@ export function TrustCard({
             <b>If your IT department did not announce a new certificate, do not trust it:</b> someone may be between LADO and the
             server.
           </>
-        ) : offer.own ? (
+        ) : offer.leaf ? (
           "This is the server's own certificate, not an authority: when the server renews it, LADO asks again."
         ) : offer.intermediate ? (
           "The server does not send its root authority, so LADO offers the highest one it got. Trust it only if you expected it."

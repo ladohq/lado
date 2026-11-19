@@ -41,7 +41,9 @@ asks for a login (`<host> asks for a login`) or refuses access (`<host> refused 
 its not found, ssh failures and the failures that are no access failure (unreachable, no
 branch) keep their texts with no git server hint, and so does a host saved under another
 scheme or port than the URL's, as git took no token from it. git's refusal of a server's
-certificate (`SSL certificate problem`, `server certificate verification failed`) is the kind
+certificate (`SSL certificate problem` with OpenSSL, `server certificate verification failed`
+or, from curl 8, `server verification failed` with GnuTLS, and a certificate of another
+host: `no alternative certificate subject name`, `does not match target host name`) is the kind
 `cert_untrusted`, `the certificate of <host> is not trusted`: for a saved server's URL with
 `Check the git server and trust its certificate: lado git-server check <address>`, for an
 unsaved http(s) host with the hint to add it. LADO's container has no ssh:
@@ -957,8 +959,9 @@ company VPN or proxy; with LADO in Docker, its container`); `the certificate of 
 not trusted` or, for a server with a certificate that no longer fits, `the certificate of
 <address> has changed since you trusted it` with `  Before     <name> · <first 8 bytes of its
 SHA-256>…`, each followed by the authority to trust as three lines (`  Signed by  <subject> ·
-<issuer>` — `  Certificate  <host> · signed by itself` and a fourth line for the server's own,
-a note for an intermediate —, `  Valid      <from> to <until>`, `  SHA-256    <AA:BB:…>`) and
+<issuer>` — `  Certificate  <host> · signed by itself` (`signed by <issuer>` when the server
+sends its own certificate alone) and a fourth line that it changes when renewed, a note for
+an intermediate —, `  Valid      <from> to <until>`, `  SHA-256    <AA:BB:…>`) and
 the hint `trust it in Settings → Git servers (Check), or give its certificate: lado git-server
 certificate <address> <file>`; nothing is saved and nothing is asked. The authority comes from
 the chain of a bare TLS handshake to the server (no request, no token; lado.git_certificates):

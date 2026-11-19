@@ -47,6 +47,7 @@ const ROOT: CertificateOffer = {
   sha256: "3F:9A:1C:07:B2:44:E8:5D:90:6A:C1:2F:7E:03:D9:58:AA:61:0B:4C:93:E7:25:F8:1D:C6:72:08:BE:39:54:A0",
   own: false,
   intermediate: false,
+  leaf: false,
   pem: "-----BEGIN CERTIFICATE-----\nROOT\n-----END CERTIFICATE-----\n",
 };
 const ROOT_SAVED = { name: "Corp Root CA", not_after: "2031-03-01", expired: false };
@@ -1170,7 +1171,18 @@ test("a changed certificate asks in red with the one before; Keep the old one ch
 });
 
 test.each([
-  [{ own: true, subject: "gitlab.lan" }, "Certificate", "gitlab.lan · signed by itself", "This is the server's own certificate, not an authority: when the server renews it, LADO asks again."],
+  [
+    { own: true, leaf: true, subject: "gitlab.lan" },
+    "Certificate",
+    "gitlab.lan · signed by itself",
+    "This is the server's own certificate, not an authority: when the server renews it, LADO asks again.",
+  ],
+  [
+    { leaf: true, subject: "gitlab.corp.example" },
+    "Certificate",
+    "gitlab.corp.example · signed by Corp Example Ltd",
+    "This is the server's own certificate, not an authority: when the server renews it, LADO asks again.",
+  ],
   [
     { intermediate: true, subject: "Corp Issuing CA 2" },
     "Signed by",

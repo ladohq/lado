@@ -5418,6 +5418,10 @@
             "type": "boolean",
             "title": "Intermediate"
           },
+          "leaf": {
+            "type": "boolean",
+            "title": "Leaf"
+          },
           "pem": {
             "type": "string",
             "title": "Pem"
@@ -5432,10 +5436,11 @@
           "sha256",
           "own",
           "intermediate",
+          "leaf",
           "pem"
         ],
         "title": "CertificateOffer",
-        "description": "A certificate a check shows (lado.git_certificates.Certificate): its subject, its\nissuer's organization, its validity (YYYY-MM-DD), its SHA-256 as colon hex, whether it\nis the server's own or an authority below the root, and its PEM, which `PUT\n/api/git-servers/{host}/certificate` takes back when the human trusts it."
+        "description": "A certificate a check shows (lado.git_certificates.Certificate): its subject, its\nissuer's organization, its validity (YYYY-MM-DD), its SHA-256 as colon hex, whether it\nis the server's own signed by itself (`own`), the server's own at all (`leaf`: renewed\nwith the server) or an authority below the root (`intermediate`), and its PEM, which `PUT\n/api/git-servers/{host}/certificate` takes back when the human trusts it."
       },
       "CliApi": {
         "properties": {

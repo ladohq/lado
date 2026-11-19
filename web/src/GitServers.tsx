@@ -14,9 +14,11 @@ import { useSearchParams } from "react-router";
 import {
   ApiError,
   addGitServer,
+  type CertificateOffer,
   checkGitServer,
   checkSavedGitServer,
   clearGitServerAuthor,
+  clearGitServerCertificate,
   type EntryRefused,
   type GitEntryRefused,
   type GitKindInfo,
@@ -30,6 +32,7 @@ import {
   refusalOf,
   removeGitServer,
   setGitServerAuthor,
+  setGitServerCertificate,
 } from "./api";
 import { ChevronIcon } from "./icons";
 import { InfoTip } from "./InfoTip";
@@ -54,18 +57,28 @@ export const TIPS = {
   kind: "LADO could not ask the server's API. If git reaches it anyway, choose its kind to save it now; check it later from its row.",
   plainHttp:
     "Anyone on the network between LADO and the server can read the token. Use https:// if the server has it.",
+  certificate: "The authority you trusted for this server. LADO and agents' git trust it for this server only.",
 };
 
+// The lines after the trust card's buttons (the page spec's texts).
+const NOT_TRUSTED = "Not trusted: LADO and agents cannot clone or push here over https.";
+const KEPT_OLD = "The saved certificate does not fit the server: LADO and agents cannot clone or push here over https.";
+const ADD_NOT_TRUSTED = "⚠ Not trusted, so LADO cannot ask the server. Choose its kind to save it without a check.";
+
 type Tip = { about: string; text: string };
-type Way = "check" | "undo";
+type Way = "check" | "undo" | "restore";
+// A check's offer of an authority to trust, and the saved one it replaces (a changed one).
+type Trust = { offer: CertificateOffer; before: CertificateOffer | null };
 // The one result line of the page: the server it is about, where it stands (the panel's top,
 // under Sign-in or Commit author, or in a removed server's place), its sentence, an info tip
 // at its end, its way out, a second line, and the author Undo sets again. A line about a
 // refused or short token has no way of its own: it makes Sign-in's Replace token the main
-// button (`tokenBad`), so the panel offers one. A check's `Works:` has no ✓ (`works`).
+// button (`tokenBad`), so the panel offers one. A check's `Works:` has no ✓ (`works`). A
+// certificate not trusted is the trust card (`trust`) instead of a line; a removed
+// certificate's line keeps its PEM for Undo (`pem`).
 type Result = {
   host: string;
-  place: "top" | "signin" | "author" | "gone";
+  place: "top" | "signin" | "author" | "cert" | "gone";
   tone: "ok" | "warn" | "bad";
   text: string;
   tip?: Tip;
@@ -74,6 +87,8 @@ type Result = {
   works?: boolean;
   then?: { text: string; tip?: Tip };
   undo?: { name: string; email: string };
+  trust?: Trust;
+  pem?: string;
 };
 type Form = { host: string; what: "replace" | "author" | "remove" };
 
@@ -82,6 +97,9 @@ const FAILED: Record<string, string> = {
   token_refused: "✕ check failed: token refused",
   scopes_missing: "✕ check failed: a scope missing",
   cert_untrusted: "✕ check failed: certificate not trusted",
+  cert_changed: "✕ check failed: certificate changed",
+  cert_name: "✕ check failed: certificate not for this host",
+  cert_expired: "✕ check failed: certificate expired",
   redirect: "✕ check failed: redirect",
   other_kind: "✕ check failed: another kind",
   unrecognised: "✕ check failed: neither GitHub nor GitLab",
@@ -101,7 +119,11 @@ function checkLine(host: string, found: GitServerChecked): Result {
     case "no_answer":
       return { ...line, tone: "warn", text: `⚠ ${found.message}`, tip: { about: "no answer", text: found.hint }, way: "check" };
     case "cert_untrusted":
-      return { ...line, tip: { about: "the certificate", text: found.hint }, way: "check" };
+    case "cert_changed": {
+      const tip = { about: "the certificate", text: found.hint };
+      if (!found.certificate_offer) return { ...line, tip, way: "check" };
+      return { ...line, tone: "warn", tip, trust: { offer: found.certificate_offer, before: found.certificate_before ?? null } };
+    }
     default:
       return line;
   }
@@ -111,6 +133,7 @@ function checkLine(host: string, found: GitServerChecked): Result {
 function secondLine(server: GitServerInfo, failed: string | undefined): { text: string; tone: string } {
   if (failed) return { text: failed, tone: failed.startsWith("✕") ? "bad" : "warn" };
   if (!server.has_token) return { text: "⚠ token missing", tone: "warn" };
+  if (server.certificate?.expired) return { text: "⚠ certificate expired", tone: "warn" };
   if (server.login === null) return { text: "⚠ not checked", tone: "warn" };
   return { text: `signed in as ${server.login}`, tone: "" };
 }
@@ -291,9 +314,59 @@ export function GitServersPage() {
       tone: "ok",
       text: "Author saved.",
     }, true);
+  // The servers whose certificate is being trusted, removed or put back: their buttons are off.
+  const [certBusy, setCertBusy] = useState<string[]>([]);
+  const certificate = async (server: GitServerInfo, call: () => Promise<Result>, focus: string, keep = false) => {
+    if (certBusy.includes(server.host)) return;
+    const mine = keep ? ++actions.current : act();
+    setCertBusy((now) => [...now, server.host]);
+    try {
+      const line = await call();
+      if (stale(mine)) return;
+      setResult(line);
+      focusOn(focus);
+    } catch (error) {
+      if (!stale(mine)) setResult({ host: server.host, place: "signin", tone: "bad", text: refusalOf(error).message });
+    } finally {
+      setCertBusy((now) => now.filter((h) => h !== server.host));
+    }
+  };
+  // Trust: the offered PEM saved for the server, then its check's line after `Certificate
+  // trusted.`, the focus on Check.
+  const trust = (server: GitServerInfo, pem: string, keep = false) =>
+    void certificate(
+      server,
+      async () => {
+        const found = await setGitServerCertificate(server.host, pem);
+        if (found.server) put(found.server);
+        failedAs(server.host, found.outcome === "ok" ? null : (FAILED[found.outcome] ?? null));
+        if (keep) return { host: server.host, place: "cert", tone: "ok", text: "Certificate saved." };
+        const line = checkLine(server.host, found);
+        return line.trust ? line : { ...line, text: `Certificate trusted. ${line.text}` };
+      },
+      keep ? `cert:${server.host}` : `check:${server.host}`,
+      keep,
+    );
+  // Don't trust or Keep the old one: nothing is saved or remembered; Check again asks anew.
+  const distrust = (server: GitServerInfo, changed: boolean) => {
+    act();
+    setResult({ host: server.host, place: "signin", tone: "bad", text: changed ? KEPT_OLD : NOT_TRUSTED, way: "check" });
+    focusOn(`again:${server.host}`);
+  };
+  const removeCertificate = (server: GitServerInfo) =>
+    void certificate(
+      server,
+      async () => {
+        const done = await clearGitServerCertificate(server.host);
+        put(done.server);
+        return { host: server.host, place: "cert", tone: "ok", text: "Certificate removed.", way: "restore", pem: done.pem ?? undefined };
+      },
+      `restore:${server.host}`,
+    );
   const way = (server: GitServerInfo, line: Result) => {
     if (line.way === "check") void check(server);
     else if (line.way === "undo" && line.undo) undoAuthor(server, line.undo);
+    else if (line.way === "restore" && line.pem) trust(server, line.pem, true);
   };
   const toggleForm = (host: string, what: Form["what"]) => {
     act();
@@ -439,7 +512,16 @@ export function GitServersPage() {
                                 onDone={(done, mine) => replaced(server, done, mine, form)}
                               />
                             )}
-                            {mine?.place === "signin" && (
+                            {mine?.place === "signin" && mine.trust && (
+                              <TrustCard
+                                trust={mine.trust}
+                                tip={mine.tip}
+                                busy={certBusy.includes(host)}
+                                onTrust={() => trust(server, mine.trust!.offer.pem)}
+                                onDistrust={() => distrust(server, mine.trust!.before !== null)}
+                              />
+                            )}
+                            {mine?.place === "signin" && !mine.trust && (
                               <ResultLine line={mine} server={server} target={target} busy={authorBusy.includes(host)} onWay={() => way(server, mine)} />
                             )}
                           </div>
@@ -498,6 +580,49 @@ export function GitServersPage() {
                             )}
                           </div>
                         </li>
+                        {(server.certificate || mine?.place === "cert") && (
+                          <li className="gx-row">
+                            <div>
+                              <div className="gx-name">
+                                Certificate <InfoTip about="Certificate">{TIPS.certificate}</InfoTip>
+                              </div>
+                              <p className="gx-val">
+                                {!server.certificate ? (
+                                  "None"
+                                ) : server.certificate.expired ? (
+                                  <span className="w">{`⚠ ${server.certificate.name} · expired on ${server.certificate.not_after}`}</span>
+                                ) : (
+                                  <>
+                                    <b>{server.certificate.name}</b>
+                                    {` · valid until ${server.certificate.not_after}`}
+                                  </>
+                                )}
+                              </p>
+                            </div>
+                            <div className="gx-ctl">
+                              {server.certificate && (
+                                <button
+                                  ref={target(`cert:${host}`)}
+                                  type="button"
+                                  className="quiet"
+                                  aria-label={`Remove the certificate of ${server.address}`}
+                                  disabled={certBusy.includes(host)}
+                                  onClick={() => {
+                                    setForm(null);
+                                    removeCertificate(server);
+                                  }}
+                                >
+                                  Remove
+                                </button>
+                              )}
+                            </div>
+                            <div className="gx-under">
+                              {mine?.place === "cert" && (
+                                <ResultLine line={mine} server={server} target={target} busy={certBusy.includes(host)} onWay={() => way(server, mine)} />
+                              )}
+                            </div>
+                          </li>
+                        )}
                       </ul>
                       <div className="gx-foot">
                         {formHere === "remove" ? (
@@ -664,14 +789,16 @@ function ResultLine({
   line: Result;
   server: GitServerInfo;
   target: (key: string) => (node: HTMLElement | null) => void;
-  busy: boolean; // the author's request runs: Undo is off
+  busy: boolean; // the author's or the certificate's request runs: Undo is off
   onWay: () => void;
 }) {
-  const label = { check: "Check again", undo: "Undo" } as const;
+  const label = { check: "Check again", undo: "Undo", restore: "Undo" } as const;
   const named = {
     check: `Check ${server.address} again`,
     undo: `Undo the removal of the commit author of ${server.address}`,
+    restore: `Undo the removal of the certificate of ${server.address}`,
   } as const;
+  const key = { check: `again:${server.host}`, undo: `undo:${server.host}`, restore: `restore:${server.host}` } as const;
   return (
     <>
       <p className={`gx-result ${line.tone}${line.works ? " works" : ""}`} role={line.tone === "ok" ? "status" : "alert"}>
@@ -686,11 +813,11 @@ function ResultLine({
         </span>
         {line.way && (
           <button
-            ref={line.way === "undo" ? target(`undo:${server.host}`) : undefined}
+            ref={target(key[line.way])}
             type="button"
             className="quiet"
             aria-label={named[line.way]}
-            disabled={line.way === "undo" && busy}
+            disabled={line.way !== "check" && busy}
             onClick={onWay}
           >
             {label[line.way]}
@@ -712,6 +839,83 @@ function ResultLine({
   );
 }
 
+
+// Trust this server? A check's offer of an authority (Sign-in's, and Add's under Address):
+// who signed it, its validity and fingerprint, a line on what it is, Trust and Don't trust;
+// a changed certificate louder, with the saved one first and its own buttons.
+export function TrustCard({
+  trust,
+  tip,
+  busy,
+  onTrust,
+  onDistrust,
+}: {
+  trust: Trust;
+  tip?: Tip;
+  busy: boolean;
+  onTrust: () => void;
+  onDistrust: () => void;
+}) {
+  const { offer, before } = trust;
+  const changed = before !== null;
+  const signer = offer.issuer ? ` · ${offer.issuer}` : "";
+  return (
+    <div className={`gx-trust${changed ? " changed" : ""}`} role="alert">
+      <p className="gx-trust-h">
+        {changed ? "⚠ The server's certificate has changed since you trusted it." : "⚠ The server's certificate is not trusted."}
+        {tip && (
+          <>
+            {" "}
+            <InfoTip about={tip.about}>{tip.text}</InfoTip>
+          </>
+        )}
+      </p>
+      <dl className="gx-facts">
+        {changed && (
+          <>
+            <dt>Before</dt>
+            <dd>
+              <b>{before.subject}</b> · <code className="gx-fp">{`${before.sha256.slice(0, 23)}…`}</code>
+            </dd>
+          </>
+        )}
+        <dt>{changed ? "Now" : offer.own ? "Certificate" : "Signed by"}</dt>
+        <dd>
+          <b>{offer.subject}</b>
+          {offer.own && !changed ? " · signed by itself" : signer}
+        </dd>
+        <dt>Valid</dt>
+        <dd>{`${offer.valid_from} to ${offer.valid_until}`}</dd>
+        <dt>SHA-256</dt>
+        <dd>
+          <code className="gx-fp">{offer.sha256}</code>
+        </dd>
+      </dl>
+      <p className="gx-trust-n">
+        {changed ? (
+          <>
+            <b>If your IT department did not announce a new certificate, do not trust it:</b> someone may be between LADO and the
+            server.
+          </>
+        ) : offer.own ? (
+          "This is the server's own certificate, not an authority: when the server renews it, LADO asks again."
+        ) : offer.intermediate ? (
+          "The server does not send its root authority, so LADO offers the highest one it got. Trust it only if you expected it."
+        ) : (
+          "Trust it only if you expected this authority. In a company network your IT department can confirm the fingerprint."
+        )}
+      </p>
+      <div className="mx-form-acts">
+        <button type="button" className={changed ? "danger" : "primary"} disabled={busy} onClick={onTrust}>
+          {changed ? "Trust the new certificate" : "Trust this server"}
+        </button>
+        <button type="button" className="quiet" disabled={busy} onClick={onDistrust}>
+          {changed ? "Keep the old one" : "Don't trust"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // Make one on its token page with the scopes … (the kind's token page on this server).
 function TokenPage({ root, kind }: { root: string; kind: GitKindInfo }) {
@@ -842,6 +1046,10 @@ function AddGitServer({
   const [refused, setRefused] = useState<GitEntryRefused | null>(null); // Add's
   const [lost, setLost] = useState(false); // it answered the check, not Add
   const [busy, setBusy] = useState(false);
+  // The certificate the human trusted for this address (kept by the form, saved on Add), or
+  // that they did not trust it; either goes when the address changes.
+  const [trusted, setTrusted] = useState<CertificateOffer | null>(null);
+  const [distrusted, setDistrusted] = useState(false);
   const field = useRef<HTMLInputElement>(null);
   const token = useRef<HTMLInputElement>(null);
   const settled = useDebounced(address, MODEL_DEBOUNCE);
@@ -855,7 +1063,7 @@ function AddGitServer({
     const mine = ++asked.current;
     if (!settled.trim()) return setCheck(null);
     setCheck({ for: settled });
-    checkGitServer(settled).then(
+    checkGitServer(settled, trusted?.pem).then(
       (found) => mine === asked.current && setCheck({ for: settled, found }),
       (error: unknown) =>
         mine === asked.current &&
@@ -874,7 +1082,7 @@ function AddGitServer({
           },
         }),
     );
-  }, [settled]);
+  }, [settled, trusted]);
   useEffect(
     () => () => {
       asked.current++; // the form goes: no answer fills it
@@ -884,7 +1092,10 @@ function AddGitServer({
   const now = check && check.for === address ? check : null;
   const result = now?.found;
   const checking = !busy && address.trim() !== "" && (address !== settled || (now !== null && !result));
-  const choose = !checking && (result?.choose_kind === true || lost);
+  // The address check's offer of an authority, asked until the human trusts it or not.
+  const offer = !checking ? (result?.certificate_offer ?? null) : null;
+  const asking = offer !== null && trusted === null && !distrusted;
+  const choose = !checking && !asking && (result?.choose_kind === true || lost);
   const saved = !checking && result?.saved === true;
   // The saved server of the address's host and port, as LADO tells it (by its key, not its
   // address: one saved as http:// or under a path is the same server).
@@ -897,6 +1108,7 @@ function AddGitServer({
   const ready =
     !busy &&
     !checking &&
+    !asking &&
     !saved &&
     result !== undefined &&
     result.address !== null &&
@@ -915,7 +1127,7 @@ function AddGitServer({
     setRefused(null);
     setLost(false); // this answer says anew whether it stopped answering
     try {
-      const done = await addGitServer(address, given, as);
+      const done = await addGitServer(address, given, as, trusted?.pem);
       emptyKey(token, setFilled);
       onAdded(done, mine);
     } catch (error) {
@@ -957,6 +1169,8 @@ function AddGitServer({
               setAddress(event.target.value);
               setKind(null);
               setLost(false);
+              setTrusted(null);
+              setDistrusted(false);
               edited("address");
               edited("kind");
             }}
@@ -994,12 +1208,31 @@ function AddGitServer({
                   </button>
                 </p>
               )}
-              {!saved && !lost && result?.unchecked && (
+              {!saved && asking && offer && (
+                <TrustCard
+                  trust={{ offer, before: null }}
+                  tip={result?.unchecked?.hint ? { about: "the certificate", text: result.unchecked.hint } : undefined}
+                  busy={busy}
+                  onTrust={() => {
+                    setTrusted(offer);
+                    token.current?.focus();
+                  }}
+                  onDistrust={() => setDistrusted(true)}
+                />
+              )}
+              {!saved && !lost && !asking && offer && distrusted && <span className="field-note warn">{ADD_NOT_TRUSTED}</span>}
+              {!saved && !lost && !offer && result?.unchecked && (
                 <span className="field-note warn">{`⚠ ${result.unchecked.message} ${result.unchecked.hint}`.trim()}</span>
               )}
               {!saved && hinted && (
                 <span className="mx-found">
                   <b>{hinted.title}</b> answers.
+                </span>
+              )}
+              {!saved && trusted && !offer && (
+                <span className="field-note">
+                  Certificate: <b>{trusted.subject}</b>
+                  {` · valid until ${trusted.valid_until}, trusted for this server.`}
                 </span>
               )}
             </>
@@ -1210,7 +1443,7 @@ function RemoveGitServer({
     >
       <p id={id}>
         <b>{`Remove ${server.address}?`}</b>
-        <span className="sub">Its token and commit author go too. This cannot be undone.</span>
+        <span className="sub">Its token, commit author and certificate go too. This cannot be undone.</span>
       </p>
       <div className="mx-form-acts">
         <button type="button" className="danger" disabled={busy} onClick={() => void remove()}>

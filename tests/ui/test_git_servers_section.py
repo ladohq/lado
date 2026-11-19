@@ -345,15 +345,20 @@ def test_check_a_saved_server_in_each_outcome(
         line.get_by_role("button", name=f"Check {lab.url} again").click()
         expect(line).to_have_text(f"Works: signed in as {fake.LOGIN}, may clone and push.")
 
-        # The certificate this machine does not trust: its tip and Check again.
+        # The certificate this machine does not trust: the question to trust it, its tip
+        # (tests/ui/test_git_servers_certificate.py follows it through).
         cert_head = head(page, cert_at.root)
         cert_head.click()
         row(page, cert_at.root).get_by_role("button", name=f"Check {cert_at.root}").click()
-        cert_line = row(page, cert_at.root).locator(".gx-result")
-        expect(cert_line).to_have_text("The server's certificate is not trusted. Check again")
-        expect(results(page)).to_have_count(1)  # one result line on the page
-        cert_line.get_by_role("button", name="About the certificate").click()
-        expect(git.get_by_text(re.compile("^Ask your IT department"))).to_be_visible()
+        card = row(page, cert_at.root).locator(".gx-trust")
+        expect(card.locator(".gx-trust-h")).to_have_text(
+            "⚠ The server's certificate is not trusted."
+        )
+        expect(results(page)).to_have_count(0)  # the question is the page's one result
+        card.get_by_role("button", name="About the certificate").click()
+        expect(
+            git.get_by_text(re.compile("^The server's certificate is signed by"))
+        ).to_be_visible()
         shot(page, "certificate")
         token_nowhere(page, answers, tmp_path, lado_home)
     finally:
@@ -471,7 +476,9 @@ def test_the_author_with_undo_and_remove_server(browser: Browser, server, lado_h
         panel.get_by_role("button", name=f"Remove {corp}").click()
         ask = git.get_by_role("alertdialog")
         expect(ask).to_contain_text(f"Remove {corp}?")
-        expect(ask).to_contain_text("Its token and commit author go too. This cannot be undone.")
+        expect(ask).to_contain_text(
+            "Its token, commit author and certificate go too. This cannot be undone."
+        )
         expect(ask.get_by_role("button", name="Cancel")).to_be_focused()
         shot(page, "remove-asks")
         ask.get_by_role("button", name="Remove server").click()

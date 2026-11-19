@@ -26,10 +26,9 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-19-container-wi
 
 - [x] 5.1 The clone's `Add git server ↗` in a container's UI. Check: `tests/ui/test_launch.py`;
   screenshot.
-- [ ] 5.2 The container with an old `LADO_SSH_AGENT` line: no socket, no `SSH_AUTH_SOCK`,
+- [x] 5.2 The container with an old `LADO_SSH_AGENT` line: no socket, no `SSH_AUTH_SOCK`,
   no ssh line; `sudo -n -l` grants nothing; the ssh agent's tests removed (D7). Check:
-  `make test-container` (or CI). Written; not run yet: no Docker where it was built, CI's
-  container cells run it.
+  `make test-container` (or CI).
 
 ## 6. Docs and CHANGELOG
 

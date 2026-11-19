@@ -1098,6 +1098,24 @@ test("kits start as the default kit; an invalid kit cannot be added and says why
   expect(within(field).queryByText("default")).toBeNull();
 });
 
+test("a kit chip keeps its version while the next place's kits are asked; their answer then replaces it", async () => {
+  kits = [kit("default", { version: "0.1.0" }), kit("team")];
+  await openLaunch();
+  await ready("/src/lado");
+  openTeam();
+  const chip = () => kitsGroup().querySelector(".kits-box-chip")!;
+  await waitFor(() => expect(chip().textContent).toBe("default 0.1.0×"));
+  let answer: (response: Response) => void = () => {};
+  answers["GET /api/kits"] = () => new Promise((resolve) => (answer = resolve));
+  await ready("/src/other");
+  await waitFor(() => expect(calls.some((one) => one.path.includes("/api/kits?") && one.path.includes("other"))).toBe(true));
+  expect(chip().textContent).toBe("default 0.1.0×");
+  answer(json([kit("default", { version: "0.2.0", valid: false, problem: "bad" }), kit("team")]));
+  await waitFor(() => expect(chip().textContent).toBe("default 0.2.0×"));
+  expect(chip().className).toContain("invalid");
+  expect(chip().getAttribute("title")).toBe("bad");
+});
+
 test("without a kit Start stays off and the footer says why", async () => {
   await openLaunch();
   await ready("/src/lado");

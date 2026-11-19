@@ -211,6 +211,17 @@ export function useAsked<T>(key: string | null, ask: (key: string) => Promise<T>
   return asked !== null && asked.key === key ? asked.answer : null;
 }
 
+// The value of the last answer that had one, kept while the next key is asked or failed:
+// for a view that must not blink, where useAsked's null means "asking".
+function useLastValue<T>(asked: Asked<T>): T | null {
+  const value = valueOf(asked);
+  const [last, setLast] = useState<T | null>(null);
+  useEffect(() => {
+    if (value !== null) setLast(value);
+  }, [value]);
+  return value ?? last;
+}
+
 function useOnce<T>(ask: () => Promise<T>, skip = false): Asked<T> {
   return useAsked(skip ? null : "", () => ask());
 }
@@ -490,6 +501,9 @@ function LaunchDialog({
   // In Project the repository's git root (links resolved), as a session's folder is given.
   const root = resuming?.repo ?? (scratching ? null : projecting ? inProject?.root : folder?.root) ?? null;
   const kitList = useAsked(root ?? "", (where) => getKits(where || null));
+  // Root passes through several places while Where settles: the chips keep the last list's
+  // versions meanwhile, so a chip's × does not jump under a finger.
+  const knownKits = useLastValue(kitList);
   // Asked again for each project chosen: a project's secrets may log a CLI in. A resumed
   // session's are its project's; the other ways' none.
   const loginsOf = resuming ? (resuming.project ?? "") : projecting ? (inProject?.project ?? null) : "";
@@ -1443,7 +1457,7 @@ function LaunchDialog({
               touch("kits");
               setKits(next);
             }}
-            known={valueOf(kitList) ?? []}
+            known={knownKits ?? []}
             kitsError={kitList !== null && "error" in kitList ? kitList.error : null}
             providers={providers}
             providersNote={providersNote}

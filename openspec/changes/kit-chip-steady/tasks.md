@@ -1,6 +1,6 @@
 ## 1. The window
 
-- [ ] 1.1 `Launch.tsx` keeps the last kit list with a value and passes it to `LaunchTeam` as
+- [x] 1.1 `Launch.tsx` keeps the last kit list with a value and passes it to `LaunchTeam` as
   `known` while the next is asked; `kitsError` follows the current answer only (D1). Check:
   a new case in `web/src/Launch.test.tsx` where the second place's kit list is held pending,
   then answered; `make web`.

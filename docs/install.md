@@ -43,6 +43,7 @@ missing. The short version of this guide is in [README.md](../README.md#install)
   [Your first session](#your-first-session), [Uninstall](#uninstall)
 - [Update](#update): Docker and PyPI
 - [Common problems](#common-problems)
+- [Connect your git server](git-servers.md): a step-by-step guide in plain words
 
 ## Docker
 
@@ -265,6 +266,9 @@ token does not go here: GitHub, like your other git servers, is signed in to in 
 Git servers (below, GitHub and your git servers).
 
 #### GitHub and your git servers
+
+New to git servers? [Connect your git server](git-servers.md) walks through it step by step;
+this section is the reference.
 
 GitHub, GitHub Enterprise and GitLab are signed in to in the UI's Settings → Git servers, or
 with `docker compose exec -it lado lado git-server add github.com --token` (the token typed

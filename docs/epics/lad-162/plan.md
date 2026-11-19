@@ -2,7 +2,7 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: S9 (LAD-304, run task/lad-304) · Next: readiness · Open checks: the human's check on the company GitLab, on the release candidate that carries S8; live tests on the release candidate (S6 changed the agents' environment, never run live); 0.48.0's release checklist names what going back loses (S6b: the host's ssh agent returns only with `compose.yaml.bak`, not with the new `compose.yaml` that docs/release.md 4.6 keeps); S7: Apple's git (LibreSSL) and GnuTLS with an intermediate certificate, unchecked; S7's Docker check and "Trust?" on the company GitLab, in the human's check on the RC with S8
+In work: S9 (LAD-304, run task/lad-304) · Next: readiness · Open checks: the human's check on the company GitLab, on the release candidate that carries S8; live tests on the release candidate (S6 changed the agents' environment, never run live); 0.48.0's release checklist names what going back loses (S6b: the host's ssh agent returns only with `compose.yaml.bak`, not with the new `compose.yaml` that docs/release.md 4.6 keeps); S7: Apple's git (LibreSSL) and GnuTLS with an intermediate certificate, unchecked; S7's Docker check and "Trust?" on the company GitLab, in the human's check on the RC with S8; S9: the certificate by stdin in Docker (`lado git-server certificate <addr> - < file`), in the same RC check
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
@@ -375,6 +375,8 @@ None (the project's `GH_TOKEN` was settled at #7389: ignored).
 - A company certificate for gh (GitHub Enterprise behind a company CA): gh takes no
   per-host certificate, it needs a wrapper (~1 day); S7 says so in doctor and at an
   agent's start (#7481–#7487).
+- Met in S9's review (ledger of LAD-304): the guide's quote test matches two Check lines by
+  too short a fragment (F2), and quotes the glab ending for one line only (F1); minor.
 - Met in S7's review (ledger of LAD-301): a hand-damaged `ca.pem` fails Check, removed only
   by `lado git-server certificate <addr> --clear` (F9); the chain for "Trust?" is fetched
   directly, not through `HTTPS_PROXY`, so behind a proxy-only network no offer is made.

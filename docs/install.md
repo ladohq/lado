@@ -290,7 +290,8 @@ tool goes with it (`glab` for GitLab's merge requests, `gh` for GitHub's pull re
 kit need not say it. `glab auth status` in an agent says it is logged in, with glab's own note
 `No token found`: the token reaches glab as a header from LADO, not from a file. A
 `GITLAB_TOKEN` in `secrets/`, in a project or in your shell, and `glab auth login`, are not
-used; `lado doctor` names them.
+used; `lado doctor` names them. An `OAUTH_TOKEN` there does reach the agents, as other tools
+read it too, and their glab would send it to a GitLab not in the list: `lado doctor` warns.
 
 A company's server whose certificate the computer, or LADO's container, does not trust is
 trusted from its Check in Settings → Git servers: LADO shows the authority that signed it with

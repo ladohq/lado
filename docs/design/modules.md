@@ -32,8 +32,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     takeover's record (`github_takeover.py`) and the GitHub variables of the layers and
     projects no agent gets, by name, then `gh`'s own login (docs/cli.md); `GitLab login
     outside LADO` (`check_gitlab_login`): the GitLab variables no agent gets, by
-    `github_takeover.unused` with their names, then glab's own login, its configuration read
-    as text (`GLAB_LOGIN`); the checks of
+    `github_takeover.unused` with their names, an `OAUTH_TOKEN` agents keep
+    (`GLAB_KEPT_TOKENS`, which glab sends to a GitLab not in the list), then glab's own login,
+    its configuration read as text (`GLAB_LOGIN`); the checks of
     lado.db through `_busy`, whose lado.db locked past its wait is one `WARN` `git servers`
     line `BUSY`, never a failed doctor.
     `Workspace` (after the git servers, `check_workspace`, always; the workspace,

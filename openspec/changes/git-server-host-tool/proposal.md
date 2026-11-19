@@ -22,8 +22,10 @@ server, so LADO should say it and sign the tool in.
   each call. No token lands in the configuration; the human's own `glab` configuration is
   not read or changed.
 - **Agents get no GitLab variable from outside LADO**, as for GitHub: `GITLAB_TOKEN`,
-  `GITLAB_ACCESS_TOKEN`, `GITLAB_HOST`, `GITLAB_URI`, `GL_HOST` and `GLAB_CONFIG_DIR` of any
-  layer are dropped; `lado doctor` names them, and the human's own `glab` login, as not used.
+  `GITLAB_ACCESS_TOKEN`, `GITLAB_HOST`, `GITLAB_URI`, `GL_HOST`, `GLAB_CONFIG_DIR`,
+  `GITLAB_API_HOST` and `GITLAB_REPO` of any layer are dropped; `lado doctor` names them,
+  and the human's own `glab` login, as not used, and an `OAUTH_TOKEN` agents keep as one
+  their glab sends to a GitLab not in the list.
 - **Each agent is told its repository's server and tool.** When the session repository's
   `origin` is on a saved server, every agent's instructions carry one line naming the
   server's kind and host, its tool (`gh` or `glab`, from the kind) and what it is for (pull

@@ -1044,6 +1044,7 @@ def check_host_tools() -> list[Check]:
 
 GITLAB_OUTSIDE = "GitLab login outside LADO"
 GITLAB_SETTINGS = "a GitLab takes its token from Settings → Git servers"
+GLAB_KEPT_TOKENS = ("OAUTH_TOKEN",)  # a token glab reads that agents still get
 # A login in glab's own configuration: a token that is not empty, or one in the keyring.
 GLAB_LOGIN = re.compile(
     r"^[ \t]*(token:[ \t]*(?!\"\"|''|#)\S|use_keyring:[ \t]*true\b)", re.MULTILINE
@@ -1083,6 +1084,15 @@ def check_gitlab_login() -> list[Check]:
     if names:
         detail = f"{', '.join(names)} set but not used: {GITLAB_SETTINGS}"
         lines.append(Check(GITLAB_OUTSIDE, WARN, detail))
+    # Agents keep OAUTH_TOKEN, which other tools read too (agent_env.GITLAB_VARIABLES); glab
+    # sends it to a GitLab not in the list.
+    if kept := github_takeover.unused(layers, folder, found, GLAB_KEPT_TOKENS):
+        detail = (
+            f"{', '.join(kept)} reaches agents: their glab sends it to a GitLab not in "
+            "Settings → Git servers (gitlab.com by default)"
+        )
+        hint = "remove it from the agents' environment unless another tool needs it"
+        lines.append(Check(GITLAB_OUTSIDE, WARN, detail, hint))
     if GLAB_LOGIN.search(_glab_own_config(layers)):
         detail = "the GitLab CLI's own login is not used by agents"
         lines.append(Check(GITLAB_OUTSIDE, INFO, detail))

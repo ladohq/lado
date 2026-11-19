@@ -77,8 +77,10 @@ shell, the outside folder or a project: each agent's `gh` gets a config folder o
 no login (`GH_CONFIG_DIR=<its config folder>/gh`), `GH_TOKEN` of the github.com server, and
 `GH_ENTERPRISE_TOKEN` of the GitHub Enterprise server its repository's `origin` is on (else of
 the only one saved), with `GH_HOST` its host and port for the origin's server only. Nor do
-they get `GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`, `GITLAB_HOST`, `GITLAB_URI`, `GL_HOST` or
-`GLAB_CONFIG_DIR`: each agent's `glab` gets a config folder of its own with the saved GitLab
+they get `GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`, `GITLAB_HOST`, `GITLAB_URI`, `GL_HOST`,
+`GLAB_CONFIG_DIR`, `GITLAB_API_HOST` (it would send a saved server's requests, its token
+too, to another host) or `GITLAB_REPO` (another project): each agent's `glab` gets a config
+folder of its own with the saved GitLab
 servers alone (`lado git-server`, below).
 
 `lado start --new [<folder>]` (default: the current folder; relative paths are taken from
@@ -153,7 +155,8 @@ prints `Set secret <NAME> in project <id>.` and the agents' line above; for a Gi
 `GH_CONFIG_DIR`, plain or secret), saved all the same, `<NAME> is not given to agents:
 github.com and GitHub Enterprise take their token from Settings → Git servers.` instead, as
 no agent gets one from a project; for a GitLab variable (`GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`,
-`GITLAB_HOST`, `GITLAB_URI`, `GL_HOST`, `GLAB_CONFIG_DIR`) `<NAME> is not given to agents: a
+`GITLAB_HOST`, `GITLAB_URI`, `GL_HOST`, `GLAB_CONFIG_DIR`, `GITLAB_API_HOST`, `GITLAB_REPO`)
+`<NAME> is not given to agents: a
 GitLab takes its token from Settings → Git servers.` so. It refuses, exit 1,
 storing nothing: a value on the command line, before it reads anything (`a secret's value
 is never given on the command line (ps and the shell's history keep it); run lado project
@@ -375,7 +378,11 @@ token or host variable of the outside folder (`GH_TOKEN in <folder>`), the login
 outside LADO: the GitHub CLI's own login is not used by agents` while `gh auth token` finds a
 login of its own in the agents' environment. Neither changes the exit status. GitLab's the
 same way: `[warn] GitLab login outside LADO: GITLAB_TOKEN of your shell set but not used: a
-GitLab takes its token from Settings → Git servers` for each GitLab variable no agent gets, and
+GitLab takes its token from Settings → Git servers` for each GitLab variable no agent gets;
+`[warn] GitLab login outside LADO: OAUTH_TOKEN of your shell reaches agents: their glab sends
+it to a GitLab not in Settings → Git servers (gitlab.com by default)` with `remove it from the
+agents' environment unless another tool needs it` for an `OAUTH_TOKEN` agents keep (other
+tools read it too), and
 `[info] GitLab login outside LADO: the GitLab CLI's own login is not used by agents` while the
 human's glab configuration (its `GLAB_CONFIG_DIR`, else `$XDG_CONFIG_HOME/glab-cli` or
 `~/.config/glab-cli`) holds a token or `use_keyring: true`, read as text: no glab is run.

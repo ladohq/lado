@@ -114,8 +114,10 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `PRIVATE-TOKEN` header from LADO's helper (`lado.git_credential … token`), read at each
   call: no token in the file, a replaced token works at once. `agent_env.merge` drops
   `GITLAB_VARIABLES` (`GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`, `GITLAB_HOST`, `GITLAB_URI`,
-  `GL_HOST`, `GLAB_CONFIG_DIR`) of every layer, as GitHub's; `OAUTH_TOKEN`, `CA_CERT` and
-  `API_PROTOCOL`, which glab reads too, stay (other tools' as well; LADO's host entry wins).
+  `GL_HOST`, `GLAB_CONFIG_DIR`, `GITLAB_API_HOST`, `GITLAB_REPO`) of every layer, as
+  GitHub's; `GITLAB_URL` moves no request and stays. `OAUTH_TOKEN`, `CA_CERT` and
+  `API_PROTOCOL`, which glab reads too, stay (other tools' as well; LADO's host entry wins for
+  a saved host); glab sends `OAUTH_TOKEN` to a GitLab not in the list, so doctor names it.
 - The repository's server and its tool (`runtime._repo_tool`, once per launch): the saved
   server of the session repository's `origin` (`git_servers.server_for`, ssh addresses too)
   and its kind's tool on the agents' PATH (`git_servers.tool_state`: `<tool> --version`, cut

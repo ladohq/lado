@@ -113,13 +113,20 @@ host entry only; no variable SHALL set an authority for the agent's whole `glab`
 ### Requirement: Agents get no GitLab variable from outside LADO
 
 An agent's launch SHALL drop `GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`, `GITLAB_HOST`,
-`GITLAB_URI`, `GL_HOST` and `GLAB_CONFIG_DIR` from every layer (login shell, outside folder,
-project), so `glab` reaches a GitLab only through a saved server.
+`GITLAB_URI`, `GL_HOST`, `GLAB_CONFIG_DIR`, `GITLAB_API_HOST` and `GITLAB_REPO` from every
+layer (login shell, outside folder, project), so `glab` reaches a GitLab only through a saved
+server.
 
 #### Scenario: A token in the shell
 - **WHEN** the login shell sets `GITLAB_TOKEN` and no GitLab server is saved
 - **THEN** an agent's environment has no `GITLAB_TOKEN`, and its `glab auth status` says it
   is not logged in
+
+#### Scenario: Another host in the shell
+- **WHEN** two GitLab servers are saved and the login shell sets `GITLAB_API_HOST` and
+  `GITLAB_REPO` to a third host, which the agents' trust store accepts
+- **THEN** an agent's `glab api user` reaches each saved server with its own token, and no
+  request reaches the third host
 
 ### Requirement: An agent is told its repository's server and tool
 
@@ -170,8 +177,9 @@ run the tool.
 ### Requirement: A GitLab token without api is said to leave glab without merge requests
 
 A check, and an `add` the server answers, of a GitLab whose token's told rights do not grant
-`api` SHALL still work for git and end its line with `; glab cannot open merge requests: the
-token lacks api.`; GitLab's token hint SHALL ask for the scope `api`.
+`api` SHALL still work for git and say `glab cannot open merge requests: the token lacks api`
+at the end of its line (the check's before its full stop); GitLab's token hint SHALL ask for
+the scope `api`.
 
 #### Scenario: A token for git alone
 - **WHEN** a GitLab token's scopes are `read_repository, write_repository, read_api`

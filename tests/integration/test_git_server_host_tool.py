@@ -49,6 +49,7 @@ def world(tmp_path, monkeypatch):
         chain = made.write_chain(tmp_path / f"{name}-tls", made.server(host, root), root)
         server = Server(tmp_path / name, TOKEN, chain, profile="gitlab-full")
         server.url = server.url.replace("127.0.0.1", host)
+        server.authority = root  # the test authority that signed its certificate
         server.repository("team/app.git", work)
         servers.append(server)
     listed, other = servers
@@ -215,36 +216,101 @@ def test_a_real_glab_is_signed_in_to_the_saved_server_alone(world, repo, tmp_pat
     origin(repo, f"{listed.url}/team/app.git")
     runtime.start_session(str(repo), SESSION, None, "fake")
     wait_idle("supervisor")
-    out = tmp_path / "out"
-    out.mkdir()
-    lines = [
-        "set -u",
-        f'OUT="{out}"',
-        'run() { name=$1; shift; "$@" > "$OUT/$name.out" 2> "$OUT/$name.err"; '
-        'echo $? > "$OUT/$name.code"; }',
-        f'cd "{repo}"',
-        f"run status {glab} auth status",
-        f"run user {glab} api user",
-        f"run other {glab} api --hostname {host_of(other)} user",
-        'touch "$OUT/done"',
-    ]
-    script = tmp_path / "glab.sh"
-    script.write_text("\n".join(lines) + "\n")
-    runtime.send_message(SESSION, "human", "supervisor", f"sh sh {script}")
-    agent_helpers.wait_for(lambda: (out / "done").exists(), "the agent's glab", SESSION)
-
-    def result(name):
-        return int((out / f"{name}.code").read_text()), (out / f"{name}.out").read_text() + (
-            out / f"{name}.err"
-        ).read_text()
-
+    result = run_glab(
+        tmp_path,
+        [
+            f'cd "{repo}"',
+            f"run status {glab} auth status",
+            f"run user {glab} api user",
+            # glab takes no port in --hostname: the other host by its whole URL.
+            f"run other {glab} api {other.url}/api/v4/user",
+        ],
+    )
     code, said = result("status")
     assert code == 0, said
     assert f"Logged in to {host_of(listed)} as ivan.petrov" in said
     code, said = result("user")
     assert code == 0 and '"username": "ivan.petrov"' in said, said
-    assert result("other")[0] != 0
+    code, said = result("other")
+    assert code != 0 and "x509: certificate signed by unknown authority" in said, said
+    assert other.requests == []  # refused at TLS: not even a request without a token
     api = [r for r in listed.requests if r.path.startswith("/api/")]
     assert api and {r.private_token for r in api} == {TOKEN}
-    assert all(r.private_token in (None,) for r in other.requests)
     assert own.read_text() == "hosts:\n    gitlab.com:\n        token: glpat-HUMANS-OWN\n"
+
+
+SECOND_TOKEN = "glpat-CANARY-second-90c4"
+
+
+def test_each_saved_gitlab_gets_its_own_token_and_no_host_of_the_shell_takes_it(
+    world, repo, tmp_path, monkeypatch
+):
+    """Two saved GitLab servers, and a third host the agents' trust store accepts
+    (SSL_CERT_FILE) named by GITLAB_API_HOST and GITLAB_REPO of the shell: each saved server
+    gets its own token, the third host nothing."""
+    glab = real_glab(tmp_path / "glab-version")
+    if glab is None:
+        pytest.skip("no glab 1.114.0 or newer on PATH (the container test runs one)")
+    listed, other, _ = world
+    root = made.authority("LADO Second CA", "LADO Tests")
+    chain = made.write_chain(tmp_path / "second-tls", made.server("127.0.0.1", root), root)
+    second = Server(tmp_path / "second", SECOND_TOKEN, chain, profile="gitlab-full")
+    try:
+        checked = git_servers.Checked(git_kinds.by_name("gitlab"), "ivan.petrov")
+        git_servers.save(git_servers.address(second.url), checked, SECOND_TOKEN, root.pem)
+        # `other` is trusted by the agents' own store, so only LADO's config keeps it out.
+        trust = made.write_pem(tmp_path / "trusted.pem", other.authority)
+        monkeypatch.setenv("SSL_CERT_FILE", str(trust))
+        monkeypatch.setenv("GITLAB_API_HOST", host_of(other))
+        monkeypatch.setenv("GITLAB_REPO", f"{host_of(other)}/x/y")
+        origin(repo, f"{listed.url}/team/app.git")
+        repo2 = agent_helpers.init_repo(tmp_path / "second-repo")
+        origin(repo2, f"{second.url}/team/app.git")
+        runtime.start_session(str(repo), SESSION, None, "fake")
+        wait_idle("supervisor")
+        result = run_glab(
+            tmp_path,
+            [
+                f'cd "{repo}"',
+                f"run listed {glab} api user",
+                f"run mrs {glab} mr list",
+                f'cd "{repo2}"',
+                f"run second {glab} api user",
+            ],
+        )
+        for name in ("listed", "second"):
+            code, said = result(name)
+            assert code == 0 and '"username": "ivan.petrov"' in said, f"{name}: {said}"
+        assert other.requests == []
+        listed_api = [r for r in listed.requests if r.path.startswith("/api/")]
+        second_api = [r for r in second.requests if r.path.startswith("/api/")]
+        assert listed_api and {r.private_token for r in listed_api} == {TOKEN}
+        assert second_api and {r.private_token for r in second_api} == {SECOND_TOKEN}
+        assert not [r for r in listed_api if "x%2Fy" in r.path]  # GITLAB_REPO not taken
+    finally:
+        second.close()
+
+
+def run_glab(tmp_path: Path, lines: list[str]):
+    """Have the supervisor run `lines` in its shell, each `run <name> <command>` keeping
+    the command's status and output; a reader of them by name."""
+    out = tmp_path / "out"
+    out.mkdir(exist_ok=True)
+    body = [
+        "set -u",
+        f'OUT="{out}"',
+        'run() { name=$1; shift; "$@" > "$OUT/$name.out" 2> "$OUT/$name.err"; '
+        'echo $? > "$OUT/$name.code"; }',
+        *lines,
+        'touch "$OUT/done"',
+    ]
+    script = tmp_path / "glab.sh"
+    script.write_text("\n".join(body) + "\n")
+    runtime.send_message(SESSION, "human", "supervisor", f"sh sh {script}")
+    agent_helpers.wait_for(lambda: (out / "done").exists(), "the agent's glab", SESSION)
+
+    def result(name):
+        said = (out / f"{name}.out").read_text() + (out / f"{name}.err").read_text()
+        return int((out / f"{name}.code").read_text()), said
+
+    return result

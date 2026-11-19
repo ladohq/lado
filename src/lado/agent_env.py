@@ -112,6 +112,8 @@ GITHUB_VARIABLES = (
 # The GitLab CLI's login, host and config folder: taken from no layer (`merge`), as a
 # GitLab gets its token from the saved git servers alone (lado.git_servers.glab_variables).
 # OAUTH_TOKEN, CA_CERT and API_PROTOCOL, which glab reads too, are other tools' as well.
+# GITLAB_API_HOST sends a saved server's requests, its header too, to another host;
+# GITLAB_REPO another project. GITLAB_URL moves no request (glab 1.131), so it stays.
 GITLAB_VARIABLES = (
     "GITLAB_TOKEN",
     "GITLAB_ACCESS_TOKEN",
@@ -119,6 +121,8 @@ GITLAB_VARIABLES = (
     "GITLAB_URI",
     "GL_HOST",
     "GLAB_CONFIG_DIR",
+    "GITLAB_API_HOST",
+    "GITLAB_REPO",
 )
 
 INHERIT_HINT = (

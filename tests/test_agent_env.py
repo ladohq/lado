@@ -513,7 +513,10 @@ def test_gitlab_variables_from_no_layer(shell, outdir):
         "GITLAB_URI",
         "GL_HOST",
         "GLAB_CONFIG_DIR",
+        "GITLAB_API_HOST",
+        "GITLAB_REPO",
     )
+    assert "GITLAB_URL" not in names  # glab 1.131 sends no request elsewhere by it
     shell(rc="export OAUTH_TOKEN=shell CA_CERT=shell " + " ".join(f"{n}=shell" for n in names))
     for name in names:
         write(outdir, name, b"out\n")

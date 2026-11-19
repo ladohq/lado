@@ -25,13 +25,22 @@ and print no such line with no saved server.
 
 `lado doctor` SHALL print `[warn] GitLab login outside LADO: <names> set but not used: a
 GitLab takes its token from Settings → Git servers` while a layer or a project's secret sets
-a dropped GitLab variable, never a value; `[info]` that `glab`'s own login is not used while
-the human's `glab` configuration holds a token or a keyring login; no line otherwise.
+a dropped GitLab variable, never a value; `[warn]` that `OAUTH_TOKEN`, which agents keep,
+reaches their glab while a layer or a project sets it; `[info]` that `glab`'s own login is not
+used while the human's `glab` configuration holds a token or a keyring login; no line
+otherwise.
 
 #### Scenario: A token in the shell
 - **WHEN** the login shell sets `GITLAB_TOKEN`
 - **THEN** doctor prints `[warn] GitLab login outside LADO: GITLAB_TOKEN of your shell set
   but not used: a GitLab takes its token from Settings → Git servers`
+
+#### Scenario: An OAuth token in the shell
+- **WHEN** the login shell sets `OAUTH_TOKEN`
+- **THEN** doctor prints `[warn] GitLab login outside LADO: OAUTH_TOKEN of your shell reaches
+  agents: their glab sends it to a GitLab not in Settings → Git servers (gitlab.com by
+  default)` with the hint `remove it from the agents' environment unless another tool needs
+  it`
 
 #### Scenario: glab logged in
 - **WHEN** the human's `glab` configuration holds a token for `gitlab.com`

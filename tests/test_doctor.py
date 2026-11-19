@@ -2144,7 +2144,7 @@ GLAB_OWN = (doctor.INFO, f"{GITLAB_OUTSIDE}: the GitLab CLI's own login is not u
 
 @pytest.fixture
 def no_gitlab(monkeypatch, tmp_path):
-    for name in agent_env.GITLAB_VARIABLES:
+    for name in (*agent_env.GITLAB_VARIABLES, "OAUTH_TOKEN"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.delenv(agent_env.ENV_DIR_VAR, raising=False)
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
@@ -2166,6 +2166,35 @@ def test_a_gitlab_token_of_the_shell_is_named(no_gitlab, monkeypatch):
         (doctor.WARN, f"{GITLAB_OUTSIDE}: GITLAB_TOKEN of your shell {GITLAB_NOT_USED}")
     ]
     assert "CANARY" not in str(lines)
+
+
+def test_a_gitlab_host_of_the_shell_is_named(no_gitlab, monkeypatch):
+    monkeypatch.setenv("GITLAB_API_HOST", "gitlab.other.example")
+    monkeypatch.setenv("GITLAB_REPO", "gitlab.other.example/team/app")
+    assert _gitlab_lines() == [
+        (
+            doctor.WARN,
+            f"{GITLAB_OUTSIDE}: GITLAB_API_HOST of your shell, GITLAB_REPO of your shell "
+            f"{GITLAB_NOT_USED}",
+        )
+    ]
+
+
+def test_an_oauth_token_agents_keep_is_named(no_gitlab, monkeypatch):
+    # glab sends OAUTH_TOKEN to a GitLab not in the list (gitlab.com for a repository on
+    # none); agents keep it, as other tools read it too.
+    monkeypatch.setenv("OAUTH_TOKEN", "CANARY-oauth")
+    lines = _gitlab_lines()
+    assert lines == [
+        (
+            doctor.WARN,
+            f"{GITLAB_OUTSIDE}: OAUTH_TOKEN of your shell reaches agents: their glab sends it "
+            "to a GitLab not in Settings → Git servers (gitlab.com by default)",
+        )
+    ]
+    assert "CANARY" not in str(lines)
+    [check] = doctor.check_gitlab_login()
+    assert check.hint == "remove it from the agents' environment unless another tool needs it"
 
 
 def test_a_gitlab_variable_of_the_folder_and_a_project_are_named(

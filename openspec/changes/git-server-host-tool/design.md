@@ -73,13 +73,19 @@ the human learns it.
 ### D3. GitLab variables of the layers are dropped
 
 `agent_env.GITLAB_VARIABLES = ("GITLAB_TOKEN", "GITLAB_ACCESS_TOKEN", "GITLAB_HOST",
-"GITLAB_URI", "GL_HOST", "GLAB_CONFIG_DIR")`, dropped in `merge` beside `GITHUB_VARIABLES`.
+"GITLAB_URI", "GL_HOST", "GLAB_CONFIG_DIR", "GITLAB_API_HOST", "GITLAB_REPO")`, dropped in
+`merge` beside `GITHUB_VARIABLES`.
 `GITLAB_HOST` would make glab refuse a repository whose remote is another host; the tokens
 would reach every host of the configuration (checked: LADO's header still wins for a saved
-host, but a token of the shell must not reach a listed server unasked). Generic names glab
-also reads (`OAUTH_TOKEN`, `CA_CERT`, `API_PROTOCOL`) are left: they belong to other tools
-too, and LADO's per-host entries win over them for a saved server. `for_git` (LADO's own git)
-does not run glab and is unchanged.
+host, but a token of the shell must not reach a listed server unasked). `GITLAB_API_HOST`
+sends a saved server's requests, LADO's header with them, to another host, and `GITLAB_REPO`
+points `glab mr` at another project (checked on glab 1.131, the review's finding F1);
+`GITLAB_URL` moves no request there and stays. Generic names glab also reads
+(`OAUTH_TOKEN`, `CA_CERT`, `API_PROTOCOL`) are left: they belong to other tools too, and
+LADO's per-host entries win over them for a saved server. But glab sends an `OAUTH_TOKEN` of
+the environment to a GitLab not in the list (gitlab.com for a repository on none, checked
+with `GLAB_DEBUG_HTTP`), so `lado doctor` names it (D7). `for_git` (LADO's own git) does not
+run glab and is unchanged.
 
 ### D4. The agent's line is part of its instructions
 
@@ -122,7 +128,10 @@ gets one line per distinct tool of the saved servers' kinds, by the agents' PATH
 ### D7. The human's own glab login is named, not used
 
 doctor's `GitLab login outside LADO`: `warn` for each dropped variable of a layer or a
-project's secret (as `github_takeover.unused` names GitHub's, by name only); `info` when the
+project's secret (as `github_takeover.unused` names GitHub's, by name only); `warn` for an
+`OAUTH_TOKEN` of them, which agents keep (D3) and their glab sends to a GitLab not in the
+list, with the hint `remove it from the agents' environment unless another tool needs it`
+(the human's note at design_ok); `info` when the
 human's own glab configuration (glab's `config path` without LADO's `GLAB_CONFIG_DIR`, read
 as text) has a host with a non-empty `token:` or `use_keyring: true`. No glab call against a
 server, no network. No takeover of that login: a GitLab is added in Settings.

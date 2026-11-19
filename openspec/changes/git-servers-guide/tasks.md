@@ -79,7 +79,7 @@
 
 ## 5. Manual check for the human (put these steps in the pull request's description)
 
-- [ ] 5.1 The pull request's description carries, in English: open `docs/git-servers.md`
+- [x] 5.1 The pull request's description carries, in English: open `docs/git-servers.md`
   on GitHub's preview of the branch; follow it with your own GitHub token (and a GitLab
   one, if you have it; one without `api` shows the glab ending) on a LADO of this branch;
   say whether every step and every answer of Check is clear to someone who does not know

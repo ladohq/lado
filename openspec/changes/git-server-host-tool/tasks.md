@@ -58,6 +58,6 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-19-git-server-h
 
 ## 11. Regression
 
-- [ ] 11.1 `make lint`, `make test`, 7.1 with `-m integration`, `openspec validate
+- [x] 11.1 `make lint`, `make test`, 7.1 with `-m integration`, `openspec validate
   git-server-host-tool --strict`, `openspec validate --specs --strict`, the trial archive; the
   pull request carries the manual check. Check: the commands' exit status.

@@ -878,7 +878,8 @@ def _check(url) -> git_servers.Check:
             "gitlab",
             "Works: GitLab, signed in as ivan.petrov, may clone and push; glab cannot open "
             "merge requests: the token lacks api.",
-            "Works: signed in as ivan.petrov, may clone and push.",
+            "Works: signed in as ivan.petrov, may clone and push; glab cannot open merge "
+            "requests: the token lacks api.",
         ),
         (
             "gitlab",
@@ -1084,6 +1085,17 @@ def test_a_passing_check_saves_the_login_of_one_saved_without_a_check(serve, lad
     [after] = state.git_servers()
     assert (after.id, after.login, after.kind) == (before.id, fake.LOGIN, "gitlab")
     assert (lado_home / "git-servers" / before.id / "token").read_text() == TOKEN
+
+
+def test_a_first_check_of_a_token_for_git_alone_says_what_glab_cannot(serve, lado_home):
+    server = serve("gitlab-git", token=TOKEN)
+    _saved(server.url, login=None)
+    found = _check(server.url)
+    assert (found.outcome, found.tool_missing) == ("ok", ("api",))
+    assert found.page == (
+        "Works: GitLab, signed in as ivan.petrov; glab cannot open merge requests: the token "
+        "lacks api."
+    )
 
 
 def test_a_check_without_save_login_writes_nothing(serve, lado_home):

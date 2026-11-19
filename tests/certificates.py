@@ -59,10 +59,12 @@ def authority(
     issuers_url: str | None = None,
     not_before: datetime.datetime | None = None,
     not_after: datetime.datetime | None = None,
+    key: ec.EllipticCurvePrivateKey | None = None,
 ) -> Made:
     """An authority: a root signed by itself, or an intermediate signed by `issuer`, with
-    its issuer's link `issuers_url` (`CA Issuers`) when given."""
-    key = ec.generate_private_key(ec.SECP256R1())
+    its issuer's link `issuers_url` (`CA Issuers`) when given; `key` another authority's
+    key, for a cross-signed one."""
+    key = key or ec.generate_private_key(ec.SECP256R1())
     subject = _name(common, organization)
     signer = issuer.key if issuer else key
     builder = (

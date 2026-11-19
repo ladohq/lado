@@ -181,13 +181,61 @@ def test_a_self_signed_server_offers_its_own_certificate(start, tmp_path):
     assert offer.subject == "localhost"
 
 
-def test_a_server_sending_its_certificate_alone_offers_it_as_its_own(start, tmp_path, corp):
+def test_a_server_sending_its_certificate_alone_offers_it_as_the_highest_sent(
+    start, tmp_path, corp
+):
+    """Signed by an authority it does not send: not the server's own, which it did not sign."""
     root, _ = corp
     leaf = made.server("localhost", root)
     server = _tls(start, tmp_path, leaf)
     offer = git_certificates.offer("localhost", server.port)
     assert offer.pem == leaf.pem
-    assert offer.own
+    assert offer.intermediate and not offer.own
+
+
+def test_cross_signed_authorities_end_the_walk(start, tmp_path):
+    """R1 signed by R2 and R2 by R1, both sent: the walk stops at the first one seen again."""
+    r1, r2 = made.authority("R1"), made.authority("R2")
+    r1x = made.authority("R1", issuer=r2, key=r1.key)
+    r2x = made.authority("R2", issuer=r1, key=r2.key)
+    server = _tls(start, tmp_path, made.server("localhost", r1), r1x, r2x)
+    offer = git_certificates.offer("localhost", server.port)
+    assert offer.subject in ("R1", "R2")
+    assert offer.intermediate
+
+
+def test_an_expired_authority_from_an_issuer_link_gets_no_offer_but_a_reason(start, tmp_path):
+    ended = made.NOW - made.DAY
+    root = made.authority("Corp Root CA", not_before=ended - 30 * made.DAY, not_after=ended)
+    files: dict[str, bytes] = {}
+    pki = start(made.HTTPServer(files=files))
+    issuing = made.authority("Corp Issuing CA 2", issuer=root, issuers_url=f"{pki.url}/root.crt")
+    files["/root.crt"] = root.der
+    server = _tls(start, tmp_path, made.server("localhost", issuing), issuing)
+    with pytest.raises(git_certificates.NoOffer) as raised:
+        git_certificates.offer("localhost", server.port)
+    assert raised.value.outcome == git_certificates.EXPIRED
+    assert raised.value.expired_on == ended.date()
+
+
+def test_a_python_that_gives_no_chain_is_a_plain_reason(start, tmp_path, corp, monkeypatch):
+    root, _ = corp
+    server = _tls(start, tmp_path, made.server("localhost", root), root)
+
+    def missing(tls):
+        raise AttributeError("'_ssl._SSLSocket' object has no attribute 'get_unverified_chain'")
+
+    monkeypatch.setattr(git_certificates, "_unverified", missing)
+    with pytest.raises(git_certificates.NoOffer) as raised:
+        git_certificates.offer("localhost", server.port)
+    assert raised.value.outcome == git_certificates.TLS
+    assert raised.value.why == "this Python cannot read the server's certificates"
+
+
+def test_an_expired_file_is_taken_when_expired_ones_are_allowed():
+    ended = made.NOW - 10 * made.DAY
+    old = made.authority("Old CA", not_before=ended - 30 * made.DAY, not_after=ended)
+    assert git_certificates.from_file(old.pem.encode(), "old", expired_ok=True) == old.pem
 
 
 def test_a_certificate_of_another_host_gets_no_offer(start, tmp_path, corp):

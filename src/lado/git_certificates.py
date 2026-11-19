@@ -8,9 +8,11 @@ writing nothing after it, so no request and no token leaves (the private
 the authority to trust: the chain's top when it signed itself, else its issuer found by the
 `CA Issuers` link of each certificate (at most LINKS links, each cut at LINK_TIMEOUT and
 LINK_MAX bytes, with no header but `User-Agent`, no redirect followed), a certificate kept
-only when it signed the one below it; else the highest certificate held (`intermediate`), or
-the server's own (`own`). It offers it only once a connection trusting it alone reaches the
-server with its host name checked; a failure trust cannot fix is NoOffer with its outcome.
+only when it signed the one below it, a certificate met again ending the walk; else the
+highest certificate held (`intermediate`), or the server's own when it signed itself
+(`own`). It offers it only once a connection trusting it alone reaches the server with its
+host name checked; a failure trust cannot fix is NoOffer with its outcome, and so is a Python
+that gives no chain.
 
 `context` is the TLS context of LADO's own requests to a server with a certificate: that
 certificate alone, an intermediate taken as the last authority, as git's curl takes it.
@@ -42,6 +44,7 @@ MAX_FILE = 1024 * 1024  # bytes of a certificate file
 NAME, EXPIRED, TLS = "cert_name", "cert_expired", "tls"  # NoOffer's outcomes
 HOSTNAME_MISMATCH = 62  # X509_V_ERR_HOSTNAME_MISMATCH
 CERT_HAS_EXPIRED = 10  # X509_V_ERR_CERT_HAS_EXPIRED
+NO_CHAIN = "this Python cannot read the server's certificates"
 
 
 @dataclass(frozen=True)
@@ -119,10 +122,11 @@ def parse(pem: str) -> list[Certificate]:
         return []
 
 
-def from_file(data: bytes, name: str) -> str:
+def from_file(data: bytes, name: str, expired_ok: bool = False) -> str:
     """The PEM LADO keeps of the file `name` holding `data`: its certificates alone, in its
     order. BadFile for one larger than MAX_FILE, one with no PEM certificate, or one whose
-    certificates all expired."""
+    certificates all expired (but with `expired_ok`: the page's Undo puts back what was
+    saved)."""
     if len(data) > MAX_FILE:
         raise BadFile(f"{name} is larger than 1 MB")
     try:
@@ -130,7 +134,7 @@ def from_file(data: bytes, name: str) -> str:
     except ValueError:
         raise BadFile(f"{name} holds no certificate") from None
     now = datetime.datetime.now(datetime.timezone.utc)
-    if all(cert.not_valid_after_utc < now for cert in found):
+    if not expired_ok and all(cert.not_valid_after_utc < now for cert in found):
         last = max(cert.not_valid_after_utc for cert in found)
         raise BadFile(f"{name}: the certificate expired on {last.date().isoformat()}")
     return "".join(cert.public_bytes(serialization.Encoding.PEM).decode() for cert in found)
@@ -158,7 +162,7 @@ def _unverified(tls: ssl.SSLSocket) -> list[bytes]:
 def chain(host: str, port: int) -> list[bytes]:
     """The DER certificates the server at `host`:`port` shows, its own first, from a TLS
     handshake that checks nothing; nothing is written after it. OSError (ssl.SSLError among
-    them) for a server not reached."""
+    them) for a server not reached; NoOffer when this Python gives no chain."""
     unchecked = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     unchecked.check_hostname = False
     unchecked.verify_mode = ssl.CERT_NONE
@@ -166,7 +170,10 @@ def chain(host: str, port: int) -> list[bytes]:
         socket.create_connection((host, port), TIMEOUT) as raw,
         unchecked.wrap_socket(raw, server_hostname=host) as tls,
     ):
-        return _unverified(tls)
+        try:
+            return _unverified(tls)
+        except (AttributeError, TypeError):  # a Python without the private method
+            raise NoOffer(TLS, NO_CHAIN) from None
 
 
 def _signed(cert: x509.Certificate, issuer: x509.Certificate) -> bool:
@@ -220,16 +227,19 @@ def _fetch(url: str) -> list[x509.Certificate]:
 
 def _top(sent: list[x509.Certificate]) -> x509.Certificate:
     """The highest authority found above the server's certificate: through the certificates
-    it sent, then issuer links, each kept only when it signed the one below."""
+    it sent, then issuer links, each kept only when it signed the one below; a certificate
+    met again (authorities signing each other) ends the walk."""
     current = sent[0]
+    seen = {current.fingerprint(hashes.SHA256())}
     links = 0
     while not _self_signed(current):
         above = next((c for c in sent if c is not current and _signed(current, c)), None)
         if above is None and links < LINKS and (url := _link(current)):
             links += 1
             above = next((c for c in _fetch(url) if _signed(current, c)), None)
-        if above is None:
+        if above is None or above.fingerprint(hashes.SHA256()) in seen:
             break
+        seen.add(above.fingerprint(hashes.SHA256()))
         current = above
     return current
 
@@ -254,9 +264,14 @@ def _reaches(host: str, port: int, found: Certificate, sent: list[x509.Certifica
                 only_cn = True
             raise NoOffer(NAME, why, common_name_only=only_cn) from None
         if exc.verify_code == CERT_HAS_EXPIRED:
+            # The server's own date first, else the earliest of the authorities, sent or
+            # fetched by an issuer link (`found`).
             now = datetime.datetime.now(datetime.timezone.utc)
-            ended = [c.not_valid_after_utc for c in sent if c.not_valid_after_utc < now]
-            when = leaf.not_valid_after_utc if leaf.not_valid_after_utc < now else min(ended)
+            ends = [c.not_valid_after_utc for c in sent] + [found.not_after]
+            ended = [end for end in ends if end < now]
+            if not ended:
+                raise NoOffer(TLS, why) from None
+            when = ends[0] if ends[0] < now else min(ended)
             raise NoOffer(EXPIRED, why, expired_on=when.date()) from None
         raise NoOffer(TLS, why) from None
     except (OSError, ValueError) as exc:
@@ -282,8 +297,10 @@ def offer(host: str, port: int) -> Certificate:
         sent = []
     if not sent:
         raise NoOffer(TLS, "the server sent no certificate")
-    leaf = sent[0]
     top = _top(sent)
-    found = describe(top, own=top is leaf, intermediate=top is not leaf and not _self_signed(top))
+    signed_itself = _self_signed(top)
+    # The server's own certificate only when it signed itself; any other top is the highest
+    # authority LADO got, the server's certificate too when nothing above it was found.
+    found = describe(top, own=signed_itself and top is sent[0], intermediate=not signed_itself)
     _reaches(host, port, found, sent)
     return found

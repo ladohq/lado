@@ -18,7 +18,7 @@ import certificates as made
 import fake_git_api as fake
 import pytest
 
-from lado import git_kinds, git_servers, model_servers, state
+from lado import git_certificates, git_kinds, git_servers, model_servers, state
 
 TOKEN = "glpat-CANARY-7f3e9a"  # a canary: no output or file but its own may hold it
 
@@ -2011,3 +2011,25 @@ def test_the_address_check_offers_the_authority(serve, lado_home, tmp_path):
     assert found.choose
     assert found.why.offer.pem == root.pem
     assert found.why.page == "The server's certificate is not trusted."
+
+
+def test_a_python_that_gives_no_chain_makes_the_check_say_so(
+    serve, lado_home, tmp_path, monkeypatch
+):
+    root = made.authority("Corp Root CA")
+    leaf = made.server("localhost", root)
+    server = serve("gitlab-full", token=TOKEN, certificate=made.write_chain(tmp_path, leaf, root))
+    url = _local(server)
+    _saved(url)
+
+    def missing(tls):
+        raise AttributeError("get_unverified_chain")
+
+    monkeypatch.setattr(git_certificates, "_unverified", missing)
+    found = _check(url)
+    key = git_servers.address(url).key
+    assert found.outcome == "no_answer"
+    assert found.text == (
+        f"{key} does not answer: TLS failed (this Python cannot read the server's certificates)"
+    )
+    assert found.offer is None

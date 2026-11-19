@@ -210,16 +210,8 @@ def test_add_servers_in_each_state(
             git.get_by_role("button", name="Replace the token of https://gitlab.com")
         ).to_be_focused()
 
-        # github.com: refused under Address.
-        plus_add(page).click()
-        address.fill("github.com")
-        expect(
-            git.get_by_text("github.com uses the GitHub CLI's login: it is not added here.")
-        ).to_be_visible()
-        expect(form_add(page)).to_be_disabled()
-        shot(page, "github-com")
-
         # No answer: the kind chosen by hand, saved without a check.
+        plus_add(page).click()
         silent = f"http://localhost:{closed_port()}"
         address.fill(silent)
         expect(
@@ -484,6 +476,70 @@ def test_the_author_with_undo_and_remove_server(browser: Browser, server, lado_h
         context.close()
 
 
+@pytest.fixture
+def github_com(tmp_path, monkeypatch):
+    """The fake GitHub API as https://api.github.com for the server, as gitlab_com is: with
+    no token GitHub's 401, with TOKEN its user with the scope repo. Taken before `server`."""
+    folder = tmp_path / "github-ca"
+    folder.mkdir()
+    with fake.reached_as(monkeypatch, folder, "api.github.com", "github-com", token=TOKEN) as api:
+        yield api
+
+
+def test_github_com_is_added_checked_and_removed_as_any_server(
+    browser: Browser, github_com, server, tmp_path, lado_home, capsys, shot
+):
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
+    try:
+        page = context.new_page()
+        answers = keeping(page)
+        open_page(page, server)
+        git = section(page)
+        plus_add(page).click()
+        address = git.get_by_role("textbox", name="Address")
+        address.fill("github.com")
+        expect(git.locator(".mx-found")).to_have_text("GitHub answers.")
+        link = git.get_by_role("link", name="its token page")
+        expect(link).to_have_attribute("href", "https://github.com/settings/tokens")
+        expect(link.locator("..")).to_contain_text("scope repo")
+        assert all("Authorization" not in r.headers for r in github_com.requests)
+        shot(page, "add")
+        git.get_by_role("textbox", name="Token").fill(TOKEN)
+        form_add(page).click()
+
+        dotcom = row(page, "https://github.com")
+        expect(dotcom.locator(".gx-top")).to_have_text(f"Saved: GitHub, signed in as {fake.LOGIN}.")
+        expect(head(page, "https://github.com")).to_contain_text("GitHub")
+        shot(page, "saved")
+        assert [r[:3] for r in listed(capsys)] == [["https://github.com", "GitHub", fake.LOGIN]]
+
+        dotcom.get_by_role("button", name="Check https://github.com").click()
+        expect(dotcom.locator(".gx-result")).to_have_text(
+            f"Works: signed in as {fake.LOGIN}, may clone and push."
+        )
+        shot(page, "checked")
+
+        dotcom.get_by_role("button", name="Set the commit author of https://github.com").click()
+        dotcom.get_by_role("textbox", name="Name").fill("Ivan Petrov")
+        dotcom.get_by_role("textbox", name="Email").fill("ivan.petrov@example.com")
+        dotcom.get_by_role("button", name="Save author").click()
+        expect(dotcom.locator(".gx-result")).to_have_text("Author saved.")
+        assert state.git_server_by_host("github.com").author_name == "Ivan Petrov"
+        shot(page, "author")
+
+        dotcom.get_by_role("button", name="Remove https://github.com").click()
+        git.get_by_role("alertdialog").get_by_role("button", name="Remove server").click()
+        expect(git.get_by_text("Removed https://github.com.")).to_be_visible()
+        assert state.git_servers() == []
+        # GitHub asked at api.github.com alone (the form opens on gitlab.com, which is not
+        # routed here); never at github.com itself.
+        assert "api.github.com:443" in github_com.proxy.asked
+        assert "github.com:443" not in github_com.proxy.asked
+        token_nowhere(page, answers, tmp_path, lado_home)
+    finally:
+        context.close()
+
+
 @pytest.mark.parametrize(("width", "height"), [(1440, 900), (768, 1024), (390, 844)])
 def test_the_page_at_each_width(browser: Browser, server, lado_home, shot, width, height):
     corp = "https://gitlab.corp.example"
@@ -505,7 +561,9 @@ def test_the_page_at_each_width(browser: Browser, server, lado_home, shot, width
         no_sideways_scroll(page)
         shot(page, "page")
         git.get_by_role("button", name="About Servers").click()
-        expect(git.get_by_text(re.compile("^Your GitLab, gitlab.com or GitHub"))).to_be_visible()
+        expect(
+            git.get_by_text(re.compile("^Your GitLab, gitlab.com, GitHub or GitHub"))
+        ).to_be_visible()
         git.get_by_role("button", name="About Servers").press("Escape")
 
         # Add: the Token tip opens above, leaving the token page link pressable, and a

@@ -17,17 +17,18 @@
 # file's, its value the content): `mkdir -m 700 secrets`, then add
 # `-v "$PWD/secrets:/run/secrets:ro"` to the `docker run`. Without it there are none and
 # LADO says nothing about it. They are read at each agent's start and never in `docker
-# inspect`: GH_TOKEN
-# (git over https to github.com and gh; or `docker exec -it lado gh auth login`),
-# CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`; or log in once with `docker exec -it
-# lado claude`), Codex's CODEX_ACCESS_TOKEN (a ChatGPT Business or Enterprise access
-# token) or OPENAI_API_KEY (or log in once with `docker exec -it lado codex login
-# --device-auth`), a kit's key, a model provider's key for OpenCode and Kilo (or `opencode
-# auth login` / `kilo auth login` inside). Logins made inside stay on the home volume;
-# Codex's is shared by every Codex agent. Every agent of the container can read every
-# variable given to it; another LADO keeps its own folder. LADO_GIT_NAME and LADO_GIT_EMAIL are git's
-# identity for the agents' commits, written at every start (without them `docker logs`
-# warns). The host's ssh agent, for git over ssh: on a Mac add
+# inspect`: CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`; or log in once with
+# `docker exec -it lado claude`), Codex's CODEX_ACCESS_TOKEN (a ChatGPT Business or
+# Enterprise access token) or OPENAI_API_KEY (or log in once with `docker exec -it lado
+# codex login --device-auth`), a kit's key such as YOUGILE_API_KEY, a model provider's key
+# for OpenCode and Kilo (or `opencode auth login` / `kilo auth login` inside). Logins made
+# inside stay on the home volume; Codex's is shared by every Codex agent. Every agent of the
+# container can read every variable given to it; another LADO keeps its own folder.
+# LADO_GIT_NAME and LADO_GIT_EMAIL are git's identity for the agents' commits, written at
+# every start (without them `docker logs` warns). GitHub and your other git servers over
+# https: Settings → Git servers (or `docker exec -it lado lado git-server add github.com
+# --token`); the agents' git and gh get their tokens from there. The host's ssh agent, for
+# git over ssh: on a Mac add
 # `-v /run/host-services/ssh-auth.sock:/run/lado/ssh-agent.sock` (Docker Desktop's), on
 # Linux `-v "$SSH_AUTH_SOCK:/run/lado/ssh-agent.sock"`; every agent may then use the
 # host's keys. compose.yaml names it LADO_SSH_AGENT.
@@ -159,12 +160,9 @@ RUN printf '%s\n' 'lado ALL=(root) NOPASSWD: /usr/local/bin/lado-ssh-agent-socke
 # image: the human's own come at run time.
 COPY --chmod=644 docker/ssh_known_hosts /etc/ssh/ssh_known_hosts
 # git trusts every repository: the workspace's owner may seem another user (git 2.39 has no
-# `<path>/*` form, and the container has one user). It gets github.com's https credentials
-# from gh: GH_TOKEN, or gh's own login on the home volume (what `gh auth setup-git` writes;
-# the empty helper drops any helper set before it).
-RUN git config --system --add safe.directory '*' \
- && git config --system credential.https://github.com.helper '' \
- && git config --system --add credential.https://github.com.helper '!/usr/bin/gh auth git-credential'
+# `<path>/*` form, and the container has one user). No credential helper of the image's:
+# github.com's token, as any git server's, comes from Settings → Git servers.
+RUN git config --system --add safe.directory '*'
 
 USER lado
 WORKDIR /home/lado

@@ -23,7 +23,7 @@ from lado.flows import IDENTIFIER
 
 # `lado update` of a later LADO reads this line from this release's wheel to learn the schema
 # it knows (update.release_schema): keep its form, `SCHEMA_VERSION = <N>` on a line of its own.
-SCHEMA_VERSION = 42
+SCHEMA_VERSION = 43
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -1080,6 +1080,20 @@ GIT_SERVERS_AUTHOR = [
 SCHEMA += "".join(f"{step};\n" for step in GIT_SERVERS_AUTHOR)
 MIGRATIONS[41] = GIT_SERVERS_AUTHOR
 
+# From version 43: the takeover of the GitHub login into the github.com git server
+# (lado.github_takeover), at most one row, apart from the server, so a removal of the
+# server never makes it run again. Its source in words, never a token.
+GITHUB_TAKEOVER_TABLE = """
+CREATE TABLE IF NOT EXISTS github_takeover (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    ran_at TEXT NOT NULL DEFAULT (datetime('now')),  -- UTC
+    outcome TEXT NOT NULL,        -- saved, unchecked, refused, none, kept; pending: again
+    source TEXT,                  -- e.g. "GH_TOKEN of your shell"; NULL for none found
+    why TEXT                      -- a pending one's: why the GitHub CLI's login was not read
+)"""
+SCHEMA += GITHUB_TAKEOVER_TABLE + ";\n"
+MIGRATIONS[42] = [GITHUB_TAKEOVER_TABLE]
+
 # Where an agent's model or effort came from. Each later way of choosing one adds a token;
 # a token this LADO does not know (a newer LADO's row) is shown as itself (source_words).
 CLI_DEFAULT = "cli"  # the CLI's own choice: its default or its own settings
@@ -1475,7 +1489,18 @@ def _open() -> sqlite3.Connection:
         conn = sqlite3.connect(home() / "lado.db", timeout=10, isolation_level=None)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
+    # Switching a new lado.db to WAL takes no busy wait: another process opening it at the
+    # same moment makes it "locked" at once. Tried again within the connection's timeout.
+    deadline = time.monotonic() + 10
+    while True:
+        try:
+            conn.execute("PRAGMA journal_mode = WAL")
+            break
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc) or time.monotonic() >= deadline:
+                conn.close()
+                raise
+            time.sleep(0.05)
     # In WAL a commit then holds the write lock without an fsync (a busy disk stretched it
     # to seconds); a power cut may lose the last commits, never the database.
     conn.execute("PRAGMA synchronous = NORMAL")
@@ -1526,18 +1551,43 @@ def read_schema_refusal() -> tuple[str, str] | None:
 
 
 @contextmanager
+def _making() -> Iterator[None]:
+    """One process at a time opens a lado.db that is not at this LADO's schema, and makes
+    it when there is none: an exclusive flock on LADO_HOME itself (no file of its own),
+    released when the folder's descriptor closes. None while LADO_HOME is not there and
+    must not be made (home_not_made: no lado.db to make either)."""
+    import fcntl
+
+    if _not_made and not home_path().is_dir():
+        yield
+        return
+    fd = os.open(home(), os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
+
+
+@contextmanager
 def connect() -> Iterator[sqlite3.Connection]:
     """lado.db, made when there is none. It never migrates: another schema version is a
     SchemaError, so no process opening it upgrades the database under a running session
-    (only migrate() does, which the CLI calls when no session runs)."""
-    conn = _open()
-    if conn.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION:
-        refused = schema_refusal(conn)
-        if refused is not None:
+    (only migrate() does, which the CLI calls when no session runs). One process makes it at
+    a time (`_making`): another that opens it meanwhile waits and finds it whole."""
+    conn = _open() if _not_made or (home_path() / "lado.db").exists() else None
+    if conn is None or conn.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION:
+        if conn is not None:
             conn.close()
-            raise SchemaError(refused[1])
-        conn.executescript(SCHEMA)
-        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        with _making():
+            conn = _open()
+            if conn.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION:
+                refused = schema_refusal(conn)
+                if refused is not None:
+                    conn.close()
+                    raise SchemaError(refused[1])
+                conn.executescript(SCHEMA)
+                conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     try:
         yield conn
     finally:
@@ -4274,6 +4324,35 @@ def remove_git_server(id: str) -> bool:
     """False when there was no such server."""
     with connect() as db:
         return db.execute("DELETE FROM git_servers WHERE id = ?", (id,)).rowcount == 1
+
+
+@dataclass(frozen=True)
+class GithubTakeover:
+    """The record of the GitHub login's takeover (lado.github_takeover)."""
+
+    ran_at: str  # UTC, YYYY-MM-DD HH:MM:SS
+    outcome: str
+    source: str | None
+    why: str | None = None
+
+
+def github_takeover() -> GithubTakeover | None:
+    with connect() as db:
+        row = db.execute("SELECT * FROM github_takeover").fetchone()
+    if row is None:
+        return None
+    return GithubTakeover(row["ran_at"], row["outcome"], row["source"], row["why"])
+
+
+def record_github_takeover(outcome: str, source: str | None, why: str | None = None) -> None:
+    """Write the takeover's one row, over any before."""
+    with connect() as db:
+        db.execute(
+            "INSERT INTO github_takeover (id, outcome, source, why) VALUES (1, ?, ?, ?)"
+            " ON CONFLICT(id) DO UPDATE SET ran_at = datetime('now'),"
+            " outcome = excluded.outcome, source = excluded.source, why = excluded.why",
+            (outcome, source, why),
+        )
 
 
 class ModelsChanged(Exception):

@@ -1,10 +1,12 @@
 """`lado doctor`: check that the machine has what LADO needs."""
 
+import contextlib
 import os
 import platform
 import re
 import shlex
 import shutil
+import sqlite3
 import stat
 import subprocess
 from collections.abc import Callable
@@ -19,6 +21,7 @@ from lado import (
     gui_session,
     kits,
     logins,
+    loop,
     model_check,
     model_servers,
     model_settings,
@@ -944,6 +947,64 @@ def check_git_servers() -> list[Check]:
         return list(pool.map(checked, servers))
 
 
+BUSY = Check("git servers", WARN, "not checked: lado.db is busy")
+GITHUB_LOGIN = "GitHub login"
+GITHUB_OUTSIDE = "GitHub login outside LADO"
+
+
+def check_github_login() -> list[Check]:
+    """The GitHub login's takeover (lado.github_takeover) as lado.db records it, and each
+    GitHub variable of the agents' layers or of a project that no agent gets, by name, then
+    the GitHub CLI's own login when it holds one; never a value. lado.db is read as it is."""
+    from lado import github_takeover
+
+    lines = []
+    try:
+        record = state.github_takeover() if state.schema_version() is not None else None
+    except state.SchemaError:
+        record = None
+    if record is None or record.outcome == github_takeover.PENDING:
+        detail = "taken over at the next lado ui or lado start"
+        if record is not None and record.why:
+            detail += f"; the last try could not read {github_takeover.GH_LOGIN}: {record.why}"
+        lines.append(Check(GITHUB_LOGIN, INFO, detail))
+    elif record.outcome in (github_takeover.SAVED, github_takeover.UNCHECKED):
+        day = record.ran_at[:10]
+        lines.append(Check(GITHUB_LOGIN, INFO, f"taken over from {record.source} on {day}"))
+    elif record.outcome == github_takeover.REFUSED:
+        lines.append(Check(GITHUB_LOGIN, WARN, f"GitHub refused the token of {record.source}"))
+    try:
+        layers = agent_env.layers()
+    except agent_env.AgentEnvError:  # the agents' environment line says why
+        layers = None
+    found = {}
+    if state.schema_version() is not None:
+        with contextlib.suppress(state.SchemaError):
+            found = {p.id: project_secrets.layer(p.id) for p in state.list_projects()}
+    names = github_takeover.unused(layers, agent_env.outside().folder, found)
+    if names:
+        detail = f"{', '.join(names)} set but not used: github.com takes its token from "
+        lines.append(Check(GITHUB_OUTSIDE, WARN, detail + github_takeover.SETTINGS))
+    if layers is not None and github_takeover.own_login(layers):
+        detail = "the GitHub CLI's own login is not used by agents"
+        lines.append(Check(GITHUB_OUTSIDE, INFO, detail))
+    return lines
+
+
+def _busy(check: Callable[[], list[Check]]) -> Callable[[], list[Check]]:
+    """`check`, whose lado.db locked for longer than its wait is BUSY."""
+
+    def checked() -> list[Check]:
+        try:
+            return check()
+        except sqlite3.OperationalError as exc:
+            if not loop.is_locked(exc):
+                raise
+            return [BUSY]
+
+    return checked
+
+
 def _key_file_problem(server: state.ModelServer) -> str:
     """What is wrong with the key file of `server`, "" for nothing or no file."""
     path = model_settings.key_folder(server.id) / model_settings.KEY
@@ -972,9 +1033,10 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
     with ThreadPoolExecutor(max_workers=1) as pool:
         # The git servers are asked while the model servers are: doctor waits for the
         # longer of the two, not for both.
-        git_lines = pool.submit(check_git_servers)
+        git_lines = pool.submit(_busy(check_git_servers))
         servers = check_model_servers(probes)
         git_servers_found = git_lines.result()
+    github = [c for c in _busy(check_github_login)() if c not in git_servers_found]
     default_models = check_default_models(probes)
     author = check_git_author()
     database = check_database()
@@ -986,6 +1048,7 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
         check_git(),
         *([author] if author else []),
         *git_servers_found,
+        *github,
         check_workspace(),
         *([projects_found] if projects_found else []),
         *([outside] if outside else []),

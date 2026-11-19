@@ -1,14 +1,17 @@
-"""The human's git servers (openspec capability `git-servers`): a GitLab or GitHub Enterprise
-server, its kind told by its API, and the token agents and LADO's own git reach it with.
+"""The human's git servers (openspec capability `git-servers`): a GitLab, github.com or
+GitHub Enterprise server, its kind told by its API, and the token agents and LADO's own git
+reach it with.
 
 A server is identified by its host and port (`Address.key`), one per host name
-(`check_host`: git's ssh addresses carry no port). It is saved in
+(`check_host`: git's ssh addresses carry no port). github.com is one like any other, at
+`https://github.com` alone (www. and api. taken as it), asked as GitHub only (`kinds`). It
+is saved in
 lado.db (lado.state: `git_servers`) only after its probe: each kind of lado.git_kinds is
 asked at once, through lado.model_servers' request path (no redirect followed, each request
 cut at its TIMEOUT); `--kind` saves one that cannot be checked. Its token is kept in
 `<LADO_HOME>/git-servers/<id>/token` alone, written and removed by the link-refusing writer
 of LADO's secrets (lado.project_secrets), never in lado.db, a message or a git config file.
-A save, a removal and a check's login write hold one lock of LADO_HOME (`_locked`), never
+A save, a removal and a check's login write hold one lock of LADO_HOME (`locked`), never
 while a server is asked.
 
 `variables` gives git, through `GIT_CONFIG_*` variables laid over a process's environment, an
@@ -42,7 +45,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 from lado import agent_env, git_kinds, interpreter, project_secrets, state
-from lado.git_kinds import Kind
+from lado.git_kinds import Kind, github
 from lado.git_kinds.base import REFUSES
 
 if TYPE_CHECKING:  # the HTTP client: loaded by `add` alone, never by a launch or a hook
@@ -154,6 +157,10 @@ def address(text: str) -> Address:
     if port is not None and port != (443 if scheme == "https" else 80):
         shown += f":{port}"
     path = parts.path.rstrip("/")
+    if host.lower() in GITHUB_COM:
+        if scheme != "https" or shown.lower() != host.lower() or path:
+            raise BadAddress(f"github.com is signed in to at {github.DOTCOM}")
+        return Address(github.DOTCOM, "github.com", "github.com", "https")
     return Address(f"{scheme}://{shown}{path}", shown, host, scheme)
 
 
@@ -161,14 +168,19 @@ def plain_http_warning(at: Address) -> str | None:
     return PLAIN_HTTP.format(host=at.host) if at.scheme == "http" else None
 
 
-def check_not_github(at: Address) -> None:
-    """Refuse github.com: it is reached through gh's login, as in LADO's image."""
-    if at.host in GITHUB_COM:
+def kinds(at: Address) -> tuple[Kind, ...]:
+    """The kinds asked at `at`: GitHub alone for github.com, whose API is elsewhere
+    (api.github.com) and which is no GitLab; every kind for any other server."""
+    return (github.KIND,) if at.root == github.DOTCOM else git_kinds.KINDS
+
+
+def check_kind(at: Address, kind_name: str | None) -> None:
+    """Refuse `--kind` for github.com: its kind is known."""
+    if kind_name is not None and at.root == github.DOTCOM:
         raise Refused(
-            "github.com is reached through gh's login (GH_TOKEN or gh auth login); "
-            "LADO keeps no token for it",
-            field=ADDRESS_FIELD,
-            page="github.com uses the GitHub CLI's login: it is not added here.",
+            "github.com's kind is GitHub: add it without --kind",
+            field=KIND_FIELD,
+            page="github.com's kind is GitHub: add it without a kind.",
         )
 
 
@@ -293,7 +305,7 @@ def _ask_kinds(at: Address, token: str | None) -> list[model_servers.Answer]:
     from lado import model_servers
 
     asked = []
-    for kind in git_kinds.KINDS:
+    for kind in kinds(at):
         url, headers = kind.request(at.root, token)
         asked.append((url, "GET", headers))
     return model_servers.ask_all(_opener(), asked, AGENT)
@@ -322,7 +334,7 @@ def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
     why). Refused for a server that refuses the token, sends elsewhere, answers as two kinds
     without `kind_name` or as another, or cannot be checked without `kind_name`."""
     answers = _ask_kinds(at, token)
-    by_kind = list(zip(git_kinds.KINDS, answers, strict=True))
+    by_kind = list(zip(kinds(at), answers, strict=True))
     found = [(kind, login) for kind, answer in by_kind if (login := kind.login(answer))]
     chosen = git_kinds.by_name(kind_name) if kind_name else None
 
@@ -351,7 +363,7 @@ def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
     if chosen is None and len(refusals) == len(by_kind) > 1:
         # Every kind refused: a gateway in front of the server, or a token cut short; naming
         # one kind would guess.
-        titles = " and ".join(f"{kind.title}'s" for kind in git_kinds.KINDS)
+        titles = " and ".join(f"{kind.title}'s" for kind in kinds(at))
         raise Refused(
             f"{at.root} refuses the token on {titles} API alike",
             "check that the token was copied whole; a sign-in gateway in front of the server "
@@ -402,7 +414,7 @@ def hint(at: Address) -> Hint:
     answers = _ask_kinds(at, None)
     told = [
         kind
-        for kind, answer in zip(git_kinds.KINDS, answers, strict=True)
+        for kind, answer in zip(kinds(at), answers, strict=True)
         if kind.login(answer) or kind.refusal(answer)
     ]
     if len(told) == 1:
@@ -437,7 +449,7 @@ def _unanswered(at: Address, answers: Sequence[model_servers.Answer]) -> tuple[s
             choose_kind=True,
         )
         return f"it does not answer: {silent}", refused
-    titles = " nor ".join(kind.title for kind in git_kinds.KINDS)
+    titles = " nor ".join(kind.title for kind in kinds(at))
     refused = Refused(
         f"{at.root} answers as neither {titles}",
         _kind_hint(at.root),
@@ -520,7 +532,7 @@ def check(at: Address, save_login: bool = True) -> Check:
             page_hint="",
         )
     answers = _ask_kinds(at, token)
-    by_kind = dict(zip(git_kinds.KINDS, answers, strict=True))
+    by_kind = dict(zip(kinds(at), answers, strict=True))
     own = by_kind[kind]
     was = server.login is not None
 
@@ -608,7 +620,7 @@ def check(at: Address, save_login: bool = True) -> Check:
             f"{REMOVE} {at.root}, then {ADD} {at.root} --token",
             f"It {answers_as}.",
         )
-    titles = " nor ".join(k.title for k in git_kinds.KINDS)
+    titles = " nor ".join(k.title for k in kinds(at))
     return failed(
         "unrecognised", f"it answers as neither {titles}", "", f"It answers as neither {titles}."
     )
@@ -623,7 +635,7 @@ def _save_login(server: state.GitServer, login: str) -> None:
     kept; not when the server was removed or replaced by another meanwhile."""
     if login == server.login:
         return
-    with _locked():
+    with locked():
         now = state.git_server_by_host(server.host)
         if now is not None and now.id == server.id:
             state.save_git_server(now.id, now.address, now.host, now.kind, login)
@@ -692,6 +704,46 @@ def variables(
     # What a process this one starts gets back once LADO's entries are dropped
     # (agent_env.without_launch).
     found[agent_env.GIT_CONFIG_BASE] = env.get("GIT_CONFIG_COUNT", "")
+    return found
+
+
+GH_LOGIN_FILE = "hosts.yml"  # where gh keeps a login in its config folder
+
+
+def gh_variables(
+    servers: Sequence[state.GitServer], config: Path, remote: Callable[[], str | None]
+) -> dict[str, str]:
+    """The GitHub CLI's variables of an agent's launch, from the saved servers alone:
+    `GH_CONFIG_DIR` its own folder `config`, made, with no login of gh's own in it; `GH_TOKEN`
+    the github.com server's token; `GH_ENTERPRISE_TOKEN` the token of the GitHub Enterprise
+    server of the repository's origin (`remote()`, asked only while one is saved), else of
+    the only one saved, and `GH_HOST` its host for the origin's server only. A token is in
+    the launch's environment alone, as an API key is."""
+    from lado import git_credential
+
+    config.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with contextlib.suppress(FileNotFoundError):
+        (config / GH_LOGIN_FILE).unlink()  # a login made by hand there is no saved server's
+    found = {"GH_CONFIG_DIR": str(config)}
+
+    def token(server: state.GitServer) -> str | None:
+        return git_credential.read_token(server.id) if has_token(server) else None
+
+    dotcom = next((s for s in servers if s.address == github.DOTCOM), None)
+    if dotcom is not None and (value := token(dotcom)):
+        found["GH_TOKEN"] = value
+    enterprise = [s for s in servers if s.kind == github.KIND.name and s is not dotcom]
+    if not enterprise:
+        return found
+    url = remote()
+    origin = server_for(url, servers) if url else None
+    chosen = origin if origin in enterprise else None
+    if chosen is None and len(enterprise) == 1:
+        chosen = enterprise[0]
+    if chosen is not None and (value := token(chosen)):
+        found["GH_ENTERPRISE_TOKEN"] = value
+        if chosen is origin:
+            found["GH_HOST"] = chosen.host
     return found
 
 
@@ -938,7 +990,7 @@ LOCKED = "another change of the git servers is running; try again"
 
 
 @contextlib.contextmanager
-def _locked() -> Iterator[None]:
+def locked() -> Iterator[None]:
     """One save, removal or login write of a git server at a time in LADO_HOME, the
     command's and the page's alike: an exclusive flock on LOCK, tried every 50 ms for
     LOCK_WAIT seconds, then Refused. No server is asked while it is held."""
@@ -963,11 +1015,12 @@ def save(at: Address, checked: Checked, token: str) -> tuple[state.GitServer, bo
     new server's token file comes first and goes again when its row fails; a replaced one's
     row comes first, then its token file is replaced whole, so it holds the old token or the
     new one."""
-    with _locked():
-        return _save(at, checked, token)
+    with locked():
+        return save_locked(at, checked, token)
 
 
-def _save(at: Address, checked: Checked, token: str) -> tuple[state.GitServer, bool]:
+def save_locked(at: Address, checked: Checked, token: str) -> tuple[state.GitServer, bool]:
+    """`save` inside `locked`, held by the caller (lado.github_takeover)."""
     known = state.git_server_by_host(at.key)
     if known is not None:
         try:
@@ -1014,7 +1067,7 @@ def remove_host(key: str, named: str | None = None) -> Removed:
     """Remove the server of the host `key` (`Address.key`) and its token folder under the
     lock, as `remove` does; `named` the address the human gave, for the refusal (None: the
     key). The row goes first: a token folder left holds a token no row names."""
-    with _locked():
+    with locked():
         known = state.git_server_by_host(key)
         if known is None or not state.remove_git_server(known.id):
             raise _not_saved(named or key)
@@ -1039,7 +1092,7 @@ def add(
             f"{kind_name} is no kind of git server LADO knows: {' or '.join(KIND_NAMES)}",
             field=KIND_FIELD,
         )
-    check_not_github(at)
+    check_kind(at, kind_name)
     check_host(at)
     check_git(os.environ)
     warning = plain_http_warning(at)

@@ -9,7 +9,7 @@ from container_helpers import Container, agent_environ, claude_session, git_repo
 
 pytestmark = pytest.mark.container
 
-FAKE_GH = "fake-gh-89-not-a-token"
+FAKE_KEY = "fake-key-89-not-a-key"
 NONE_LINE = "[info] Variables from outside: /run/secrets: none"
 
 
@@ -32,16 +32,17 @@ def test_secrets_enabled_by_one_line_reach_an_agent(folder):
     made = folder("one", LADO_SECRETS="./secrets")
     secrets = made.path / "secrets"
     secrets.mkdir(mode=0o700)
-    (secrets / "GH_TOKEN").write_text(FAKE_GH + "\n")
-    (secrets / "GH_TOKEN").chmod(0o600)
+    (secrets / "YOUGILE_API_KEY").write_text(FAKE_KEY + "\n")
+    (secrets / "YOUGILE_API_KEY").chmod(0o600)
     made.run("up", "-d")
     assert health(made.port)["ok"] is True
     doctor = made.run("exec", "-T", "lado", "lado", "doctor", check=False).stdout
-    assert "[ok  ] Variables from outside: /run/secrets: GH_TOKEN" in doctor.splitlines(), doctor
+    line = "[ok  ] Variables from outside: /run/secrets: YOUGILE_API_KEY"
+    assert line in doctor.splitlines(), doctor
     container = Container(f"{made.project}-lado-1", made.port)
     git_repo(container, "/home/lado/app")
     claude_session(container, "/home/lado/app", "app")
-    assert f"GH_TOKEN={FAKE_GH}" in agent_environ(container, "app", "supervisor")
+    assert f"YOUGILE_API_KEY={FAKE_KEY}" in agent_environ(container, "app", "supervisor")
 
 
 def test_the_folder_named_but_missing_is_refused_and_not_made(folder):

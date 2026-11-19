@@ -55,3 +55,19 @@ def test_a_users_login_is_one_line_of_visible_text():
     assert github.login(Answer(200, {"login": "a\nGitLab, signed in as b\x1b[31m"})) == (
         "a GitLab, signed in as b [31m"
     )
+
+
+def test_github_com_asks_api_github_com():
+    github, _ = git_kinds.KINDS
+    url, headers = github.request("https://github.com", "t")
+    assert url == "https://api.github.com/user"
+    assert headers["Authorization"] == "token t"
+    assert github.request("https://github.com", None) == ("https://api.github.com/user", {})
+
+
+def test_ghe_asks_api_v3():
+    github, _ = git_kinds.KINDS
+    assert github.request("https://ghe.corp:8443/git", None)[0] == (
+        "https://ghe.corp:8443/git/api/v3/user"
+    )
+    assert github.token_page("https://github.com") == "https://github.com/settings/tokens"

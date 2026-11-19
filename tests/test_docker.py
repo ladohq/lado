@@ -793,8 +793,8 @@ def test_the_headers_say_how_agents_get_variables_access_and_logins(name):
         "mkdir -m 700 secrets",
         "LADO_GIT_NAME",
         "LADO_GIT_EMAIL",
-        "GH_TOKEN",
-        "gh auth login",
+        "Git servers",
+        "YOUGILE_API_KEY",
         "LADO_SSH_AGENT" if name == "compose.yaml" else "/run/lado/ssh-agent.sock",
         "/run/host-services/ssh-auth.sock",
         "$SSH_AUTH_SOCK",
@@ -812,7 +812,15 @@ def test_the_headers_say_how_agents_get_variables_access_and_logins(name):
         "LADO_SECRETS=./secrets" if name == "compose.yaml" else '-v "$PWD/secrets:/run/secrets:ro"',
     ):
         assert needle in head, (name, needle)
+    # The GitHub login is a git server's (openspec capability git-servers), never outside.
+    for gone in ("GH_TOKEN", "gh auth login"):
+        assert gone not in head, (name, gone)
     assert "Settings → Agent CLIs" in (UI / "ModelPicker.tsx").read_text()
+
+
+def test_the_image_gives_github_com_no_credential_helper():
+    assert not [line for line in lines() if "credential.https://github.com" in line]
+    assert "GH_TOKEN" not in (DOCKER / "install.sh").read_text()
 
 
 def dockerfile_run() -> list[str]:

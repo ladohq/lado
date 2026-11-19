@@ -3198,8 +3198,14 @@ core's why (`ProbeInfo.cannot`); the CLIs a tick can save a model of are `ProbeI
 ### Git servers (decided 2026-11-17, LAD-293, mockups `ui-design/lad-292-v2` and `mockup-check-cases.html`)
 
 Settings → Git servers (`/settings/git-servers`, `GitServers.tsx`; openspec capability
-git-servers-page): the human's GitLab and GitHub Enterprise servers, as `lado git-server` keeps
-them (docs/cli.md), on Model servers' rows, with no colour of its own. On screen only values,
+git-servers-page): the human's GitLab, github.com and GitHub Enterprise servers, as `lado
+git-server` keeps them (docs/cli.md), on Model servers' rows, with no colour of its own.
+github.com is a row like any other (LAD-299, mockup `mockup-github-server.html`), sorted with
+the others, with any server's panel; the page shows nothing of its own for it: no "not signed
+in", no line about the GitHub login taken over or one outside LADO (the command that took it
+over and `lado doctor` say those). Without an entry it is not listed; `+ Add server` adds it,
+the check without the token asking `https://api.github.com/user` (`GitHub answers.`, Token's
+link `https://github.com/settings/tokens` with the scope repo). On screen only values,
 states, one-line results and actions; every why and what happens later stands behind an
 info button (`InfoTip`, `TIPS` in `GitServers.tsx`), never the only way to act. A tip stands
 beside its heading or label, not in it (`div.mx-h` holds the `h3` and its tip; a field's
@@ -3208,8 +3214,9 @@ beside its heading or label, not in it (`div.mx-h` holds the `h3` and its tip; a
 ends above the field. Token's tip opens above its button (`place="above"`), so the token page
 link under the field stays visible and pressable.
 
-- **The list**: `Servers <n>` with its tip (agents clone and push with the token; running
-  agents get a change after they restart), then a row per server by host, as `lado git-server
+- **The list**: `Servers <n>` with its tip (your GitLab, gitlab.com, GitHub or GitHub
+  Enterprise: agents clone and push there, and run gh, with the token; running agents get a
+  change after they restart), then a row per server by host, as `lado git-server
   list` lists them, or `No git servers yet.` (`mx-empty`); opening the page asks no server and
   makes no `lado.db`. Then `+ Add server`. A row's head is one button named by the address that
   opens and closes its panel: the address whole (wrapped, never cut), its kind as a `badge`,
@@ -3260,7 +3267,8 @@ link under the field stays visible and pressable.
   under the buttons). Done: `✓ Author saved.`, the focus on Edit. `Remove` clears it at once:
   `✓ Author removed.` [Undo], the focus on Undo; Undo sets the same name and email again
   through `PUT …/author` and says `✓ Author saved.`, the focus on Edit. `Remove` and `Undo` are
-  off while their request runs; Undo's line stays meanwhile.
+  off while their request runs, and so are `Edit` and `Set author`; Undo's line stays
+  meanwhile.
 - **Remove server** asks in the panel's foot (`mx-confirm`, `role=alertdialog`, the focus on
   Cancel, Esc cancels): `Remove <address>?` / `Its token and commit author go too. This cannot
   be undone.`, `Remove server` and Cancel. Done: `Removed <address>.` in the row's place (with
@@ -3269,8 +3277,8 @@ link under the field stays visible and pressable.
   server of gitlab.com is saved, else empty; focused), Kind ⓘ only when needed, Token ⓘ (the
   secret field). Once the typing settles (`MODEL_DEBOUNCE`) the form asks `POST
   /api/git-servers/check` (`Checking…`): the server is asked with no token, and under Address
-  come the refusals of the address (`github.com uses the GitHub CLI's login: it is not added
-  here.`, a host held by another server, a redirect; git older than 2.31 under the buttons),
+  come the refusals of the address (github.com on another port or under a path, a host held
+  by another server, a redirect; git older than 2.31 under the buttons),
   `⚠ Plain http://: the token travels unencrypted.` ⓘ, `<Kind> answers.` (a hint only: it
   chooses Token's link `Make one on its token page with the <scopes>.`), or `Already saved.`
   [Replace its token] with Add off; Replace its token closes the form and opens that server's

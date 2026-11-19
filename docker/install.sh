@@ -285,7 +285,7 @@ find_ssh_agent() {
 The agents use your ssh agent at $ssh_agent; its path may change at a new login: run this again after one."
     else
         notes="$notes
-No ssh agent here: git over ssh is off for the agents (https and GH_TOKEN still work)."
+No ssh agent here: git over ssh is off for the agents (https and the git servers of Settings → Git servers still work)."
     fi
 }
 

@@ -75,7 +75,7 @@ One line per module; each module's behaviour in detail: [docs/design/modules.md]
   - `kits.py`: kits (roles, skills, MCP servers, flows), lookup, install, resolve; `builtin_kits/`.
   - `gitcache.py`: the git cache of kits and packs; all git commands for kits.
   - `git_servers.py`: git servers and their tokens (`lado git-server`), kinds in `git_kinds/`,
-    the helper `git_credential.py`; `marketplaces.py`: kit marketplaces.
+    the helper `git_credential.py`, `github_takeover.py`; `marketplaces.py`: kit marketplaces.
   - `flows.py`: the flow format and its validator; `runs.py`: flow runs, steps, gates.
   - `mcp_server.py`: the MCP tools agents use (`lado mcp`).
   - `artifacts.py`: artifacts, a session's named documents; `artifacts_local.py` its store;

@@ -477,20 +477,40 @@ def test_folder_cannot_be_listed(outdir):
 
 
 def test_the_folder_wins_over_the_login_shell(shell, outdir):
-    shell(rc="export GH_TOKEN=old KEEP=1")
-    write(outdir, "GH_TOKEN", b"new\n")
+    shell(rc="export YOUGILE_API_KEY=old KEEP=1")
+    write(outdir, "YOUGILE_API_KEY", b"new\n")
     env = agent_env.resolve()
-    assert (env["GH_TOKEN"], env["KEEP"]) == ("new", "1")
+    assert (env["YOUGILE_API_KEY"], env["KEEP"]) == ("new", "1")
 
 
 def test_the_folder_wins_over_the_inherited_environment(outdir, monkeypatch):
     monkeypatch.setenv(agent_env.SOURCE_VAR, "inherit")
-    monkeypatch.setenv("GH_TOKEN", "old")
-    write(outdir, "GH_TOKEN", b"new\n")
+    monkeypatch.setenv("YOUGILE_API_KEY", "old")
+    write(outdir, "YOUGILE_API_KEY", b"new\n")
     write(outdir, "PATH", b"/evil")
     env = agent_env.resolve()
-    assert env["GH_TOKEN"] == "new"
+    assert env["YOUGILE_API_KEY"] == "new"
     assert env["PATH"] == os.environ["PATH"]
+
+
+def test_github_variables_from_no_layer(shell, outdir):
+    names = agent_env.GITHUB_VARIABLES
+    shell(rc="export " + " ".join(f"{name}=shell" for name in names))
+    for name in names:
+        write(outdir, name, b"out\n")
+    env = agent_env.resolve({name: "project" for name in names})
+    assert [name for name in names if name in env] == []
+    layers = agent_env.layers({"GH_TOKEN": "project"})
+    assert (layers.shell["GH_TOKEN"], layers.outside["GH_TOKEN"]) == ("shell", "out")  # kept
+
+
+def test_for_git_drops_github_variables(outdir, monkeypatch, lado_home):
+    for name in agent_env.GITHUB_VARIABLES:
+        monkeypatch.setenv(name, "lado's")
+        write(outdir, name, b"out\n")
+    env = agent_env.for_git({"GH_TOKEN": "project"})
+    assert [name for name in agent_env.GITHUB_VARIABLES if name in env] == ["GH_CONFIG_DIR"]
+    assert env["GH_CONFIG_DIR"] == str(lado_home / "gh")
 
 
 def test_the_project_wins_over_the_folder_and_the_login_shell(shell, outdir):

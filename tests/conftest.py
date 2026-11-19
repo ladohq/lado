@@ -1,7 +1,9 @@
+import atexit
 import json
 import os
 import shutil
 import subprocess
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -30,6 +32,15 @@ os.environ.update(no_maintenance_env(os.environ))
 # their short LADO_LOOP_INTERVAL and LADO_RETRY_DELAYS from tests/integration/conftest.py),
 # not the user's login shell; tests of the shell set their own.
 os.environ["LADO_AGENT_ENV"] = "inherit"
+
+# No test takes the GitHub login of the machine running it (lado.github_takeover): no GitHub
+# variable, and gh's config in an empty folder of the run, where gh finds no login; the
+# takeover's tests give their own.
+for _var in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"):
+    os.environ.pop(_var, None)
+os.environ.pop("GH_HOST", None)
+os.environ["GH_CONFIG_DIR"] = tempfile.mkdtemp(prefix="lado-test-gh-")
+atexit.register(shutil.rmtree, os.environ["GH_CONFIG_DIR"], ignore_errors=True)
 
 # No test looks up LADO's latest version on PyPI; the tests of the check switch it on with a
 # local index (LADO_UPDATE_INDEX).
@@ -139,6 +150,24 @@ def lado_home(tmp_path, monkeypatch):
     monkeypatch.setenv("LADO_HOME", str(home))
     monkeypatch.setenv("LADO_TMUX_SOCKET", TEST_SOCKET)
     return home
+
+
+@pytest.fixture(autouse=True)
+def _no_gh_login(monkeypatch):
+    """No unit test reads the GitHub CLI's login of the machine (lado.github_takeover), also
+    one whose layers carry no GH_CONFIG_DIR; the takeover's tests take `real_gh_token`."""
+    from lado import github_takeover
+
+    real = github_takeover.gh_token
+    monkeypatch.setattr(github_takeover, "gh_token", lambda env: None)
+    return real
+
+
+@pytest.fixture
+def real_gh_token(_no_gh_login, monkeypatch):
+    from lado import github_takeover
+
+    monkeypatch.setattr(github_takeover, "gh_token", _no_gh_login)
 
 
 @pytest.fixture(autouse=True)

@@ -61,7 +61,7 @@ there are sessions without a project.
     ├── shop/
     │   └── secrets/             ← project shop's secrets (700)
     │       ├── YOUGILE_API_KEY  ← file = variable, content = value (600)
-    │       └── GH_TOKEN
+    │       └── SENTRY_TOKEN
     └── acme/
         └── secrets/
             └── YOUGILE_API_KEY
@@ -228,6 +228,11 @@ login shell → outside (Docker: /run/secrets) → project variables → LADO an
   overrides (`ProjectInfo.overrides`, `projects.overrides`, the names `lado doctor`'s
   `Project variables` line names too), never an outside value. A secret its agents do not
   get overrides nothing: they get the outside value.
+- **GitHub's variables are in no layer** (`GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`,
+  `GITHUB_ENTERPRISE_TOKEN`, `GH_HOST`, `GH_CONFIG_DIR`): a project's, the outside folder's
+  and the shell's reach no agent, as github.com and GitHub Enterprise get their tokens from
+  Settings → Git servers alone. `lado project set` saves such a name and says it is not given
+  to agents; `lado doctor` names it as set but not used.
 
 One function of the core builds the environment, so it works alike with Claude Code,
 Codex, OpenCode and Kilo, with Docker and without.

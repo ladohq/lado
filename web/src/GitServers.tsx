@@ -1,5 +1,5 @@
-// Settings → Git servers (docs/design/ui.md, Git servers): the human's GitLab and GitHub
-// Enterprise servers, as `lado git-server` keeps them. On screen only values, states, one-line
+// Settings → Git servers (docs/design/ui.md, Git servers): the human's GitLab, github.com and
+// GitHub Enterprise servers, as `lado git-server` keeps them; github.com is one like any other. On screen only values, states, one-line
 // results and actions; every why stands behind an info button (InfoTip). The list is read when
 // the page opens and after each change of its own (GET /api/git-servers asks no server). A
 // server's row opens to its panel: Sign-in (Check, Replace token), Commit author (Set author,
@@ -44,7 +44,7 @@ export const GITLAB_COM = "https://gitlab.com";
 // The info buttons' texts (the page spec's table).
 export const TIPS = {
   servers:
-    "Your GitLab, gitlab.com or GitHub Enterprise: agents clone and push there with the token you give. Running agents get a change after they restart.",
+    "Your GitLab, gitlab.com, GitHub or GitHub Enterprise: agents clone and push there, and run gh, with the token you give. Running agents get a change after they restart.",
   signIn:
     "Agents clone and push here with this token. Check asks the server whether it still works. Replace the token when it expires or is revoked: the new one is checked before it is saved.",
   author:
@@ -460,6 +460,7 @@ export function GitServersPage() {
                               className="quiet"
                               aria-label={`${commits ? "Edit" : "Set"} the commit author of ${server.address}`}
                               aria-pressed={formHere === "author"}
+                              disabled={authorBusy.includes(host)}
                               onClick={() => toggleForm(host, "author")}
                             >
                               {commits ? "Edit" : "Set author"}

@@ -247,14 +247,14 @@ def test_a_listing_with_a_refused_saved_token_names_the_server(world, lado_home)
     error = refused.value
     assert error.kind == "login_needed"
     assert str(error).startswith(
-        f"cannot read {listed.url}/team/app.git: 127.0.0.1 refused the token of the git server "
-        f"{listed.url} (fatal: Authentication failed for "
+        f"cannot read {listed.url}/team/app.git: 127.0.0.1:{listed.port} refused the token of "
+        f"the git server {listed.url} (fatal: Authentication failed for "
     )
-    assert error.hint == runtime.Hint(
-        "Check the git server; if its token expired or was revoked, replace it "
-        f"(lado git-server add {listed.url} --token):",
-        f"lado git-server check {listed.url}",
-    )
+    assert error.hint.lines() == [
+        f"Check the git server: lado git-server check {listed.url}",
+        f"If its token expired or was revoked, replace it: lado git-server add {listed.url} "
+        "--token",
+    ]
     assert (error.server.way, error.server.address) == ("check", listed.url)
 
 

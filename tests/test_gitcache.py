@@ -250,9 +250,8 @@ def test_a_kits_login_failure_is_told_by_the_clones_kinds(tmp_path, monkeypatch)
     with pytest.raises(gitcache.GitError) as failed:
         gitcache.remote_tags(url)
     assert str(failed.value) == (
-        f"cannot read the tags of {url}: github.com asks for a login ({login}). Log in with "
-        f"GitHub's CLI, or put a token into the file GH_TOKEN of {tmp_path} (LADO_ENV_DIR): "
-        "gh auth login"
+        f"cannot read the tags of {url}: github.com asks for a login ({login}). Add it as a "
+        "git server with a token: lado git-server add https://github.com --token"
     )
     [call] = fake_git_calls(tmp_path / "fake")
     assert (call["env"]["GIT_ASKPASS"], call["env"]["LC_ALL"]) == ("", "C")

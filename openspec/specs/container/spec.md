@@ -736,9 +736,9 @@ make it (`create_host_path: false`).
 
 #### Scenario: Secrets enabled by one line
 - **WHEN** `.env` has `LADO_SECRETS=./secrets`, the folder `secrets/` next to
-  `compose.yaml` holds `GH_TOKEN` with a fake value, and `docker compose up -d` runs
-- **THEN** an agent's shell has `GH_TOKEN` with that value, and `lado doctor` prints
-  `[ok  ] Variables from outside: /run/secrets: GH_TOKEN`
+  `compose.yaml` holds `YOUGILE_API_KEY` with a fake value, and `docker compose up -d` runs
+- **THEN** an agent's shell has `YOUGILE_API_KEY` with that value, and `lado doctor` prints
+  `[ok  ] Variables from outside: /run/secrets: YOUGILE_API_KEY`
 
 #### Scenario: The folder named but missing
 - **WHEN** `.env` has `LADO_SECRETS=./secrets` and there is no `secrets/`
@@ -773,15 +773,15 @@ run`).
 ### Requirement: The headers say how to fill the secrets folder
 
 The headers SHALL say to make the secrets folder with mode 700 and to put one file per
-variable in it (`GH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, a kit's key such as
-`YOUGILE_API_KEY`, a model provider's key). A new file reaches the agents started after
-it, with no restart. Each LADO container has its own folder or none, and every agent of
-one container can read every variable given to it.
+variable in it (`CLAUDE_CODE_OAUTH_TOKEN`, a kit's key such as `YOUGILE_API_KEY`, a model
+provider's key). A new file reaches the agents started after it, with no restart. Each
+LADO container has its own folder or none, and every agent of one container can read every
+variable given to it.
 
 #### Scenario: The headers on the folder's files
 - **WHEN** the human reads the headers of `docker/compose.yaml` and `docker/Dockerfile`
 - **THEN** they say to make the folder with mode 700 and to put one file per variable in
-  it, such as `GH_TOKEN`
+  it, such as `YOUGILE_API_KEY`
 
 ### Requirement: The container gives the agents the human's git identity
 
@@ -810,18 +810,6 @@ LADO_GIT_NAME and LADO_GIT_EMAIL`.
 #### Scenario: No identity
 - **WHEN** the container runs without either variable on a fresh home volume
 - **THEN** `docker logs` has the warning line, and the server starts
-
-### Requirement: git over https to GitHub uses gh's token
-
-The image's system git config SHALL make `gh auth git-credential` the only credential
-helper for `https://github.com`. With `GH_TOKEN` in an agent's environment, or after `gh
-auth login` in the container (its token in `~/.config/gh` on the home volume), git SHALL
-get that token for `https://github.com` with no prompt and no extra step.
-
-#### Scenario: The token from the secrets folder
-- **WHEN** the secrets folder holds `GH_TOKEN` with a fake value and an agent's shell runs
-  `git credential fill` for `protocol=https`, `host=github.com`
-- **THEN** git prints `password=<that value>`
 
 ### Requirement: The host's ssh agent reaches the agents without root's group
 
@@ -875,15 +863,16 @@ The headers of `docker/compose.yaml` and `docker/Dockerfile` SHALL say:
   `LADO_SECRETS=./secrets` in `.env` or `-v <folder>:/run/secrets:ro`, one file per
   variable);
 - the git identity (`LADO_GIT_NAME`, `LADO_GIT_EMAIL`);
-- GitHub over https (`GH_TOKEN` in the folder, or `gh auth login` inside);
+- GitHub and other git servers over https (Settings → Git servers, or `lado git-server
+  add`), never `GH_TOKEN` or `gh auth login`;
 - the ssh agent (`LADO_SSH_AGENT` for a Mac and for Linux).
 
 #### Scenario: The steps are in the headers
 - **WHEN** `tests/test_docker.py` reads the headers
-- **THEN** each names `secrets`, `LADO_GIT_NAME`, `LADO_GIT_EMAIL`, `GH_TOKEN`, `gh auth
-  login`, `LADO_SSH_AGENT`, `CLAUDE_CODE_OAUTH_TOKEN`, `opencode auth login`, `kilo auth
-  login`, `CODEX_ACCESS_TOKEN`, `OPENAI_API_KEY` and `codex login --device-auth`; compose's
-  names `LADO_SECRETS=./secrets`
+- **THEN** each names `secrets`, `LADO_GIT_NAME`, `LADO_GIT_EMAIL`, `Git servers`,
+  `LADO_SSH_AGENT`, `CLAUDE_CODE_OAUTH_TOKEN`, `opencode auth login`, `kilo auth login`,
+  `CODEX_ACCESS_TOKEN`, `OPENAI_API_KEY` and `codex login --device-auth`, neither names
+  `GH_TOKEN` nor `gh auth login`; compose's names `LADO_SECRETS=./secrets`
 
 ### Requirement: The headers say how the agent CLIs log in, and the first start makes no folder
 
@@ -1495,3 +1484,15 @@ a unit test SHALL keep each of the four install lines so, the command being its
   runs its `--version` at build
 - **THEN** it writes them into `/tmp/cli-home`, removed in the same `RUN` line, and
   nothing of it is in the image's `/home/lado`
+
+### Requirement: The image gives github.com no credential helper of its own
+
+The image's system git config SHALL set no credential helper for `https://github.com`:
+git reaches github.com with the github.com entry of Settings → Git servers (capability
+`git-servers`), and without one as any host not in the list.
+
+#### Scenario: gh logged in on the home volume, no entry
+- **WHEN** `~/.config/gh/hosts.yml` on the home volume holds a login, github.com has no
+  entry, and an agent's shell runs `git credential fill` for `protocol=https`,
+  `host=github.com` with no prompt
+- **THEN** git prints no password

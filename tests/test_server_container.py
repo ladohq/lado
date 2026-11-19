@@ -128,4 +128,34 @@ def test_a_resume_that_breaks_off_is_one_line(application, monkeypatch, capsys):
 def test_outside_a_container_the_start_resumes_nothing(application, monkeypatch):
     monkeypatch.delenv("LADO_CONTAINER", raising=False)
     monkeypatch.setattr(runtime, "resume_at_start", lambda *a: pytest.fail("resumed"))
-    assert run.resume_sessions(application) is None
+    run.resume_sessions(application).join(5)
+
+
+def test_the_start_takes_the_github_login_over_before_the_resume(application, monkeypatch, capsys):
+    from lado import github_takeover
+
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    order = []
+    monkeypatch.setattr(github_takeover, "run", lambda: order.append("takeover") or "Took it.")
+    monkeypatch.setattr(runtime, "resume_at_start", lambda *a: order.append("resume"))
+    run.resume_sessions(application).join(5)
+    assert order == ["takeover", "resume"]
+    assert capsys.readouterr().out == "Took it.\n"
+
+
+def test_a_takeover_that_breaks_is_one_line_and_journaled(application, monkeypatch, capsys):
+    from lado import github_takeover
+
+    monkeypatch.delenv("LADO_CONTAINER", raising=False)
+    recorded = []
+    monkeypatch.setattr(telemetry, "record", lambda where, exc, **k: recorded.append(where))
+
+    def broken():
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(github_takeover, "run", broken)
+    run.resume_sessions(application).join(5)
+    assert recorded == ["server:github-takeover"]
+    assert capsys.readouterr().out == (
+        "lado: could not take the GitHub login over: OperationalError\n"
+    )

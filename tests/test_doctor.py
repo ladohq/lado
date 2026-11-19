@@ -70,6 +70,7 @@ def test_all_checks_pass_when_tools_are_on_path(tmp_path, monkeypatch):
         "tmux",
         "git",
         "git author",
+        "GitHub login",  # the takeover not run yet: an info line
         "Workspace",
         "Agent environment",
         "Agent config folders",
@@ -580,10 +581,10 @@ def test_the_checks_always_hold_the_workspace(tmp_path, monkeypatch):
         return [c.name for c in doctor.run_checks(which=lambda cmd: cmd)]
 
     found = names()
-    assert found[found.index("git author") + 1] == "Workspace"
+    assert found[found.index("GitHub login") + 1] == "Workspace"
     monkeypatch.setenv("LADO_REPOS", str(tmp_path))
     found = names()
-    assert found[found.index("git author") + 1] == "Workspace"
+    assert found[found.index("GitHub login") + 1] == "Workspace"
 
 
 @pytest.mark.parametrize(
@@ -1884,3 +1885,96 @@ def test_doctor_saves_no_git_login(git_api, lado_home):
         "Works: GitLab, signed in as ivan.petrov, may clone and push.",
     )
     assert state.git_servers() == [before]
+
+
+# The GitHub login (openspec capability doctor).
+
+
+@pytest.fixture
+def no_github(monkeypatch):
+    for name in agent_env.GITHUB_VARIABLES:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv(agent_env.ENV_DIR_VAR, raising=False)
+    monkeypatch.setenv(agent_env.SOURCE_VAR, agent_env.INHERIT)
+
+
+def _github_lines() -> list[tuple[str, str]]:
+    return [(c.level, f"{c.name}: {c.detail}") for c in doctor.check_github_login()]
+
+
+OUTSIDE = "GitHub login outside LADO"
+NOT_USED = "set but not used: github.com takes its token from Settings → Git servers"
+
+
+def test_the_outside_folder_and_a_projects_secret_are_named(no_github, monkeypatch, tmp_path, ws):
+    folder = tmp_path / "secrets"
+    folder.mkdir()
+    (folder / "GH_TOKEN").write_text("ghp_CANARY_out\n")
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(folder))
+    projects.create("shop", None)
+    projects.set_secret("shop", "GH_TOKEN", "ghp_CANARY_project")
+    state.record_github_takeover("none", None)
+    lines = _github_lines()
+    assert lines == [
+        (doctor.WARN, f"{OUTSIDE}: GH_TOKEN in {folder}, GH_TOKEN of project shop {NOT_USED}")
+    ]
+    assert "CANARY" not in str(lines)
+
+
+def test_the_shell_and_gh_s_own_login(no_github, monkeypatch):
+    from lado import github_takeover
+
+    monkeypatch.setenv("GITHUB_TOKEN", "x")
+    monkeypatch.setattr(github_takeover, "gh_token", lambda env: "gho_own")
+    state.record_github_takeover("none", None)
+    assert _github_lines() == [
+        (doctor.WARN, f"{OUTSIDE}: GITHUB_TOKEN of your shell {NOT_USED}"),
+        (doctor.INFO, f"{OUTSIDE}: the GitHub CLI's own login is not used by agents"),
+    ]
+
+
+def test_no_github_login_no_line(no_github):
+    state.record_github_takeover("none", None)
+    assert _github_lines() == []
+
+
+def test_the_takeover_lines(no_github):
+    assert _github_lines() == [
+        (doctor.INFO, "GitHub login: taken over at the next lado ui or lado start")
+    ]
+    state.record_github_takeover("pending", "the GitHub CLI's login", "keychain locked")
+    assert _github_lines() == [
+        (
+            doctor.INFO,
+            "GitHub login: taken over at the next lado ui or lado start; the last try could "
+            "not read the GitHub CLI's login: keychain locked",
+        )
+    ]
+    state.record_github_takeover("saved", "GH_TOKEN in /run/secrets")
+    with state.connect() as db:
+        db.execute("UPDATE github_takeover SET ran_at = '2026-11-18 10:00:00'")
+    assert _github_lines() == [
+        (doctor.INFO, "GitHub login: taken over from GH_TOKEN in /run/secrets on 2026-11-18")
+    ]
+    state.record_github_takeover("refused", "GH_TOKEN of your shell")
+    assert _github_lines() == [
+        (doctor.WARN, "GitHub login: GitHub refused the token of GH_TOKEN of your shell")
+    ]
+    for outcome in ("kept", "none"):
+        state.record_github_takeover(outcome, None)
+        assert _github_lines() == []
+
+
+def test_a_busy_lado_db_is_one_warning(no_github, monkeypatch, capsys):
+    _versions(monkeypatch)
+    _git_saved("https://gitlab.corp.ru")
+
+    def busy():
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(state, "git_servers", busy)
+    monkeypatch.setattr(state, "github_takeover", busy)
+    status, out = _doctor_output(monkeypatch, capsys)
+    assert out.count("lado.db is busy") == 1
+    assert "[warn] git servers: not checked: lado.db is busy\n" in out
+    assert "Python" in out.split("lado.db is busy")[0] + out.split("lado.db is busy")[1]

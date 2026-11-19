@@ -256,15 +256,34 @@ With `LADO_SECRETS` set, compose refuses to start while the folder is missing ra
 make it; without it the container has none and says nothing about it
 (`docker compose exec lado lado doctor` says how to give them). LADO reads the files at
 each agent's start, so a new file reaches the next agent with no restart; they never show
-in `docker inspect`, and `lado doctor` lists the names it uses. For example, git over
-https and `gh` with your GitHub token:
+in `docker inspect`, and `lado doctor` lists the names it uses. For example, a kit's key:
 
 ```bash
-printf %s "$(gh auth token)" > secrets/GH_TOKEN
+printf %s "$KEY" > secrets/YOUGILE_API_KEY
 ```
 
-LADO's own git uses it as well, read at each call: a kit, skill pack or marketplace of a
-private repository, and a clone by URL from the UI (New session → Clone).
+LADO's own git uses the folder as well, read at each call: a kit, skill pack or marketplace
+of a private repository, and a clone by URL from the UI (New session → Clone). Your GitHub
+token does not go here: GitHub, like your other git servers, is signed in to in Settings →
+Git servers (below, GitHub and your git servers).
+
+#### GitHub and your git servers
+
+GitHub, GitHub Enterprise and GitLab are signed in to in the UI's Settings → Git servers, or
+with `docker compose exec -it lado lado git-server add github.com --token` (the token typed
+without echo; make one at https://github.com/settings/tokens with the scope `repo`). The
+agents' git and `gh` then use that token, and nothing else: a `GH_TOKEN` in `secrets/`, in a
+project or in your shell, and `gh auth login`, are not used ([cli.md](cli.md), `lado
+git-server`).
+
+Coming from a version before 0.48.0, where the agents used a `GH_TOKEN` in `secrets/` or `gh
+auth login` inside, nothing is to do: the first start of the new version moves that login
+into Settings → Git servers once, as the row `https://github.com`, and says so in `docker
+compose logs lado` (`LADO took your GitHub login (…) into Settings → Git servers: github.com,
+signed in as <you>.`); `lado doctor` says it too, and names the old token as set but not
+used. From then on change it in Settings only. The old `secrets/GH_TOKEN` and `gh`'s login
+are left as they were, so going back to the version before works as before; remove them
+yourself when you no longer need them.
 
 **Local models.** A model server you run yourself (LM Studio, Ollama, LiteLLM) is added in
 Settings → Model servers or with `lado model-server add`. OpenCode and Kilo CLI agents then have its
@@ -411,16 +430,16 @@ A variable only one project's agents should get, or with another value there (a 
 address, a local model's), is set per project instead, no file needed: `docker compose exec
 lado lado project set <project> NAME VALUE` ([cli.md](cli.md)); the project's value wins
 over the folder's for that project's sessions. A key one project's agents should get (each
-client's own board or GitHub token) is set as the project's secret, typed without echo or
-piped in, never on the command line:
+client's own board) is set as the project's secret, typed without echo or piped in, never on
+the command line:
 
 ```bash
 docker compose exec -it lado lado project set <project> YOUGILE_API_KEY --secret
-printf %s "$(gh auth token)" | docker compose exec -T lado lado project set <project> GH_TOKEN --secret
 ```
 
-A project's `GH_TOKEN` (and its other variables) also serve LADO's own clone into the
-project: `lado project repo add` and the project page's Add repository with its branch list.
+A project's variables also serve LADO's own clone into the project: `lado project repo add`
+and the project page's Add repository with its branch list. A project's `GH_TOKEN` is not
+used: GitHub's token is the one of Settings → Git servers, for every project.
 
 LADO keeps it in its home volume (`~/.lado/projects/<project>/secrets/`), shows only its
 name (`lado project show`), and removes it with `lado project unset` or with the project. A
@@ -1091,6 +1110,13 @@ with each server's token: the warning lists each folder; remove them (`rm -rf
 ~/.lado/git-servers/<id>`) when you no longer need them. The older LADO does not use them:
 git reaches those servers as it did before you added them. Upgrading again brings no server
 back: add it again with `lado git-server add`.
+
+Going back to a version before 0.48.0 forgets github.com in Settings → Git servers too: the
+copy was made before the first start of 0.48.0 took your GitHub login over. The older LADO
+uses the login it used before, which LADO never changed or removed: the `GH_TOKEN` of the
+outside folder (`secrets/` in Docker) or your shell, or `gh auth login`. Upgrading again takes
+nothing over a second time if the record of the takeover is in the copy; from a copy made
+before it, the first start takes the login over again.
 
 ### The check for a newer version
 

@@ -1,4 +1,5 @@
-"""GitHub Enterprise Server: its REST API under `/api/v3`."""
+"""GitHub: github.com, its REST API at api.github.com, and GitHub Enterprise Server, its
+REST API under `/api/v3`."""
 
 from __future__ import annotations
 
@@ -9,8 +10,16 @@ from lado.git_kinds.base import Kind
 if TYPE_CHECKING:
     from lado.model_servers import Answer
 
+DOTCOM = "https://github.com"  # github.com's address as lado.git_servers.address gives it
+DOTCOM_USER = "https://api.github.com/user"
+
 
 class GitHub(Kind):
+    def request(self, root: str, token: str | None) -> tuple[str, dict[str, str]]:
+        if root == DOTCOM:
+            return DOTCOM_USER, {} if token is None else self.headers(token)
+        return super().request(root, token)
+
     def headers(self, token: str) -> dict[str, str]:
         return {"Authorization": f"token {token}", "Accept": "application/vnd.github+json"}
 

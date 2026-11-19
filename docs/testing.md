@@ -69,7 +69,11 @@ when, after a test without `telemetry_on`, its `LADO_HOME` holds `telemetry/sent
 file in `telemetry/outbox/`; the live and smoke tests, under `tests/`, get it too. And
 `BROWSER=true`, so no test opens a browser (`lado bug-report`'s `y`: `webbrowser` runs
 `true <url>`), a test that forgot to replace `webbrowser.open` neither
-(`tests/test_cli_bug_report.py` checks it is set).
+(`tests/test_cli_bug_report.py` checks it is set). No test takes the GitHub login of the
+machine running it (`lado.github_takeover`): conftest drops GitHub's token and host variables
+and points `GH_CONFIG_DIR` at an empty folder of the run, and the autouse `_no_gh_login` makes
+`gh_token` find none in a unit test; the takeover's tests take `real_gh_token` with a stub
+`gh` on PATH.
 
 No test leaves a process alive (`tests/leftovers.py`). Every process a test starts carries
 the test's `LADO_HOME` in its environment: the tmux server, the agents, their hooks and
@@ -259,7 +263,8 @@ The secrets folder (`test_secrets.py`; only fake values): compose with no `LADO_
 and no folder starts, `lado doctor` exits 0 with `[info] … /run/secrets: none` and the hint
 naming `LADO_SECRETS=./secrets`, a Claude Code session reaches idle, and `docker compose
 logs` names neither `/run/secrets` nor `LADO_ENV_DIR`; `LADO_SECRETS=./secrets` and a
-fake `GH_TOKEN` in `secrets/` reach the supervisor's process and doctor's `[ok  ]` line;
+fake `YOUGILE_API_KEY` in `secrets/` reach the supervisor's process and doctor's `[ok  ]`
+line;
 with the line but no folder `up -d` fails naming the path and makes no folder.
 The sessions (`test_sessions.py`): `docker compose stop` with a Claude Code session and one
 stopped by hand exits 0 with the stop's line naming only the first, both stopped in
@@ -286,8 +291,9 @@ The agents' access (`test_access.py`; only fake values): a secrets folder of the
 variable, `lado doctor` names it, and neither `docker inspect` nor `docker logs` holds the
 value; `LADO_GIT_NAME` with an apostrophe and `LADO_GIT_EMAIL` are a commit's author and
 committer, a new email on the same home volume replaces the old, and without them
-`docker logs` warns; `GH_TOKEN` of the folder is `git credential fill`'s password for
-github.com and `gh auth token`; an ssh agent of a sidecar container (OpenSSH's agent
+`docker logs` warns; a `GH_TOKEN` of the folder and a `gh` login on the home volume give
+github.com no password (`git credential fill`) and the real `gh` no token, until github.com
+is a saved git server, whose token both then take; an ssh agent of a sidecar container (OpenSSH's agent
 serves only its own uid, so it runs as lado's) on a shared volume, its socket given to
 root as Docker Desktop's is, lists its key in an agent's login shell, also after a
 restart that found it root's again, with no 0 in `id -G`; one of the workspace's owner

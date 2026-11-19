@@ -2912,12 +2912,12 @@ def test_project_set_secret_from_a_pipe(shop, capsys, monkeypatch, given, stored
     """`stored` is what the agents get: one line break of stdin's end dropped, no more."""
     monkeypatch.setattr("sys.stdin", Stdin(given))
     monkeypatch.setattr("getpass.getpass", lambda prompt: pytest.fail("asked"))
-    assert main(["project", "set", "shop", "GH_TOKEN", "--secret"]) == 0
+    assert main(["project", "set", "shop", "YOUGILE_API_KEY", "--secret"]) == 0
     assert capsys.readouterr().out.splitlines() == [
-        "Set secret GH_TOKEN in project shop.",
+        "Set secret YOUGILE_API_KEY in project shop.",
         "Agents started from now on get it.",
     ]
-    assert project_secrets.read("shop").values == {"GH_TOKEN": stored}
+    assert project_secrets.read("shop").values == {"YOUGILE_API_KEY": stored}
     assert state.project_variables("shop") == {}
 
 
@@ -3062,3 +3062,33 @@ def test_project_show_lists_secrets_by_name_only(shop, capsys, monkeypatch):
     out = capsys.readouterr().out
     assert out.splitlines()[-3:] == ["  secrets:", "    GH_TOKEN", "    YOUGILE_API_KEY"]
     assert "canary" not in out
+
+
+def test_project_set_github_variable_warns(shop, capsys, monkeypatch):
+    monkeypatch.setattr("sys.stdin", Stdin("x"))
+    assert main(["project", "set", "shop", "GH_TOKEN", "--secret"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "Set secret GH_TOKEN in project shop.",
+        "GH_TOKEN is not given to agents: github.com and GitHub Enterprise take their token "
+        "from Settings → Git servers.",
+    ]
+    assert main(["project", "set", "shop", "GH_HOST", "ghe.corp"]) == 0
+    assert capsys.readouterr().out.splitlines()[1].startswith("GH_HOST is not given to agents")
+
+
+def test_a_hint_of_two_steps_is_two_lines(capsys, monkeypatch, tmp_path):
+    from lado import clone
+
+    hint = runtime.Hint("Check it:", "lado git-server check X", (runtime.Hint("Or:", "y"),))
+
+    def refused(*args, **kwargs):
+        raise clone.CloneError("login_needed", "cannot read X: refused", hint)
+
+    monkeypatch.setattr(runtime, "start_session", refused)
+    monkeypatch.chdir(tmp_path)
+    assert main(["start", "--provider", "claude"]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        "lado: cannot read X: refused",
+        "lado: Check it: lado git-server check X",
+        "lado: Or: y",
+    ]

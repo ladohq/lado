@@ -3,9 +3,9 @@ whether a folder may take a clone, the remote's branches, and the clone itself, 
 progress and cancellation (openspec change clone-from-url). `lado start <git-url>` and the
 UI server's clone jobs (`server/clones.py`) both call it, and print only what it says.
 
-LADO uses only the access git already has on this machine (ssh keys, `gh auth`, a
-credential helper, a token in the outside folder or, for a clone into a project, in the
-project's variables and secrets: lado.agent_env.for_git): its git calls run with no
+LADO uses only the access git already has on this machine (ssh keys, a credential helper,
+the saved git servers, github.com's included, variables of the outside folder or, for a
+clone into a project, of the project: lado.agent_env.for_git): its git calls run with no
 terminal and no prompt, so a missing credential is a failure, never a wait. The kinds of a
 failure here also tell those of LADO's git for kits (`explain`, lado.gitcache). A URL
 reaches a text only through `runtime.public_remote`."""
@@ -270,7 +270,6 @@ KINDS: tuple[tuple[str, re.Pattern], ...] = (
     ("no_branch", re.compile(r"Remote branch .* not found")),
 )
 GIT_FAILED = "git_failed"
-GITHUB = "github.com"
 _LINE = re.compile(r"(fatal|error|ERROR):")
 _ANY_URL = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s'\"]+")
 
@@ -294,27 +293,8 @@ def _ssh_check(address: Address) -> str:
     return f"ssh -T {port}{address.user or 'git'}@{address.host}"
 
 
-def _github_login(project: str | None) -> runtime.Hint:
-    """Where LADO's git can take a GitHub login from: the project's secret for a clone into
-    it, else the outside folder's file when that folder is a folder, else gh's own."""
-    if project:
-        return runtime.Hint(
-            "Give the project a GitHub token:", f"lado project set {project} GH_TOKEN --secret"
-        )
-    folder = os.environ.get(agent_env.ENV_DIR_VAR, "")
-    if os.path.isabs(folder) and os.path.isdir(folder):
-        return runtime.Hint(
-            f"Log in with GitHub's CLI, or put a token into the file GH_TOKEN of {folder} "
-            f"({agent_env.ENV_DIR_VAR}):",
-            "gh auth login",
-        )
-    return runtime.Hint("Log in with GitHub's CLI on this machine:", "gh auth login")
-
-
-def _reason(
-    kind: str, address: Address, branch: str | None, project: str | None = None
-) -> tuple[str, runtime.Hint | None]:
-    host, github = address.host, address.host == GITHUB
+def _reason(kind: str, address: Address, branch: str | None) -> tuple[str, runtime.Hint | None]:
+    host = address.host
     if kind == "ssh_denied":
         hint = f"Check that this machine's ssh key is added to your account on {host}:"
         return f"{host} refused this machine's ssh key", runtime.Hint(hint, _ssh_check(address))
@@ -324,21 +304,14 @@ def _reason(
         )
         return f"this machine does not know {host}'s ssh host key yet", hint
     if kind == "login_needed":
-        if github:
-            return f"{host} asks for a login", _github_login(project)
         return (
             f"{host} asks for a login; set up a git credential helper for it on this machine",
             None,
         )
-    if kind in ("access_denied", "not_found"):
-        hint = (
-            runtime.Hint("See which GitHub account this machine uses:", "gh auth status")
-            if github
-            else None
-        )
-        if kind == "access_denied":
-            return f"{host} refused access", hint
-        return "no repository there, or this machine's account cannot read it", hint
+    if kind == "access_denied":
+        return f"{host} refused access", None
+    if kind == "not_found":
+        return "no repository there, or this machine's account cannot read it", None
     if kind == "unreachable":
         return f"{host} cannot be reached", None
     return f"no branch {branch}", None  # no_branch
@@ -375,23 +348,27 @@ def _server_way(
     if server is not None and (
         address.scheme == "ssh" or urllib.parse.urlsplit(server.address).scheme == address.scheme
     ):
-        root = server.address
+        root, key = server.address, server.host  # the host with its port
         reason = {
-            "login_needed": f"{host} refused the token of the git server {root}",
-            "access_denied": f"{host} refused access with the token of the git server {root}",
+            "login_needed": f"{key} refused the token of the git server {root}",
+            "access_denied": f"{key} refused access with the token of the git server {root}",
             "not_found": f"no repository there, or the token of the git server {root} cannot "
             "read it",
         }[kind]
         hint = runtime.Hint(
-            "Check the git server; if its token expired or was revoked, replace it "
-            f"({git_servers.ADD} {root} --token):",
+            "Check the git server:",
             f"lado git-server check {root}",
+            (
+                runtime.Hint(
+                    "If its token expired or was revoked, replace it:",
+                    f"{git_servers.ADD} {root} --token",
+                ),
+            ),
         )
         return reason, hint, ServerWay("check", server.host, root, CHECK_PAGE)
     if (
         kind == "not_found"
         or address.scheme not in ("https", "http")
-        or host in git_servers.GITHUB_COM
         or any(urllib.parse.urlsplit(s.address).hostname == host for s in servers)
     ):
         return None
@@ -408,14 +385,13 @@ def _server_way(
     return reason, hint, ServerWay("add", at.key, at.root, page)
 
 
-def failure(
-    op: str, url: str, stderr: str, branch: str | None = None, project: str | None = None
-) -> CloneError:
-    """git's failure of a listing (`op` "list") or a clone, into `project` when given, as
-    LADO tells it: `cannot read <url>: <reason> (<git's line>)` or `cannot clone ...`, with
-    a hint by its kind and, for an access failure a git server can fix, its way out."""
+def failure(op: str, url: str, stderr: str, branch: str | None = None) -> CloneError:
+    """git's failure of a listing (`op` "list") or a clone as LADO tells it: `cannot read
+    <url>: <reason> (<git's line>)` or `cannot clone ...`, with a hint by its kind and, for
+    an access failure a git server can fix, its way out. A clone into a project is told as
+    any: a project's variable gives no login a git server should (lado.agent_env)."""
     verb = "read" if op == "list" else "clone"
-    kind, text, hint, server = _told(url, stderr, branch, project)
+    kind, text, hint, server = _told(url, stderr, branch)
     return CloneError(kind, f"cannot {verb} {runtime.public_remote(url)}: {text}", hint, server)
 
 
@@ -424,12 +400,12 @@ def explain(url: str, stderr: str) -> str:
     (lado.gitcache), by the kinds of a clone's, on one line after LADO's head: `<reason>
     (<git's line>)` and `. <hint>` when the kind has one; git's line alone for no known
     kind."""
-    _, text, hint, _ = _told(url, stderr, None, None)
+    _, text, hint, _ = _told(url, stderr, None)
     return text + (f". {hint.line()}" if hint else "")
 
 
 def _told(
-    url: str, stderr: str, branch: str | None, project: str | None
+    url: str, stderr: str, branch: str | None
 ) -> tuple[str, str, runtime.Hint | None, ServerWay | None]:
     """git's failure by its kind: the kind, `<reason> (<git's line>)` (git's line alone
     for no known kind), the hint and the git server's way out."""
@@ -441,7 +417,7 @@ def _told(
     if servers is not None and (way := _server_way(kind, url, address, servers)):
         reason, hint, server = way
         return kind, f"{reason} ({line})", hint, server
-    reason, found = _reason(kind, address, branch, project)
+    reason, found = _reason(kind, address, branch)
     return kind, f"{reason} ({line})", found, None
 
 
@@ -530,7 +506,7 @@ def list_branches(url: str, project: str | None = None) -> Remote:
         raise
     stderr = err.decode(errors="replace")
     if process.returncode != 0:
-        raise failure("list", url, stderr, project=project)
+        raise failure("list", url, stderr)
     default, branches = None, []
     for line in out.decode(errors="replace").splitlines():
         value, _, ref = line.partition("\t")
@@ -668,4 +644,4 @@ def _run_clone(
     if pending.strip():
         kept.append(pending)
     if process.returncode != 0:
-        raise failure("clone", url, "\n".join(kept), branch, project)
+        raise failure("clone", url, "\n".join(kept), branch)

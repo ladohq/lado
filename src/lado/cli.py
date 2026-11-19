@@ -88,6 +88,7 @@ def cmd_start(args: argparse.Namespace) -> int:
         _check_project_args(args)
         telemetry.ask_if_needed()
         args.prompt_text = _read_prompt(args)
+        _take_over_github()  # before a clone too: it may be of github.com
     if args.project is None and args.path is None:
         args.path = "."
     if args.new:
@@ -143,6 +144,19 @@ def cmd_start(args: argparse.Namespace) -> int:
     return _attach(sess.name)
 
 
+def _take_over_github() -> None:
+    """Take the GitHub login agents had over once, before LADO starts agents or its UI
+    (lado.github_takeover), saying so on stdout."""
+    from lado import agent_env, github_takeover
+
+    try:
+        line = github_takeover.run()
+    except agent_env.AgentEnvError:
+        return  # the launch says why the shell failed
+    if line:
+        print(line)
+
+
 def _read_prompt(args: argparse.Namespace) -> str | None:
     """The first message of `--prompt` or `--prompt-file` (`-`: stdin), checked, before
     anything starts or is cloned; None without either."""
@@ -171,8 +185,8 @@ def _start_clone(args: argparse.Namespace) -> int:
     target = clone.check_target(url, folder)
     if target.state not in clone.CAN_CLONE:
         print(f"lado: {target.text}", file=sys.stderr)
-        if target.hint:
-            print(f"lado: {target.hint.line()}", file=sys.stderr)
+        for line in target.hint.lines() if target.hint else []:
+            print(f"lado: {line}", file=sys.stderr)
         if target.state == "same_repo":
             print(f"lado: To start a session in it as it is: lado start {folder}", file=sys.stderr)
         return 1
@@ -1176,8 +1190,19 @@ def _print_secrets(id: str) -> None:
         print(f"    {name}")
 
 
-def _print_variable_change(id: str, running: list[str], gets: str = "get it") -> None:
-    """Who gets a project variable's change: the agents started from now on."""
+def _print_variable_change(
+    id: str, running: list[str], gets: str = "get it", name: str = ""
+) -> None:
+    """Who gets a project variable's change: the agents started from now on; none for a
+    GitHub variable (`name`), which no agent gets from a project (lado.agent_env)."""
+    from lado import agent_env
+
+    if name in agent_env.GITHUB_VARIABLES:
+        print(
+            f"{name} is not given to agents: github.com and GitHub Enterprise take their "
+            "token from Settings → Git servers."
+        )
+        return
     if running:
         print(
             f"Agents started from now on {gets}; running sessions of {id} keep the old "
@@ -1254,7 +1279,7 @@ def cmd_project(args: argparse.Namespace) -> int:
     if args.sub == "set" and args.secret:
         running = projects.set_secret(args.id, args.name, _secret_value(args))
         print(f"Set secret {args.name} in project {args.id}.")
-        _print_variable_change(args.id, running)
+        _print_variable_change(args.id, running, name=args.name)
         return 0
     if args.sub == "set":
         if args.value is None:
@@ -1264,7 +1289,7 @@ def cmd_project(args: argparse.Namespace) -> int:
             )
         running = projects.set_variable(args.id, args.name, args.value)
         print(f"Set {args.name} in project {args.id}.")
-        _print_variable_change(args.id, running)
+        _print_variable_change(args.id, running, name=args.name)
         return 0
     if args.sub == "unset":
         running = projects.unset(args.id, args.name)
@@ -1737,7 +1762,7 @@ def cmd_git_server_add(args: argparse.Namespace) -> int:
         return 2
     again = f"{git_servers.ADD} {at.root} --token"
     try:
-        git_servers.check_not_github(at)
+        git_servers.check_kind(at, args.kind)
         if args.token is None:
             raise git_servers.Refused(
                 f"a git server is added with its token: run {again} and type it, or pipe it in"
@@ -1999,6 +2024,7 @@ def cmd_ui(args: argparse.Namespace) -> int:
     from lado.server import run as server_run
 
     telemetry.ask_if_needed()
+    _take_over_github()
 
     info = server_run.running()
     if info and args.host is not None and server_run.address(args.host) != info["host"]:
@@ -2783,7 +2809,7 @@ def main(argv: list[str] | None = None) -> int:
         hint = exc.hint if isinstance(exc, refusals) else None
         if isinstance(exc, runtime.MigrationFailed) and not removes:
             telemetry.record(f"cli:{_where(args)}", exc.__cause__)  # LADO's bug, no traceback
-        lines = [str(exc), *([hint.line()] if hint else [])]
+        lines = [str(exc), *(hint.lines() if hint else [])]
         for line in [*lines, *getattr(exc, "__notes__", [])]:
             print(f"lado: {line}", file=sys.stderr)
         return 1

@@ -350,14 +350,21 @@ FolderProblemKind = Literal[
 
 @dataclass(frozen=True)
 class Hint:
-    """What the human can do about a refusal: a sentence and one command to copy."""
+    """What the human can do about a refusal: a sentence and one command to copy, then
+    `more` steps, each with its own sentence and command (the UI shows the first; a step
+    that needs more has a way of its own there, lado.clone.ServerWay)."""
 
     text: str
     command: str
+    more: tuple["Hint", ...] = ()
+
+    def lines(self) -> list[str]:
+        """Each step as its line, as the CLI prints them."""
+        return [f"{self.text} {self.command}", *(f"{s.text} {s.command}" for s in self.more)]
 
     def line(self) -> str:
-        """The hint as one line, as the CLI and `lado doctor` print it."""
-        return f"{self.text} {self.command}"
+        """The hint as one line, as `lado doctor` and the kits' git failures print it."""
+        return ". ".join(self.lines())
 
 
 class FolderProblem(LadoError):
@@ -380,6 +387,7 @@ GIT_MIN = (2, 31)
 # `includeIf "hasconfig:remote.*.url:…"`, a git server's commit author (git_servers)
 GIT_AUTHOR_MIN = (2, 36)
 GIT_AUTHORS = "git-authors"  # in an agent's config folder: its servers' author files
+GH_CONFIG = "gh"  # in an agent's config folder: the GitHub CLI's own (GH_CONFIG_DIR)
 GIT_AUTHOR_VARIABLES = (
     "GIT_AUTHOR_NAME",
     "GIT_AUTHOR_EMAIL",
@@ -3493,11 +3501,16 @@ def _add_agent(agent: state.Agent, kit: str) -> None:
 def agent_layers(project: str | None) -> agent_env.Layers:
     """The layers agents start from (lado.agent_env), read anew for each launch, with the
     layer of the session's `project` as it is now (lado.project_secrets.layer). Each agent
-    merges them with its own provider's login (agents_env)."""
+    merges them with its own provider's login (agents_env). The GitHub login they had is
+    taken over first, once (lado.github_takeover: the command that started LADO says so)."""
+    from lado import github_takeover
+
     try:
-        return agent_env.layers(project_secrets.layer(project) if project else None)
+        layers = agent_env.layers(project_secrets.layer(project) if project else None)
     except agent_env.AgentEnvError as exc:
         raise LadoError(str(exc)) from exc
+    github_takeover.run(layers, make=False)
+    return layers
 
 
 def agents_env(layers: agent_env.Layers, agent_cli: providers.Provider) -> dict[str, str]:
@@ -3544,12 +3557,16 @@ def _ours(
     LADO's, the agent's own TMPDIR (its folder under the layers' TMPDIR,
     providers.base.temp_path), git's way to the saved git servers (after the layers' own
     `GIT_CONFIG_*` entries, lado.git_servers.variables; none without a server, with the
-    servers' commit authors written into the agent's config folder), then the provider's."""
+    servers' commit authors written into the agent's config folder), the GitHub CLI's
+    config folder and tokens of the saved servers (lado.git_servers.gh_variables), then the
+    provider's."""
     temp_dir = providers.base.temp_path(agent, base_env)
     servers = state.git_servers()
-    authors = git_servers.author_files(providers.base.config_dir(agent) / GIT_AUTHORS, servers)
+    config = providers.base.config_dir(agent)
+    authors = git_servers.author_files(config / GIT_AUTHORS, servers)
     git = git_servers.variables(base_env, servers, authors=authors)
-    return {**providers.agent_env(agent), "TMPDIR": str(temp_dir), **git, **launch.env}
+    gh = git_servers.gh_variables(servers, config / GH_CONFIG, lambda: remote(agent.cwd))
+    return {**providers.agent_env(agent), "TMPDIR": str(temp_dir), **git, **gh, **launch.env}
 
 
 def _author_warnings(agent: state.Agent, base_env: Mapping[str, str]) -> list[str]:

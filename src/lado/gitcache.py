@@ -19,8 +19,8 @@ whether a tag was moved since its clone was made.
 The clone of a marketplace (lado.marketplaces) follows its main branch instead:
 clone_branch makes it, refresh brings it up to date. All of LADO's git commands for kits
 run here, with no prompt; the network ones in the outside folder's variables over LADO's
-process environment (lado.agent_env.for_git: a GH_TOKEN of /run/secrets reaches gh's
-credential helper), their failures told by a clone's kinds (lado.clone.explain).
+process environment (lado.agent_env.for_git, with the saved git servers' tokens, github.com's
+among them), their failures told by a clone's kinds (lado.clone.explain).
 """
 
 import hashlib

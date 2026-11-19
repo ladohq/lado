@@ -87,13 +87,18 @@ def test_a_listing_refused_is_400_with_its_kind_and_hint(client, tmp_path):
 def test_a_listing_failure_with_a_hint(client, tmp_path, monkeypatch):
     for key, value in fake_git(tmp_path / "fake", "fail").items():
         monkeypatch.setenv(key, value)
-    monkeypatch.setenv("FAKE_GIT_STDERR", "ERROR: Repository not found.")
-    answer = client.post("/api/remote-branches", json={"url": "git@github.com:acme/app.git"})
+    monkeypatch.setenv(
+        "FAKE_GIT_STDERR",
+        "fatal: could not read Username for 'https://github.com': terminal prompts disabled",
+    )
+    answer = client.post("/api/remote-branches", json={"url": "https://github.com/acme/app"})
     assert answer.status_code == 400
-    assert answer.json()["detail"]["hint"] == {
-        "text": "See which GitHub account this machine uses:",
-        "command": "gh auth status",
+    detail = answer.json()["detail"]
+    assert detail["hint"] == {
+        "text": "Add it as a git server with a token:",
+        "command": "lado git-server add https://github.com --token",
     }
+    assert detail["git_server"]["address"] == "https://github.com"
 
 
 def _git_server():

@@ -97,7 +97,6 @@ def check(given: models.GitServerCheckAsked, has_db: bool = True) -> models.GitS
         return found
     found.address = at.root
     try:
-        git_servers.check_not_github(at)
         if has_db:
             git_servers.check_host(at)
         git_servers.check_git(os.environ)

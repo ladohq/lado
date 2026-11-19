@@ -3076,6 +3076,16 @@ def test_project_set_github_variable_warns(shop, capsys, monkeypatch):
     assert capsys.readouterr().out.splitlines()[1].startswith("GH_HOST is not given to agents")
 
 
+def test_project_set_gitlab_variable_warns(shop, capsys, monkeypatch):
+    monkeypatch.setattr("sys.stdin", Stdin("x"))
+    assert main(["project", "set", "shop", "GITLAB_TOKEN", "--secret"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "Set secret GITLAB_TOKEN in project shop.",
+        "GITLAB_TOKEN is not given to agents: a GitLab takes its token from Settings → Git "
+        "servers.",
+    ]
+
+
 def test_a_hint_of_two_steps_is_two_lines(capsys, monkeypatch, tmp_path):
     from lado import clone
 

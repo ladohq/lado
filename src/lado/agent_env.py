@@ -28,7 +28,9 @@ they reach what the agents reach: the outside folder's GIT_SSH_COMMAND, a projec
 
 GitHub's variables (GITHUB_VARIABLES: its tokens, host and the GitHub CLI's config folder)
 come from no layer: github.com and GitHub Enterprise get their tokens from the saved git
-servers alone (lado.git_servers.gh_variables, laid by lado.runtime).
+servers alone (lado.git_servers.gh_variables, laid by lado.runtime). So do GitLab's
+(GITLAB_VARIABLES): an agent's glab gets the saved GitLab servers alone
+(lado.git_servers.glab_variables).
 
 A tmux window starts with its server's environment, so the launch does not rely on it: the
 window runs the module `lado.agent_env <file> <argv>` (`interpreter.run_module`), which
@@ -107,6 +109,17 @@ GITHUB_VARIABLES = (
     "GH_HOST",
     "GH_CONFIG_DIR",
 )
+# The GitLab CLI's login, host and config folder: taken from no layer (`merge`), as a
+# GitLab gets its token from the saved git servers alone (lado.git_servers.glab_variables).
+# OAUTH_TOKEN, CA_CERT and API_PROTOCOL, which glab reads too, are other tools' as well.
+GITLAB_VARIABLES = (
+    "GITLAB_TOKEN",
+    "GITLAB_ACCESS_TOKEN",
+    "GITLAB_HOST",
+    "GITLAB_URI",
+    "GL_HOST",
+    "GLAB_CONFIG_DIR",
+)
 
 INHERIT_HINT = (
     f"set {SOURCE_VAR}={INHERIT} to give agents the environment of the process that starts them"
@@ -170,11 +183,11 @@ def merge(
     """`found`'s layers, each over the one before, but for the names of `login` (an agent
     CLI's login variables): a login comes whole from one layer, the highest that sets any
     of them, and none of them is taken from a lower one. Without `login`, name by name. No
-    GITHUB_VARIABLES from any layer."""
+    GITHUB_VARIABLES nor GITLAB_VARIABLES from any layer."""
     env: dict[str, str] = {}
     for layer in found:
         env.update(layer)
-    for name in GITHUB_VARIABLES:
+    for name in (*GITHUB_VARIABLES, *GITLAB_VARIABLES):
         env.pop(name, None)
     names = set(login)
     if names:

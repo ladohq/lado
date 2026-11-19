@@ -28,6 +28,7 @@ import yaml
 from lado import (
     agent_env,
     artifacts,
+    git_kinds,
     git_servers,
     gitcache,
     gui_session,
@@ -388,6 +389,9 @@ GIT_MIN = (2, 31)
 GIT_AUTHOR_MIN = (2, 36)
 GIT_AUTHORS = "git-authors"  # in an agent's config folder: its servers' author files
 GH_CONFIG = "gh"  # in an agent's config folder: the GitHub CLI's own (GH_CONFIG_DIR)
+GLAB_CONFIG = "glab"  # in an agent's config folder: the GitLab CLI's own (GLAB_CONFIG_DIR)
+# The saved server of the session repository's origin and its tool (_repo_tool).
+RepoTool = tuple[state.GitServer, git_servers.ToolState]
 GIT_AUTHOR_VARIABLES = (
     "GIT_AUTHOR_NAME",
     "GIT_AUTHOR_EMAIL",
@@ -978,6 +982,7 @@ def start_session(
         session, SUPERVISOR, env.lead.name, repo, None, None, state.STARTING, sess.provider
     )
     instructions = _supervisor_instructions(env, session)
+    repo_tool = _repo_tool(sess.repo, base_env)
     spec = _spec(
         agent_cli,
         env,
@@ -987,6 +992,7 @@ def start_session(
         base_env,
         start=start,
         servers=servers,
+        repo_tool=repo_tool,
     )
     agent.read_only = spec.read_only  # stored anew at each resume, as the kit says now
     started = Started(sess, chosen, lead=env.lead_line(), warnings=[*env.warnings, *checked])
@@ -1043,7 +1049,7 @@ def start_session(
         launch = _launch_command(agent_cli, agent, sess, spec, start.note)
         started.warnings += launch.warnings
         started.warnings += _layer_warnings(agent, launch, sess.project, files=True)
-        started.warnings += _git_server_warnings(agent, base_env)
+        started.warnings += _git_server_warnings(agent, base_env, repo_tool)
         blocker, command = _before_window(
             agent_cli, agent, base_env, layers.shell, launch, sess.project
         )
@@ -1307,6 +1313,7 @@ def spawn_worker(
     )
     _check_commands(env, base_env)
     check_login(agent_cli, base_env, logins.WORKER, start)
+    repo_tool = _repo_tool(sess.repo, base_env)
     spec = _spec(
         agent_cli,
         env,
@@ -1317,6 +1324,7 @@ def spawn_worker(
         without or [],
         start,
         servers,
+        repo_tool,
     )
     agent.read_only = spec.read_only
     if not run:
@@ -1331,7 +1339,7 @@ def spawn_worker(
         launch = _launch_command(agent_cli, agent, sess, spec, start.note)
         held = [*server_warnings, *launch.warnings]
         held += _layer_warnings(agent, launch, sess.project, files=False)
-        held += _git_server_warnings(agent, base_env)
+        held += _git_server_warnings(agent, base_env, repo_tool)
         before, command = _before_window(
             agent_cli, agent, base_env, layers.shell, launch, sess.project
         )
@@ -3384,11 +3392,13 @@ def _spec(
     without: list[str] | None = None,
     start: "model_settings.StartModel | None" = None,
     servers: tuple[providers.base.ServerEntry, ...] = (),
+    repo_tool: RepoTool | None = None,
 ) -> providers.AgentSpec:
-    """What `agent` is given: its role from the kits plus LADO's instructions, its skills
-    and MCP servers, each ${ENV_VAR} of theirs checked in the agent's `base_env` (the value
-    stays there: lado.mcp_exec), the model it starts on (`start`) and the model `servers` of
-    its config. Fails on anything its CLI cannot do."""
+    """What `agent` is given: its role from the kits plus LADO's instructions (with the
+    line of the repository's server and its tool, `repo_tool`), its skills and MCP servers,
+    each ${ENV_VAR} of theirs checked in the agent's `base_env` (the value stays there:
+    lado.mcp_exec), the model it starts on (`start`) and the model `servers` of its config.
+    Fails on anything its CLI cannot do."""
     resolved = env.resolve(role, without or [])
     read_only = resolved.agent.read_only
     if read_only and not agent_cli.capabilities.deny_edit_tools:
@@ -3430,6 +3440,8 @@ def _spec(
         instructions += CONTAINER_INSTRUCTIONS + (
             CONTAINER_SUPERVISOR if agent.name == SUPERVISOR else CONTAINER_WORKER
         )
+    if repo_tool and (line := git_servers.tool_line(*repo_tool)):
+        instructions += line + "\n"
     try:
         temp_dir = providers.base.make_temp_dir(agent, base_env)
     except (providers.base.UnsafeTempDir, OSError) as exc:
@@ -3558,7 +3570,8 @@ def _ours(
     providers.base.temp_path), git's way to the saved git servers (after the layers' own
     `GIT_CONFIG_*` entries, lado.git_servers.variables; none without a server, with the
     servers' commit authors written into the agent's config folder), the GitHub CLI's
-    config folder and tokens of the saved servers (lado.git_servers.gh_variables), then the
+    config folder and tokens of the saved servers (lado.git_servers.gh_variables), the
+    GitLab CLI's config folder with the saved GitLab servers (glab_variables), then the
     provider's."""
     temp_dir = providers.base.temp_path(agent, base_env)
     servers = state.git_servers()
@@ -3566,15 +3579,42 @@ def _ours(
     authors = git_servers.author_files(config / GIT_AUTHORS, servers)
     git = git_servers.variables(base_env, servers, authors=authors)
     gh = git_servers.gh_variables(servers, config / GH_CONFIG, lambda: remote(agent.cwd))
-    return {**providers.agent_env(agent), "TMPDIR": str(temp_dir), **git, **gh, **launch.env}
+    glab = git_servers.glab_variables(servers, config / GLAB_CONFIG)
+    return {
+        **providers.agent_env(agent),
+        "TMPDIR": str(temp_dir),
+        **git,
+        **gh,
+        **glab,
+        **launch.env,
+    }
 
 
-def _git_server_warnings(agent: state.Agent, base_env: Mapping[str, str]) -> list[str]:
+def _repo_tool(repo: str, base_env: Mapping[str, str]) -> RepoTool | None:
+    """The saved server of the session repository's origin and its tool on the agents' PATH
+    (git_servers.tool_state), once per launch for its line and its warning alike; None, with
+    no tool run, for an origin on no saved server, no origin or a kind this LADO does not
+    know."""
+    servers = state.git_servers()
+    url = remote(repo) if servers else None
+    server = git_servers.server_for(url, servers) if url else None
+    kind = git_kinds.by_name(server.kind) if server else None
+    if server is None or kind is None:
+        return None
+    return server, git_servers.tool_state(kind, base_env)
+
+
+def _git_server_warnings(
+    agent: state.Agent, base_env: Mapping[str, str], repo_tool: RepoTool | None = None
+) -> list[str]:
     """One line per variable of `base_env` that sets git's author or committer over every
     config, while a git server has a commit author: LADO leaves them, the human's choice;
-    then one per GitHub server with a certificate, which the agent's gh does not get."""
+    then one per GitHub server with a certificate, which the agent's gh does not get; then
+    the tool of the repository's server (`repo_tool`) missing or too old."""
     servers = state.git_servers()
     gh = [f"gh {line}" for line in git_servers.gh_without_certificate(servers)]
+    if repo_tool and (warning := git_servers.tool_warning(*repo_tool)):
+        gh.append(warning)
     if not any(git_servers.author_text(s) for s in servers):
         return gh
     return [

@@ -18,7 +18,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-19-git-server-h
 
 ## 4. The launch
 
-- [ ] 4.1 `GITLAB_VARIABLES` dropped in `agent_env.merge`; `GLAB_CONFIG_DIR` in `_ours`; the
+- [x] 4.1 `GITLAB_VARIABLES` dropped in `agent_env.merge`; `GLAB_CONFIG_DIR` in `_ours`; the
   line in the instructions; the warning in the launch notes (D3, D4, D6). Check:
   `tests/test_agent_env.py`, `tests/test_runtime_git_servers.py`.
 

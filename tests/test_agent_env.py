@@ -504,6 +504,25 @@ def test_github_variables_from_no_layer(shell, outdir):
     assert (layers.shell["GH_TOKEN"], layers.outside["GH_TOKEN"]) == ("shell", "out")  # kept
 
 
+def test_gitlab_variables_from_no_layer(shell, outdir):
+    names = agent_env.GITLAB_VARIABLES
+    assert names == (
+        "GITLAB_TOKEN",
+        "GITLAB_ACCESS_TOKEN",
+        "GITLAB_HOST",
+        "GITLAB_URI",
+        "GL_HOST",
+        "GLAB_CONFIG_DIR",
+    )
+    shell(rc="export OAUTH_TOKEN=shell CA_CERT=shell " + " ".join(f"{n}=shell" for n in names))
+    for name in names:
+        write(outdir, name, b"out\n")
+    env = agent_env.resolve({name: "project" for name in names})
+    assert [name for name in names if name in env] == []
+    # Names glab reads that other tools read too stay theirs.
+    assert (env["OAUTH_TOKEN"], env["CA_CERT"]) == ("shell", "shell")
+
+
 def test_for_git_drops_github_variables(outdir, monkeypatch, lado_home):
     for name in agent_env.GITHUB_VARIABLES:
         monkeypatch.setenv(name, "lado's")

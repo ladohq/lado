@@ -2,7 +2,7 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: none · Next: S6b (waits at step_ok) · Open checks: the human's check on the company GitLab, on the release candidate that carries S8; live tests on the release candidate (S6 changed the agents' environment, never run live)
+In work: S6b (LAD-300, run task/lad-300) · Next: S7 · Open checks: the human's check on the company GitLab, on the release candidate that carries S8; live tests on the release candidate (S6 changed the agents' environment, never run live)
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
@@ -228,7 +228,7 @@ outside Docker (gh's own login on the host). The page's github.com row as S4's m
 spec place it (§10, C1, #7234), with the critique's F2 (how to sign in).
 
 ### S6b — The host's ssh agent switched off
-Status: planned
+Status: in progress (LAD-300, run task/lad-300)
 Leftovers of S6 (the human's manual check, ledger of LAD-299):
 - The token hint of Add for GitHub stays at the minimum, `repo` (#7446: the rest is the
   user's choice); the docs may name, in one line, what `read:org` and `workflow` add.

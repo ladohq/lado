@@ -2,13 +2,13 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: S8 (LAD-303, run task/lad-303) · Next: S9 · Open checks: the human's check on the company GitLab, on the release candidate that carries S8; live tests on the release candidate (S6 changed the agents' environment, never run live); 0.48.0's release checklist names what going back loses (S6b: the host's ssh agent returns only with `compose.yaml.bak`, not with the new `compose.yaml` that docs/release.md 4.6 keeps); S7: Apple's git (LibreSSL) and GnuTLS with an intermediate certificate, unchecked; S7's Docker check and "Trust?" on the company GitLab, in the human's check on the RC with S8
+In work: S9 (its task created at this review) · Next: readiness · Open checks: the human's check on the company GitLab, on the release candidate that carries S8; live tests on the release candidate (S6 changed the agents' environment, never run live); 0.48.0's release checklist names what going back loses (S6b: the host's ssh agent returns only with `compose.yaml.bak`, not with the new `compose.yaml` that docs/release.md 4.6 keeps); S7: Apple's git (LibreSSL) and GnuTLS with an intermediate certificate, unchecked; S7's Docker check and "Trust?" on the company GitLab, in the human's check on the RC with S8
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
 - The statement's decisions (brief.md) are not reopened.
 - Backward compatibility is not a goal of its own: a user can replace a token with the needed rights in Settings (2026-11-19, #7422).
-Last review: 2026-11-19, after S7, base at 3e886a20
+Last review: 2026-11-19, after S8, base at 181b2383
 
 ## Steps
 
@@ -289,7 +289,16 @@ Touches: the server kinds module, `agent_env.py`, `state.py`, `server/`, `web/sr
 (Settings: the certificate row as S4's spec §10 places it, C7), docs.
 
 ### S8 — GitLab: `glab` in the image, agents open merge requests
-Status: in progress (LAD-303, run task/lad-303; its brief whole is the run's artifact `step-brief`, the task text cut to 8000 characters)
+Status: done, check open until the release candidate that carries it (LAD-303, PR #342,
+merged 181b2383 on 2026-11-19, in release 0.48.0). glab 1.130.0 in the image (+56.3 MB
+amd64, +52.6 MB arm64; a CI test holds 60 MB); each agent its own `GLAB_CONFIG_DIR`, an
+entry per saved GitLab with its `ca_cert`, the token as a header from LADO's helper (glab
+1.114.0 at least), none on disk; GitLab variables from outside dropped and named by doctor,
+`GITLAB_API_HOST` and `GITLAB_REPO` among them (review F1, #7538), `OAUTH_TOKEN` warned;
+the line "server kind and tool" to every agent, a loud line for a missing or old tool (#7524);
+`api` advised for GitLab, a token without it warned (#7541); glab trusts the saved CA for any
+whole URL called from the server's repository, no token sent (#7573). Not run: the live
+push test and the manual check (steps 0–8 of the PR) — on the RC. Declined F4–F6 (minor).
 Check: a container test: `glab` is in the image at a pinned version and, for an agent whose
 repository is on a listed GitLab, is configured from the entry (host, token, certificate)
 with no login of its own (`glab auth status` against a fake server); the image grows by at

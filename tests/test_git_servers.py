@@ -14,6 +14,7 @@ import subprocess
 import sys
 import time
 
+import certificates as made
 import fake_git_api as fake
 import pytest
 
@@ -1104,8 +1105,8 @@ def test_a_check_keeps_the_author_and_writes_no_removed_server_back(serve, lado_
     assert (after.login, after.author_name) == (fake.LOGIN, "A")
     ask = git_servers._ask_kinds
 
-    def removed_meanwhile(at, token):
-        answers = ask(at, token)
+    def removed_meanwhile(at, token, certificate=None):
+        answers = ask(at, token, certificate)
         state.remove_git_server(saved.id)
         return answers
 
@@ -1721,3 +1722,142 @@ def test_setting_an_author_checks_it_and_git_first(lado_home, tmp_path, monkeypa
     assert str(raised.value) == AUTHOR_OLD
     assert git_servers.author_text(state.git_servers()[0]) is None
     git_servers.clear_author(at)  # clearing needs no git
+
+
+# A server's certificate.
+
+
+@pytest.fixture
+def corp_ca():
+    return made.authority("Corp Root CA")
+
+
+def test_a_certificate_is_kept_in_the_servers_folder_and_not_in_lado_db(lado_home, corp_ca):
+    saved, _ = _save()
+    database = (lado_home / "lado.db").read_bytes()
+    previous = os.umask(0)
+    try:
+        git_servers.set_certificate(git_servers.address("gitlab.corp.ru"), corp_ca.pem)
+    finally:
+        os.umask(previous)
+    path = lado_home / "git-servers" / saved.id / "ca.pem"
+    assert path.read_text() == corp_ca.pem
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert (lado_home / "lado.db").read_bytes() == database
+    assert git_servers.certificate(saved) == corp_ca.pem
+    assert [p.name for p in path.parent.iterdir()] == sorted(["ca.pem", "token"])
+
+
+def test_a_certificate_is_refused_through_a_link(lado_home, tmp_path, corp_ca):
+    saved, _ = _save()
+    elsewhere = tmp_path / "elsewhere.pem"
+    (lado_home / "git-servers" / saved.id / "ca.pem").symlink_to(elsewhere)
+    with pytest.raises(git_servers.Refused, match="symbolic link"):
+        git_servers.set_certificate(git_servers.address("gitlab.corp.ru"), corp_ca.pem)
+    assert not elsewhere.exists()
+
+
+def test_a_certificate_of_no_saved_server_is_refused(lado_home, corp_ca):
+    with pytest.raises(git_servers.Refused, match="is no saved git server"):
+        git_servers.set_certificate(git_servers.address("gitlab.corp.ru"), corp_ca.pem)
+    assert not (lado_home / "git-servers").exists()
+
+
+def test_a_new_token_keeps_the_certificate(lado_home, corp_ca):
+    saved, _ = _save()
+    git_servers.set_certificate(git_servers.address("gitlab.corp.ru"), corp_ca.pem)
+    again, replaced = _save(token="glpat-NEW")
+    assert replaced and again.id == saved.id
+    assert git_servers.certificate(again) == corp_ca.pem
+
+
+def test_a_save_with_a_certificate_writes_it(lado_home, corp_ca):
+    at = git_servers.address("gitlab.corp.ru")
+    saved, _ = git_servers.save(at, git_servers.Checked(GITLAB, "ivan"), TOKEN, corp_ca.pem)
+    assert git_servers.certificate(saved) == corp_ca.pem
+
+
+def test_clearing_a_certificate_gives_it_back(lado_home, corp_ca):
+    saved, _ = _save()
+    at = git_servers.address("gitlab.corp.ru")
+    git_servers.set_certificate(at, corp_ca.pem)
+    assert git_servers.clear_certificate(at) == corp_ca.pem
+    assert git_servers.certificate(saved) is None
+    assert git_servers.clear_certificate(at) is None  # once more: nothing to clear
+    assert (lado_home / "git-servers" / saved.id / "token").exists()
+
+
+def test_remove_takes_the_certificate_and_the_folder(lado_home, corp_ca):
+    saved, _ = _save()
+    git_servers.set_certificate(git_servers.address("gitlab.corp.ru"), corp_ca.pem)
+    assert git_servers.remove_host("gitlab.corp.ru").warning is None
+    assert not (lado_home / "git-servers").exists()
+
+
+def test_a_previous_lado_leaves_the_folder_of_a_server_with_a_certificate(
+    lado_home, corp_ca, monkeypatch
+):
+    """The way back: a LADO before certificates removes the token alone, so the folder with
+    its ca.pem stays, with the warning."""
+    saved, _ = _save()
+    git_servers.set_certificate(git_servers.address("gitlab.corp.ru"), corp_ca.pem)
+    monkeypatch.setattr(git_servers, "_remove_certificate", lambda id: None)
+    removed, warning = git_servers.remove_host("gitlab.corp.ru")
+    folder = lado_home / "git-servers" / saved.id
+    assert state.git_servers() == []
+    assert warning == f"could not remove {folder}: directory not empty"
+    assert [p.name for p in folder.iterdir()] == ["ca.pem"]
+
+
+def test_git_gets_the_certificate_of_a_server_that_has_one(lado_home, corp_ca):
+    saved, _ = _save("https://corp.ru:8443/git")
+    plain = _entries(git_servers.variables({}, [saved]))
+    assert not any("sslCAInfo" in key for key, _ in plain)
+    git_servers.set_certificate(git_servers.address("https://corp.ru:8443/git"), corp_ca.pem)
+    entries = _entries(git_servers.variables({}, [saved]))
+    path = lado_home / "git-servers" / saved.id / "ca.pem"
+    assert entries[: len(plain)] == plain
+    assert entries[len(plain) :] == [("http.https://corp.ru:8443/git/.sslCAInfo", str(path))]
+
+
+def test_git_takes_the_certificate_for_the_server_alone(lado_home, corp_ca, git_env):
+    saved, _ = _save("https://corp.ru/git")
+    git_servers.set_certificate(git_servers.address("https://corp.ru/git"), corp_ca.pem)
+    env = git_env | git_servers.variables(git_env, [saved])
+
+    def ca_for(url: str) -> str:
+        done = subprocess.run(
+            ["git", "config", "--get-urlmatch", "http.sslCAInfo", url],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return done.stdout.strip()
+
+    path = str(lado_home / "git-servers" / saved.id / "ca.pem")
+    assert ca_for("https://corp.ru/git/team/app.git") == path
+    assert ca_for("https://corp.ru/gitlab/team/app.git") == ""
+    assert ca_for("https://other.corp.ru/git/team/app.git") == ""
+
+
+def _api(start, tmp_path, issuer, profile="gitlab-full"):
+    leaf = made.server("localhost", issuer)
+    chain = made.write_chain(tmp_path / f"chain-{leaf.certificate.serial_number}", leaf)
+    return start(profile, token=TOKEN, certificate=chain)
+
+
+def test_the_probe_trusts_the_given_certificate_alone(serve, tmp_path, corp_ca):
+    server = _api(serve, tmp_path, corp_ca)
+    at = git_servers.address(server.url.replace("127.0.0.1", "localhost"))
+    assert git_servers.probe(at, TOKEN, certificate=corp_ca.pem).login == "ivan.petrov"
+    with pytest.raises(git_servers.Refused, match="does not answer"):
+        git_servers.probe(at, TOKEN, certificate=made.authority("Other Root").pem)
+
+
+def test_a_check_trusts_the_saved_certificate_alone(serve, lado_home, tmp_path, corp_ca):
+    server = _api(serve, tmp_path, corp_ca)
+    url = server.url.replace("127.0.0.1", "localhost")
+    at = git_servers.address(url)
+    git_servers.save(at, git_servers.Checked(GITLAB, "ivan.petrov"), TOKEN, corp_ca.pem)
+    assert _check(url).outcome == "ok"

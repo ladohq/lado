@@ -53,6 +53,7 @@ if TYPE_CHECKING:  # the HTTP client: loaded by `add` alone, never by a launch o
 
 TOKENS = "git-servers"  # under LADO_HOME: a folder per server, by its id
 TOKEN = "token"  # the token's file in a server's folder
+CERTIFICATE = "ca.pem"  # the certificate trusted for a server, in its folder
 KIND_NAMES = tuple(kind.name for kind in git_kinds.KINDS)
 GITHUB_COM = frozenset({"github.com", "www.github.com", "api.github.com"})
 HELPER = "lado.git_credential"
@@ -282,12 +283,20 @@ def _silent(answer: model_servers.Answer) -> str:
 AGENT = {"User-Agent": "lado"}
 
 
-def _opener():
+def _opener(certificate: str | None = None):
+    """The opener of LADO's requests to a server: no redirect followed; with `certificate`
+    (PEM), trusting it alone (lado.git_certificates.context), else this computer's
+    authorities."""
     import urllib.request
 
     from lado import model_servers
 
-    return urllib.request.build_opener(model_servers.NoRedirect())
+    if certificate is None:
+        return urllib.request.build_opener(model_servers.NoRedirect())
+    from lado import git_certificates
+
+    tls = urllib.request.HTTPSHandler(context=git_certificates.context(certificate))
+    return urllib.request.build_opener(model_servers.NoRedirect(), tls)
 
 
 def _no_answer_page(answer: model_servers.Answer) -> str:
@@ -299,27 +308,34 @@ def _no_answer_page(answer: model_servers.Answer) -> str:
     return f"No answer: {_silent(answer)}."
 
 
-def _ask_kinds(at: Address, token: str | None) -> list[model_servers.Answer]:
+def _ask_kinds(
+    at: Address, token: str | None, certificate: str | None = None
+) -> list[model_servers.Answer]:
     """Each kind's answer at `at`, in KINDS' order, all asked at once with `token` (None:
-    no credential), following no redirect, each request cut at model_servers' TIMEOUT."""
+    no credential), following no redirect, each request cut at model_servers' TIMEOUT;
+    trusting `certificate` alone when given."""
     from lado import model_servers
 
     asked = []
     for kind in kinds(at):
         url, headers = kind.request(at.root, token)
         asked.append((url, "GET", headers))
-    return model_servers.ask_all(_opener(), asked, AGENT)
+    return model_servers.ask_all(_opener(certificate), asked, AGENT)
 
 
 def _rights(
-    at: Address, token: str, kind: Kind, answer: model_servers.Answer
+    at: Address,
+    token: str,
+    kind: Kind,
+    answer: model_servers.Answer,
+    certificate: str | None = None,
 ) -> tuple[tuple[str, ...], bool]:
     """The rights `kind`'s token lacks by `answer`, the answer that gave its login, and
     whether the server told its rights: as `_ask_kinds` asks, one request at a time."""
     from lado import model_servers
 
     def ask(url: str, headers: dict[str, str]) -> model_servers.Answer:
-        (found,) = model_servers.ask_all(_opener(), [(url, "GET", headers)], AGENT)
+        (found,) = model_servers.ask_all(_opener(certificate), [(url, "GET", headers)], AGENT)
         return found
 
     told = kind.rights(at.root, token, answer, ask)
@@ -328,18 +344,21 @@ def _rights(
     return kind.missing(told), True
 
 
-def probe(at: Address, token: str, kind_name: str | None = None) -> Checked:
+def probe(
+    at: Address, token: str, kind_name: str | None = None, certificate: str | None = None
+) -> Checked:
     """The kind of the server at `at` and the user `token` signs in as, every kind asked at
     once; with `kind_name`, that kind for a server no kind recognises (Checked.unchecked says
-    why). Refused for a server that refuses the token, sends elsewhere, answers as two kinds
-    without `kind_name` or as another, or cannot be checked without `kind_name`."""
-    answers = _ask_kinds(at, token)
+    why); trusting `certificate` (PEM) alone when given. Refused for a server that refuses
+    the token, sends elsewhere, answers as two kinds without `kind_name` or as another, or
+    cannot be checked without `kind_name`."""
+    answers = _ask_kinds(at, token, certificate)
     by_kind = list(zip(kinds(at), answers, strict=True))
     found = [(kind, login) for kind, answer in by_kind if (login := kind.login(answer))]
     chosen = git_kinds.by_name(kind_name) if kind_name else None
 
     def checked(kind: Kind, login: str) -> Checked:
-        missing, told = _rights(at, token, kind, dict(by_kind)[kind])
+        missing, told = _rights(at, token, kind, dict(by_kind)[kind], certificate)
         return Checked(kind, login, missing_scopes=missing, rights_checked=told)
 
     if len(found) == 1:
@@ -531,13 +550,14 @@ def check(at: Address, save_login: bool = True) -> Check:
             page="Its token file is missing.",
             page_hint="",
         )
-    answers = _ask_kinds(at, token)
+    trusted = certificate(server)
+    answers = _ask_kinds(at, token, trusted)
     by_kind = dict(zip(kinds(at), answers, strict=True))
     own = by_kind[kind]
     was = server.login is not None
 
     if login := kind.login(own):
-        missing, told = _rights(at, token, kind, own)
+        missing, told = _rights(at, token, kind, own, trusted)
         if missing:
             return Check(
                 "scopes_missing",
@@ -661,19 +681,25 @@ def _entries(server: state.GitServer) -> list[tuple[str, str]]:
     """The git config entries of one server, in order: an empty helper for its origin, which
     drops every helper set before it there (the image's, the human's `store`), so none
     other is asked or stores the token; LADO's helper; its ssh addresses rewritten to its
-    root (git's rewrite is a fixed prefix: the standard ssh port alone)."""
+    root (git's rewrite is a fixed prefix: the standard ssh port alone); with a certificate
+    file, git's authority for the server's address alone (`http.<url>.*` matches the URL
+    after the rewrite; the trailing `/` keeps `/git` from matching `/gitlab`)."""
     parts = urllib.parse.urlsplit(server.address)
     origin = f"{parts.scheme}://{parts.netloc}"
     host = parts.hostname or ""
     host = f"[{host}]" if ":" in host else host
     rewrite = f"url.{server.address}/.insteadOf"
-    return [
+    found = [
         (f"credential.{origin}.helper", ""),
         (f"credential.{origin}.helper", helper_command(server)),
         (rewrite, f"git@{host}:"),
         (rewrite, f"ssh://git@{host}/"),
         (rewrite, f"ssh://git@{host}:22/"),
     ]
+    ca = certificate_file(server.id)
+    if ca.is_file():
+        found.append((f"http.{server.address}/.sslCAInfo", str(ca)))
+    return found
 
 
 def variables(
@@ -984,6 +1010,47 @@ def has_token(server: state.GitServer) -> bool:
     return os.path.lexists(token_folder(server.id) / TOKEN)
 
 
+def certificate_file(id: str) -> Path:
+    return token_folder(id) / CERTIFICATE
+
+
+def certificate(server: state.GitServer) -> str | None:
+    """The PEM of the certificate trusted for `server` (`ca.pem` in its folder); None for
+    none, or one the disk does not give."""
+    try:
+        return certificate_file(server.id).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def set_certificate(at: Address, pem: str) -> state.GitServer:
+    """Trust `pem` (checked by lado.git_certificates) for the saved server of `at`'s host,
+    under the lock, replacing its certificate whole: the server. Refused for no such
+    server, a link on the way or a disk that refuses it."""
+    with locked():
+        server = saved_server(at)
+        _write(server.id, CERTIFICATE, pem)
+    return server
+
+
+def clear_certificate(at: Address) -> str | None:
+    """Remove the certificate of the saved server of `at`'s host under the lock: the PEM it
+    held (the page's Undo puts it back), None for none. Refused for no such server."""
+    with locked():
+        server = saved_server(at)
+        pem = certificate(server)
+        try:
+            _remove_certificate(server.id)
+        except project_secrets.LinkRefused as exc:
+            raise _link(exc.path) from None
+        except OSError as exc:
+            raise Refused(
+                f"{certificate_file(server.id)} cannot be removed "
+                f"({exc.strerror or type(exc).__name__})"
+            ) from None
+    return pem
+
+
 LOCK = "git-servers.lock"  # under LADO_HOME; it stays, as update.lock does
 LOCK_WAIT = 10  # seconds a save or a removal waits for another one
 LOCKED = "another change of the git servers is running; try again"
@@ -1009,17 +1076,22 @@ def locked() -> Iterator[None]:
         yield  # closing the file lets the lock go
 
 
-def save(at: Address, checked: Checked, token: str) -> tuple[state.GitServer, bool]:
+def save(
+    at: Address, checked: Checked, token: str, certificate: str | None = None
+) -> tuple[state.GitServer, bool]:
     """Save the server at `at` as `checked` with `token`, or replace the one of its host,
     keeping its id, under the lock: the server as saved, and whether one was replaced. A
     new server's token file comes first and goes again when its row fails; a replaced one's
     row comes first, then its token file is replaced whole, so it holds the old token or the
-    new one."""
+    new one. `certificate` (PEM) is written beside the token; without one a replaced
+    server keeps its own."""
     with locked():
-        return save_locked(at, checked, token)
+        return save_locked(at, checked, token, certificate)
 
 
-def save_locked(at: Address, checked: Checked, token: str) -> tuple[state.GitServer, bool]:
+def save_locked(
+    at: Address, checked: Checked, token: str, certificate: str | None = None
+) -> tuple[state.GitServer, bool]:
     """`save` inside `locked`, held by the caller (lado.github_takeover)."""
     known = state.git_server_by_host(at.key)
     if known is not None:
@@ -1030,9 +1102,18 @@ def save_locked(at: Address, checked: Checked, token: str) -> tuple[state.GitSer
         except state.HostTaken as exc:
             raise _host_taken(at, exc.server) from None
         _write_token(saved.id, token)
+        if certificate is not None:
+            _write(saved.id, CERTIFICATE, certificate)
         return saved, True
     id = uuid.uuid4().hex[:12]
     _write_token(id, token)
+    if certificate is not None:
+        try:
+            _write(id, CERTIFICATE, certificate)
+        except BaseException:
+            with contextlib.suppress(OSError, Refused):
+                _remove_token(id)
+            raise
     try:
         saved = state.save_git_server(id, at.root, at.key, checked.kind.name, checked.login)
     except BaseException as exc:
@@ -1044,6 +1125,8 @@ def save_locked(at: Address, checked: Checked, token: str) -> tuple[state.GitSer
         raise
     if saved.id != id:  # saved meanwhile by another add of the host: its row was replaced
         _write_token(saved.id, token)
+        if certificate is not None:
+            _write(saved.id, CERTIFICATE, certificate)
         with contextlib.suppress(OSError, Refused):
             _remove_token(id)
         return saved, True
@@ -1081,12 +1164,17 @@ def remove_host(key: str, named: str | None = None) -> Removed:
 
 
 def add(
-    at: Address, token: Callable[[], str], kind_name: str | None, warn: Callable[[str], None]
+    at: Address,
+    token: Callable[[], str],
+    kind_name: str | None,
+    warn: Callable[[str], None],
+    certificate: str | None = None,
 ) -> tuple[state.GitServer, bool, Checked]:
     """Add the server at `at` as `lado git-server add` does, for the command and the page
     alike: the checks of the address and of git, the plain-http warning through `warn`,
-    then `token()` (read only once they pass), its check, the probe (`kind_name`: --kind)
-    and the save. The server as saved, whether one was replaced, and the probe's finding."""
+    then `token()` (read only once they pass), its check, the probe (`kind_name`: --kind;
+    trusting `certificate` alone when given, which is saved with it) and the save. The
+    server as saved, whether one was replaced, and the probe's finding."""
     if kind_name is not None and git_kinds.by_name(kind_name) is None:
         raise Refused(
             f"{kind_name} is no kind of git server LADO knows: {' or '.join(KIND_NAMES)}",
@@ -1100,32 +1188,47 @@ def add(
         warn(warning)
     value = token()
     check_token(value)
-    checked = probe(at, value, kind_name)
-    saved, replaced = save(at, checked, value)
+    checked = probe(at, value, kind_name, certificate)
+    saved, replaced = save(at, checked, value, certificate)
     return saved, replaced, checked
 
 
 def _link(path: Path) -> Refused:
     return Refused(
-        f"{path} is a symbolic link: LADO keeps a server's token only in its own folders"
+        f"{path} is a symbolic link: LADO keeps a server's token and certificate only in its "
+        "own folders"
     )
 
 
 def _write_token(id: str, token: str) -> None:
+    _write(id, TOKEN, token)
+
+
+def _write(id: str, name: str, value: str) -> None:
+    """Write the file `name` (TOKEN, CERTIFICATE) of the server `id` whole, mode 600, by
+    LADO's secrets writer, which refuses a link on the way; the token as a secret's value
+    (lado.git_credential reads it so), the certificate as it is."""
     state.home()
+    fixed = name != TOKEN
     try:
         try:
-            project_secrets.write_at((TOKENS, id), token_folder(id), TOKEN, token)
+            project_secrets.write_at((TOKENS, id), token_folder(id), name, value, fixed=fixed)
         except FileNotFoundError:
             # The last server's removal took git-servers/ between its opening and the
             # making of this server's folder in it (`_remove_token`): once more, made anew.
-            project_secrets.write_at((TOKENS, id), token_folder(id), TOKEN, token)
+            project_secrets.write_at((TOKENS, id), token_folder(id), name, value, fixed=fixed)
     except project_secrets.LinkRefused as exc:
         raise _link(exc.path) from None
     except OSError as exc:
         raise Refused(
-            f"{token_folder(id) / TOKEN} cannot be written ({exc.strerror or type(exc).__name__})"
+            f"{token_folder(id) / name} cannot be written ({exc.strerror or type(exc).__name__})"
         ) from None
+
+
+def _remove_certificate(id: str) -> None:
+    """Remove the certificate file of the server `id`, if any; OSError (LinkRefused for a
+    link) when the disk refuses it."""
+    project_secrets.remove_at((TOKENS, id), token_folder(id), CERTIFICATE, fixed=True)
 
 
 class _Left(OSError):
@@ -1138,16 +1241,21 @@ class _Left(OSError):
 
 
 def _remove_token(id: str, last: bool = False) -> None:
-    """Remove the token file of the server `id` and its folder, then git-servers/ itself
-    once it is empty: no server's folder is left in it; _Left (Refused for a link) when the
-    disk refuses it, and for a git-servers/ holding something else when `last` (no server
-    is left). Otherwise a server's folder made in it at the same moment keeps it."""
+    """Remove the token and certificate files of the server `id` and its folder, then
+    git-servers/ itself once it is empty: no server's folder is left in it; _Left (Refused
+    for a link) when the disk refuses it, and for a git-servers/ holding something else when
+    `last` (no server is left). Otherwise a server's folder made in it at the same moment
+    keeps it."""
     folder = token_folder(id)
     try:
         try:
             project_secrets.remove_at((TOKENS, id), folder, TOKEN)
         except OSError as exc:
             raise _Left(folder / TOKEN, exc) from None
+        try:
+            _remove_certificate(id)
+        except OSError as exc:
+            raise _Left(folder / CERTIFICATE, exc) from None
         with project_secrets.open_chain((TOKENS,), make=False) as fd:
             if fd is not None:
                 try:

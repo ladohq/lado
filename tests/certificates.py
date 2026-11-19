@@ -4,16 +4,15 @@ server, one naming its host in the Common Name alone, an expired one, and an iss
 (`CA Issuers`). No process trusts any of them: a test gives them to LADO itself.
 
 `TLSServer` does a TLS handshake with each connection and keeps every byte the client sends
-after it (`received`), answering nothing; `HTTPServer` answers a GET of `/api/v4/user` as
-GitLab (TLS, for a check) or serves a file (plain http, an issuer link), keeping each
-request's headers. Standard library and `cryptography` only.
+after it (`received`), answering nothing; `HTTPServer` serves an issuer link's file over
+plain http, keeping each request's headers; tests/fake_git_api.py's server takes
+`write_chain`'s files for a git server's API. Standard library and `cryptography` only.
 """
 
 from __future__ import annotations
 
 import datetime
 import ipaddress
-import json
 import socket
 import ssl
 import threading
@@ -229,36 +228,20 @@ class Request(NamedTuple):
     headers: Message
 
 
-GITLAB_USER = {"id": 7, "username": "ivan.petrov", "name": "Ivan Petrov"}
-
-
 class HTTPServer:
-    """An HTTP server on 127.0.0.1, a free port: over TLS with `chain`, GitLab's user API
-    for `token` (`/api/v4/user`); else plain http serving `files` (path → bytes). Each
-    request in `requests`."""
+    """A plain http server on 127.0.0.1, a free port, serving `files` (path → bytes, filled
+    after the start too) as an issuer link does; each request in `requests`."""
 
-    def __init__(
-        self,
-        *,
-        chain: tuple[Path, Path] | None = None,
-        token: str | None = None,
-        files: dict[str, bytes] | None = None,
-    ):
+    def __init__(self, *, files: dict[str, bytes]):
         self.requests: list[Request] = []
         fake = self
-        files = {} if files is None else files  # filled by the test after the start too
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
                 fake.requests.append(Request(self.path, self.headers))
-                if self.path in files:
-                    data, kind, status = files[self.path], "application/pkix-cert", 200
-                elif self.path == "/api/v4/user" and self.headers.get("PRIVATE-TOKEN") == token:
-                    data, kind, status = json.dumps(GITLAB_USER).encode(), "application/json", 200
-                else:
-                    data, kind, status = b"not found", "text/plain", 404
+                data, status = (files[self.path], 200) if self.path in files else (b"", 404)
                 self.send_response(status)
-                self.send_header("Content-Type", kind)
+                self.send_header("Content-Type", "application/pkix-cert")
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
@@ -267,14 +250,7 @@ class HTTPServer:
                 pass
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.port = self.server.server_address[1]
-        scheme = "http"
-        if chain is not None:
-            self.server.socket = _server_context(chain).wrap_socket(
-                self.server.socket, server_side=True
-            )
-            scheme = "https"
-        self.url = f"{scheme}://127.0.0.1:{self.port}"
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
     def close(self) -> None:

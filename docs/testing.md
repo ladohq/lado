@@ -316,7 +316,15 @@ dir>/lado-container-shots/` (in CI's artifact `container-<arch>-<k>` of its shar
 toolchains' Go test (`test_toolchains.py`) has mise install Go from a mirror inside the
 container (`python3 -m http.server` on its loopback), fed by one download of the archive on
 the host per run, checked against its sha256; each install is bounded by `timeout` and its
-failure shows both exit codes and mise's debug logs (LAD-178). A
+failure shows both exit codes and mise's debug logs (LAD-178). glab (`test_glab.py`): a login
+shell's `glab --version` is the Dockerfile's `GLAB_VERSION`, its layer (`docker history`) at
+most 60 MB; a GitLab user API run inside the container over https under a test authority,
+saved with LADO's own Python as a GitLab with that authority, and the agent's configuration
+written by `git_servers.glab_variables`: `glab auth status` is logged in, `glab api user`
+carries the token, another host of the same authority is refused and gets no token, and
+`~/.config/glab-cli` and `git config --global --list` are as before. The integration test
+`test_git_server_host_tool.py` runs the same against the fake git server when a glab 1.114.0
+or newer is on PATH, and skips otherwise. A
 test that fails in its setup or its
 call keeps, for each container it started (a compose project's too), `docker logs` and
 LADO's logs in `real_clis.EVIDENCE`: the container is registered on the test before
@@ -518,7 +526,10 @@ Seven layers; each change gets tests at the lowest layer that can catch its bugs
    Test infrastructure), and in WSL2 in the Windows probe, a job per provider.
 6. **Live e2e** (`make test-live`, marker `live`): real agent CLIs and real models, one short
    scenario per provider: a worker commits a file, reports to the supervisor and gets a
-   message; then the session stops and no process is left. Never in the default run or
+   message; then the session stops and no process is left. With Claude Code and Codex a
+   worker also pushes a commit over https to a saved git server (`fake_git_server.Server`
+   under a test authority, saved as GitLab with its token and certificate), which must get
+   the token on its receive-pack. Never in the default run or
    `ci-ok`: weekly and by hand in `live.yml`, every provider on OpenRouter, on each RC, and a
    provider's after changing it.
    When a live or smoke test fails, its report names a folder

@@ -275,6 +275,23 @@ git-server`). `repo` is the minimum; add `read:org` when the agents run `gh` on 
 requests of an organization's repository, and `workflow` when they push `.github/workflows/`.
 A saved server's ssh addresses (`git@github.com:…`) go over https with its token too.
 
+**GitLab** (gitlab.com or your company's) is added the same way, by its address: Settings →
+Git servers → Add server, or `docker compose exec -it lado lado git-server add
+https://gitlab.example.com --token`. Make the token at
+`<address>/-/user_settings/personal_access_tokens` with the scope `api`: git alone needs
+`read_repository`, `write_repository` and `read_api`, but the agents open merge requests
+with `glab`, which needs `api`. Check in Settings (or `lado git-server check <address>`) says
+`Works: GitLab, signed in as <you>, may clone and push.`; with a token without `api` it adds
+`glab cannot open merge requests: the token lacks api`, and `lado doctor` warns. The image has
+`glab`, and each agent's `glab` is signed in to every saved GitLab with its token and, when
+you trusted it, its certificate, for that server alone; your own glab configuration is not
+read or changed. Every agent is told in one line on which server its repository is and which
+tool goes with it (`glab` for GitLab's merge requests, `gh` for GitHub's pull requests), so a
+kit need not say it. `glab auth status` in an agent says it is logged in, with glab's own note
+`No token found`: the token reaches glab as a header from LADO, not from a file. A
+`GITLAB_TOKEN` in `secrets/`, in a project or in your shell, and `glab auth login`, are not
+used; `lado doctor` names them.
+
 A company's server whose certificate the computer, or LADO's container, does not trust is
 trusted from its Check in Settings → Git servers: LADO shows the authority that signed it with
 its fingerprint, and Trust makes LADO and the agents' git trust it for that server alone;
@@ -1261,6 +1278,15 @@ as "not inside a git repository".
 LADO works, but its look at whether an agent CLI trusts the folder (`git rev-parse
 --path-format=absolute`) needs git 2.31: with an older git LADO may not foresee a CLI's
 "trust this folder?" question, or expect one that does not come. Install a newer git.
+
+### `glab is not on the agents' PATH` or `glab … is older than 1.114.0`
+
+Outside Docker LADO does not install GitLab's CLI: with a GitLab saved in Settings → Git
+servers, the agents' git works, but they cannot open merge requests until you install glab
+1.114.0 or newer (`brew install glab` on macOS; on Linux GitLab's packages from
+https://gitlab.com/gitlab-org/cli/-/releases). Older glab sends no token from LADO, so LADO
+does not sign it in. The start of each agent and `lado doctor` say so; the agents start all
+the same. The same for `gh` with a GitHub server saved.
 
 ### `Agent CLI: no agent CLI installed`
 

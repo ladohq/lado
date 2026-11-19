@@ -52,7 +52,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-19-git-server-h
 
 ## 10. Docs
 
-- [ ] 10.1 docs/install.md's GitLab part, docs/cli.md, docs/design/agents.md,
+- [x] 10.1 docs/install.md's GitLab part, docs/cli.md, docs/design/agents.md,
   docs/design/modules.md, docs/testing.md, the Dockerfile's header, CHANGELOG 0.48.0. Check:
   `uv run pytest -n0 tests/test_agents_md.py`, read against the code.
 

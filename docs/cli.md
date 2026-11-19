@@ -76,7 +76,10 @@ From then on agents and LADO's own git get no `GH_TOKEN`, `GITHUB_TOKEN`,
 shell, the outside folder or a project: each agent's `gh` gets a config folder of its own with
 no login (`GH_CONFIG_DIR=<its config folder>/gh`), `GH_TOKEN` of the github.com server, and
 `GH_ENTERPRISE_TOKEN` of the GitHub Enterprise server its repository's `origin` is on (else of
-the only one saved), with `GH_HOST` its host and port for the origin's server only.
+the only one saved), with `GH_HOST` its host and port for the origin's server only. Nor do
+they get `GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`, `GITLAB_HOST`, `GITLAB_URI`, `GL_HOST` or
+`GLAB_CONFIG_DIR`: each agent's `glab` gets a config folder of its own with the saved GitLab
+servers alone (`lado git-server`, below).
 
 `lado start --new [<folder>]` (default: the current folder; relative paths are taken from
 it) starts from scratch (`lado.scratch`): the folder must be new or empty (nothing but
@@ -149,7 +152,9 @@ prints `Set secret <NAME> in project <id>.` and the agents' line above; for a Gi
 (`GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`, `GH_HOST`,
 `GH_CONFIG_DIR`, plain or secret), saved all the same, `<NAME> is not given to agents:
 github.com and GitHub Enterprise take their token from Settings → Git servers.` instead, as
-no agent gets one from a project. It refuses, exit 1,
+no agent gets one from a project; for a GitLab variable (`GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`,
+`GITLAB_HOST`, `GITLAB_URI`, `GL_HOST`, `GLAB_CONFIG_DIR`) `<NAME> is not given to agents: a
+GitLab takes its token from Settings → Git servers.` so. It refuses, exit 1,
 storing nothing: a value on the command line, before it reads anything (`a secret's value
 is never given on the command line (ps and the shell's history keep it); run lado project
 set <id> <NAME> --secret and type it, or pipe it in`), an empty value, Ctrl-D at the prompt
@@ -333,7 +338,9 @@ environment cannot be read. It never fails either.
 
 With git servers saved (`lado git-server add`), `lado doctor` prints a line per server after
 `git author`, named `git server <address>`, by the check of `lado git-server check`: `ok` with
-its `Works: …` line, `warn` with its line and hint otherwise (`GitHub refused the token: it
+its `Works: …` line (`warn` for a GitLab token without `api`, with `replace it with a token
+with the scope api: lado git-server add <address> --token`), `warn` with its line and hint
+otherwise (`GitHub refused the token: it
 expired or was revoked` with `replace it: lado git-server add <address> --token`; `<host> does
 not answer: …` with the reach hint; a certificate not trusted or changed with its line and
 `trust it: lado git-server check <address>, or Check in Settings → Git servers`, never trusting
@@ -350,6 +357,12 @@ at this LADO's schema (see lado.db)`; with lado.db locked by another process for
 its 10-second wait, one `[warn] git servers: not checked: lado.db is busy` for these and the
 GitHub lines below, and the other checks follow.
 
+Then one line per tool of the saved servers' kinds, named by the tool, on the agents' PATH as
+a launch finds it: `[ok  ] glab: glab 1.130.0 (206ebab4f)` (its `--version` line), `[warn]
+glab: not on the agents' PATH: agents cannot open merge requests on <addresses>` with `install
+glab 1.114.0 or newer`, `[warn] glab: glab 1.80.0 is older than 1.114.0, which LADO needs to
+sign it in` with `update glab`; the same for `gh` with a GitHub server saved. None fails.
+
 After them come the GitHub login's lines (lado.github_takeover). Its takeover: `[info]
 GitHub login: taken over from <source> on <date>` once a token was saved, `[warn] GitHub
 login: GitHub refused the token of <source>`, and before it ran `[info] GitHub login: taken
@@ -360,7 +373,12 @@ but not used: github.com takes its token from Settings → Git servers` naming e
 token or host variable of the outside folder (`GH_TOKEN in <folder>`), the login shell
 (`GH_TOKEN of your shell`) or a project (`GH_TOKEN of project <id>`), and `[info] GitHub login
 outside LADO: the GitHub CLI's own login is not used by agents` while `gh auth token` finds a
-login of its own in the agents' environment. Neither changes the exit status.
+login of its own in the agents' environment. Neither changes the exit status. GitLab's the
+same way: `[warn] GitLab login outside LADO: GITLAB_TOKEN of your shell set but not used: a
+GitLab takes its token from Settings → Git servers` for each GitLab variable no agent gets, and
+`[info] GitLab login outside LADO: the GitLab CLI's own login is not used by agents` while the
+human's glab configuration (its `GLAB_CONFIG_DIR`, else `$XDG_CONFIG_HOME/glab-cli` or
+`~/.config/glab-cli`) holds a token or `use_keyring: true`, read as text: no glab is run.
 
 `lado doctor` prints a login line after each installed agent CLI's version, read by the CLI's
 own status command in the environment its agents get without a project, the login taken
@@ -949,7 +967,11 @@ with its saved token, as `add` does (every kind at once, 5 s each, no redirect f
 the answers by its saved kind and reads the token's rights, storing nothing but the login of a
 check that passes (so a server saved with `--kind` is no longer `not checked`). It works:
 `Works: GitLab, signed in as <login>, may clone and push.` (`…; the token's rights are not
-checked.` when the server tells none), exit 0. Any other outcome is `lado: <line>` and its
+checked.` when the server tells none), exit 0; a GitLab token whose told rights do not grant
+`api` (`read_api` reads the API only) still works for git and says so: `Works: GitLab, signed
+in as <login>, may clone and push; glab cannot open merge requests: the token lacks api.`,
+exit 0, and `add`'s first line ends `; glab cannot open merge requests: the token lacks api`
+(GitLab's token hint is `scope api`). Any other outcome is `lado: <line>` and its
 hint on stderr, exit 1: `GitLab refused the token: it expired or was revoked` (`replace it:
 lado git-server add <address> --token`); `the token lacks write_repository: agents can clone
 but not push` (as `add` warns); `GitLab takes the token, but it lacks the scope read_api` (a
@@ -1039,6 +1061,33 @@ from matching `/gitlab`) instead of the computer's authorities. No `GIT_SSL_CAIN
 `SSL_CERT_FILE` or trust store is set. `gh` gets no certificate: a launch with a GitHub server
 that has one warns `gh does not get the certificate of <address>: agents' gh cannot reach it;
 git can`.
+
+Each agent's `glab` gets `GLAB_CONFIG_DIR=<its config folder>/glab`, where its launch writes
+`config.yml` whole (folder 700, file 600, as glab wants), even with no GitLab saved, so the
+human's own glab configuration is never read: update check and statistics off, git over
+https, no prompt, and per saved GitLab server a host entry by its `host[:port]` with its scheme
+(`api_protocol`), its path (`subfolder`), its `ca.pem` (`ca_cert`, for that host alone) and a
+`PRIVATE-TOKEN` header from LADO's helper (`lado.git_credential … token`, with LADO's own
+Python), which reads the token file at each call: a token replaced in Settings works at the
+agent's next `glab` call, a removed server's sends none. No token is in the file. glab sends
+such a header from 1.114.0 on. `glab auth status` says logged in, with its own note `No token
+found` (the token comes by the header).
+
+When the session repository's `origin` is on a saved server, every agent's instructions carry
+one line about it, by the kind's tool (`gh`, `glab`): `The repository's origin is on GitLab
+(<host[:port]>), a git server LADO signs you in to: use `glab` for its merge requests; it is
+logged in already.` (GitHub: `gh` and pull requests), or why not: `…, but its tool `glab` is not
+installed here, so you cannot open its merge requests; tell the human.`, `…, but `glab` here is
+<version>, older than 1.114.0, which LADO needs to sign it in, …`, `…, but LADO has no token for
+it, so `glab` is not logged in and git cannot push there; tell the human.`; a GitHub server with
+a certificate adds `` `gh` does not get the server's certificate and cannot reach it; git
+can.``. The tool is asked `--version` once per launch, for the origin's server alone, cut at 10
+s, with a configuration folder of the call's own (glab writes one at any call); a version it
+cannot read counts as fit. A missing or too old tool is warned, and the agent starts: `glab is
+not on the agents' PATH: agents cannot open merge requests on <address>; install glab 1.114.0
+or newer`, `glab 1.80.0 is older than 1.114.0, which LADO needs to sign it in to <address>;
+update glab` (`gh is not on the agents' PATH: … install gh`). Another remote, or none, gets no
+line and runs no tool.
 The entries come after the `GIT_CONFIG_*` entries the agent's layers already hold; with no
 server saved none is set. A host not in the list goes as before, and the global and system
 git configs are never written. An agent gets the list at its launch: a server added or

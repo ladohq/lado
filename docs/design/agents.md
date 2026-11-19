@@ -108,6 +108,22 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   (`_check_commands`). `GIT_AUTHOR_*`/`GIT_COMMITTER_*` of the agent's environment win over
   every config: the launch names each in its warnings (`_author_warnings`). LADO's own git
   (`agent_env.for_git`) gets no author.
+- The GitLab CLI: `_ours` sets `GLAB_CONFIG_DIR=<config folder>/glab`, where
+  `git_servers.glab_variables` writes `config.yml` whole at each launch (600 in a 700 folder,
+  glab's demand), with one host entry per saved GitLab server and its token as a
+  `PRIVATE-TOKEN` header from LADO's helper (`lado.git_credential … token`), read at each
+  call: no token in the file, a replaced token works at once. `agent_env.merge` drops
+  `GITLAB_VARIABLES` (`GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`, `GITLAB_HOST`, `GITLAB_URI`,
+  `GL_HOST`, `GLAB_CONFIG_DIR`) of every layer, as GitHub's; `OAUTH_TOKEN`, `CA_CERT` and
+  `API_PROTOCOL`, which glab reads too, stay (other tools' as well; LADO's host entry wins).
+- The repository's server and its tool (`runtime._repo_tool`, once per launch): the saved
+  server of the session repository's `origin` (`git_servers.server_for`, ssh addresses too)
+  and its kind's tool on the agents' PATH (`git_servers.tool_state`: `<tool> --version`, cut
+  at 10 s, with a config folder of the call's own, as glab writes its configuration at any
+  call). `_spec` adds `git_servers.tool_line` to the instructions after the container's lines,
+  the same for every provider; `_git_server_warnings` adds `tool_warning` (missing, or older
+  than the kind's `tool_oldest`) to the launch's warnings, and the agent starts. No saved
+  server for the origin, or no origin: no line, no tool run.
 - Each agent has a temporary folder of its own (LAD-247): all agents of a machine run as one
   user with one `/tmp`, where two agents' files of one name (a draft `pr.md`) met. At each
   launch `providers.base.make_temp_dir` makes `<parent>/lado-<uid>/<session>/<agent>`, each

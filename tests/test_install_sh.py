@@ -366,27 +366,37 @@ def test_no_free_port_stops(host):
     assert not (host.home / "lado-docker" / ".env").exists()
 
 
-def test_macos_gets_docker_desktops_agent(tmp_path):
+SSH_NOTE = (
+    "LADO_SSH_AGENT in .env is no longer used: git goes over https through Settings → Git"
+    " servers; remove the line once you no longer go back to a version before 0.48.0."
+)
+
+
+def test_macos_gets_no_ssh_agent(tmp_path):
+    """The container has no ssh: git servers are set up in Settings → Git servers alone."""
     host = Host(tmp_path / "host", os="Darwin", git_name="Ann", git_email="a@b.c")
-    assert install(host).code == 0
-    assert env_file(host)["LADO_SSH_AGENT"] == "/run/host-services/ssh-auth.sock"
-
-
-def test_linux_without_an_agent_says_ssh_is_off(host):
     done = install(host)
+    assert done.code == 0, done.text
     assert "LADO_SSH_AGENT" not in env_file(host)
-    assert "git over ssh is off" in done.text
+    assert not no_ssh_words(done)
 
 
-def test_linux_socket_is_taken_with_its_note(host):
-    folder = tempfile.mkdtemp(prefix="lado-ssh-", dir="/tmp")
+def no_ssh_words(done: Done) -> list[str]:
+    """The output's lines that speak of ssh (the test's own folder may name it)."""
+    return [line for line in done.text.splitlines() if re.search(r"\bssh\b|SSH_", line)]
+
+
+def test_linux_with_an_ssh_agent_gets_none(host):
+    # AF_UNIX paths are short: tmp_path may be too long for one.
+    folder = tempfile.mkdtemp(prefix="lado-agent-", dir="/tmp")
     path = os.path.join(folder, "agent.sock")
     with socket.socket(socket.AF_UNIX) as sock:
         sock.bind(path)
         done = install(host, env={"SSH_AUTH_SOCK": path})
     shutil.rmtree(folder)
-    assert env_file(host)["LADO_SSH_AGENT"] == path
-    assert "new login" in done.text
+    assert done.code == 0, done.text
+    assert "LADO_SSH_AGENT" not in env_file(host)
+    assert not no_ssh_words(done)
 
 
 def test_another_folder_gets_its_project_name(host, tmp_path):
@@ -660,6 +670,34 @@ def test_an_update_keeps_the_bak_and_the_users_lines(host):
     assert host.compose_calls("up")
     assert "diff compose.yaml.bak compose.yaml" in done.out
     assert "secrets/" in done.out
+
+
+OLD_AGENT = "LADO_SSH_AGENT=/run/host-services/ssh-auth.sock"
+
+
+def test_an_update_keeps_an_ssh_agent_line_and_notes_it_once(host):
+    """The way back to a version before reads the line, so it stays."""
+    folder = installed(host, "0.43.0", OLD_AGENT)
+    done = install(host)
+    assert done.code == 0, done.text
+    assert OLD_AGENT in (folder / ".env").read_text().splitlines()
+    assert done.text.count(SSH_NOTE) == 1
+
+
+def test_a_rerun_of_the_same_version_notes_the_ssh_agent_line(host):
+    folder = installed(host, VERSION, OLD_AGENT)
+    before = (folder / ".env").read_bytes()
+    done = install(host)
+    assert done.code == 0, done.text
+    assert (folder / ".env").read_bytes() == before
+    assert done.text.count(SSH_NOTE) == 1
+
+
+def test_a_rerun_without_an_ssh_agent_line_says_nothing_of_ssh(host):
+    installed(host, "0.43.0")
+    done = install(host)
+    assert done.code == 0, done.text
+    assert not no_ssh_words(done)
 
 
 def test_an_update_asks_nothing(host):

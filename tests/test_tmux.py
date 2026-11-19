@@ -40,6 +40,7 @@ def test_without_agent_vars_drops_the_lado_agent_identity():
 def test_send_text_pastes_multiline_text(tmp_path):
     session = f"test-{uuid.uuid4().hex[:6]}"
     out = tmp_path / "out.txt"
+    out.touch()
     tmux.new_session(session, "main", str(tmp_path), ["sh", "-c", f"cat > {out}"])
     try:
         tmux.send_text(session, "main", "line one\nline two;")

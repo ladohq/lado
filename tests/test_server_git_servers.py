@@ -97,7 +97,7 @@ def test_the_list_with_no_lado_db_makes_none(client, lado_home):
         "name": "gitlab",
         "title": "GitLab",
         "token_path": "/-/user_settings/personal_access_tokens",
-        "scopes": "scopes read_repository, write_repository, read_api",
+        "scopes": "scope api",
     }
     assert not (lado_home / "lado.db").exists()
 
@@ -268,7 +268,7 @@ def test_check_of_gitlab_hints_its_token_page_with_no_token_sent(client, serve):
         "address": server.url,
         "hint": "gitlab",
         "token_page": f"{server.url}/-/user_settings/personal_access_tokens",
-        "scopes": "scopes read_repository, write_repository, read_api",
+        "scopes": "scope api",
         "choose_kind": False,
         "unchecked": None,
         "saved": False,
@@ -545,8 +545,7 @@ def post_check(client, host):
             "gitlab",
             "scopes_missing",
             "The token lacks write_repository.",
-            "Agents can clone but not push with it. Make one with the scopes read_repository, "
-            "write_repository, read_api.",
+            "Agents can clone but not push with it. Make one with the scope api.",
         ),
         (
             "gitlab",

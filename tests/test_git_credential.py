@@ -137,6 +137,50 @@ def test_a_link_for_the_token_file_is_not_read(server, git_env, lado_home, tmp_p
     assert "lado: no token for" in result.stderr
 
 
+def _token(lado_home, server_id):
+    # glab runs the command with its own stdin, which may stay open: the mode reads none.
+    read, write = os.pipe()
+    try:
+        args = ["--home", str(lado_home), "--server", server_id, "--user", "oauth2"]
+        return subprocess.run(
+            interpreter.run_module("lado.git_credential", *args, "--address", ADDRESS, "token"),
+            stdin=read,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    finally:
+        os.close(read)
+        os.close(write)
+
+
+def test_token_mode_prints_the_token_alone(server, lado_home):
+    result = _token(lado_home, server.id)
+    assert (result.returncode, result.stdout, result.stderr) == (0, TOKEN + "\n", "")
+
+
+def test_token_mode_reads_the_file_at_each_call(server, lado_home):
+    (lado_home / "git-servers" / server.id / "token").write_text("glpat-NEW\n")
+    assert _token(lado_home, server.id).stdout == "glpat-NEW\n"
+
+
+@pytest.mark.parametrize("how", ["missing", "link", "empty"])
+def test_token_mode_without_a_token_prints_nothing_and_fails(server, lado_home, tmp_path, how):
+    token = lado_home / "git-servers" / server.id / "token"
+    token.unlink()
+    if how == "link":
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.write_text(TOKEN)
+        token.symlink_to(elsewhere)
+    elif how == "empty":
+        token.write_text("")
+    result = _token(lado_home, server.id)
+    assert (result.returncode, result.stdout) == (1, "")
+    assert result.stderr == (
+        f"lado: no token for {ADDRESS}; add it again: lado git-server add {ADDRESS} --token\n"
+    )
+
+
 @pytest.mark.parametrize("operation", ["store", "erase"])
 def test_store_and_erase_do_nothing(server, lado_home, operation):
     args = ["--home", str(lado_home), "--server", server.id, "--user", "u", "--address", ADDRESS]

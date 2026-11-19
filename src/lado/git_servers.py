@@ -26,6 +26,12 @@ kept in its row. An agent's launch writes it into a file of the agent's own conf
 entries, `includeIf "hasconfig:remote.*.url:…"` entries including it (`author_entries`): git
 takes it in a repository with a remote on the server, and nowhere else. The condition exists
 from git 2.36 (`check_author_git`); LADO's own git gets no author.
+
+An agent's GitLab CLI gets a configuration folder of its own (`glab_variables`), with an
+entry per saved GitLab server whose token header comes from LADO's helper at each call
+(`glab_command`): no token is written there. The server of the session repository's origin
+names its kind's tool to every agent (`tool_line`), from one check of that tool on the
+agents' PATH (`tool_state`), which also gives the launch's warning (`tool_warning`).
 """
 
 from __future__ import annotations
@@ -45,7 +51,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 from lado import agent_env, git_kinds, interpreter, project_secrets, state
-from lado.git_kinds import Kind, github
+from lado.git_kinds import Kind, github, gitlab
 from lado.git_kinds.base import REFUSES
 
 if TYPE_CHECKING:  # the HTTP client: loaded by `add` alone, never by a launch or a hook
@@ -227,17 +233,25 @@ def check_token(token: str) -> None:
 class Checked:
     """What the probe found: the kind, the user the token signs in as (None: not checked),
     why it could not be checked ("" when it was), the rights agents need that the token
-    lacks, and whether the server told the token's rights."""
+    lacks, whether the server told the token's rights, and the rights of the kind's tool it
+    lacks (told, not required)."""
 
     kind: Kind
     login: str | None
     unchecked: str = ""
     missing_scopes: tuple[str, ...] = ()
     rights_checked: bool = False
+    tool_missing: tuple[str, ...] = ()
 
     def line(self) -> str | None:
-        """`GitLab, signed in as <login>`; None for a server not checked."""
-        return f"{self.kind.title}, signed in as {self.login}" if self.login else None
+        """`GitLab, signed in as <login>`, and what the token leaves its tool without;
+        None for a server not checked."""
+        if not self.login:
+            return None
+        line = f"{self.kind.title}, signed in as {self.login}"
+        if self.tool_missing:
+            line += f"; {tool_cannot(self.kind, self.tool_missing)}"
+        return line
 
     def lacks(self) -> str | None:
         """`the token lacks <scopes>: agents can …`; None when it lacks none."""
@@ -335,9 +349,10 @@ def _rights(
     kind: Kind,
     answer: model_servers.Answer,
     certificate: str | None = None,
-) -> tuple[tuple[str, ...], bool]:
-    """The rights `kind`'s token lacks by `answer`, the answer that gave its login, and
-    whether the server told its rights: as `_ask_kinds` asks, one request at a time."""
+) -> tuple[tuple[str, ...], bool, tuple[str, ...]]:
+    """The rights `kind`'s token lacks by `answer`, the answer that gave its login, whether
+    the server told its rights, and the rights of its tool the token lacks: as `_ask_kinds`
+    asks, one request at a time."""
     from lado import model_servers
 
     def ask(url: str, headers: dict[str, str]) -> model_servers.Answer:
@@ -346,8 +361,14 @@ def _rights(
 
     told = kind.rights(at.root, token, answer, ask)
     if told is None:
-        return (), False
-    return kind.missing(told), True
+        return (), False, ()
+    return kind.missing(told), True, kind.tool_missing(told)
+
+
+def tool_cannot(kind: Kind, missing: Sequence[str]) -> str:
+    """`glab cannot open merge requests: the token lacks api`, for the rights `missing` of
+    the kind's `tool_needs`."""
+    return f"{kind.tool} cannot open {kind.changes}: the token lacks {', '.join(missing)}"
 
 
 def probe(
@@ -364,8 +385,8 @@ def probe(
     chosen = git_kinds.by_name(kind_name) if kind_name else None
 
     def checked(kind: Kind, login: str) -> Checked:
-        missing, told = _rights(at, token, kind, dict(by_kind)[kind], certificate)
-        return Checked(kind, login, missing_scopes=missing, rights_checked=told)
+        missing, told, tool = _rights(at, token, kind, dict(by_kind)[kind], certificate)
+        return Checked(kind, login, missing_scopes=missing, rights_checked=told, tool_missing=tool)
 
     if len(found) == 1:
         kind, login = found[0]
@@ -662,6 +683,7 @@ class Check:
     page_hint: str = ""
     offer: git_certificates.Certificate | None = None  # cert_untrusted, cert_changed
     before: git_certificates.Certificate | None = None  # cert_changed: the saved one
+    tool_missing: tuple[str, ...] = ()  # ok: the rights of the kind's tool the token lacks
 
 
 def check(at: Address, save_login: bool = True) -> Check:
@@ -694,7 +716,7 @@ def check(at: Address, save_login: bool = True) -> Check:
     was = server.login is not None
 
     if login := kind.login(own):
-        missing, told = _rights(at, token, kind, own, trusted)
+        missing, told, tool = _rights(at, token, kind, own, trusted)
         if missing:
             return Check(
                 "scopes_missing",
@@ -714,17 +736,10 @@ def check(at: Address, save_login: bool = True) -> Check:
         page = f"Works: signed in as {login}{rights}"
         if server.login is None:
             page = f"Works: {kind.title}, signed in as {login}."
-        return Check(
-            "ok",
-            kind,
-            login,
-            (),
-            told,
-            was,
-            f"Works: {kind.title}, signed in as {login}{rights}",
-            "",
-            page,
-        )
+        text = f"Works: {kind.title}, signed in as {login}{rights}"
+        if tool:  # git works: the outcome stays ok, the line says what the tool cannot
+            text = f"{text[:-1]}; {tool_cannot(kind, tool)}."
+        return Check("ok", kind, login, (), told, was, text, "", page, tool_missing=tool)
 
     def failed(outcome: str, text: str, hint: str, page: str, page_hint: str = "") -> Check:
         return Check(outcome, kind, None, (), False, was, text, hint, page, page_hint)
@@ -811,16 +826,22 @@ def helper_command(server: state.GitServer) -> str:
     """git's `credential.<url>.helper` value for LADO's helper of `server`: LADO's own Python
     by its absolute path, so no `lado` on the PATH is needed, with all it needs as
     arguments, so it never opens lado.db; no token, only ids (a `ps` line shows them)."""
+    return "!" + shlex.join(_helper(server))
+
+
+def _helper(server: state.GitServer, *operation: str) -> list[str]:
+    """LADO's helper of `server` (lado.git_credential), with `operation` when one is given
+    (git appends its own)."""
     kind = git_kinds.by_name(server.kind)
     user = kind.git_user if kind is not None else "token"  # a kind this LADO does not know
-    command = interpreter.run_module(
+    return interpreter.run_module(
         HELPER,
         "--home", str(state.home_path().absolute()),
         "--server", server.id,
         "--user", user,
         "--address", server.address,
+        *operation,
     )  # fmt: skip
-    return "!" + shlex.join(command)
 
 
 def _entries(server: state.GitServer) -> list[tuple[str, str]]:
@@ -917,6 +938,176 @@ def gh_variables(
         if chosen is origin:
             found["GH_HOST"] = chosen.host
     return found
+
+
+GLAB_CONFIG_FILE = "config.yml"  # glab's configuration in its folder (GLAB_CONFIG_DIR)
+GLAB_HEADER = "PRIVATE-TOKEN"  # GitLab's header of a token
+
+
+def glab_command(server: state.GitServer) -> str:
+    """The command glab runs for the token header of `server` (`valueFromCommand`): LADO's
+    helper in its `token` mode, LADO's own Python by its absolute path, with ids only, one
+    string glab splits as a shell does."""
+    from lado import git_credential
+
+    return shlex.join(_helper(server, git_credential.HEADER))
+
+
+def glab_config(servers: Sequence[state.GitServer]) -> str:
+    """glab's `config.yml` for the GitLab servers of `servers`: its update check and usage
+    statistics off, git over https, no prompt, and per server (by `host[:port]`) its scheme,
+    its path (`subfolder`), its certificate file when there is one and the token header from
+    `glab_command`. Never a token."""
+    import yaml  # only a launch writes it
+
+    hosts = {}
+    for server in servers:
+        if server.kind != gitlab.KIND.name:
+            continue
+        parts = urllib.parse.urlsplit(server.address)
+        entry: dict[str, object] = {"api_protocol": parts.scheme}
+        if path := parts.path.strip("/"):
+            entry["subfolder"] = path
+        if (ca := certificate_file(server.id)).is_file():
+            entry["ca_cert"] = str(ca)
+        entry["custom_headers"] = [{"name": GLAB_HEADER, "valueFromCommand": glab_command(server)}]
+        hosts[server.host] = entry
+    config = {
+        "check_update": False,
+        "telemetry": False,
+        "git_protocol": "https",
+        "no_prompt": True,
+        "hosts": hosts,
+    }
+    return yaml.safe_dump(config, sort_keys=False, allow_unicode=True, width=10**6)
+
+
+def glab_variables(servers: Sequence[state.GitServer], folder: Path) -> dict[str, str]:
+    """The GitLab CLI's variables of an agent's launch: `GLAB_CONFIG_DIR` its own `folder`
+    (700), where `glab_config` is written whole (600: glab refuses another mode), even with
+    no GitLab saved, so the human's own glab configuration is never read."""
+    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    folder.chmod(0o700)
+    _write_whole(folder / GLAB_CONFIG_FILE, glab_config(servers))
+    return {"GLAB_CONFIG_DIR": str(folder)}
+
+
+TOOL_TIMEOUT = 10.0  # seconds a tool's `--version` may take, as lado doctor's VERSION_TIMEOUT
+
+
+class ToolState(NamedTuple):
+    """A server's tool on the agents' PATH: whether it is there, its version ("" when it
+    tells none), whether that is older than its kind's oldest, and its `--version` line."""
+
+    found: bool
+    version: str
+    too_old: bool
+    line: str = ""
+
+
+def _numbers(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in version.split("."))
+
+
+def tool_state(kind: Kind, env: Mapping[str, str]) -> ToolState:
+    """`kind`'s tool on `env`'s PATH, by `<tool> --version` and its first x.y.z, cut at
+    TOOL_TIMEOUT, with an empty configuration folder of the call's own (glab writes into
+    its configuration at any call: never the human's). A version it cannot read (no x.y.z,
+    a failure, no answer in time) counts as fit: the tool is there, and a guess would be a
+    false alarm."""
+    import shutil
+    import tempfile
+
+    path = shutil.which(kind.tool, path=env.get("PATH", os.defpath))
+    if path is None:
+        return ToolState(False, "", False)
+    try:
+        with tempfile.TemporaryDirectory(prefix="lado-tool-") as folder:
+            result = subprocess.run(
+                [path, "--version"],
+                env={**env, kind.config_variable: folder},
+                capture_output=True,
+                text=True,
+                timeout=TOOL_TIMEOUT,
+                check=False,
+            )
+    except (OSError, subprocess.TimeoutExpired):
+        return ToolState(True, "", False)
+    lines = result.stdout.strip().splitlines()
+    line = lines[0] if lines else ""
+    found = re.search(r"\d+\.\d+\.\d+", line) if result.returncode == 0 else None
+    if found is None:
+        return ToolState(True, "", False, line)
+    version = found[0]
+    too_old = bool(kind.tool_oldest) and _numbers(version) < _numbers(kind.tool_oldest)
+    return ToolState(True, version, too_old, line)
+
+
+def tool_line(server: state.GitServer, found: ToolState) -> str | None:
+    """The line of an agent's instructions about its repository's server `server`: its
+    kind and host, its tool and what for, and that the tool is logged in, or why not (no
+    token, the tool missing or too old by `found`, gh without the server's certificate);
+    None for a kind this LADO does not know."""
+    kind = git_kinds.by_name(server.kind)
+    if kind is None:
+        return None
+    tool = f"`{kind.tool}`"
+    start = (
+        f"The repository's origin is on {kind.title} ({server.host}), a git server LADO signs "
+        "you in to"
+    )
+    if not has_token(server):
+        return (
+            f"{start}, but LADO has no token for it, so {tool} is not logged in and git cannot "
+            "push there; tell the human."
+        )
+    if not found.found:
+        return (
+            f"{start}, but its tool {tool} is not installed here, so you cannot open its "
+            f"{kind.changes}; tell the human."
+        )
+    if found.too_old:
+        return (
+            f"{start}, but {tool} here is {found.version}, older than {kind.tool_oldest}, which "
+            f"LADO needs to sign it in, so you cannot open its {kind.changes}; tell the human."
+        )
+    line = f"{start}: use {tool} for its {kind.changes}; it is logged in already."
+    if gh_without_certificate([server]):
+        line += f" {tool} does not get the server's certificate and cannot reach it; git can."
+    return line
+
+
+def tool_problem(kind: Kind, found: ToolState, addresses: Sequence[str]) -> tuple[str, str]:
+    """What is wrong with `kind`'s tool by `found`, for its servers `addresses`, and what to
+    do, as lado doctor says them; ("", "") when it is fit."""
+    if not found.found:
+        newer = f" {kind.tool_oldest} or newer" if kind.tool_oldest else ""
+        return (
+            f"not on the agents' PATH: agents cannot open {kind.changes} on {', '.join(addresses)}",
+            f"install {kind.tool}{newer}",
+        )
+    if found.too_old:
+        return (
+            f"{kind.tool} {found.version} is older than {kind.tool_oldest}, which LADO needs "
+            "to sign it in",
+            f"update {kind.tool}",
+        )
+    return "", ""
+
+
+def tool_warning(server: state.GitServer, found: ToolState) -> str | None:
+    """What a launch says when the tool of the repository's server `server` is missing or
+    too old by `found` (`tool_problem` in one line); None when it is fit, or for a kind this
+    LADO does not know."""
+    kind = git_kinds.by_name(server.kind)
+    if kind is None:
+        return None
+    what, hint = tool_problem(kind, found, [server.address])
+    if not what:
+        return None
+    if not found.found:
+        return f"{kind.tool} is {what}; {hint}"
+    return f"{what} to {server.address}; {hint}"
 
 
 def gh_without_certificate(servers: Sequence[state.GitServer]) -> list[str]:
@@ -1146,17 +1337,22 @@ def author_files(folder: Path, servers: Sequence[state.GitServer]) -> dict[str, 
             f"[user]\n\tname = {_quoted(server.author_name or '')}\n"
             f"\temail = {_quoted(server.author_email or '')}\n"
         )
-        temp = path.with_name(f".{path.name}.{uuid.uuid4().hex[:8]}")
-        try:
-            fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as file:
-                file.write(text)
-            os.replace(temp, path)
-        finally:  # a failed write leaves no file of its own; why it failed goes on
-            with contextlib.suppress(FileNotFoundError):
-                os.unlink(temp)
+        _write_whole(path, text)
         found[server.id] = path
     return found
+
+
+def _write_whole(path: Path, text: str) -> None:
+    """Write `text` into `path` whole, mode 600, by a rename of a file of its own."""
+    temp = path.with_name(f".{path.name}.{uuid.uuid4().hex[:8]}")
+    try:
+        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as file:
+            file.write(text)
+        os.replace(temp, path)
+    finally:  # a failed write leaves no file of its own; why it failed goes on
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(temp)
 
 
 def token_folder(id: str) -> Path:

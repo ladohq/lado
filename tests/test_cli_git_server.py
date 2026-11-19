@@ -118,7 +118,7 @@ def test_a_refused_token_saves_nothing(serve, capsys):
         assert err.splitlines()[1:] == [
             f"lado: GitLab at {server.url} refuses the token",
             f"lado: make a token at {server.url}/-/user_settings/personal_access_tokens "
-            "(scopes read_repository, write_repository, read_api)",
+            "(scope api)",
         ]
         assert out == ""
     assert state.git_servers() == []
@@ -287,15 +287,15 @@ def test_add_saves_a_token_without_push_and_warns(serve, capsys, lado_home):
     assert main(["git-server", "add", server.url, "--token"]) == 0
     out, err = capsys.readouterr()
     assert out.splitlines() == [
-        f"GitLab, signed in as {fake.LOGIN}",
+        f"GitLab, signed in as {fake.LOGIN}; glab cannot open merge requests: the token lacks api",
         f"Saved git server {server.url}.",
         RESTART,
     ]
     assert err.splitlines() == [
         PLAIN,
         "lado: warning: the token lacks write_repository: agents can clone but not push",
-        "lado: replace it with a token with the scopes read_repository, write_repository, "
-        f"read_api: lado git-server add {server.url} --token",
+        f"lado: replace it with a token with the scope api: lado git-server add {server.url} "
+        "--token",
     ]
     assert [s.login for s in state.git_servers()] == [fake.LOGIN]
 
@@ -320,6 +320,27 @@ def test_check_of_a_server_that_works(serve, capsys, lado_home):
     assert TOKEN not in out + err
 
 
+def test_check_of_a_gitlab_token_without_api_works_and_names_it(serve, capsys, lado_home):
+    server = _added(serve, capsys, "gitlab-git")
+    assert main(["git-server", "check", server.url]) == 0
+    out, err = capsys.readouterr()
+    assert out == (
+        f"Works: GitLab, signed in as {fake.LOGIN}, may clone and push; glab cannot open merge "
+        "requests: the token lacks api.\n"
+    )
+    assert err == ""
+
+
+def test_add_of_a_gitlab_token_without_api_names_it(serve, capsys, lado_home):
+    server = serve("gitlab-git", token=TOKEN)
+    assert main(["git-server", "add", server.url, "--token"]) == 0
+    out, _ = capsys.readouterr()
+    assert out.splitlines()[:2] == [
+        f"GitLab, signed in as {fake.LOGIN}; glab cannot open merge requests: the token lacks api",
+        f"Saved git server {server.url}.",
+    ]
+
+
 @pytest.mark.parametrize(
     ("profile", "then", "lines"),
     [
@@ -336,8 +357,8 @@ def test_check_of_a_server_that_works(serve, capsys, lado_home):
             "gitlab-read",
             [
                 "lado: the token lacks write_repository: agents can clone but not push",
-                "lado: replace it with a token with the scopes read_repository, "
-                "write_repository, read_api: lado git-server add {url} --token",
+                "lado: replace it with a token with the scope api: lado git-server add {url} "
+                "--token",
             ],
         ),
         (

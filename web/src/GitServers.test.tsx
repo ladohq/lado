@@ -15,7 +15,7 @@ const KINDS = [
     name: "gitlab",
     title: "GitLab",
     token_path: "/-/user_settings/personal_access_tokens",
-    scopes: "scopes read_repository, write_repository, read_api",
+    scopes: "scope api",
   },
 ];
 const CORP: GitServerInfo = {
@@ -564,7 +564,7 @@ test("gitlab.com: GitLab answers, Token's link and scopes; the tips stand outsid
   expect(await screen.findByText("answers.", { exact: false })).toBeTruthy();
   const link = screen.getByRole("link", { name: "its token page" });
   expect(link.getAttribute("href")).toBe("https://gitlab.com/-/user_settings/personal_access_tokens");
-  expect(link.parentElement!.textContent).toContain("read_repository, write_repository, read_api");
+  expect(link.parentElement!.textContent).toContain("with the scope api.");
   const tip = button("About Address");
   expect(tip.closest("label")).toBeNull();
   tip.focus();

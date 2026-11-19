@@ -25,6 +25,12 @@
 - **Trust your company's git server.** When a server's certificate is signed by your company,
   Check in Settings → Git servers shows it with its fingerprint: Trust it, and LADO and agents'
   git trust it for that server only. A file from IT: `lado git-server certificate`.
+- **Agents open GitLab merge requests with glab.** Each agent's `glab` is signed in to your
+  GitLab servers of Settings → Git servers, with their tokens and certificates; your own glab
+  login stays yours. Make the token with the scope `api`; Check says when a token lacks it.
+- **Agents know their repository's server.** Every agent is told on which saved server its
+  repository is and which tool goes with it (`gh` or `glab`), so kits need not say it. A
+  missing or too old tool is said at the start and by `lado doctor`; the agent starts anyway.
 
 ### Fixed
 
@@ -38,6 +44,8 @@
 - **No ssh in LADO's container.** Agents in Docker have no ssh, to other machines neither:
   git goes over https with the tokens of Settings → Git servers, `git@…` addresses included.
   `LADO_SSH_AGENT` in `.env` is no longer used; the installer no longer asks for it.
+- **glab in LADO's image.** GitLab's CLI 1.130.0 is in the image, its update check and usage
+  statistics off. Outside Docker install glab 1.114.0 or newer yourself.
 
 ## 0.47.0 (2026-11-15)
 

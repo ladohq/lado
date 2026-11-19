@@ -57,7 +57,11 @@ KIND = GitLab(
     login_field="username",
     git_user="oauth2",
     tool="glab",
+    config_variable="GLAB_CONFIG_DIR",
+    changes="merge requests",
     token_path="/-/user_settings/personal_access_tokens",
-    scopes="scopes read_repository, write_repository, read_api",
+    scopes="scope api",
     needs=("read_repository", "write_repository"),  # read_api: its user API refuses without
+    tool_needs=("api",),  # read_api reads the API only: glab cannot open a merge request
+    tool_oldest="1.114.0",  # the first glab that sends a header from a command (valueFromCommand)
 )

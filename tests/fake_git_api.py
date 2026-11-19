@@ -73,7 +73,8 @@ GITLAB_SCOPE = Answer(
 )
 HANG = Answer(0)  # no answer: the request waits for the server's end
 GITLAB_TOKEN = "/api/v4/personal_access_tokens/self"  # GitLab 15.5 on: the token's own facts
-GITLAB_SCOPES = ("read_repository", "write_repository", "read_api")
+GITLAB_SCOPES = ("read_repository", "write_repository", "read_api", "api")
+GIT_SCOPES = ("read_repository", "write_repository", "read_api")  # git's alone: no glab MR
 
 
 def gitlab_token(*scopes: str) -> Answer:
@@ -89,6 +90,7 @@ PROFILES: dict[str, dict[str, Answer]] = {
     # A GitLab older than 15.5: no token's own facts, its rights not told.
     "gitlab": {GITLAB: GITLAB_USER},
     "gitlab-full": {GITLAB: GITLAB_USER, GITLAB_TOKEN: gitlab_token(*GITLAB_SCOPES)},
+    "gitlab-git": {GITLAB: GITLAB_USER, GITLAB_TOKEN: gitlab_token(*GIT_SCOPES)},
     "gitlab-read": {GITLAB: GITLAB_USER, GITLAB_TOKEN: gitlab_token("read_repository", "read_api")},
     "gitlab-api-only": {GITLAB: GITLAB_USER, GITLAB_TOKEN: gitlab_token("api")},
     "gitlab-no-repo": {GITLAB: GITLAB_USER, GITLAB_TOKEN: gitlab_token("read_api")},

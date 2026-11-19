@@ -27,7 +27,7 @@
 # LADO_GIT_NAME and LADO_GIT_EMAIL are git's identity for the agents' commits, written at
 # every start (without them `docker logs` warns). GitHub and your other git servers over
 # https: Settings → Git servers (or `docker exec -it lado lado git-server add github.com
-# --token`); the agents' git and gh get their tokens from there. The container has no ssh:
+# --token`); the agents' git, gh and glab get their tokens from there. The container has no ssh:
 # a git server's ssh addresses go over https with its token.
 #
 # Update: `docker rm -f lado`, then the same `docker run` with the new version; the home
@@ -52,7 +52,8 @@
 # exec lado mise use -g go@1.23`. An agent's `npm install -g` and `uv tool install` go to
 # ~/.local on the home volume too; the image's Node 22 stays first on PATH. The agents' base
 # tools are here too (jq, rg, unzip, zip, xz, bzip2, patch, file, rsync, sqlite3, tree, lsof,
-# nc), and openspec at its pin, its usage statistics and update check off. python3 and
+# nc), openspec at its pin, and glab (GitLab's CLI) at its pin, both with their usage
+# statistics and update check off. python3 and
 # python are the image's Python 3.13, root's, unless a repository's version file or `mise use
 # -g` names another. The system libraries of Playwright's Chromium are here, for the UI
 # tests; the browser itself comes from `make browser`, into the home volume. Other apt
@@ -182,6 +183,30 @@ ARG OPENSPEC_VERSION=1.14.1
 RUN npm install -g --prefix /opt/tools "@fission-ai/openspec@${OPENSPEC_VERSION}" \
  && npm cache clean --force
 
+# glab, GitLab's CLI, at its pin in /opt/tools/bin, beside openspec: agents open merge
+# requests with it on a saved GitLab, signed in by LADO per agent. From the release's
+# archive, checked by the SHA-256 of the release's checksums.txt for the build's
+# architecture; run once, with a configuration folder removed at once, as glab writes one
+# at any call. Its update check and usage statistics are off (GLAB_CHECK_UPDATE,
+# GLAB_SEND_TELEMETRY; each agent's configuration says so too). Dependabot does not read
+# it: move the pin and both sums by hand.
+ARG GLAB_VERSION=1.130.0
+ARG GLAB_SHA256_AMD64=ce06313b2075af25180cd195ab3496d42bc5857c85a1c12ba996838dfe9d822c
+ARG GLAB_SHA256_ARM64=062d53acb0f2cbcc79a014600df1aa0fb440bb3a08a5d4900d3b49b553b22767
+ARG TARGETARCH
+RUN arch="${TARGETARCH:-$(dpkg --print-architecture)}" \
+ && case "$arch" in \
+      amd64) sum="$GLAB_SHA256_AMD64" ;; \
+      arm64) sum="$GLAB_SHA256_ARM64" ;; \
+      *) echo "no glab for $arch" >&2; exit 1 ;; \
+    esac \
+ && curl -fsSL -o /tmp/glab.tar.gz "https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_VERSION}/downloads/glab_${GLAB_VERSION}_linux_${arch}.tar.gz" \
+ && echo "$sum  /tmp/glab.tar.gz" | sha256sum -c - \
+ && mkdir -p /opt/tools/bin \
+ && tar -xzf /tmp/glab.tar.gz -C /opt/tools/bin --strip-components=1 bin/glab \
+ && rm /tmp/glab.tar.gz \
+ && GLAB_CONFIG_DIR=/tmp/glab-config /opt/tools/bin/glab --version && rm -rf /tmp/glab-config
+
 # LADO from the build's one wheel, last: it changes with every commit, so a build that
 # reuses the earlier layers (a developer's own Docker) rebuilds only from here on.
 # Installed as lado: a chown afterwards would copy the layer. /opt only here and in the
@@ -203,6 +228,8 @@ ENV PATH=/opt/uv/bin:/opt/agents/bin:/opt/tools/bin:/usr/local/sbin:/usr/local/b
     DISABLE_AUTOUPDATER=1 \
     OPENSPEC_TELEMETRY=0 \
     OPENSPEC_NO_UPDATE_CHECK=1 \
+    GLAB_CHECK_UPDATE=false \
+    GLAB_SEND_TELEMETRY=false \
     LADO_PORT=8765
 
 EXPOSE 8765

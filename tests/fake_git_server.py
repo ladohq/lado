@@ -30,6 +30,7 @@ class Request(NamedTuple):
     path: str
     user: str | None
     password: str | None
+    private_token: str | None = None  # GitLab's API header, as glab sends it
 
 
 def _credentials(header: str | None) -> tuple[str | None, str | None]:
@@ -58,7 +59,8 @@ class Server:
             def handle_one(self):
                 path, _, query = self.path.partition("?")
                 user, password = _credentials(self.headers.get("Authorization"))
-                fake.requests.append(Request(self.command, path, user, password))
+                private = self.headers.get("PRIVATE-TOKEN")
+                fake.requests.append(Request(self.command, path, user, password, private))
                 body = self._body()
                 if path.startswith("/api/"):
                     fake_git_api.send(

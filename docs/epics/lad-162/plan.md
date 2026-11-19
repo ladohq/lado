@@ -2,13 +2,13 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: S7 (LAD-301, run task/lad-301) · Next: S8 · Open checks: the human's check on the company GitLab, on the release candidate that carries S8; live tests on the release candidate (S6 changed the agents' environment, never run live); 0.48.0's release checklist names what going back loses (S6b: the host's ssh agent returns only with `compose.yaml.bak`, not with the new `compose.yaml` that docs/release.md 4.6 keeps); S7: Apple's git (LibreSSL) and GnuTLS with an intermediate certificate, unchecked; S7's Docker check and "Trust?" on the company GitLab, in the human's check on the RC with S8
+In work: S8 (its task created at this review) · Next: S9 · Open checks: the human's check on the company GitLab, on the release candidate that carries S8; live tests on the release candidate (S6 changed the agents' environment, never run live); 0.48.0's release checklist names what going back loses (S6b: the host's ssh agent returns only with `compose.yaml.bak`, not with the new `compose.yaml` that docs/release.md 4.6 keeps); S7: Apple's git (LibreSSL) and GnuTLS with an intermediate certificate, unchecked; S7's Docker check and "Trust?" on the company GitLab, in the human's check on the RC with S8
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
 - The statement's decisions (brief.md) are not reopened.
 - Backward compatibility is not a goal of its own: a user can replace a token with the needed rights in Settings (2026-11-19, #7422).
-Last review: 2026-11-19, after S6b, base at 5c312f77
+Last review: 2026-11-19, after S7, base at 3e886a20
 
 ## Steps
 
@@ -268,7 +268,17 @@ variable exists only in the image). The human's rule (#7422): backward compatibi
 a goal of its own.
 
 ### S7 — The company certificate
-Status: in progress (LAD-301, run task/lad-301)
+Status: done (LAD-301, PR #341, merged 3e886a20 on 2026-11-19, in release 0.48.0). Changed
+before design_ok by the human (#7481–#7487, research `ca-research`): Check fetches the
+server's chain and asks "Trust this server?" (signed by, valid, SHA-256), the root or the
+highest authority is saved for that server only (`<LADO_HOME>/git-servers/<id>/ca.pem`, no
+schema change); no file in the UI, a file only by `--certificate` and `lado git-server
+certificate`; the CLI never asks (#7492); a refusal saves nothing; no switch-off of TLS
+checks; the host's certificates are not brought into the container; gh gets none (Later),
+doctor and the launch say so. Only git gets the certificate, not the agents' own https.
+Review: 4 local and 2 external rounds, CI 27/27; F9 and the proxy into Later. Not run by
+hand: its Docker steps and "Trust?" go into the human's check on the RC with S8; live tests
+on the RC. The Check below was the plan before #7487 (an uploaded file, gh).
 Check: an integration test with the local https server signed by a test CA: without the
 certificate "Check" says the server is not trusted and the clone fails with that reason;
 with it uploaded, LADO's git, the agents' git and `gh` clone, push and check; the user's and

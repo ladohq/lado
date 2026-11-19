@@ -2,13 +2,13 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: S6 (LAD-299, run task/lad-299) · Next: S6b · Open checks: the human's check on the company GitLab, on the release candidate that carries S8
+In work: none · Next: S6b (waits at step_ok) · Open checks: the human's check on the company GitLab, on the release candidate that carries S8; live tests on the release candidate (S6 changed the agents' environment, never run live)
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
 - The statement's decisions (brief.md) are not reopened.
 - Backward compatibility is not a goal of its own: a user can replace a token with the needed rights in Settings (2026-11-19, #7422).
-Last review: 2026-11-18, after S5b, base at 13a0158a
+Last review: 2026-11-19, after S6, base at 44fdb6fb
 
 ## Steps
 
@@ -187,7 +187,11 @@ answers to a revoked and an expired token came from the human's report and docs;
 GitLab gives push over https" only from docs.
 
 ### S6 — GitHub from the list: today's login moves into the github.com entry once, then the list is the only GitHub login
-Status: in progress (LAD-299, run task/lad-299)
+Status: done (LAD-299, PR #339, merged 44fdb6fb on 2026-11-19, in release 0.48.0). The human's
+agent ran the manual check natively on a Mac (the outside folder as `secrets/`): 11 steps OK —
+takeover once, the outside and the project's `GH_TOKEN` ignored, push and PR over a
+`git@github.com:` address, Remove without a second takeover, rollback to 0.47.0. Docker was
+not checked by hand (CI's container test only) → S6b's check. Leftovers → S6b.
 Leftovers of S5b (the human's manual check, ledger of LAD-297):
 - The CLI hint of a failed clone from a saved server packs two commands into one line
   ("Check the git server; if its token expired or was revoked, replace it (lado git-server
@@ -225,6 +229,15 @@ spec place it (§10, C1, #7234), with the critique's F2 (how to sign in).
 
 ### S6b — The host's ssh agent switched off
 Status: planned
+Leftovers of S6 (the human's manual check, ledger of LAD-299):
+- The token hint of Add for GitHub asks for `repo` only; `gh pr view` needs `read:org`, a
+  push of `.github/workflows/` needs `workflow`: ask for `repo, read:org, workflow`.
+- The Add form on an empty list prefills gitlab.com, now that github.com is an ordinary entry
+  too: the analyst proposes the rule (both, none, or the one not saved yet).
+- Ledger F8: `docs/install.md` ("git over ssh") says `git@github.com:` goes with the ssh
+  key; a saved server's ssh addresses go over its token — S6b rewrites this part anyway.
+- Docker was not checked by hand in S6: S6b's manual check runs in Docker and also covers
+  S6's takeover from `secrets/GH_TOKEN` on an upgraded container.
 Check: `LADO_SSH_AGENT` is no longer mounted or read (`compose.yaml`, the entrypoint,
 `ssh-agent-env.sh`, `install.sh`); a container with it still set in `.env` starts and says
 loudly (`docker compose logs`, `lado doctor`) that it is ignored and that git goes over
@@ -233,12 +246,17 @@ as since S1; an ssh address of a host not in the list fails with the hint to add
 server; a container test (`make test-container`) starts the image with the variable set;
 `docs/install.md` and the CHANGELOG say it is gone and what to do instead. The way back:
 nothing is deleted, the previous version's compose reads the variable from `.env` again.
-Touches: `docker/` (compose.yaml, entrypoint.sh, ssh-agent-env.sh, install.sh,
-Dockerfile), the clone hints for ssh, `docs/install.md`.
+The human's manual check in Docker: an upgraded container with `secrets/GH_TOKEN` and
+`LADO_SSH_AGENT` set takes the login over once, warns about the agent, an agent pushes and
+opens a pull request; a rollback to the previous image works.
+Touches: `docker/` (compose.yaml, entrypoint.sh, ssh-agent-env.sh, ssh-agent-socket.sh,
+profile.sh, install.sh, install.ps1, Dockerfile), the clone hints for ssh, the Add form's
+token hint (`web/src/GitServers.tsx`, the kinds module), `docs/install.md`.
 Notes: decided at #7389 (the human: switch off the outside setting of the host's agent
 too), which changes the brief's "where it is set up it keeps working". A step of its own:
-it touches the image and its docs only and merges on its own after S6. LADO outside Docker
-keeps the user's own ssh as today (the variable exists only in the image).
+it merges on its own after S6. LADO outside Docker keeps the user's own ssh as today (the
+variable exists only in the image). The human's rule (#7422): backward compatibility is not
+a goal of its own.
 
 ### S7 — The company certificate
 Status: planned
@@ -289,6 +307,14 @@ None (the project's `GH_TOKEN` was settled at #7389: ignored).
 - Flaky tests met in S5 and S5b, not the epic's: the kilo smoke on macOS (LAD-295, #7281),
   `test_send_text_pastes_multiline_text` in CI (LAD-296, #7294), the 44 px phone test of the
   launch window (LAD-298, #7361); all in the Backlog, derived from LAD-293 or LAD-297.
+- Met in S6, not tracked yet (a task on the human's yes): `tests/test_model_servers.py::
+  test_a_late_control_is_asked_again_and_still_proves_nothing` failed once in CI (unit
+  3.14); a process that dies mid-way through creating lado.db leaves it unusable (`SCHEMA`
+  holds `ALTER`s; older than S6).
+- Declined in S6's review (ledger of LAD-299), to weigh if met: `GITHUB_TOKEN` no longer
+  reaches agents, so OpenCode/Kilo's GitHub Models through it stop (E2, named by doctor);
+  a takeover error other than a refusal stops `lado start` (F7); a pending takeover asks
+  `gh` at every agent's start (F5); `flock` on NFS for a new lado.db (E3, not verified).
 - An expired token shown on a closed row before Check (S4's mockup F7): its expiry date or a
   stored last check, a schema change (#7234).
 

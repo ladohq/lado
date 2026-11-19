@@ -38,8 +38,7 @@ needs.
 #### Scenario: gitlab.com
 - **WHEN** the human types `gitlab.com` in Address and no gitlab.com server is saved
 - **THEN** the line says `GitLab answers.`, and Token's link is
-  `https://gitlab.com/-/user_settings/personal_access_tokens` with the scopes
-  `read_repository, write_repository, read_api`
+  `https://gitlab.com/-/user_settings/personal_access_tokens` with the scope `api`
 
 #### Scenario: github.com
 - **WHEN** the human types `github.com` in Address and no github.com entry is saved

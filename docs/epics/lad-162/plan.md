@@ -302,6 +302,11 @@ the human's ssh key (S1's manual check could not tell them apart there): the age
 `GIT_SSH_COMMAND=false git push …`, or the human's ssh key is set aside for the check. The
 release candidate's live tests (each RC, docs/release.md) include an agent with a model
 pushing through a listed server, for Claude Code and Codex (S1 had none).
+The code host's tool (#7524): at each agent's launch LADO names the repository's server
+kind and its tool (the kind's `tool`: `gh`, `glab`) in one line, none for an unlisted host;
+a tool missing from the agents' PATH is a loud launch line and a doctor line, not a refusal;
+kits do not list it in `expects.commands`. An integration test with the fake agent: `glab`
+for a listed GitLab, `gh` for GitHub, no line for an unlisted host.
 Carried from S7 (not run by hand, #559): in Docker, "Check" on the company GitLab asks
 "Trust this server?" when a company CA signs it, and trusting it makes clone and push work;
 when a public CA signs it, S7's steps with a local https server under a test CA run in
@@ -350,7 +355,12 @@ None (the project's `GH_TOKEN` was settled at #7389: ignored).
   meant for them.
 - Several accounts on one server — out: LADO is single-user.
 - Kit sdlc: a `.lado/sdlc.md` example for GitLab and "merge request" wording — in the
-  kit-sdlc repository; its task is created on the human's yes after S8 (D6).
+  kit-sdlc repository; its task is created on the human's yes after S8 (D6). With it, the
+  kits' texts move to the tool LADO names (#7524; no kit of ladohq lists `gh` in
+  `expects.commands`, checked 2026-11-19): kit-sdlc (`sdlc.example.md`'s "Code host" line,
+  `gh` in analyst and integrator), kit-epic (`gh api` in `epic-files`), kit-builder (the rule
+  "Commands from outside the kit" and the rubric's criterion 11 say "from the project's
+  settings"). kit-lado-dev's `gh` stays: LADO itself is on GitHub.
 - A company certificate for model servers inside the company — the same file may serve
   them; not asked for now.
 - A company certificate for gh (GitHub Enterprise behind a company CA): gh takes no

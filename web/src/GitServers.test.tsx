@@ -513,7 +513,7 @@ test("gitlab.com: GitLab answers, Token's link and scopes; the tips stand outsid
   fake.checks["https://gitlab.com"] = looksLike("https://gitlab.com", "gitlab");
   await mount();
   press("Add server");
-  expect(addressField().value).toBe("https://gitlab.com");
+  type(addressField(), "https://gitlab.com");
   expect(await screen.findByText("answers.", { exact: false })).toBeTruthy();
   const link = screen.getByRole("link", { name: "its token page" });
   expect(link.getAttribute("href")).toBe("https://gitlab.com/-/user_settings/personal_access_tokens");
@@ -524,6 +524,16 @@ test("gitlab.com: GitLab answers, Token's link and scopes; the tips stand outsid
   fireEvent.click(tip);
   expect(document.activeElement).toBe(tip);
   expect(button("About Token").closest("label")).toBeNull();
+});
+
+test("Add fills in no server: Address empty and focused, its placeholder naming both kinds", async () => {
+  fake.servers = [CORP];
+  await mount();
+  press("Add server");
+  expect(addressField().value).toBe("");
+  expect(addressField().placeholder).toBe("github.com or gitlab.example.com");
+  await waitFor(() => expect(document.activeElement).toBe(addressField()));
+  expect(screen.queryByText("answers.", { exact: false })).toBeNull();
 });
 
 test("plain http is warned first, with its tip, and Add stays possible", async () => {
@@ -617,6 +627,7 @@ test("a server that stops answering at Add offers Try again and the kind, the to
   fake.add = () => refused("No answer in 5 seconds.", "address", true);
   await mount();
   press("Add server");
+  type(addressField(), "https://gitlab.com");
   await screen.findByText("answers.", { exact: false });
   type(tokenField(), TOKEN);
   fireEvent.click(formAdd());
@@ -637,6 +648,7 @@ test("a refused token stays under Token; the done form opens the new row with it
   };
   await mount();
   press("Add server");
+  type(addressField(), "https://gitlab.com");
   await screen.findByText("answers.", { exact: false });
   type(tokenField(), TOKEN);
   fireEvent.click(formAdd());
@@ -815,6 +827,7 @@ test("Add cancelled while it saves: the server is listed, nothing else changes",
   };
   await mount();
   press("Add server");
+  type(addressField(), "https://gitlab.com");
   await screen.findByText("answers.", { exact: false });
   type(tokenField(), TOKEN);
   fireEvent.click(formAdd());
@@ -879,6 +892,7 @@ test("Add answered after a Check closes the form, the server listed, the check's
   await mount();
   openRow(GHE);
   press("Add server");
+  type(addressField(), "https://gitlab.com");
   await screen.findByText("answers.", { exact: false });
   type(tokenField(), TOKEN);
   fireEvent.click(formAdd());
@@ -898,6 +912,7 @@ test("an Add cancelled and opened again is not closed by the first one's late an
   fake.add = () => late.answer();
   await mount();
   press("Add server");
+  type(addressField(), "https://gitlab.com");
   await screen.findByText("answers.", { exact: false });
   type(tokenField(), TOKEN);
   fireEvent.click(formAdd());
@@ -930,6 +945,7 @@ test("Try again whose token is refused drops the stopped-answering line and the 
       : refused("GitLab refused this token: copy it whole or make a new one.", "token");
   await mount();
   press("Add server");
+  type(addressField(), "https://gitlab.com");
   await screen.findByText("answers.", { exact: false });
   type(tokenField(), TOKEN);
   fireEvent.click(formAdd());

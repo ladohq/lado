@@ -40,7 +40,12 @@ asks for a login (`<host> asks for a login`) or refuses access (`<host> refused 
 `Add it as a git server with a token: lado git-server add <scheme>://<host>[:<port>] --token`;
 its not found, ssh failures and the failures that are no access failure (unreachable, no
 branch) keep their texts with no git server hint, and so does a host saved under another
-scheme or port than the URL's, as git took no token from it. A kit's, pack's or marketplace's
+scheme or port than the URL's, as git took no token from it. LADO's container has no ssh:
+there both ssh failures of a `git@<host>:` or `ssh://git@<host>[:22]/` address of a host no
+server is saved for say `LADO's container has no ssh key for <host>` with `Add it as a git
+server with a token: lado git-server add https://<host> --token`, and those of any other ssh
+address `LADO's container has no ssh: clone by the repository's https address`, no hint;
+outside it the ssh hints stay. A kit's, pack's or marketplace's
 git failure carries the same hint on one line, its lines joined by `. `; the UI shows the git
 server's way out as a link to Settings → Git servers (docs/design/ui.md).
 

@@ -293,13 +293,10 @@ value; `LADO_GIT_NAME` with an apostrophe and `LADO_GIT_EMAIL` are a commit's au
 committer, a new email on the same home volume replaces the old, and without them
 `docker logs` warns; a `GH_TOKEN` of the folder and a `gh` login on the home volume give
 github.com no password (`git credential fill`) and the real `gh` no token, until github.com
-is a saved git server, whose token both then take; an ssh agent of a sidecar container (OpenSSH's agent
-serves only its own uid, so it runs as lado's) on a shared volume, its socket given to
-root as Docker Desktop's is, lists its key in an agent's login shell, also after a
-restart that found it root's again, with no 0 in `id -G`; one of the workspace's owner
-(2001) works as it is and stays 2001's; under no-new-privileges a root socket is the
-warning; compose's default (`/dev/null`) gives no `SSH_AUTH_SOCK` and no line; and the
-ssh rule refuses an argument and a variable, `sudo -n true` fails.
+is a saved git server, whose token both then take; and compose started with an old `.env`'s
+`LADO_SSH_AGENT` naming a socket of the host has no `/run/lado`, ssh host keys or ssh sudo
+rule, no `SSH_AUTH_SOCK` in a login shell or the server, no word of ssh in its logs or
+`lado doctor`, and `sudo -n -l` grants nothing.
 A new image on an old home volume (`test_migration.py`; `old_home` seeds a volume with a
 `lado.db` this checkout's `lado.state` made on the host, a stopped session in it, at the
 schema before by `previous_schema`): the server migrates it, `/api/health` answers,

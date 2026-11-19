@@ -28,6 +28,12 @@
 - **An open tip or menu follows its button.** When the window is resized or a phone is
   turned, an open ⓘ tip or menu moves with its button instead of staying where it was.
 
+### Docker image
+
+- **No ssh in LADO's container.** Agents in Docker have no ssh, to other machines neither:
+  git goes over https with the tokens of Settings → Git servers, `git@…` addresses included.
+  `LADO_SSH_AGENT` in `.env` is no longer used; the installer no longer asks for it.
+
 ## 0.47.0 (2026-11-15)
 
 ### Fixed

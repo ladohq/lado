@@ -339,3 +339,6 @@ None (the project's `GH_TOKEN` was settled at #7389: ignored).
   kit-sdlc repository; its task is created on the human's yes after S8 (D6).
 - A company certificate for model servers inside the company — the same file may serve
   them; not asked for now.
+- A company certificate for gh (GitHub Enterprise behind a company CA): gh takes no
+  per-host certificate, it needs a wrapper (~1 day); S7 says so in doctor and at an
+  agent's start (#7481–#7487).

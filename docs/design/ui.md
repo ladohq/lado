@@ -1673,8 +1673,10 @@ connection, above).
   **git server note** (`GitServerNote`, the same at a failed clone's end and in a project's Add
   repository): the core's sentence (`Check this git server; if its token expired or was
   revoked, replace it there.` / `Add <host> as a git server with a token: LADO and its agents
-  then sign in to it.`) and a link that looks as a quiet button, `Check <host> ↗` or `Add git
-  server ↗` (named `… (opens a new tab)`, 44 px high on a phone), opening
+  then sign in to it.`, in LADO's container for an ssh failure of a `git@` address `Add <host>
+  as a git server with a token: its git@ addresses then go over https too.`) and a link
+  that looks as a quiet button, `Check <host> ↗` or `Add git server ↗` (named `… (opens a
+  new tab)`, 44 px high on a phone), opening
   `/settings/git-servers?check=<host>` or `?add=<address>` in a new tab, so the window keeps its
   fields; no command to copy there; **Use this clone** for a clone of the same repository there ("LADO will use it as
   it is: no clone, no pull, no branch switch"), which turns Where to that folder; the clone a
@@ -3273,8 +3275,9 @@ link under the field stays visible and pressable.
   Cancel, Esc cancels): `Remove <address>?` / `Its token and commit author go too. This cannot
   be undone.`, `Remove server` and Cancel. Done: `Removed <address>.` in the row's place (with
   the removal's warning under it when a folder stayed), the focus on `+ Add server`.
-- **Add server** opens a form under the list: Address ⓘ (`https://gitlab.com` selected while no
-  server of gitlab.com is saved, else empty; focused), Kind ⓘ only when needed, Token ⓘ (the
+- **Add server** opens a form under the list: Address ⓘ (empty with the placeholder
+  `github.com or gitlab.example.com`, whichever servers are saved; the address of a failure's
+  way out when opened by `Add git server ↗`; focused), Kind ⓘ only when needed, Token ⓘ (the
   secret field). Once the typing settles (`MODEL_DEBOUNCE`) the form asks `POST
   /api/git-servers/check` (`Checking…`): the server is asked with no token, and under Address
   come the refusals of the address (github.com on another port or under a path, a host held

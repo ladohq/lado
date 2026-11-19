@@ -393,117 +393,51 @@ def test_the_build_context_is_an_allowlist_of_what_the_dockerfile_copies():
     assert {entry[1:] for entry in ignore[1:]} == local_copies()
 
 
-def test_the_host_keys_are_githubs_public_keys_alone():
-    """GitHub's published keys (api.github.com/meta, `ssh_keys`), one per type; no other
-    host, no private key: the image holds no one's secrets."""
-    text = (DOCKER / "ssh_known_hosts").read_text()
-    entries = [line.split() for line in text.splitlines() if line and not line.startswith("#")]
-    assert [host for host, *_ in entries] == ["github.com"] * 3
-    assert sorted(kind for _, kind, *_ in entries) == [
-        "ecdsa-sha2-nistp256",
-        "ssh-ed25519",
-        "ssh-rsa",
+def test_the_build_context_is_the_wheel_and_three_files():
+    ignore = (DOCKER / "Dockerfile.dockerignore").read_text().split()
+    assert ignore[1:] == [
+        "!dist/lado-*.whl",
+        "!docker/profile.sh",
+        "!docker/entrypoint.sh",
+        "!docker/mise.toml",
     ]
-    assert all(len(entry) == 3 for entry in entries), entries
-    assert "PRIVATE KEY" not in text
 
 
-def test_the_image_knows_the_host_keys_system_wide():
-    """root's, mode 644: no agent changes them, every user's ssh reads them."""
-    assert "COPY --chmod=644 docker/ssh_known_hosts /etc/ssh/ssh_known_hosts" in lines()
-
-
-SSH_RULE = "lado ALL=(root) NOPASSWD: /usr/local/bin/lado-ssh-agent-socket"
-SSH_PROGRAM = DOCKER / "ssh-agent-socket.sh"
-SOCKET = "/run/lado/ssh-agent.sock"
-
-
-def test_the_ssh_rule_names_one_program_and_keeps_no_variable():
-    """Its own file, which the first start's root phase leaves; no SETENV, so sudo's
-    env_reset gives the program a clean environment."""
-    [run] = [line for line in lines() if "/etc/sudoers.d/lado-ssh-agent" in line]
-    assert f"printf '%s\\n' '{SSH_RULE}' > /etc/sudoers.d/lado-ssh-agent" in run
-    assert "chmod 0440 /etc/sudoers.d/lado-ssh-agent" in run
-    assert "visudo -cf /etc/sudoers.d/lado-ssh-agent" in run
-    assert "SETENV" not in run
-    assert "COPY --chmod=755 docker/ssh-agent-socket.sh /usr/local/bin/lado-ssh-agent-socket" in (
-        lines()
-    )
-    # /run/lado is root's, so no agent can plant a file at the socket's path.
-    assert "mkdir -p /run/lado" in run and "chmod 755 /run/lado" in run
-
-
-def test_the_ssh_program_checks_its_one_socket():
-    text = SSH_PROGRAM.read_text()
-    assert "\nPATH=/usr/bin:/bin\n" in text
-    assert f"\nSOCKET={SOCKET}\n" in text
-    assert '[ -L "$SOCKET" ] || [ ! -S "$SOCKET" ]' in text
-    assert '[ "$(stat -c %u "$SOCKET")" = 0 ] || exit 0' in text
-    assert 'chown --no-dereference "$(id -u lado)" "$SOCKET"' in text
-    assert text.index("stat -c %u") < text.index("chown")
-
-
-def test_the_ssh_program_takes_no_argument():
-    done = subprocess.run(["sh", str(SSH_PROGRAM), SOCKET], capture_output=True, text=True)
-    assert (done.returncode, done.stderr) == (2, "lado-ssh-agent-socket: takes no argument\n")
-
-
-@pytest.mark.skipif(Path(SOCKET).exists(), reason="the image's own socket")
-def test_the_ssh_program_refuses_what_is_no_socket():
-    done = subprocess.run(["sh", str(SSH_PROGRAM)], capture_output=True, text=True)
-    assert (done.returncode, done.stderr) == (
-        1,
-        f"lado-ssh-agent-socket: {SOCKET} is not a socket\n",
-    )
-
-
-def test_compose_binds_the_ssh_agent_or_dev_null(compose):
-    """/dev/null: no ssh agent, and a path every host has."""
-    [mount] = [
-        v
-        for v in compose["services"]["lado"]["volumes"]
-        if isinstance(v, dict) and v.get("target") == SOCKET
-    ]
-    assert mount == {
-        "type": "bind",
-        "source": "${LADO_SSH_AGENT:-/dev/null}",
-        "target": SOCKET,
-        "bind": {"create_host_path": False},
-    }
+def test_compose_binds_no_ssh_agent(compose):
+    """The container has no ssh: git servers are set up only in Settings → Git servers,
+    whose ssh addresses go over https with their tokens."""
+    volumes = compose["services"]["lado"]["volumes"]
+    assert not [v for v in volumes if "ssh" in str(v)]
+    assert "LADO_SSH_AGENT" not in COMPOSE_TEXT
     assert "group_add" not in compose["services"]["lado"]
 
 
-SSH_ENV = DOCKER / "ssh-agent-env.sh"
-SSH_PROFILE = "/etc/profile.d/lado-ssh-agent.sh"
+def test_the_image_has_no_ssh_agent_and_no_ssh_host_keys():
+    """No program or sudo rule for a socket, no /run/lado, no known hosts; the ssh client
+    stays, so git on an ssh address fails with a failure the clone's hint tells."""
+    for gone in ("ssh-agent", "ssh_known_hosts", "/run/lado", "SSH_AUTH_SOCK"):
+        assert gone not in DOCKERFILE, gone
+    assert [line for line in lines() if "/etc/sudoers.d/" in line] == [
+        line for line in lines() if "/etc/sudoers.d/lado-entrypoint" in line
+    ]
+    for name in ("ssh-agent-socket.sh", "ssh-agent-env.sh", "ssh_known_hosts"):
+        assert not (DOCKER / name).exists(), name
+    [install] = [line for line in lines() if "apt-get install" in line and " tmux " in line]
+    assert " openssh-client " in install
 
 
-def test_ssh_auth_sock_points_only_at_a_socket_in_one_file():
-    """One rule: ssh-agent-env.sh, which every login shell reads (the agents) and the
-    entrypoint sources (the server, whose clone and branch listing use git over ssh). Not
-    in the ENV: an image cannot say whether compose bound a socket."""
-    rule = f"[ -S {SOCKET} ] && export SSH_AUTH_SOCK={SOCKET} || true"
-    assert rule in SSH_ENV.read_text().splitlines()
-    assert "SSH_AUTH_SOCK" not in (DOCKER / "profile.sh").read_text()
-    assert "SSH_AUTH_SOCK" not in env()
-    assert f"COPY docker/ssh-agent-env.sh {SSH_PROFILE}" in lines()
-
-
-def test_the_server_gets_ssh_auth_sock_after_the_socket_is_lados():
-    """Sourced after the socket's owner is fixed, right before the command."""
-    body = ENTRYPOINT.splitlines()
-    # Read only when there: the unit tests run the entrypoint outside the image.
-    sourced = body.index(f"if [ -r {SSH_PROFILE} ]; then . {SSH_PROFILE}; fi")
-    assert sourced > max(i for i, line in enumerate(body) if "lado-ssh-agent-socket" in line)
-    assert body[sourced + 1 :].count('exec "$@"') == 1
+def test_no_file_of_docker_sets_ssh_auth_sock():
+    for path in DOCKER.iterdir():
+        if path.is_file():
+            assert "SSH_AUTH_SOCK" not in path.read_text(), path
 
 
 RULE = "lado ALL=(root) NOPASSWD:SETENV: /usr/local/bin/lado-entrypoint"
 ENTRYPOINT = (DOCKER / "entrypoint.sh").read_text()
 
 
-@pytest.mark.parametrize("name", ["entrypoint.sh", "ssh-agent-socket.sh"])
-def test_the_scripts_run_as_root_stop_at_an_error(name):
-    text = (DOCKER / name).read_text()
+def test_the_entrypoint_stops_at_an_error():
+    text = ENTRYPOINT
     assert text.startswith("#!/bin/sh\n") and "\nset -eu\n" in text
 
 
@@ -795,9 +729,7 @@ def test_the_headers_say_how_agents_get_variables_access_and_logins(name):
         "LADO_GIT_EMAIL",
         "Git servers",
         "YOUGILE_API_KEY",
-        "LADO_SSH_AGENT" if name == "compose.yaml" else "/run/lado/ssh-agent.sock",
-        "/run/host-services/ssh-auth.sock",
-        "$SSH_AUTH_SOCK",
+        "no ssh",
         "CLAUDE_CODE_OAUTH_TOKEN",
         "claude setup-token",
         "opencode auth login",
@@ -813,7 +745,7 @@ def test_the_headers_say_how_agents_get_variables_access_and_logins(name):
     ):
         assert needle in head, (name, needle)
     # The GitHub login is a git server's (openspec capability git-servers), never outside.
-    for gone in ("GH_TOKEN", "gh auth login"):
+    for gone in ("GH_TOKEN", "gh auth login", "LADO_SSH_AGENT", "SSH_AUTH_SOCK"):
         assert gone not in head, (name, gone)
     assert "Settings → Agent CLIs" in (UI / "ModelPicker.tsx").read_text()
 
@@ -1042,7 +974,7 @@ def test_the_guides_env_names_every_variable_compose_reads():
         "LADO_SECRETS",
         "LADO_PROJECTS",
     }
-    assert {"LADO_VERSION", "LADO_WORKSPACE", "LADO_SSH_AGENT"} <= read
+    assert {"LADO_VERSION", "LADO_WORKSPACE"} <= read
     envs = blocks(guide_part("Get compose.yaml and write .env"), "ini")
     assert len(envs) == 2  # a Mac's and Linux's
     for env_file in envs:

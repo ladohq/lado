@@ -20,5 +20,3 @@ export OPENSPEC_NO_UPDATE_CHECK=1
 export LANG=en_US.UTF-8
 # The agents' variables, one file each (a worker the supervisor's `lado mcp` spawns too).
 export LADO_ENV_DIR=/run/secrets
-# The host's ssh agent: lado-ssh-agent.sh beside this file (docker/ssh-agent-env.sh), which
-# the entrypoint sources for the server too.

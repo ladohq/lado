@@ -3,6 +3,7 @@ a refused folder, the session list row's menu, Stop from the session's head, Res
 Forget, Forget stopped sessions from the Stopped band and Stop and forget. The server is
 `lado` with the fake providers, so what it starts runs the fake agent."""
 
+import os
 import re
 import subprocess
 import uuid
@@ -1454,3 +1455,36 @@ def test_an_unsaved_host_asking_for_a_login_leads_to_add(page: Page, git_host, s
     expect(panel.get_by_role("textbox", name="Address")).to_have_value(host.url)
     expect(panel.get_by_role("textbox", name="Token")).to_be_focused()
     shot(settings, "settings-opened-to-add")
+
+
+def test_in_the_container_an_ssh_address_leads_to_add(
+    page: Page, tmp_path, monkeypatch, request, shot
+):
+    """LADO's container has no ssh: an ssh that refuses every key, as there, on the
+    server's PATH, and the server started with the container's mark."""
+    folder = tmp_path / "ssh-bin"
+    folder.mkdir()
+    ssh = folder / "ssh"
+    ssh.write_text(
+        "#!/bin/sh\necho 'git@github.com: Permission denied (publickey).' >&2\nexit 255\n"
+    )
+    ssh.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{folder}:{os.environ['PATH']}")
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    server = request.getfixturevalue("server")
+    url = "git@github.com:acme/app.git"
+    dialog = clone_url(page, server, url)
+    note = dialog.locator(".field-note.bad")
+    expect(note).to_contain_text("LADO's container has no ssh key for github.com")
+    expect(note).to_contain_text(
+        "Add github.com as a git server with a token: its git@ addresses then go over https too."
+    )
+    link = note.get_by_role("link", name="Add git server (opens a new tab)")
+    expect(link).to_have_text("Add git server ↗")
+    shot(page, "clone-container-ssh-note")
+    with page.context.expect_page() as opened:
+        link.click()
+    settings = opened.value
+    expect(settings).to_have_url(re.compile(r"/settings/git-servers$"))
+    panel = settings.get_by_role("region", name="Git servers")
+    expect(panel.get_by_role("textbox", name="Address")).to_have_value("https://github.com")

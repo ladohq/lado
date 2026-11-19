@@ -116,14 +116,14 @@ PLACEHOLDER = "/set-LADO_WORKSPACE-to-your-workspace-folder"
 
 def workspace_of(compose) -> tuple[str, str]:
     """What `docker compose config` makes of the workspace: LADO_REPOS, and the folder of
-    the one bind that is neither the secrets' nor the ssh agent's, mounted at its own path
+    the one bind that is not the secrets', mounted at its own path
     and never made on the host."""
     config = json.loads(compose.run("config", "--format", "json").stdout)
     lado = config["services"]["lado"]
     binds = [
         (v["source"], v["target"], v.get("bind", {}).get("create_host_path"))
         for v in lado["volumes"]
-        if v["type"] == "bind" and v["target"] not in ("/run/secrets", "/run/lado/ssh-agent.sock")
+        if v["type"] == "bind" and v["target"] != "/run/secrets"
     ]
     assert len(binds) == 1, lado["volumes"]
     [(source, target, create)] = binds

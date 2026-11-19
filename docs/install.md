@@ -5,7 +5,7 @@ There are two ways to install LADO: **Docker**, the recommended one, and **PyPI*
 | | Docker (recommended) | PyPI (`uv tool install lado`) |
 |---|---|---|
 | What you install | Docker only: the image holds LADO, tmux, git, gh and the four agent CLIs at the versions LADO is tested with | tmux, git, uv and an agent CLI on your computer, then LADO |
-| What the agents reach | your workspace folder and the keys you give them (files in `secrets/`, your ssh agent); not the rest of your computer | everything you can: they run as you |
+| What the agents reach | your workspace folder and the keys you give them (files in `secrets/`, the tokens of Settings → Git servers); no ssh; not the rest of your computer | everything you can: they run as you |
 | Agent CLI logins | made once inside the container, or a token in `secrets/`; your own CLI config stays as it is | the logins and config your CLIs already have |
 | How you work | the web UI; commands as `docker compose exec lado lado ...` | the terminal (`lado start`, tmux windows with `lado attach`) and the web UI |
 | Install | one command, which asks for your workspace folder and what else it cannot find out | `uv tool install lado`, after tmux, git and an agent CLI |
@@ -51,7 +51,7 @@ and the four agent CLIs at the versions LADO is tested with: nothing to install 
 Docker. It runs the web UI on this computer's loopback; the agents work in your workspace
 folder, which the container sees at the same path as your computer, so their commits and
 worktrees are yours too. The image holds no one's keys or logins: you give your own at run
-time (a login inside, your ssh agent, a secrets folder if you want one). Compose keeps
+time (a login inside, your git servers' tokens, a secrets folder if you want one). Compose keeps
 every setting in `.env`, so an update is a new `compose.yaml` and one line;
 [`docker run`](#with-docker-run) works too. One command does all of it for you, or you do
 the steps [by hand](#by-hand).
@@ -93,7 +93,7 @@ your computer cannot tell it:
   see [Open LADO on your phone](#open-lado-on-your-phone)).
 
 It writes `.env` in `~/lado-docker` (the version is its release's; the port 8765, or the
-next free one; your ssh agent when there is one), downloads its release's `compose.yaml`
+next free one), downloads its release's `compose.yaml`
 next to it, starts LADO, waits for it, prints the UI's link and opens it in your browser.
 Keep the link as a bookmark: its key stays the same across restarts and updates. A
 variable `LADO_*` or `COMPOSE_*` of your shell never reaches its compose; it names them,
@@ -191,7 +191,6 @@ LADO_WORKSPACE=/Users/ann/workspace # your workspace folder, a full path
 LADO_PORT=8765                      # the UI's port on this computer
 LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
 LADO_GIT_EMAIL=ann@example.com
-LADO_SSH_AGENT=/run/host-services/ssh-auth.sock   # Docker Desktop's ssh agent
 # LADO_LISTEN=0.0.0.0               # a phone too: see Open LADO on your phone
 # LADO_PUBLIC_HOST=ann-mbp.local
 ```
@@ -204,7 +203,6 @@ LADO_WORKSPACE=/home/ann/workspace  # your workspace folder, a full path
 LADO_PORT=8765                      # the UI's port on this computer
 LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
 LADO_GIT_EMAIL=ann@example.com
-LADO_SSH_AGENT=/run/user/1000/ssh-agent.socket    # your ssh agent: echo $SSH_AUTH_SOCK
 # LADO_LISTEN=0.0.0.0               # a phone too: see Open LADO on your phone
 # LADO_PUBLIC_HOST=ann-laptop.local
 ```
@@ -219,10 +217,9 @@ examples above:
 mkdir -p ~/workspace
 ```
 
-`LADO_SSH_AGENT` is
-optional: without it there is no ssh in the container. On Linux the socket's path may
-change with each login: point it at a stable one, or run `docker compose up -d` again after
-a new login.
+The container has no ssh: git reaches your servers over https with the tokens of
+Settings → Git servers ([git over ssh](#git-over-ssh)). An `.env` of a version before
+0.48.0 may still name `LADO_SSH_AGENT`; it changes nothing now.
 
 ### Start
 
@@ -274,7 +271,9 @@ with `docker compose exec -it lado lado git-server add github.com --token` (the 
 without echo; make one at https://github.com/settings/tokens with the scope `repo`). The
 agents' git and `gh` then use that token, and nothing else: a `GH_TOKEN` in `secrets/`, in a
 project or in your shell, and `gh auth login`, are not used ([cli.md](cli.md), `lado
-git-server`).
+git-server`). `repo` is the minimum; add `read:org` when the agents run `gh` on pull
+requests of an organization's repository, and `workflow` when they push `.github/workflows/`.
+A saved server's ssh addresses (`git@github.com:…`) go over https with its token too.
 
 Coming from a version before 0.48.0, where the agents used a `GH_TOKEN` in `secrets/` or `gh
 auth login` inside, nothing is to do: the first start of the new version moves that login
@@ -496,19 +495,14 @@ ways:
 
 ### git over ssh
 
-The agents push over ssh with your computer's ssh agent (`LADO_SSH_AGENT`), and the web
-UI's **Clone from URL** clones an ssh address (`git@github.com:...`) with it: every agent of
-this LADO may use the keys it holds. The key GitHub knows must be in that agent:
-
-```bash
-ssh-add -l                                   # your keys; none: add yours
-ssh-add --apple-use-keychain ~/.ssh/id_ed25519   # on a Mac; on Linux: ssh-add ~/.ssh/id_ed25519
-docker compose exec lado bash -lc 'ssh -T git@github.com'
-```
-
-The last line answers `Hi <you>! You've successfully authenticated`. The image knows
-GitHub's host keys, so ssh asks nothing; another host's key: see
-[If something goes wrong in Docker](#if-something-goes-wrong-in-docker).
+The container has no ssh: no ssh key, no ssh agent of your computer, and no ssh to other
+machines from an agent. A server saved in Settings → Git servers takes its ssh addresses
+(`git@<host>:…`, `ssh://git@<host>/…`) over https with its token, so **Clone from URL**,
+the agents' pushes and `gh` work on `git@github.com:…` once github.com is saved. An ssh
+address of a host no server is saved for fails, and the window offers **Add git server ↗**
+(in the terminal: `lado git-server add https://<host> --token`); an ssh address on another
+port or with another user than `git` needs the repository's https address instead. For
+ssh from the agents, run LADO without Docker ([macOS](#macos), [Linux](#linux)).
 
 ### Your first session
 
@@ -636,8 +630,8 @@ docker compose up -d
 ```
 
 Every update takes its version's `compose.yaml`, since a release may add a mount or a
-setting to it: 0.40.0 added git's identity, the ssh agent and the secrets folder, which an
-older file does not give the container. `.env`, `secrets/` and the home volume stay. A
+setting to it: 0.40.0 added git's identity and the secrets folder, which an older file
+does not give the container. `.env`, `secrets/` and the home volume stay. A
 change you made to `compose.yaml` by hand is replaced: `diff compose.yaml.bak
 compose.yaml` shows it, carry it over to the new file (your settings belong in `.env`,
 which stays). With several LADOs on this computer, update each in its own folder, with its
@@ -679,6 +673,10 @@ docker compose up -d
 
 When an upgrade's migration failed, the database is as it was: the first and the last
 command do it.
+
+Going back to a version before 0.48.0 with its ssh agent: the `compose.yaml` you have binds
+no ssh agent, so put that version's back too, `cp compose.yaml.bak compose.yaml`, before
+`docker compose up -d` (`LADO_SSH_AGENT` stays in `.env` for it).
 
 Going back to a version before 0.45.0 forgets your model servers, models and default models,
 and their keys stay in `~/.lado/model-servers/` of the home volume. Remove them when you no
@@ -747,7 +745,7 @@ The image brings tmux, git and the agent CLIs at their tested versions, so there
 `docker compose exec lado lado doctor` says whether the workspace is there and
 writable, which files of `secrets/` the agents get (names only) and which are not used, and
 which agent CLIs run. `docker compose logs lado` has the container's own warnings (git's
-identity, the ssh agent, the workspace).
+identity, the workspace).
 
 - **Another version, port or folder than `.env` says**: a variable of your shell beats
   `.env`. `env | grep -E '^(LADO|COMPOSE)_'`, `unset` each, and `docker compose up -d`
@@ -761,13 +759,12 @@ identity, the ssh agent, the workspace).
   `secrets/`. Values for some agents only need another LADO with its own folder.
 - **A file in `secrets/` does not reach the agents**: `LADO_SECRETS=./secrets` is missing
   from `.env` (`lado doctor` says `/run/secrets: none`). Add it, then `docker compose up -d`.
-- **No git identity, no ssh agent or no secrets after an update from 0.39.0**: the
+- **No git identity or no secrets after an update from 0.39.0**: the
   `compose.yaml` is still 0.39.0's. Take the new version's, as
   [Update the container](#update-the-container) says.
-- **Two LADOs on a Mac and ssh works only in one**: Docker Desktop's ssh agent socket is
-  one for all containers, and each LADO's start gives it to its own user. With
-  workspaces of two owners the LADO started last has it; `docker compose restart` takes it
-  back for the other. Workspaces of the same owner share it.
+- **`LADO's container has no ssh key for <host>`** at a clone: the container has no ssh.
+  Add the host in Settings → Git servers (**Add git server ↗**); its `git@` addresses then
+  go over https ([git over ssh](#git-over-ssh)).
 - **`docker run --user root --cap-drop ALL` does not start**: drop one of them. Without
   `--user root` the server runs as the container's user anyway.
 - **`could not give lado the uid and gid of LADO_REPOS's owner` or `could not give lado
@@ -778,10 +775,6 @@ identity, the ssh agent, the workspace).
   workspace, on the container's home volume (the New session window and `lado start` warn).
   Put the repository under `LADO_WORKSPACE`. `~` in the container is `/home/lado`, not your
   home: type the full path.
-- **Another git host over ssh asks about its key**: the image knows only GitHub's. Add the
-  host's key on the home volume, which trusts the first answer: compare its fingerprint
-  with the one the host publishes.
-  `docker compose exec lado sh -c 'mkdir -p -m 700 ~/.ssh && ssh-keyscan gitlab.com >> ~/.ssh/known_hosts && ssh-keygen -lf ~/.ssh/known_hosts'`.
 - **An agent closed right after the session started**: LADO could not record Claude
   Code's trust (Needs you said why), and Enter on Claude Code's trust question answered
   "No, exit". Stop the session and resume it in the UI (or

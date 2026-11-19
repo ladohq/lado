@@ -156,12 +156,18 @@ def test_add_servers_in_each_state(
         expect(git.get_by_text("No git servers yet.")).to_be_visible()
         shot(page, "empty")
 
-        # gitlab.com, filled in: GitLab answers, its token page, asked with no token.
+        # The form fills in no server: Address empty, its placeholder naming both kinds.
         plus_add(page).click()
         address = git.get_by_role("textbox", name="Address")
         token = git.get_by_role("textbox", name="Token")
-        expect(address).to_have_value("https://gitlab.com")
+        expect(address).to_have_value("")
         expect(address).to_be_focused()
+        expect(address).to_have_attribute("placeholder", "github.com or gitlab.example.com")
+        expect(git.locator(".mx-found")).to_have_count(0)
+        shot(page, "add-empty")
+
+        # gitlab.com typed: GitLab answers, its token page, asked with no token.
+        address.fill("gitlab.com")
         expect(git.locator(".mx-found")).to_have_text("GitLab answers.")
         link = git.get_by_role("link", name="its token page")
         expect(link).to_have_attribute(
@@ -198,6 +204,8 @@ def test_add_servers_in_each_state(
         # Already saved: Replace its token, the focus in New token; Cancel.
         plus_add(page).click()
         expect(results(page)).to_have_count(0)  # the next action took the last line
+        expect(address).to_have_value("")  # with gitlab.com saved too
+        expect(address).to_be_focused()
         address.fill("gitlab.com")
         expect(git.get_by_text("Already saved.")).to_be_visible()
         expect(form_add(page)).to_be_disabled()
@@ -531,8 +539,7 @@ def test_github_com_is_added_checked_and_removed_as_any_server(
         git.get_by_role("alertdialog").get_by_role("button", name="Remove server").click()
         expect(git.get_by_text("Removed https://github.com.")).to_be_visible()
         assert state.git_servers() == []
-        # GitHub asked at api.github.com alone (the form opens on gitlab.com, which is not
-        # routed here); never at github.com itself.
+        # GitHub asked at api.github.com alone; never at github.com itself.
         assert "api.github.com:443" in github_com.proxy.asked
         assert "github.com:443" not in github_com.proxy.asked
         token_nowhere(page, answers, tmp_path, lado_home)

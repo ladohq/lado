@@ -39,8 +39,6 @@ import { SecretField } from "./ProjectVariables";
 import { SettingsPage } from "./SettingsPage";
 import { useScrollAnchor } from "./useScrollAnchor";
 
-export const GITLAB_COM = "https://gitlab.com";
-
 // The info buttons' texts (the page spec's table).
 export const TIPS = {
   servers:
@@ -542,7 +540,7 @@ export function GitServersPage() {
             <li className="mx-add-slot">
               {adding ? (
                 <AddGitServer
-                  initial={addAt ?? (servers.some((s) => s.host === "gitlab.com") ? "" : GITLAB_COM)}
+                  initial={addAt ?? ""}
                   toToken={addAt !== null}
                   kinds={entries.kinds}
                   servers={servers}
@@ -952,7 +950,7 @@ function AddGitServer({
             ref={field}
             id={`${id}-address`}
             value={address}
-            placeholder="gitlab.example.com"
+            placeholder="github.com or gitlab.example.com"
             aria-invalid={addressBad.length ? true : undefined}
             autoFocus
             onChange={(event) => {

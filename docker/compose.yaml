@@ -13,7 +13,6 @@
 #   LADO_PORT=8765                      # optional
 #   LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
 #   LADO_GIT_EMAIL=ann@example.com
-#   LADO_SSH_AGENT=/run/host-services/ssh-auth.sock   # optional: the host's ssh agent
 #   LADO_LISTEN=0.0.0.0                 # optional: open LADO to every device of your network
 #                                       # (default 127.0.0.1, this computer only)
 #   LADO_PUBLIC_HOST=my-mac.local       # optional: this computer's name for the UI's link
@@ -59,11 +58,7 @@
 # without them `docker compose logs lado` warns that agents cannot commit. GitHub and your
 # other git servers over https: Settings → Git servers (or `docker compose exec -it lado lado
 # git-server add github.com --token`); the agents' git and gh get their tokens from there.
-# ssh: set
-# LADO_SSH_AGENT to the host's ssh agent socket, on a Mac Docker Desktop's
-# /run/host-services/ssh-auth.sock, on Linux the host's $SSH_AUTH_SOCK (its path changes per
-# login: point it at a stable socket, or `up -d` again after a new login); every agent of
-# the container may then use the host's keys. Unset, there is none.
+# The container has no ssh: a git server's ssh addresses go over https with its token.
 #
 # LADO_PORT (8765) is the server's port in the container and the one published on this
 # computer, always the same number: on its loopback, or on LADO_LISTEN's address.
@@ -151,12 +146,6 @@ services:
         source: ${LADO_SECRETS:-/dev/null}
         target: /run/secrets
         read_only: true
-        bind:
-          create_host_path: false
-      # The host's ssh agent for the agents' git over ssh (LADO_SSH_AGENT; /dev/null: none).
-      - type: bind
-        source: ${LADO_SSH_AGENT:-/dev/null}
-        target: /run/lado/ssh-agent.sock
         bind:
           create_host_path: false
     extra_hosts:

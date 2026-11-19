@@ -351,7 +351,11 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     replace; one of an unsaved http(s) host, github.com's included, hints `lado git-server add`
     (not for `not_found`, nor for a host saved under another scheme or port); the error's
     `server` (`ServerWay`: `check` or `add`, the host, the address, the UI's sentence) is the
-    API's `CloneRefused.git_server`. The saved servers are read only at this LADO's schema,
+    API's `CloneRefused.git_server`. In LADO's container (`update.in_container`), which has
+    no ssh, an ssh kind (`SSH_KINDS`) of an ssh address is `_container_ssh`'s: `git@<host>`
+    on port 22 of a host no server is saved for, `no ssh key for <host>` with the `add` hint
+    and way of `https://<host>`; any other, `clone by the repository's https address`, no
+    hint. The saved servers are read only at this LADO's schema,
     never made or migrated; `explain` tells gitcache's failures by the same kinds on one line),
     a URL in any text only
     through `runtime.public_remote`; git missing or not running is LAD-5's `no_git` /
@@ -1549,8 +1553,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   a final; docs/release.md, The image). `Dockerfile`: Debian 12 (tmux 3.3a, git 2.39),
   Node 22 and npm from the official `node` image, uv from its own, every base pinned by
   digest; LADO from the one wheel of the build context (`Dockerfile.dockerignore`, an
-  allowlist: `dist/lado-*.whl`, `profile.sh`, `entrypoint.sh`, `ssh-agent-socket.sh`,
-  `ssh-agent-env.sh`, `ssh_known_hosts` and `mise.toml`; the image holds no one's key or login, only public host keys), the
+  allowlist: `dist/lado-*.whl`, `profile.sh`, `entrypoint.sh` and `mise.toml`; the image
+  holds no key or login of anyone's), the
   four agent CLIs at
   `smoke_ci.py`'s `PINS`, one `ARG <NAME>_VERSION` and one layer each (`CLAUDE_VERSION`,
   `CODEX_VERSION`, `OPENCODE_VERSION`, `KILO_VERSION`; Codex's login is not carried yet;
@@ -1583,11 +1587,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   but for `/opt/uv`, `/opt/uv/python` and `/opt/fallback`, root's (below).
   git's system config has `safe.directory = *` and no credential helper: github.com's token,
   as any git server's, comes from Settings → Git servers (`git_servers.py`), and a `gh` login
-  on the home volume reaches neither git nor an agent. `/etc/ssh/ssh_known_hosts` is
-  `docker/ssh_known_hosts`,
-  GitHub's published public host keys (api.github.com/meta), so an agent's first ssh to
-  github.com asks nothing; a container test does a real ssh to GitHub, which turns red when
-  GitHub rotates them. The environment is set twice with the same
+  on the home volume reaches neither git nor an agent. The container has no ssh: the ssh
+  client is there with no key, no agent and no host keys, so git on an ssh address a saved
+  server does not rewrite fails with ssh's own error, which `clone._told` tells (the clone's
+  hint in the container). The environment is set twice with the same
   values (`tests/test_docker.py`): in `ENV` for the server and `docker exec`, and in
   `profile.sh`, the image's `/etc/profile.d/lado.sh`, for the agents, whose environment
   comes from the login shell (`LADO_CONTAINER=1`, `PATH`, `CLAUDE_CONFIG_DIR`,
@@ -1595,7 +1598,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   `OPENSPEC_TELEMETRY=0`, `OPENSPEC_NO_UPDATE_CHECK=1`;
   `LADO_REPOS` is the entrypoint's `lado-repos.sh`, read before `lado.sh` by name, so
   `profile.sh` sets `MISE_TRUSTED_CONFIG_PATHS` from it, in the profile only, as the ENV
-  cannot follow `-e LADO_REPOS`; `SSH_AUTH_SOCK` from `ssh-agent-env.sh`, below). The repositories' toolchains:
+  cannot follow `-e LADO_REPOS`; no `SSH_AUTH_SOCK`). The repositories' toolchains:
   `make`, `gcc`, `g++` and `libc6-dev` in the first apt layer, and mise at
   `/usr/local/bin/mise`, root's (copied before `USER lado`, so `mise self-update` cannot
   replace it), from `jdxcode/mise` pinned by digest, which Dependabot's `docker` ecosystem
@@ -1636,18 +1639,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   Every start, as `lado`,
   writes `LADO_GIT_NAME` and `LADO_GIT_EMAIL` (compose passes both from `.env`) to git's
   global config on the home volume and warns in `docker logs` when git still has no
-  identity. The host's ssh agent: compose binds `${LADO_SSH_AGENT:-/dev/null}` at
-  `/run/lado/ssh-agent.sock` (`/run/lado` root's, 755; `/dev/null`: none), and
-  `ssh-agent-env.sh` (`/etc/profile.d/lado-ssh-agent.sh`, the one rule) sets
-  `SSH_AUTH_SOCK` there only when it is a socket: every login shell reads it, and the
-  entrypoint sources it before the command, once the socket is `lado`'s, so the UI server's
-  Clone from URL and branch listing use the agent too (a container test reads the
-  server's `/proc/<pid>/environ`). Docker Desktop's socket is root's in
-  a container: every start that finds a socket `lado` cannot use (`ssh-add -l` exit 2) and
-  root's runs `sudo -n /usr/local/bin/lado-ssh-agent-socket` (`ssh-agent-socket.sh`; the
-  rule `/etc/sudoers.d/lado-ssh-agent`, no SETENV, which the first start leaves), which
-  takes no argument and gives that one socket, no symbolic link, to `lado`, keeping its
-  group; a socket still unusable is one warning line. No `group_add`.
+  identity. compose binds no ssh agent, and the image has no sudo rule but the
+  entrypoint's: a `LADO_SSH_AGENT` an `.env` of a version before 0.48.0 still holds changes
+  nothing, and the container says nothing about it (only the installer notes it). No
+  `group_add`.
   The sessions go with the container (`server/`, above): its stop stops them with a mark,
   and its start resumes them after the migration; tini sends the stop's SIGTERM to `lado
   server`, its one child, and the default grace period is kept (no `stop_grace_period`).
@@ -1688,15 +1683,17 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   container of its compose project was made from another folder (compose's
   `working_dir` label). A fresh install asks from `/dev/tty` (the defaults with `--yes` or
   no terminal) for the workspace and only the git identity `git config --global` lacks,
-  picks the first port of 8765–8799 nothing listens on (`nc`, else `lsof`), takes Docker
-  Desktop's or `$SSH_AUTH_SOCK`'s ssh agent, asks about the phone after its warning (Enter
-  no; `--phone`/`--no-phone`) and then writes `LADO_LISTEN=0.0.0.0` and `LADO_PUBLIC_HOST`
-  (macOS LocalHostName, WSL's Windows name, avahi's hostname, else the address with a
+  picks the first port of 8765–8799 nothing listens on (`nc`, else `lsof`), asks about the
+  phone after its warning (Enter no; `--phone`/`--no-phone`) and then writes
+  `LADO_LISTEN=0.0.0.0` and `LADO_PUBLIC_HOST` (macOS LocalHostName, WSL's Windows name,
+  avahi's hostname, else the address with a
   warning), all `.local`; `.env` holds only variables this header names. A rerun compares
   `.env`'s `LADO_VERSION` with its own (`X.Y.Z[rcN]`, an RC before its final): older,
   `compose.yaml.bak` and only every `LADO_VERSION` line changed; the same, no file
-  rewritten; newer or another form, a refusal naming the guide. Files are written as
-  `.new` and moved in place when complete. Then `docker compose up -d`, a wait of up to
+  rewritten; newer or another form, a refusal naming the guide. A rerun keeps a
+  `LADO_SSH_AGENT` line, which the way back reads, and notes it as no longer used. Files
+  are written as `.new` and moved in place when complete. Then `docker compose up -d`, a
+  wait of up to
   180 s for `/api/health` inside the container (before `lado ui`, which would otherwise
   start a server of its own), `lado ui --no-open`'s link printed and opened (`open`,
   `xdg-open` with a display, `wslview` or `cmd.exe /c start` from WSL). Every stop is a

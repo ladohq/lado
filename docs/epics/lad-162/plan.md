@@ -302,6 +302,10 @@ the human's ssh key (S1's manual check could not tell them apart there): the age
 `GIT_SSH_COMMAND=false git push …`, or the human's ssh key is set aside for the check. The
 release candidate's live tests (each RC, docs/release.md) include an agent with a model
 pushing through a listed server, for Claude Code and Codex (S1 had none).
+Carried from S7 (not run by hand, #559): in Docker, "Check" on the company GitLab asks
+"Trust this server?" when a company CA signs it, and trusting it makes clone and push work;
+when a public CA signs it, S7's steps with a local https server under a test CA run in
+Docker instead.
 Also on the company GitLab (S5's residual risk): "Check" with a revoked and with an expired
 token says "token refused", and a token with `api` only pushes over https.
 Touches: `docker/Dockerfile`, `scripts/` pins, the server kinds module (gitlab),

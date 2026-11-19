@@ -2,7 +2,7 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: S8 (its task created at this review) · Next: S9 · Open checks: the human's check on the company GitLab, on the release candidate that carries S8; live tests on the release candidate (S6 changed the agents' environment, never run live); 0.48.0's release checklist names what going back loses (S6b: the host's ssh agent returns only with `compose.yaml.bak`, not with the new `compose.yaml` that docs/release.md 4.6 keeps); S7: Apple's git (LibreSSL) and GnuTLS with an intermediate certificate, unchecked; S7's Docker check and "Trust?" on the company GitLab, in the human's check on the RC with S8
+In work: S8 (LAD-303, run task/lad-303) · Next: S9 · Open checks: the human's check on the company GitLab, on the release candidate that carries S8; live tests on the release candidate (S6 changed the agents' environment, never run live); 0.48.0's release checklist names what going back loses (S6b: the host's ssh agent returns only with `compose.yaml.bak`, not with the new `compose.yaml` that docs/release.md 4.6 keeps); S7: Apple's git (LibreSSL) and GnuTLS with an intermediate certificate, unchecked; S7's Docker check and "Trust?" on the company GitLab, in the human's check on the RC with S8
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
@@ -289,7 +289,7 @@ Touches: the server kinds module, `agent_env.py`, `state.py`, `server/`, `web/sr
 (Settings: the certificate row as S4's spec §10 places it, C7), docs.
 
 ### S8 — GitLab: `glab` in the image, agents open merge requests
-Status: planned
+Status: in progress (LAD-303, run task/lad-303)
 Check: a container test: `glab` is in the image at a pinned version and, for an agent whose
 repository is on a listed GitLab, is configured from the entry (host, token, certificate)
 with no login of its own (`glab auth status` against a fake server); the image grows by at

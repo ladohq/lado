@@ -1674,8 +1674,9 @@ connection, above).
   repository): the core's sentence (`Check this git server; if its token expired or was
   revoked, replace it there.` / `Add <host> as a git server with a token: LADO and its agents
   then sign in to it.`, in LADO's container for an ssh failure of a `git@` address `Add <host>
-  as a git server with a token: its git@ addresses then go over https too.`) and a link that looks as a quiet button, `Check <host> ↗` or `Add git
-  server ↗` (named `… (opens a new tab)`, 44 px high on a phone), opening
+  as a git server with a token: its git@ addresses then go over https too.`) and a link
+  that looks as a quiet button, `Check <host> ↗` or `Add git server ↗` (named `… (opens a
+  new tab)`, 44 px high on a phone), opening
   `/settings/git-servers?check=<host>` or `?add=<address>` in a new tab, so the window keeps its
   fields; no command to copy there; **Use this clone** for a clone of the same repository there ("LADO will use it as
   it is: no clone, no pull, no branch switch"), which turns Where to that folder; the clone a

@@ -1684,14 +1684,16 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   `working_dir` label). A fresh install asks from `/dev/tty` (the defaults with `--yes` or
   no terminal) for the workspace and only the git identity `git config --global` lacks,
   picks the first port of 8765–8799 nothing listens on (`nc`, else `lsof`), asks about the
-  phone after its warning (Enter no; `--phone`/`--no-phone`) and then writes `LADO_LISTEN=0.0.0.0` and `LADO_PUBLIC_HOST`
-  (macOS LocalHostName, WSL's Windows name, avahi's hostname, else the address with a
+  phone after its warning (Enter no; `--phone`/`--no-phone`) and then writes
+  `LADO_LISTEN=0.0.0.0` and `LADO_PUBLIC_HOST` (macOS LocalHostName, WSL's Windows name,
+  avahi's hostname, else the address with a
   warning), all `.local`; `.env` holds only variables this header names. A rerun compares
   `.env`'s `LADO_VERSION` with its own (`X.Y.Z[rcN]`, an RC before its final): older,
   `compose.yaml.bak` and only every `LADO_VERSION` line changed; the same, no file
   rewritten; newer or another form, a refusal naming the guide. A rerun keeps a
-  `LADO_SSH_AGENT` line, which the way back reads, and notes it as no longer used. Files are written as
-  `.new` and moved in place when complete. Then `docker compose up -d`, a wait of up to
+  `LADO_SSH_AGENT` line, which the way back reads, and notes it as no longer used. Files
+  are written as `.new` and moved in place when complete. Then `docker compose up -d`, a
+  wait of up to
   180 s for `/api/health` inside the container (before `lado ui`, which would otherwise
   start a server of its own), `lado ui --no-open`'s link printed and opened (`open`,
   `xdg-open` with a display, `wslview` or `cmd.exe /c start` from WSL). Every stop is a

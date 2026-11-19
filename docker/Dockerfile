@@ -66,7 +66,8 @@ FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d
 # tmux 3.3a and git 2.39 from Debian 12; tini reaps what tmux and the agents leave; gh; the
 # ssh client, with no key and no agent, so git on an ssh address fails with ssh's own error,
 # which the clone's hint tells (without it git says only `cannot run ssh`); curl fetches
-# gh's keyring (a binary .gpg); make, gcc and g++ build the repositories' Makefiles, Go's cgo and native modules of Node and Python.
+# gh's keyring (a binary .gpg); make, gcc and g++ build the repositories' Makefiles, Go's
+# cgo and native modules of Node and Python.
 # The agents' base tools, which the kits' scripts and the agent CLIs call before any repository
 # installs a thing: jq (JSON), ripgrep (Codex, OpenCode and Kilo search with rg), archives
 # (unzip, zip, xz, bzip2), patch, file, rsync, sqlite3, tree, lsof and nc.

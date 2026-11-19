@@ -289,7 +289,7 @@ Touches: the server kinds module, `agent_env.py`, `state.py`, `server/`, `web/sr
 (Settings: the certificate row as S4's spec §10 places it, C7), docs.
 
 ### S8 — GitLab: `glab` in the image, agents open merge requests
-Status: in progress (LAD-303, run task/lad-303)
+Status: in progress (LAD-303, run task/lad-303; its brief whole is the run's artifact `step-brief`, the task text cut to 8000 characters)
 Check: a container test: `glab` is in the image at a pinned version and, for an agent whose
 repository is on a listed GitLab, is configured from the entry (host, token, certificate)
 with no login of its own (`glab auth status` against a fake server); the image grows by at

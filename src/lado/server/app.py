@@ -1086,6 +1086,29 @@ def create_app(
         check` does; a passing check saves the login it saw. The token is in no answer."""
         return entries(git_entries.check_saved, host)
 
+    # Before the removal's route, whose `{host:path}` would take `<host>/certificate` too.
+    @app.put(
+        "/api/git-servers/{host}/certificate",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=git_refused,
+    )
+    def set_git_server_certificate(
+        host: str, given: models.GitServerCertificateSet
+    ) -> models.GitServerChecked:
+        """Trust the certificate a check offered for the server (or Undo gives back), then
+        check it again with it, as `lado git-server certificate <address> <file>` does."""
+        return entries(git_entries.set_certificate, host, given)
+
+    @app.delete(
+        "/api/git-servers/{host}/certificate",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=git_refused,
+    )
+    def clear_git_server_certificate(host: str) -> models.GitServerCertificateRemoved:
+        """Remove the server's certificate as `lado git-server certificate --clear` does;
+        the answer holds its PEM for Undo."""
+        return entries(git_entries.clear_certificate, host)
+
     # Before the removal's route, whose `{host:path}` would take `<host>/author` too.
     @app.put(
         "/api/git-servers/{host}/author",

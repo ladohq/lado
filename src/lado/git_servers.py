@@ -49,7 +49,7 @@ from lado.git_kinds import Kind, github
 from lado.git_kinds.base import REFUSES
 
 if TYPE_CHECKING:  # the HTTP client: loaded by `add` alone, never by a launch or a hook
-    from lado import model_servers
+    from lado import git_certificates, model_servers
 
 TOKENS = "git-servers"  # under LADO_HOME: a folder per server, by its id
 TOKEN = "token"  # the token's file in a server's folder
@@ -81,7 +81,9 @@ class Refused(Exception):
     try ("" for none); `field` the field of the page's form it concerns; `page` and
     `page_hint` the line and the hint for the page, which name no command (None: the same as
     the command's); `choose_kind` for a server that gave no HTTP answer, which the page may
-    save without a check once its kind is chosen. Never holds a token."""
+    save without a check once its kind is chosen; `offer` the authority to trust of a server
+    whose certificate is not trusted (lado.git_certificates), `before` the one given that
+    did not fit. Never holds a token."""
 
     def __init__(
         self,
@@ -91,6 +93,8 @@ class Refused(Exception):
         page: str | None = None,
         page_hint: str | None = None,
         choose_kind: bool = False,
+        offer: git_certificates.Certificate | None = None,
+        before: git_certificates.Certificate | None = None,
     ):
         super().__init__(text)
         self.hint = hint
@@ -98,6 +102,8 @@ class Refused(Exception):
         self.page = text if page is None else page
         self.page_hint = hint if page_hint is None else page_hint
         self.choose_kind = choose_kind
+        self.offer = offer
+        self.before = before
 
 
 class BadAddress(ValueError):
@@ -405,7 +411,7 @@ def probe(
             else None,
             page_hint="" if refused else None,
         )
-    unchecked, refusal = _unanswered(at, answers)
+    unchecked, refusal = _unanswered(at, answers, certificate)
     if chosen is None:
         raise refusal
     return Checked(chosen, None, unchecked)
@@ -425,12 +431,12 @@ class Hint:
         return self.kind is None
 
 
-def hint(at: Address) -> Hint:
-    """Ask every kind's path of `at` at once with no credential, as the probe does: a kind
-    when exactly one answers as that kind (its user, or its refusal of a missing token);
-    none when none answers, or as neither or both. Refused for a server that sends
-    elsewhere: no kind could save it from the page."""
-    answers = _ask_kinds(at, None)
+def hint(at: Address, certificate: str | None = None) -> Hint:
+    """Ask every kind's path of `at` at once with no credential, as the probe does
+    (trusting `certificate` alone when given): a kind when exactly one answers as that kind
+    (its user, or its refusal of a missing token); none when none answers, or as neither or
+    both. Refused for a server that sends elsewhere: no kind could save it from the page."""
+    answers = _ask_kinds(at, None, certificate)
     told = [
         kind
         for kind, answer in zip(kinds(at), answers, strict=True)
@@ -442,15 +448,18 @@ def hint(at: Address) -> Hint:
         titles = " and as ".join(kind.title for kind in told)
         why = Refused(f"{at.root} answers as {titles}", field=KIND_FIELD, page_hint=PAGE_KIND_HINT)
         return Hint(None, why)
-    _, refused = _unanswered(at, answers)
+    _, refused = _unanswered(at, answers, certificate)
     if any(answer.location for answer in answers):
         raise refused
     return Hint(None, refused)
 
 
-def _unanswered(at: Address, answers: Sequence[model_servers.Answer]) -> tuple[str, Refused]:
+def _unanswered(
+    at: Address, answers: Sequence[model_servers.Answer], certificate: str | None = None
+) -> tuple[str, Refused]:
     """For answers of no kind: why the server could not be checked, as the end of "could
-    not be checked (…)", and the refusal for an add that chose no kind."""
+    not be checked (…)", and the refusal for an add that chose no kind; for a certificate
+    not trusted (by `certificate`, when the add gave one), with the authority to trust."""
     moved = next((answer.location for answer in answers if answer.location), "")
     if moved:
         refused = Refused(
@@ -459,6 +468,21 @@ def _unanswered(at: Address, answers: Sequence[model_servers.Answer]) -> tuple[s
         return f"it sends to {moved}", refused
     if all(answer.status is None for answer in answers):
         silent = _silent(answers[0])
+        if _untrusted(answers[0]):
+            command = f"{ADD} {at.root} --token --certificate <file>"
+            found = _trust(at, certificate, command, answers[0].why, given=True)
+            # given: an add's certificate is the human's file, nothing saved has changed
+            refused = Refused(
+                found.text,
+                found.hint,
+                ADDRESS_FIELD,
+                page=found.page,
+                page_hint=found.page_hint,
+                choose_kind=True,
+                offer=found.offer,
+                before=found.before,
+            )
+            return f"it does not answer: {silent}", refused
         refused = Refused(
             f"{at.key} does not answer: {silent}",
             _kind_hint(at.root),
@@ -484,6 +508,9 @@ OUTCOMES = (
     "scopes_missing",
     "no_answer",
     "cert_untrusted",
+    "cert_changed",
+    "cert_name",
+    "cert_expired",
     "redirect",
     "other_kind",
     "unrecognised",
@@ -496,14 +523,125 @@ PAGE_REACH_HINT = (
     "Check that LADO's computer reaches the server: the company VPN or proxy; with LADO in "
     "Docker, its container."
 )
-CERT_HINT = (
-    "ask your IT department to make this computer trust it (with LADO in Docker, its "
-    "container), then check again"
+TRUST_HINT = "trust it in Settings → Git servers (Check), or give its certificate: {command}"
+CERTIFICATE_COMMAND = "lado git-server certificate"
+ABOUT_TRUST = (
+    "The server's certificate is signed by an authority LADO's computer does not know, often "
+    "your company's own. If you trust it, LADO and agents' git trust it for this server only; "
+    "nothing else on the computer changes."
 )
-PAGE_CERT_HINT = (
-    "Ask your IT department to make LADO's computer trust it (with LADO in Docker, its "
-    "container), then check again."
+ABOUT_CHANGED = (
+    "LADO and agents' git trusted the old certificate for this server. Until you trust the new "
+    "one, they cannot clone or push here."
 )
+
+
+def _untrusted(answer: model_servers.Answer) -> bool:
+    """Whether a request got no answer because the server's certificate was not trusted."""
+    return answer.status is None and answer.tls and "certificate" in answer.why
+
+
+@dataclass(frozen=True)
+class _Trust:
+    """What a check or an add found of a certificate not trusted: one of OUTCOMES, its lines
+    as Check holds them, the authority to trust and the saved one that no longer fits."""
+
+    outcome: str
+    text: str
+    hint: str
+    page: str
+    page_hint: str
+    offer: git_certificates.Certificate | None = None
+    before: git_certificates.Certificate | None = None
+
+
+def _trust(at: Address, trusted: str | None, command: str, why: str, given: bool = False) -> _Trust:
+    """What to say of `at`'s certificate, not trusted by this computer or by `trusted` (the
+    PEM saved for the server, or given to its add with `given`): the authority to trust
+    when trusting it alone reaches the server (lado.git_certificates.offer), else why trust
+    would not help. `command` the hint's way to give a file; `why` the request's failure."""
+    from lado import git_certificates
+
+    port = urllib.parse.urlsplit(at.root).port or 443
+    try:
+        offer = git_certificates.offer(at.host, port)
+    except git_certificates.NoOffer as exc:
+        of = f"the certificate of {at.root}"
+        if exc.outcome == git_certificates.NAME and exc.common_name_only:
+            names = "names its host only in the old Common Name field, which LADO refuses"
+            return _Trust(
+                "cert_name",
+                f"{of} {names}",
+                "ask the server's administrator to reissue it",
+                f"The server's certificate {names}: ask the server's administrator to reissue it.",
+                "",
+            )
+        if exc.outcome == git_certificates.NAME:
+            issued = f"is not issued for {at.host}: trusting it would not help"
+            return _Trust(
+                "cert_name",
+                f"{of} {issued}",
+                "ask the server's administrator",
+                f"The server's certificate {issued}. Ask the server's administrator.",
+                "",
+            )
+        if exc.outcome == git_certificates.EXPIRED and exc.expired_on is not None:
+            expired = f"expired on {exc.expired_on.isoformat()}"
+            return _Trust(
+                "cert_expired",
+                f"{of} {expired}",
+                "ask the server's administrator to renew it",
+                f"The server's certificate {expired}: ask the server's administrator to renew it.",
+                "",
+            )
+        failed = f"TLS failed ({exc.why or why})"
+        return _Trust(
+            "no_answer",
+            f"{at.key} does not answer: {failed}",
+            REACH_HINT,
+            f"No answer: {failed}.",
+            PAGE_REACH_HINT,
+        )
+    hint = TRUST_HINT.format(command=command)
+    if trusted is None:
+        return _Trust(
+            "cert_untrusted",
+            f"the certificate of {at.root} is not trusted",
+            hint,
+            "The server's certificate is not trusted.",
+            ABOUT_TRUST,
+            offer,
+        )
+    saved = git_certificates.parse(trusted)
+    before = saved[0] if saved else None
+    if given:
+        return _Trust(
+            "cert_untrusted",
+            f"the certificate of {at.root} is not signed by the given certificate",
+            hint,
+            "The server's certificate is not signed by the given certificate.",
+            ABOUT_TRUST,
+            offer,
+            before,
+        )
+    if all(offer.sha256 != cert.sha256 for cert in saved):
+        return _Trust(
+            "cert_changed",
+            f"the certificate of {at.root} has changed since you trusted it",
+            hint,
+            "The server's certificate has changed since you trusted it.",
+            ABOUT_CHANGED,
+            offer,
+            before,
+        )
+    failed = f"TLS failed ({why})"  # the saved authority reaches it now: a passing failure
+    return _Trust(
+        "no_answer",
+        f"{at.key} does not answer: {failed}",
+        REACH_HINT,
+        f"No answer: {failed}.",
+        PAGE_REACH_HINT,
+    )
 
 
 @dataclass(frozen=True)
@@ -512,8 +650,9 @@ class Check:
     the `login` it saw (None but for ok and scopes_missing), the rights the token lacks,
     whether the server told them, whether the server had a login before (`was_checked`),
     one line and its hint in the command's words (`text`, `hint`) and in the page's
-    (`page`, a sentence, and `page_hint`, its info tip's: "" for none). Never holds a
-    token."""
+    (`page`, a sentence, and `page_hint`, its info tip's: "" for none); for a certificate
+    not trusted, the authority to trust (`offer`) and the saved one that no longer fits
+    (`before`). Never holds a token."""
 
     outcome: str
     kind: Kind
@@ -525,6 +664,8 @@ class Check:
     hint: str
     page: str
     page_hint: str = ""
+    offer: git_certificates.Certificate | None = None  # cert_untrusted, cert_changed
+    before: git_certificates.Certificate | None = None  # cert_changed: the saved one
 
 
 def check(at: Address, save_login: bool = True) -> Check:
@@ -616,13 +757,22 @@ def check(at: Address, save_login: bool = True) -> Check:
         moves = f"redirects to {moved}: add that address instead"
         return failed("redirect", f"it {moves}", "", f"It {moves}.")
     if own.status is None:
-        if own.tls and "certificate" in own.why:
-            return failed(
-                "cert_untrusted",
-                f"the certificate of {at.root} is not trusted",
-                CERT_HINT,
-                "The server's certificate is not trusted.",
-                PAGE_CERT_HINT,
+        if _untrusted(own):
+            command = f"{CERTIFICATE_COMMAND} {at.root} <file>"
+            found = _trust(at, trusted, command, own.why)
+            return Check(
+                found.outcome,
+                kind,
+                None,
+                (),
+                False,
+                was,
+                found.text,
+                found.hint,
+                found.page,
+                found.page_hint,
+                found.offer,
+                found.before,
             )
         return failed(
             "no_answer",

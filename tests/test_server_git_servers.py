@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 import socket
 
+import certificates as made
 import fake_git_api as fake
 import pytest
 from fastapi.testclient import TestClient
@@ -142,6 +143,7 @@ def test_add_gitlab_saves_it_with_its_login(client, serve, lado_home):
         "has_token": True,
         "author_name": None,
         "author_email": None,
+        "certificate": None,
     }
     assert added["line"] == f"Saved git server {server.url}: GitLab, signed in as {fake.LOGIN}."
     assert added["replaced"] is False
@@ -271,6 +273,8 @@ def test_check_of_gitlab_hints_its_token_page_with_no_token_sent(client, serve):
         "saved": False,
         "refusals": [],
         "warnings": [git_servers.PLAIN_HTTP.format(host="127.0.0.1")],
+        "certificate_offer": None,
+        "certificate_before": None,
     }
     for request in server.requests:
         assert "PRIVATE-TOKEN" not in request.headers
@@ -616,3 +620,136 @@ def test_the_check_puts_the_token_in_no_answer_or_log(client, serve, caplog):
         assert found["outcome"] == "token_refused"
         ok(client.get("/api/git-servers"))
     assert TOKEN not in caplog.text
+
+
+# A server's certificate.
+
+
+@pytest.fixture
+def corp(serve, tmp_path):
+    """A GitLab at https://localhost:<port> under Corp Root CA, which no process trusts:
+    the server and the root."""
+    root = made.authority("Corp Root CA")
+    leaf = made.server("localhost", root)
+    chain = made.write_chain(tmp_path / "corp", leaf, root)
+    server = serve("gitlab-full", token=TOKEN, certificate=chain)
+    server.url = server.url.replace("127.0.0.1", "localhost")
+    return server, root
+
+
+def _key(url: str) -> str:
+    return git_servers.address(url).key
+
+
+def test_a_check_offers_the_authority_and_trust_saves_it(client, corp, lado_home):
+    server, root = corp
+    at = git_servers.address(server.url)
+    git_servers.save(at, git_servers.Checked(git_kinds.by_name("gitlab"), "ivan.petrov"), TOKEN)
+    found = ok(client.post(f"/api/git-servers/{at.key}/check"))
+    assert found["outcome"] == "cert_untrusted"
+    offer = found["certificate_offer"]
+    assert (offer["subject"], offer["issuer"], offer["own"], offer["intermediate"]) == (
+        "Corp Root CA",
+        "Corp Example Ltd",
+        False,
+        False,
+    )
+    assert offer["valid_until"] == root.certificate.not_valid_after_utc.date().isoformat()
+    assert offer["pem"] == root.pem
+    assert found["certificate_before"] is None
+    assert found["server"]["certificate"] is None
+    trusted = ok(client.put(f"/api/git-servers/{at.key}/certificate", json={"pem": offer["pem"]}))
+    assert trusted["outcome"] == "ok"
+    assert trusted["message"] == "Works: signed in as ivan.petrov, may clone and push."
+    assert trusted["server"]["certificate"] == {
+        "name": "Corp Root CA",
+        "not_after": offer["valid_until"],
+        "expired": False,
+    }
+    assert git_servers.certificate(state.git_servers()[0]) == root.pem
+
+
+def test_a_removed_certificate_comes_back_with_undo(client, corp):
+    server, root = corp
+    at = git_servers.address(server.url)
+    git_servers.save(
+        at, git_servers.Checked(git_kinds.by_name("gitlab"), "ivan.petrov"), TOKEN, root.pem
+    )
+    removed = ok(client.delete(f"/api/git-servers/{at.key}/certificate"))
+    assert removed["pem"] == root.pem
+    assert removed["server"]["certificate"] is None
+    assert ok(client.post(f"/api/git-servers/{at.key}/check"))["outcome"] == "cert_untrusted"
+    back = ok(client.put(f"/api/git-servers/{at.key}/certificate", json={"pem": removed["pem"]}))
+    assert back["outcome"] == "ok"
+
+
+def test_a_put_of_no_certificate_is_refused(client, corp):
+    server, _ = corp
+    at = git_servers.address(server.url)
+    git_servers.save(at, git_servers.Checked(git_kinds.by_name("gitlab"), "ivan.petrov"), TOKEN)
+    detail = refused(client.put(f"/api/git-servers/{at.key}/certificate", json={"pem": "x"}))
+    assert detail["message"] == "The PEM holds no certificate."
+    assert git_servers.certificate(state.git_servers()[0]) is None
+
+
+def test_a_certificate_of_no_saved_server_is_refused(client):
+    detail = refused(client.put("/api/git-servers/git.lan/certificate", json={"pem": "x"}))
+    assert detail["message"] == "git.lan is no saved git server"
+    detail = refused(client.delete("/api/git-servers/git.lan/certificate"))
+    assert detail["message"] == "git.lan is no saved git server"
+
+
+def test_the_address_check_offers_and_takes_the_certificate(client, corp):
+    server, root = corp
+    found = check(client, server.url)
+    assert found["choose_kind"] is True
+    assert found["unchecked"]["message"] == "The server's certificate is not trusted."
+    assert found["certificate_offer"]["pem"] == root.pem
+    trusted = ok(
+        client.post("/api/git-servers/check", json={"address": server.url, "certificate": root.pem})
+    )
+    assert (trusted["hint"], trusted["certificate_offer"], trusted["unchecked"]) == (
+        "gitlab",
+        None,
+        None,
+    )
+
+
+def test_add_saves_the_trusted_certificate(client, corp):
+    server, root = corp
+    detail = refused(add(client, server.url))
+    assert detail["message"] == "The server's certificate is not trusted."
+    added = ok(
+        client.post(
+            "/api/git-servers",
+            json={"address": server.url, "token": TOKEN, "certificate": root.pem},
+        )
+    )
+    assert added["server"]["certificate"]["name"] == "Corp Root CA"
+    assert git_servers.certificate(state.git_servers()[0]) == root.pem
+
+
+def test_a_changed_certificate_is_told_with_the_saved_one(client, corp):
+    server, _ = corp
+    at = git_servers.address(server.url)
+    old = made.authority("Old Root")
+    git_servers.save(
+        at, git_servers.Checked(git_kinds.by_name("gitlab"), "ivan.petrov"), TOKEN, old.pem
+    )
+    found = ok(client.post(f"/api/git-servers/{at.key}/check"))
+    assert found["outcome"] == "cert_changed"
+    assert found["certificate_before"]["subject"] == "Old Root"
+    assert found["certificate_offer"]["subject"] == "Corp Root CA"
+
+
+def test_the_list_shows_an_expired_certificate(client, lado_home):
+    ended = made.NOW - 10 * made.DAY
+    old = made.authority("Old Root", not_before=ended - 30 * made.DAY, not_after=ended)
+    at = git_servers.address("git.lan")
+    git_servers.save(at, git_servers.Checked(git_kinds.by_name("gitlab"), "ivan"), TOKEN, old.pem)
+    (info,) = ok(client.get("/api/git-servers"))["servers"]
+    assert info["certificate"] == {
+        "name": "Old Root",
+        "not_after": ended.date().isoformat(),
+        "expired": True,
+    }

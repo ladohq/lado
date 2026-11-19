@@ -1037,6 +1037,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/git-servers/{host}/certificate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Git Server Certificate
+         * @description Trust the certificate a check offered for the server (or Undo gives back), then
+         *     check it again with it, as `lado git-server certificate <address> <file>` does.
+         */
+        put: operations["set_git_server_certificate_api_git_servers__host__certificate_put"];
+        post?: never;
+        /**
+         * Clear Git Server Certificate
+         * @description Remove the server's certificate as `lado git-server certificate --clear` does;
+         *     the answer holds its PEM for Undo.
+         */
+        delete: operations["clear_git_server_certificate_api_git_servers__host__certificate_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/git-servers/{host}/author": {
         parameters: {
             query?: never;
@@ -2092,6 +2118,31 @@ export interface components {
             left_out: number;
         };
         /**
+         * CertificateOffer
+         * @description A certificate a check shows (lado.git_certificates.Certificate): its subject, its
+         *     issuer's organization, its validity (YYYY-MM-DD), its SHA-256 as colon hex, whether it
+         *     is the server's own or an authority below the root, and its PEM, which `PUT
+         *     /api/git-servers/{host}/certificate` takes back when the human trusts it.
+         */
+        CertificateOffer: {
+            /** Subject */
+            subject: string;
+            /** Issuer */
+            issuer: string;
+            /** Valid From */
+            valid_from: string;
+            /** Valid Until */
+            valid_until: string;
+            /** Sha256 */
+            sha256: string;
+            /** Own */
+            own: boolean;
+            /** Intermediate */
+            intermediate: boolean;
+            /** Pem */
+            pem: string;
+        };
+        /**
          * CliApi
          * @description An agent CLI (a provider's name and title) and the model server API it speaks.
          */
@@ -2474,7 +2525,8 @@ export interface components {
         /**
          * GitServerAdd
          * @description A git server to check and save with its token; `kind` only when the human chose one
-         *     (--kind). No answer gives the token back.
+         *     (--kind); `certificate` the PEM the human trusted for it, saved with it. No answer gives
+         *     the token back.
          */
         GitServerAdd: {
             /** Address */
@@ -2483,6 +2535,8 @@ export interface components {
             token: string;
             /** Kind */
             kind?: string | null;
+            /** Certificate */
+            certificate?: string | null;
         };
         /**
          * GitServerAdded
@@ -2524,11 +2578,45 @@ export interface components {
             line: string;
         };
         /**
+         * GitServerCertificate
+         * @description The certificate trusted for a saved server, from its file: its name, the date its
+         *     validity ends (YYYY-MM-DD) and whether it has.
+         */
+        GitServerCertificate: {
+            /** Name */
+            name: string;
+            /** Not After */
+            not_after: string;
+            /** Expired */
+            expired: boolean;
+        };
+        /**
+         * GitServerCertificateRemoved
+         * @description A server's certificate removed: the server as saved and the PEM it held, for Undo
+         *     (None when it held none).
+         */
+        GitServerCertificateRemoved: {
+            server: components["schemas"]["GitServerInfo"];
+            /** Pem */
+            pem: string | null;
+        };
+        /**
+         * GitServerCertificateSet
+         * @description The certificate to trust for a saved server: the PEM a check offered (or Undo gives
+         *     back).
+         */
+        GitServerCertificateSet: {
+            /** Pem */
+            pem: string;
+        };
+        /**
          * GitServerCheck
          * @description What the add form says of an address before Add, asking the server with no token:
          *     its root (None when it is no address), the kind it looks like (a hint only) with its
          *     token page and scopes, whether the kind must be chosen and why (`unchecked`), whether the
-         *     address is saved already, the refusals Add would meet and the plain-http warning.
+         *     address is saved already, the refusals Add would meet and the plain-http warning; for a
+         *     certificate not trusted, the authority to trust (`certificate_offer`) and the one given
+         *     that did not fit (`certificate_before`).
          */
         GitServerCheck: {
             /** Address */
@@ -2548,11 +2636,19 @@ export interface components {
             refusals: components["schemas"]["GitEntryRefused"][];
             /** Warnings */
             warnings: string[];
+            certificate_offer?: components["schemas"]["CertificateOffer"] | null;
+            certificate_before?: components["schemas"]["CertificateOffer"] | null;
         };
-        /** GitServerCheckAsked */
+        /**
+         * GitServerCheckAsked
+         * @description An address the add form checks; `certificate` the PEM the human trusted for it,
+         *     which the check trusts alone.
+         */
         GitServerCheckAsked: {
             /** Address */
             address: string;
+            /** Certificate */
+            certificate?: string | null;
         };
         /**
          * GitServerChecked
@@ -2561,14 +2657,15 @@ export interface components {
          *     scopes_missing), the rights the token lacks, whether the server told them, whether it
          *     had a login before, the page's line (`message`) and its info tip (`hint`, "" for none),
          *     and the server as saved after it (a passing check saves its login; None when it was
-         *     removed meanwhile).
+         *     removed meanwhile); for a certificate not trusted or changed, the authority to trust and
+         *     the saved one that no longer fits.
          */
         GitServerChecked: {
             /**
              * Outcome
              * @enum {string}
              */
-            outcome: "ok" | "token_refused" | "scopes_missing" | "no_answer" | "cert_untrusted" | "redirect" | "other_kind" | "unrecognised";
+            outcome: "ok" | "token_refused" | "scopes_missing" | "no_answer" | "cert_untrusted" | "cert_changed" | "cert_name" | "cert_expired" | "redirect" | "other_kind" | "unrecognised";
             /** Kind */
             kind: string;
             /** Login */
@@ -2584,12 +2681,15 @@ export interface components {
             /** Hint */
             hint: string;
             server: components["schemas"]["GitServerInfo"] | null;
+            certificate_offer?: components["schemas"]["CertificateOffer"] | null;
+            certificate_before?: components["schemas"]["CertificateOffer"] | null;
         };
         /**
          * GitServerInfo
          * @description A saved git server as lado.db keeps it, asking it nothing: `host` its key (host and a
          *     port other than the scheme's), `login` None for one saved without a check, whether
-         *     its token file is there (never the token), and its commit author (both or neither).
+         *     its token file is there (never the token), its commit author (both or neither), and
+         *     the certificate trusted for it (None for none).
          */
         GitServerInfo: {
             /** Address */
@@ -2608,6 +2708,7 @@ export interface components {
             author_name: string | null;
             /** Author Email */
             author_email: string | null;
+            certificate?: components["schemas"]["GitServerCertificate"] | null;
         };
         /**
          * GitServerRemoved
@@ -6782,6 +6883,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GitEntryRefused"];
+                };
+            };
+        };
+    };
+    set_git_server_certificate_api_git_servers__host__certificate_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GitServerCertificateSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitServerChecked"];
+                };
+            };
+            /** @description refused */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitEntryRefused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_git_server_certificate_api_git_servers__host__certificate_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitServerCertificateRemoved"];
+                };
+            };
+            /** @description refused */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitEntryRefused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -71,3 +71,18 @@ def test_ghe_asks_api_v3():
         "https://ghe.corp:8443/git/api/v3/user"
     )
     assert github.token_page("https://github.com") == "https://github.com/settings/tokens"
+
+
+def test_each_kind_names_its_tools_oldest_version_its_word_and_its_right():
+    github, gitlab = git_kinds.KINDS
+    assert (gitlab.tool_oldest, gitlab.changes, gitlab.tool_needs) == (
+        "1.114.0",
+        "merge requests",
+        ("api",),
+    )
+    assert (github.tool_oldest, github.changes, github.tool_needs) == ("", "pull requests", ())
+    assert gitlab.tool_missing(frozenset({"read_repository", "write_repository", "read_api"})) == (
+        "api",
+    )
+    assert gitlab.tool_missing(frozenset({"api"})) == ()
+    assert github.tool_missing(frozenset({"repo"})) == ()

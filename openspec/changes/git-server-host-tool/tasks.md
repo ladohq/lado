@@ -2,7 +2,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-19-git-server-h
 
 ## 1. The kinds and the helper
 
-- [ ] 1.1 `Kind.tool_oldest`, `Kind.changes`, `Kind.tool_needs`; `lado.git_credential`'s
+- [x] 1.1 `Kind.tool_oldest`, `Kind.changes`, `Kind.tool_needs`; `lado.git_credential`'s
   `token` mode (D2, D5, D11). Check: `tests/test_git_kinds.py`, `tests/test_git_credential.py`.
 
 ## 2. glab's configuration

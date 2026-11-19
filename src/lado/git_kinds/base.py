@@ -24,10 +24,14 @@ class Kind:
     login_field: str  # the user's name in that path's answer
     git_user: str  # the user name git sends with the token
     tool: str  # the server's own command-line tool
+    changes: str  # what that tool opens, its word for a change request
     token_path: str  # the page where the human makes a token, under the root
     scopes: str  # what a token needs, in words
     # The rights agents need of a token, the one to clone first; `rights` reads them.
     needs: tuple[str, ...] = ()
+    # The rights `tool` needs besides, to open its `changes`: told, not required.
+    tool_needs: tuple[str, ...] = ()
+    tool_oldest: str = ""  # the oldest version of `tool` LADO signs in; "" any
 
     def headers(self, token: str) -> dict[str, str]:
         raise NotImplementedError
@@ -48,6 +52,11 @@ class Kind:
         """The rights of `needs` a token with the rights `told` lacks, in `needs`' order."""
         granted = self.granted(told)
         return tuple(need for need in self.needs if need not in granted)
+
+    def tool_missing(self, told: frozenset[str]) -> tuple[str, ...]:
+        """The rights of `tool_needs` a token with the rights `told` lacks."""
+        granted = self.granted(told)
+        return tuple(need for need in self.tool_needs if need not in granted)
 
     def request(self, root: str, token: str | None) -> tuple[str, dict[str, str]]:
         """The URL and the headers of the request that tells this kind, carrying `token`;

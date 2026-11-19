@@ -50,6 +50,7 @@ KIND = GitHub(
     login_field="login",
     git_user="x-access-token",
     tool="gh",
+    changes="pull requests",
     token_path="/settings/tokens",
     scopes="scope repo",
     needs=("repo",),  # clone and push alike

@@ -1095,10 +1095,10 @@ CERT_LINE = (
         CERT_LINE,
         "fatal: unable to access 'https://gitlab.corp.ru/team/app.git/': server certificate "
         "verification failed. CAfile: none CRLfile: none",
-        # curl 8 with GnuTLS (Ubuntu 24.04's git)
-        "fatal: unable to access 'https://gitlab.corp.ru/team/app.git/': server verification "
-        "failed: certificate signer not trusted. (CAfile: /etc/ssl/certs/ca-certificates.crt "
-        "CRLfile: none)",
+        # curl 8 with GnuTLS: the CI runner's git, as it said it
+        "fatal: unable to access 'https://gitlab.corp.ru/team/app.git/': SSL certificate "
+        "verification failed: certificate signer not trusted. (CAfile: "
+        "/etc/ssl/certs/ca-certificates.crt CRLfile: none)",
         # a certificate of another host: curl with OpenSSL, then with GnuTLS
         "fatal: unable to access 'https://gitlab.corp.ru/team/app.git/': SSL: no alternative "
         "certificate subject name matches target host name 'gitlab.corp.ru'",

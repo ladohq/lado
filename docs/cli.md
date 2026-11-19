@@ -42,7 +42,7 @@ its not found, ssh failures and the failures that are no access failure (unreach
 branch) keep their texts with no git server hint, and so does a host saved under another
 scheme or port than the URL's, as git took no token from it. git's refusal of a server's
 certificate (`SSL certificate problem` with OpenSSL, `server certificate verification failed`
-or, from curl 8, `server verification failed` with GnuTLS, and a certificate of another
+or, from curl 8, `SSL certificate verification failed` with GnuTLS, and a certificate of another
 host: `no alternative certificate subject name`, `does not match target host name`) is the kind
 `cert_untrusted`, `the certificate of <host> is not trusted`: for a saved server's URL with
 `Check the git server and trust its certificate: lado git-server check <address>`, for an

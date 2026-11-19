@@ -256,9 +256,10 @@ KINDS: tuple[tuple[str, re.Pattern], ...] = (
     ("access_denied", re.compile(r"The requested URL returned error: 403")),
     (
         "cert_untrusted",
-        # curl with OpenSSL; with GnuTLS before and from curl 8; a certificate of another host
+        # curl with OpenSSL; with GnuTLS ("server certificate …" before curl 8, "SSL
+        # certificate …" from it); a certificate of another host
         re.compile(
-            r"SSL certificate problem|server (certificate )?verification failed"
+            r"SSL certificate problem|(SSL|server) (certificate )?verification failed"
             r"|no alternative certificate subject name|does not match target host name"
         ),
     ),

@@ -17,6 +17,7 @@ import time
 import certificates as made
 import fake_git_api as fake
 import pytest
+import yaml
 
 from lado import git_certificates, git_kinds, git_servers, model_servers, state
 
@@ -241,8 +242,7 @@ def test_a_refused_token_is_refused_with_its_page_even_with_kind(serve, kind, pr
     refused = _refused(server.url, kind=kind)
     assert str(refused) == f"GitLab at {server.url} refuses the token"
     assert refused.hint == (
-        f"make a token at {server.url}/-/user_settings/personal_access_tokens "
-        "(scopes read_repository, write_repository, read_api)"
+        f"make a token at {server.url}/-/user_settings/personal_access_tokens (scope api)"
     )
 
 
@@ -305,8 +305,7 @@ def test_add_saves_a_token_without_push_and_says_so(serve, lado_home):
     assert (saved.login, replaced) == (fake.LOGIN, False)
     assert checked.lacks() == f"the token lacks write_repository: {CLONE_ONLY}"
     assert checked.replace_hint(at) == (
-        "replace it with a token with the scopes read_repository, write_repository, read_api: "
-        f"lado git-server add {server.url} --token"
+        f"replace it with a token with the scope api: lado git-server add {server.url} --token"
     )
 
 
@@ -875,6 +874,13 @@ def _check(url) -> git_servers.Check:
             "Works: signed in as ivan.petrov, may clone and push.",
         ),
         (
+            "gitlab-git",
+            "gitlab",
+            "Works: GitLab, signed in as ivan.petrov, may clone and push; glab cannot open "
+            "merge requests: the token lacks api.",
+            "Works: signed in as ivan.petrov, may clone and push.",
+        ),
+        (
             "gitlab",
             "gitlab",
             "Works: GitLab, signed in as ivan.petrov; the token's rights are not checked.",
@@ -932,14 +938,14 @@ def test_a_check_of_a_refused_token(serve, lado_home, profile, kind, title):
             "gitlab",
             "write_repository",
             "clone but not push",
-            "scopes read_repository, write_repository, read_api",
+            "scope api",
         ),
         (
             "gitlab-no-repo",
             "gitlab",
             "read_repository, write_repository",
             "neither clone nor push",
-            "scopes read_repository, write_repository, read_api",
+            "scope api",
         ),
         ("github-no-repo", "github", "repo", "neither clone nor push", "scope repo"),
         ("github-no-scopes", "github", "repo", "neither clone nor push", "scope repo"),
@@ -967,14 +973,10 @@ def test_a_check_of_a_gitlab_token_without_read_api_names_it(serve, lado_home):
     assert (found.outcome, found.missing_scopes) == ("scopes_missing", ("read_api",))
     assert found.text == "GitLab takes the token, but it lacks the scope read_api"
     assert found.hint == (
-        "replace it with a token with the scopes read_repository, write_repository, read_api: "
-        f"lado git-server add {server.url} --token"
+        f"replace it with a token with the scope api: lado git-server add {server.url} --token"
     )
     assert found.page == "The token lacks read_api."
-    assert found.page_hint == (
-        "LADO asks the server's API with it. Make one with the scopes read_repository, "
-        "write_repository, read_api."
-    )
+    assert found.page_hint == "LADO asks the server's API with it. Make one with the scope api."
     assert state.git_servers() == [before]
 
 
@@ -1239,8 +1241,7 @@ def test_gitlab_com_refusing_github_s_path_too_is_told_gitlab(serve):
     refused = _refused(server.url, token="glpat-WRONG")
     assert str(refused) == f"GitLab at {server.url} refuses the token"
     assert refused.hint == (
-        f"make a token at {server.url}/-/user_settings/personal_access_tokens "
-        "(scopes read_repository, write_repository, read_api)"
+        f"make a token at {server.url}/-/user_settings/personal_access_tokens (scope api)"
     )
     checked = git_servers.probe(at, TOKEN)
     assert (checked.kind.name, checked.login) == ("gitlab", fake.LOGIN)
@@ -2033,3 +2034,235 @@ def test_a_python_that_gives_no_chain_makes_the_check_say_so(
         f"{key} does not answer: TLS failed (this Python cannot read the server's certificates)"
     )
     assert found.offer is None
+
+
+# glab's configuration of an agent.
+
+GLAB_TOP = {"check_update": False, "telemetry": False, "git_protocol": "https", "no_prompt": True}
+
+
+def _glab(servers, folder):
+    found = git_servers.glab_variables(servers, folder)
+    assert found == {"GLAB_CONFIG_DIR": str(folder)}
+    text = (folder / "config.yml").read_text()
+    assert TOKEN not in text
+    return yaml.safe_load(text)
+
+
+def _header(server):
+    return [{"name": "PRIVATE-TOKEN", "valueFromCommand": git_servers.glab_command(server)}]
+
+
+def test_glab_gets_an_entry_per_gitlab_server(lado_home, tmp_path):
+    one = _saved("https://gitlab.corp.ru")
+    two = _saved("http://git.example:8443/gitlab/")
+    _saved("https://ghe.corp.ru", kind="github")
+    assert _glab(state.git_servers(), tmp_path / "glab") == {
+        **GLAB_TOP,
+        "hosts": {
+            "gitlab.corp.ru": {"api_protocol": "https", "custom_headers": _header(one)},
+            "git.example:8443": {
+                "api_protocol": "http",
+                "subfolder": "gitlab",
+                "custom_headers": _header(two),
+            },
+        },
+    }
+
+
+def test_glab_without_a_gitlab_server_gets_no_host(lado_home, tmp_path):
+    _saved("https://ghe.corp.ru", kind="github")
+    assert _glab(state.git_servers(), tmp_path / "glab") == {**GLAB_TOP, "hosts": {}}
+    assert _glab([], tmp_path / "none") == {**GLAB_TOP, "hosts": {}}
+
+
+def test_glab_gets_a_certificate_for_its_server_alone(lado_home, tmp_path, corp_ca):
+    one = _saved("https://gitlab.corp.ru")
+    _saved("https://git.lan")
+    git_servers.set_certificate(git_servers.address("gitlab.corp.ru"), corp_ca.pem)
+    hosts = _glab(state.git_servers(), tmp_path / "glab")["hosts"]
+    assert hosts["gitlab.corp.ru"]["ca_cert"] == str(git_servers.certificate_file(one.id))
+    assert "ca_cert" not in hosts["git.lan"]
+
+
+def test_glabs_config_is_600_in_a_700_folder_written_whole(lado_home, tmp_path):
+    _saved("https://gitlab.corp.ru")
+    folder = tmp_path / "glab"
+    folder.mkdir(mode=0o755)
+    (folder / "config.yml").write_text(f"hosts:\n  gitlab.com:\n    token: {TOKEN}\n")
+    previous = os.umask(0)
+    try:
+        _glab(state.git_servers(), folder)
+    finally:
+        os.umask(previous)
+    assert stat.S_IMODE(folder.stat().st_mode) == 0o700
+    assert stat.S_IMODE((folder / "config.yml").stat().st_mode) == 0o600
+    assert sorted(p.name for p in folder.iterdir()) == ["config.yml"]
+
+
+def test_glabs_header_command_is_lados_python_with_ids_alone(lado_home):
+    server = _saved("https://gitlab.corp.ru")
+    words = shlex.split(git_servers.glab_command(server))
+    assert words[:2] == [sys.executable, "-c"]
+    assert words[3:] == [
+        "lado.git_credential",
+        "--home",
+        str(lado_home.absolute()),
+        "--server",
+        server.id,
+        "--user",
+        "oauth2",
+        "--address",
+        "https://gitlab.corp.ru",
+        "token",
+    ]
+    result = subprocess.run(words, capture_output=True, text=True, check=True, timeout=30)
+    assert result.stdout == TOKEN + "\n"
+
+
+# The server's tool, as an agent's launch and lado doctor find it.
+
+GITHUB = git_kinds.by_name("github")
+
+
+def _tool(tmp_path, name, script) -> dict[str, str]:
+    folder = tmp_path / "tools"
+    folder.mkdir(exist_ok=True)
+    tool = folder / name
+    tool.write_text(f"#!/bin/sh\n{script}\n")
+    tool.chmod(0o755)
+    return {"PATH": str(folder)}
+
+
+@pytest.mark.parametrize(
+    ("kind", "script", "state"),
+    [
+        (GITLAB, "echo 'glab 1.130.0 (206ebab4f)'", (True, "1.130.0", False)),
+        (GITLAB, "echo 'glab 1.80.0 (x)'", (True, "1.80.0", True)),
+        (GITLAB, "echo 'glab 1.114.0 (x)'", (True, "1.114.0", False)),
+        (GITHUB, "echo 'gh version 2.83.0 (2026-10-01)'", (True, "2.83.0", False)),
+        (GITLAB, "true", (True, "", False)),
+        # A mise shim with no version set names versions on stderr and fails: no guess.
+        (GITLAB, "echo 'mise use -g glab@1.80.0' >&2; exit 1", (True, "", False)),
+    ],
+)
+def test_the_tool_and_its_version(tmp_path, kind, script, state):
+    found = git_servers.tool_state(kind, _tool(tmp_path, kind.tool, script))
+    assert (found.found, found.version, found.too_old) == state
+
+
+@pytest.mark.parametrize("kind", [GITLAB, GITHUB])
+def test_the_version_is_asked_with_a_config_folder_of_its_own(tmp_path, kind):
+    # glab writes into its configuration at any call, --version too: never the human's.
+    human = tmp_path / "human-config"
+    script = (
+        f'echo "${{{kind.config_variable}:-none}}" > "{tmp_path}/used"; '
+        f'echo x >> "${{{kind.config_variable}:-{human}}}/config.yml"; '
+        "echo 'tool 9.9.9'"
+    )
+    env = _tool(tmp_path, kind.tool, script) | {kind.config_variable: str(human)}
+    found = git_servers.tool_state(kind, env)
+    assert found.version == "9.9.9"
+    used = (tmp_path / "used").read_text().strip()
+    assert used not in ("none", str(human))
+    assert not os.path.exists(used)  # a folder of the call's alone, gone after it
+    assert not human.exists()
+
+
+def test_no_tool_on_the_path(tmp_path):
+    found = git_servers.tool_state(GITLAB, {"PATH": str(tmp_path)})
+    assert (found.found, found.version, found.too_old) == (False, "", False)
+
+
+def test_a_tool_that_hangs_is_cut_and_fits(tmp_path, monkeypatch):
+    monkeypatch.setattr(git_servers, "TOOL_TIMEOUT", 0.5)
+    env = _tool(tmp_path, "glab", "exec sleep 30")
+    started = time.monotonic()
+    found = git_servers.tool_state(GITLAB, env)
+    assert time.monotonic() - started < 10
+    assert (found.found, found.version, found.too_old) == (True, "", False)
+
+
+def _state(found=True, version="1.130.0", too_old=False, line=""):
+    return git_servers.ToolState(found, version, too_old, line)
+
+
+LINE_START = (
+    "The repository's origin is on GitLab (gitlab.corp.example), a git server LADO signs you in to"
+)
+
+
+def test_the_line_of_a_gitlab_with_glab(lado_home):
+    server = _saved("https://gitlab.corp.example")
+    assert git_servers.tool_line(server, _state()) == (
+        f"{LINE_START}: use `glab` for its merge requests; it is logged in already."
+    )
+
+
+def test_the_line_of_github_com(lado_home):
+    server = _saved("https://github.com", kind="github")
+    assert git_servers.tool_line(server, _state(version="2.83.0")) == (
+        "The repository's origin is on GitHub (github.com), a git server LADO signs you in to: "
+        "use `gh` for its pull requests; it is logged in already."
+    )
+
+
+def test_the_line_of_a_missing_tool(lado_home):
+    server = _saved("https://gitlab.corp.example")
+    assert git_servers.tool_line(server, _state(found=False, version="")) == (
+        f"{LINE_START}, but its tool `glab` is not installed here, so you cannot open its "
+        "merge requests; tell the human."
+    )
+
+
+def test_the_line_of_an_old_tool(lado_home):
+    server = _saved("https://gitlab.corp.example")
+    assert git_servers.tool_line(server, _state(version="1.80.0", too_old=True)) == (
+        f"{LINE_START}, but `glab` here is 1.80.0, older than 1.114.0, which LADO needs to sign "
+        "it in, so you cannot open its merge requests; tell the human."
+    )
+
+
+def test_the_line_without_a_token(lado_home):
+    server = _saved("https://gitlab.corp.example")
+    (lado_home / "git-servers" / server.id / "token").unlink()
+    assert git_servers.tool_line(server, _state(found=False)) == (
+        f"{LINE_START}, but LADO has no token for it, so `glab` is not logged in and git cannot "
+        "push there; tell the human."
+    )
+
+
+def test_the_line_of_a_github_server_with_a_certificate(lado_home, corp_ca):
+    server = _saved("https://ghe.corp.example", kind="github")
+    git_servers.set_certificate(git_servers.address("ghe.corp.example"), corp_ca.pem)
+    assert git_servers.tool_line(server, _state(version="2.83.0")) == (
+        "The repository's origin is on GitHub (ghe.corp.example), a git server LADO signs you "
+        "in to: use `gh` for its pull requests; it is logged in already. `gh` does not get the "
+        "server's certificate and cannot reach it; git can."
+    )
+
+
+def test_the_line_names_the_port(lado_home):
+    server = _saved("https://git.example:8443/gitlab")
+    assert git_servers.tool_line(server, _state()).startswith(
+        "The repository's origin is on GitLab (git.example:8443), "
+    )
+
+
+def test_the_warnings_of_a_missing_or_old_tool(lado_home):
+    gitlab = _saved("https://gitlab.corp.example")
+    github = _saved("https://github.com", kind="github")
+    missing = _state(found=False, version="")
+    assert git_servers.tool_warning(gitlab, missing) == (
+        "glab is not on the agents' PATH: agents cannot open merge requests on "
+        "https://gitlab.corp.example; install glab 1.114.0 or newer"
+    )
+    assert git_servers.tool_warning(gitlab, _state(version="1.80.0", too_old=True)) == (
+        "glab 1.80.0 is older than 1.114.0, which LADO needs to sign it in to "
+        "https://gitlab.corp.example; update glab"
+    )
+    assert git_servers.tool_warning(github, missing) == (
+        "gh is not on the agents' PATH: agents cannot open pull requests on "
+        "https://github.com; install gh"
+    )
+    assert git_servers.tool_warning(gitlab, _state()) is None

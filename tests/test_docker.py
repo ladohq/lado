@@ -156,6 +156,77 @@ def test_a_loose_openspec_pin_is_named():
     assert loose_pin(arg) == [f"no install of {OPENSPEC}"]
 
 
+GLAB_ARGS = ("GLAB_VERSION", "GLAB_SHA256_AMD64", "GLAB_SHA256_ARM64")
+GLAB_URL = (
+    "https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_VERSION}/downloads/"
+    "glab_${GLAB_VERSION}_linux_${arch}.tar.gz"
+)
+
+
+def glab_loose(text: str) -> list[str]:
+    """The lines of `text` that leave glab's pin loose: its version not exact, an
+    architecture's SHA-256 not 64 hex digits (or missing), its install not checked by it,
+    run, or alone in its layer (or missing)."""
+    found = lines(text)
+    args = {}
+    for line in found:
+        if match := re.fullmatch(r"ARG (GLAB_\w+)(?:=(.*))?", line):
+            args[match[1]] = line
+    bad = [args[n] for n in ("GLAB_VERSION",) if n in args]
+    bad = [line for line in bad if not re.fullmatch(r"ARG GLAB_VERSION=\d+\.\d+\.\d+", line)]
+    for name in GLAB_ARGS[1:]:
+        if not re.fullmatch(rf"ARG {name}=[0-9a-f]{{64}}", args.get(name, "")):
+            bad.append(args.get(name, f"no {name}"))
+    installs = [line for line in found if "glab_${GLAB_VERSION}_linux_" in line]
+    if not installs:
+        bad.append("no install of glab")
+    for line in installs:
+        steps = [step.strip() for step in line.removeprefix("RUN ").split("&&")]
+        if (
+            GLAB_URL not in line
+            or "sha256sum -c" not in line
+            or not any(step.endswith("/opt/tools/bin/glab --version") for step in steps)
+            or "npm install" in line
+            or "apt-get" in line
+        ):
+            bad.append(line)
+    return bad
+
+
+def test_glab_is_pinned_exactly_by_its_sums_in_a_layer_of_its_own():
+    assert glab_loose(DOCKERFILE) == []
+    found = lines()
+    named = tuple(f"ARG {name}=" for name in GLAB_ARGS)
+    args = [i for i, line in enumerate(found) if line.startswith(named)]
+    [install] = [i for i, line in enumerate(found) if "glab_${GLAB_VERSION}_linux_" in line]
+    assert len(args) == 3 and max(args) < install
+    assert "ARG GLAB_VERSION=1.130.0" in found
+    assert (
+        "ARG GLAB_SHA256_AMD64=ce06313b2075af25180cd195ab3496d42bc5857c85a1c12ba996838dfe9d822c"
+        in found
+    )
+    assert (
+        "ARG GLAB_SHA256_ARM64=062d53acb0f2cbcc79a014600df1aa0fb440bb3a08a5d4900d3b49b553b22767"
+        in found
+    )
+
+
+def test_a_loose_glab_pin_is_named():
+    good = re.search(r"ARG GLAB_VERSION=.*?glab --version[^\n]*\n", DOCKERFILE, re.S)[0]
+    assert glab_loose(good) == []
+    latest = good.replace("ARG GLAB_VERSION=1.130.0", "ARG GLAB_VERSION=latest")
+    assert glab_loose(latest) == ["ARG GLAB_VERSION=latest"]
+    short = re.sub(r"(ARG GLAB_SHA256_ARM64=)[0-9a-f]+", r"\g<1>062d53ac", good)
+    assert glab_loose(short) == ["ARG GLAB_SHA256_ARM64=062d53ac"]
+    unchecked = good.replace("sha256sum -c", "true")
+    assert len(glab_loose(unchecked)) == 1
+    assert glab_loose("ARG GLAB_VERSION=1.130.0\n") == [
+        "no GLAB_SHA256_AMD64",
+        "no GLAB_SHA256_ARM64",
+        "no install of glab",
+    ]
+
+
 def wheel_too_early(text: str) -> list[str]:
     """The lines of `text` that put LADO's wheel before an install it must follow: its COPY
     and its `uv tool install` come after every agent CLI's and openspec's npm install, so a
@@ -313,6 +384,8 @@ def test_profile_sets_what_env_sets_for_the_agents():
         "MISE_TRUSTED_CONFIG_PATHS",
         "OPENSPEC_TELEMETRY",
         "OPENSPEC_NO_UPDATE_CHECK",
+        "GLAB_CHECK_UPDATE",
+        "GLAB_SEND_TELEMETRY",
     }
     for key, value in exported.items():
         value = value.replace("$HOME", "/home/lado")
@@ -335,6 +408,8 @@ def test_profile_sets_what_env_sets_for_the_agents():
     assert image["LADO_CONTAINER"] == "1"
     # openspec's usage statistics and update check off: the human's choice.
     assert (image["OPENSPEC_TELEMETRY"], image["OPENSPEC_NO_UPDATE_CHECK"]) == ("0", "1")
+    # glab's too, for `docker exec` as for the agents (each agent's config says so besides).
+    assert (image["GLAB_CHECK_UPDATE"], image["GLAB_SEND_TELEMETRY"]) == ("false", "false")
     # The container's own LADO_REPOS (-e) reaches the agents through the entrypoint's
     # lado-repos.sh, so profile.sh does not set the image's default.
     assert image["LADO_REPOS"] == "/projects"

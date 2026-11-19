@@ -33,6 +33,10 @@ def _save(address="https://gitlab.corp.ru"):
 def agents_path(fake_clis, tmp_path):
     folder = tmp_path / "agents-bin"
     folder.mkdir()
+    # The servers' tools stand in too: a launch asks the origin's for its version.
+    for tool, line in (("gh", "gh version 2.83.0 (x)"), ("glab", "glab 1.130.0 (x)")):
+        (folder / tool).write_text(f"#!/bin/sh\necho '{line}'\n")
+        (folder / tool).chmod(0o755)
     return folder, f"{folder}{os.pathsep}{fake_clis}{os.pathsep}{os.environ['PATH']}"
 
 
@@ -379,3 +383,144 @@ def test_a_github_server_with_a_certificate_is_named_at_the_launch(
     warnings = []
     runtime.spawn_worker("s", "task", name="w1", warnings=warnings)
     assert warnings.count(GH_NOTE) == 1
+
+
+# The repository's server and its tool: the agent's line, the launch's warning, glab's folder.
+
+GITLAB_LINE = (
+    "The repository's origin is on GitLab (gitlab.corp.ru), a git server LADO signs you in "
+    "to: use `glab` for its merge requests; it is logged in already.\n"
+)
+GITHUB_LINE = (
+    "The repository's origin is on GitHub (github.com), a git server LADO signs you in to: "
+    "use `gh` for its pull requests; it is logged in already.\n"
+)
+
+
+def _tool(folder, name, version_line, asked=None):
+    note = f'echo asked >> "{asked}"\n' if asked else ""
+    (folder / name).write_text(f"#!/bin/sh\n{note}echo '{version_line}'\n")
+    (folder / name).chmod(0o755)
+
+
+@pytest.fixture
+def no_tools_path(fake_clis, tmp_path):
+    """The agents' PATH with git and the fake CLIs alone, so no glab nor gh of this
+    computer's is found; the folder for the test's own tools first."""
+    import shutil
+
+    tools = tmp_path / "tools-bin"
+    tools.mkdir()
+    git = tmp_path / "git-bin"
+    git.mkdir()
+    (git / "git").symlink_to(shutil.which("git"))
+    return tools, os.pathsep.join([str(tools), str(git), str(fake_clis), "/bin"])
+
+
+def _prompt(fake_tmux):
+    from agent_helpers import claude_prompt
+
+    return claude_prompt(fake_tmux[-1][-1])
+
+
+@pytest.mark.parametrize(
+    "url", ["https://gitlab.corp.ru/team/app.git", "git@gitlab.corp.ru:team/app.git"]
+)
+def test_an_agent_is_told_its_gitlab_and_glab(
+    repo, fake_tmux, lado_home, monkeypatch, no_tools_path, url
+):
+    tools, path = no_tools_path
+    _tool(tools, "glab", "glab 1.130.0 (206ebab4f)")
+    _shell(monkeypatch, {"PATH": path})
+    _origin(repo, url)
+    _save()
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    assert GITLAB_LINE in _prompt(fake_tmux)
+    assert _prompt(fake_tmux).index(GITLAB_LINE) < _prompt(fake_tmux).index(runtime.MESSAGING)
+    assert not [w for w in started.warnings if "glab" in w]
+    runtime.spawn_worker("s", "task", name="w1")
+    assert GITLAB_LINE in _prompt(fake_tmux)
+
+
+def test_an_agent_is_told_github_com_and_gh(repo, fake_tmux, lado_home, monkeypatch, no_tools_path):
+    tools, path = no_tools_path
+    _tool(tools, "gh", "gh version 2.83.0 (2026-10-01)")
+    _shell(monkeypatch, {"PATH": path})
+    _origin(repo, "https://github.com/octo/app.git")
+    _github("github.com", "ghp_entry")
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    assert GITHUB_LINE in _prompt(fake_tmux)
+
+
+@pytest.mark.parametrize("url", ["https://git.other.example/team/app.git", None])
+def test_another_host_or_no_origin_gets_no_line_and_no_tool_run(
+    repo, fake_tmux, lado_home, monkeypatch, no_tools_path, tmp_path, url
+):
+    tools, path = no_tools_path
+    asked = tmp_path / "asked"
+    _tool(tools, "glab", "glab 1.80.0 (x)", asked)
+    _shell(monkeypatch, {"PATH": path})
+    if url:
+        _origin(repo, url)
+    _save()
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    assert "The repository's origin is on" not in _prompt(fake_tmux)
+    assert not [w for w in started.warnings if "glab" in w]
+    assert not asked.exists()
+
+
+MISSING = (
+    "glab is not on the agents' PATH: agents cannot open merge requests on "
+    "https://gitlab.corp.ru; install glab 1.114.0 or newer"
+)
+OLD = (
+    "glab 1.80.0 is older than 1.114.0, which LADO needs to sign it in to "
+    "https://gitlab.corp.ru; update glab"
+)
+
+
+def test_a_missing_glab_is_warned_and_the_agent_starts(
+    repo, fake_tmux, lado_home, monkeypatch, no_tools_path
+):
+    _, path = no_tools_path
+    _shell(monkeypatch, {"PATH": path})
+    _origin(repo, "https://gitlab.corp.ru/team/app.git")
+    _save()
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    assert started.warnings.count(MISSING) == 1
+    assert "its tool `glab` is not installed here" in _prompt(fake_tmux)
+    warnings = []
+    runtime.spawn_worker("s", "task", name="w1", warnings=warnings)
+    assert warnings.count(MISSING) == 1
+    assert len(fake_tmux) == 2  # both started
+
+
+def test_an_old_glab_is_warned_and_the_agent_starts(
+    repo, fake_tmux, lado_home, monkeypatch, no_tools_path
+):
+    tools, path = no_tools_path
+    _tool(tools, "glab", "glab 1.80.0 (x)")
+    _shell(monkeypatch, {"PATH": path})
+    _origin(repo, "https://gitlab.corp.ru/team/app.git")
+    _save()
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    assert started.warnings.count(OLD) == 1
+    assert "but `glab` here is 1.80.0, older than 1.114.0" in _prompt(fake_tmux)
+
+
+def test_glab_gets_the_agents_own_folder_and_no_outside_gitlab_variable(
+    repo, fake_tmux, lado_home, monkeypatch, no_tools_path
+):
+    _, path = no_tools_path
+    outside = {"GITLAB_TOKEN": "shell", "GITLAB_HOST": "x", "GLAB_CONFIG_DIR": "/home/me/glab"}
+    _shell(monkeypatch, {"PATH": path, **outside})
+    _save()
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    env = _launched(lado_home)
+    folder = lado_home / "agents" / "s" / "supervisor" / "glab"
+    assert env["GLAB_CONFIG_DIR"] == str(folder)
+    assert "gitlab.corp.ru" in (folder / "config.yml").read_text()
+    assert not {"GITLAB_TOKEN", "GITLAB_HOST"} & env.keys()
+    assert "GLAB_CONFIG_DIR" in env[agent_env.LAUNCH_VARS].split(",")
+    back = agent_env.without_launch(env)
+    assert [name for name in agent_env.GITLAB_VARIABLES if name in back] == []

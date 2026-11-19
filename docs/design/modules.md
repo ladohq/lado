@@ -22,12 +22,19 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `git server <address>` (after `git author`, `check_git_servers`, one per saved server,
     none without one): `git_servers.check` with `save_login=False`, as doctor writes nothing;
     all in a pool started before the model servers' probes and collected after them; `OK` with
-    its `Works:` line, else `WARN` with its line and hint (also a `Refused`, a saved address the
+    its `Works:` line (`WARN` with the replace hint for a GitLab token without `api`), else
+    `WARN` with its line and hint (also a `Refused`, a saved address the
     address rule no longer takes, an `OSError`), never `FAIL`; one `INFO` `git servers` line
-    `NOT_AT_SCHEMA` at another schema.
+    `NOT_AT_SCHEMA` at another schema. `glab`, `gh` (`check_host_tools`, one per tool of the
+    saved servers' kinds, on the agents' merged PATH by `git_servers.tool_state`): `OK` with
+    its `--version` line, `WARN` missing or older than the kind's `tool_oldest`.
     `GitHub login` and `GitHub login outside LADO` (after them, `check_github_login`): the
     takeover's record (`github_takeover.py`) and the GitHub variables of the layers and
-    projects no agent gets, by name, then `gh`'s own login (docs/cli.md); both checks of
+    projects no agent gets, by name, then `gh`'s own login (docs/cli.md); `GitLab login
+    outside LADO` (`check_gitlab_login`): the GitLab variables no agent gets, by
+    `github_takeover.unused` with their names, an `OAUTH_TOKEN` agents keep
+    (`GLAB_KEPT_TOKENS`, which glab sends to a GitLab not in the list), then glab's own login,
+    its configuration read as text (`GLAB_LOGIN`); the checks of
     lado.db through `_busy`, whose lado.db locked past its wait is one `WARN` `git servers`
     line `BUSY`, never a failed doctor.
     `Workspace` (after the git servers, `check_workspace`, always; the workspace,
@@ -711,7 +718,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     and `for_git` drop `GITHUB_VARIABLES` (GitHub's tokens, `GH_HOST`, `GH_CONFIG_DIR`) of
     every layer: they come from the saved servers alone (`git_servers.gh_variables`;
     `for_git`'s `GH_CONFIG_DIR` is `<LADO_HOME>/gh`), and`layers` keeps them for the
-    takeover and doctor (`github_takeover.py`). And
+    takeover and doctor (`github_takeover.py`); `merge` drops `GITLAB_VARIABLES` too (an
+    agent's glab: `git_servers.glab_variables`). And
     `command`, the window's command that runs the agent with exactly that environment. `read_folder` is
     the one reader of a folder of variables, the outside folder's and a project's secrets
     folder's (`Folder`: the values and each file not used with why); with `own`, for a folder
@@ -949,7 +957,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   - `git_kinds/`: the kinds of git server, one module each (`github.py`, `gitlab.py`, the
     frozen `base.Kind`: the user API's request with the token in the kind's header, the
     login told from its answer as one line of visible text, the refusal of a token, the user
-    name git sends, the host tool, the token page and its scopes; `needs`, the rights agents
+    name git sends, the host tool, the variable of its config folder (`config_variable`), its
+    word for a change request (`changes`), the oldest version LADO signs in (`tool_oldest`)
+    and the rights it needs besides (`tool_needs`, `tool_missing`: GitLab's `api`), the token
+    page and its scopes; `needs`, the rights agents
     need of a token, the one to clone first, and `rights`, the rights the server tells of it:
     GitHub's `X-OAuth-Scopes`, GitLab's `personal_access_tokens/self`, whose `api` grants both
     repository rights (`granted`); None when it tells none); `KINDS` in `__init__.py` is the one
@@ -994,7 +1005,14 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `GH_CONFIG_DIR` its own folder, made, with no `hosts.yml`; `GH_TOKEN` the github.com
     server's token; `GH_ENTERPRISE_TOKEN` the GitHub Enterprise server's of the repository's
     origin, else of the only one, and `GH_HOST` the origin's; the tokens ride in the launch
-    file alone), `server_for` (the
+    file alone), `glab_variables` (an agent's `glab`: `GLAB_CONFIG_DIR` its own folder, 700,
+    where `glab_config` is written whole, 600: per saved GitLab its `host[:port]`,
+    `api_protocol`, `subfolder`, `ca_cert` and a `PRIVATE-TOKEN` header from `glab_command`,
+    LADO's helper in its `token` mode; no token), `tool_state` (the kind's tool on a PATH and
+    its version, asked with a config folder of the call's own), `tool_line` (the agent's line
+    about its repository's server) and `tool_warning` (the launch's for a tool missing or too
+    old); a check of a GitLab whose token lacks `api` stays ok and says what glab cannot
+    (`Check.tool_missing`, `tool_cannot`), `server_for` (the
     saved server a remote reaches) and `check_git` (a `Refused` naming the version for a git
     below `runtime.GIT_MIN` on a given PATH). A server's commit author (`lado git-server
     author`): `check_author` (the name's and the email's rules, fields `name`/`email`),
@@ -1019,7 +1037,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     (`interpreter.run_module`) and its arguments (`--home`, `--server`, `--user`,
     `--address`): `get` prints the user and the token read by the link-refusing reader of
     LADO's secrets, or `quit=1` and one stderr line with no token file; `store` and `erase`
-    do nothing; it never opens lado.db.
+    do nothing; `token`, glab's header command, reads no stdin and prints the token alone, or
+    nothing, the stderr line and exit 1; it never opens lado.db.
   - `github_takeover.py`: the GitHub login agents had before github.com was a git server,
     taken over once (`run`, called by `lado start` and `lado ui` with its line on stdout, the
     UI server's start with its line in server.log, and every launch of agents through

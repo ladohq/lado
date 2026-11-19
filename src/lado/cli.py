@@ -1194,13 +1194,18 @@ def _print_variable_change(
     id: str, running: list[str], gets: str = "get it", name: str = ""
 ) -> None:
     """Who gets a project variable's change: the agents started from now on; none for a
-    GitHub variable (`name`), which no agent gets from a project (lado.agent_env)."""
+    GitHub or GitLab variable (`name`), which no agent gets from a project (lado.agent_env)."""
     from lado import agent_env
 
     if name in agent_env.GITHUB_VARIABLES:
         print(
             f"{name} is not given to agents: github.com and GitHub Enterprise take their "
             "token from Settings → Git servers."
+        )
+        return
+    if name in agent_env.GITLAB_VARIABLES:
+        print(
+            f"{name} is not given to agents: a GitLab takes its token from Settings → Git servers."
         )
         return
     if running:

@@ -17,6 +17,7 @@ import lado
 from lado import (
     agent_env,
     artifacts,
+    git_kinds,
     git_servers,
     gui_session,
     kits,
@@ -939,6 +940,9 @@ def check_git_servers() -> list[Check]:
             )
         except OSError as exc:
             return Check(name, WARN, f"not checked: {exc}")
+        if found.outcome == "ok" and found.tool_missing:  # git works, its tool cannot
+            at = git_servers.address(server.address)
+            return Check(name, WARN, found.text, git_servers.replace_hint(found.kind, at))
         if found.outcome == "ok":
             return Check(name, OK, found.text)
         if found.offer is not None:  # trusted only by the human's choice, never here
@@ -1004,6 +1008,97 @@ def check_github_login() -> list[Check]:
     return lines
 
 
+def _agents_layers() -> agent_env.Layers | None:
+    try:
+        return agent_env.layers()
+    except agent_env.AgentEnvError:  # the agents' environment line says why
+        return None
+
+
+def check_host_tools() -> list[Check]:
+    """A line per tool of the saved servers' kinds (git_kinds), named by the tool, on the
+    agents' PATH as a launch finds it (git_servers.tool_state): ok with its `--version`
+    line, warn when it is missing or older than its kind's oldest; never FAIL. No line with
+    no server; lado.db is read as it is."""
+    if state.schema_version() is None:
+        return []
+    try:
+        servers = state.git_servers()
+    except state.SchemaError:
+        return []
+    layers = _agents_layers()
+    env = agent_env.merge(layers) if layers is not None else dict(os.environ)
+    lines = []
+    for kind in git_kinds.KINDS:
+        theirs = [s.address for s in servers if s.kind == kind.name]
+        if not theirs:
+            continue
+        found = git_servers.tool_state(kind, env)
+        what, hint = git_servers.tool_problem(kind, found, theirs)
+        if what:
+            lines.append(Check(kind.tool, WARN, what, hint))
+        else:
+            lines.append(Check(kind.tool, OK, found.line or "on the agents' PATH"))
+    return lines
+
+
+GITLAB_OUTSIDE = "GitLab login outside LADO"
+GITLAB_SETTINGS = "a GitLab takes its token from Settings → Git servers"
+GLAB_KEPT_TOKENS = ("OAUTH_TOKEN",)  # a token glab reads that agents still get
+# A login in glab's own configuration: a token that is not empty, or one in the keyring.
+GLAB_LOGIN = re.compile(
+    r"^[ \t]*(token:[ \t]*(?!\"\"|''|#)\S|use_keyring:[ \t]*true\b)", re.MULTILINE
+)
+
+
+def _glab_own_config(layers: agent_env.Layers | None) -> str:
+    """The text of the human's own glab configuration (its GLAB_CONFIG_DIR, else
+    XDG_CONFIG_HOME's or ~/.config's `glab-cli`), "" for none it reads."""
+    env: dict[str, str] = dict(os.environ)
+    for layer in layers or ():
+        env.update(layer)
+    folder = env.get("GLAB_CONFIG_DIR") or os.path.join(
+        env.get("XDG_CONFIG_HOME") or os.path.join(env.get("HOME", ""), ".config"), "glab-cli"
+    )
+    try:
+        with open(os.path.join(folder, "config.yml"), encoding="utf-8", errors="replace") as file:
+            return file.read(1 << 20)
+    except OSError:
+        return ""
+
+
+def check_gitlab_login() -> list[Check]:
+    """Each GitLab variable of the agents' layers or of a project, which no agent gets
+    (agent_env.GITLAB_VARIABLES), by name, then the GitLab CLI's own login when its
+    configuration holds one, read as text; never a value, no glab run, no network."""
+    from lado import github_takeover
+
+    layers = _agents_layers()
+    found = {}
+    if state.schema_version() is not None:
+        with contextlib.suppress(state.SchemaError):
+            found = {p.id: project_secrets.layer(p.id) for p in state.list_projects()}
+    folder = agent_env.outside().folder
+    names = github_takeover.unused(layers, folder, found, agent_env.GITLAB_VARIABLES)
+    lines = []
+    if names:
+        detail = f"{', '.join(names)} set but not used: {GITLAB_SETTINGS}"
+        lines.append(Check(GITLAB_OUTSIDE, WARN, detail))
+    # Agents keep OAUTH_TOKEN, which other tools read too (agent_env.GITLAB_VARIABLES); glab
+    # sends it to a GitLab not in the list.
+    if kept := github_takeover.unused(layers, folder, found, GLAB_KEPT_TOKENS):
+        detail = (
+            f"{', '.join(kept)} reaches agents: their glab sends it to a GitLab not in "
+            "Settings → Git servers (gitlab.com by default)"
+        )
+        hint = "remove it from the agents' environment unless another tool needs it"
+        lines.append(Check(GITLAB_OUTSIDE, WARN, detail, hint))
+    if GLAB_LOGIN.search(_glab_own_config(layers)):
+        detail = "the GitLab CLI's own login is not used by agents"
+        lines.append(Check(GITLAB_OUTSIDE, INFO, detail))
+    return lines
+
+
 def _busy(check: Callable[[], list[Check]]) -> Callable[[], list[Check]]:
     """`check`, whose lado.db locked for longer than its wait is BUSY."""
 
@@ -1050,6 +1145,8 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
         servers = check_model_servers(probes)
         git_servers_found = git_lines.result()
     github = [c for c in _busy(check_github_login)() if c not in git_servers_found]
+    host_tools = _busy(check_host_tools)()
+    gitlab = _busy(check_gitlab_login)()
     default_models = check_default_models(probes)
     author = check_git_author()
     database = check_database()
@@ -1061,7 +1158,9 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
         check_git(),
         *([author] if author else []),
         *git_servers_found,
+        *[c for c in host_tools if c not in git_servers_found],
         *github,
+        *[c for c in gitlab if c not in github],
         check_workspace(),
         *([projects_found] if projects_found else []),
         *([outside] if outside else []),

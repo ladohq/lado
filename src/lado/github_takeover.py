@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import NamedTuple
 
 from lado import agent_env, git_servers, state
@@ -112,13 +112,18 @@ def gh_token(env: Mapping[str, str]) -> str | None:
 
 
 def unused(
-    layers: agent_env.Layers | None, folder: str, projects: Mapping[str, Mapping[str, str]]
+    layers: agent_env.Layers | None,
+    folder: str,
+    projects: Mapping[str, Mapping[str, str]],
+    names: Sequence[str] | None = None,
 ) -> list[str]:
-    """Each GitHub variable a layer of the agents (`layers`, None when the shell could not
-    be read) or a project's variables or secrets (`projects`, by id) sets, which no agent
-    gets: `GH_TOKEN in <folder>`, `GH_TOKEN of your shell`, `GH_TOKEN of project <id>`;
-    never a value. GH_CONFIG_DIR, no login itself, is left to `own_login`."""
-    names = [n for n in agent_env.GITHUB_VARIABLES if n != "GH_CONFIG_DIR"]
+    """Each variable of `names` (GitHub's, but GH_CONFIG_DIR, no login itself, which is
+    left to `own_login`) a layer of the agents (`layers`, None when the shell could not be
+    read) or a project's variables or secrets (`projects`, by id) sets, which no agent gets:
+    `GH_TOKEN in <folder>`, `GH_TOKEN of your shell`, `GH_TOKEN of project <id>`; never a
+    value."""
+    if names is None:
+        names = [n for n in agent_env.GITHUB_VARIABLES if n != "GH_CONFIG_DIR"]
     found = []
     for index, layer in enumerate(layers[:3] if layers else ()):
         found += [_words(index, n, folder) for n in names if layer.get(n)]

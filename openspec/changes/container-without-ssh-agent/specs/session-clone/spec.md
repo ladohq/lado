@@ -17,8 +17,8 @@ Outside LADO's container the ssh kinds of failure SHALL be:
 
 ### Requirement: In LADO's container an ssh failure points at the git servers
 
-In LADO's container both ssh kinds of an ssh address on port 22 of a host with no saved
-git server SHALL say `LADO's container has no ssh key for <host>`, with the hint `Add it
+In LADO's container both ssh kinds of an ssh address of the user `git` on port 22
+(`git@<host>:`, `ssh://git@<host>[:22]/`) of a host with no saved git server SHALL say `LADO's container has no ssh key for <host>`, with the hint `Add it
 as a git server with a token:` `lado git-server add https://<host> --token` and the UI's
 way out `Add git server`: `Add <host> as a git server with a token: its git@ addresses
 then go over https too.`
@@ -37,8 +37,9 @@ then go over https too.`
 
 ### Requirement: In LADO's container another ssh address asks for https
 
-In LADO's container both ssh kinds of any other ssh address (a port other than 22, or a
-host with a saved git server) SHALL say `LADO's container has no ssh: clone by the
+In LADO's container both ssh kinds of any other ssh address (another user or none, a port
+other than 22, a host with a saved git server, or saved servers LADO cannot read: lado.db
+at another schema) SHALL say `LADO's container has no ssh: clone by the
 repository's https address`, with no hint and no way out.
 
 #### Scenario: Another ssh port

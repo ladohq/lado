@@ -366,6 +366,37 @@ def test_check_a_saved_server_in_each_outcome(
         certified.close()
 
 
+def test_a_gitlab_token_for_git_alone_says_what_glab_cannot(
+    browser: Browser, lab, monkeypatch, server, shot
+):
+    answers_as(monkeypatch, "gitlab-git")
+    glab = "glab cannot open merge requests: the token lacks api."
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
+    try:
+        page = context.new_page()
+        open_page(page, server)
+        git = section(page)
+        plus_add(page).click()
+        git.get_by_role("textbox", name="Address").fill(lab.url)
+        expect(git.get_by_text("the token travels unencrypted.", exact=False)).to_be_visible()
+        git.get_by_role("textbox", name="Token").fill(TOKEN)
+        form_add(page).click()
+        panel = row(page, lab.url)
+        top = panel.locator(".gx-top")
+        expect(top).to_have_text(f"Saved: GitLab, signed in as {fake.LOGIN}; {glab}")
+        expect(top.locator(".gx-result")).to_have_class(re.compile(r"\bok\b"))
+        shot(page, "added")
+
+        panel.get_by_role("button", name=f"Check {lab.url}", exact=True).click()
+        line = panel.locator(".gx-result")
+        expect(line).to_have_text(f"Works: signed in as {fake.LOGIN}, may clone and push; {glab}")
+        expect(line).to_have_attribute("role", "status")
+        expect(results(page)).to_have_count(1)
+        shot(page, "checked")
+    finally:
+        context.close()
+
+
 def test_replace_a_token(browser: Browser, lab, monkeypatch, server, tmp_path, lado_home, shot):
     at = git_servers.address(lab.url)
     git_servers.save(at, git_servers.Checked(git_kinds.by_name("gitlab"), "old.login"), TOKEN)

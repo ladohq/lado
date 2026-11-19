@@ -20,5 +20,5 @@
 
 ## 4. Regression run
 
-- [ ] 4.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui tests/ui/test_launch.py`,
+- [x] 4.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui tests/ui/test_launch.py`,
   `openspec validate kit-chip-steady --strict`, the trial archive.

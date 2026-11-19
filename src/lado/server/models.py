@@ -932,8 +932,9 @@ class GitServerCertificateRemoved(BaseModel):
 
 class GitServerAdded(BaseModel):
     """A git server saved or replaced: as saved, the line that says so, the warnings (its
-    token over plain http://), and, for a token that lacks a right agents need, the page's
-    `warning` and the rights it lacks (`missing_scopes`)."""
+    token over plain http://), for a token that lacks a right agents need, the page's
+    `warning` and the rights it lacks (`missing_scopes`), and, for one that leaves the
+    kind's tool without its changes, what the tool cannot do (`tool_cannot`)."""
 
     server: GitServerInfo
     line: str
@@ -941,6 +942,7 @@ class GitServerAdded(BaseModel):
     warnings: list[str]
     warning: str | None
     missing_scopes: list[str]
+    tool_cannot: str | None = None
 
 
 class GitServerChecked(BaseModel):

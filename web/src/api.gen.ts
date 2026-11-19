@@ -2544,8 +2544,9 @@ export interface components {
         /**
          * GitServerAdded
          * @description A git server saved or replaced: as saved, the line that says so, the warnings (its
-         *     token over plain http://), and, for a token that lacks a right agents need, the page's
-         *     `warning` and the rights it lacks (`missing_scopes`).
+         *     token over plain http://), for a token that lacks a right agents need, the page's
+         *     `warning` and the rights it lacks (`missing_scopes`), and, for one that leaves the
+         *     kind's tool without its changes, what the tool cannot do (`tool_cannot`).
          */
         GitServerAdded: {
             server: components["schemas"]["GitServerInfo"];
@@ -2559,6 +2560,8 @@ export interface components {
             warning: string | null;
             /** Missing Scopes */
             missing_scopes: string[];
+            /** Tool Cannot */
+            tool_cannot?: string | null;
         };
         /**
          * GitServerAuthor

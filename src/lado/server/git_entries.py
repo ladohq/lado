@@ -196,6 +196,11 @@ def add(given: models.GitServerAdd) -> models.GitServerAdded:
         warnings=warnings,
         warning=git_servers.lacks(checked.kind, checked.missing_scopes, page=True),
         missing_scopes=list(checked.missing_scopes),
+        tool_cannot=(
+            git_servers.tool_cannot(checked.kind, checked.tool_missing)
+            if checked.tool_missing
+            else None
+        ),
     )
 
 

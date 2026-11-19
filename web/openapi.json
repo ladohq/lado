@@ -6713,6 +6713,17 @@
             },
             "type": "array",
             "title": "Missing Scopes"
+          },
+          "tool_cannot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Cannot"
           }
         },
         "type": "object",
@@ -6725,7 +6736,7 @@
           "missing_scopes"
         ],
         "title": "GitServerAdded",
-        "description": "A git server saved or replaced: as saved, the line that says so, the warnings (its\ntoken over plain http://), and, for a token that lacks a right agents need, the page's\n`warning` and the rights it lacks (`missing_scopes`)."
+        "description": "A git server saved or replaced: as saved, the line that says so, the warnings (its\ntoken over plain http://), for a token that lacks a right agents need, the page's\n`warning` and the rights it lacks (`missing_scopes`), and, for one that leaves the\nkind's tool without its changes, what the tool cannot do (`tool_cannot`)."
       },
       "GitServerAuthor": {
         "properties": {

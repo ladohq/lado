@@ -422,32 +422,29 @@ def _container_ssh(address: Address) -> tuple[str, runtime.Hint | None, ServerWa
     address a saved server would rewrite to https (`git@<host>`, port 22) of a host no
     server has, to add; any other ssh address, to clone over https. Servers not known (a
     lado.db at another schema) are taken as the host's."""
+    no_ssh = "LADO's container has no ssh: clone by the repository's https address", None, None
     host = address.host
     servers = _saved_servers()
     if (
-        address.user == "git"
-        and address.port in (None, 22)
-        and servers is not None
-        and not any(urllib.parse.urlsplit(s.address).hostname == host for s in servers)
+        address.user != "git"
+        or address.port not in (None, 22)
+        or servers is None
+        or any(urllib.parse.urlsplit(s.address).hostname == host for s in servers)
     ):
-        try:
-            at = git_servers.address(f"https://{host}")
-        except git_servers.BadAddress:
-            at = None
-        if at is not None:
-            hint = runtime.Hint(
-                "Add it as a git server with a token:", f"{git_servers.ADD} {at.root} --token"
-            )
-            page = (
-                f"Add {at.key} as a git server with a token: its git@ addresses then go "
-                "over https too."
-            )
-            return (
-                f"LADO's container has no ssh key for {host}",
-                hint,
-                ServerWay("add", at.key, at.root, page),
-            )
-    return "LADO's container has no ssh: clone by the repository's https address", None, None
+        return no_ssh
+    try:
+        at = git_servers.address(f"https://{host}")
+    except git_servers.BadAddress:
+        return no_ssh
+    hint = runtime.Hint(
+        "Add it as a git server with a token:", f"{git_servers.ADD} {at.root} --token"
+    )
+    page = f"Add {at.key} as a git server with a token: its git@ addresses then go over https too."
+    return (
+        f"LADO's container has no ssh key for {host}",
+        hint,
+        ServerWay("add", at.key, at.root, page),
+    )
 
 
 def _told(

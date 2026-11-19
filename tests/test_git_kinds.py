@@ -81,6 +81,7 @@ def test_each_kind_names_its_tools_oldest_version_its_word_and_its_right():
         ("api",),
     )
     assert (github.tool_oldest, github.changes, github.tool_needs) == ("", "pull requests", ())
+    assert gitlab.scopes == "scope api"
     assert gitlab.tool_missing(frozenset({"read_repository", "write_repository", "read_api"})) == (
         "api",
     )

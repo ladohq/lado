@@ -227,17 +227,25 @@ def check_token(token: str) -> None:
 class Checked:
     """What the probe found: the kind, the user the token signs in as (None: not checked),
     why it could not be checked ("" when it was), the rights agents need that the token
-    lacks, and whether the server told the token's rights."""
+    lacks, whether the server told the token's rights, and the rights of the kind's tool it
+    lacks (told, not required)."""
 
     kind: Kind
     login: str | None
     unchecked: str = ""
     missing_scopes: tuple[str, ...] = ()
     rights_checked: bool = False
+    tool_missing: tuple[str, ...] = ()
 
     def line(self) -> str | None:
-        """`GitLab, signed in as <login>`; None for a server not checked."""
-        return f"{self.kind.title}, signed in as {self.login}" if self.login else None
+        """`GitLab, signed in as <login>`, and what the token leaves its tool without;
+        None for a server not checked."""
+        if not self.login:
+            return None
+        line = f"{self.kind.title}, signed in as {self.login}"
+        if self.tool_missing:
+            line += f"; {tool_cannot(self.kind, self.tool_missing)}"
+        return line
 
     def lacks(self) -> str | None:
         """`the token lacks <scopes>: agents can …`; None when it lacks none."""
@@ -335,9 +343,10 @@ def _rights(
     kind: Kind,
     answer: model_servers.Answer,
     certificate: str | None = None,
-) -> tuple[tuple[str, ...], bool]:
-    """The rights `kind`'s token lacks by `answer`, the answer that gave its login, and
-    whether the server told its rights: as `_ask_kinds` asks, one request at a time."""
+) -> tuple[tuple[str, ...], bool, tuple[str, ...]]:
+    """The rights `kind`'s token lacks by `answer`, the answer that gave its login, whether
+    the server told its rights, and the rights of its tool the token lacks: as `_ask_kinds`
+    asks, one request at a time."""
     from lado import model_servers
 
     def ask(url: str, headers: dict[str, str]) -> model_servers.Answer:
@@ -346,8 +355,14 @@ def _rights(
 
     told = kind.rights(at.root, token, answer, ask)
     if told is None:
-        return (), False
-    return kind.missing(told), True
+        return (), False, ()
+    return kind.missing(told), True, kind.tool_missing(told)
+
+
+def tool_cannot(kind: Kind, missing: Sequence[str]) -> str:
+    """`glab cannot open merge requests: the token lacks api`, for the rights `missing` of
+    the kind's `tool_needs`."""
+    return f"{kind.tool} cannot open {kind.changes}: the token lacks {', '.join(missing)}"
 
 
 def probe(
@@ -364,8 +379,8 @@ def probe(
     chosen = git_kinds.by_name(kind_name) if kind_name else None
 
     def checked(kind: Kind, login: str) -> Checked:
-        missing, told = _rights(at, token, kind, dict(by_kind)[kind], certificate)
-        return Checked(kind, login, missing_scopes=missing, rights_checked=told)
+        missing, told, tool = _rights(at, token, kind, dict(by_kind)[kind], certificate)
+        return Checked(kind, login, missing_scopes=missing, rights_checked=told, tool_missing=tool)
 
     if len(found) == 1:
         kind, login = found[0]
@@ -662,6 +677,7 @@ class Check:
     page_hint: str = ""
     offer: git_certificates.Certificate | None = None  # cert_untrusted, cert_changed
     before: git_certificates.Certificate | None = None  # cert_changed: the saved one
+    tool_missing: tuple[str, ...] = ()  # ok: the rights of the kind's tool the token lacks
 
 
 def check(at: Address, save_login: bool = True) -> Check:
@@ -694,7 +710,7 @@ def check(at: Address, save_login: bool = True) -> Check:
     was = server.login is not None
 
     if login := kind.login(own):
-        missing, told = _rights(at, token, kind, own, trusted)
+        missing, told, tool = _rights(at, token, kind, own, trusted)
         if missing:
             return Check(
                 "scopes_missing",
@@ -714,17 +730,10 @@ def check(at: Address, save_login: bool = True) -> Check:
         page = f"Works: signed in as {login}{rights}"
         if server.login is None:
             page = f"Works: {kind.title}, signed in as {login}."
-        return Check(
-            "ok",
-            kind,
-            login,
-            (),
-            told,
-            was,
-            f"Works: {kind.title}, signed in as {login}{rights}",
-            "",
-            page,
-        )
+        text = f"Works: {kind.title}, signed in as {login}{rights}"
+        if tool:  # git works: the outcome stays ok, the line says what the tool cannot
+            text = f"{text[:-1]}; {tool_cannot(kind, tool)}."
+        return Check("ok", kind, login, (), told, was, text, "", page, tool_missing=tool)
 
     def failed(outcome: str, text: str, hint: str, page: str, page_hint: str = "") -> Check:
         return Check(outcome, kind, None, (), False, was, text, hint, page, page_hint)

@@ -173,7 +173,7 @@ def test_add_servers_in_each_state(
         expect(link).to_have_attribute(
             "href", "https://gitlab.com/-/user_settings/personal_access_tokens"
         )
-        expect(link.locator("..")).to_contain_text("read_repository, write_repository, read_api")
+        expect(link.locator("..")).to_contain_text("with the scope api.")
         expect(git.get_by_role("radio")).to_have_count(0)
         assert gitlab_com.requests and all(
             "PRIVATE-TOKEN" not in r.headers and "Authorization" not in r.headers

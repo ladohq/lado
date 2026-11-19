@@ -242,8 +242,7 @@ def test_a_refused_token_is_refused_with_its_page_even_with_kind(serve, kind, pr
     refused = _refused(server.url, kind=kind)
     assert str(refused) == f"GitLab at {server.url} refuses the token"
     assert refused.hint == (
-        f"make a token at {server.url}/-/user_settings/personal_access_tokens "
-        "(scopes read_repository, write_repository, read_api)"
+        f"make a token at {server.url}/-/user_settings/personal_access_tokens (scope api)"
     )
 
 
@@ -306,8 +305,7 @@ def test_add_saves_a_token_without_push_and_says_so(serve, lado_home):
     assert (saved.login, replaced) == (fake.LOGIN, False)
     assert checked.lacks() == f"the token lacks write_repository: {CLONE_ONLY}"
     assert checked.replace_hint(at) == (
-        "replace it with a token with the scopes read_repository, write_repository, read_api: "
-        f"lado git-server add {server.url} --token"
+        f"replace it with a token with the scope api: lado git-server add {server.url} --token"
     )
 
 
@@ -876,6 +874,13 @@ def _check(url) -> git_servers.Check:
             "Works: signed in as ivan.petrov, may clone and push.",
         ),
         (
+            "gitlab-git",
+            "gitlab",
+            "Works: GitLab, signed in as ivan.petrov, may clone and push; glab cannot open "
+            "merge requests: the token lacks api.",
+            "Works: signed in as ivan.petrov, may clone and push.",
+        ),
+        (
             "gitlab",
             "gitlab",
             "Works: GitLab, signed in as ivan.petrov; the token's rights are not checked.",
@@ -933,14 +938,14 @@ def test_a_check_of_a_refused_token(serve, lado_home, profile, kind, title):
             "gitlab",
             "write_repository",
             "clone but not push",
-            "scopes read_repository, write_repository, read_api",
+            "scope api",
         ),
         (
             "gitlab-no-repo",
             "gitlab",
             "read_repository, write_repository",
             "neither clone nor push",
-            "scopes read_repository, write_repository, read_api",
+            "scope api",
         ),
         ("github-no-repo", "github", "repo", "neither clone nor push", "scope repo"),
         ("github-no-scopes", "github", "repo", "neither clone nor push", "scope repo"),
@@ -968,14 +973,10 @@ def test_a_check_of_a_gitlab_token_without_read_api_names_it(serve, lado_home):
     assert (found.outcome, found.missing_scopes) == ("scopes_missing", ("read_api",))
     assert found.text == "GitLab takes the token, but it lacks the scope read_api"
     assert found.hint == (
-        "replace it with a token with the scopes read_repository, write_repository, read_api: "
-        f"lado git-server add {server.url} --token"
+        f"replace it with a token with the scope api: lado git-server add {server.url} --token"
     )
     assert found.page == "The token lacks read_api."
-    assert found.page_hint == (
-        "LADO asks the server's API with it. Make one with the scopes read_repository, "
-        "write_repository, read_api."
-    )
+    assert found.page_hint == "LADO asks the server's API with it. Make one with the scope api."
     assert state.git_servers() == [before]
 
 
@@ -1240,8 +1241,7 @@ def test_gitlab_com_refusing_github_s_path_too_is_told_gitlab(serve):
     refused = _refused(server.url, token="glpat-WRONG")
     assert str(refused) == f"GitLab at {server.url} refuses the token"
     assert refused.hint == (
-        f"make a token at {server.url}/-/user_settings/personal_access_tokens "
-        "(scopes read_repository, write_repository, read_api)"
+        f"make a token at {server.url}/-/user_settings/personal_access_tokens (scope api)"
     )
     checked = git_servers.probe(at, TOKEN)
     assert (checked.kind.name, checked.login) == ("gitlab", fake.LOGIN)

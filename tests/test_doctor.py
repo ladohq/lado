@@ -1775,6 +1775,20 @@ def test_a_working_and_a_refused_git_server(git_api, lado_home):
     ]
 
 
+def test_a_gitlab_token_without_api_warns_for_its_merge_requests(git_api, lado_home):
+    works = git_api("gitlab-git", token=GIT_TOKEN)
+    _git_saved(works.url)
+    assert _git_lines() == [
+        doctor.Check(
+            f"git server {works.url}",
+            doctor.WARN,
+            "Works: GitLab, signed in as ivan.petrov, may clone and push; glab cannot open "
+            "merge requests: the token lacks api.",
+            f"replace it with a token with the scope api: lado git-server add {works.url} --token",
+        )
+    ]
+
+
 def test_no_saved_git_server_prints_no_line(lado_home):
     assert doctor.check_git_servers() == []
     assert not (lado_home / "lado.db").exists()

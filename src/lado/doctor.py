@@ -940,6 +940,9 @@ def check_git_servers() -> list[Check]:
             )
         except OSError as exc:
             return Check(name, WARN, f"not checked: {exc}")
+        if found.outcome == "ok" and found.tool_missing:  # git works, its tool cannot
+            at = git_servers.address(server.address)
+            return Check(name, WARN, found.text, git_servers.replace_hint(found.kind, at))
         if found.outcome == "ok":
             return Check(name, OK, found.text)
         if found.offer is not None:  # trusted only by the human's choice, never here

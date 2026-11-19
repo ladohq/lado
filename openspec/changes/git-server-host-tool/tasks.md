@@ -28,7 +28,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-19-git-server-h
 
 ## 6. The token's right for merge requests
 
-- [ ] 6.1 The check's ok line names a GitLab token without `api`; doctor warns; the kind's
+- [x] 6.1 The check's ok line names a GitLab token without `api`; doctor warns; the kind's
   `scopes` text is `scope api` (D11). Check: `tests/test_git_servers.py`,
   `tests/test_doctor.py`, `tests/test_cli_git_server.py`.
 

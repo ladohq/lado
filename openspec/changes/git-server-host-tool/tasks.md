@@ -34,7 +34,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-19-git-server-h
 
 ## 7. End to end
 
-- [ ] 7.1 Integration with the fake agent and the fake git server: the line, the variables,
+- [x] 7.1 Integration with the fake agent and the fake git server: the line, the variables,
   the warnings; a real glab against the fake server when one is on PATH (D9). Check:
   `uv run pytest -m integration tests/integration/test_git_server_host_tool.py`.
 

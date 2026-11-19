@@ -2118,3 +2118,133 @@ def test_glabs_header_command_is_lados_python_with_ids_alone(lado_home):
     ]
     result = subprocess.run(words, capture_output=True, text=True, check=True, timeout=30)
     assert result.stdout == TOKEN + "\n"
+
+
+# The server's tool, as an agent's launch and lado doctor find it.
+
+GITHUB = git_kinds.by_name("github")
+
+
+def _tool(tmp_path, name, script) -> dict[str, str]:
+    folder = tmp_path / "tools"
+    folder.mkdir(exist_ok=True)
+    tool = folder / name
+    tool.write_text(f"#!/bin/sh\n{script}\n")
+    tool.chmod(0o755)
+    return {"PATH": str(folder)}
+
+
+@pytest.mark.parametrize(
+    ("kind", "script", "state"),
+    [
+        (GITLAB, "echo 'glab 1.130.0 (206ebab4f)'", (True, "1.130.0", False)),
+        (GITLAB, "echo 'glab 1.80.0 (x)'", (True, "1.80.0", True)),
+        (GITLAB, "echo 'glab 1.114.0 (x)'", (True, "1.114.0", False)),
+        (GITHUB, "echo 'gh version 2.83.0 (2026-10-01)'", (True, "2.83.0", False)),
+        (GITLAB, "true", (True, "", False)),
+        # A mise shim with no version set names versions on stderr and fails: no guess.
+        (GITLAB, "echo 'mise use -g glab@1.80.0' >&2; exit 1", (True, "", False)),
+    ],
+)
+def test_the_tool_and_its_version(tmp_path, kind, script, state):
+    found = git_servers.tool_state(kind, _tool(tmp_path, kind.tool, script))
+    assert (found.found, found.version, found.too_old) == state
+
+
+def test_no_tool_on_the_path(tmp_path):
+    found = git_servers.tool_state(GITLAB, {"PATH": str(tmp_path)})
+    assert (found.found, found.version, found.too_old) == (False, "", False)
+
+
+def test_a_tool_that_hangs_is_cut_and_fits(tmp_path, monkeypatch):
+    monkeypatch.setattr(git_servers, "TOOL_TIMEOUT", 0.5)
+    env = _tool(tmp_path, "glab", "exec sleep 30")
+    started = time.monotonic()
+    found = git_servers.tool_state(GITLAB, env)
+    assert time.monotonic() - started < 10
+    assert (found.found, found.version, found.too_old) == (True, "", False)
+
+
+def _state(found=True, version="1.130.0", too_old=False, line=""):
+    return git_servers.ToolState(found, version, too_old, line)
+
+
+LINE_START = (
+    "The repository's origin is on GitLab (gitlab.corp.example), a git server LADO signs you in to"
+)
+
+
+def test_the_line_of_a_gitlab_with_glab(lado_home):
+    server = _saved("https://gitlab.corp.example")
+    assert git_servers.tool_line(server, _state()) == (
+        f"{LINE_START}: use `glab` for its merge requests; it is logged in already."
+    )
+
+
+def test_the_line_of_github_com(lado_home):
+    server = _saved("https://github.com", kind="github")
+    assert git_servers.tool_line(server, _state(version="2.83.0")) == (
+        "The repository's origin is on GitHub (github.com), a git server LADO signs you in to: "
+        "use `gh` for its pull requests; it is logged in already."
+    )
+
+
+def test_the_line_of_a_missing_tool(lado_home):
+    server = _saved("https://gitlab.corp.example")
+    assert git_servers.tool_line(server, _state(found=False, version="")) == (
+        f"{LINE_START}, but its tool `glab` is not installed here, so you cannot open its "
+        "merge requests; tell the human."
+    )
+
+
+def test_the_line_of_an_old_tool(lado_home):
+    server = _saved("https://gitlab.corp.example")
+    assert git_servers.tool_line(server, _state(version="1.80.0", too_old=True)) == (
+        f"{LINE_START}, but `glab` here is 1.80.0, older than 1.114.0, which LADO needs to sign "
+        "it in, so you cannot open its merge requests; tell the human."
+    )
+
+
+def test_the_line_without_a_token(lado_home):
+    server = _saved("https://gitlab.corp.example")
+    (lado_home / "git-servers" / server.id / "token").unlink()
+    assert git_servers.tool_line(server, _state(found=False)) == (
+        f"{LINE_START}, but LADO has no token for it, so `glab` is not logged in and git cannot "
+        "push there; tell the human."
+    )
+
+
+def test_the_line_of_a_github_server_with_a_certificate(lado_home, corp_ca):
+    server = _saved("https://ghe.corp.example", kind="github")
+    git_servers.set_certificate(git_servers.address("ghe.corp.example"), corp_ca.pem)
+    assert git_servers.tool_line(server, _state(version="2.83.0")) == (
+        "The repository's origin is on GitHub (ghe.corp.example), a git server LADO signs you "
+        "in to: use `gh` for its pull requests; it is logged in already. `gh` does not get the "
+        "server's certificate and cannot reach it; git can."
+    )
+
+
+def test_the_line_names_the_port(lado_home):
+    server = _saved("https://git.example:8443/gitlab")
+    assert git_servers.tool_line(server, _state()).startswith(
+        "The repository's origin is on GitLab (git.example:8443), "
+    )
+
+
+def test_the_warnings_of_a_missing_or_old_tool(lado_home):
+    gitlab = _saved("https://gitlab.corp.example")
+    github = _saved("https://github.com", kind="github")
+    missing = _state(found=False, version="")
+    assert git_servers.tool_warning(gitlab, missing) == (
+        "glab is not on the agents' PATH: agents cannot open merge requests on "
+        "https://gitlab.corp.example; install glab 1.114.0 or newer"
+    )
+    assert git_servers.tool_warning(gitlab, _state(version="1.80.0", too_old=True)) == (
+        "glab 1.80.0 is older than 1.114.0, which LADO needs to sign it in to "
+        "https://gitlab.corp.example; update glab"
+    )
+    assert git_servers.tool_warning(github, missing) == (
+        "gh is not on the agents' PATH: agents cannot open pull requests on "
+        "https://github.com; install gh"
+    )
+    assert git_servers.tool_warning(gitlab, _state()) is None

@@ -977,6 +977,107 @@ def glab_variables(servers: Sequence[state.GitServer], folder: Path) -> dict[str
     return {"GLAB_CONFIG_DIR": str(folder)}
 
 
+TOOL_TIMEOUT = 10.0  # seconds a tool's `--version` may take, as lado doctor's VERSION_TIMEOUT
+
+
+class ToolState(NamedTuple):
+    """A server's tool on the agents' PATH: whether it is there, its version ("" when it
+    tells none), whether that is older than its kind's oldest, and its `--version` line."""
+
+    found: bool
+    version: str
+    too_old: bool
+    line: str = ""
+
+
+def _numbers(version: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in version.split("."))
+
+
+def tool_state(kind: Kind, env: Mapping[str, str]) -> ToolState:
+    """`kind`'s tool on `env`'s PATH, by `<tool> --version` and its first x.y.z, cut at
+    TOOL_TIMEOUT. A version it cannot read (no x.y.z, a failure, no answer in time) counts
+    as fit: the tool is there, and a guess would be a false alarm."""
+    import shutil
+
+    path = shutil.which(kind.tool, path=env.get("PATH", os.defpath))
+    if path is None:
+        return ToolState(False, "", False)
+    try:
+        result = subprocess.run(
+            [path, "--version"],
+            env=dict(env),
+            capture_output=True,
+            text=True,
+            timeout=TOOL_TIMEOUT,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ToolState(True, "", False)
+    lines = result.stdout.strip().splitlines()
+    line = lines[0] if lines else ""
+    found = re.search(r"\d+\.\d+\.\d+", line) if result.returncode == 0 else None
+    if found is None:
+        return ToolState(True, "", False, line)
+    version = found[0]
+    too_old = bool(kind.tool_oldest) and _numbers(version) < _numbers(kind.tool_oldest)
+    return ToolState(True, version, too_old, line)
+
+
+def tool_line(server: state.GitServer, found: ToolState) -> str | None:
+    """The line of an agent's instructions about its repository's server `server`: its
+    kind and host, its tool and what for, and that the tool is logged in, or why not (no
+    token, the tool missing or too old by `found`, gh without the server's certificate);
+    None for a kind this LADO does not know."""
+    kind = git_kinds.by_name(server.kind)
+    if kind is None:
+        return None
+    tool = f"`{kind.tool}`"
+    start = (
+        f"The repository's origin is on {kind.title} ({server.host}), a git server LADO signs "
+        "you in to"
+    )
+    if not has_token(server):
+        return (
+            f"{start}, but LADO has no token for it, so {tool} is not logged in and git cannot "
+            "push there; tell the human."
+        )
+    if not found.found:
+        return (
+            f"{start}, but its tool {tool} is not installed here, so you cannot open its "
+            f"{kind.changes}; tell the human."
+        )
+    if found.too_old:
+        return (
+            f"{start}, but {tool} here is {found.version}, older than {kind.tool_oldest}, which "
+            f"LADO needs to sign it in, so you cannot open its {kind.changes}; tell the human."
+        )
+    line = f"{start}: use {tool} for its {kind.changes}; it is logged in already."
+    if gh_without_certificate([server]):
+        line += f" {tool} does not get the server's certificate and cannot reach it; git can."
+    return line
+
+
+def tool_warning(server: state.GitServer, found: ToolState) -> str | None:
+    """What a launch says when the tool of the repository's server `server` is missing or
+    too old by `found`; None when it is fit, or for a kind this LADO does not know."""
+    kind = git_kinds.by_name(server.kind)
+    if kind is None:
+        return None
+    if not found.found:
+        newer = f" {kind.tool_oldest} or newer" if kind.tool_oldest else ""
+        return (
+            f"{kind.tool} is not on the agents' PATH: agents cannot open {kind.changes} on "
+            f"{server.address}; install {kind.tool}{newer}"
+        )
+    if found.too_old:
+        return (
+            f"{kind.tool} {found.version} is older than {kind.tool_oldest}, which LADO needs "
+            f"to sign it in to {server.address}; update {kind.tool}"
+        )
+    return None
+
+
 def gh_without_certificate(servers: Sequence[state.GitServer]) -> list[str]:
     """What an agent's launch and lado doctor say of each GitHub server of `servers` with a
     certificate: `gh` reads no authority per host, and one for the whole agent

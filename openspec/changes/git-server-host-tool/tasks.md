@@ -13,7 +13,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-19-git-server-h
 
 ## 3. The tool and the line
 
-- [ ] 3.1 `tool_state`, `tool_line`, `tool_warning`: the five lines and the warnings word for
+- [x] 3.1 `tool_state`, `tool_line`, `tool_warning`: the five lines and the warnings word for
   word (D4, D6). Check: `tests/test_git_servers.py`.
 
 ## 4. The launch

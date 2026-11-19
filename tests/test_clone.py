@@ -726,6 +726,84 @@ def test_a_failure_with_no_lado_db_makes_none(lado_home):
     assert not (lado_home / "lado.db").exists()
 
 
+# LADO's container has no ssh: an ssh failure there points at Settings → Git servers.
+
+SSH_LINES = [KIND_LINES[0][0], KIND_LINES[1][0]]
+NO_SSH = "LADO's container has no ssh: clone by the repository's https address"
+
+
+@pytest.fixture
+def in_container(monkeypatch):
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+
+
+@pytest.mark.parametrize("stderr", SSH_LINES)
+@pytest.mark.parametrize(
+    "url", ["git@github.com:acme/app.git", "ssh://git@github.com:22/acme/app.git"]
+)
+def test_in_the_container_an_unsaved_ssh_host_gets_the_add_way(in_container, url, stderr):
+    _git_server()  # another host's
+    error = clone.failure("clone", url, stderr)
+    assert str(error).startswith(
+        f"cannot clone {url}: LADO's container has no ssh key for github.com ("
+    )
+    assert error.hint == ADD_GITHUB
+    assert error.server == clone.ServerWay(
+        "add",
+        "github.com",
+        "https://github.com",
+        "Add github.com as a git server with a token: its git@ addresses then go over https too.",
+    )
+
+
+@pytest.mark.parametrize("stderr", SSH_LINES)
+@pytest.mark.parametrize(
+    "url",
+    [
+        "ssh://git@git.example:2222/team/app.git",
+        "alice@github.com:acme/app.git",
+        "ssh://github.com/acme/app.git",  # no user: ssh takes the local one
+        "git@gitlab.corp.ru:team/app.git",  # saved, yet ssh ran
+    ],
+)
+def test_in_the_container_another_ssh_address_asks_for_https(in_container, url, stderr):
+    _git_server()
+    error = clone.failure("list", url, stderr)
+    assert str(error).startswith(f"cannot read {url}: {NO_SSH} (")
+    assert (error.hint, error.server) == (None, None)
+
+
+def test_in_the_container_a_kits_ssh_failure_names_the_git_server(in_container):
+    assert clone.explain("git@github.com:ladohq/kit-epic.git", KIND_LINES[0][0]) == (
+        "LADO's container has no ssh key for github.com (fatal: Could not read from remote "
+        "repository.). Add it as a git server with a token: lado git-server add "
+        "https://github.com --token"
+    )
+
+
+def test_in_the_container_an_ssh_failure_makes_no_lado_db(in_container, lado_home):
+    error = clone.failure("list", "git@github.com:acme/app.git", KIND_LINES[0][0])
+    assert error.server is not None
+    assert not (lado_home / "lado.db").exists()
+
+
+def test_in_the_container_lado_db_at_another_schema_asks_for_https(in_container, lado_home):
+    import agent_helpers
+
+    agent_helpers.previous_schema()
+    error = clone.failure("list", "git@github.com:acme/app.git", KIND_LINES[0][0])
+    assert NO_SSH in str(error)
+    assert (error.hint, error.server) == (None, None)
+
+
+@pytest.mark.parametrize("flag", ["", "0"])
+def test_outside_the_container_the_ssh_hints_stay(monkeypatch, flag):
+    monkeypatch.setenv("LADO_CONTAINER", flag)
+    error = clone.failure("list", "git@github.com:acme/app.git", KIND_LINES[0][0])
+    assert "github.com refused this machine's ssh key (" in str(error)
+    assert error.server is None
+
+
 def test_no_git(tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", str(tmp_path))
     with pytest.raises(clone.CloneError) as refused:

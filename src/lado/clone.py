@@ -6,7 +6,8 @@ UI server's clone jobs (`server/clones.py`) both call it, and print only what it
 LADO uses only the access git already has on this machine (ssh keys, a credential helper,
 the saved git servers, github.com's included, variables of the outside folder or, for a
 clone into a project, of the project: lado.agent_env.for_git): its git calls run with no
-terminal and no prompt, so a missing credential is a failure, never a wait. The kinds of a
+terminal and no prompt, so a missing credential is a failure, never a wait. LADO's
+container has no ssh: there an ssh failure points at Settings → Git servers. The kinds of a
 failure here also tell those of LADO's git for kits (`explain`, lado.gitcache). A URL
 reaches a text only through `runtime.public_remote`."""
 
@@ -26,7 +27,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from lado import agent_env, git_servers, gitcache, project_secrets, projects, runtime, state
+from lado import (
+    agent_env,
+    git_servers,
+    gitcache,
+    project_secrets,
+    projects,
+    runtime,
+    state,
+    update,
+)
 
 URL = re.compile(r"(https?|ssh|git|file)://(.+)", re.IGNORECASE)
 # user@host:path, git's scp form; a bare host:path would take a folder with a colon.
@@ -404,6 +414,42 @@ def explain(url: str, stderr: str) -> str:
     return text + (f". {hint.line()}" if hint else "")
 
 
+SSH_KINDS = ("ssh_denied", "host_key")
+
+
+def _container_ssh(address: Address) -> tuple[str, runtime.Hint | None, ServerWay | None]:
+    """An ssh failure's reason, hint and way out in LADO's container, which has no ssh: an
+    address a saved server would rewrite to https (`git@<host>`, port 22) of a host no
+    server has, to add; any other ssh address, to clone over https. Servers not known (a
+    lado.db at another schema) are taken as the host's."""
+    host = address.host
+    servers = _saved_servers()
+    if (
+        address.user == "git"
+        and address.port in (None, 22)
+        and servers is not None
+        and not any(urllib.parse.urlsplit(s.address).hostname == host for s in servers)
+    ):
+        try:
+            at = git_servers.address(f"https://{host}")
+        except git_servers.BadAddress:
+            at = None
+        if at is not None:
+            hint = runtime.Hint(
+                "Add it as a git server with a token:", f"{git_servers.ADD} {at.root} --token"
+            )
+            page = (
+                f"Add {at.key} as a git server with a token: its git@ addresses then go "
+                "over https too."
+            )
+            return (
+                f"LADO's container has no ssh key for {host}",
+                hint,
+                ServerWay("add", at.key, at.root, page),
+            )
+    return "LADO's container has no ssh: clone by the repository's https address", None, None
+
+
 def _told(
     url: str, stderr: str, branch: str | None
 ) -> tuple[str, str, runtime.Hint | None, ServerWay | None]:
@@ -413,6 +459,9 @@ def _told(
     if kind == GIT_FAILED:
         return kind, line, None, None
     address = Address.parse(url)
+    if kind in SSH_KINDS and address.scheme == "ssh" and update.in_container():
+        reason, hint, server = _container_ssh(address)
+        return kind, f"{reason} ({line})", hint, server
     servers = _saved_servers() if kind in ACCESS_KINDS else None
     if servers is not None and (way := _server_way(kind, url, address, servers)):
         reason, hint, server = way

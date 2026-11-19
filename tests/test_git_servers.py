@@ -2151,6 +2151,24 @@ def test_the_tool_and_its_version(tmp_path, kind, script, state):
     assert (found.found, found.version, found.too_old) == state
 
 
+@pytest.mark.parametrize("kind", [GITLAB, GITHUB])
+def test_the_version_is_asked_with_a_config_folder_of_its_own(tmp_path, kind):
+    # glab writes into its configuration at any call, --version too: never the human's.
+    human = tmp_path / "human-config"
+    script = (
+        f'echo "${{{kind.config_variable}:-none}}" > "{tmp_path}/used"; '
+        f'echo x >> "${{{kind.config_variable}:-{human}}}/config.yml"; '
+        "echo 'tool 9.9.9'"
+    )
+    env = _tool(tmp_path, kind.tool, script) | {kind.config_variable: str(human)}
+    found = git_servers.tool_state(kind, env)
+    assert found.version == "9.9.9"
+    used = (tmp_path / "used").read_text().strip()
+    assert used not in ("none", str(human))
+    assert not os.path.exists(used)  # a folder of the call's alone, gone after it
+    assert not human.exists()
+
+
 def test_no_tool_on_the_path(tmp_path):
     found = git_servers.tool_state(GITLAB, {"PATH": str(tmp_path)})
     assert (found.found, found.version, found.too_old) == (False, "", False)

@@ -57,6 +57,7 @@ KIND = GitLab(
     login_field="username",
     git_user="oauth2",
     tool="glab",
+    config_variable="GLAB_CONFIG_DIR",
     changes="merge requests",
     token_path="/-/user_settings/personal_access_tokens",
     scopes="scope api",

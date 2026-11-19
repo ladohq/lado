@@ -24,6 +24,7 @@ class Kind:
     login_field: str  # the user's name in that path's answer
     git_user: str  # the user name git sends with the token
     tool: str  # the server's own command-line tool
+    config_variable: str  # the variable that names that tool's configuration folder
     changes: str  # what that tool opens, its word for a change request
     token_path: str  # the page where the human makes a token, under the root
     scopes: str  # what a token needs, in words

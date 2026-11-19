@@ -1005,22 +1005,26 @@ def _numbers(version: str) -> tuple[int, ...]:
 
 def tool_state(kind: Kind, env: Mapping[str, str]) -> ToolState:
     """`kind`'s tool on `env`'s PATH, by `<tool> --version` and its first x.y.z, cut at
-    TOOL_TIMEOUT. A version it cannot read (no x.y.z, a failure, no answer in time) counts
-    as fit: the tool is there, and a guess would be a false alarm."""
+    TOOL_TIMEOUT, with an empty configuration folder of the call's own (glab writes into
+    its configuration at any call: never the human's). A version it cannot read (no x.y.z,
+    a failure, no answer in time) counts as fit: the tool is there, and a guess would be a
+    false alarm."""
     import shutil
+    import tempfile
 
     path = shutil.which(kind.tool, path=env.get("PATH", os.defpath))
     if path is None:
         return ToolState(False, "", False)
     try:
-        result = subprocess.run(
-            [path, "--version"],
-            env=dict(env),
-            capture_output=True,
-            text=True,
-            timeout=TOOL_TIMEOUT,
-            check=False,
-        )
+        with tempfile.TemporaryDirectory(prefix="lado-tool-") as folder:
+            result = subprocess.run(
+                [path, "--version"],
+                env={**env, kind.config_variable: folder},
+                capture_output=True,
+                text=True,
+                timeout=TOOL_TIMEOUT,
+                check=False,
+            )
     except (OSError, subprocess.TimeoutExpired):
         return ToolState(True, "", False)
     lines = result.stdout.strip().splitlines()

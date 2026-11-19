@@ -738,8 +738,8 @@ def check(at: Address, save_login: bool = True) -> Check:
             page = f"Works: {kind.title}, signed in as {login}."
         text = f"Works: {kind.title}, signed in as {login}{rights}"
         if tool:  # git works: the outcome stays ok, the lines say what the tool cannot
-            text = f"{text[:-1]}; {tool_cannot(kind, tool)}."
-            page = f"{page[:-1]}; {tool_cannot(kind, tool)}."
+            cannot = f"; {tool_cannot(kind, tool)}."
+            text, page = text[:-1] + cannot, page[:-1] + cannot
         return Check("ok", kind, login, (), told, was, text, "", page, tool_missing=tool)
 
     def failed(outcome: str, text: str, hint: str, page: str, page_hint: str = "") -> Check:

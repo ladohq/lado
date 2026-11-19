@@ -7,7 +7,7 @@
 
 ## 2. The test
 
-- [ ] 2.1 The phone test presses `Remove default` relative to the button, 5 px past its drawn
+- [x] 2.1 The phone test presses `Remove default` relative to the button, 5 px past its drawn
   right edge, instead of page coordinates (D2). Check: `uv run pytest -m ui
   tests/ui/test_launch.py -k 44_px_target`, run 10 times in a row (`--count` is not installed:
   a shell loop) and once with `-n 2` beside the rest of the file.

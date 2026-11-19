@@ -252,6 +252,13 @@ test("none saved: one line and + Add server; the Servers tip opens and keeps the
 const outcomes: [Partial<GitServerChecked>, string, string | null, string | null, string | null][] = [
   [{ outcome: "ok", message: "Works: signed in as a.sample, may clone and push." }, "ok", null, null, null],
   [
+    { outcome: "ok", message: "Works: signed in as a.sample, may clone and push; glab cannot open merge requests: the token lacks api." },
+    "ok",
+    null,
+    null,
+    null,
+  ],
+  [
     { outcome: "token_refused", message: "GitLab refused the token: it expired or was revoked." },
     "bad",
     null,
@@ -404,6 +411,12 @@ test("another user: the line says who it was before, with its tip", async () => 
   expect(screen.getByText("⚠ Before, it was a.sample.", { exact: false })).toBeTruthy();
   fireEvent.click(button("About the other user"));
   expect(screen.getByText(/now go as b\.sample/)).toBeTruthy();
+});
+
+test("Replace token with a token for git alone says what glab cannot, in the ok line", async () => {
+  await replaceWith(CORP, () => json(added(CORP, { tool_cannot: "glab cannot open merge requests: the token lacks api" })));
+  const line = await screen.findByText("Token replaced: signed in as a.sample; glab cannot open merge requests: the token lacks api.");
+  expect(line.closest(".gx-result")!.className).toBe("gx-result ok");
 });
 
 test("a token without the push right is saved with a warning and Replace token", async () => {
@@ -667,6 +680,25 @@ test("no answer asks for the kind; Add without a check saves it as not checked",
   expect(sent).toEqual({ address: "git.internal.example", token: TOKEN, kind: "gitlab" });
   await waitFor(() => expect(document.activeElement).toBe(button(at)));
   expect(button(at).getAttribute("aria-expanded")).toBe("true");
+});
+
+test.each([
+  [null, "Saved: GitLab, signed in as a.sample."],
+  ["glab cannot open merge requests: the token lacks api", "Saved: GitLab, signed in as a.sample; glab cannot open merge requests: the token lacks api."],
+])("Add server with tool_cannot %o says %o, an ok line", async (cannot, text) => {
+  fake.checks["gitlab.corp.example"] = looksLike(CORP.address, "gitlab");
+  fake.add = () => {
+    fake.servers = [CORP];
+    return json(added(CORP, { tool_cannot: cannot }));
+  };
+  await mount();
+  press("Add server");
+  type(addressField(), "gitlab.corp.example");
+  type(tokenField(), TOKEN);
+  await waitFor(() => expect((formAdd() as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(formAdd());
+  const line = await screen.findByText(text);
+  expect(line.closest(".gx-result")!.className).toBe("gx-result ok");
 });
 
 test("a server that stops answering at Add offers Try again and the kind, the token kept", async () => {

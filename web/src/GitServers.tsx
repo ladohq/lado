@@ -129,6 +129,12 @@ function checkLine(host: string, found: GitServerChecked): Result {
   }
 }
 
+// A saved token's sentence, ended with what the kind's tool cannot do with it when the server
+// says so (git works: the line stays ok).
+function withTool(sentence: string, done: GitServerAdded): string {
+  return done.tool_cannot ? `${sentence}; ${done.tool_cannot}.` : `${sentence}.`;
+}
+
 // The closed row's second line: a failed check of this visit first, then what is wrong.
 function secondLine(server: GitServerInfo, failed: string | undefined): { text: string; tone: string } {
   if (failed) return { text: failed, tone: failed.startsWith("✕") ? "bad" : "warn" };
@@ -265,7 +271,7 @@ export function GitServersPage() {
         host: server.host,
         place: "signin",
         tone: "ok",
-        text: `Token replaced: signed in as ${now}.`,
+        text: withTool(`Token replaced: signed in as ${now}`, done),
         then:
           before && before !== now
             ? {
@@ -702,7 +708,7 @@ export function GitServersPage() {
                             place: "top",
                             tone: "ok",
                             text: info.login
-                              ? `Saved: ${info.kind_title}, signed in as ${info.login}.`
+                              ? withTool(`Saved: ${info.kind_title}, signed in as ${info.login}`, done)
                               : `Saved without a check as ${info.kind_title}.`,
                           },
                     );

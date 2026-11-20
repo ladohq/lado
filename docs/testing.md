@@ -176,7 +176,10 @@ the onboarding and the bypass permissions disclaimer done but not the repo's tru
 LADO records (the test checks the entry and the start's line); Codex: a
 `model_provider` at the endpoint (`wire_api = "responses"`, a fake `env_key`); OpenCode and
 Kilo: a global config with an OpenAI-compatible provider at it, the model given as
-`--model`. One test, per installed provider (a missing CLI skips): the session starts and
+`--model`. The fixture `smoke_provider` gives a CLI's list of models 60 s
+(`base.MODEL_LIST_TIMEOUT`), not the users' 15 s: in a fresh home `kilo models` fetches its
+list from the network, on a runner shared by three workers (LAD-295); a list that never
+answers still fails the test with LADO's warning. One test, per installed provider (a missing CLI skips): the session starts and
 the supervisor's session-start hook makes it idle, its CLI lists LADO's MCP tools
 (`mcp_ready`), the human's message with a body is delivered by its own hook, its turn ends
 on the endpoint's error (`turn_error`), a worker's task is delivered, and `lado stop` leaves

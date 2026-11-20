@@ -23,6 +23,7 @@ from fake_endpoint import Endpoint
 from real_clis import CLASSES, LOGIN_VARIABLES, isolated, with_model  # noqa: F401 (a fixture)
 
 from lado import providers
+from lado.providers import base
 
 KEY = "smoke-fake-key-0123456789abcdefghij"  # no account's key: the endpoint takes none
 MODEL = "smoke-model"  # the model the endpoint "serves" to OpenCode, Kilo and Codex
@@ -72,6 +73,9 @@ def smoke_provider(request, monkeypatch, tmp_path, fake_endpoint, codex_home) ->
         monkeypatch.setenv(xdg, str(home / folder))
     for key in LOGIN_VARIABLES:
         monkeypatch.delenv(key, raising=False)
+    # The users' 15 s is too tight for a CLI's list command in a fresh home beside two other
+    # workers on a CI runner (LAD-295); a list that never answers still fails a test.
+    monkeypatch.setattr(base, "MODEL_LIST_TIMEOUT", 60)
     if name == "claude":
         config = tmp_path / "claude-config"
         config.mkdir()

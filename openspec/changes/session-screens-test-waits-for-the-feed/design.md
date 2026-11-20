@@ -37,6 +37,25 @@ with the URL, the status's word as it reads then, and one line per request, for 
 So the next occurrence tells the browser's side (nothing sent) from the server's (sent, no
 headers) and from a refused stream (an answer of 401 or 503). No product code changes.
 
+### D4. A slow `live` leaves the record as a warning
+
+When `live` comes, but more than 2 s after the `goto` (`SLOW_LIVE_S = 2.0` beside the
+helper), the helper calls `warnings.warn(..., UserWarning, stacklevel=2)` with the same
+record and the time `live` took, for example:
+
+    the stream opened 4.82 s after going to http://127.0.0.1:41045/sessions/ui-a6/flows
+      /api/events sent at 0.31 s, answered 200 at 4.80 s
+
+and the test goes on. A `print` would be lost: pytest shows a passed test's output only with
+`-s` or `-rP`, which CI does not pass, while its warnings summary is printed after every run,
+passed or not (the failed run's log has one), with the test's name. `stacklevel=2` points
+the warning at the test's line. The project sets no `filterwarnings = error`, so the
+warning never fails a test. 2 s is five times the slowest open measured under load (0.4 s)
+and well under the bound, so a normal run leaves no warning and a stall short of 15 s does.
+
+Rejected: a `print` (hidden on a pass, above); `logging` (pytest shows captured logs only for
+a failed test too).
+
 Rejected: the server's access log on in the UI tests (`run.py`, `access_log=False`). It
 needs a test-only switch in the server, and the browser's record already tells the same.
 
@@ -52,8 +71,10 @@ calls. The other UI tests are out of scope (proposal).
 - No new test: the change is a test's own wait. Checked by running the changed test (all 8
   of its parameters) 10 times in a row and once with `-n 2` beside the rest of its file,
   and once by hand with the stream blocked (`page.route("**/api/events**", lambda r: r.abort())`
-  in a throwaway copy) to see the failure's text name the failed request. The throwaway copy
-  is not committed.
+  in a throwaway copy) to see the failure's text name the failed request, and once with the
+  stream delayed past 2 s (`page.route` that waits 3 s before `route.continue_()`) to see the
+  test pass with the warning in pytest's warnings summary. The throwaway copy is not
+  committed.
 - Regression: `make lint`, `uv run pytest -m ui -n auto tests/ui/test_artifacts_tab.py
   tests/ui/test_main_screen.py`; `make test` is not affected (no unit test imports these
   files) but runs as the settings' normal round.

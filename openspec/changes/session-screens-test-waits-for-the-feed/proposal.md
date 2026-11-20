@@ -35,8 +35,11 @@ Options weighed:
   to read `live`, up to 15 s (the bound `test_connection.py` already uses for a stream
   coming back). While it waits it records the browser's requests of `/api/events` (sent,
   headers answered with their status, or failed with the reason), and a timeout fails with
-  that record. Long-term cost: one helper of the UI tests; a stall longer than 15 s fails
-  again, but with the side it happened on, which is what a cause task needs.
+  that record. A `live` that comes but takes more than 2 s passes and leaves the same
+  record as a warning in the run's log (the human's addition at `design_ok`), so a stall
+  shorter than the bound is seen too. Long-term cost: one helper of the UI tests; a stall
+  longer than 15 s fails again, but with the side it happened on, which is what a cause
+  task needs.
 - B: the session's pages load their lists over plain HTTP at once, not only on the feed's
   `reset`, so a slow stream leaves a page showing the session. A product change visible to
   the human, against `live.ts`'s one load path, with every page to check; not a fix of a
@@ -49,7 +52,9 @@ Options weighed:
 - **A helper `goto_live(page, url)`** in `tests/ui/test_main_screen.py`, next to `log_in`:
   it goes to the URL and waits up to 15 s for the banner's status to read `live`. While it
   waits it records each request of `/api/events` the page makes and what came of it; on a
-  timeout it fails with the record and the status's word.
+  timeout it fails with the record and the status's word. When `live` comes after more than
+  2 s, the test goes on and the helper issues a `UserWarning` with the same record and the
+  time `live` took, which pytest's warnings summary prints in the CI log of a passed run.
 - **The test `test_the_session_screens_changed_hold_at_every_width`** goes to each of its
   four pages (the session's Flows and Artifacts, the empty session's Flows and Artifacts)
   through `goto_live`. Its checks stay as they are.

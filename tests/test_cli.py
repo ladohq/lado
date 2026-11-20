@@ -247,6 +247,7 @@ def test_start_help_lists_each_providers_permission_modes(capsys):
     assert "kilo: default, acceptEdits, bypassPermissions, plan" in out
     assert "opencode: default, acceptEdits, bypassPermissions, plan" in out
     assert "claude: " in out and "dontAsk" in out
+    assert "manual" not in out  # Claude Code's other name of default (LAD-287)
 
 
 def test_start_passes_the_model_through(repo, fake_tmux, capsys):

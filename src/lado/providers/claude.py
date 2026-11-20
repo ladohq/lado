@@ -294,12 +294,13 @@ class ClaudeProvider(base.Provider):
         "acceptEdits",
         "auto",
         BYPASS,
-        "manual",
         "dontAsk",
         "plan",
     )
-    # Claude Code 2.1.295's --help lists auto and manual without saying what they do: they
-    # keep their values as their names until their behaviour is checked.
+    # Claude Code 2.1.295 turns "manual" into "default" before it sets the mode.
+    permission_mode_aliases = {"manual": "default"}
+    # The words of each mode as Claude Code 2.1.295 behaves: auto has Claude check each tool
+    # call for risk, run the ones it judges low-risk and block the rest.
     permission_mode_words = {
         "default": base.ModeWords(
             "Ask before changes (recommended)",
@@ -311,6 +312,12 @@ class ClaudeProvider(base.Provider):
         ),
         "acceptEdits": base.ModeWords(
             "Edit files without asking", "Edits without asking", "Still asks before commands."
+        ),
+        "auto": base.ModeWords(
+            "Let Claude judge the risk",
+            "Claude judges the risk",
+            "Checks each action for risk, runs what it judges safe and stops the rest. Needs "
+            "a plan and model with Claude Code's auto mode.",
         ),
         "dontAsk": base.ModeWords(
             "Only what your settings allow",

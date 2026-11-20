@@ -15,6 +15,6 @@
 
 - [x] 2.1 `make lint` passes (AC-4).
 - [x] 2.2 `openspec validate codex-model-smoke-waits-for-list --strict` passes.
-- [ ] 2.3 On the pull request, the `smoke macos-latest codex` cell is green, then rerun alone 3
+- [x] 2.3 On the pull request, the `smoke macos-latest codex` cell is green, then rerun alone 3
   times (`gh run rerun <run id> --job <job id>`), each green (AC-4). The build report names the
   runs.

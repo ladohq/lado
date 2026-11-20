@@ -553,6 +553,19 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
+## A local smoke of kilo or opencode is red when the shell has `OPENROUTER_API_KEY`
+
+Size: S. Why here: a developer whose shell holds a provider's key, as LADO's container does,
+sees a red `make test-smoke` with no cause in its work, and must stop to prove it.
+
+`tests/smoke/test_smoke.py::test_each_clis_login_is_read_from_its_own_command[kilo]` fails
+locally (`assert 'yes' == 'no'`; LADO finds `1 variable`, `OPENROUTER_API_KEY`) and passes
+with `env -u OPENROUTER_API_KEY`: `smoke_provider` clears only `real_clis.LOGIN_VARIABLES`
+(Anthropic's and OpenAI's), not the other provider keys that Kilo and OpenCode read. CI has
+no such variable. Wanted: the smoke's fresh home clears every key variable the CLIs read
+for a login, with that test green in a shell that has one.
+Found: 2026-11-20, branch lado/lad-295/task-lad-295 (LAD-295).
+
 ## A LADO agent's `make test` is red on a temp-dir test: `LADO_LAUNCH_VARS` leaks in
 
 Size: S. Why here: every developer agent that runs the unit tests inside LADO sees one red

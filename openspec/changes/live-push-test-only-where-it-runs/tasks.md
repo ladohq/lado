@@ -17,7 +17,7 @@
 
 ## 3. Regression run
 
-- [ ] 3.1 `make lint`, `make test`, `openspec validate live-push-test-only-where-it-runs
+- [x] 3.1 `make lint`, `make test`, `openspec validate live-push-test-only-where-it-runs
   --strict`, the trial archive; `scripts/smoke_ci.py` and `tests/test_smoke_ci.py` unchanged
   (`git diff origin/main --stat`) (AC-3); CI of the pull request green (AC-4). The live run on
   main after the merge is the supervisor's (AC-5).

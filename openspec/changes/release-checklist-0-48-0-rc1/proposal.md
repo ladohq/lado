@@ -36,8 +36,9 @@ Facts the section rests on (checked on `60fcc2e0`, main):
   `LADO took your GitHub login (<source>) into Settings → Git servers: github.com, signed in
   as <login>.` (`github_takeover.py`); `lado doctor` then has `GitHub login: taken over from
   <source> on <day>` and, while the old login is still set, `GitHub login outside LADO:
-  <names> set but not used: github.com takes its token from Settings → Git servers`
-  (`doctor.py`).
+  <names> set but not used: github.com takes its token from Settings → Git servers` for a
+  variable such as `GH_TOKEN`, or `GitHub login outside LADO: the GitHub CLI's own login is not
+  used by agents` for gh's login (`doctor.py`).
 - Going back: `lado update 0.47.0` warns `lado: WARNING: LADO 0.47.0 knows lado.db up to schema
   40; lado.db has schema 43.` with `Everything LADO recorded since then is lost: sessions, runs,
   gates, messages, projects, model servers, models, default models, git servers.` and, when
@@ -113,11 +114,13 @@ text, the line says what to look for.
     /Users/<you>/.lado/backups/lado.db.schema-40`, and `Kept a copy of LADO 0.47.0's
     database: /Users/<you>/.lado-rc/lado.db.0.47.0 (for rollback)`.
 - [ ] **Your GitHub login is taken into Settings once.** The update's resumed sessions, or the first `lado` command after it.
-  - `LADO took your GitHub login (<GH_TOKEN of your shell, or gh's login>) into Settings →
-    Git servers: github.com, signed in as <you>.`; Settings → Git servers shows github.com.
+  - `LADO took your GitHub login (<source>) into Settings → Git servers: github.com, signed
+    in as <you>.`, the source `GH_TOKEN of your shell` or `the GitHub CLI's login`; Settings
+    → Git servers shows github.com.
   - `lado doctor`: `GitHub login: taken over from <source> on <today>`, and, while that
-    login is still set, `GitHub login outside LADO: <source> set but not used: github.com
-    takes its token from Settings → Git servers`.
+    login is still set: for `GH_TOKEN`, `GitHub login outside LADO: GH_TOKEN of your shell
+    set but not used: github.com takes its token from Settings → Git servers`; for gh's
+    login, `GitHub login outside LADO: the GitHub CLI's own login is not used by agents`.
   - A resumed agent on a github.com repository pushes and runs `gh` as before.
 
 ### New session's fixes

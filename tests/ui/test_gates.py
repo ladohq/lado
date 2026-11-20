@@ -657,7 +657,13 @@ def test_the_human_answers_a_gate_on_its_tab(page: Page, server, repo, shot):
     expect(waits).to_have_count(0)
     run = state.get_run(session, "ship/x")
     assert (run.state, run.note) == ("plan", "rejected: split the form first")
-    step = [m for m in state.list_messages(session) if m.recipient == "supervisor"][-1]
+    # The step by its sender and summary: a reminder of LADO's may follow it.
+    step = next(
+        m
+        for m in reversed(state.list_messages(session))
+        if (m.sender, m.recipient) == (state.LADO, "supervisor")
+        and m.summary == "flow ship/x: step plan"
+    )
     assert "Note from the previous step: rejected: split the form first" in step.body
     # The comment once: under the human's move, on the human's ground; the folded card has
     # its chip by the move's direction, "by you" and a chevron.

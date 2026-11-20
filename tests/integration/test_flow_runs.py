@@ -129,17 +129,23 @@ def run_state(name: str) -> state.Run:
     return state.get_run(SESSION, name)
 
 
+def step_to(agent: str, summary: str = "flow ") -> state.Message:
+    """The newest message from lado to `agent` whose summary starts with `summary`: a step,
+    picked by its sender and summary, as LADO's reminder of an unread message (a summary
+    `you have not read …`, also from lado) may come after it."""
+    return next(
+        m
+        for m in reversed(state.list_messages(SESSION))
+        if m.recipient == agent and m.sender == state.LADO and m.summary.startswith(summary)
+    )
+
+
 def read_step(agent: str = "worker") -> str:
-    """Wait until the worker read its step (its latest message from lado) and is idle again,
-    past the moment its session start makes it idle; returns the step's text."""
-
-    def step() -> state.Message:
-        return [m for m in state.list_messages(SESSION) if m.recipient == agent][-1]
-
-    wait_for(lambda: step().state == state.READ, f"{agent} to read its step")
+    """Wait until the worker read its step (its latest from lado) and is idle again, past the
+    moment its session start makes it idle; returns the step's text."""
+    wait_for(lambda: step_to(agent).state == state.READ, f"{agent} to read its step")
     wait_status(agent, state.IDLE)
-    assert step().sender == state.LADO
-    return step().body
+    return step_to(agent).body
 
 
 def test_a_run_goes_from_worker_to_supervisor_to_its_end(repo, flow_kit):
@@ -301,8 +307,7 @@ def test_the_humans_answer_moves_the_run_on_to_the_next_agent(repo, flow_kit):
     result = lado_cli("answer", SESSION, "1", "reject", "-m", "add a test")
     assert result.returncode == 0, result.stderr
     assert result.stdout == f"gate #1: reject. {name}: check -> build (→ worker)\n"
-    step = [m for m in state.list_messages(SESSION) if m.recipient == "worker"][-1]
-    assert step.summary == f"flow {name}: step build"
+    step = step_to("worker", f"flow {name}: step build")
     assert "Note from the previous step: rejected: add a test" in step.body
     wait_for(lambda: got("worker", f"[from lado] flow {name}: step build"), "the step")
     told = f"[from lado] flow {name}: human answered reject at check"
@@ -319,8 +324,7 @@ def test_the_humans_files_with_a_gates_answer_reach_the_next_steps_worker(repo, 
     log = artifacts.upload(SESSION, "server.log", b"boom at line 3\n").full_name
     result = runs.answer_text(SESSION, "1", "reject", "see the log", attached=[log])
     assert result == f"gate #1: reject. {name}: check -> build (→ worker)"
-    step = [m for m in state.list_messages(SESSION) if m.recipient == "worker"][-1]
-    assert step.summary == f"flow {name}: step build"
+    step = step_to("worker", f"flow {name}: step build")
     assert f"Note from the previous step: rejected: see the log\nArtifacts: /{log}" in step.body
     wait_for(lambda: got("worker", f"[from lado] flow {name}: step build"), "the step")
     wait_status("worker", state.IDLE)
@@ -351,7 +355,7 @@ def test_a_step_gets_the_artifact_it_reads_after_a_gate_and_after_flow_set(repo,
     result = lado_cli("flow-set", SESSION, name, "build", "--reason", "once more")
     assert result.returncode == 0, result.stderr
     wait_for(lambda: got("worker", f"[from lado] flow {name}: step build"), "the step again")
-    step = [m for m in state.list_messages(SESSION) if m.recipient == "worker"][-1]
+    step = step_to("worker", f"flow {name}: step build")
     assert design in step.body
     assert "Note from the previous step: set by the human: once more" in step.body
 

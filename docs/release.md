@@ -188,9 +188,14 @@ final the copy in `~/.lado-rc/` was taken from, and, when the RC moved the datab
 schema, put that copy back (what was done on the RC is then lost: it says so). It puts
 the copy into `~/.lado/backups/lado.db.schema-<N>` and leaves the restore to the RC's own
 `lado update <final>`, which warns, asks and restores, the way users go back too. Then it
-starts again the sessions the copy has, and the UI, on the final. Read `lado update
-<final>`'s warning before you answer `y`: it names what going back loses. Go back last,
-after every other check of the RC.
+starts again the sessions the copy has, and the UI, on the final. Read both warnings
+before you answer: the plan of `rollback`, printed before its `Roll back? [y/N]`, names the
+sessions it will not start again, on the line `- not started again, not in the copy:
+<names>`; `lado update <final>`'s warning, printed before its own question, names what the
+database loses (`Everything LADO recorded since then is lost: …`). The update's own line
+`Sessions not in that copy are not started again:` does not show here: `rollback` has
+stopped every session before the update runs, so the update finds none running. Go back
+last, after every other check of the RC.
 
 Once per RC that moved the schema, also the user's own way back, on a test home (a
 temp `LADO_HOME` and `LADO_TMUX_SOCKET`, never yours): `lado update <the final before>`
@@ -425,7 +430,11 @@ What goes in it:
   real CLI's login;
 - the steps of the release that the automatic tests do not cover, with the exact lines the
   code prints;
-- what going back to the last final loses, when the release adds something it loses;
+- what going back to the last final loses, when the release adds something it loses; an
+  item for the RC's `rollback` (4.4) quotes the lines that show there: the plan's `- not
+  started again, not in the copy: <names>` for the sessions, `lado update <final>`'s
+  warning for the data, never the update's `Sessions not in that copy are not started
+  again:`, which only the user's own way back prints;
 - an earlier version's check again only when this release touches what it checked: a
   check does not stay in the list because a release once needed it.
 

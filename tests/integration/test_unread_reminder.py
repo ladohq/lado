@@ -49,7 +49,12 @@ def worker(repo):
 def got(summary: str, body: str = "Reply with the single word ACK") -> state.Message:
     """The supervisor's message to w1, once w1 got it and its turn is over."""
     runtime.send_message(SESSION, "supervisor", "w1", summary, body)
-    message = state.list_messages(SESSION)[-1]
+    # By its sender and summary: w1's reminder of it may follow it before this line runs.
+    message = next(
+        m
+        for m in reversed(state.list_messages(SESSION))
+        if m.sender == "supervisor" and m.summary == summary
+    )
     line = runtime.format_message(message)
     wait_for(lambda: any(line in text for text in inputs() if isinstance(text, str)), "the line")
     return message

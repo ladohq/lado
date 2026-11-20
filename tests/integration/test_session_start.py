@@ -63,7 +63,12 @@ def test_a_resumed_session_gets_the_humans_message_after_lados(repo):
     try:
         wait_for(lambda: delivered("s"), "the human's first message delivered", "s")
         [message] = humans("s")
-        resumed = [m for m in state.list_messages("s") if m.sender == state.LADO][-1]
+        # By its summary: LADO's reminder of the human's unread text may come after it.
+        resumed = next(
+            m
+            for m in reversed(state.list_messages("s"))
+            if m.sender == state.LADO and m.summary.startswith("session resumed")
+        )
         assert resumed.summary == "session resumed: 0 open runs"
         assert resumed.state == state.DELIVERED
         first = next(t for t in inputs("s") if "session resumed" in t).splitlines()

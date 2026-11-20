@@ -832,12 +832,21 @@ def test_rollback_hands_the_copy_to_lado_update_and_resumes(recorder, homes, on_
     assert "[ok  ] session app started on 0.37.1" in out
 
 
-def test_a_session_the_copy_lacks_is_not_started_again(recorder, homes, on_rc, capsys):
+def test_a_session_the_copy_lacks_is_not_started_again(recorder, homes, on_rc, capsys, monkeypatch):
+    """The plan names it before the question: `lado update`, after the stops, names none."""
     (homes.lado / "lado.db").unlink()
     make_db(homes.lado / "lado.db", 27, [("app", "/r/app", None), ("web2", "/r/web2", None)])
     recorder.alive = {"app", "web2"}
+    plans = []
+    monkeypatch.setattr(
+        "builtins.input", lambda prompt: plans.append((capsys.readouterr().out, prompt)) or "y"
+    )
     assert rc.rollback() == 0
-    assert "- not started again, not in the copy: web2\n" in capsys.readouterr().out
+    ((plan, prompt),) = plans
+    assert prompt == "Roll back? [y/N] "
+    assert "- stop your sessions and start them again on 0.37.1: app (/r/app)" in plan
+    assert "- not started again, not in the copy: web2\n" in plan
+    assert recorder.argvs("start") == [[LADO, "start", "/r/app", "--name", "app", "--no-attach"]]
     assert recorder.argvs("start") == [[LADO, "start", "/r/app", "--name", "app", "--no-attach"]]
 
 

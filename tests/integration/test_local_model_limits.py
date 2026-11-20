@@ -35,7 +35,8 @@ def idle() -> None:
 def human_says(text: str) -> state.Message:
     before = len(inputs())
     runtime.write_as_human(SESSION, text)
-    sent = state.list_messages(SESSION)[-1]
+    # By its sender: a reminder of LADO's may follow it before this line runs.
+    sent = next(m for m in reversed(state.list_messages(SESSION)) if m.sender == state.HUMAN)
     agent_helpers.wait_for(lambda: len(inputs()) > before, text, SESSION)
     idle()
     return sent

@@ -3,12 +3,13 @@ the `docker` CLI from the host against an image built already (`make docker`;
 `LADO_TEST_IMAGE`, else lado:local) and skip when Docker does not run or the image is
 missing; CI's cell (scripts/smoke_ci.py container) makes a skip red.
 
-Each test's containers, volumes and compose projects are named with this run's prefix
-(container_helpers.PREFIX) and removed after it, also when it fails; the session's teardown
-fails when one is left. A test that fails in its setup or its call keeps each container it
-started (`docker logs` and LADO's logs) in real_clis.EVIDENCE, as a failed smoke test does:
-a container is registered on the test before anything can fail and removed by a finalizer,
-which runs after the failure's report.
+Each test's containers, volumes, compose projects and image tags are named with this run's
+prefix (container_helpers.PREFIX) and removed after it, also when it fails or the run gets
+SIGTERM or SIGHUP; the session's teardown fails when one is left. What a run killed outright
+left, the next run's start removes (container_runs). A test that fails in its setup or its
+call keeps each container it started (`docker logs` and LADO's logs) in real_clis.EVIDENCE,
+as a failed smoke test does: a container is registered on the test before anything can
+fail and removed by a finalizer, which runs after the failure's report.
 """
 
 import json
@@ -19,6 +20,7 @@ import subprocess
 import time
 
 import agent_helpers
+import container_runs
 import pytest
 import real_clis
 from container_helpers import (
@@ -40,16 +42,24 @@ from lado import state
 
 @pytest.fixture(scope="session", autouse=True)
 def image() -> str:
+    """The image under test, for the whole run: the run's lock of its prefix taken before
+    its first object, what dead runs left reaped, SIGTERM and SIGHUP made Ctrl-C
+    (container_runs); at the end, the run fails when anything of its prefix is left, and
+    keeps its lock file so the next run reaps it."""
     if shutil.which("docker") is None or docker("info", check=False).returncode != 0:
         pytest.skip("docker does not run")
     if docker("image", "inspect", IMAGE, check=False).returncode != 0:
         pytest.skip(f"no image {IMAGE}: run make docker")
-    yield IMAGE
-    left = {
-        kind: docker(*ls, "-q", "--filter", f"name={PREFIX}").stdout.split()
-        for kind, ls in (("containers", ["ps", "-a"]), ("volumes", ["volume", "ls"]))
-    }
-    assert left == {"containers": [], "volumes": []}, f"left behind: {left}"
+    lock = container_runs.RunLock(PREFIX)
+    saved = container_runs.trap_signals()
+    try:
+        container_runs.reap(docker, PREFIX)
+        yield IMAGE
+    finally:
+        container_runs.restore_signals(saved)
+    left = container_runs.left(docker, PREFIX)
+    assert left == {}, f"left behind: {left}"
+    lock.free()
 
 
 def keep(item, started: Container) -> None:

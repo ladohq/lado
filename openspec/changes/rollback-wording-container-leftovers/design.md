@@ -31,9 +31,11 @@ Ctrl-C: `pytest_sessionfinish` tears down every fixture still set up, and the fi
 remove the test's objects. Only the container tests: their objects outlive the process in
 Docker, while every other layer's leftovers are processes that `tests/leftovers.py` reaps
 by `LADO_TEST_PID`. A `docker` call running at that moment gets nothing from the handler
-(it is a child), and `subprocess.run` waits for it: the finalizer then removes what it
-made. The handler is set in `pytest_sessionstart` of the container conftest and restored
-in `pytest_sessionfinish`.
+(it is a child); `subprocess.run` ends it, and the finalizer, registered before the call,
+removes by name whatever it made. The handler is set by the session fixture `image`, after
+its checks that Docker and the image are there, and restored at its teardown: pytest calls
+`pytest_sessionstart` only in the conftests it loads before collection, which a run from
+the root does not include for `tests/container/conftest.py`.
 
 ### D3. The run's lock: one file per prefix in a user's folder outside every checkout
 

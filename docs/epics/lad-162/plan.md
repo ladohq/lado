@@ -1,8 +1,8 @@
 # Plan: Git servers (LAD-162)
 
 ## State
-Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: none (S1–S9 done) · Next: readiness · Open checks: the human's check on the company GitLab, on the release candidate that carries S8; live tests on the release candidate (S6 changed the agents' environment, never run live); 0.48.0's release checklist names what going back loses (S6b: the host's ssh agent returns only with `compose.yaml.bak`, not with the new `compose.yaml` that docs/release.md 4.6 keeps); S7: Apple's git (LibreSSL) and GnuTLS with an intermediate certificate, unchecked; S7's Docker check and "Trust?" on the company GitLab, in the human's check on the RC with S8; S9: the certificate by stdin in Docker (`lado git-server certificate <addr> - < file`), in the same RC check
+Phase: closed 2026-11-20, report: [report.md](report.md) · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
+In work: none (S1–S9 done) · Next: the release 0.48.0 (the human) · Open checks: the human's check on the company GitLab, on the release candidate that carries S8; live tests on the release candidate (S6 changed the agents' environment, never run live); 0.48.0's release checklist names what going back loses (S6b: the host's ssh agent returns only with `compose.yaml.bak`, not with the new `compose.yaml` that docs/release.md 4.6 keeps); S7: Apple's git (LibreSSL) and GnuTLS with an intermediate certificate, unchecked; S7's Docker check and "Trust?" on the company GitLab, in the human's check on the RC with S8; S9: the certificate by stdin in Docker (`lado git-server certificate <addr> - < file`), in the same RC check
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.

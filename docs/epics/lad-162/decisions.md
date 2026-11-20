@@ -52,3 +52,4 @@ S8: design_ok #561 — approved as recommended; review finding (#7568): GITLAB_A
 | 2026-11-19 | S9, #7604 → #7606 | The guide's GitLab rights, the page silent on a token without `api`, classic vs fine-grained GitHub token, the commit author | as the analyst listed; point 2 a separate task (analyst) or fixed in S9 as S8's gap against #7541 (lead) | analyst: a new task; lead: fix here | 1, 3, 4 as recommended; 2 fixed in this task, no new task (human) | the brief's GitLab rights lacked `read_api` (the lead's slip) |
 S9: question #7604 — row above (#7606); design_ok #568 — approved as recommended
 S9: merge_ok #569 — approved as recommended (the recommendation: read the guide first; F1, F2 into Later; the certificate by stdin in Docker into the RC check)
+Close: delivery_ok #571 — approved as recommended (2026-11-20); the epic closed

@@ -141,7 +141,8 @@ Without a slowed network:
   - A row `Let Claude judge the risk` with `Checks each action for risk, runs what it judges
     safe and stops the rest. …`; no row `auto` or `manual`.
   - `lado start <a test repository> --name rc-mode --provider claude --permission-mode
-    manual` starts; the session's head shows `Asks before changes`. Stop it.
+    manual` starts; the session's details under its title show `permissions: default`. Stop
+    it.
 
 On the iPhone in Safari, by LADO's link for the phone:
 
@@ -249,21 +250,20 @@ New:
 Fixed:
 
 11. An open tip or menu follows its button: the phone's check (vitest
-    `web/src/InfoTip.test.tsx`, `web/src/Menu.test.tsx`).
+    `web/src/InfoTip.test.tsx`).
 12. A kit chip stays put when you change Where: the phone's check (vitest
     `web/src/Launch.test.tsx`; the browser `tests/ui/test_launch.py`).
 13. Where shows the last place after an early close: the slowed network's checks (vitest
     `web/src/Launch.test.tsx`; the browser `tests/ui/test_launch.py`).
 14. The kit advice fits New session: the kit advice's check (unit `tests/test_kits.py`,
-    `tests/test_cli.py`; the browser `tests/ui/test_launch.py`).
+    `tests/test_runtime.py`; the browser `tests/ui/test_launch.py`).
 15. Claude Code's auto mode in words: the modes' check (unit `tests/test_providers.py`,
     `tests/test_runtime.py`; the browser `tests/ui/test_launch.py`).
 
 Docker image:
 
 16. No ssh in LADO's container: the image's way back above, 4.5's installer (unit
-    `tests/test_docker.py`, `tests/test_install_sh.py`; the image `tests/container/test_access.py`,
-    `tests/container/test_image.py`).
+    `tests/test_docker.py`, `tests/test_install_sh.py`; the image `tests/container/test_access.py`).
 17. glab in LADO's image: the merge request's check (the image `tests/container/test_glab.py`).
 
 Upgrade:

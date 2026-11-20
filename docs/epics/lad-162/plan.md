@@ -2,13 +2,13 @@
 
 ## State
 Phase: steps · Epic run: epic/epic-git-servers · Branch: base (main), decided at intake (#7068 q2)
-In work: S9 (LAD-304, run task/lad-304) · Next: readiness · Open checks: the human's check on the company GitLab, on the release candidate that carries S8; live tests on the release candidate (S6 changed the agents' environment, never run live); 0.48.0's release checklist names what going back loses (S6b: the host's ssh agent returns only with `compose.yaml.bak`, not with the new `compose.yaml` that docs/release.md 4.6 keeps); S7: Apple's git (LibreSSL) and GnuTLS with an intermediate certificate, unchecked; S7's Docker check and "Trust?" on the company GitLab, in the human's check on the RC with S8; S9: the certificate by stdin in Docker (`lado git-server certificate <addr> - < file`), in the same RC check
+In work: none (S1–S9 done) · Next: readiness · Open checks: the human's check on the company GitLab, on the release candidate that carries S8; live tests on the release candidate (S6 changed the agents' environment, never run live); 0.48.0's release checklist names what going back loses (S6b: the host's ssh agent returns only with `compose.yaml.bak`, not with the new `compose.yaml` that docs/release.md 4.6 keeps); S7: Apple's git (LibreSSL) and GnuTLS with an intermediate certificate, unchecked; S7's Docker check and "Trust?" on the company GitLab, in the human's check on the RC with S8; S9: the certificate by stdin in Docker (`lado git-server certificate <addr> - < file`), in the same RC check
 Standing rules of the human:
 - One tracker task at a time, created when its step is reached, linked `derived` to LAD-162; findings and leftovers of a step go into the next step (2026-11-15, #7064).
 - Explain to the human in plain words, technical details after.
 - The statement's decisions (brief.md) are not reopened.
 - Backward compatibility is not a goal of its own: a user can replace a token with the needed rights in Settings (2026-11-19, #7422).
-Last review: 2026-11-19, after S8, base at 181b2383
+Last review: 2026-11-20, after S9, base at 8a2c8e99
 
 ## Steps
 
@@ -328,7 +328,12 @@ Notes: the image's Debian base was bumped by dependabot on 2026-11-18 (#331); me
 growth against the base the step starts from.
 
 ### S9 — The guide "Connect your own git server"
-Status: in progress (LAD-304, run task/lad-304)
+Status: done (LAD-304, PR #345, merge 8a2c8e99). The guide `docs/git-servers.md`, linked from
+docs/install.md; the page's Check, Add server and Replace token end with "glab cannot open
+merge requests: the token lacks api" for a GitLab token without `api` (#7606, S8's gap
+against #7541). Review: 1 local and 1 external round, CI 27/27; F1, F2 minor, declined
+(Later). The human approved merge_ok #569, whose recommendation was to read the guide first. Not run: the certificate
+by stdin in Docker (open checks).
 Check: a new guide file in `docs/` in plain words: where to create a token on GitHub and
 GitLab, which rights it needs, what each "Check" failure means and what to do; its links
 work (the docs checks pass); the human reads it.

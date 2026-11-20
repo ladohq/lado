@@ -57,6 +57,11 @@
 - **glab in LADO's image.** GitLab's CLI 1.130.0 is in the image, its update check and usage
   statistics off. Outside Docker install glab 1.114.0 or newer yourself.
 
+### Upgrade
+
+- **Running sessions restart with the update.** `lado update` stops and resumes them; after
+  an update made another way, restart them yourself.
+
 ## 0.47.0 (2026-11-15)
 
 ### Fixed

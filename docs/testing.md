@@ -216,8 +216,21 @@ already (`make docker`; `LADO_TEST_IMAGE`, else `lado:local`); they skip when Do
 not run or the image is missing. Each container, volume and compose project a test makes is
 named with the test run's own prefix, `lado-test-<run hex>-<hex>` (`container_helpers`), so
 a run beside it is never taken for one left behind; it runs with `LADO_TELEMETRY=0` and
-`LADO_NO_UPDATE_CHECK=1` and is removed after the test by a finalizer, also on a failure
-(the session's teardown fails when a container or volume of the run is left). They
+`LADO_NO_UPDATE_CHECK=1` and is removed after the test by a finalizer, also on a failure.
+A run that gets SIGTERM (a tool's timeout) or SIGHUP (a closed terminal) ends as on Ctrl-C,
+through the finalizers. While it lives a run holds an flock of `<prefix>lock` in
+`/tmp/lado-container-runs-<uid>/` (`LADO_CONTAINER_RUNS` overrides it), outside every
+checkout and `$TMPDIR`, so each worktree's run sees the others' (`container_runs.py`). At
+its start it removes the containers, volumes, networks and image tags of each prefix whose
+lock is free (a run killed with SIGKILL, or by a second Ctrl-C in its teardown), then the
+lock file, and touches no prefix whose lock is held; `lado-test-*` objects of a prefix with
+no lock file (a run before the lock, another machine on the same Docker) and any removal
+that failed are named in one warning with the command that removes them, never removed.
+The session's teardown fails when a container, volume, network or image tag of the run's
+prefix is left, naming it, and keeps the lock file for the next run to reap; else it
+deletes it. `test_cleanup.py` stops a run of `cleanup_target.py` (a name pytest does not
+collect by itself) from outside: after SIGTERM nothing of its prefix is left, after SIGKILL
+the reaping removes it all. They
 check: one `docker run` serves `/api/health` (the wheel's version) and the UI on its
 `LADO_PORT` (8765 without it), with the container note in `docker logs` and `lado ui
 --no-open`'s link on that port; `lado doctor` has no `[FAIL]`, says `in a container` and

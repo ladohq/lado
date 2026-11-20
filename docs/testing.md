@@ -510,7 +510,12 @@ Seven layers; each change gets tests at the lowest layer that can catch its bugs
    `lado server` on a free port, with sessions of the fake agent, isolated like the
    integration tests; only what needs a browser. Each test saves a screenshot of every
    screen it checks to `<temp dir>/lado-ui-shots/<test>.png` (the `shot` fixture), outside
-   the tree, for the reviewer. Each test has 120 s, its fixtures included
+   the tree, for the reviewer. A session's page draws nothing until the change feed's
+   stream opens, so a test whose first check of a page must not also wait for the stream
+   goes there with `goto_live` (`tests/ui/test_main_screen.py`): it waits up to 15 s for
+   the banner's `live`, fails naming each request of `/api/events` and what came of it
+   when `live` does not come, and warns with the same record when it comes after more
+   than 2 s (pytest's warnings summary). Each test has 120 s, its fixtures included
    (`TEST_TIMEOUT` in `tests/time_limit.py`, which `tests/ui/conftest.py` imports;
    pytest-timeout), locally and in CI alike; no other layer has a per-test limit. A test
    past it ends its process (method `thread`: `signal` would raise into Playwright's event

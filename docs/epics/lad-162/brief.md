@@ -30,7 +30,7 @@ The statement's decisions (not reopened):
   optional field of a server.
 - The company certificate is needed now.
 - The host's ssh agent (`LADO_SSH_AGENT`) is not developed further; where it is set up it
-  keeps working.
+  keeps working. Changed before S6 (2026-11-18, #7389): it is switched off (S6b).
 - GitHub and GitLab first; the server kind is an extensible module (Bitbucket, Gitea later).
 - Changed at plan_ok (2026-11-15, #7092): LADO finds a server's kind itself by asking
   its API with the token; the human names it (`--kind`, a choice in Settings) only when
@@ -38,7 +38,8 @@ The statement's decisions (not reopened):
 - The user's global git config is never touched: everything is given to the agent's
   process (`GIT_CONFIG_*`, LADO's own credential helper, `GIT_AUTHOR_*`, `GIT_COMMITTER_*`).
 - Today's GitHub login (`GH_TOKEN`, `gh auth login`) becomes the github.com entry; nothing
-  breaks for existing users.
+  breaks for existing users. Changed before S6 (2026-11-18, #7388, #7389): it is moved into
+  the entry once, then ignored (said loudly); a project's own `GH_TOKEN` is ignored.
 - Explain to the human in plain words.
 
 Proposed steps: 1 Git servers (Settings section, credentials for agents, ssh addresses over
@@ -49,7 +50,7 @@ in the image configured from the server entry, agents open merge requests); 4 th
 
 These are the design's stage numbers, also used by the rows of intake in decisions.md
 ("step 4" there is the guide, "step 5" kit sdlc). The plan numbers its own steps: design 1
-→ S1–S5, 2 → S6, 3 → S7, 4 → S8, 5 → Later.
+→ S1–S6, 2 → S7, 3 → S8, 4 → S9, 5 → Later.
 
 ## Goal and done
 
@@ -61,26 +62,26 @@ list behaves as today and the UI suggests adding it; `~/.gitconfig` is unchanged
 
 ## Readiness checklist
 
-- Goal and "done": covered by S7, Check: "Then the human's check, on the release
-  candidate that carries S7 … github.com works as before."
+- Goal and "done": covered by S8, Check: "Then the human's check, on the release
+  candidate that carries S8 … github.com works as before."
 - Users and how they use it: covered by S2, Check: "a UI e2e test adds a gitlab.com and
   a self-hosted server … and removes one".
 - Scope and what is out: covered by the plan's Steps and Later.
 - Data and migrations: covered by S1, Check: "the upgrade and rollback test of the way
-  back"; S3 and S6 the same; S5, Check: "an integration test of an upgrade".
+  back"; S3 and S7 the same; S6, Check: "an integration test of an upgrade".
 - Secrets and credentials: covered by S1, Check: "clone and push by https with no
   prompt"; the token in LADO's secret store under `LADO_HOME`, never in a git config file.
-- Update and rollback: covered by the plan's way back and S5, Check: "after a rollback
+- Update and rollback: covered by the plan's way back and S6, Check: "after a rollback
   … the old path works — checked by running it after the rollback". A rollback restores
   lado.db from before the migration: the entries are gone, their files stay unused.
 - Removal: covered by S1, Check: "a removed server's host behaves as before".
 - Platforms: covered by S1, Check: "git older than … (2.31) is refused loudly" and "a
-  real CLI's git uses the entry"; S7 the image.
-- Observability: covered by S4, Check: "'Check' … say 'works, this is <name>' or why not
-  in plain words"; S6 the untrusted server.
+  real CLI's git uses the entry"; S8 the image.
+- Observability: covered by S5, Check: "'Check' … say 'works, this is <name>' or why not
+  in plain words"; S7 the untrusted server.
 - Tests and what only a human can check: covered by each step's Check; the human's check
-  in S7.
-- Documentation: covered by each step ("docs describe what was built") and S8.
+  in S8.
+- Documentation: covered by each step ("docs describe what was built") and S9.
 
 ## Branch strategy
 

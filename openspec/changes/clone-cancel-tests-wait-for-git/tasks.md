@@ -15,9 +15,9 @@
 
 ## 3. Checks
 
-- [ ] 3.1 `tests/integration/test_clone_start.py` 30 times in a row under load, each run's exit
+- [x] 3.1 `tests/integration/test_clone_start.py` 30 times in a row under load, each run's exit
   status read (AC-4); the build report gives the count and how the load was made.
-- [ ] 3.2 `make lint`, `make test`, and
+- [x] 3.2 `make lint`, `make test`, and
   `uv run pytest -m integration -n auto tests/integration/test_clone_start.py tests/integration/test_project_repositories.py`
   pass (AC-4).
-- [ ] 3.3 `openspec validate clone-cancel-tests-wait-for-git --strict` passes.
+- [x] 3.3 `openspec validate clone-cancel-tests-wait-for-git --strict` passes.

@@ -127,9 +127,7 @@ def _claim(prefix: str) -> int | None | bool:
 
 def reap(docker, own: str) -> None:
     found = objects(docker)
-    locks = (
-        {p.name[: -len("lock")] for p in RUNS.glob("lado-test-*lock")} if RUNS.is_dir() else set()
-    )
+    locks = {p.name[: -len("lock")] for p in RUNS.glob("lado-test-*lock")}
     unknown: dict[str, list[str]] = {}
     failed: list[tuple[str, str, str]] = []  # kind, name, docker's words
     for prefix in sorted((set(found) | locks) - {own}):

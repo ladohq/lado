@@ -198,8 +198,9 @@ for this visit.
   revoked.`, `The token lacks <scopes>.` ⓘ, `⚠ No answer in 5 seconds.` (`⚠ No answer:
   <why>.` for another reason) ⓘ [Check again], the trust question, `It redirects to
   <target>: add that address instead.`, `It answers as <Kind>, not <saved Kind>: remove it
-  and add it again.`, `It answers as neither GitHub nor GitLab.`; a `Works:` line has no `✓`
-  before it
+  and add it again.`, `It answers as neither GitHub nor GitLab.`; a `Works:` line of a GitLab
+  token without `api` ends with `; glab cannot open merge requests: the token lacks api.`; a
+  `Works:` line has no `✓` before it
 
 #### Scenario: An expired token
 - **WHEN** the human presses `Check` on a GitLab server whose token the server refuses
@@ -480,3 +481,36 @@ An expired certificate SHALL make the closed row say `⚠ certificate expired`.
 #### Scenario: Removed and undone
 - **WHEN** the human presses `Remove` on the certificate row, then `Undo`
 - **THEN** the same certificate is saved again and the row shows it
+
+### Requirement: The page says a GitLab token without api leaves glab without merge requests
+
+Check, Add server and Replace token SHALL end the line of a GitLab server whose token works
+for git without `api` with `; glab cannot open merge requests: the token lacks api` before
+its full stop, as `lado git-server check` and `add` do, the line keeping its ok tone, place
+and buttons; other tokens and GitHub SHALL keep their lines.
+
+#### Scenario: Check of a token for git alone
+- **WHEN** the human presses `Check` on `https://gitlab.corp.example`, checked before, whose
+  token's scopes are `read_repository, write_repository, read_api`, signed in as `ann`
+- **THEN** the line under Sign-in is `Works: signed in as ann, may clone and push; glab
+  cannot open merge requests: the token lacks api.`, a status
+
+#### Scenario: First check of a server saved without a check
+- **WHEN** the server was saved without a check and its check now finds the same token
+- **THEN** the line is `Works: GitLab, signed in as ann; glab cannot open merge requests: the
+  token lacks api.`
+
+#### Scenario: Add server with a token for git alone
+- **WHEN** the human adds `https://gitlab.corp.example` with that token
+- **THEN** the new server's panel starts with `✓ Saved: GitLab, signed in as ann; glab cannot
+  open merge requests: the token lacks api.`
+
+#### Scenario: Replace token with a token for git alone
+- **WHEN** the human replaces the server's token with that token
+- **THEN** the line under Sign-in is `✓ Token replaced: signed in as ann; glab cannot open
+  merge requests: the token lacks api.`
+
+#### Scenario: A token with api
+- **WHEN** the token's scopes are `api`
+- **THEN** Check says `Works: signed in as ann, may clone and push.` and Add server
+  `✓ Saved: GitLab, signed in as ann.`, as before

@@ -473,6 +473,16 @@ def test_add_of_a_token_without_push_saves_it_with_a_warning(client, serve):
     assert (added["warning"], added["missing_scopes"]) == (None, [])
 
 
+def test_add_of_a_token_for_git_alone_says_what_glab_cannot(client, serve):
+    server = serve("gitlab-git", token=TOKEN)
+    added = ok(add(client, server.url))
+    assert added["tool_cannot"] == "glab cannot open merge requests: the token lacks api"
+    assert (added["warning"], added["missing_scopes"]) == (None, [])
+    full = serve("gitlab-full", token=TOKEN)
+    added = ok(add(client, full.url.replace("127.0.0.1", "localhost")))
+    assert added["tool_cannot"] is None
+
+
 def test_a_server_that_stops_answering_at_add_offers_the_kind(client, monkeypatch):
     monkeypatch.setattr(model_servers, "TIMEOUT", 1)
     detail = refused(add(client, f"https://127.0.0.1:{closed_port()}"))

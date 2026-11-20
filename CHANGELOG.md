@@ -26,11 +26,14 @@
   Check in Settings → Git servers shows it with its fingerprint: Trust it, and LADO and agents'
   git trust it for that server only. A file from IT: `lado git-server certificate`.
 - **Agents open GitLab merge requests with glab.** Each agent's `glab` is signed in to your
-  GitLab servers of Settings → Git servers, with their tokens and certificates; your own glab
-  login stays yours. Make the token with the scope `api`; Check says when a token lacks it.
+  saved GitLab servers with their tokens and certificates; your own glab login stays yours.
+  Make the token with the scope `api`; Check, Add and Replace token say when it lacks it.
 - **Agents know their repository's server.** Every agent is told on which saved server its
   repository is and which tool goes with it (`gh` or `glab`), so kits need not say it. A
   missing or too old tool is said at the start and by `lado doctor`; the agent starts anyway.
+- **A guide to connecting your git server.** [docs/git-servers.md](docs/git-servers.md) walks
+  you in plain words from making a token to agents that push: which rights to tick, what each
+  answer of Check means and what to do, and your company's certificate.
 
 ### Fixed
 

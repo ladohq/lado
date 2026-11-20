@@ -13,7 +13,7 @@ import time
 
 import fake_provider
 import pytest
-from agent_helpers import fake_git, fake_git_calls, gone, init_repo, wait_for
+from agent_helpers import ended, fake_git, fake_git_calls, init_repo, wait_for
 
 from lado import projects, runtime, state
 
@@ -126,7 +126,7 @@ def test_a_clone_ended_by_sigterm_leaves_nothing(shop, tmp_path):
     assert err.splitlines()[-1] == "lado: clone cancelled (SIGTERM)"
     assert _entries(shop) == []
     [call] = fake_git_calls(tmp_path / "fake")
-    assert gone(call["pid"]) and gone(call["child"])
+    assert ended(call["pid"]) and ended(call["child"])
 
 
 def test_remove_refuses_while_running_shows_the_workers_branch_and_needs_yes(

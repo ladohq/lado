@@ -10,7 +10,7 @@ import time
 
 import fake_provider
 import pytest
-from agent_helpers import bare_remote, fake_git, fake_git_calls, gone, wait_for
+from agent_helpers import bare_remote, ended, fake_git, fake_git_calls, wait_for
 
 from lado import runtime, state
 
@@ -87,7 +87,7 @@ def test_ctrl_c_during_the_clone_leaves_nothing(tmp_path):
     assert not folder.exists()
     assert [p.name for p in tmp_path.iterdir() if ".clone-" in p.name] == []
     [call] = fake_git_calls(tmp_path / "fake")
-    assert gone(call["pid"]) and gone(call["child"])
+    assert ended(call["pid"]) and ended(call["child"])
     assert state.get_session("app") is None
 
 
@@ -124,4 +124,4 @@ def test_a_kill_or_a_closed_terminal_during_the_clone_leaves_nothing(tmp_path, s
     assert not folder.exists()
     assert [p.name for p in tmp_path.iterdir() if ".clone-" in p.name] == []
     [call] = fake_git_calls(tmp_path / "fake")
-    assert gone(call["pid"]) and gone(call["child"])
+    assert ended(call["pid"]) and ended(call["child"])

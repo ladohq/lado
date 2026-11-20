@@ -10,9 +10,9 @@ import uvicorn
 from agent_helpers import (
     PRIVATE_URL,
     bare_remote,
+    ended,
     fake_git,
     fake_git_calls,
-    gone,
     init_repo,
     private_access,
 )
@@ -358,7 +358,7 @@ def test_delete_cancels_a_clone(client, tmp_path, slow_git):
     assert (answer.json()["state"], answer.json()["error"]) == ("cancelled", None)
     assert not target.exists() and _leftovers(tmp_path) == []
     [call] = fake_git_calls(slow_git)
-    assert gone(call["pid"]) and gone(call["child"])
+    assert ended(call["pid"]) and ended(call["child"])
 
 
 def test_two_clones_into_one_folder(client, tmp_path, slow_git):
@@ -385,7 +385,7 @@ def test_a_window_that_went_away(client, tmp_path, slow_git, monkeypatch):
     _until(lambda: jobs.get(job["id"], seen=False).state == "cancelled")
     assert not target.exists() and _leftovers(tmp_path) == []
     [call] = fake_git_calls(slow_git)
-    assert gone(call["pid"]) and gone(call["child"])
+    assert ended(call["pid"]) and ended(call["child"])
 
 
 def test_a_finished_job_is_kept_a_while(client, tmp_path, monkeypatch):
@@ -411,7 +411,7 @@ def test_the_servers_shutdown_cancels_a_running_clone(client, tmp_path, slow_git
     assert client.app.state.clones.get(job["id"], seen=False).state == "cancelled"
     assert not target.exists() and _leftovers(tmp_path) == []
     [call] = fake_git_calls(slow_git)
-    assert gone(call["pid"]) and gone(call["child"])
+    assert ended(call["pid"]) and ended(call["child"])
 
 
 def test_the_changes_need_the_servers_own_origin(client, tmp_path):
@@ -471,7 +471,7 @@ def test_a_window_that_goes_away_cancels_its_clone_at_once(client, tmp_path, slo
     assert answer.json()["state"] == "cancelled"
     assert not target.exists() and _leftovers(tmp_path) == []
     [call] = fake_git_calls(slow_git)
-    assert gone(call["pid"]) and gone(call["child"])
+    assert ended(call["pid"]) and ended(call["child"])
     assert client.post("/api/clones/nope/cancel").status_code == 404
 
 

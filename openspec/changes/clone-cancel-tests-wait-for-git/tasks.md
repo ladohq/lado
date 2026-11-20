@@ -8,7 +8,7 @@
 
 ## 2. The checks
 
-- [ ] 2.1 The 12 checks `gone(call["pid"]) and gone(call["child"])` in
+- [x] 2.1 The 12 checks `gone(call["pid"]) and gone(call["child"])` in
   `tests/integration/test_clone_start.py`, `tests/integration/test_project_repositories.py`,
   `tests/test_clone.py` and `tests/test_server_clones.py` use `ended`; imports that no longer
   need `gone` drop it; `grep -rn 'gone(call\["pid"\])' tests` finds nothing (AC-2).

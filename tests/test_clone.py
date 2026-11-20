@@ -10,9 +10,9 @@ import pytest
 from agent_helpers import (
     PRIVATE_URL,
     bare_remote,
+    ended,
     fake_git,
     fake_git_calls,
-    gone,
     init_repo,
     private_access,
 )
@@ -216,7 +216,7 @@ def test_a_cancelled_clone_into_a_project_leaves_nothing(shop, tmp_path, monkeyp
             project="shop",
         )
     [call] = fake_git_calls(tmp_path / "fake")
-    assert gone(call["pid"]) and gone(call["child"])
+    assert ended(call["pid"]) and ended(call["child"])
     assert list(shop.iterdir()) == []
 
 
@@ -888,7 +888,7 @@ def test_a_remote_that_does_not_answer(tmp_path, monkeypatch):
         "cannot read https://git.example.com/a/b: git.example.com did not answer within 0.5 s"
     )
     [call] = fake_git_calls(tmp_path)
-    assert gone(call["pid"]) and gone(call["child"])
+    assert ended(call["pid"]) and ended(call["child"])
 
 
 def _branch(folder: Path) -> str:
@@ -979,7 +979,7 @@ def test_cancel_during_the_clone(tmp_path, monkeypatch):
     )
     [call] = fake_git_calls(tmp_path / "fake")
     assert call["args"][:5] == ["clone", "--progress", "--no-recurse-submodules", "--branch", "dev"]
-    assert gone(call["pid"]) and gone(call["child"])
+    assert ended(call["pid"]) and ended(call["child"])
     assert not (tmp_path / "app").exists()
     assert _leftovers(tmp_path) == []
 
@@ -994,7 +994,7 @@ def test_ctrl_c_during_the_clone_cleans_up_alike(tmp_path, monkeypatch):
     with pytest.raises(KeyboardInterrupt):
         clone.clone("https://github.com/acme/app", str(tmp_path / "app"), None, interrupted)
     [call] = fake_git_calls(tmp_path / "fake")
-    assert gone(call["pid"]) and gone(call["child"])
+    assert ended(call["pid"]) and ended(call["child"])
     assert not (tmp_path / "app").exists()
     assert _leftovers(tmp_path) == []
 
@@ -1013,7 +1013,7 @@ def test_a_target_filled_during_the_clone(tmp_path, monkeypatch):
     assert sorted(p.name for p in (tmp_path / "app").iterdir()) == ["theirs.txt"]
     assert _leftovers(tmp_path) == []
     [call] = fake_git_calls(tmp_path / "fake")
-    assert gone(call["pid"]) and gone(call["child"])
+    assert ended(call["pid"]) and ended(call["child"])
 
 
 @pytest.mark.parametrize(

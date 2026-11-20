@@ -919,12 +919,12 @@ PUSH_WORKER = (
 GIT_TOKEN = "glpat-LIVE-CANARY-3f8a"
 
 
+# Claude Code and Codex only, by collection: a skip would turn the other cells red.
+@pytest.mark.parametrize("live_provider", ["claude", "codex"], indirect=True)
 def test_an_agent_pushes_through_a_saved_git_server(live_repo, live_provider, tmp_path):
     """A worker with a model pushes over https to a saved git server (a local git server
     under a test authority, saved as GitLab with its token and certificate), with nothing
     of its own: LADO's helper gives git the token, the saved certificate is git's trust."""
-    if live_provider not in ("claude", "codex"):
-        pytest.skip("a push through a saved git server is tested with Claude Code and Codex")
     import certificates as made
     from fake_git_server import Server
 

@@ -319,6 +319,13 @@ and no skip.
 - **WHEN** `LADO_LIVE_IMAGE` is unset and the image test skips
 - **THEN** the cell fails
 
+#### Scenario: A test meant for some providers only
+
+- **WHEN** a live test is meant for Claude Code and Codex only, as
+  `test_an_agent_pushes_through_a_saved_git_server`
+- **THEN** it is not collected for OpenCode and Kilo, and their cells pass with their other
+  tests passed and none skipped
+
 ### Requirement: What a live cell uploads holds no key
 
 A live cell SHALL write everything outside its output folder while the tests run, and only then

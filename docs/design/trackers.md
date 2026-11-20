@@ -21,7 +21,7 @@ tracker client, no tracker settings, no tracker-specific fields or dependencies.
 3. **The process kit says it expects the tracker:** `expects: {skills: [tracker]}` in its
    kit.yaml (LADO 0.29). `lado kits check` of the process kit alone then passes, and a
    session without a tracker kit does not start (`kit "<kit>" expects skill "tracker",
-   which no kit of the session provides: add a kit that provides it with --kit <kit>`).
+   which no kit of the session provides: add a kit that provides it to the session`).
    Two tracker kits in one session fail as `skill "tracker" is defined by two kits`, with
    the `--without` ways out. A role without `skills:` gets every skill, so the tracker is
    optional for it. Whether a process kit requires a tracker is the kit's choice.

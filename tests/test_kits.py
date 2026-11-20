@@ -1728,9 +1728,9 @@ def test_commands_error_names_each_kit_its_commands_and_the_path(kits_dir):
     text = kits.commands_error([(a, "one"), (a, "two"), (b, "four")], "/x:/y")
     assert text == (
         'kit "a" expects commands "one", "two", which are not on the agents\' PATH: install '
-        "them (each launch looks again), or leave out --kit a when the session starts\n"
+        'them (each launch looks again), or start the session without kit "a"\n'
         'kit "b" expects command "four", which is not on the agents\' PATH: install it (each '
-        "launch looks again), or leave out --kit b when the session starts\n"
+        'launch looks again), or start the session without kit "b"\n'
         f"the agents' PATH: /x:/y; for a command installed elsewhere: {agent_env.PATH_ADVICE}"
     )
 
@@ -1793,7 +1793,7 @@ def test_an_expected_skill_reaches_the_kits_supervisor_leading_or_not(repo, kits
 
 NOT_PROVIDED = (
     'kit "sdlc" expects skill "tracker", which no kit of the session provides: add a kit that '
-    "provides it with --kit <kit>"
+    "provides it to the session"
 )
 
 
@@ -1817,7 +1817,7 @@ def test_an_expected_skill_only_in_a_private_pack_is_refused(repo, kits_dir):
         kits.resolve(["sdlc", "x"])
     assert str(exc.value) == (
         'kit "sdlc" expects skill "tracker", which kit "x" has only for its own agents (its '
-        "dependencies.skills): add a kit that provides it with --kit <kit>"
+        "dependencies.skills): add a kit that provides it to the session"
     )
 
 

@@ -499,7 +499,7 @@ class Provider(ABC):
 
     def resolve_permission_mode(self, mode: str | None) -> str | None:
         """The mode an alias names (permission_mode_aliases); any other value as it is."""
-        return self.permission_mode_aliases.get(mode, mode) if mode else mode
+        return self.permission_mode_aliases.get(mode, mode)
 
     def check_permission_mode(self, mode: str | None) -> None:
         """Raise ValueError for a permission mode this provider cannot honour."""

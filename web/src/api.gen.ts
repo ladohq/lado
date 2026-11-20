@@ -971,6 +971,143 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/git-servers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Git Servers Listing
+         * @description The saved git servers, asking none; no lado.db made.
+         */
+        get: operations["git_servers_listing_api_git_servers_get"];
+        put?: never;
+        /**
+         * Add Git Server
+         * @description Check and save a server with its token as `lado git-server add` does.
+         */
+        post: operations["add_git_server_api_git_servers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/git-servers/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Git Server
+         * @description What the add form says of an address before Add, the server asked with no token;
+         *     saves nothing.
+         */
+        post: operations["check_git_server_api_git_servers_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/git-servers/{host}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Saved Git Server
+         * @description Check the saved server of `host` again with its saved token as `lado git-server
+         *     check` does; a passing check saves the login it saw. The token is in no answer.
+         */
+        post: operations["check_saved_git_server_api_git_servers__host__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/git-servers/{host}/certificate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Git Server Certificate
+         * @description Trust the certificate a check offered for the server (or Undo gives back), then
+         *     check it again with it, as `lado git-server certificate <address> <file>` does.
+         */
+        put: operations["set_git_server_certificate_api_git_servers__host__certificate_put"];
+        post?: never;
+        /**
+         * Clear Git Server Certificate
+         * @description Remove the server's certificate as `lado git-server certificate --clear` does;
+         *     the answer holds its PEM for Undo.
+         */
+        delete: operations["clear_git_server_certificate_api_git_servers__host__certificate_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/git-servers/{host}/author": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Git Server Author
+         * @description Set the server's commit author as `lado git-server author --name --email` does.
+         */
+        put: operations["set_git_server_author_api_git_servers__host__author_put"];
+        post?: never;
+        /**
+         * Clear Git Server Author
+         * @description Clear the server's commit author as `lado git-server author --clear` does.
+         */
+        delete: operations["clear_git_server_author_api_git_servers__host__author_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/git-servers/{host}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Git Server
+         * @description Remove the server of `host` and its token as `lado git-server remove` does; a
+         *     folder of it the disk keeps is a `warning`.
+         */
+        delete: operations["remove_git_server_api_git_servers__host__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/providers/logins": {
         parameters: {
             query?: never;
@@ -1981,6 +2118,34 @@ export interface components {
             left_out: number;
         };
         /**
+         * CertificateOffer
+         * @description A certificate a check shows (lado.git_certificates.Certificate): its subject, its
+         *     issuer's organization, its validity (YYYY-MM-DD), its SHA-256 as colon hex, whether it
+         *     is the server's own signed by itself (`own`), the server's own at all (`leaf`: renewed
+         *     with the server) or an authority below the root (`intermediate`), and its PEM, which `PUT
+         *     /api/git-servers/{host}/certificate` takes back when the human trusts it.
+         */
+        CertificateOffer: {
+            /** Subject */
+            subject: string;
+            /** Issuer */
+            issuer: string;
+            /** Valid From */
+            valid_from: string;
+            /** Valid Until */
+            valid_until: string;
+            /** Sha256 */
+            sha256: string;
+            /** Own */
+            own: boolean;
+            /** Intermediate */
+            intermediate: boolean;
+            /** Leaf */
+            leaf: boolean;
+            /** Pem */
+            pem: string;
+        };
+        /**
          * CliApi
          * @description An agent CLI (a provider's name and title) and the model server API it speaks.
          */
@@ -2069,6 +2234,7 @@ export interface components {
             /** Kind */
             kind: string;
             hint: components["schemas"]["HintInfo"] | null;
+            git_server?: components["schemas"]["GitServerWay"] | null;
         };
         /** CloneStart */
         CloneStart: {
@@ -2327,6 +2493,269 @@ export interface components {
             /** Note By */
             note_by: string | null;
             recommendation: components["schemas"]["RecommendationInfo"] | null;
+        };
+        /**
+         * GitEntryRefused
+         * @description A refusal of Settings → Git servers' API; `choose_kind` for a server that gave no
+         *     HTTP answer, whose kind may be chosen to save it without a check.
+         */
+        GitEntryRefused: {
+            /** Message */
+            message: string;
+            /** Hint */
+            hint: string;
+            /** Field */
+            field: string;
+            /** Warnings */
+            warnings: string[];
+            /** Choose Kind */
+            choose_kind: boolean;
+        };
+        /**
+         * GitKindInfo
+         * @description A kind of git server: its token page under a server's root and what a token needs.
+         */
+        GitKindInfo: {
+            /** Name */
+            name: string;
+            /** Title */
+            title: string;
+            /** Token Path */
+            token_path: string;
+            /** Scopes */
+            scopes: string;
+        };
+        /**
+         * GitServerAdd
+         * @description A git server to check and save with its token; `kind` only when the human chose one
+         *     (--kind); `certificate` the PEM the human trusted for it, saved with it. No answer gives
+         *     the token back.
+         */
+        GitServerAdd: {
+            /** Address */
+            address: string;
+            /** Token */
+            token: string;
+            /** Kind */
+            kind?: string | null;
+            /** Certificate */
+            certificate?: string | null;
+        };
+        /**
+         * GitServerAdded
+         * @description A git server saved or replaced: as saved, the line that says so, the warnings (its
+         *     token over plain http://), for a token that lacks a right agents need, the page's
+         *     `warning` and the rights it lacks (`missing_scopes`), and, for one that leaves the
+         *     kind's tool without its changes, what the tool cannot do (`tool_cannot`).
+         */
+        GitServerAdded: {
+            server: components["schemas"]["GitServerInfo"];
+            /** Line */
+            line: string;
+            /** Replaced */
+            replaced: boolean;
+            /** Warnings */
+            warnings: string[];
+            /** Warning */
+            warning: string | null;
+            /** Missing Scopes */
+            missing_scopes: string[];
+            /** Tool Cannot */
+            tool_cannot?: string | null;
+        };
+        /**
+         * GitServerAuthor
+         * @description A git server's commit author to set: both its name and its email.
+         */
+        GitServerAuthor: {
+            /** Name */
+            name: string;
+            /** Email */
+            email: string;
+        };
+        /**
+         * GitServerAuthorDone
+         * @description A git server's commit author set or cleared: the server as saved and the line of
+         *     `lado git-server author` that says so.
+         */
+        GitServerAuthorDone: {
+            server: components["schemas"]["GitServerInfo"];
+            /** Line */
+            line: string;
+        };
+        /**
+         * GitServerCertificate
+         * @description The certificate trusted for a saved server, from its file: its name, the date its
+         *     validity ends (YYYY-MM-DD) and whether it has.
+         */
+        GitServerCertificate: {
+            /** Name */
+            name: string;
+            /** Not After */
+            not_after: string;
+            /** Expired */
+            expired: boolean;
+        };
+        /**
+         * GitServerCertificateRemoved
+         * @description A server's certificate removed: the server as saved and the PEM it held, for Undo
+         *     (None when it held none).
+         */
+        GitServerCertificateRemoved: {
+            server: components["schemas"]["GitServerInfo"];
+            /** Pem */
+            pem: string | null;
+        };
+        /**
+         * GitServerCertificateSet
+         * @description The certificate to trust for a saved server: the PEM a check offered (or Undo gives
+         *     back).
+         */
+        GitServerCertificateSet: {
+            /** Pem */
+            pem: string;
+        };
+        /**
+         * GitServerCheck
+         * @description What the add form says of an address before Add, asking the server with no token:
+         *     its root (None when it is no address), the kind it looks like (a hint only) with its
+         *     token page and scopes, whether the kind must be chosen and why (`unchecked`), whether the
+         *     address is saved already, the refusals Add would meet and the plain-http warning; for a
+         *     certificate not trusted, the authority to trust (`certificate_offer`) and the one given
+         *     that did not fit (`certificate_before`).
+         */
+        GitServerCheck: {
+            /** Address */
+            address: string | null;
+            /** Hint */
+            hint: string | null;
+            /** Token Page */
+            token_page: string | null;
+            /** Scopes */
+            scopes: string | null;
+            /** Choose Kind */
+            choose_kind: boolean;
+            unchecked: components["schemas"]["GitEntryRefused"] | null;
+            /** Saved */
+            saved: boolean;
+            /** Refusals */
+            refusals: components["schemas"]["GitEntryRefused"][];
+            /** Warnings */
+            warnings: string[];
+            certificate_offer?: components["schemas"]["CertificateOffer"] | null;
+            certificate_before?: components["schemas"]["CertificateOffer"] | null;
+        };
+        /**
+         * GitServerCheckAsked
+         * @description An address the add form checks; `certificate` the PEM the human trusted for it,
+         *     which the check trusts alone.
+         */
+        GitServerCheckAsked: {
+            /** Address */
+            address: string;
+            /** Certificate */
+            certificate?: string | null;
+        };
+        /**
+         * GitServerChecked
+         * @description A saved git server checked again with its saved token (lado.git_servers.check):
+         *     `outcome` one of git_servers.OUTCOMES, its saved kind, the login seen (ok,
+         *     scopes_missing), the rights the token lacks, whether the server told them, whether it
+         *     had a login before, the page's line (`message`) and its info tip (`hint`, "" for none),
+         *     and the server as saved after it (a passing check saves its login; None when it was
+         *     removed meanwhile); for a certificate not trusted or changed, the authority to trust and
+         *     the saved one that no longer fits.
+         */
+        GitServerChecked: {
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "ok" | "token_refused" | "scopes_missing" | "no_answer" | "cert_untrusted" | "cert_changed" | "cert_name" | "cert_expired" | "redirect" | "other_kind" | "unrecognised";
+            /** Kind */
+            kind: string;
+            /** Login */
+            login: string | null;
+            /** Missing Scopes */
+            missing_scopes: string[];
+            /** Rights Checked */
+            rights_checked: boolean;
+            /** Was Checked */
+            was_checked: boolean;
+            /** Message */
+            message: string;
+            /** Hint */
+            hint: string;
+            server: components["schemas"]["GitServerInfo"] | null;
+            certificate_offer?: components["schemas"]["CertificateOffer"] | null;
+            certificate_before?: components["schemas"]["CertificateOffer"] | null;
+        };
+        /**
+         * GitServerInfo
+         * @description A saved git server as lado.db keeps it, asking it nothing: `host` its key (host and a
+         *     port other than the scheme's), `login` None for one saved without a check, whether
+         *     its token file is there (never the token), its commit author (both or neither), and
+         *     the certificate trusted for it (None for none).
+         */
+        GitServerInfo: {
+            /** Address */
+            address: string;
+            /** Host */
+            host: string;
+            /** Kind */
+            kind: string;
+            /** Kind Title */
+            kind_title: string;
+            /** Login */
+            login: string | null;
+            /** Has Token */
+            has_token: boolean;
+            /** Author Name */
+            author_name: string | null;
+            /** Author Email */
+            author_email: string | null;
+            certificate?: components["schemas"]["GitServerCertificate"] | null;
+        };
+        /**
+         * GitServerRemoved
+         * @description The git servers left after a removal, and why a folder of the removed one stayed
+         *     (`could not remove <path>: <why>`; None when none did).
+         */
+        GitServerRemoved: {
+            /** Servers */
+            servers: components["schemas"]["GitServerInfo"][];
+            /** Kinds */
+            kinds: components["schemas"]["GitKindInfo"][];
+            /** Warning */
+            warning: string | null;
+        };
+        /**
+         * GitServerWay
+         * @description An access failure's way out through Settings → Git servers (lado.clone.ServerWay):
+         *     check the saved server git took the token of, or add the unsaved host.
+         */
+        GitServerWay: {
+            /**
+             * Way
+             * @enum {string}
+             */
+            way: "check" | "add";
+            /** Host */
+            host: string;
+            /** Address */
+            address: string;
+            /** Text */
+            text: string;
+        };
+        /**
+         * GitServers
+         * @description The saved git servers, by host, and the kinds LADO knows.
+         */
+        GitServers: {
+            /** Servers */
+            servers: components["schemas"]["GitServerInfo"][];
+            /** Kinds */
+            kinds: components["schemas"]["GitKindInfo"][];
         };
         /**
          * GuiSession
@@ -6316,6 +6745,349 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntryRefused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    git_servers_listing_api_git_servers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitServers"];
+                };
+            };
+        };
+    };
+    add_git_server_api_git_servers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GitServerAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitServerAdded"];
+                };
+            };
+            /** @description refused */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitEntryRefused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_git_server_api_git_servers_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GitServerCheckAsked"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitServerCheck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_saved_git_server_api_git_servers__host__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitServerChecked"];
+                };
+            };
+            /** @description no such server */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitEntryRefused"];
+                };
+            };
+            /** @description its token file is missing */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitEntryRefused"];
+                };
+            };
+        };
+    };
+    set_git_server_certificate_api_git_servers__host__certificate_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GitServerCertificateSet"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitServerChecked"];
+                };
+            };
+            /** @description refused */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitEntryRefused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_git_server_certificate_api_git_servers__host__certificate_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitServerCertificateRemoved"];
+                };
+            };
+            /** @description refused */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitEntryRefused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_git_server_author_api_git_servers__host__author_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GitServerAuthor"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitServerAuthorDone"];
+                };
+            };
+            /** @description refused */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitEntryRefused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_git_server_author_api_git_servers__host__author_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitServerAuthorDone"];
+                };
+            };
+            /** @description refused */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitEntryRefused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_git_server_api_git_servers__host__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                host: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitServerRemoved"];
+                };
+            };
+            /** @description refused */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitEntryRefused"];
                 };
             };
             /** @description Validation Error */

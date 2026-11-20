@@ -749,7 +749,8 @@ Sessions for now. The UI's texts are in English.
   the tab's title while above zero: `(<n>) <page> · LADO`. A gate has no page of its
   own: it is a tab of its session's waiting card.
 - **Settings**: a page per section beside the list of their names: General (theme;
-  browser notifications), Agent CLIs, Model servers and Statistics (Settings, below).
+  browser notifications), Agent CLIs, Model servers, Git servers and Statistics (Settings,
+  below).
 - **Placeholders**: one component, with the section's name, one sentence on what it will
   hold, and a link to the plan item that builds it. A placeholder is allowed only when its
   section has an item in ROADMAP.md or in Tasks below: they are Tasks here. Projects was
@@ -1668,7 +1669,16 @@ connection, above).
   themselves from `POST /api/remote-branches` half a second after the URL stops changing, each
   URL once, `fetching branches…` meanwhile, the default branch chosen and marked
   `(default)`, above 30 a field that filters; a listing failure under the URL with its hint
-  and Copy; **Use this clone** for a clone of the same repository there ("LADO will use it as
+  and Copy, or, for an access failure a git server can fix (the answer's `git_server`), its
+  **git server note** (`GitServerNote`, the same at a failed clone's end and in a project's Add
+  repository): the core's sentence (`Check this git server; if its token expired or was
+  revoked, replace it there.` / `Add <host> as a git server with a token: LADO and its agents
+  then sign in to it.`, in LADO's container for an ssh failure of a `git@` address `Add <host>
+  as a git server with a token: its git@ addresses then go over https too.`) and a link
+  that looks as a quiet button, `Check <host> ↗` or `Add git server ↗` (named `… (opens a
+  new tab)`, 44 px high on a phone), opening
+  `/settings/git-servers?check=<host>` or `?add=<address>` in a new tab, so the window keeps its
+  fields; no command to copy there; **Use this clone** for a clone of the same repository there ("LADO will use it as
   it is: no clone, no pull, no branch switch"), which turns Where to that folder; the clone a
   job of the server (`server/clones.py`, `cloneJob.ts`), polled every 500 ms with a progress
   block, **Cancel clone**, a beacon on `pagehide`, the window not closable meanwhile; a start
@@ -1734,7 +1744,9 @@ connection, above).
   and version; `<title> · not installed`, `<title> · not logged in` off; `<name> · unknown`
   for a resumed session's CLI the list lacks), **Kits** (the kit chips, `+ Add kit`, an info
   button `Kits add roles, skills and ways of working to the team. Install more on the Kits
-  page.` then the chosen kits' descriptions),
+  page.` then the chosen kits' descriptions; while the kit list of a new place is asked, the
+  chips and `+ Add kit` keep the last list's versions and validity, so a chip's × does not
+  move; a failed ask shows its error at once and drops the last list),
   **Permissions** (radio rows titled by the provider's words, `ProviderInfo.mode_words`, the
   description under the chosen one and always under a risky one; a mode without words by its
   value; `No permission modes.` for a CLI without), **Model** (the one picker of LAD-207, its
@@ -1814,7 +1826,11 @@ connection, above).
   clears them, a reload of the page loses them.
 - **Info buttons** (`InfoTip.tsx`): a 16 px (i) in a 24 px target (44 px on a phone) beside a
   label, `About <field>`, `aria-expanded`; a press, Enter or Space opens and closes it, its
-  text put in a `role="status"` region placed under it (`Menu.tsx`'s `useBelow`); Esc closes
+  text put in a `role="status"` region placed under it (`Menu.tsx`'s `useBelow`), or above it
+  with `place="above"` (`placeAbove`) where what is under the button must stay visible (below
+  all the same when there is no room above it); placed again on a resize and when the page
+  switches between the phone's and the wide layout (`<html data-phone>`), so an open tip
+  stays by its button when a phone is turned; Esc closes
   it alone, a press outside, another (i) or Tab away closes it; hover opens nothing.
 - **The window's notes in three levels** (decided 2026-10-21, LAD-120, mockup
   `task/lad-120/mockup-launch-notes.html` variant A): each note under a field is one of
@@ -1916,6 +1932,8 @@ connection, above).
   scrolling box around it does not cut it: from the button's left edge, Stop's from its
   right edge, and moved along, measured with its own width, so it stays 8px inside both of
   the window's edges (a Copy link near the window's right edge, e.g. an artifact's panel).
+  It is placed again when the window is resized, so it moves with its button (an info
+  button's tip too).
 - **Forget** asks in a modal window: the history is deleted for good, the worktrees and
   branches left on disk (`forget-preview`), and with open runs a box to tick
   ("Also forget its N open runs (…)") before `Forget <name>` can be pressed. After it,
@@ -2381,7 +2399,8 @@ redirects read; a section's page is `Settings.tsx`'s `PAGES` by its slug.
 
 - **The pages**, in this order: General `/settings/general` (`SettingsIcon`, the cogwheel),
   Agent CLIs `/settings/agent-clis` (`AgentCliIcon`), Model servers `/settings/model-servers`
-  (`ServerIcon`) and Statistics `/settings/statistics` (`ShieldIcon`). On a phone the top bar
+  (`ServerIcon`), Git servers `/settings/git-servers` (`GitIcon`) and Statistics
+  `/settings/statistics` (`ShieldIcon`). On a phone the top bar
   names the section of a page (`Statistics`), on a computer and at the list `Settings`.
 - **The list** (`nav.snav`, "Settings sections"): an icon and a name per section and nothing
   else, no state line, mark or count; the current one `aria-current="page"` with the rail's
@@ -2413,7 +2432,7 @@ redirects read; a section's page is `Settings.tsx`'s `PAGES` by its slug.
 - **General**: two rows, Theme (System, Light, Dark) and Browser notifications (`When
   something waits for you and this tab is hidden.`, the switch; Notifications below).
 - **Not built yet**: groups of sections (from six sections) and Find a setting (from eight),
-  round 5's frame 16; with four sections neither would show.
+  round 5's frame 16; with five sections neither would show.
 
 ### Help (decided 2026-11-08, LAD-238)
 
@@ -3179,6 +3198,191 @@ core's why (`ProbeInfo.cannot`); the CLIs a tick can save a model of are `ProbeI
   body of `POST /api/model-servers` and `POST /api/model-servers/check` (routes of
   `SECRET_ROUTE`: a 422 there repeats none of its input) and is in no answer, log, journal
   or file but its own.
+
+### Git servers (decided 2026-11-17, LAD-293, mockups `ui-design/lad-292-v2` and `mockup-check-cases.html`)
+
+Settings → Git servers (`/settings/git-servers`, `GitServers.tsx`; openspec capability
+git-servers-page): the human's GitLab, github.com and GitHub Enterprise servers, as `lado
+git-server` keeps them (docs/cli.md), on Model servers' rows, with no colour of its own.
+github.com is a row like any other (LAD-299, mockup `mockup-github-server.html`), sorted with
+the others, with any server's panel; the page shows nothing of its own for it: no "not signed
+in", no line about the GitHub login taken over or one outside LADO (the command that took it
+over and `lado doctor` say those). Without an entry it is not listed; `+ Add server` adds it,
+the check without the token asking `https://api.github.com/user` (`GitHub answers.`, Token's
+link `https://github.com/settings/tokens` with the scope repo). On screen only values,
+states, one-line results and actions; every why and what happens later stands behind an
+info button (`InfoTip`, `TIPS` in `GitServers.tsx`), never the only way to act. A tip stands
+beside its heading or label, not in it (`div.mx-h` holds the `h3` and its tip; a field's
+`div.field-head` its label and tip, so a press on the tip never focuses the field), is named
+`About <what it explains>`, and on a phone `.field-head` is 44 px high so the tip's hit area
+ends above the field. Token's tip opens above its button (`place="above"`), so the token page
+link under the field stays visible and pressable.
+
+- **The list**: `Servers <n>` with its tip (your GitLab, gitlab.com, GitHub or GitHub
+  Enterprise: agents clone and push there, and run gh, with the token; running agents get a
+  change after they restart), then a row per server by host, as `lado git-server
+  list` lists them, or `No git servers yet.` (`mx-empty`); opening the page asks no server and
+  makes no `lado.db`. Then `+ Add server`. A row's head is one button named by the address that
+  opens and closes its panel: the address whole (wrapped, never cut), its kind as a `badge`,
+  `plain http` (`badge-warn`) for an http address; while closed (described by them) its second
+  line, the first of `✕ check failed: <reason>` (`bad`, a failed Check of this visit: token
+  refused, a scope missing, certificate not trusted, certificate changed, certificate not for
+  this host, certificate expired, redirect, another kind, neither GitHub nor GitLab), `⚠ check:
+  no answer`, `⚠ token missing`, `⚠ certificate expired` (its saved certificate), `⚠ not
+  checked` (`warn`), `signed in as <login>`, and `commits as <name> <<email>>` when an author
+  is set. An open row hides those
+  lines (`.mx-open .mx-l2`): its panel says the same just below.
+- **The panel** (`gx-body`, rows text | buttons, a panel narrower than 460 px puts a row's
+  buttons under its text): Sign-in (tip; `Signed in as <login>`, `⚠ Not checked` or `⚠ Token
+  missing`; `Check` and `Replace token`, or `Replace token` alone as the main button when the
+  token file is missing), Commit author (tip; `<name> <<email>>` with `Edit` and `Remove`, or
+  `Your own git author` with `Set author`), Certificate only when one is trusted (tip: the
+  authority you trusted for this server, trusted for it only; `<name> · valid until <date>` or
+  `⚠ <name> · expired on <date>`, with `Remove <the certificate of <address>>`), and at its foot
+  `Remove server`. One `Replace token`
+  per panel: a line about a refused or short token (a check's, a save's warning) has no button
+  of its own and makes Sign-in's `Replace token` the main one while it shows. Each button's
+  accessible name carries the address (`Check <address>`, `Replace the token of <address>`,
+  `Set|Edit|Remove the commit author of <address>`, `Remove <address>`); a form-opener whose form
+  is open is pressed (`aria-pressed`). One form at a time on the page.
+- **Check** asks `POST /api/git-servers/{host}/check`, the button off and `Checking…` under
+  Sign-in meanwhile, then one line there (`gx-result`, `role=status` when it works, `alert`
+  otherwise), the server's sentence with its way out at its end: `Works: signed in as <login>,
+  may clone and push.` (`Works: <Kind>, signed in as <login>.` for one saved without a check,
+  whose row then shows the login; `…; the token's rights are not checked.`; a GitLab token that
+  works for git without `api` ends its `Works:` line with `; glab cannot open merge requests: the
+  token lacks api.`), `<Kind> refused the
+  token: it expired or was revoked.`, `The token lacks <scopes>.` ⓘ `About the missing scope`
+  (both with Sign-in's `Replace token` as the main button), `⚠ No answer in 5 seconds.` (`⚠ No answer: <why>.`) ⓘ `About
+  no answer` [Check again], the trust question (below), `The server's certificate is not
+  issued for <host>: trusting it would not help. Ask the server's administrator.`, `… names its
+  host only in the old Common Name field, which LADO refuses: ask the server's administrator to
+  reissue it.`, `… expired on <date>: ask the server's administrator to renew it.` (no button),
+  `It redirects to <target>: add that address instead.`, `It answers as <Kind>,
+  not <saved Kind>: remove it and add it again.`, `It answers as neither GitHub nor GitLab.`.
+  A `Works:` line has no `✓` (`gx-result ok works`): it says so in words; the other ok lines of
+  the page keep theirs. The focus stays on Check. Nothing of a check is kept but a passing
+  check's login.
+- **Trust this server?** (LAD-301, mockup `mockup-certificate.html`): a check whose server's
+  certificate is not trusted shows under Sign-in the trust card (`TrustCard`, `gx-trust`,
+  `role=alert`, on `warn` ground) instead of a line: `⚠ The server's certificate is not
+  trusted.` ⓘ `About the certificate` (signed by an authority LADO's computer does not know,
+  often the company's own; trusted, it is trusted for this server only, nothing else on the
+  computer changes), then `Signed by <subject> · <issuer>` (`Certificate <host> · signed by
+  itself` for the server's own, `… · signed by <issuer>` when the server sends its own
+  certificate alone, both with the renewal line), `Valid <from> to <until>`, `SHA-256 <fingerprint>` (mono,
+  wrapped by character), a line (`Trust it only if you expected this authority. In a company
+  network your IT department can confirm the fingerprint.`; for the server's own certificate
+  that LADO asks again when it is renewed; for an intermediate that the server sends no root),
+  and `Trust this server` (main) and `Don't trust`. Trust sends the offered PEM to `PUT
+  …/certificate`, which saves it and checks again: `Certificate trusted. <the check's line>`,
+  the Certificate row shown, the focus on Check. Don't trust saves and remembers nothing: `Not
+  trusted: LADO and agents cannot clone or push here over https.` [Check again], the focus on
+  Check again, the closed row `✕ check failed: certificate not trusted`; the next check asks
+  again. A saved certificate that no longer fits asks louder (`gx-trust changed`: danger ground,
+  2 px border): `⚠ The server's certificate has changed since you trusted it.` ⓘ, `Before
+  <name> · <first 8 bytes of its fingerprint>…`, `Now <subject> · <issuer>`, `Valid`, `SHA-256`,
+  bold `If your IT department did not announce a new certificate, do not trust it:` `someone may
+  be between LADO and the server.`, `Trust the new certificate` (`.danger`) and `Keep the old
+  one`, which changes nothing (`The saved certificate does not fit the server: LADO and agents
+  cannot clone or push here over https.` [Check again]). There is no file upload: a file from
+  IT goes in by `lado git-server certificate`.
+- **Certificate** row: `Remove` removes it at once (`DELETE …/certificate`): `✓ Certificate
+  removed.` [Undo], the value `None` while that line shows, the focus on Undo; Undo sends the
+  removed PEM back through `PUT …/certificate` (an expired one too) and says `✓ Certificate
+  saved.`, the focus on Remove. Both are off while their request runs. A removal that found no
+  certificate (gone by the command meanwhile) has no Undo.
+- **Replace token** opens a form under Sign-in (`gx-form`): New token (the secret field,
+  focused), `Make one on its token page with the <scopes>.`, `Save token` (`Checking the
+  token…`) and Cancel; Esc cancels, the focus back on Replace token. It posts the saved address
+  and the token to `POST /api/git-servers`. Done: `✓ Token replaced: signed in as <login>.`
+  (`…; glab cannot open merge requests: the token lacks api.` when the answer's `tool_cannot`
+  says so),
+  plus `⚠ Before, it was <old>.` ⓘ `About the other user` when the login changed, or `⚠ The token
+  lacks <scopes>: agents can clone but not push.` for a token without a right (Sign-in's Replace
+  token the main button); the focus on Replace token. A refused token: `<Kind> refused this token: copy it whole or make
+  a new one.` under the field, the token kept, Save off until it is edited. A server that does
+  not answer: `⚠ No answer in 5 seconds: save it without a check, as <Kind>.` and `Save without a
+  check`, which saves it under the saved kind (`✓ Saved without a check as <Kind>.`, the row
+  then `⚠ not checked`).
+- **Commit author**: `Set author` or `Edit` opens a form under its row: Name and Email (the
+  saved author, else empty; Name focused), `Save author` and Cancel; Esc cancels. It sets the
+  author as `lado git-server author` does; a refusal shows under Name or Email (one of no field
+  under the buttons). Done: `✓ Author saved.`, the focus on Edit. `Remove` clears it at once:
+  `✓ Author removed.` [Undo], the focus on Undo; Undo sets the same name and email again
+  through `PUT …/author` and says `✓ Author saved.`, the focus on Edit. `Remove` and `Undo` are
+  off while their request runs, and so are `Edit` and `Set author`; Undo's line stays
+  meanwhile.
+- **Remove server** asks in the panel's foot (`mx-confirm`, `role=alertdialog`, the focus on
+  Cancel, Esc cancels): `Remove <address>?` / `Its token, commit author and certificate go too.
+  This cannot be undone.`, `Remove server` and Cancel. Done: `Removed <address>.` in the row's place (with
+  the removal's warning under it when a folder stayed), the focus on `+ Add server`.
+- **Add server** opens a form under the list: Address ⓘ (empty with the placeholder
+  `github.com or gitlab.example.com`, whichever servers are saved; the address of a failure's
+  way out when opened by `Add git server ↗`; focused), Kind ⓘ only when needed, Token ⓘ (the
+  secret field). Once the typing settles (`MODEL_DEBOUNCE`) the form asks `POST
+  /api/git-servers/check` (`Checking…`): the server is asked with no token, and under Address
+  come the refusals of the address (github.com on another port or under a path, a host held
+  by another server, a redirect; git older than 2.31 under the buttons),
+  `⚠ Plain http://: the token travels unencrypted.` ⓘ, `<Kind> answers.` (a hint only: it
+  chooses Token's link `Make one on its token page with the <scopes>.`), or `Already saved.`
+  [Replace its token] with Add off; Replace its token closes the form and opens that server's
+  Replace token, the focus in New token. A server that does not answer, or answers as neither
+  kind or both, shows `⚠ No answer in 5 seconds. Choose its kind to save it without a check.`
+  and the kind as segments, none chosen; the button is then `Add without a check`, off until one
+  is chosen. A certificate not trusted shows the trust card under Address, Add off meanwhile:
+  Trust keeps its PEM in the form and checks the address again trusting it alone (`<Kind>
+  answers.` and `Certificate: <name> · valid until <date>, trusted for this server.`, the focus
+  in Token), and Add saves it with the server; Don't trust shows `⚠ Not trusted, so LADO cannot
+  ask the server. Choose its kind to save it without a check.` and the kind. Editing the address
+  drops either. Add sends `{address, token, kind, certificate}` (`Checking the token…`); a server that answered
+  the address check and not Add (`choose_kind` in the refusal) shows `⚠ It stopped answering
+  when you pressed Add.` [Try again] and the kind, the token kept. A refusal shows under its
+  field in the page's words (`<Kind> refused this token: copy it whole or make a new one.` under
+  Token, kept, Add off until edited); the token is emptied when Add is done or refused for
+  another field, on Cancel and when the form closes. Done: the form closes, the new row stands
+  open where it was, the focus on its head, its panel starting with `✓ Saved: <Kind>, signed in
+  as <login>.` (`…; glab cannot open merge requests: the token lacks api.` when the answer's
+  `tool_cannot` says so; `✓ Saved without a check as <Kind>.`; `⚠ The token lacks <scopes>: agents can
+  clone but not push.` for a token without a right, Sign-in's Replace token the main button).
+  Cancel or Esc gives the focus back to `+ Add server`.
+- **Opened from a clone's note**: `?check=<host>` opens that saved server's panel and checks it
+  as Check does; `?add=<address>` opens Add with that address, checked as typed, the focus in
+  Token. Read once the list is read, then dropped from the address bar (`replace`), so a reload
+  does neither again; a host no server is saved for opens nothing.
+- **One result at a time**: the page shows at most one result line (a save, a check, a
+  removal, an author line with Undo), kept as page state with its server and place; any next
+  action removes it, opening or closing a row does not (Cancel and Esc count). Each action has a
+  number: an answer that comes after a later action (a check, a save, a removal) keeps the list
+  true and closes its own form when that form is still open, touching no result line, other
+  form or focus. Each server shows its own `Checking…`, its
+  Check off while its check runs. A check of a server removed elsewhere (404) leaves its line
+  in the row's place. Nothing under the pointer moves (`useScrollAnchor`).
+- **API** (`lado.server.git_entries` over `lado.git_servers`, under the token, no change-feed
+  event): `GET /api/git-servers` (`GitServers {servers: GitServerInfo {address, host, kind,
+  kind_title, login, has_token, author_name, author_email, certificate: {name, not_after,
+  expired} | null}, kinds: GitKindInfo {name, title, token_path, scopes}}`, asking none; no
+  `lado.db` made), `POST /api/git-servers/check` (`{address, certificate?}` → `GitServerCheck
+  {address, hint, token_page, scopes, choose_kind, unchecked, saved, refusals, warnings,
+  certificate_offer, certificate_before}`, saving nothing, sending no token), `POST
+  /api/git-servers` (`GitServerAdd {address, token, kind, certificate?}` → `GitServerAdded
+  {server, line, replaced, warnings, warning, missing_scopes}`: `warning` the page's line for a
+  token without a right), `POST /api/git-servers/{host}/check` (→ `GitServerChecked {outcome,
+  kind, login, missing_scopes, rights_checked, was_checked, message, hint, server,
+  certificate_offer, certificate_before}`: `message` the page's line, `hint` its tip, `server`
+  as saved after it, the offer a `CertificateOffer {subject, issuer, valid_from, valid_until,
+  sha256, own, intermediate, leaf, pem}`; a 404 for no such server, a 422 for a missing token file),
+  `PUT /api/git-servers/{host}/certificate` (`{pem}`, checked as a certificate file but an
+  expired one taken, as Undo puts back what Remove took → the check's `GitServerChecked`)
+  and `DELETE /api/git-servers/{host}/certificate` (→ `GitServerCertificateRemoved {server,
+  pem}`, the PEM for Undo, null when there was none),
+  `PUT /api/git-servers/{host}/author` (`GitServerAuthor {name, email}`) and `DELETE
+  /api/git-servers/{host}/author`, both → `GitServerAuthorDone {server, line}`, and `DELETE
+  /api/git-servers/{host}` (→ `GitServerRemoved`, the servers left and `warning` when a folder
+  stayed). A refusal is a 400 whose `detail` is a `GitEntryRefused` (an `EntryRefused` with
+  `choose_kind`). The token enters only in the body of `POST /api/git-servers` (a route of
+  `SECRET_ROUTE`) and is in no answer, log, journal or file but its own; a check reads the
+  token file.
 
 ### Activity
 

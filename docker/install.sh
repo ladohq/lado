@@ -275,20 +275,6 @@ Neither nc nor lsof is here to find a free port: LADO takes 8765."
     die "every port from 8765 to 8799 is taken on this computer: stop a program that listens on one, then run this again"
 }
 
-find_ssh_agent() {
-    ssh_agent=
-    if [ "$platform" = mac ]; then
-        ssh_agent=/run/host-services/ssh-auth.sock # Docker Desktop's way to the Mac's agent
-    elif [ -S "${SSH_AUTH_SOCK:-}" ]; then
-        ssh_agent=$SSH_AUTH_SOCK
-        notes="$notes
-The agents use your ssh agent at $ssh_agent; its path may change at a new login: run this again after one."
-    else
-        notes="$notes
-No ssh agent here: git over ssh is off for the agents (https and GH_TOKEN still work)."
-    fi
-}
-
 phone_warning() {
     warned=1
     say ""
@@ -364,7 +350,6 @@ write_env() {
         say "LADO_PORT=$port"
         if [ -n "$git_name" ]; then say "LADO_GIT_NAME=$(quoted "$git_name")"; fi
         if [ -n "$git_email" ]; then say "LADO_GIT_EMAIL=$(quoted "$git_email")"; fi
-        if [ -n "$ssh_agent" ]; then say "LADO_SSH_AGENT=$(quoted "$ssh_agent")"; fi
         if [ "$phone" = yes ]; then
             say "LADO_LISTEN=0.0.0.0"
             say "LADO_PUBLIC_HOST=$public_host"
@@ -388,7 +373,6 @@ fresh_install() {
 Warning: the agents cannot commit until LADO_GIT_NAME and LADO_GIT_EMAIL are set in $dir/.env; then run this again."
     fi
     pick_port
-    find_ssh_agent
     ask_phone
     if [ "$phone" = yes ]; then
         if [ -z "$warned" ]; then phone_warning; fi
@@ -458,6 +442,12 @@ rerun() {
 .env, secrets/ and the home volume stay as they were; the old compose.yaml is compose.yaml.bak: diff compose.yaml.bak compose.yaml shows a change you made to it by hand."
     else
         say "LADO $version is installed in $dir: starting it."
+    fi
+    # The container has no ssh: the line stays for the way back, whose compose.yaml.bak
+    # binds the socket it names.
+    if [ -n "$(env_value LADO_SSH_AGENT)" ]; then
+        notes="$notes
+LADO_SSH_AGENT in .env is no longer used: git goes over https through Settings → Git servers; remove the line once you no longer go back to a version before 0.48.0."
     fi
     if [ -z "$phone" ] && [ -n "$(env_value LADO_LISTEN)" ]; then phone=yes; fi
 }

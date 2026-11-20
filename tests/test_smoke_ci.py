@@ -121,16 +121,6 @@ def test_redact_without_a_key_changes_nothing(tmp_path):
     assert (tmp_path / "log").read_bytes() == b"text"
 
 
-def test_a_smoke_cell_runs_its_tests_on_three_workers(tmp_path, monkeypatch):
-    seen = []
-    monkeypatch.setattr(smoke_ci, "install", lambda provider: dict(os.environ))
-    monkeypatch.setattr(smoke_ci, "cell", lambda tests, *args, **kwargs: seen.append(tests) or 0)
-    assert smoke_ci.run("kilo", tmp_path) == 0
-    assert seen == [
-        ["uv", "run", "pytest", "-m", "smoke", "-n", "3", "--dist", "worksteal", "-v", "-k", "kilo"]
-    ]
-
-
 @pytest.fixture
 def live_cell(monkeypatch):
     """`live` with its install replaced; `seen` holds each pytest command `cell` gets."""
@@ -413,12 +403,6 @@ def test_every_provider_has_a_cell(tmp_path, provider):
     assert f"uv run pytest -m smoke -n 3 --dist worksteal -v -k {provider}\n" in ran
 
 
-def test_a_cell_whose_install_fails_is_red_and_runs_no_test(tmp_path):
-    done, _, ran = run_cell(tmp_path, "kilo", NPM_FAILS="1")
-    assert done.returncode != 0
-    assert "uv run" not in ran
-
-
 # The install in up to three attempts: npm drops an optional package (a CLI's native binary)
 # that failed to fetch and still exits 0.
 
@@ -455,10 +439,11 @@ def test_a_cli_that_never_runs_is_red_after_three_installs(tmp_path):
     assert "uv run" not in ran
 
 
-def test_an_install_that_always_fails_is_red_after_three_installs(tmp_path):
+def test_an_install_that_always_fails_is_red_after_three_installs_and_runs_no_test(tmp_path):
     done, _, ran = run_cell(tmp_path, "kilo", NPM_FAILS="1")
     assert done.returncode == 1
     assert npm_calls(ran).count("install") == 3
+    assert "uv run" not in ran
     package, version, _ = smoke_ci.PINS["kilo"]
     assert f"{package}@{version} did not install" in done.stderr
 

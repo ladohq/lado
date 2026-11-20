@@ -85,6 +85,47 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   `TERM_PROGRAM(_VERSION)`, `TMUX` and `TMUX_PANE`, and execs the agent's CLI, found on the
   resolved `PATH`. `lado doctor` shows the source and how long the shell takes (a warning
   above 2 s).
+- While git servers are saved (`lado git-server`, `git_servers.py`), each agent's launch
+  adds git's way to them among LADO's variables (`runtime._ours`): `GIT_CONFIG_KEY_<n>` and
+  `GIT_CONFIG_VALUE_<n>` per server (an empty credential helper for its address, LADO's
+  helper `lado.git_credential` by LADO's Python's absolute path, its ssh addresses
+  rewritten to https), numbered after the `GIT_CONFIG_*` entries the layers already hold,
+  and `GIT_CONFIG_COUNT` raised to cover them. They are in `LADO_LAUNCH_VARS`, with
+  `LADO_GIT_CONFIG_BASE`, the layers' own count: `without_launch` gives that count back, so
+  a worker spawned under `LADO_AGENT_ENV=inherit` gets the human's own entries and LADO's
+  anew. With no server saved none is set, and the launch asks no `git --version`; with one,
+  an agents' git older than 2.31 refuses the launch first (`_check_commands`). The list is
+  read at each launch: a server added or removed reaches a running agent at its restart.
+- A server with a commit author (`lado git-server author`) adds, after its own entries,
+  six `includeIf.hasconfig:remote.*.url:<pattern>.path` entries (`git_servers.author_entries`:
+  its address with or without a user, `git@<host>:*`, `git@<host>:*/**`, `ssh://git@<host>/**`
+  and `ssh://git@<host>:22/**`) pointing to `<config folder>/git-authors/<server id>.gitconfig`,
+  which the launch writes in `_ours` (`git_servers.author_files`: only `[user]` name and email,
+  mode 600, by a rename) and which goes with the config folder. git includes it in a
+  repository with a remote on the server, so one agent commits to each server's repositories
+  as that server's author and elsewhere as before; the condition needs git 2.36
+  (`GIT_AUTHOR_MIN`): while an author is set, an older agents' git refuses the launch
+  (`_check_commands`). `GIT_AUTHOR_*`/`GIT_COMMITTER_*` of the agent's environment win over
+  every config: the launch names each in its warnings (`_author_warnings`). LADO's own git
+  (`agent_env.for_git`) gets no author.
+- The GitLab CLI: `_ours` sets `GLAB_CONFIG_DIR=<config folder>/glab`, where
+  `git_servers.glab_variables` writes `config.yml` whole at each launch (600 in a 700 folder,
+  glab's demand), with one host entry per saved GitLab server and its token as a
+  `PRIVATE-TOKEN` header from LADO's helper (`lado.git_credential … token`), read at each
+  call: no token in the file, a replaced token works at once. `agent_env.merge` drops
+  `GITLAB_VARIABLES` (`GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`, `GITLAB_HOST`, `GITLAB_URI`,
+  `GL_HOST`, `GLAB_CONFIG_DIR`, `GITLAB_API_HOST`, `GITLAB_REPO`) of every layer, as
+  GitHub's; `GITLAB_URL` moves no request and stays. `OAUTH_TOKEN`, `CA_CERT` and
+  `API_PROTOCOL`, which glab reads too, stay (other tools' as well; LADO's host entry wins for
+  a saved host); glab sends `OAUTH_TOKEN` to a GitLab not in the list, so doctor names it.
+- The repository's server and its tool (`runtime._repo_tool`, once per launch): the saved
+  server of the session repository's `origin` (`git_servers.server_for`, ssh addresses too)
+  and its kind's tool on the agents' PATH (`git_servers.tool_state`: `<tool> --version`, cut
+  at 10 s, with a config folder of the call's own, as glab writes its configuration at any
+  call). `_spec` adds `git_servers.tool_line` to the instructions after the container's lines,
+  the same for every provider; `_git_server_warnings` adds `tool_warning` (missing, or older
+  than the kind's `tool_oldest`) to the launch's warnings, and the agent starts. No saved
+  server for the origin, or no origin: no line, no tool run.
 - Each agent has a temporary folder of its own (LAD-247): all agents of a machine run as one
   user with one `/tmp`, where two agents' files of one name (a draft `pr.md`) met. At each
   launch `providers.base.make_temp_dir` makes `<parent>/lado-<uid>/<session>/<agent>`, each

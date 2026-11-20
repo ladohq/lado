@@ -59,6 +59,7 @@ import { LaunchSetup } from "./LaunchSetup";
 import { cannotStart, DEFAULT_MODE, LaunchTeam, modeWords } from "./LaunchTeam";
 import {
   BranchField,
+  CloneHint,
   FolderHint,
   FolderNotes,
   FolderPathField,
@@ -79,7 +80,7 @@ import { agentClisPath, projectPath, sessionPath } from "./paths";
 import { nextFree, sessionName, type NameMode } from "./sessionName";
 import { ActionProblem, Waits } from "./waitingParts";
 
-export { FolderHint };
+export { CloneHint, FolderHint };
 
 // How long the window waits after a keystroke before it asks the server about the folder.
 export const DEBOUNCE = 200;
@@ -208,6 +209,18 @@ export function useAsked<T>(key: string | null, ask: (key: string) => Promise<T>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   return asked !== null && asked.key === key ? asked.answer : null;
+}
+
+// The value of the last answer, kept while the next key is asked (useAsked's null): for a
+// view that must not blink. A failed answer drops it.
+function useLastValue<T>(asked: Asked<T>): T | null {
+  const value = valueOf(asked);
+  const failed = asked !== null && "error" in asked;
+  const [last, setLast] = useState<T | null>(null);
+  useEffect(() => {
+    if (value !== null || failed) setLast(value);
+  }, [value, failed]);
+  return asked === null ? last : value;
 }
 
 function useOnce<T>(ask: () => Promise<T>, skip = false): Asked<T> {
@@ -489,6 +502,9 @@ function LaunchDialog({
   // In Project the repository's git root (links resolved), as a session's folder is given.
   const root = resuming?.repo ?? (scratching ? null : projecting ? inProject?.root : folder?.root) ?? null;
   const kitList = useAsked(root ?? "", (where) => getKits(where || null));
+  // Root passes through several places while Where settles: the chips keep the last list's
+  // versions meanwhile, so a chip's × does not jump under a finger.
+  const knownKits = useLastValue(kitList);
   // Asked again for each project chosen: a project's secrets may log a CLI in. A resumed
   // session's are its project's; the other ways' none.
   const loginsOf = resuming ? (resuming.project ?? "") : projecting ? (inProject?.project ?? null) : "";
@@ -1375,9 +1391,7 @@ function LaunchDialog({
                 <p className="problem" role="alert">
                   {cloneEnd.refused.message}
                 </p>
-                {cloneEnd.refused.hint && (
-                  <FolderHint text={cloneEnd.refused.hint.text} command={cloneEnd.refused.hint.command} />
-                )}
+                <CloneHint refused={cloneEnd.refused} />
               </div>
             )}
           </div>
@@ -1444,7 +1458,7 @@ function LaunchDialog({
               touch("kits");
               setKits(next);
             }}
-            known={valueOf(kitList) ?? []}
+            known={knownKits ?? []}
             kitsError={kitList !== null && "error" in kitList ? kitList.error : null}
             providers={providers}
             providersNote={providersNote}

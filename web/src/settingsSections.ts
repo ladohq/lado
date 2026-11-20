@@ -3,12 +3,13 @@
 // Settings.tsx's PAGES, keyed by its slug, so a section without a page does not compile.
 import type { JSX } from "react";
 
-import { AgentCliIcon, ServerIcon, SettingsIcon, ShieldIcon } from "./icons";
+import { AgentCliIcon, GitIcon, ServerIcon, SettingsIcon, ShieldIcon } from "./icons";
 
 export const SETTINGS_SECTIONS = [
   { slug: "general", name: "General", icon: SettingsIcon },
   { slug: "agent-clis", name: "Agent CLIs", icon: AgentCliIcon },
   { slug: "model-servers", name: "Model servers", icon: ServerIcon },
+  { slug: "git-servers", name: "Git servers", icon: GitIcon },
   { slug: "statistics", name: "Statistics", icon: ShieldIcon },
 ] as const satisfies readonly { slug: string; name: string; icon: () => JSX.Element }[];
 

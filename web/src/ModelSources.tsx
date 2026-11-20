@@ -961,7 +961,7 @@ function ModelId({
 }
 
 // A check or a refusal under its field, in the launch window's note look.
-function CheckNote({ note }: { note: ModelCheck | EntryRefused }) {
+export function CheckNote({ note }: { note: ModelCheck | EntryRefused }) {
   if ("message" in note)
     return (
       <span className="field-note bad" role="alert">
@@ -1238,7 +1238,7 @@ function AddServer({
 // `lado model-server add --replace` does, then its list opens.
 // Empties a key's field once its form has sent it: Add or Save is done, or refused for another
 // field than the key (a refused key stays, for the human to edit or erase).
-function emptyKey(key: RefObject<HTMLInputElement | null>, setFilled: (filled: boolean) => void) {
+export function emptyKey(key: RefObject<HTMLInputElement | null>, setFilled: (filled: boolean) => void) {
   if (key.current) key.current.value = "";
   setFilled(false);
 }

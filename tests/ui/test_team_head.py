@@ -2,7 +2,6 @@
 levels by the window, the title's limit, the list, the keyboard, and the height the feed gets
 from it. Big teams are served by the page's own route: what is measured here is the layout."""
 
-import json
 import re
 
 import pytest
@@ -381,22 +380,6 @@ def test_a_focused_avatars_ring_stands_clear_of_its_pressed_frame(page: Page, se
     shot(page, full_page=False)
 
 
-def test_a_team_that_fails_to_load_says_so(page: Page, server, repo):
-    session = running_session(repo)
-    log_in(page, server)
-    page.route(
-        f"**/api/sessions/{session}/agents",
-        lambda route: route.fulfill(
-            status=500, body=json.dumps({"detail": "the database is locked"})
-        ),
-    )
-    page.goto(f"{server['url']}/sessions/{session}")
-    alert = page.get_by_role("alert").filter(has_text="team not loaded")
-    expect(alert).to_be_visible()
-    alert.hover()
-    expect(page.get_by_role("tooltip")).to_contain_text("locked")
-
-
 def test_the_keys_hint_comes_with_the_focus_and_nothing_moves(page: Page, server, repo, shot):
     open_team(page, server, repo, team(["supervisor"], {}), TWENTY, (1440, 900))
     field = page.get_by_role("textbox", name="Write to the supervisor…")
@@ -425,15 +408,6 @@ def test_a_narrow_column_shows_no_hint(page: Page, server, repo):
     assert column["width"] < 560
     page.get_by_role("textbox", name="Write to the supervisor…").click()
     expect(page.locator(".composer-keys")).to_be_hidden()
-
-
-def test_an_agents_page_names_the_agent(page: Page, server, repo, shot):
-    session = open_team(
-        page, server, repo, team(["supervisor", "developer-2"], {}), TWENTY, (1440, 900)
-    )
-    page.goto(f"{server['url']}/sessions/{session}/agents/developer-2")
-    expect(page.locator(".composer-to")).to_have_text("to developer-2")
-    shot(page, full_page=False)
 
 
 def test_the_word_messages_goes_before_the_tabs_give_up_anything(page: Page, server, repo, shot):

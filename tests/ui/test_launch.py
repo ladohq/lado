@@ -3,6 +3,7 @@ a refused folder, the session list row's menu, Stop from the session's head, Res
 Forget, Forget stopped sessions from the Stopped band and Stop and forget. The server is
 `lado` with the fake providers, so what it starts runs the fake agent."""
 
+import os
 import re
 import subprocess
 import uuid
@@ -1364,10 +1365,129 @@ def test_on_a_phone_every_field_and_button_of_the_window_is_a_44_px_target(
     pick_place(dialog, "Other folder…")
     chip = dialog.locator(".kits-box-chip", has_text="default")
     assert chip.bounding_box()["height"] == 32
-    drawn = chip.get_by_role("button", name="Remove default").bounding_box()
+    remove = chip.get_by_role("button", name="Remove default")
+    drawn = remove.bounding_box()
     assert (drawn["width"], drawn["height"]) == (32, 32)
-    page.mouse.click(drawn["x"] + drawn["width"] + 5, drawn["y"] + drawn["height"] / 2)
+    # Relative to the button when pressed: Playwright waits for it to stand still and checks
+    # that the press lands on it, its ::after past the drawn edge.
+    remove.click(position={"x": drawn["width"] + 5, "y": drawn["height"] / 2})
     expect(chip).to_have_count(0)
     # Now `+ Add kit` offers it back.
     assert add_kit(dialog).bounding_box()["height"] == 44
     shot(page, "kit-removed")
+
+
+# A listing refused by a git server's host: the note leads to Settings → Git servers.
+
+GIT_TOKEN = "glpat-CANARY-ui-cl0n"
+
+
+@pytest.fixture
+def git_host(tmp_path, monkeypatch, git_config):
+    """An https git server on 127.0.0.1 that wants GIT_TOKEN, its repository team/app.git
+    and a certificate the server's git and API calls trust; taken before `server`."""
+    from fake_git_api import make_certificate
+    from fake_git_server import Server
+
+    certificate = make_certificate(tmp_path)
+    monkeypatch.setenv("GIT_SSL_CAINFO", str(certificate[0]))
+    monkeypatch.setenv("SSL_CERT_FILE", str(certificate[0]))
+    host = Server(tmp_path / "git-host", GIT_TOKEN, certificate)
+    url = host.repository("team/app.git", agent_helpers.init_repo(tmp_path / "seed"))
+    yield host, url
+    host.close()
+
+
+def clone_url(page: Page, server, url: str) -> Locator:
+    log_in(page, server)
+    dialog = new_session(page)
+    pick_place(dialog, "Clone from URL…")
+    dialog.get_by_role("textbox", name="Repository URL").fill(url)
+    return dialog
+
+
+def test_a_saved_servers_refused_token_leads_to_its_check(
+    page: Page, git_host, tmp_path, request, shot
+):
+    from lado import git_kinds, git_servers
+
+    host, url = git_host
+    at = git_servers.address(host.url)
+    git_servers.save(at, git_servers.Checked(git_kinds.by_name("gitlab"), "ivan"), "glpat-WRONG-1")
+    server = request.getfixturevalue("server")
+    dialog = clone_url(page, server, url)
+    note = dialog.locator(".field-note.bad")
+    expect(note).to_contain_text(f"refused the token of the git server {host.url}")
+    expect(note).to_contain_text(
+        "Check this git server; if its token expired or was revoked, replace it there."
+    )
+    expect(note.get_by_role("button", name="Copy command")).to_have_count(0)
+    link = note.get_by_role("link", name=f"Check {at.key} (opens a new tab)")
+    expect(link).to_have_text(f"Check {at.key} ↗")
+    shot(page, "clone-check-note")
+    with page.context.expect_page() as opened:
+        link.click()
+    settings = opened.value
+    expect(settings).to_have_url(re.compile(r"/settings/git-servers$"))
+    panel = settings.get_by_role("region", name="Git servers")
+    expect(panel.get_by_role("button", name=host.url, exact=True)).to_have_attribute(
+        "aria-expanded", "true"
+    )
+    expect(panel).to_contain_text("GitLab refused the token: it expired or was revoked.")
+    shot(settings, "settings-opened-to-check")
+    # The window stays as it was in its own tab.
+    expect(dialog.get_by_role("textbox", name="Repository URL")).to_have_value(url)
+
+
+def test_an_unsaved_host_asking_for_a_login_leads_to_add(page: Page, git_host, server, shot):
+    host, url = git_host
+    dialog = clone_url(page, server, url)
+    note = dialog.locator(".field-note.bad")
+    key = host.url.removeprefix("https://")
+    expect(note).to_contain_text(f"{key.split(':')[0]} asks for a login")
+    expect(note).to_contain_text(
+        f"Add {key} as a git server with a token: LADO and its agents then sign in to it."
+    )
+    link = note.get_by_role("link", name="Add git server (opens a new tab)")
+    shot(page, "clone-add-note")
+    with page.context.expect_page() as opened:
+        link.click()
+    settings = opened.value
+    expect(settings).to_have_url(re.compile(r"/settings/git-servers$"))
+    panel = settings.get_by_role("region", name="Git servers")
+    expect(panel.get_by_role("textbox", name="Address")).to_have_value(host.url)
+    expect(panel.get_by_role("textbox", name="Token")).to_be_focused()
+    shot(settings, "settings-opened-to-add")
+
+
+def test_in_the_container_an_ssh_address_leads_to_add(
+    page: Page, tmp_path, monkeypatch, request, shot
+):
+    """LADO's container has no ssh: an ssh that refuses every key, as there, on the
+    server's PATH, and the server started with the container's mark."""
+    folder = tmp_path / "ssh-bin"
+    folder.mkdir()
+    ssh = folder / "ssh"
+    ssh.write_text(
+        "#!/bin/sh\necho 'git@github.com: Permission denied (publickey).' >&2\nexit 255\n"
+    )
+    ssh.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{folder}:{os.environ['PATH']}")
+    monkeypatch.setenv("LADO_CONTAINER", "1")
+    server = request.getfixturevalue("server")
+    url = "git@github.com:acme/app.git"
+    dialog = clone_url(page, server, url)
+    note = dialog.locator(".field-note.bad")
+    expect(note).to_contain_text("LADO's container has no ssh key for github.com")
+    expect(note).to_contain_text(
+        "Add github.com as a git server with a token: its git@ addresses then go over https too."
+    )
+    link = note.get_by_role("link", name="Add git server (opens a new tab)")
+    expect(link).to_have_text("Add git server ↗")
+    shot(page, "clone-container-ssh-note")
+    with page.context.expect_page() as opened:
+        link.click()
+    settings = opened.value
+    expect(settings).to_have_url(re.compile(r"/settings/git-servers$"))
+    panel = settings.get_by_role("region", name="Git servers")
+    expect(panel.get_by_role("textbox", name="Address")).to_have_value("https://github.com")

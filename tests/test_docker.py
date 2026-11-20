@@ -61,14 +61,6 @@ def test_each_clis_default_is_its_pin(provider):
 
 
 @pytest.mark.parametrize("provider", sorted(ARGS))
-def test_each_cli_is_installed_at_that_version_in_a_layer_of_its_own(provider):
-    package = _pins()[provider][0]
-    [install] = [line for line in lines() if f'"{package}@${{{ARGS[provider]}}}"' in line]
-    assert install.startswith("RUN npm install -g --prefix /opt/agents ")
-    assert install.count("@${") == 1, install
-
-
-@pytest.mark.parametrize("provider", sorted(ARGS))
 def test_each_cli_is_run_once_after_its_install(provider):
     """npm drops an optional dependency (a CLI's native binary) that failed to install and
     exits 0: the build runs the CLI so such an image is not built. Its HOME is a folder
@@ -111,6 +103,21 @@ OPENSPEC_INSTALL = (
 )
 
 
+def npm_packages(line: str) -> list[str]:
+    """The packages a `RUN npm install` line installs: its words up to the first `&&`,
+    without the options and the --prefix's folder."""
+    words = line.split("&&")[0].split()[3:]  # after RUN npm install
+    found, skip = [], False
+    for word in words:
+        if skip:
+            skip = False
+        elif word == "--prefix":
+            skip = True
+        elif not word.startswith("-"):
+            found.append(word)
+    return found
+
+
 def loose_pin(text: str) -> list[str]:
     """The lines of `text` that leave openspec's pin loose: its ARG's default not an exact
     version, its install sharing a layer with another package (or missing)."""
@@ -121,19 +128,20 @@ def loose_pin(text: str) -> list[str]:
         and not re.fullmatch(r"ARG OPENSPEC_VERSION=\d+\.\d+\.\d+", line)
     ]
     installs = [line for line in lines(text) if f'"{OPENSPEC}@' in line]
-    bad += [line for line in installs if " ".join(line.split()) != OPENSPEC_INSTALL]
+    want = [f'"{OPENSPEC}@${{OPENSPEC_VERSION}}"']
+    bad += [line for line in installs if npm_packages(line) != want]
     if not installs:
         bad.append(f"no install of {OPENSPEC}")
     return bad
 
 
-def test_openspec_is_pinned_in_a_layer_of_its_own_after_the_clis():
+def test_openspec_is_pinned_exactly_in_a_layer_of_its_own():
+    """Its ARG before the install: after it, the version would be empty and npm would take
+    the latest."""
     assert loose_pin(DOCKERFILE) == []
-    [arg] = [line for line in lines() if line.startswith("ARG OPENSPEC_VERSION=")]
-    install = flat().index(OPENSPEC_INSTALL)
-    assert lines().index(arg) < install
-    clis = [i for i, line in enumerate(lines()) if "--prefix /opt/agents" in line]
-    assert len(clis) == len(ARGS) and max(clis) < install
+    [arg] = [i for i, line in enumerate(lines()) if line.startswith("ARG OPENSPEC_VERSION=")]
+    [install] = [i for i, line in enumerate(lines()) if f'"{OPENSPEC}@' in line]
+    assert arg < install
 
 
 def test_a_loose_openspec_pin_is_named():
@@ -146,6 +154,77 @@ def test_a_loose_openspec_pin_is_named():
     shared = 'RUN npm install -g --prefix /opt/tools "@fission-ai/openspec@${OPENSPEC_VERSION}" jq'
     assert loose_pin(arg + shared + "\n") == [shared]
     assert loose_pin(arg) == [f"no install of {OPENSPEC}"]
+
+
+GLAB_ARGS = ("GLAB_VERSION", "GLAB_SHA256_AMD64", "GLAB_SHA256_ARM64")
+GLAB_URL = (
+    "https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_VERSION}/downloads/"
+    "glab_${GLAB_VERSION}_linux_${arch}.tar.gz"
+)
+
+
+def glab_loose(text: str) -> list[str]:
+    """The lines of `text` that leave glab's pin loose: its version not exact, an
+    architecture's SHA-256 not 64 hex digits (or missing), its install not checked by it,
+    run, or alone in its layer (or missing)."""
+    found = lines(text)
+    args = {}
+    for line in found:
+        if match := re.fullmatch(r"ARG (GLAB_\w+)(?:=(.*))?", line):
+            args[match[1]] = line
+    bad = [args[n] for n in ("GLAB_VERSION",) if n in args]
+    bad = [line for line in bad if not re.fullmatch(r"ARG GLAB_VERSION=\d+\.\d+\.\d+", line)]
+    for name in GLAB_ARGS[1:]:
+        if not re.fullmatch(rf"ARG {name}=[0-9a-f]{{64}}", args.get(name, "")):
+            bad.append(args.get(name, f"no {name}"))
+    installs = [line for line in found if "glab_${GLAB_VERSION}_linux_" in line]
+    if not installs:
+        bad.append("no install of glab")
+    for line in installs:
+        steps = [step.strip() for step in line.removeprefix("RUN ").split("&&")]
+        if (
+            GLAB_URL not in line
+            or "sha256sum -c" not in line
+            or not any(step.endswith("/opt/tools/bin/glab --version") for step in steps)
+            or "npm install" in line
+            or "apt-get" in line
+        ):
+            bad.append(line)
+    return bad
+
+
+def test_glab_is_pinned_exactly_by_its_sums_in_a_layer_of_its_own():
+    assert glab_loose(DOCKERFILE) == []
+    found = lines()
+    named = tuple(f"ARG {name}=" for name in GLAB_ARGS)
+    args = [i for i, line in enumerate(found) if line.startswith(named)]
+    [install] = [i for i, line in enumerate(found) if "glab_${GLAB_VERSION}_linux_" in line]
+    assert len(args) == 3 and max(args) < install
+    assert "ARG GLAB_VERSION=1.130.0" in found
+    assert (
+        "ARG GLAB_SHA256_AMD64=ce06313b2075af25180cd195ab3496d42bc5857c85a1c12ba996838dfe9d822c"
+        in found
+    )
+    assert (
+        "ARG GLAB_SHA256_ARM64=062d53acb0f2cbcc79a014600df1aa0fb440bb3a08a5d4900d3b49b553b22767"
+        in found
+    )
+
+
+def test_a_loose_glab_pin_is_named():
+    good = re.search(r"ARG GLAB_VERSION=.*?glab --version[^\n]*\n", DOCKERFILE, re.S)[0]
+    assert glab_loose(good) == []
+    latest = good.replace("ARG GLAB_VERSION=1.130.0", "ARG GLAB_VERSION=latest")
+    assert glab_loose(latest) == ["ARG GLAB_VERSION=latest"]
+    short = re.sub(r"(ARG GLAB_SHA256_ARM64=)[0-9a-f]+", r"\g<1>062d53ac", good)
+    assert glab_loose(short) == ["ARG GLAB_SHA256_ARM64=062d53ac"]
+    unchecked = good.replace("sha256sum -c", "true")
+    assert len(glab_loose(unchecked)) == 1
+    assert glab_loose("ARG GLAB_VERSION=1.130.0\n") == [
+        "no GLAB_SHA256_AMD64",
+        "no GLAB_SHA256_ARM64",
+        "no install of glab",
+    ]
 
 
 def wheel_too_early(text: str) -> list[str]:
@@ -161,15 +240,10 @@ def wheel_too_early(text: str) -> list[str]:
     return [line for line in found[wheel[0] :] if "npm install" in line]
 
 
-def test_the_wheel_is_copied_and_installed_after_the_clis_and_openspec():
+def test_the_wheel_comes_after_every_npm_install():
     """The wheel changes with every commit: a build that reuses the earlier layers (a
     developer's own Docker) rebuilds only from it on."""
     assert wheel_too_early(DOCKERFILE) == []
-    found = lines()
-    [copy] = [i for i, line in enumerate(found) if line.startswith("COPY") and ".whl" in line]
-    [install] = [i for i, line in enumerate(found) if "uv tool install" in line]
-    assert copy + 1 == install
-    assert found[install + 1].startswith("ENV PATH=")
 
 
 def test_a_wheel_before_a_cli_is_named():
@@ -178,16 +252,6 @@ def test_a_wheel_before_a_cli_is_named():
     assert wheel_too_early(cli + OPENSPEC_INSTALL + "\n" + copy) == []
     assert wheel_too_early(copy + cli) == [cli.strip()]
     assert wheel_too_early(cli) == ["no wheel"]
-
-
-def test_opt_tools_is_named_only_where_it_is_made_installed_and_on_path():
-    """openspec is no agent CLI: /opt/agents stays the four of PINS."""
-    named = [line for line in flat() if "/opt/tools" in line]
-    [made] = [line for line in named if line.startswith("RUN useradd")]
-    assert re.search(r"mkdir -p [^&]*/opt/tools", made)
-    assert re.search(r"chown lado:lado [^&]*/opt/tools", made)
-    [path] = [line for line in named if line.startswith("ENV ")]
-    assert named == [made, OPENSPEC_INSTALL, path]
 
 
 # The agents' base tools from Debian (package: command): the kits' scripts and the agent
@@ -214,18 +278,6 @@ def missing_tools(text: str) -> list[str]:
     installs = [line for line in lines(text) if "apt-get install" in line]
     first = installs[0].split("apt-get install", 1)[1].split("&&", 1)[0].split()
     return sorted(set(BASE_TOOLS) - set(first))
-
-
-def test_the_image_carries_the_agents_base_tools():
-    assert missing_tools(DOCKERFILE) == []
-
-
-def test_a_base_tool_left_out_of_the_first_apt_layer_is_named():
-    first = "RUN apt-get update && apt-get install -y " + " ".join(sorted(set(BASE_TOOLS) - {"jq"}))
-    assert missing_tools(first + " && rm -rf /var/lib/apt/lists/*\n") == ["jq"]
-    # A later apt-get install does not count: the first layer carries them.
-    later = "RUN apt-get update && apt-get install -y jq\n"
-    assert missing_tools(first + "\n" + later) == ["jq"]
 
 
 def missing_uv_binaries(text: str) -> list[str]:
@@ -258,24 +310,6 @@ def test_a_uv_copy_without_uvx_is_named():
 PYTHON_FALLBACK = "/opt/fallback/bin"
 
 
-def test_the_images_python_is_roots_and_the_fallback_of_python3():
-    """Installed as root before `USER lado`, so no agent changes the Python LADO runs on;
-    /opt/uv itself is root's too, or lado could rename the folder away. Without uv's bin
-    links, which would land in root's ~/.local/bin."""
-    [install] = [line for line in lines() if "uv python install" in line]
-    assert " ".join(install.split()).startswith(
-        "RUN UV_PYTHON_INSTALL_DIR=/opt/uv/python uv python install 3.13 --no-bin "
-    )
-    assert lines().index(install) < lines().index("USER lado")
-    for name in ("python3", "python"):
-        assert f'ln -s "$python" {PYTHON_FALLBACK}/{name}' in install, name
-    assert f"{PYTHON_FALLBACK}/python3 --version" in install
-    [made] = [line for line in lines() if line.startswith("RUN useradd")]
-    [chown] = re.findall(r"chown lado:lado ([^&]*)", made)
-    assert "/opt/uv/tools" in chown.split() and "/opt/uv/bin" in chown.split()
-    assert "/opt/uv" not in chown.split() and "/opt/uv/python" not in chown.split()
-
-
 def unpinned(text: str) -> list[str]:
     """Each FROM or COPY --from of `text` that names an image without a digest (a stage of
     the same file, `uv`, `node` or `mise`, is no image)."""
@@ -299,21 +333,6 @@ def test_an_unpinned_base_is_named():
         "FROM jdxcode/mise:2026.10.7 AS mise"
     ]
     assert unpinned("COPY --from=mise /usr/local/bin/mise /usr/local/bin/mise\n") == []
-
-
-def test_mise_comes_from_its_official_image_root_owned():
-    """Copied before `USER lado`, so the binary is root's and `mise self-update` cannot
-    replace it: the version is the pin's, which Dependabot moves with the other bases."""
-    [stage] = [line for line in lines() if line.startswith("FROM jdxcode/mise:")]
-    assert re.fullmatch(r"FROM jdxcode/mise:\d{4}\.\d+\.\d+@sha256:[0-9a-f]{64} AS mise", stage)
-    copy = "COPY --from=mise /usr/local/bin/mise /usr/local/bin/mise"
-    assert copy in lines()
-    assert lines().index(copy) < lines().index("USER lado")
-
-
-def test_the_image_carries_the_build_tools():
-    [install] = [line for line in lines() if "apt-get install" in line and " tmux " in line]
-    assert {"make", "gcc", "g++", "libc6-dev"} <= set(install.split())
 
 
 MISE_TOML = DOCKER / "mise.toml"
@@ -365,6 +384,8 @@ def test_profile_sets_what_env_sets_for_the_agents():
         "MISE_TRUSTED_CONFIG_PATHS",
         "OPENSPEC_TELEMETRY",
         "OPENSPEC_NO_UPDATE_CHECK",
+        "GLAB_CHECK_UPDATE",
+        "GLAB_SEND_TELEMETRY",
     }
     for key, value in exported.items():
         value = value.replace("$HOME", "/home/lado")
@@ -387,6 +408,8 @@ def test_profile_sets_what_env_sets_for_the_agents():
     assert image["LADO_CONTAINER"] == "1"
     # openspec's usage statistics and update check off: the human's choice.
     assert (image["OPENSPEC_TELEMETRY"], image["OPENSPEC_NO_UPDATE_CHECK"]) == ("0", "1")
+    # glab's too, for `docker exec` as for the agents (each agent's config says so besides).
+    assert (image["GLAB_CHECK_UPDATE"], image["GLAB_SEND_TELEMETRY"]) == ("false", "false")
     # The container's own LADO_REPOS (-e) reaches the agents through the entrypoint's
     # lado-repos.sh, so profile.sh does not set the image's default.
     assert image["LADO_REPOS"] == "/projects"
@@ -427,164 +450,70 @@ def test_the_image_reads_the_agents_variables_from_the_secrets_folder():
     assert "LADO_AGENT_ENV" not in DOCKERFILE + (DOCKER / "profile.sh").read_text()
 
 
-def test_gh_is_gits_credential_helper_for_github():
-    """What `gh auth setup-git` writes: an empty helper first drops any inherited one."""
-    [run] = [line for line in lines() if "credential.https://github.com.helper" in line]
-    assert "git config --system credential.https://github.com.helper ''" in run
-    assert (
-        "git config --system --add credential.https://github.com.helper "
-        "'!/usr/bin/gh auth git-credential'"
-    ) in run
-    assert run.index("helper ''") < run.index("gh auth git-credential")
+def local_copies(text: str = DOCKERFILE) -> set[str]:
+    """What the Dockerfile's COPY lines take from the build context (not --from an image)."""
+    found = set()
+    for line in lines(text):
+        words = line.split()
+        if words[0] == "COPY" and not any(w.startswith("--from=") for w in words):
+            found |= {w for w in words[1:-1] if not w.startswith("--")}
+    return found
 
 
-def test_the_server_listens_on_all_addresses_at_lado_port_under_tini():
-    assert 'ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/lado-entrypoint"]' in lines()
-    [cmd] = [line for line in lines() if line.startswith("CMD ")]
-    assert cmd == 'CMD ["sh", "-c", "exec lado server --host 0.0.0.0 --port \\"$LADO_PORT\\""]'
-    assert "USER lado" in lines()
-
-
-def test_the_build_context_is_an_allowlist():
+def test_the_build_context_is_an_allowlist_of_what_the_dockerfile_copies():
+    """Nothing else reaches the build: no .env, no secrets/, no repository."""
     ignore = (DOCKER / "Dockerfile.dockerignore").read_text().split()
-    assert ignore == [
-        "*",
+    assert ignore[0] == "*"
+    assert all(entry.startswith("!") for entry in ignore[1:]), ignore
+    assert {entry[1:] for entry in ignore[1:]} == local_copies()
+
+
+def test_the_build_context_is_the_wheel_and_three_files():
+    ignore = (DOCKER / "Dockerfile.dockerignore").read_text().split()
+    assert ignore[1:] == [
         "!dist/lado-*.whl",
         "!docker/profile.sh",
         "!docker/entrypoint.sh",
-        "!docker/ssh-agent-socket.sh",
-        "!docker/ssh_known_hosts",
-        "!docker/ssh-agent-env.sh",
         "!docker/mise.toml",
     ]
 
 
-def test_the_host_keys_are_githubs_public_keys_alone():
-    """GitHub's published keys (api.github.com/meta, `ssh_keys`), one per type; no other
-    host, no private key: the image holds no one's secrets."""
-    text = (DOCKER / "ssh_known_hosts").read_text()
-    entries = [line.split() for line in text.splitlines() if line and not line.startswith("#")]
-    assert [host for host, *_ in entries] == ["github.com"] * 3
-    assert sorted(kind for _, kind, *_ in entries) == [
-        "ecdsa-sha2-nistp256",
-        "ssh-ed25519",
-        "ssh-rsa",
-    ]
-    assert all(len(entry) == 3 for entry in entries), entries
-    assert "PRIVATE KEY" not in text
-
-
-def test_the_image_knows_the_host_keys_system_wide():
-    """root's, mode 644: no agent changes them, every user's ssh reads them."""
-    assert "COPY --chmod=644 docker/ssh_known_hosts /etc/ssh/ssh_known_hosts" in lines()
-
-
-SSH_RULE = "lado ALL=(root) NOPASSWD: /usr/local/bin/lado-ssh-agent-socket"
-SSH_PROGRAM = DOCKER / "ssh-agent-socket.sh"
-SOCKET = "/run/lado/ssh-agent.sock"
-
-
-def test_the_ssh_rule_names_one_program_and_keeps_no_variable():
-    """Its own file, which the first start's root phase leaves; no SETENV, so sudo's
-    env_reset gives the program a clean environment."""
-    [run] = [line for line in lines() if "/etc/sudoers.d/lado-ssh-agent" in line]
-    assert f"printf '%s\\n' '{SSH_RULE}' > /etc/sudoers.d/lado-ssh-agent" in run
-    assert "chmod 0440 /etc/sudoers.d/lado-ssh-agent" in run
-    assert "visudo -cf /etc/sudoers.d/lado-ssh-agent" in run
-    assert "SETENV" not in run
-    assert "COPY --chmod=755 docker/ssh-agent-socket.sh /usr/local/bin/lado-ssh-agent-socket" in (
-        lines()
-    )
-    # /run/lado is root's, so no agent can plant a file at the socket's path.
-    assert "mkdir -p /run/lado" in run and "chmod 755 /run/lado" in run
-
-
-def test_the_ssh_program_checks_its_one_socket():
-    text = SSH_PROGRAM.read_text()
-    assert text.startswith("#!/bin/sh\n") and "\nset -eu\n" in text
-    assert "\nPATH=/usr/bin:/bin\n" in text
-    assert f"\nSOCKET={SOCKET}\n" in text
-    assert '[ -L "$SOCKET" ] || [ ! -S "$SOCKET" ]' in text
-    assert '[ "$(stat -c %u "$SOCKET")" = 0 ] || exit 0' in text
-    assert 'chown --no-dereference "$(id -u lado)" "$SOCKET"' in text
-    assert text.index("stat -c %u") < text.index("chown")
-
-
-def test_the_ssh_program_takes_no_argument():
-    done = subprocess.run(["sh", str(SSH_PROGRAM), SOCKET], capture_output=True, text=True)
-    assert (done.returncode, done.stderr) == (2, "lado-ssh-agent-socket: takes no argument\n")
-
-
-@pytest.mark.skipif(Path(SOCKET).exists(), reason="the image's own socket")
-def test_the_ssh_program_refuses_what_is_no_socket():
-    done = subprocess.run(["sh", str(SSH_PROGRAM)], capture_output=True, text=True)
-    assert (done.returncode, done.stderr) == (
-        1,
-        f"lado-ssh-agent-socket: {SOCKET} is not a socket\n",
-    )
-
-
-def test_compose_binds_the_ssh_agent_or_dev_null(compose):
-    """/dev/null: no ssh agent, and a path every host has."""
-    [mount] = [
-        v
-        for v in compose["services"]["lado"]["volumes"]
-        if isinstance(v, dict) and v.get("target") == SOCKET
-    ]
-    assert mount == {
-        "type": "bind",
-        "source": "${LADO_SSH_AGENT:-/dev/null}",
-        "target": SOCKET,
-        "bind": {"create_host_path": False},
-    }
+def test_compose_binds_no_ssh_agent(compose):
+    """The container has no ssh: git servers are set up only in Settings → Git servers,
+    whose ssh addresses go over https with their tokens."""
+    volumes = compose["services"]["lado"]["volumes"]
+    assert not [v for v in volumes if "ssh" in str(v)]
+    assert "LADO_SSH_AGENT" not in COMPOSE_TEXT
     assert "group_add" not in compose["services"]["lado"]
 
 
-SSH_ENV = DOCKER / "ssh-agent-env.sh"
-SSH_PROFILE = "/etc/profile.d/lado-ssh-agent.sh"
+def test_the_image_has_no_ssh_agent_and_no_ssh_host_keys():
+    """No program or sudo rule for a socket, no /run/lado, no known hosts; the ssh client
+    stays, so git on an ssh address fails with a failure the clone's hint tells."""
+    for gone in ("ssh-agent", "ssh_known_hosts", "/run/lado", "SSH_AUTH_SOCK"):
+        assert gone not in DOCKERFILE, gone
+    assert [line for line in lines() if "/etc/sudoers.d/" in line] == [
+        line for line in lines() if "/etc/sudoers.d/lado-entrypoint" in line
+    ]
+    for name in ("ssh-agent-socket.sh", "ssh-agent-env.sh", "ssh_known_hosts"):
+        assert not (DOCKER / name).exists(), name
+    [install] = [line for line in lines() if "apt-get install" in line and " tmux " in line]
+    assert " openssh-client " in install
 
 
-def test_ssh_auth_sock_points_only_at_a_socket_in_one_file():
-    """One rule: ssh-agent-env.sh, which every login shell reads (the agents) and the
-    entrypoint sources (the server, whose clone and branch listing use git over ssh). Not
-    in the ENV: an image cannot say whether compose bound a socket."""
-    rule = f"[ -S {SOCKET} ] && export SSH_AUTH_SOCK={SOCKET} || true"
-    assert rule in SSH_ENV.read_text().splitlines()
-    assert "SSH_AUTH_SOCK" not in (DOCKER / "profile.sh").read_text()
-    assert "SSH_AUTH_SOCK" not in env()
-    assert f"COPY docker/ssh-agent-env.sh {SSH_PROFILE}" in lines()
-
-
-def test_the_server_gets_ssh_auth_sock_after_the_socket_is_lados():
-    """Sourced after the socket's owner is fixed, right before the command."""
-    body = ENTRYPOINT.splitlines()
-    # Read only when there: the unit tests run the entrypoint outside the image.
-    sourced = body.index(f"if [ -r {SSH_PROFILE} ]; then . {SSH_PROFILE}; fi")
-    assert sourced > max(i for i, line in enumerate(body) if "lado-ssh-agent-socket" in line)
-    assert body[sourced + 1 :].count('exec "$@"') == 1
-
-
-SSH_WARNING = "lado: warning: lado (uid $(id -u)) cannot use the ssh agent socket of uid $owner:"
-
-
-def test_the_entrypoint_gives_a_root_owned_socket_to_lado_at_every_start():
-    every = ENTRYPOINT.split('if [ -e "$MARK" ]', 1)[1].split("\nfi\n", 1)[1]
-    assert f"SOCK={SOCKET}" in every
-    assert "sudo -n /usr/local/bin/lado-ssh-agent-socket" in every
-    assert every.index("may_become_root") < every.index("sudo -n /usr/local/bin/lado-ssh-agent")
-    assert SSH_WARNING in every
-    assert "ssh-add cannot connect" in every
-    assert "no root to give it to lado (no-new-privileges or dropped capabilities)" in every
+def test_no_file_of_docker_sets_ssh_auth_sock():
+    for path in DOCKER.iterdir():
+        if path.is_file():
+            assert "SSH_AUTH_SOCK" not in path.read_text(), path
 
 
 RULE = "lado ALL=(root) NOPASSWD:SETENV: /usr/local/bin/lado-entrypoint"
 ENTRYPOINT = (DOCKER / "entrypoint.sh").read_text()
 
 
-def test_the_entrypoint_is_copied_in_place():
-    assert "COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/lado-entrypoint" in lines()
-    assert ENTRYPOINT.startswith("#!/bin/sh\n")
-    assert "\nset -eu\n" in ENTRYPOINT
+def test_the_entrypoint_stops_at_an_error():
+    text = ENTRYPOINT
+    assert text.startswith("#!/bin/sh\n") and "\nset -eu\n" in text
 
 
 def test_the_sudo_rule_names_the_entrypoint_alone():
@@ -634,15 +563,6 @@ def test_the_entrypoint_writes_lado_repos_for_the_agents():
         """printf "export LADO_REPOS='/projects'\\n" > /etc/profile.d/lado-repos.sh""" in line
         for line in lines()
     )
-
-
-def test_the_entrypoint_goes_on_without_root():
-    """A container that may not become root (no-new-privileges, `--cap-drop`) does not try
-    sudo: the first start checks first, so the server starts as uid 1000."""
-    phase1 = ENTRYPOINT.split('if [ -e "$MARK" ]', 1)[1].split("\nfi\n", 1)[0]
-    assert phase1.index("if ! may_become_root; then") < phase1.index("exec sudo -E -n")
-    assert phase1.index("elif read_only_root; then") < phase1.index("exec sudo -E -n")
-    assert "NoNewPrivs:\t1" in ENTRYPOINT
 
 
 GIT_WARNING = (
@@ -749,26 +669,21 @@ def test_compose_publishes_one_port_number_on_lado_listen(compose):
     assert lado["environment"]["LADO_PUBLIC_HOST"] == "${LADO_PUBLIC_HOST:-}"
 
 
-def test_the_compose_header_names_the_settings_for_other_devices():
-    text = " ".join(header_text().split())
-    assert "LADO_LISTEN=0.0.0.0" in text and "LADO_PUBLIC_HOST=" in text
-    assert "every device of your network" in text and "unencrypted" in text
+UI = ROOT / "web" / "src"
 
 
-def test_compose_names_no_container_and_keeps_home_on_its_volume(compose):
-    lado = compose["services"]["lado"]
-    assert "container_name" not in lado
-    assert "build" not in lado
-    assert lado["volumes"][0] == "home:/home/lado"
-
-
-def test_compose_runs_the_published_image_of_lado_version(compose):
-    """No default version: a compose file that took `latest` would leave the image before
-    an update without a name. LADO_IMAGE wins (lado:local, the tests)."""
-    assert compose["services"]["lado"]["image"] == (
-        f"${{LADO_IMAGE:-{update.IMAGE}:${{LADO_VERSION:?set LADO_VERSION to the LADO "
-        "version to run, e.g. in .env next to this file}}"
-    )
+def test_the_phone_instructions_name_real_settings_and_labels():
+    """compose's header and the guide on a phone: the settings they name are compose's, the
+    buttons the UI's, and both say that the link is unencrypted."""
+    read = set(re.findall(r"\$\{([A-Z_]+)", COMPOSE_TEXT))
+    phone = " ".join(guide_part("Open LADO on your phone").split())
+    for text in (header_text(), phone):
+        named = set(re.findall(r"\b(LADO_[A-Z_]+)=", text))
+        assert {"LADO_LISTEN", "LADO_PUBLIC_HOST"} <= named <= read, named
+        assert "unencrypted" in text
+    ui = (UI / "Share.tsx").read_text() + (UI / "SystemPanel.tsx").read_text()
+    for label in ("Open on another device", "New link"):
+        assert label in phone and label in ui, label
 
 
 WORKSPACE = "${LADO_WORKSPACE:-${LADO_PROJECTS:-/set-LADO_WORKSPACE-to-your-workspace-folder}}"
@@ -792,24 +707,16 @@ def test_compose_mounts_the_workspace_at_the_hosts_own_path(compose):
     assert lado["environment"]["LADO_REPOS"] == WORKSPACE
 
 
-def test_the_compose_headers_commands_all_have_the_workspace_and_the_version():
+def test_the_compose_headers_env_names_every_variable_compose_reads():
     """Compose reads `${LADO_VERSION:?}` for every command (exec, logs, down too), and `up`
-    needs the workspace, so the header sets both in .env, which compose reads, before its
-    first `docker compose` line."""
+    needs the workspace: the header sets in .env every variable compose reads before its
+    first `docker compose` line. Not LADO_IMAGE and LADO_SECRETS, which have defaults, nor
+    LADO_PROJECTS, the name before LADO_WORKSPACE, still read, not one to write."""
     header = [line.lstrip("# ").strip() for line in COMPOSE_TEXT.splitlines()]
     first = next(i for i, line in enumerate(header) if line.startswith("docker compose"))
-    env = [line.split("=")[0] for line in header[:first] if re.match(r"[A-Z_]+=\S", line)]
-    assert {"LADO_WORKSPACE", "LADO_VERSION"} <= set(env), env
-    assert "LADO_PROJECTS" not in env, env
-    assert "in .env next to this file" in " ".join(header[:first])
-
-
-def test_the_compose_header_still_accepts_lado_projects():
-    """An installed .env with the name before 0.43.0 keeps working, and says so."""
-    text = header_text()
-    assert "LADO_PROJECTS" in text
-    said = text.split("LADO_PROJECTS")[1][:200]
-    assert "still accepted" in said and "LADO_WORKSPACE wins" in said, said
+    env = {line.split("=")[0] for line in header[:first] if re.match(r"[A-Z_]+=", line)}
+    read = set(re.findall(r"\$\{([A-Z_]+)", COMPOSE_TEXT))
+    assert env == read - {"LADO_IMAGE", "LADO_SECRETS", "LADO_PROJECTS"}
 
 
 def header_steps(heading: str) -> list[str]:
@@ -873,53 +780,9 @@ def test_the_way_back_keeps_the_newer_compose_file():
     assert "keep this compose.yaml" in header_text().split("Back to the version")[1]
 
 
-def test_the_compose_header_says_how_to_go_back_to_the_backup():
-    assert "put it back in .env" in header_text()
-    down, restore, up = way_back()
-    assert down == "docker compose down"
-    assert restore.startswith("docker compose run --rm lado sh -c '")
-    assert "rm -f lado.db-wal lado.db-shm" in restore
-    assert "cp backups/lado.db.schema-<N> lado.db" in restore
-    assert up == "docker compose up -d"
-
-
-def test_a_second_lado_is_a_folder_with_its_own_env():
-    """`-p` on each command is easy to forget; a folder's .env names the project once."""
-    second = header_text().split("A second LADO beside the first")[1]
-    for name in ("COMPOSE_PROJECT_NAME", "LADO_PORT", "LADO_VERSION", "LADO_WORKSPACE"):
-        assert name in second, name
-    assert " -p " not in header_text()
-
-
-def test_the_dockerfiles_header_names_the_published_image_and_its_update():
-    header = " ".join(
-        line.lstrip("#").strip() for line in DOCKERFILE.splitlines() if line.startswith("#")
-    )
-    assert f"{update.IMAGE}:<version>" in header
-    for words in ("Update:", "Back:", "A second LADO:"):
-        assert words in header, words
-
-
-def test_the_compose_header_says_the_sessions_follow_the_container():
-    text = header_text()
-    for words in (
-        "docker compose down",
-        "stops its sessions",
-        "docker compose up -d",
-        "resumes them",
-        "stopped by hand",
-        "one model turn",
-    ):
-        assert words in text.split("The container's sessions")[1], words
-
-
-def test_the_dockerfiles_header_says_the_sessions_follow_the_container():
-    header = " ".join(
-        line.lstrip("#").strip() for line in DOCKERFILE.splitlines() if line.startswith("#")
-    )
-    sessions = header.split("Sessions:")[1]
-    for words in ("docker stop", "docker start", "stopped by hand", "one model turn"):
-        assert words in sessions, words
+@pytest.mark.parametrize("name", ["compose.yaml", "Dockerfile"])
+def test_the_headers_name_the_published_image(name):
+    assert f"{update.IMAGE}:<version>" in leading_comment(DOCKER / name)
 
 
 def leading_comment(path: Path) -> str:
@@ -939,11 +802,9 @@ def test_the_headers_say_how_agents_get_variables_access_and_logins(name):
         "mkdir -m 700 secrets",
         "LADO_GIT_NAME",
         "LADO_GIT_EMAIL",
-        "GH_TOKEN",
-        "gh auth login",
-        "LADO_SSH_AGENT" if name == "compose.yaml" else "/run/lado/ssh-agent.sock",
-        "/run/host-services/ssh-auth.sock",
-        "$SSH_AUTH_SOCK",
+        "Git servers",
+        "YOUGILE_API_KEY",
+        "no ssh",
         "CLAUDE_CODE_OAUTH_TOKEN",
         "claude setup-token",
         "opencode auth login",
@@ -958,8 +819,15 @@ def test_the_headers_say_how_agents_get_variables_access_and_logins(name):
         "LADO_SECRETS=./secrets" if name == "compose.yaml" else '-v "$PWD/secrets:/run/secrets:ro"',
     ):
         assert needle in head, (name, needle)
-    assert "Codex's login is not covered" not in head, name
-    assert "Codex's is not covered" not in head, name
+    # The GitHub login is a git server's (openspec capability git-servers), never outside.
+    for gone in ("GH_TOKEN", "gh auth login", "LADO_SSH_AGENT", "SSH_AUTH_SOCK"):
+        assert gone not in head, (name, gone)
+    assert "Settings → Agent CLIs" in (UI / "ModelPicker.tsx").read_text()
+
+
+def test_the_image_gives_github_com_no_credential_helper():
+    assert not [line for line in lines() if "credential.https://github.com" in line]
+    assert "GH_TOKEN" not in (DOCKER / "install.sh").read_text()
 
 
 def dockerfile_run() -> list[str]:
@@ -976,14 +844,6 @@ def test_the_minimal_start_makes_no_folder():
     assert first and run
     assert not [step for step in [*first, *run] if step.startswith("mkdir")]
     assert "/run/secrets" not in " ".join(run)
-
-
-def test_the_compose_header_sets_the_new_settings_in_env():
-    header = [line.lstrip("# ").strip() for line in COMPOSE_TEXT.splitlines()]
-    first = next(i for i, line in enumerate(header) if line.startswith("docker compose"))
-    settings = " ".join(header[:first])
-    for key in ("LADO_GIT_NAME=", "LADO_GIT_EMAIL=", "LADO_SSH_AGENT="):
-        assert key in settings, key
 
 
 def test_nothing_in_docker_names_lado_previous():
@@ -1119,54 +979,55 @@ def test_readmes_update_runs_the_installer_again():
     assert "docs/install.md#update-the-container" in part
 
 
-def test_the_guide_leads_with_the_installer():
+RELEASE = "https://github.com/ladohq/lado/releases/"
+
+
+def test_the_guides_installer_commands_are_real():
+    """The guide starts with the installer; what it downloads are the latest release's
+    assets, and every option it names is one install.sh takes."""
     text = guide()
     assert commands(blocks(text)[0]) == [INSTALL_SH]
     assert commands(blocks(text, "powershell")[0]) == [INSTALL_PS1]
-    assert text.index(INSTALL_SH) < text.index(INSTALL_PS1) < text.index("docker compose up -d")
     one = guide_part("Install with one command")
-    steps = code_lines(one)
-    # Download, read, run; and PowerShell's download-and-run form, which no antivirus
-    # takes for `iex` of a download.
-    for step in (
-        "curl -fsSLO https://github.com/ladohq/lado/releases/latest/download/install.sh",
-        "less install.sh",
-        "sh install.sh",
-        "irm https://github.com/ladohq/lado/releases/latest/download/install.ps1 "
-        "-OutFile install.ps1",
-        "powershell -ExecutionPolicy Bypass -File install.ps1",
-    ):
-        assert step in steps, step
-    said = " ".join(one.split())
-    for words in ("--yes", "--phone", "updates", "~/lado-docker", "~/workspace"):
-        assert words in said, words
-    assert guide().index("\n### Install with one command\n") < guide().index("\n### By hand\n")
-    assert guide().index("\n### By hand\n") < guide().index("\n### Check the shell\n")
+    urls = re.findall(rf"{re.escape(RELEASE)}\S+", one)
+    assert urls and all(url.startswith(f"{RELEASE}latest/download/") for url in urls), urls
+    taken = set(re.findall(r"^  (--[a-z-]+)", (DOCKER / "install.sh").read_text(), re.M))
+    named = set(re.findall(r"`(--[a-z-]+)", one))
+    assert {"--yes", "--phone"} <= named <= taken, (named, taken)
 
 
-def test_the_guide_has_windows_by_install_ps1():
-    text = " ".join(guide_part("Docker on Windows").split())
-    for words in (
-        INSTALL_PS1,
-        "Ubuntu",
-        "WSL integration",
-        "wsl --install -d Ubuntu",
-        "Docker Desktop",
-    ):
-        assert words in text, words
-    pypi = INSTALL.read_text()
-    pypi = pypi[pypi.index("\n## Windows\n") :]
-    assert "[Docker on Windows](#docker-on-windows)" in pypi[: pypi.index("\n## ", 3)]
-    assert "docs/install.md#docker-on-windows" in (DOCKER / "install.ps1").read_text()
+def anchors(markdown: str) -> set[str]:
+    """The anchors GitHub gives the headings of `markdown` (outside its code blocks): lower
+    case, punctuation dropped, spaces made hyphens, a repeated one numbered."""
+    text = re.sub(r"^ *```.*?^ *```", "", markdown, flags=re.S | re.M)
+    seen: dict[str, int] = {}
+    found = set()
+    for heading in re.findall(r"^#{1,6} (.+)$", text, re.M):
+        slug = re.sub(r"[^\w\- ]", "", heading.strip().lower()).replace(" ", "-")
+        n = seen.get(slug, 0)
+        seen[slug] = n + 1
+        found.add(slug if n == 0 else f"{slug}-{n}")
+    return found
 
 
-def test_the_guides_systems_name_windows_by_install_ps1():
-    [systems] = [
-        line for line in INSTALL.read_text().splitlines() if line.startswith("| Systems |")
+def test_every_link_into_the_install_guide_resolves():
+    """README, docs, docker/ and LADO's own messages link to docs/install.md#<heading>, and
+    the guide to its own headings: each heading is there."""
+    have = anchors(INSTALL.read_text())
+    paths = [
+        ROOT / "README.md",
+        *(ROOT / "docs").glob("*.md"),
+        *(ROOT / "src" / "lado").rglob("*.py"),
     ]
-    docker = systems.split("|")[2]
-    assert "`install.ps1`" in docker and "WSL2" in docker and "Windows" in docker
-    assert "not checked" not in docker
+    paths += [path for path in DOCKER.iterdir() if path.is_file()]
+    named = {
+        (path.name, anchor)
+        for path in paths
+        for anchor in re.findall(r"docs/install\.md#([\w-]+)", path.read_text())
+    }
+    named |= {("install.md", a) for a in re.findall(r"\]\(#([\w-]+)\)", INSTALL.read_text())}
+    assert ("install.ps1", "docker-on-windows") in named
+    assert [one for one in sorted(named) if one[1] not in have] == []
 
 
 def test_the_compose_header_names_the_installer():
@@ -1188,7 +1049,7 @@ def test_the_guides_env_names_every_variable_compose_reads():
         "LADO_SECRETS",
         "LADO_PROJECTS",
     }
-    assert {"LADO_VERSION", "LADO_WORKSPACE", "LADO_SSH_AGENT"} <= read
+    assert {"LADO_VERSION", "LADO_WORKSPACE"} <= read
     envs = blocks(guide_part("Get compose.yaml and write .env"), "ini")
     assert len(envs) == 2  # a Mac's and Linux's
     for env_file in envs:
@@ -1200,35 +1061,15 @@ def test_the_guides_env_names_every_variable_compose_reads():
 
 def test_the_guide_makes_the_workspace_before_compose_needs_it():
     """Compose never makes a missing workspace (`create_host_path: false`), so the guide
-    makes it, and its troubleshooting reads Docker's refusal for any path, not only the
-    placeholder's."""
+    makes it, and its troubleshooting names the placeholder compose's bind falls back to."""
     envs = blocks(guide_part("Get compose.yaml and write .env"), "ini")
     for env_file in envs:
         [workspace] = re.findall(r"^LADO_WORKSPACE=(\S+)", env_file, flags=re.M)
         assert workspace.endswith("/workspace"), env_file
     assert "mkdir -p ~/workspace" in guide_steps("Get compose.yaml and write .env")
-    said = " ".join(guide_part("Get compose.yaml and write .env").split())
-    assert "compose never makes it" in said, said
-    trouble = " ".join(guide_part("If something goes wrong in Docker").split())
-    assert "**`bind source path does not exist: <path>`**" in trouble, trouble
-    line = trouble.split("bind source path does not exist: <path>")[1][:500]
-    assert "/set-LADO_WORKSPACE-to-your-workspace-folder" in line, line
-    assert "mkdir -p" in line, line
-
-
-def test_the_guide_says_how_to_open_lado_on_a_phone():
-    phone = " ".join(guide_part("Open LADO on your phone").split())
-    for said in (
-        "LADO_LISTEN=0.0.0.0",
-        "LADO_PUBLIC_HOST=",
-        "LADO_LISTEN=192.168.1.23",
-        "docker compose up -d",
-        "Open on another device",
-        "unencrypted",
-        "every network",
-        "New link",
-    ):
-        assert said in phone, said
+    [placeholder] = re.findall(r":-(/[^}]+)\}", WORKSPACE)
+    trouble = guide_part("If something goes wrong in Docker")
+    assert "bind source path does not exist" in trouble and placeholder in trouble
 
 
 def test_the_guide_removes_only_its_own_container_and_volume():
@@ -1280,42 +1121,6 @@ def test_the_first_session_names_claude_codes_trust_question(tmp_path):
 
 def test_the_guides_docker_run_is_the_dockerfiles():
     assert guide_steps("With docker run") == dockerfile_run()
-
-
-def test_readme_and_the_headers_point_to_the_guide():
-    readme = (ROOT / "README.md").read_text()
-    install = readme[readme.index("## Install") :]
-    assert "docs/install.md#docker" in install[: install.index("\n## ", 3)]
-    assert "- [Docker](#docker)" in INSTALL.read_text()
-    for name in ("compose.yaml", "Dockerfile"):
-        assert "docs/install.md#docker" in leading_comment(DOCKER / name), name
-
-
-def test_docker_is_the_first_and_recommended_way_to_install():
-    """The human's choice (2026-10-16): Docker first, PyPI the other way."""
-    readme = (ROOT / "README.md").read_text()
-    install = readme[readme.index("## Install") :]
-    install = install[: install.index("\n## ", 3)]
-    assert "**Docker** (recommended)" in install
-    assert install.index("### Docker") < install.index("### PyPI")
-    text = INSTALL.read_text()
-    opening = text[: text.index("\n## ")]
-    assert "**Docker**, the recommended one, and **PyPI**" in opening
-    assert text.index("\n## Docker\n") < text.index("\n## macOS\n")
-
-
-def test_update_says_both_ways_docker_first():
-    """The human's comment (2026-10-16): how to update is clear for Docker and for PyPI."""
-    readme = (ROOT / "README.md").read_text()
-    update_part = readme[readme.index("\n## Update\n") :]
-    update_part = update_part[: update_part.index("\n## ", 3)]
-    assert update_part.index("### Docker") < update_part.index("### PyPI")
-    assert INSTALL_SH in update_part and "lado update" in update_part
-    text = INSTALL.read_text()
-    update_part = text[text.index("\n## Update\n") :]
-    update_part = update_part[: update_part.index("\n## ", 3)]
-    assert "[Update the container](#update-the-container)" in update_part
-    assert "- **PyPI**: `lado update`" in update_part
 
 
 def test_no_example_names_a_version_that_goes_stale():

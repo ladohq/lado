@@ -120,8 +120,10 @@ controlling terminal, stdin closed, `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS` empty
 SHALL neither ask for nor keep a password, passphrase or token.
 
 #### Scenario: A private https repository without a login
-- **WHEN** the URL is `https://github.com/acme/private` and git cannot read a username
-- **THEN** the kind is `login_needed` with the hint `gh auth login`, and LADO did not wait
+- **WHEN** the URL is `https://github.com/acme/private`, github.com has no entry, and git
+  cannot read a username
+- **THEN** the kind is `login_needed` with the hint `lado git-server add
+  https://github.com --token`, and LADO did not wait
 
 ### Requirement: A failed clone or listing is told by its kind with git's line
 
@@ -139,7 +141,7 @@ has none) and `-p <port>` SHALL be added for a port.
 
 ### Requirement: An ssh failure says how to check the key or the host key
 
-The ssh kinds of failure SHALL be:
+Outside LADO's container the ssh kinds of failure SHALL be:
 
 | Kind | Reason | Hint (sentence: command) |
 |---|---|---|
@@ -152,16 +154,20 @@ The ssh kinds of failure SHALL be:
 
 ### Requirement: A login or access failure points at the machine's login
 
-The login and access kinds SHALL be:
-
-| Kind | Reason | Hint (sentence: command) |
-|---|---|---|
-| `login_needed` | `<host> asks for a login` (other hosts: `…; set up a git credential helper for it on this machine`) | github.com: where LADO can take a token (below); other hosts none |
-| `not_found` | `no repository there, or this machine's account cannot read it` | github.com: `See which GitHub account this machine uses:` `gh auth status`; other hosts none |
+The login and access kinds SHALL be `login_needed` (`<host> asks for a login`),
+`access_denied` (`<host> refused access`) and `not_found` (`no repository there, or this
+machine's account cannot read it`), with no hint, but where a git server's text of this
+capability applies, github.com's included.
 
 #### Scenario: A repository GitHub does not show
-- **WHEN** git prints `ERROR: Repository not found.`
-- **THEN** the kind is `not_found` with the hint `gh auth status`
+- **WHEN** git prints `ERROR: Repository not found.` for github.com with no entry
+- **THEN** the kind is `not_found` with no hint
+
+#### Scenario: GitHub refuses access
+- **WHEN** a listing of `https://github.com/acme/app` fails with git's `The requested URL
+  returned error: 403` and github.com has no entry
+- **THEN** the kind is `access_denied`, the reason `github.com refused access`, with the
+  hint `Add it as a git server with a token:` `lado git-server add https://github.com --token`
 
 ### Requirement: Other failures of a clone carry no hint
 
@@ -257,7 +263,7 @@ the clone SHALL keep the clone and say `lado: the clone stays in <folder>`.
 The New session window SHALL offer a clone as **Clone from URL…** in Where's group Somewhere
 else (capability new-session-window). Its button **Clone and start in <folder>** SHALL be on
 only when the branches are listed and the folder is `new` or `empty`. A listing failure SHALL
-show under Repository URL with its hint and Copy.
+show under Repository URL with its hint and Copy, or with its git server's way out.
 
 #### Scenario: A listing that fails
 - **WHEN** the listing of the URL fails as `ssh_denied`
@@ -400,32 +406,6 @@ before the others:
 - **THEN** the state is `in_project` and the hint offers `lado start --project shop --repo
   frontend`
 
-### Requirement: A GitHub login hint names where LADO can take a token
-
-The hint of `login_needed` on github.com SHALL be, the first that holds: for a clone or
-listing into project `<id>`, `Give the project a GitHub token:` `lado project set <id>
-GH_TOKEN --secret`; when the outside folder `<folder>` (`LADO_ENV_DIR`) is a folder, `Log
-in with GitHub's CLI, or put a token into the file GH_TOKEN of <folder> (LADO_ENV_DIR):`
-`gh auth login`; otherwise `Log in with GitHub's CLI on this machine:` `gh auth login`.
-
-#### Scenario: A login asked for in a project's clone
-- **WHEN** `lado project repo add shop https://github.com/acme/private` fails because git
-  cannot read a username
-- **THEN** the kind is `login_needed` with the hint `Give the project a GitHub token:`
-  `lado project set shop GH_TOKEN --secret`
-
-#### Scenario: A login asked for with an outside folder
-- **WHEN** `LADO_ENV_DIR=/run/secrets` names a folder, it has no `GH_TOKEN`, and a clone
-  of `https://github.com/acme/private` without a project fails because git cannot read a
-  username
-- **THEN** the hint is `Log in with GitHub's CLI, or put a token into the file GH_TOKEN of
-  /run/secrets (LADO_ENV_DIR):` `gh auth login`
-
-#### Scenario: A login asked for with no outside folder
-- **WHEN** `LADO_ENV_DIR` is unset, or names the null device, and the same clone fails
-  the same way
-- **THEN** the hint is `Log in with GitHub's CLI on this machine:` `gh auth login`
-
 ### Requirement: A kit's or marketplace's git failure is told by the clone's kinds
 
 A git failure of LADO's network calls for kits, skill packs and marketplaces (a remote's
@@ -436,13 +416,154 @@ SHALL keep `<LADO's head>: <git's line>`. These calls SHALL run with the same no
 variables as a clone, and never in a project's layer.
 
 #### Scenario: A private kit without a token
-- **WHEN** `lado kits add https://github.com/ladohq/kit-epic.git` runs, the outside folder
-  `/run/secrets` has no `GH_TOKEN`, and git cannot read a username
+- **WHEN** `lado kits add https://github.com/ladohq/kit-epic.git` runs, github.com has no
+  entry, and git cannot read a username
 - **THEN** it fails with `cannot read the tags of https://github.com/ladohq/kit-epic.git:
   github.com asks for a login (fatal: could not read Username for 'https://github.com':
-  terminal prompts disabled). Log in with GitHub's CLI, or put a token into the file
-  GH_TOKEN of /run/secrets (LADO_ENV_DIR): gh auth login`
+  terminal prompts disabled). Add it as a git server with a token: lado git-server add
+  https://github.com --token`
 
 #### Scenario: A failure of no known kind
 - **WHEN** a kit's pinned clone fails with git's `fatal: bad object` line
 - **THEN** the text ends with `: fatal: bad object` and carries no hint
+
+### Requirement: A saved git server's access failure names the server
+
+When the git server saved for the URL's host (the one whose token git takes) is refused
+(`login_needed`, `access_denied`, `not_found`), the reason SHALL name the host with its
+port and the server, and the hint SHALL give, each on its own line, `Check the git
+server:` `lado git-server check <address>` and `If its token expired or was revoked,
+replace it:` `lado git-server add <address> --token`.
+
+#### Scenario: A revoked token
+- **WHEN** the token of the saved `https://gitlab.corp.example` was revoked and a listing of
+  `https://gitlab.corp.example/team/app.git` fails with `Authentication failed`
+- **THEN** the text is `cannot read https://gitlab.corp.example/team/app.git:
+  gitlab.corp.example refused the token of the git server https://gitlab.corp.example
+  (<git's line>)` with the hint `lado git-server check https://gitlab.corp.example`
+
+#### Scenario: A repository the token may not read
+- **WHEN** git answers `not found` for a saved server's host
+- **THEN** the reason is `no repository there, or the token of the git server <address>
+  cannot read it` with the same hint
+
+#### Scenario: An ssh address of a saved server
+- **WHEN** `git@gitlab.corp.example:team/app.git` fails with `Authentication failed` and
+  `https://gitlab.corp.example` is saved
+- **THEN** the hint is `lado git-server check https://gitlab.corp.example`
+
+#### Scenario: A server with a port
+- **WHEN** the token of the saved `https://git.test:8443` is refused
+- **THEN** the reason starts `git.test:8443 refused the token`, and the hint's two commands
+  are on two lines
+
+#### Scenario: github.com saved
+- **WHEN** github.com's entry token was revoked and a clone from github.com fails
+- **THEN** the hint is `lado git-server check https://github.com` and the replace line
+
+### Requirement: An unsaved host that asks for a login offers to add it
+
+An http(s) URL whose host is no saved server's, refused as `login_needed` or
+`access_denied`, SHALL keep its reason and get the hint `Add it as a git server with a
+token:` `lado git-server add <scheme>://<host>[:<port>] --token`, github.com's included.
+`not_found`, ssh failures and the kinds that are no access failure
+SHALL carry no git server hint.
+
+#### Scenario: A login asked for by an unsaved host
+- **WHEN** a listing of `https://git.acme.example/team/app.git` fails because git cannot read
+  a username, and no server is saved for `git.acme.example`
+- **THEN** the reason is `git.acme.example asks for a login` with the hint `lado git-server
+  add https://git.acme.example --token`
+
+#### Scenario: An unreachable unsaved host
+- **WHEN** the same listing fails because the host cannot be resolved
+- **THEN** the text is `… git.acme.example cannot be reached (<git's line>)` with no hint
+
+#### Scenario: A host saved under another scheme
+- **WHEN** `https://gitlab.corp.example` is saved and `http://gitlab.corp.example/team/app`
+  asks for a login
+- **THEN** the failure carries no git server hint, as git takes no saved token for it
+
+#### Scenario: github.com without an entry in the UI
+- **WHEN** the New session window's clone of `https://github.com/acme/private` asks for a
+  login and github.com has no entry
+- **THEN** its note's button opens Settings → Git servers with the Add form's Address
+  `https://github.com`
+
+### Requirement: The window's note of a git server opens Settings
+
+Where the UI shows a clone's or listing's failure (the New session window, a project's Add
+repository), a git server hint SHALL show its sentence and a button that opens Settings →
+Git servers in a new tab: `Check <host> ↗` for a saved server, `Add git server ↗` for an
+unsaved host; no command to copy. The window and its fields SHALL stay as they were.
+
+#### Scenario: A saved server's note
+- **WHEN** the listing of a saved server's URL fails with a refused token
+- **THEN** under Repository URL shows `Check this git server; if its token expired or was
+  revoked, replace it there.` and `Check gitlab.corp.example ↗`, which opens
+  `/settings/git-servers?check=gitlab.corp.example` in a new tab
+
+#### Scenario: An unsaved host's note
+- **WHEN** the listing of `https://git.acme.example/team/app.git` fails asking for a login
+- **THEN** the note says `Add git.acme.example as a git server with a token: LADO and its
+  agents then sign in to it.` and `Add git server ↗` opens
+  `/settings/git-servers?add=https%3A%2F%2Fgit.acme.example` in a new tab
+
+### Requirement: In LADO's container an ssh failure points at the git servers
+
+In LADO's container both ssh kinds of an ssh address of the user `git` on port 22
+(`git@<host>:`, `ssh://git@<host>[:22]/`) of a host with no saved git server SHALL say `LADO's container has no ssh key for <host>`, with the hint `Add it
+as a git server with a token:` `lado git-server add https://<host> --token` and the UI's
+way out `Add git server`: `Add <host> as a git server with a token: its git@ addresses
+then go over https too.`
+
+#### Scenario: github.com not saved
+- **WHEN** in the container the clone of `git@github.com:acme/app.git` fails with
+  `Permission denied (publickey)` or `Host key verification failed` and no github.com entry
+  is saved
+- **THEN** the reason is `LADO's container has no ssh key for github.com`, the hint is
+  `lado git-server add https://github.com --token`, and Clone from URL shows `Add git
+  server ↗` opening Settings → Git servers with `https://github.com` in Address
+
+#### Scenario: Outside the container
+- **WHEN** the same github.com failure happens outside LADO's container
+- **THEN** the kind's reason and hint are those of the ssh kinds' table
+
+### Requirement: In LADO's container another ssh address asks for https
+
+In LADO's container both ssh kinds of any other ssh address (another user or none, a port
+other than 22, a host with a saved git server, or saved servers LADO cannot read: lado.db
+at another schema) SHALL say `LADO's container has no ssh: clone by the
+repository's https address`, with no hint and no way out.
+
+#### Scenario: Another ssh port
+- **WHEN** in the container the clone of `ssh://git@git.example:2222/team/app.git` fails
+  with `Permission denied (publickey)`
+- **THEN** the reason is `LADO's container has no ssh: clone by the repository's https
+  address`, with no hint and no way out
+
+### Requirement: An untrusted certificate of a git server points to its check
+
+git's refusal of a server's certificate (OpenSSL's and GnuTLS's words, a certificate of
+another host too) SHALL be the kind `cert_untrusted`, `the certificate of <host> is not
+trusted`. For a saved server's URL its hint SHALL be `Check the git server and trust its
+certificate:` `lado git-server check <address>`, and its UI way out `Check <host> ↗`; for an
+unsaved http(s) host, the hint to add it.
+
+#### Scenario: A saved company server
+- **WHEN** `https://gitlab.corp.example` is saved without a certificate and a clone of
+  `https://gitlab.corp.example/team/app.git` fails with `SSL certificate problem: unable to
+  get local issuer certificate`
+- **THEN** the text is `cannot clone https://gitlab.corp.example/team/app.git: the
+  certificate of gitlab.corp.example is not trusted (<git's line>)` with the hint `lado
+  git-server check https://gitlab.corp.example`
+
+#### Scenario: The window's note
+- **WHEN** the same failure shows in the New session window
+- **THEN** the note says `Check the git server and trust its certificate there.` and
+  `Check gitlab.corp.example ↗` opens `/settings/git-servers?check=gitlab.corp.example`
+
+#### Scenario: An unsaved host
+- **WHEN** a clone of `https://git.lab.example/app.git`, no saved server's, fails the same way
+- **THEN** the hint is `Add it as a git server with a token:` `lado git-server add
+  https://git.lab.example --token`

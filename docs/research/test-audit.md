@@ -342,7 +342,12 @@ A test is removed only when all of these hold:
    migration step, a constraint, a trigger) is mutated only as a whole string, which breaks
    everything at once; a wrong default or a missing `REFERENCES` is never made. Tests of
    such code stay whatever the mutation data says.
-5. The pull request lists each removed test with its reason, and the numbers before and
+5. Its subject is not the layout: a browser test of sizes, positions, scrolling, the
+   width of the window or computed styles stays whatever the mutation data says. Stryker
+   does not mutate CSS and vitest runs in jsdom, which lays nothing out, so neither can
+   show that another test fails on a layout bug. The same holds for what only a real
+   browser does (a selection, the focus moving as an element hides).
+6. The pull request lists each removed test with its reason, and the numbers before and
    after go into section 6.
 
 When unsure, keep the test, mark it in the log and come back with mutation data.
@@ -667,6 +672,252 @@ none. **63 test functions removed** and 2 helpers no test used any more:
   143-144 (run by `test_tmux.py` when run alone) and `model_servers.py` 655, the branch of
   an `OSError` with a message, which a fake server's refused connection reaches by chance.
   Unit tests: 5 506 passed (5 576 on main).
+
+### Stage 5 (2026-11-17, branch `chore/test-audit-stage-5`): the browser tests
+
+**Coverage.** The 633 browser test cases ran with V8's precise coverage of the bundle in
+Chromium (a pytest plugin starting it over CDP on each page, the bundle's source map
+mapping it back to `web/src`) and with coverage of the server's subprocesses: 20 757 lines
+of `web/src` run, each test's lines recorded. 627 passed, 6 failed (two of
+`test_narrow_layout.py`, one of `test_providers_section.py`, three of `test_team_head.py`
+on this machine); a failing test stays. vitest, with V8 coverage: 1 916 tests, 97.2% of
+the statements of `web/src`.
+
+**What vitest misses.** Stryker (vitest runner, per-test coverage, static mutants
+skipped) over `web/src`: 26 597 mutants, 15 420 killed, 64 timeouts, 15 errors, 4 390
+survived, 854 on lines no vitest test runs, 726 static. The run was stopped at 81%,
+slowed by components whose mutants run hundreds of tests; the 5 128 mutants it did not
+reach count as missed by vitest. So about one mutant in four is missed, and every browser
+test runs some such line: coverage alone removes none.
+
+**Selection.**
+- Kept by the data, 288: every test that is one of at most five browser tests running a
+  line where vitest misses a mutant, the failing ones, then the fewest more so that each
+  such line stays run by three browser tests and each server line no unit test runs by
+  one.
+- Kept by rule 5 (layout), 265 of the 345 others: they measure boxes, scroll, the window's
+  width or computed styles, directly or through a helper (`box`, `no_sideways_scroll`, a
+  device's size).
+- Kept by rule 2, 60: the bug tasks LAD-70, 78, 85, 109, 122, 126, 207, 226, 254, 271
+  and 281, and LAD-5, 48, 163, 193, 194, 199, 218, 224 and 239, which read both ways.
+- A sample of what vitest misses decided the remaining 28. 250 mutants of the lines they
+  run (150 of lines at most five of them run, 100 of the rest), each built into the bundle
+  and run against these tests until the first failure: 205 survived them all. The 45 they
+  killed were run against the kept browser tests of the same line: 42 killed. The three
+  left (`live.ts` 510, `Chat.tsx` 278 and 359) only
+  `test_team_head.py::test_opening_the_title_field_leaves_the_team_as_it_stands` killed,
+  so it stays (2 cases), though it fails now and then on this machine without a mutant
+  and these kills may be such failures. The real browser's selection keeps
+  `test_selection.py::test_a_triple_click_on_a_messages_last_paragraph_shows_the_bar`
+  (2 cases) and a resize moving the focus keeps
+  `test_team_head.py::test_a_focused_agent_that_goes_behind_the_button_leaves_the_focus_on_it`.
+
+**16 test functions removed (16 cases)**, and the flow `DEMO` of `test_layout.py` no test
+used any more: `test_chat.py` 1, `test_layout.py` 1, `test_live_updates.py` 2,
+`test_main_screen.py` 4, `test_needs_you.py` 1, `test_selection.py` 2,
+`test_share_access.py` 1, `test_stopped_session.py` 1, `test_team_head.py` 2,
+`test_terminal_panel.py` 1. Browser test cases 633 → 617.
+
+**Conclusion.** Removal hardly shortens the browser layer: what it checks is mostly layout
+or bugs, which nothing else can. Its time goes into the fixtures (a server, a repo and a
+session per test); making them cheaper is a separate task. Moving tests to vitest was not
+tried: the tests kept by the data are the ones vitest's own mutants say it lacks.
+
+### Stage 5, part 2 (2026-11-17, branch `chore/test-audit-stage-5-fixtures`): the fixtures
+
+**Measured.** All 619 browser tests with a pytest plugin that times each phase, each
+fixture's setup and the calls under them (the helpers of `tests/`, LADO's runtime, the
+server's start and stop, subprocesses, sleeps, Playwright's actions and expects): 49.7 min
+of test time, 16:45 on three workers (5 failed, the layout tests that fail on this
+machine's fonts on main too).
+
+| Where the time goes | Minutes | Share |
+|---|---|---|
+| `lado server` started and stopped for each test | 14.4 | 29% |
+| A session of the fake agent made ready (`running_session`, `gated_session` and the like), 477 tests | about 17 | about 34% |
+| Screenshots (`shot`) | 0.9 | 2% |
+| The rest, mostly the checks in the browser | about 17 | about 35% |
+
+- The server: 0.86 s to start and 0.55 s to stop under the run's load, 0.45 s and 0.25 s
+  alone; half of the start is importing FastAPI. Polling for it costs nearly nothing.
+- A session: `running_session` 1.4 s, `gated_session` 2.3 s, almost all of it waiting for
+  the agent to be idle. The agent is idle once its session-start hook ran, and that hook
+  waits for the launch's `lado mcp` to list its tools: `import lado.mcp_server` takes
+  0.4-0.55 s, 0.35-0.48 s of it the MCP SDK.
+- The browser itself is cheap: the `page` fixture 0.5 min in all.
+
+**Tried.**
+- A gate's state written straight into the database instead of a live session: the state
+  differs from a live agent's (its messages typed and never confirmed, so the gate's
+  recommendation stays asked); 141 tests saw it. Making it the same means running the
+  agent's protocol (its prompt-submit and turn-end hooks) inside the test: a second fake
+  agent, dropped.
+- The integration tests' loop interval (0.25 s instead of 2 s) for the browser tests:
+  `stop_session` 0.97 → 0.2 min, but the whole run 49.7 → 52.3 min, the loops' passes
+  loading the machine; dropped.
+- Waits are no reserve: `wait_for` polls every 0.02 s.
+
+**Conclusion.** No cheap way to speed up the browser tests' fixtures: what costs is the
+real processes, and the one way around the server's start (a server shared by tests)
+breaks their isolation. The one safe reserve is the start of `lado mcp`, which delays
+every agent's start for users too: task LAD-294, a product change, outside this audit.
+The plugin and the data: outside the repository.
+### Stage 3, part 1 (2026-11-17, branch `chore/test-audit-stage-3-remove`): the removals
+
+**Sorted.** The eight biggest files of tests of files that are not Python, 335 test
+functions (441 cases), each read and sorted by the rules of stage 3, with rule 2 checked
+in the tracker for each removal and rewrite:
+
+| File | Keep | Rewrite | Remove |
+|---|---|---|---|
+| `test_docker.py` | 59 | 14 | 21 |
+| `test_install_sh.py` | 80 | 0 | 1 |
+| `test_install_ps1.py` | 10 | 7 | 3 |
+| `test_smoke_ci.py` | 47 | 1 | 1 |
+| `test_ci_workflow.py` | 23 | 7 | 0 |
+| `test_windows_shell_workflow.py` | 26 | 6 | 2 |
+| `test_release_workflow.py` | 12 | 3 | 0 |
+| `test_workflow_security.py` | 12 | 0 | 0 |
+| In all | 269 | 38 | 28 |
+
+Most stay: `test_install_sh.py` and `test_smoke_ci.py` run their scripts and check what
+they do, and the rest guard a security setting, a pin that two files must agree on or a
+reported bug (LAD-148, LAD-158).
+
+**28 test functions removed (31 cases)**, and the constant `SSH_WARNING` no test used any
+more:
+- a property of the Dockerfile that a container test checks on the built image (the
+  tools, mise, Python, `gh` as git's helper, the server's port under tini, the ssh
+  socket, the start without root, compose's image of `LADO_VERSION`);
+- wording or the order of headings in compose's and the Dockerfile's headers and in
+  docs/install.md, whose behaviour container tests check;
+- a subset of another test of the same file.
+
+The helpers container tests import (`BASE_TOOLS`, `way_back`) stay. The 38 rewrites, one
+file per pull request, follow.
+
+### Stage 3, part 2 (2026-11-17, branch `chore/test-audit-stage-3-docker`): `test_docker.py` rewritten
+
+The 14 rewrites of `test_docker.py`, now 11 tests of properties instead of text:
+- openspec's pin: exactly one package, `@${OPENSPEC_VERSION}`, its ARG before it (no whole
+  line, no order after the CLIs); the wheel after every npm install (no adjacency);
+- the build context: `*`, then exceptions that are exactly what the Dockerfile's COPY
+  lines take (not a fixed list);
+- the scripts run as root (`entrypoint.sh`, `ssh-agent-socket.sh`) stop at an error, one
+  test for both;
+- compose's header sets in .env every variable compose reads (the set, not a hand-picked
+  part), the headers name the published image (not their section words), the phone's
+  settings are compose's and its buttons the UI's;
+- the guide's installer commands are the latest release's assets and its options are ones
+  install.sh takes (no heading order or wording); every link into docs/install.md
+  resolves to a heading, from README, docs, docker/ and LADO's messages (not the presence
+  of a link's text); the workspace's troubleshooting names the placeholder of compose's
+  bind;
+- the headers' login commands and variables stay, without the two checks of old wording.
+
+Each new check was shown to fail on a file broken for it. `test_docker.py` 73 → 70 test
+functions.
+
+### Stage 3, part 3 (2026-11-17, branch `chore/test-audit-stage-3-workflows`): the workflows' tests rewritten
+
+The 17 rewrites of the tests of the workflows and of `test_smoke_ci.py`, as properties:
+- `test_ci_workflow.py` 30 → 29: the browser cache (the key of the runner image and
+  Playwright, restore and save on the same paths and key, saved only outside a pull
+  request: one test of three), a hit asks no mirror and a miss keeps its debs (not the
+  four apt lines), the web job runs `make dist` and the Node tests (not its six steps), the
+  image tested whole on each architecture's own runner (the shards those of the tests'
+  K/N, not the matrix's exact dict), no layer cache (without the Image step's text), a
+  smoke cell's set-up order and its provider (not its exact commands);
+- `test_windows_shell_workflow.py` 32 → 30: the triggers by hand and
+  weekly (not the minute), the inputs the settings script reads, typed (not the defaults),
+  the ARM guard's hint names inputs the workflow has (with the guard's test), the probes
+  without the lists of their commands, the verdict's rule of required checks with the
+  verdict's test;
+- `test_release_workflow.py` 15 → 13: one test of the three release gates (after the
+  version check, before the build, given the tag where they need it), and the image job's
+  two outputs parsed (the loaded one is the one tested, the pushed one by digest), not its
+  flags' text;
+- `test_smoke_ci.py`: the test of an install that fails runs no test is part of the test
+  of three failed installs.
+
+Each new check was shown to fail on a workflow broken for it.
+
+### Stage 3, part 4 (2026-11-17, branch `chore/test-audit-stage-3-workflows`): `test_install_ps1.py` rewritten
+
+Seven tests that grepped install.ps1's code and messages now run it on a fake Windows
+(docker, wsl.exe and Docker Desktop.exe as scripts, under pwsh, which CI's Linux runners
+have): the switches' flags (all three, -NoPhone too), install.sh's output on the human's
+console (not captured), a stopped Docker Desktop started and waited for, the stops (no
+docker, no Docker Desktop, no WSL, no Ubuntu, no WSL integration) each naming its next
+step and installing nothing, and a yes to its question installing Ubuntu.
+`test_install_ps1.py` 17 → 13 test functions. Each new run was shown to fail on a script
+broken for it; the one that does not, without the `docker-desktop*` exclusion, changes
+nothing, as no such name matches `Ubuntu*`.
+
+### Stage 4 (2026-11-17, branch `chore/test-audit-stage-4-providers`): `test_providers.py`
+
+**Coverage** measured again on main 8681e141. `tests/test_providers.py` (181 test
+functions, 454 cases) reaches nine modules, all mutated with the same judge
+(`--judge tests/test_providers.py --enough 3`): `providers/base.py`, `claude.py`,
+`opencode_family.py`, `__init__.py`, `opencode.py`, `kilo.py`, `gitpaths.py`,
+`interpreter.py`, `tmux.py`.
+
+**Mutants.** 1 551 in all: 869 killed by a test of the file, 261 untouched by it, 362
+skipped, 48 on lines no test runs, 10 errors, 1 timeout; no survivor. `claude.py` alone:
+556 (427 killed), about 2.6 hours of the run's four on six jobs.
+
+**Removable.** `removable` over the nine matrices lists 84 test functions (138 cases).
+Rule 2 keeps 28: the bug tasks LAD-170 (a broken login shown as logged in) and LAD-212
+(Kilo's message lost after its start); LAD-106 (Claude's folder-trust question) and
+LAD-211 (OpenCode and Kilo on local models), which read both ways; and ten tests with no
+task whose commit reads as a fix (the folder trust before LAD-106, Kilo's snapshot dialog,
+the hand-over of queued messages in one transaction, a waiting agent busy again after the
+human's answer). Three more stay by choice although other tests kill their mutants: the
+key of a model server never in a refusal, in an error's details or in a cut line
+(LAD-220), the guards of a secret. The others reference feature tasks (LAD-76, 157, 169,
+174, 177, 180, 217, 220, 230) or none. **53 test functions removed** and one helper no
+test used any more (`_NoTurnEndDelivery`): `tests/test_providers.py` 181 → 128 test
+functions (454 → 361 cases), 2 614 → 2 074 lines.
+
+**Rechecks.**
+- Every mutant a removed test killed (185) was run again against its remaining killers:
+  all 185 killed.
+- The branch coverage of the whole unit suite, from the per-test data: no arc of `src/`
+  run only by a removed test.
+- Unit tests: 5 648 on the branch (5 741 on main); one,
+  `test_server_model_settings.py::test_check_server_of_a_change_sends_the_kept_key`, failed
+  once in the whole run and passed alone and in three runs of its file: a flake of a file
+  the removal does not touch.
+
+### Stage 6 (2026-11-18, branch `chore/test-audit-stage-6`): the guardrails, and stage 2
+
+**Stage 2 is a rule, not a pass.** Its 201 groups (514 functions) were measured before
+stages 1, 3, 4 and 5 removed about 730 test functions; what is left of them differs in the
+checks more often than in the data, and turning copies into a table drops functions and
+lines, not checks. So the old groups are not rewritten one by one: the rule "one table,
+not copies" holds for every new test, and a group is turned into a table when its module
+changes.
+
+**The rules** are in docs/testing.md, "When to add, merge or remove a test" (AGENTS.md's
+Testing points to it within its 200 lines): a new test fails without the change, one table
+not copies, the lowest layer once, a change takes its stale tests with it, and what stays
+(section 5). The rules of a test of a file that is not Python are the section before it
+(stage 3).
+
+**The count.** `scripts/test_counts.py` collects the Python tests (no `-m`: every layer)
+and writes their functions and cases per layer as a table; CI's job `unit (3.14)` puts it
+in the run's summary. On this branch: unit 3 905 functions (5 678 cases), integration 298
+(309), ui 482 (619), smoke 32 (67), live 7 (22), container 61 (64); 4 785 (6 759) in all.
+vitest and the plugin's tests count in their own jobs' logs.
+
+**Mutation testing by hand.** The workflow `Mutants` (`.github/workflows/mutants.yml`,
+`workflow_dispatch`: a module, optionally a test file to judge) runs
+`scripts/mutants.py measure`, `run` and `removable` and uploads the kill matrix and the
+candidates. Not nightly: a large module takes hours (`cli.py` about seven on six jobs,
+`claude.py` 2.6), a runner's whole night for one module, and the candidates still need a
+person's reading of section 5. `measure` is new: the recipe of stage 0 (the two coverage
+configs, the subprocesses' context, `ctrace`, the combine) in one command, which exits
+with pytest's code, as a test red without a mutant would kill every mutant it runs.
 
 ## 7. Sources
 

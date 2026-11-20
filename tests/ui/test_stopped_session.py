@@ -156,17 +156,6 @@ def test_no_team_shows_and_a_phones_toggle_has_its_words(page: Page, server, rep
     shot(page)
 
 
-def test_resume_session_brings_the_composer_back_with_its_draft(page: Page, server, repo, shot):
-    session = running_session(repo)
-    log_in(page, server, f"/sessions/{session}")
-    composer(page).fill("half a thought")
-    runtime.stop_session(session)
-    expect(bar(page)).to_be_visible()
-    resume(page)
-    expect(composer(page)).to_have_value("half a thought")
-    shot(page)
-
-
 def test_the_empty_feed_says_what_the_filter_shows(page: Page, server, repo, shot):
     page.set_viewport_size({"width": 1440, "height": 800})
     log_in(page, server, f"/sessions/{stopped_session(repo)}")

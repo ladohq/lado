@@ -477,20 +477,62 @@ def test_folder_cannot_be_listed(outdir):
 
 
 def test_the_folder_wins_over_the_login_shell(shell, outdir):
-    shell(rc="export GH_TOKEN=old KEEP=1")
-    write(outdir, "GH_TOKEN", b"new\n")
+    shell(rc="export YOUGILE_API_KEY=old KEEP=1")
+    write(outdir, "YOUGILE_API_KEY", b"new\n")
     env = agent_env.resolve()
-    assert (env["GH_TOKEN"], env["KEEP"]) == ("new", "1")
+    assert (env["YOUGILE_API_KEY"], env["KEEP"]) == ("new", "1")
 
 
 def test_the_folder_wins_over_the_inherited_environment(outdir, monkeypatch):
     monkeypatch.setenv(agent_env.SOURCE_VAR, "inherit")
-    monkeypatch.setenv("GH_TOKEN", "old")
-    write(outdir, "GH_TOKEN", b"new\n")
+    monkeypatch.setenv("YOUGILE_API_KEY", "old")
+    write(outdir, "YOUGILE_API_KEY", b"new\n")
     write(outdir, "PATH", b"/evil")
     env = agent_env.resolve()
-    assert env["GH_TOKEN"] == "new"
+    assert env["YOUGILE_API_KEY"] == "new"
     assert env["PATH"] == os.environ["PATH"]
+
+
+def test_github_variables_from_no_layer(shell, outdir):
+    names = agent_env.GITHUB_VARIABLES
+    shell(rc="export " + " ".join(f"{name}=shell" for name in names))
+    for name in names:
+        write(outdir, name, b"out\n")
+    env = agent_env.resolve({name: "project" for name in names})
+    assert [name for name in names if name in env] == []
+    layers = agent_env.layers({"GH_TOKEN": "project"})
+    assert (layers.shell["GH_TOKEN"], layers.outside["GH_TOKEN"]) == ("shell", "out")  # kept
+
+
+def test_gitlab_variables_from_no_layer(shell, outdir):
+    names = agent_env.GITLAB_VARIABLES
+    assert names == (
+        "GITLAB_TOKEN",
+        "GITLAB_ACCESS_TOKEN",
+        "GITLAB_HOST",
+        "GITLAB_URI",
+        "GL_HOST",
+        "GLAB_CONFIG_DIR",
+        "GITLAB_API_HOST",
+        "GITLAB_REPO",
+    )
+    assert "GITLAB_URL" not in names  # glab 1.131 sends no request elsewhere by it
+    shell(rc="export OAUTH_TOKEN=shell CA_CERT=shell " + " ".join(f"{n}=shell" for n in names))
+    for name in names:
+        write(outdir, name, b"out\n")
+    env = agent_env.resolve({name: "project" for name in names})
+    assert [name for name in names if name in env] == []
+    # Names glab reads that other tools read too stay theirs.
+    assert (env["OAUTH_TOKEN"], env["CA_CERT"]) == ("shell", "shell")
+
+
+def test_for_git_drops_github_variables(outdir, monkeypatch, lado_home):
+    for name in agent_env.GITHUB_VARIABLES:
+        monkeypatch.setenv(name, "lado's")
+        write(outdir, name, b"out\n")
+    env = agent_env.for_git({"GH_TOKEN": "project"})
+    assert [name for name in agent_env.GITHUB_VARIABLES if name in env] == ["GH_CONFIG_DIR"]
+    assert env["GH_CONFIG_DIR"] == str(lado_home / "gh")
 
 
 def test_the_project_wins_over_the_folder_and_the_login_shell(shell, outdir):
@@ -641,6 +683,45 @@ def test_lados_git_lays_the_folder_then_the_project_over_the_process(shell, outd
     assert (env["BOARD_URL"], env["KEEP"], env["PATH"]) == ("proj", "1", os.environ["PATH"])
     assert "FROM_SHELL" not in env
     assert agent_env.for_git()["BOARD_URL"] == "out"  # no project: no layer
+
+
+def _git_server(address="https://gitlab.corp.ru"):
+    from lado import git_kinds, git_servers
+
+    checked = git_servers.Checked(git_kinds.by_name("gitlab"), "ivan")
+    return git_servers.save(git_servers.address(address), checked, "glpat-x")[0]
+
+
+def test_lados_git_gets_the_git_servers_for_a_remote(monkeypatch):
+    from lado import git_servers, state
+
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "a.b")
+    monkeypatch.delenv("GIT_CONFIG_KEY_1", raising=False)
+    plain = agent_env.for_git()
+    assert agent_env.for_git(remote="https://gitlab.corp.ru/a.git") == plain  # no server
+    _git_server()
+    env = agent_env.for_git(remote="git@gitlab.corp.ru:a.git")
+    expected = git_servers.variables({"GIT_CONFIG_COUNT": "1"}, state.git_servers())
+    assert env == plain | expected
+    assert env["GIT_CONFIG_KEY_0"] == "a.b"
+    assert agent_env.for_git() == plain  # no remote: a local call
+
+
+def test_an_old_git_refuses_lados_git_only_for_a_saved_host(tmp_path, monkeypatch):
+    from lado import git_servers
+
+    folder = tmp_path / "old-git"
+    folder.mkdir()
+    (folder / "git").write_text("#!/bin/sh\necho 'git version 2.30.2'\n")
+    (folder / "git").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
+    _git_server()
+    agent_env.for_git(remote="https://github.com/a/b.git")
+    for remote in ("https://gitlab.corp.ru/a.git", "ssh://git@gitlab.corp.ru/a.git"):
+        with pytest.raises(git_servers.Refused) as raised:
+            agent_env.for_git(remote=remote)
+        assert "git 2.30.2 is older than 2.31" in str(raised.value)
 
 
 def test_lados_git_reads_the_folder_anew_at_each_call(outdir):

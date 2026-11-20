@@ -1,10 +1,13 @@
 import dataclasses
 import os
 import re
+import socket
 import sqlite3
 import time
 
 import agent_helpers
+import certificates
+import fake_git_api
 import fake_model_server
 import pytest
 
@@ -14,6 +17,8 @@ from lado import (
     artifacts,
     artifacts_local,
     doctor,
+    git_kinds,
+    git_servers,
     gui_session,
     logins,
     model_servers,
@@ -66,6 +71,7 @@ def test_all_checks_pass_when_tools_are_on_path(tmp_path, monkeypatch):
         "tmux",
         "git",
         "git author",
+        "GitHub login",  # the takeover not run yet: an info line
         "Workspace",
         "Agent environment",
         "Agent config folders",
@@ -576,10 +582,10 @@ def test_the_checks_always_hold_the_workspace(tmp_path, monkeypatch):
         return [c.name for c in doctor.run_checks(which=lambda cmd: cmd)]
 
     found = names()
-    assert found[found.index("git author") + 1] == "Workspace"
+    assert found[found.index("GitHub login") + 1] == "Workspace"
     monkeypatch.setenv("LADO_REPOS", str(tmp_path))
     found = names()
-    assert found[found.index("git author") + 1] == "Workspace"
+    assert found[found.index("GitHub login") + 1] == "Workspace"
 
 
 @pytest.mark.parametrize(
@@ -1191,6 +1197,7 @@ def test_an_old_git_warns_and_keeps_the_exit_status(tmp_path, monkeypatch, capsy
     assert (check.level, check.detail) == (doctor.WARN, "git version 2.30.2")
     assert "2.31" in check.hint
     assert "--path-format=absolute" in check.hint
+    assert "git servers (`lado git-server`)" in check.hint
     checks = doctor.run_checks
     monkeypatch.setattr(doctor, "run_checks", lambda: checks(which=lambda cmd: cmd))
     assert doctor.main() == 0
@@ -1714,3 +1721,533 @@ def test_the_line_of_the_defaults_is_in_the_checks(monkeypatch):
     state.set_cli_default(state.ModelRef("codex", None, "gpt-5.6-sol"))
     _listing(monkeypatch, "gpt-5.6-sol")
     assert "Default models" in [c.name for c in doctor.run_checks(which=lambda cmd: cmd)]
+
+
+# The saved git servers.
+
+GIT_TOKEN = "glpat-CANARY-d0c70r"  # a canary: no line of doctor may hold it
+
+
+@pytest.fixture
+def git_api():
+    servers = []
+
+    def start(profile, **kwargs):
+        server = fake_git_api.Server(profile, **kwargs)
+        servers.append(server)
+        return server
+
+    yield start
+    for server in servers:
+        server.close()
+
+
+def _git_saved(url, kind="gitlab", login="ivan.petrov") -> state.GitServer:
+    at = git_servers.address(url)
+    checked = git_servers.Checked(git_kinds.by_name(kind), login)
+    return git_servers.save(at, checked, GIT_TOKEN)[0]
+
+
+def _git_lines() -> list[doctor.Check]:
+    found = doctor.check_git_servers()
+    assert GIT_TOKEN not in "\n".join(f"{c.detail} {c.hint}" for c in found)
+    return found
+
+
+def test_a_working_and_a_refused_git_server(git_api, lado_home):
+    works = git_api("gitlab-full", token=GIT_TOKEN)
+    refuses = git_api("github-refuses")
+    _git_saved(works.url)
+    _git_saved(refuses.url.replace("127.0.0.1", "localhost"), "github")
+    refused_root = refuses.url.replace("127.0.0.1", "localhost")
+    assert _git_lines() == [
+        doctor.Check(
+            f"git server {works.url}",
+            doctor.OK,
+            "Works: GitLab, signed in as ivan.petrov, may clone and push.",
+        ),
+        doctor.Check(
+            f"git server {refused_root}",
+            doctor.WARN,
+            "GitHub refused the token: it expired or was revoked",
+            f"replace it: lado git-server add {refused_root} --token",
+        ),
+    ]
+
+
+def test_a_gitlab_token_without_api_warns_for_its_merge_requests(git_api, lado_home):
+    works = git_api("gitlab-git", token=GIT_TOKEN)
+    _git_saved(works.url)
+    assert _git_lines() == [
+        doctor.Check(
+            f"git server {works.url}",
+            doctor.WARN,
+            "Works: GitLab, signed in as ivan.petrov, may clone and push; glab cannot open "
+            "merge requests: the token lacks api.",
+            f"replace it with a token with the scope api: lado git-server add {works.url} --token",
+        )
+    ]
+
+
+def test_no_saved_git_server_prints_no_line(lado_home):
+    assert doctor.check_git_servers() == []
+    assert not (lado_home / "lado.db").exists()
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    assert doctor.check_git_servers() == []
+
+
+def test_lado_db_at_another_schema_asks_no_git_server(git_api, lado_home):
+    server = git_api("gitlab-full", token=GIT_TOKEN)
+    _git_saved(server.url)
+    agent_helpers.previous_schema()
+    assert doctor.check_git_servers() == [
+        doctor.Check("git servers", doctor.INFO, doctor.NOT_AT_SCHEMA)
+    ]
+    assert server.requests == []
+    _unchanged(lado_home, OLDER)
+
+
+def _closed_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def test_a_git_server_that_does_not_answer_is_a_warning(git_api, lado_home):
+    works = git_api("gitlab-full", token=GIT_TOKEN)
+    silent = f"http://localhost:{_closed_port()}"
+    _git_saved(silent)
+    _git_saved(works.url)
+    first, second = _git_lines()  # by host: 127.0.0.1 before localhost
+    assert (first.name, first.level) == (f"git server {works.url}", doctor.OK)
+    assert (second.name, second.level) == (f"git server {silent}", doctor.WARN)
+    assert second.detail.startswith(f"localhost:{silent.rsplit(':', 1)[1]} does not answer: ")
+    assert second.hint == git_servers.REACH_HINT
+
+
+def test_a_missing_token_file_sends_nothing(git_api, lado_home):
+    server = git_api("gitlab-full", token=GIT_TOKEN)
+    saved = _git_saved(server.url)
+    (lado_home / "git-servers" / saved.id / "token").unlink()
+    assert _git_lines() == [
+        doctor.Check(
+            f"git server {server.url}",
+            doctor.WARN,
+            f"the token file of {server.url} is missing",
+            f"replace it: lado git-server add {server.url} --token",
+        )
+    ]
+    assert server.requests == []
+
+
+def test_a_saved_address_no_longer_taken_is_its_own_warning(git_api, lado_home):
+    works = git_api("gitlab-full", token=GIT_TOKEN)
+    _git_saved(works.url)
+    state.save_git_server(
+        "old1", "https://aaa.corp.example?x=1", "aaa.corp.example", "gitlab", None
+    )
+    first, second = _git_lines()  # by host: 127.0.0.1 before aaa.corp.example
+    assert (first.name, first.level) == (f"git server {works.url}", doctor.OK)
+    assert second == doctor.Check(
+        "git server https://aaa.corp.example?x=1",
+        doctor.WARN,
+        "its saved address is not taken any more (a git server's address holds no query)",
+        "remove it: lado git-server remove https://aaa.corp.example?x=1",
+    )
+
+
+def test_git_servers_are_asked_at_once(git_api, lado_home, monkeypatch):
+    monkeypatch.setattr(model_servers, "TIMEOUT", 2)
+    _git_saved(git_api("hang").url)
+    _git_saved(git_api("hang").url.replace("127.0.0.1", "localhost"))
+    started = time.monotonic()
+    found = _git_lines()
+    assert [c.level for c in found] == [doctor.WARN, doctor.WARN]
+    assert time.monotonic() - started < 3.5  # one after the other: 4 s
+
+
+def test_the_git_server_lines_follow_git_author(git_api, lado_home, monkeypatch):
+    _versions(monkeypatch)
+    server = git_api("gitlab-full", token=GIT_TOKEN)
+    _git_saved(server.url)
+    names = [c.name for c in doctor.run_checks(which=lambda cmd: cmd)]
+    assert names[names.index("git author") + 1] == f"git server {server.url}"
+
+
+def test_git_server_lines_never_change_the_exit_status(git_api, lado_home, monkeypatch, capsys):
+    _versions(monkeypatch)
+    status_before, out = _doctor_output(monkeypatch, capsys)
+    assert "git server" not in out
+    refuses = git_api("gitlab-refuses")
+    _git_saved(refuses.url)
+    _git_saved(f"http://localhost:{_closed_port()}")
+    status = doctor.main()
+    out = capsys.readouterr().out
+    assert status == status_before
+    assert (
+        f"[warn] git server {refuses.url}: GitLab refused the token: it expired or was revoked\n"
+        f"       replace it: lado git-server add {refuses.url} --token\n"
+    ) in out
+    assert "[FAIL] git server" not in out
+
+
+def test_doctor_saves_no_git_login(git_api, lado_home):
+    server = git_api("gitlab-full", token=GIT_TOKEN)
+    before = _git_saved(server.url, login=None)
+    [line] = _git_lines()
+    assert (line.level, line.detail) == (
+        doctor.OK,
+        "Works: GitLab, signed in as ivan.petrov, may clone and push.",
+    )
+    assert state.git_servers() == [before]
+
+
+# The GitHub login (openspec capability doctor).
+
+
+@pytest.fixture
+def no_github(monkeypatch):
+    for name in agent_env.GITHUB_VARIABLES:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv(agent_env.ENV_DIR_VAR, raising=False)
+    monkeypatch.setenv(agent_env.SOURCE_VAR, agent_env.INHERIT)
+
+
+def _github_lines() -> list[tuple[str, str]]:
+    return [(c.level, f"{c.name}: {c.detail}") for c in doctor.check_github_login()]
+
+
+OUTSIDE = "GitHub login outside LADO"
+NOT_USED = "set but not used: github.com takes its token from Settings → Git servers"
+
+
+def test_the_outside_folder_and_a_projects_secret_are_named(no_github, monkeypatch, tmp_path, ws):
+    folder = tmp_path / "secrets"
+    folder.mkdir()
+    (folder / "GH_TOKEN").write_text("ghp_CANARY_out\n")
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(folder))
+    projects.create("shop", None)
+    projects.set_secret("shop", "GH_TOKEN", "ghp_CANARY_project")
+    state.record_github_takeover("none", None)
+    lines = _github_lines()
+    assert lines == [
+        (doctor.WARN, f"{OUTSIDE}: GH_TOKEN in {folder}, GH_TOKEN of project shop {NOT_USED}")
+    ]
+    assert "CANARY" not in str(lines)
+
+
+def test_the_shell_and_gh_s_own_login(no_github, monkeypatch):
+    from lado import github_takeover
+
+    monkeypatch.setenv("GITHUB_TOKEN", "x")
+    monkeypatch.setattr(github_takeover, "gh_token", lambda env: "gho_own")
+    state.record_github_takeover("none", None)
+    assert _github_lines() == [
+        (doctor.WARN, f"{OUTSIDE}: GITHUB_TOKEN of your shell {NOT_USED}"),
+        (doctor.INFO, f"{OUTSIDE}: the GitHub CLI's own login is not used by agents"),
+    ]
+
+
+def test_no_github_login_no_line(no_github):
+    state.record_github_takeover("none", None)
+    assert _github_lines() == []
+
+
+def test_the_takeover_lines(no_github):
+    assert _github_lines() == [
+        (doctor.INFO, "GitHub login: taken over at the next lado ui or lado start")
+    ]
+    state.record_github_takeover("pending", "the GitHub CLI's login", "keychain locked")
+    assert _github_lines() == [
+        (
+            doctor.INFO,
+            "GitHub login: taken over at the next lado ui or lado start; the last try could "
+            "not read the GitHub CLI's login: keychain locked",
+        )
+    ]
+    state.record_github_takeover("saved", "GH_TOKEN in /run/secrets")
+    with state.connect() as db:
+        db.execute("UPDATE github_takeover SET ran_at = '2026-11-18 10:00:00'")
+    assert _github_lines() == [
+        (doctor.INFO, "GitHub login: taken over from GH_TOKEN in /run/secrets on 2026-11-18")
+    ]
+    state.record_github_takeover("refused", "GH_TOKEN of your shell")
+    assert _github_lines() == [
+        (doctor.WARN, "GitHub login: GitHub refused the token of GH_TOKEN of your shell")
+    ]
+    for outcome in ("kept", "none"):
+        state.record_github_takeover(outcome, None)
+        assert _github_lines() == []
+
+
+def test_a_busy_lado_db_is_one_warning(no_github, monkeypatch, capsys):
+    _versions(monkeypatch)
+    _git_saved("https://gitlab.corp.ru")
+
+    def busy():
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(state, "git_servers", busy)
+    monkeypatch.setattr(state, "github_takeover", busy)
+    status, out = _doctor_output(monkeypatch, capsys)
+    assert out.count("lado.db is busy") == 1
+    assert "[warn] git servers: not checked: lado.db is busy\n" in out
+    assert "Python" in out.split("lado.db is busy")[0] + out.split("lado.db is busy")[1]
+
+
+# A git server's certificate.
+
+
+def _corp(git_api, tmp_path, profile="gitlab-full"):
+    root = certificates.authority("Corp Root CA")
+    leaf = certificates.server("localhost", root)
+    chain = certificates.write_chain(tmp_path / profile, leaf, root)
+    server = git_api(profile, token=GIT_TOKEN, certificate=chain)
+    return server.url.replace("127.0.0.1", "localhost"), root
+
+
+def test_an_untrusted_certificate_is_a_warning_that_trusts_nothing(git_api, lado_home, tmp_path):
+    url, _ = _corp(git_api, tmp_path)
+    saved = _git_saved(url)
+    assert _git_lines() == [
+        doctor.Check(
+            f"git server {url}",
+            doctor.WARN,
+            f"the certificate of {url} is not trusted",
+            f"trust it: lado git-server check {url}, or Check in Settings → Git servers",
+        )
+    ]
+    assert git_servers.certificate(saved) is None
+
+
+def test_a_github_server_with_a_certificate_says_gh_does_not_get_it(git_api, lado_home, tmp_path):
+    url, root = _corp(git_api, tmp_path, "github-repo")
+    at = git_servers.address(url)
+    git_servers.save(
+        at, git_servers.Checked(git_kinds.by_name("github"), "ivan"), GIT_TOKEN, root.pem
+    )
+    assert _git_lines() == [
+        doctor.Check(
+            f"git server {url}",
+            doctor.OK,
+            "Works: GitHub, signed in as ivan.petrov, may clone and push.",
+        ),
+        doctor.Check(
+            "gh",
+            doctor.INFO,
+            f"does not get the certificate of {url}: agents' gh cannot reach it; git can",
+        ),
+    ]
+
+
+def test_a_certificate_trust_cannot_fix_keeps_the_checks_hint(git_api, lado_home, tmp_path):
+    root = certificates.authority("Corp Root CA")
+    leaf = certificates.server("other.corp.example", root)
+    chain = certificates.write_chain(tmp_path / "other", leaf, root)
+    url = git_api("gitlab-full", token=GIT_TOKEN, certificate=chain).url
+    url = url.replace("127.0.0.1", "localhost")
+    _git_saved(url)
+    assert _git_lines() == [
+        doctor.Check(
+            f"git server {url}",
+            doctor.WARN,
+            f"the certificate of {url} is not issued for localhost: trusting it would not help",
+            "ask the server's administrator",
+        )
+    ]
+
+
+# The saved servers' tools (openspec capability doctor).
+
+
+@pytest.fixture
+def agents_tools(monkeypatch, tmp_path):
+    """The agents' environment is LADO's own, its PATH a folder of the test's tools and git."""
+    import shutil
+
+    monkeypatch.setenv(agent_env.SOURCE_VAR, agent_env.INHERIT)
+    folder = tmp_path / "tools"
+    folder.mkdir()
+    (folder / "git").symlink_to(shutil.which("git"))
+    monkeypatch.setenv("PATH", str(folder))
+
+    def tool(name, line):
+        (folder / name).write_text(f"#!/bin/sh\necho '{line}'\n")
+        (folder / name).chmod(0o755)
+
+    return tool
+
+
+def test_glab_of_a_saved_gitlab_is_ok_with_its_version(agents_tools, lado_home):
+    agents_tools("glab", "glab 1.130.0 (206ebab4f)")
+    _git_saved("https://gitlab.corp.example")
+    assert doctor.check_host_tools() == [
+        doctor.Check("glab", doctor.OK, "glab 1.130.0 (206ebab4f)")
+    ]
+
+
+def test_a_missing_glab_warns_with_what_to_install(agents_tools, lado_home):
+    _git_saved("https://gitlab.corp.example")
+    _git_saved("https://git.lan")
+    assert doctor.check_host_tools() == [
+        doctor.Check(
+            "glab",
+            doctor.WARN,
+            "not on the agents' PATH: agents cannot open merge requests on "
+            "https://git.lan, https://gitlab.corp.example",
+            "install glab 1.114.0 or newer",
+        )
+    ]
+
+
+def test_an_old_glab_warns(agents_tools, lado_home):
+    agents_tools("glab", "glab 1.80.0 (x)")
+    _git_saved("https://gitlab.corp.example")
+    assert doctor.check_host_tools() == [
+        doctor.Check(
+            "glab",
+            doctor.WARN,
+            "glab 1.80.0 is older than 1.114.0, which LADO needs to sign it in",
+            "update glab",
+        )
+    ]
+
+
+def test_only_github_saved_gives_a_gh_line_alone(agents_tools, lado_home):
+    agents_tools("gh", "gh version 2.83.0 (2026-10-01)")
+    agents_tools("glab", "glab 1.130.0 (x)")
+    _git_saved("https://github.com", "github")
+    assert doctor.check_host_tools() == [
+        doctor.Check("gh", doctor.OK, "gh version 2.83.0 (2026-10-01)")
+    ]
+
+
+def test_no_saved_server_no_tool_line(agents_tools, lado_home):
+    assert doctor.check_host_tools() == []
+    assert not (lado_home / "lado.db").exists()
+
+
+def test_a_missing_tool_never_changes_the_exit_status(agents_tools, lado_home, monkeypatch, capsys):
+    _git_saved("https://gitlab.corp.example")
+    monkeypatch.setattr(doctor, "check_git_servers", lambda: [])
+    monkeypatch.setattr(doctor, "run_checks", lambda: doctor.check_host_tools())
+    assert doctor.main() == 0
+    assert "[warn] glab: not on the agents' PATH" in capsys.readouterr().out
+
+
+# The GitLab login outside LADO (openspec capability doctor).
+
+GITLAB_OUTSIDE = "GitLab login outside LADO"
+GITLAB_NOT_USED = "set but not used: a GitLab takes its token from Settings → Git servers"
+GLAB_OWN = (doctor.INFO, f"{GITLAB_OUTSIDE}: the GitLab CLI's own login is not used by agents")
+
+
+@pytest.fixture
+def no_gitlab(monkeypatch, tmp_path):
+    for name in (*agent_env.GITLAB_VARIABLES, "OAUTH_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv(agent_env.ENV_DIR_VAR, raising=False)
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setenv(agent_env.SOURCE_VAR, agent_env.INHERIT)
+    home = tmp_path / "human"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    return home
+
+
+def _gitlab_lines() -> list[tuple[str, str]]:
+    return [(c.level, f"{c.name}: {c.detail}") for c in doctor.check_gitlab_login()]
+
+
+def test_a_gitlab_token_of_the_shell_is_named(no_gitlab, monkeypatch):
+    monkeypatch.setenv("GITLAB_TOKEN", "glpat-CANARY")
+    lines = _gitlab_lines()
+    assert lines == [
+        (doctor.WARN, f"{GITLAB_OUTSIDE}: GITLAB_TOKEN of your shell {GITLAB_NOT_USED}")
+    ]
+    assert "CANARY" not in str(lines)
+
+
+def test_a_gitlab_host_of_the_shell_is_named(no_gitlab, monkeypatch):
+    monkeypatch.setenv("GITLAB_API_HOST", "gitlab.other.example")
+    monkeypatch.setenv("GITLAB_REPO", "gitlab.other.example/team/app")
+    assert _gitlab_lines() == [
+        (
+            doctor.WARN,
+            f"{GITLAB_OUTSIDE}: GITLAB_API_HOST of your shell, GITLAB_REPO of your shell "
+            f"{GITLAB_NOT_USED}",
+        )
+    ]
+
+
+def test_an_oauth_token_agents_keep_is_named(no_gitlab, monkeypatch):
+    # glab sends OAUTH_TOKEN to a GitLab not in the list (gitlab.com for a repository on
+    # none); agents keep it, as other tools read it too.
+    monkeypatch.setenv("OAUTH_TOKEN", "CANARY-oauth")
+    lines = _gitlab_lines()
+    assert lines == [
+        (
+            doctor.WARN,
+            f"{GITLAB_OUTSIDE}: OAUTH_TOKEN of your shell reaches agents: their glab sends it "
+            "to a GitLab not in Settings → Git servers (gitlab.com by default)",
+        )
+    ]
+    assert "CANARY" not in str(lines)
+    [check] = doctor.check_gitlab_login()
+    assert check.hint == "remove it from the agents' environment unless another tool needs it"
+
+
+def test_a_gitlab_variable_of_the_folder_and_a_project_are_named(
+    no_gitlab, monkeypatch, tmp_path, ws
+):
+    folder = tmp_path / "secrets"
+    folder.mkdir()
+    (folder / "GITLAB_TOKEN").write_text("glpat-CANARY\n")
+    monkeypatch.setenv(agent_env.ENV_DIR_VAR, str(folder))
+    projects.create("shop", None)
+    projects.set_secret("shop", "GL_HOST", "gitlab.corp.example")
+    assert _gitlab_lines() == [
+        (
+            doctor.WARN,
+            f"{GITLAB_OUTSIDE}: GITLAB_TOKEN in {folder}, GL_HOST of project shop "
+            f"{GITLAB_NOT_USED}",
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "hosts:\n    gitlab.com:\n        token: glpat-CANARY\n",
+        "hosts:\n    gitlab.com:\n        use_keyring: true\n",
+    ],
+)
+@pytest.mark.parametrize("xdg", [False, True])
+def test_the_gitlab_clis_own_login_is_named(no_gitlab, monkeypatch, tmp_path, text, xdg):
+    config = tmp_path / "xdg" if xdg else no_gitlab / ".config"
+    if xdg:
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(config))
+    (config / "glab-cli").mkdir(parents=True)
+    (config / "glab-cli" / "config.yml").write_text(text)
+    assert _gitlab_lines() == [GLAB_OWN]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        'hosts:\n    gitlab.com:\n        token: ""\n        use_keyring: false\n',
+        # glab's own first configuration: empty keys, each after its comment.
+        "hosts:\n    gitlab.com:\n        # Your GitLab access token.\n        token:\n"
+        "        # CI job token used for Job-Token authentication.\n        job_token:\n"
+        "        # Store the host's credentials in the keyring (true/false).\n"
+        "        use_keyring:\n        # A token-helper, valueFromCommand: x\n",
+    ],
+)
+def test_glab_without_a_login_is_not_named(no_gitlab, text):
+    (no_gitlab / ".config" / "glab-cli").mkdir(parents=True)
+    (no_gitlab / ".config" / "glab-cli" / "config.yml").write_text(text)
+    assert _gitlab_lines() == []
+
+
+def test_no_gitlab_login_no_line(no_gitlab):
+    assert _gitlab_lines() == []

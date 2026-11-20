@@ -3,6 +3,7 @@ tests/fake_model_server.py (real HTTP on 127.0.0.1)."""
 
 import socket
 import time
+import urllib.request
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -380,6 +381,24 @@ def test_anthropic_version_goes_with_the_posts_and_one_list(serve):
     assert {r.headers["anthropic-version"] for r in server.requests} == {None, "2023-06-01"}
 
 
+def test_an_answer_keeps_its_headers_by_lowercase_name():
+    import fake_git_api
+
+    opener = urllib.request.build_opener(ms.NoRedirect())
+    for profile, status in (("github-repo", 200), ("github-refuses", 401)):
+        server = fake_git_api.Server(profile)
+        try:
+            answer = ms.ask(opener, server.url + fake_git_api.GITHUB, "GET", {}, 5)
+        finally:
+            server.close()
+        assert answer.status == status
+        assert answer.headers["content-type"] == "application/json"
+        assert ("x-oauth-scopes" in answer.headers) is (status == 200)
+        if status == 200:
+            assert answer.headers["x-oauth-scopes"] == "repo, read:org"
+    assert ms.ask(opener, f"http://127.0.0.1:{closed_port()}/", "GET", {}, 5).headers == {}
+
+
 def test_headers_of_each_request(serve):
     server = serve("ollama")
     ms.probe(server.url)
@@ -518,8 +537,8 @@ def test_added_scheme_is_on_the_first_line(serve):
 
 def test_closed_port_does_not_answer_after_one_request(monkeypatch):
     asked = []
-    real = ms._ask
-    monkeypatch.setattr(ms, "_ask", lambda *a: asked.append(a) or real(*a))
+    real = ms.ask
+    monkeypatch.setattr(ms, "ask", lambda *a: asked.append(a) or real(*a))
     port = closed_port()
     with pytest.raises(ms.ProbeError) as raised:
         ms.probe(f"http://127.0.0.1:{port}")
@@ -654,7 +673,7 @@ def test_container_hint_names_the_command_run(monkeypatch):
 
 def test_container_hint_takes_the_scheme_s_port(monkeypatch):
     monkeypatch.setenv("LADO_CONTAINER", "1")
-    monkeypatch.setattr(ms, "_ask", lambda *a: ms.Answer(why="connection refused"))
+    monkeypatch.setattr(ms, "ask", lambda *a: ms.Answer(why="connection refused"))
     with pytest.raises(ms.ProbeError) as raised:
         ms.probe("https://localhost")
     assert "probe https://host.docker.internal:443 (not tried)" in raised.value.hint
@@ -668,7 +687,7 @@ def test_no_hint_outside_container():
 
 def test_no_hint_for_a_lan_address(monkeypatch):
     monkeypatch.setenv("LADO_CONTAINER", "1")
-    monkeypatch.setattr(ms, "_ask", lambda *a: ms.Answer(why="connection refused"))
+    monkeypatch.setattr(ms, "ask", lambda *a: ms.Answer(why="connection refused"))
     with pytest.raises(ms.ProbeError) as raised:
         ms.probe("192.168.1.10:11434")
     assert raised.value.hint == ""
@@ -677,8 +696,8 @@ def test_no_hint_for_a_lan_address(monkeypatch):
 def test_container_hint_sends_nothing_there(monkeypatch):
     monkeypatch.setenv("LADO_CONTAINER", "1")
     asked = []
-    real = ms._ask
-    monkeypatch.setattr(ms, "_ask", lambda *a: asked.append(a[1]) or real(*a))
+    real = ms.ask
+    monkeypatch.setattr(ms, "ask", lambda *a: asked.append(a[1]) or real(*a))
     port = closed_port()
     with pytest.raises(ms.ProbeError):
         ms.probe(f"localhost:{port}")

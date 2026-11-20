@@ -27,11 +27,12 @@ _probes_lock = threading.Lock()
 
 
 class Refusal(Exception):
-    """A refusal of the core, as the 400's detail."""
+    """A refusal of the core, as the detail of a 400 (or of `status`)."""
 
-    def __init__(self, detail: models.EntryRefused):
+    def __init__(self, detail: models.EntryRefused, status: int = 400):
         super().__init__(detail.message)
         self.detail = detail
+        self.status = status
 
 
 def _refusal(exc: Exception, warnings: list[str] | None = None) -> Refusal:

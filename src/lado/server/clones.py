@@ -25,10 +25,18 @@ class Busy(runtime.LadoError):
 
 
 def refused(error: runtime.LadoError) -> models.CloneRefused:
+    server = getattr(error, "server", None)
     return models.CloneRefused(
         message=str(error),
         kind=getattr(error, "kind", "refused"),
         hint=models.hint_info(getattr(error, "hint", None)),
+        git_server=(
+            models.GitServerWay(
+                way=server.way, host=server.host, address=server.address, text=server.page
+            )
+            if server
+            else None
+        ),
     )
 
 

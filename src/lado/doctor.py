@@ -1,10 +1,12 @@
 """`lado doctor`: check that the machine has what LADO needs."""
 
+import contextlib
 import os
 import platform
 import re
 import shlex
 import shutil
+import sqlite3
 import stat
 import subprocess
 from collections.abc import Callable
@@ -15,9 +17,12 @@ import lado
 from lado import (
     agent_env,
     artifacts,
+    git_kinds,
+    git_servers,
     gui_session,
     kits,
     logins,
+    loop,
     model_check,
     model_servers,
     model_settings,
@@ -214,25 +219,20 @@ def check_tmux(which: Callable[[str], str | None]) -> Check:
     return check
 
 
-def _git_numbers(version: str) -> tuple[int, int] | None:
-    """(major, minor) of `git version X.Y[.Z]...` (Apple's suffix and all); None else."""
-    found = re.match(r"git version (\d+)\.(\d+)", version)
-    return (int(found[1]), int(found[2])) if found else None
-
-
 def check_git() -> Check:
     """git is required, by the folder check's own look (`runtime.git_version`, on this
-    process's PATH); an old one breaks the providers' folder-trust lookup."""
+    process's PATH); an old one breaks the providers' folder-trust lookup and git servers."""
     try:
         version = runtime.git_version()
     except runtime.FolderProblem as problem:
         return Check("git", FAIL, str(problem), problem.hint.line() if problem.hint else "")
-    found = _git_numbers(version)
+    found = runtime.git_numbers(version)
     if found and found < runtime.GIT_MIN:
         need = ".".join(map(str, runtime.GIT_MIN))
         hint = (
             f"LADO needs git {need} or newer: before it, the providers' folder-trust lookup "
-            "(`git rev-parse --path-format=absolute`) does not work"
+            "(`git rev-parse --path-format=absolute`) and git servers (`lado git-server`) "
+            "do not work"
         )
         return Check("git", WARN, version, hint)
     return Check("git", OK, version)
@@ -910,6 +910,209 @@ def check_default_models(probes: dict[str, model_servers.Probe | str]) -> Check 
     return Check(name, OK, "; ".join(words))
 
 
+def check_git_servers() -> list[Check]:
+    """A line per saved git server, by the check of `lado git-server check`, all asked at
+    once (git_servers.check: at most about 10 s each), saving no login: doctor writes
+    nothing. Never FAIL: a server that does not answer, a token file that is gone or an
+    address this LADO no longer takes is its own warning. No line with no server; lado.db is
+    read as it is, never made or migrated."""
+    if state.schema_version() is None:
+        return []
+    try:
+        servers = state.git_servers()
+    except state.SchemaError:
+        return [Check("git servers", INFO, NOT_AT_SCHEMA)]
+    if not servers:
+        return []
+
+    def checked(server: state.GitServer) -> Check:
+        name = f"git server {server.address}"
+        try:
+            found = git_servers.check(git_servers.address(server.address), save_login=False)
+        except git_servers.Refused as refused:
+            return Check(name, WARN, str(refused), refused.hint)
+        except ValueError as exc:  # BadAddress: the address rule changed since it was saved
+            return Check(
+                name,
+                WARN,
+                f"its saved address is not taken any more ({exc})",
+                f"remove it: {git_servers.REMOVE} {server.address}",
+            )
+        except OSError as exc:
+            return Check(name, WARN, f"not checked: {exc}")
+        if found.outcome == "ok" and found.tool_missing:  # git works, its tool cannot
+            at = git_servers.address(server.address)
+            return Check(name, WARN, found.text, git_servers.replace_hint(found.kind, at))
+        if found.outcome == "ok":
+            return Check(name, OK, found.text)
+        if found.offer is not None:  # trusted only by the human's choice, never here
+            trust = (
+                f"trust it: lado git-server check {server.address}, or Check in Settings → "
+                "Git servers"
+            )
+            return Check(name, WARN, found.text, trust)
+        return Check(name, WARN, found.text, found.hint)
+
+    def gh(server: state.GitServer) -> list[Check]:
+        # gh gets no certificate: said for a GitHub server that has one, as a launch says it.
+        return [Check("gh", INFO, line) for line in git_servers.gh_without_certificate([server])]
+
+    with ThreadPoolExecutor(max_workers=len(servers)) as pool:
+        lines = list(pool.map(checked, servers))
+    return [
+        found for server, line in zip(servers, lines, strict=True) for found in (line, *gh(server))
+    ]
+
+
+BUSY = Check("git servers", WARN, "not checked: lado.db is busy")
+GITHUB_LOGIN = "GitHub login"
+GITHUB_OUTSIDE = "GitHub login outside LADO"
+
+
+def check_github_login() -> list[Check]:
+    """The GitHub login's takeover (lado.github_takeover) as lado.db records it, and each
+    GitHub variable of the agents' layers or of a project that no agent gets, by name, then
+    the GitHub CLI's own login when it holds one; never a value. lado.db is read as it is."""
+    from lado import github_takeover
+
+    lines = []
+    try:
+        record = state.github_takeover() if state.schema_version() is not None else None
+    except state.SchemaError:
+        record = None
+    if record is None or record.outcome == github_takeover.PENDING:
+        detail = "taken over at the next lado ui or lado start"
+        if record is not None and record.why:
+            detail += f"; the last try could not read {github_takeover.GH_LOGIN}: {record.why}"
+        lines.append(Check(GITHUB_LOGIN, INFO, detail))
+    elif record.outcome in (github_takeover.SAVED, github_takeover.UNCHECKED):
+        day = record.ran_at[:10]
+        lines.append(Check(GITHUB_LOGIN, INFO, f"taken over from {record.source} on {day}"))
+    elif record.outcome == github_takeover.REFUSED:
+        lines.append(Check(GITHUB_LOGIN, WARN, f"GitHub refused the token of {record.source}"))
+    try:
+        layers = agent_env.layers()
+    except agent_env.AgentEnvError:  # the agents' environment line says why
+        layers = None
+    found = {}
+    if state.schema_version() is not None:
+        with contextlib.suppress(state.SchemaError):
+            found = {p.id: project_secrets.layer(p.id) for p in state.list_projects()}
+    names = github_takeover.unused(layers, agent_env.outside().folder, found)
+    if names:
+        detail = f"{', '.join(names)} set but not used: github.com takes its token from "
+        lines.append(Check(GITHUB_OUTSIDE, WARN, detail + github_takeover.SETTINGS))
+    if layers is not None and github_takeover.own_login(layers):
+        detail = "the GitHub CLI's own login is not used by agents"
+        lines.append(Check(GITHUB_OUTSIDE, INFO, detail))
+    return lines
+
+
+def _agents_layers() -> agent_env.Layers | None:
+    try:
+        return agent_env.layers()
+    except agent_env.AgentEnvError:  # the agents' environment line says why
+        return None
+
+
+def check_host_tools() -> list[Check]:
+    """A line per tool of the saved servers' kinds (git_kinds), named by the tool, on the
+    agents' PATH as a launch finds it (git_servers.tool_state): ok with its `--version`
+    line, warn when it is missing or older than its kind's oldest; never FAIL. No line with
+    no server; lado.db is read as it is."""
+    if state.schema_version() is None:
+        return []
+    try:
+        servers = state.git_servers()
+    except state.SchemaError:
+        return []
+    layers = _agents_layers()
+    env = agent_env.merge(layers) if layers is not None else dict(os.environ)
+    lines = []
+    for kind in git_kinds.KINDS:
+        theirs = [s.address for s in servers if s.kind == kind.name]
+        if not theirs:
+            continue
+        found = git_servers.tool_state(kind, env)
+        what, hint = git_servers.tool_problem(kind, found, theirs)
+        if what:
+            lines.append(Check(kind.tool, WARN, what, hint))
+        else:
+            lines.append(Check(kind.tool, OK, found.line or "on the agents' PATH"))
+    return lines
+
+
+GITLAB_OUTSIDE = "GitLab login outside LADO"
+GITLAB_SETTINGS = "a GitLab takes its token from Settings → Git servers"
+GLAB_KEPT_TOKENS = ("OAUTH_TOKEN",)  # a token glab reads that agents still get
+# A login in glab's own configuration: a token that is not empty, or one in the keyring.
+GLAB_LOGIN = re.compile(
+    r"^[ \t]*(token:[ \t]*(?!\"\"|''|#)\S|use_keyring:[ \t]*true\b)", re.MULTILINE
+)
+
+
+def _glab_own_config(layers: agent_env.Layers | None) -> str:
+    """The text of the human's own glab configuration (its GLAB_CONFIG_DIR, else
+    XDG_CONFIG_HOME's or ~/.config's `glab-cli`), "" for none it reads."""
+    env: dict[str, str] = dict(os.environ)
+    for layer in layers or ():
+        env.update(layer)
+    folder = env.get("GLAB_CONFIG_DIR") or os.path.join(
+        env.get("XDG_CONFIG_HOME") or os.path.join(env.get("HOME", ""), ".config"), "glab-cli"
+    )
+    try:
+        with open(os.path.join(folder, "config.yml"), encoding="utf-8", errors="replace") as file:
+            return file.read(1 << 20)
+    except OSError:
+        return ""
+
+
+def check_gitlab_login() -> list[Check]:
+    """Each GitLab variable of the agents' layers or of a project, which no agent gets
+    (agent_env.GITLAB_VARIABLES), by name, then the GitLab CLI's own login when its
+    configuration holds one, read as text; never a value, no glab run, no network."""
+    from lado import github_takeover
+
+    layers = _agents_layers()
+    found = {}
+    if state.schema_version() is not None:
+        with contextlib.suppress(state.SchemaError):
+            found = {p.id: project_secrets.layer(p.id) for p in state.list_projects()}
+    folder = agent_env.outside().folder
+    names = github_takeover.unused(layers, folder, found, agent_env.GITLAB_VARIABLES)
+    lines = []
+    if names:
+        detail = f"{', '.join(names)} set but not used: {GITLAB_SETTINGS}"
+        lines.append(Check(GITLAB_OUTSIDE, WARN, detail))
+    # Agents keep OAUTH_TOKEN, which other tools read too (agent_env.GITLAB_VARIABLES); glab
+    # sends it to a GitLab not in the list.
+    if kept := github_takeover.unused(layers, folder, found, GLAB_KEPT_TOKENS):
+        detail = (
+            f"{', '.join(kept)} reaches agents: their glab sends it to a GitLab not in "
+            "Settings → Git servers (gitlab.com by default)"
+        )
+        hint = "remove it from the agents' environment unless another tool needs it"
+        lines.append(Check(GITLAB_OUTSIDE, WARN, detail, hint))
+    if GLAB_LOGIN.search(_glab_own_config(layers)):
+        detail = "the GitLab CLI's own login is not used by agents"
+        lines.append(Check(GITLAB_OUTSIDE, INFO, detail))
+    return lines
+
+
+def _busy(check: Callable[[], list[Check]]) -> Callable[[], list[Check]]:
+    """`check`, whose lado.db locked for longer than its wait is BUSY."""
+
+    def checked() -> list[Check]:
+        try:
+            return check()
+        except sqlite3.OperationalError as exc:
+            if not loop.is_locked(exc):
+                raise
+            return [BUSY]
+
+    return checked
+
+
 def _key_file_problem(server: state.ModelServer) -> str:
     """What is wrong with the key file of `server`, "" for nothing or no file."""
     path = model_settings.key_folder(server.id) / model_settings.KEY
@@ -935,7 +1138,15 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
     overridden = check_project_variables()
     unused_secrets = check_project_secrets()
     probes: dict[str, model_servers.Probe | str] = {}
-    servers = check_model_servers(probes)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        # The git servers are asked while the model servers are: doctor waits for the
+        # longer of the two, not for both.
+        git_lines = pool.submit(_busy(check_git_servers))
+        servers = check_model_servers(probes)
+        git_servers_found = git_lines.result()
+    github = [c for c in _busy(check_github_login)() if c not in git_servers_found]
+    host_tools = _busy(check_host_tools)()
+    gitlab = _busy(check_gitlab_login)()
     default_models = check_default_models(probes)
     author = check_git_author()
     database = check_database()
@@ -946,6 +1157,10 @@ def run_checks(which: Callable[[str], str | None] = shutil.which) -> list[Check]
         check_tmux(which),
         check_git(),
         *([author] if author else []),
+        *git_servers_found,
+        *[c for c in host_tools if c not in git_servers_found],
+        *github,
+        *[c for c in gitlab if c not in github],
         check_workspace(),
         *([projects_found] if projects_found else []),
         *([outside] if outside else []),

@@ -989,8 +989,8 @@ def test_migrate_backs_up_the_older_schema_first(lado_home):
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(backup)) as db:
         assert db.execute("SELECT name FROM sessions").fetchall() == [("s",)]
-        columns = _message_columns(db)
-    assert "read_reminded" not in columns  # the content before the migration
+        tables = _tables(db)
+    assert "github_takeover" not in tables  # the content before the migration
     assert _schema(lado_home / "lado.db") == state.SCHEMA_VERSION
 
 
@@ -1011,7 +1011,7 @@ def test_a_failing_step_leaves_the_schema_and_keeps_the_backup(lado_home, monkey
     assert _schema(lado_home / "lado.db") == old
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
-        assert "read_reminded" not in _message_columns(db)  # rolled back
+        assert "github_takeover" not in _tables(db)  # rolled back
 
 
 def test_version_2_database_gets_kits(lado_home):
@@ -1972,3 +1972,189 @@ def test_a_stray_delete_of_a_default_s_model_is_refused_by_the_foreign_key(lado_
     state.set_cli_default(state.ModelRef("opencode", saved.id, None))
     with state.connect() as db, pytest.raises(sqlite3.IntegrityError):
         db.execute("DELETE FROM models WHERE id = ?", (saved.id,))
+
+
+# Git servers (schema 41).
+
+
+def test_a_git_server_kept_by_its_host(lado_home):
+    saved = state.save_git_server(
+        "a1", "https://gitlab.corp.ru", "gitlab.corp.ru", "gitlab", "ivan"
+    )
+    assert (saved.id, saved.address, saved.host, saved.kind, saved.login) == (
+        "a1",
+        "https://gitlab.corp.ru",
+        "gitlab.corp.ru",
+        "gitlab",
+        "ivan",
+    )
+    assert state.git_server_by_host("gitlab.corp.ru") == saved
+    assert state.git_server_by_host("git.lan") is None
+
+
+def test_a_git_server_saved_again_keeps_its_id(lado_home):
+    state.save_git_server("a1", "https://gitlab.corp.ru", "gitlab.corp.ru", "gitlab", "ivan")
+    again = state.save_git_server(
+        "b2", "https://gitlab.corp.ru/x", "gitlab.corp.ru", "github", None
+    )
+    assert (again.id, again.address, again.kind, again.login) == (
+        "a1",
+        "https://gitlab.corp.ru/x",
+        "github",
+        None,
+    )
+    assert [s.id for s in state.git_servers()] == ["a1"]
+
+
+def test_git_servers_by_host_and_removed(lado_home):
+    state.save_git_server("b", "https://z.lan", "z.lan", "gitlab", None)
+    state.save_git_server("a", "https://a.lan:8443", "a.lan:8443", "github", "me")
+    assert [s.host for s in state.git_servers()] == ["a.lan:8443", "z.lan"]
+    assert state.remove_git_server("a") is True
+    assert state.remove_git_server("a") is False
+    assert [s.host for s in state.git_servers()] == ["z.lan"]
+
+
+def test_schema_40_gets_git_servers_and_keeps_the_rest(lado_home):
+    state.add_session(state.Session("s", "/r", None, provider="claude"))
+    _server()
+    agent_helpers.schema_before(41)
+    with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
+        assert "git_servers" not in _tables(db)
+    assert state.migrate().after == state.SCHEMA_VERSION
+    assert state.git_servers() == []
+    assert state.get_session("s").name == "s"
+    assert [s.id for s in state.model_servers()] == ["s1"]
+
+
+def test_a_git_server_has_no_author_until_set(lado_home):
+    saved = state.save_git_server("a1", "https://gitlab.corp.ru", "gitlab.corp.ru", "gitlab", "i")
+    assert (saved.author_name, saved.author_email) == (None, None)
+    author = state.set_git_server_author("a1", "Ivan Petrov", "ivan@corp.ru")
+    assert (author.author_name, author.author_email) == ("Ivan Petrov", "ivan@corp.ru")
+    assert state.git_servers() == [author]
+    cleared = state.set_git_server_author("a1", None, None)
+    assert (cleared.author_name, cleared.author_email) == (None, None)
+    assert state.set_git_server_author("nope", "A", "a@b") is None
+
+
+def test_a_git_server_saved_again_keeps_its_author(lado_home):
+    state.save_git_server("a1", "https://gitlab.corp.ru", "gitlab.corp.ru", "gitlab", "ivan")
+    state.set_git_server_author("a1", "Ivan Petrov", "ivan@corp.ru")
+    again = state.save_git_server("b2", "https://gitlab.corp.ru", "gitlab.corp.ru", "gitlab", "x")
+    assert (again.id, again.login) == ("a1", "x")
+    assert (again.author_name, again.author_email) == ("Ivan Petrov", "ivan@corp.ru")
+
+
+def test_schema_41_gets_author_columns_and_keeps_the_servers(lado_home):
+    state.save_git_server("a1", "https://gitlab.corp.ru", "gitlab.corp.ru", "gitlab", "ivan")
+    agent_helpers.schema_before(42)
+    with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
+        assert "author_name" not in _columns(db, "git_servers")
+    migrated = state.migrate()
+    assert (migrated.before, migrated.after) == (41, state.SCHEMA_VERSION)
+    [server] = state.git_servers()
+    assert (server.id, server.address, server.kind, server.login) == (
+        "a1",
+        "https://gitlab.corp.ru",
+        "gitlab",
+        "ivan",
+    )
+    assert (server.author_name, server.author_email) == (None, None)
+    with contextlib.closing(sqlite3.connect(migrated.backup)) as db:
+        assert _columns(db, "git_servers") == {"id", "address", "host", "kind", "login", "added_at"}
+        assert db.execute("SELECT id FROM git_servers").fetchall() == [("a1",)]
+
+
+def test_the_schema_41_backup_put_back_has_no_author(lado_home):
+    state.save_git_server("a1", "https://gitlab.corp.ru", "gitlab.corp.ru", "gitlab", "ivan")
+    agent_helpers.schema_before(42)
+    backup = state.migrate().backup
+    state.set_git_server_author("a1", "Ivan Petrov", "ivan@corp.ru")
+    (lado_home / "lado.db-wal").unlink(missing_ok=True)
+    (lado_home / "lado.db-shm").unlink(missing_ok=True)
+    (lado_home / "lado.db").write_bytes(backup.read_bytes())  # the way back: the copy
+    assert _schema(lado_home / "lado.db") == 41
+    state.migrate()
+    [server] = state.git_servers()
+    assert (server.id, server.author_name, server.author_email) == ("a1", None, None)
+
+
+def test_processes_opening_a_new_lado_db_at_once_make_it_once(lado_home):
+    """A fresh LADO_HOME opened by several processes at the same moment (a server's start
+    and the page's first requests): each finds the schema whole, none half made."""
+    import subprocess
+    import sys
+
+    script = (
+        "import sys, time\n"
+        "from lado import state\n"
+        "time.sleep(float(sys.argv[1]) - time.time())\n"
+        "state.git_servers()\n"
+    )
+    for _ in range(3):
+        (lado_home / "lado.db").unlink(missing_ok=True)
+        for extra in ("lado.db-wal", "lado.db-shm"):
+            (lado_home / extra).unlink(missing_ok=True)
+        at = str(time.time() + 1.5)
+        runs = [
+            subprocess.Popen([sys.executable, "-c", script, at], stderr=subprocess.PIPE, text=True)
+            for _ in range(8)
+        ]
+        errors = [r.communicate()[1] for r in runs]
+        assert [e for e in errors if e] == []
+        assert state.schema_version() == state.SCHEMA_VERSION
+
+
+# The GitHub login's takeover (schema 43).
+
+
+def test_no_takeover_until_recorded(lado_home):
+    assert state.github_takeover() is None
+    state.record_github_takeover("saved", "GH_TOKEN of your shell")
+    found = state.github_takeover()
+    assert (found.outcome, found.source, found.why) == ("saved", "GH_TOKEN of your shell", None)
+    assert len(found.ran_at) == 19  # UTC, YYYY-MM-DD HH:MM:SS
+
+
+def test_a_takeover_is_one_row_the_last_written_wins(lado_home):
+    state.record_github_takeover("pending", "the GitHub CLI's login", "keychain locked")
+    assert state.github_takeover().why == "keychain locked"
+    state.record_github_takeover("none", None)
+    assert (state.github_takeover().outcome, state.github_takeover().source) == ("none", None)
+    with state.connect() as db:
+        assert db.execute("SELECT count(*) FROM github_takeover").fetchone()[0] == 1
+
+
+def test_upgrade_from_42_keeps_servers_and_has_no_takeover(lado_home):
+    state.save_git_server("a1", "https://gitlab.corp.ru", "gitlab.corp.ru", "gitlab", "ivan")
+    agent_helpers.schema_before(43)
+    with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
+        assert "github_takeover" not in _tables(db)
+    migrated = state.migrate()
+    assert (migrated.before, migrated.after) == (42, 43)
+    assert migrated.backup.name == "lado.db.schema-42"
+    assert [s.id for s in state.git_servers()] == ["a1"]
+    assert state.github_takeover() is None
+
+
+def test_the_schema_42_backup_put_back_has_no_github_entry(lado_home):
+    agent_helpers.schema_before(43)
+    backup = state.migrate().backup
+    state.save_git_server("g1", "https://github.com", "github.com", "github", "octo")
+    state.record_github_takeover("saved", "GH_TOKEN of your shell")
+    (lado_home / "lado.db-wal").unlink(missing_ok=True)
+    (lado_home / "lado.db-shm").unlink(missing_ok=True)
+    (lado_home / "lado.db").write_bytes(backup.read_bytes())
+    assert _schema(lado_home / "lado.db") == 42
+    with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
+        assert db.execute("SELECT host FROM git_servers").fetchall() == []
+        assert "github_takeover" not in _tables(db)
+
+
+def test_previous_schema_drops_43(lado_home):
+    state.record_github_takeover("none", None)
+    agent_helpers.previous_schema()
+    assert _schema(lado_home / "lado.db") == 42
+    with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
+        assert "github_takeover" not in _tables(db)

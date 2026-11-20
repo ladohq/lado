@@ -68,19 +68,35 @@ def bound_log() -> None:
     telemetry.trim(log_path())
 
 
-def resume_sessions(application) -> threading.Thread | None:
-    """In a container: resume its sessions in the background while the server serves
-    (runtime.resume_at_start), each line on stderr (docker logs), until the server stops
-    (`application.state.stopping`). The thread; None outside a container."""
-    from lado import runtime, update
+def take_over_github() -> None:
+    """The GitHub login agents had, taken over once (lado.github_takeover), its line in the
+    server's log; a failure is journaled, and the next start tries again."""
+    from lado import github_takeover
 
-    if not update.in_container():
-        return None
+    try:
+        line = github_takeover.run()
+    except Exception as error:
+        telemetry.record("server:github-takeover", error)
+        print(f"lado: could not take the GitHub login over: {type(error).__name__}", flush=True)
+        return
+    if line:
+        print(line, flush=True)
+
+
+def resume_sessions(application) -> threading.Thread:
+    """In the background while the server serves: the GitHub login's takeover
+    (take_over_github), then, in a container, resume its sessions (runtime.resume_at_start),
+    each line on stderr (docker logs), until the server stops
+    (`application.state.stopping`). The thread."""
+    from lado import runtime, update
 
     def say(line: str) -> None:
         print(line, file=sys.stderr, flush=True)
 
     def resume() -> None:
+        take_over_github()
+        if not update.in_container():
+            return
         try:
             runtime.resume_at_start(say, application.state.stopping)
         except Exception as error:  # one resume's failure is its own line; this is the rest

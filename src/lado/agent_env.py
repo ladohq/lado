@@ -24,7 +24,13 @@ LADO's secrets by the CLI's own order of its variables.
 
 LADO's own network git calls (kits, skill packs, marketplaces, a clone of a URL) get the
 same layers over LADO's process environment instead of the login shell's (`for_git`), so
-they reach what the agents reach: the outside folder's GH_TOKEN, a project's secrets.
+they reach what the agents reach: the outside folder's GIT_SSH_COMMAND, a project's secrets.
+
+GitHub's variables (GITHUB_VARIABLES: its tokens, host and the GitHub CLI's config folder)
+come from no layer: github.com and GitHub Enterprise get their tokens from the saved git
+servers alone (lado.git_servers.gh_variables, laid by lado.runtime). So do GitLab's
+(GITLAB_VARIABLES): an agent's glab gets the saved GitLab servers alone
+(lado.git_servers.glab_variables).
 
 A tmux window starts with its server's environment, so the launch does not rely on it: the
 window runs the module `lado.agent_env <file> <argv>` (`interpreter.run_module`), which
@@ -53,6 +59,9 @@ from lado import interpreter, state, tmux
 
 SOURCE_VAR = "LADO_AGENT_ENV"
 LAUNCH_VARS = "LADO_LAUNCH_VARS"  # the names a launch set on top of the layers, comma-separated
+# The layers' own GIT_CONFIG_COUNT under LADO's git entries ("" for none): without_launch
+# gives it back.
+GIT_CONFIG_BASE = "LADO_GIT_CONFIG_BASE"
 SHELL, INHERIT = "shell", "inherit"
 TIMEOUT = 10  # seconds the shell may take
 SLOW = 2  # seconds above which `lado doctor` warns
@@ -88,6 +97,33 @@ VARIABLE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 RESERVED = frozenset({"HOME", "USER", "LOGNAME", "SHELL", "PATH", *SHELL_OWN, *PANE_VARS})
 RESERVED_PREFIX = "LADO_"
 SUBFOLDER = "in a subfolder"
+
+# The GitHub CLI's (and git's helper's) login and host: taken from no layer (`merge`,
+# `for_git`), as github.com and GitHub Enterprise get their tokens from the saved git
+# servers alone (lado.git_servers.gh_variables).
+GITHUB_VARIABLES = (
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
+    "GH_ENTERPRISE_TOKEN",
+    "GITHUB_ENTERPRISE_TOKEN",
+    "GH_HOST",
+    "GH_CONFIG_DIR",
+)
+# The GitLab CLI's login, host and config folder: taken from no layer (`merge`), as a
+# GitLab gets its token from the saved git servers alone (lado.git_servers.glab_variables).
+# OAUTH_TOKEN, CA_CERT and API_PROTOCOL, which glab reads too, are other tools' as well.
+# GITLAB_API_HOST sends a saved server's requests, its header too, to another host;
+# GITLAB_REPO another project. GITLAB_URL moves no request (glab 1.131), so it stays.
+GITLAB_VARIABLES = (
+    "GITLAB_TOKEN",
+    "GITLAB_ACCESS_TOKEN",
+    "GITLAB_HOST",
+    "GITLAB_URI",
+    "GL_HOST",
+    "GLAB_CONFIG_DIR",
+    "GITLAB_API_HOST",
+    "GITLAB_REPO",
+)
 
 INHERIT_HINT = (
     f"set {SOURCE_VAR}={INHERIT} to give agents the environment of the process that starts them"
@@ -133,9 +169,16 @@ def layers(project: Mapping[str, str] | None = None) -> Layers:
 def without_launch(env: Mapping[str, str]) -> dict[str, str]:
     """`env` without what LADO and the provider set for the launch of the agent it is the
     environment of (LAUNCH_VARS): a process an agent started hands on neither that agent's
-    config nor its keys to the agent it starts."""
+    config nor its keys to the agent it starts. `GIT_CONFIG_COUNT`, which LADO's git
+    entries raised past the layers' own (lado.git_servers.variables), goes back to the
+    layers' count, GIT_CONFIG_BASE ("" for none)."""
     names = {*env.get(LAUNCH_VARS, "").split(","), LAUNCH_VARS}
-    return {k: v for k, v in env.items() if k not in names}
+    found = {k: v for k, v in env.items() if k not in names}
+    if GIT_CONFIG_BASE in env:
+        found.pop("GIT_CONFIG_COUNT", None)
+        if env[GIT_CONFIG_BASE]:
+            found["GIT_CONFIG_COUNT"] = env[GIT_CONFIG_BASE]
+    return found
 
 
 def merge(
@@ -143,10 +186,13 @@ def merge(
 ) -> dict[str, str]:
     """`found`'s layers, each over the one before, but for the names of `login` (an agent
     CLI's login variables): a login comes whole from one layer, the highest that sets any
-    of them, and none of them is taken from a lower one. Without `login`, name by name."""
+    of them, and none of them is taken from a lower one. Without `login`, name by name. No
+    GITHUB_VARIABLES nor GITLAB_VARIABLES from any layer."""
     env: dict[str, str] = {}
     for layer in found:
         env.update(layer)
+    for name in (*GITHUB_VARIABLES, *GITLAB_VARIABLES):
+        env.pop(name, None)
     names = set(login)
     if names:
         top = next((layer for layer in reversed(found) if any(layer.get(n) for n in names)), {})
@@ -162,13 +208,28 @@ def resolve(project: Mapping[str, str] | None = None, login: Iterable[str] = ())
     return merge(layers(project), login)
 
 
-def for_git(project: Mapping[str, str] | None = None) -> dict[str, str]:
+def for_git(project: Mapping[str, str] | None = None, remote: str | None = None) -> dict[str, str]:
     """The environment of LADO's own network git calls (lado.gitcache, lado.clone): LADO's
     process environment, then the outside folder's variables read now, then `project`, a
     project's layer for a clone into it (lado.project_secrets.layer). No login shell: it
     would cost a shell's start per call; the folder's unused files are named by `lado
-    doctor` and each launch, not here."""
-    return {**os.environ, **outside().values, **(project or {})}
+    doctor` and each launch, not here. A call to a `remote` gets git's way to the saved git
+    servers, read now (lado.git_servers.variables); lado.git_servers.Refused when the
+    remote is a saved server's and the git on that PATH is older than 2.31. No
+    GITHUB_VARIABLES of any layer: git reaches github.com by its saved server, and `gh`
+    gets LADO's own empty config folder (`<LADO_HOME>/gh`)."""
+    env = {**os.environ, **outside().values, **(project or {})}
+    for name in GITHUB_VARIABLES:
+        env.pop(name, None)
+    env["GH_CONFIG_DIR"] = str(state.home_path() / "gh")
+    if remote is None:
+        return env
+    from lado import git_servers  # it builds on this module's secrets reader
+
+    servers = state.git_servers()
+    if git_servers.server_for(remote, servers) is not None:
+        git_servers.check_git(env)
+    return {**env, **git_servers.variables(env, servers)}
 
 
 class Outside(NamedTuple):

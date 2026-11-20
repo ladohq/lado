@@ -64,6 +64,11 @@ export const NEEDS_YOU_PATH = "/needs-you";
 export const GENERAL_PATH = "/settings/general";
 export const MODEL_SERVERS_PATH = "/settings/model-servers";
 export const STATISTICS_PATH = "/settings/statistics";
+// Git servers opens a saved server's panel and checks it (`check`, its host), or the add
+// form with an address (`add`): GitServers.tsx reads them once.
+export const GIT_SERVERS_PATH = "/settings/git-servers";
+export const gitServersPath = (way: "check" | "add", value: string) =>
+  `${GIT_SERVERS_PATH}?${way}=${encodeURIComponent(value)}`;
 export const agentClisPath = (cli?: string) => `/settings/agent-clis${cli ? `#${encodeURIComponent(cli)}` : ""}`;
 
 // Help's links on the rail (Shell.tsx); GITHUB also in the system panel and Report a bug.

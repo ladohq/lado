@@ -26,6 +26,63 @@ is exit 1) before any clone or start, stdin read once, and `first message: queue
 supervisor` after the Started or Resumed line. The UI starts sessions too (Launch). Use `LADO_HOME=/tmp/some-dir` and
 `LADO_TMUX_SOCKET=lado-dev` to keep test sessions apart from the LADO you work with.
 
+A clone or listing git refuses says `cannot clone <url>: <reason> (<git's line>)` (`cannot
+read …` for the listing) with a hint by its kind (`lado.clone.KINDS`, git's words under
+`LC_ALL=C`). When the URL's host is a saved git server whose token git took (by host and port
+for https, by host for `git@<host>:` and `ssh://git@<host>[:22]/`) and it refuses access, the
+reason names the server, its host with its port: `<host[:port]> refused the token of the git
+server <address>` (`Authentication failed`), `<host[:port]> refused access with the token of the
+git server <address>` (git's `returned error: 403`), `no repository there, or the token of the
+git server <address> cannot read it` (not found), with two lines, `Check the git server: lado
+git-server check <address>` and `If its token expired or was revoked, replace it: lado
+git-server add <address> --token`. An http(s) host that is not saved, github.com included, and
+asks for a login (`<host> asks for a login`) or refuses access (`<host> refused access`) gets
+`Add it as a git server with a token: lado git-server add <scheme>://<host>[:<port>] --token`;
+its not found, ssh failures and the failures that are no access failure (unreachable, no
+branch) keep their texts with no git server hint, and so does a host saved under another
+scheme or port than the URL's, as git took no token from it. git's refusal of a server's
+certificate (`SSL certificate problem` with OpenSSL, `server certificate verification failed`
+or, from curl 8, `SSL certificate verification failed` with GnuTLS, and a certificate of another
+host: `no alternative certificate subject name`, `does not match target host name`) is the kind
+`cert_untrusted`, `the certificate of <host> is not trusted`: for a saved server's URL with
+`Check the git server and trust its certificate: lado git-server check <address>`, for an
+unsaved http(s) host with the hint to add it. LADO's container has no ssh:
+there both ssh failures of a `git@<host>:` or `ssh://git@<host>[:22]/` address of a host no
+server is saved for say `LADO's container has no ssh key for <host>` with `Add it as a git
+server with a token: lado git-server add https://<host> --token`, and those of any other ssh
+address `LADO's container has no ssh: clone by the repository's https address`, no hint;
+outside it the ssh hints stay. A kit's, pack's or marketplace's
+git failure carries the same hint on one line, its lines joined by `. `; the UI shows the git
+server's way out as a link to Settings → Git servers (docs/design/ui.md).
+
+The first `lado start` or `lado ui` of a `LADO_HOME` takes the GitHub login agents used over
+once, before any agent starts (lado.github_takeover): `GH_TOKEN`, else
+`GITHUB_TOKEN`, of the agents' environment (the outside folder over the login shell), else
+`gh auth token --hostname github.com`; checked on GitHub, it is saved as the github.com git
+server and the command prints `LADO took your GitHub login (<source>) into Settings → Git
+servers: github.com, signed in as <login>.` (`not checked yet` when GitHub does not answer in
+5 s; `GitHub refused the token of <source>: add github.com in Settings → Git servers.` when
+it refuses, nothing saved). The UI server's start does the same, its line in server.log, and
+so does any launch of agents. It runs once per `LADO_HOME`, recorded in lado.db: an entry
+saved before is kept, a github.com removed later is not taken again, and a login made outside
+LADO later is not taken. A `gh` that cannot read its login for another reason than none (a
+keychain closed to an ssh session, more than 10 s) records nothing final: the next start
+tries again, and `lado doctor` says why. Nothing outside LADO is changed: the outside folder,
+the shell, `gh`'s login and a project's secrets stay, for the human's own terminal and for
+going back to an older LADO.
+
+From then on agents and LADO's own git get no `GH_TOKEN`, `GITHUB_TOKEN`,
+`GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`, `GH_HOST` or `GH_CONFIG_DIR` from the login
+shell, the outside folder or a project: each agent's `gh` gets a config folder of its own with
+no login (`GH_CONFIG_DIR=<its config folder>/gh`), `GH_TOKEN` of the github.com server, and
+`GH_ENTERPRISE_TOKEN` of the GitHub Enterprise server its repository's `origin` is on (else of
+the only one saved), with `GH_HOST` its host and port for the origin's server only. Nor do
+they get `GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`, `GITLAB_HOST`, `GITLAB_URI`, `GL_HOST`,
+`GLAB_CONFIG_DIR`, `GITLAB_API_HOST` (it would send a saved server's requests, its token
+too, to another host) or `GITLAB_REPO` (another project): each agent's `glab` gets a config
+folder of its own with the saved GitLab
+servers alone (`lado git-server`, below).
+
 `lado start --new [<folder>]` (default: the current folder; relative paths are taken from
 it) starts from scratch (`lado.scratch`): the folder must be new or empty (nothing but
 `.DS_Store`) and in no git repository, and git must know the commits' author (`user.name`
@@ -89,11 +146,18 @@ written beside its name and renamed over it, so a reader finds the old value or 
 one whole) and never shown again; every agent of the project's sessions gets it as it gets
 a plain variable. On a terminal it asks `Value of <NAME> (not shown): ` and reads one line
 without echo; otherwise it reads the whole of stdin, one line break at its end (`\n` or
-`\r\n`) dropped (`printf '%s' "$TOKEN" | lado project set shop GH_TOKEN --secret`); the
+`\r\n`) dropped (`printf '%s' "$KEY" | lado project set shop YOUGILE_API_KEY --secret`); the
 agents get the value so read whole, its own line breaks kept (its file holds one more when
 it ends in one, as the reader drops one, so such a value counts a byte more against 64
 KiB). It
-prints `Set secret <NAME> in project <id>.` and the agents' line above. It refuses, exit 1,
+prints `Set secret <NAME> in project <id>.` and the agents' line above; for a GitHub variable
+(`GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`, `GH_HOST`,
+`GH_CONFIG_DIR`, plain or secret), saved all the same, `<NAME> is not given to agents:
+github.com and GitHub Enterprise take their token from Settings → Git servers.` instead, as
+no agent gets one from a project; for a GitLab variable (`GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`,
+`GITLAB_HOST`, `GITLAB_URI`, `GL_HOST`, `GLAB_CONFIG_DIR`, `GITLAB_API_HOST`, `GITLAB_REPO`)
+`<NAME> is not given to agents: a
+GitLab takes its token from Settings → Git servers.` so. It refuses, exit 1,
 storing nothing: a value on the command line, before it reads anything (`a secret's value
 is never given on the command line (ps and the shell's history keep it); run lado project
 set <id> <NAME> --secret and type it, or pipe it in`), an empty value, Ctrl-D at the prompt
@@ -274,6 +338,54 @@ that cannot start (`OpenCode's default Локальная Qwen: LM Studio дом
 the reason of the server's probe, `…: qwen3-8b is not in LM Studio дома's list of models`, `Codex
 CLI's default gpt-5.4-old: its list no longer has it`), or that it cannot check as the agents'
 environment cannot be read. It never fails either.
+
+With git servers saved (`lado git-server add`), `lado doctor` prints a line per server after
+`git author`, named `git server <address>`, by the check of `lado git-server check`: `ok` with
+its `Works: …` line (`warn` for a GitLab token without `api`, with `replace it with a token
+with the scope api: lado git-server add <address> --token`), `warn` with its line and hint
+otherwise (`GitHub refused the token: it
+expired or was revoked` with `replace it: lado git-server add <address> --token`; `<host> does
+not answer: …` with the reach hint; a certificate not trusted or changed with its line and
+`trust it: lado git-server check <address>, or Check in Settings → Git servers`, never trusting
+it itself; one trust cannot fix with the check's hint). A GitHub server with a certificate
+gets after its line `[info] gh: does not get the certificate of <address>: agents' gh cannot
+reach it; git can`. A missing token file (no request sent) and a saved
+address this LADO no longer takes (`its saved address is not taken any more (…)`, `remove it:
+lado git-server remove <address>`) are warnings too. The servers are asked at once, while the
+model servers are probed, so doctor waits about one check's time (about 10 s at most). It never
+fails, and saves no login: a server saved with `--kind` that works stays `not checked` in `lado
+git-server list` until `lado git-server check` or Settings' Check. With no server saved there is
+no line; with lado.db at another schema, one `[info] git servers: not checked: lado.db is not
+at this LADO's schema (see lado.db)`; with lado.db locked by another process for longer than
+its 10-second wait, one `[warn] git servers: not checked: lado.db is busy` for these and the
+GitHub lines below, and the other checks follow.
+
+Then one line per tool of the saved servers' kinds, named by the tool, on the agents' PATH as
+a launch finds it: `[ok  ] glab: glab 1.130.0 (206ebab4f)` (its `--version` line), `[warn]
+glab: not on the agents' PATH: agents cannot open merge requests on <addresses>` with `install
+glab 1.114.0 or newer`, `[warn] glab: glab 1.80.0 is older than 1.114.0, which LADO needs to
+sign it in` with `update glab`; the same for `gh` with a GitHub server saved. None fails.
+
+After them come the GitHub login's lines (lado.github_takeover). Its takeover: `[info]
+GitHub login: taken over from <source> on <date>` once a token was saved, `[warn] GitHub
+login: GitHub refused the token of <source>`, and before it ran `[info] GitHub login: taken
+over at the next lado ui or lado start` (with `; the last try could not read the GitHub CLI's
+login: <gh's words>` after a `gh` that failed); none once nothing was found or an entry was
+kept. The login outside LADO, never a value: `[warn] GitHub login outside LADO: <names> set
+but not used: github.com takes its token from Settings → Git servers` naming each GitHub
+token or host variable of the outside folder (`GH_TOKEN in <folder>`), the login shell
+(`GH_TOKEN of your shell`) or a project (`GH_TOKEN of project <id>`), and `[info] GitHub login
+outside LADO: the GitHub CLI's own login is not used by agents` while `gh auth token` finds a
+login of its own in the agents' environment. Neither changes the exit status. GitLab's the
+same way: `[warn] GitLab login outside LADO: GITLAB_TOKEN of your shell set but not used: a
+GitLab takes its token from Settings → Git servers` for each GitLab variable no agent gets;
+`[warn] GitLab login outside LADO: OAUTH_TOKEN of your shell reaches agents: their glab sends
+it to a GitLab not in Settings → Git servers (gitlab.com by default)` with `remove it from the
+agents' environment unless another tool needs it` for an `OAUTH_TOKEN` agents keep (other
+tools read it too), and
+`[info] GitLab login outside LADO: the GitLab CLI's own login is not used by agents` while the
+human's glab configuration (its `GLAB_CONFIG_DIR`, else `$XDG_CONFIG_HOME/glab-cli` or
+`~/.config/glab-cli`) holds a token or `use_keyring: true`, read as text: no glab is run.
 
 `lado doctor` prints a login line after each installed agent CLI's version, read by the CLI's
 own status command in the environment its agents get without a project, the login taken
@@ -788,6 +900,234 @@ Settings → Model servers`), a name only another CLI's configured model has (`"
 <other CLI>, not of <CLI>`). `lado model default <cli> --clear` clears it, the CLI installed
 or not: `<CLI>'s default model is cleared.`, or `<CLI> has no default model.`; a model with
 `--clear`, or `--clear` with no CLI, exits 2.
+
+`lado git-server add <address> --token [--kind github|gitlab]` saves a GitLab, github.com or
+GitHub Enterprise server with the human's token, so that agents and LADO's own git reach it
+over https without a password, and their `gh` with it (`git_servers.py`, lado.db's
+`git_servers`, schema 41; its commit author from schema 42; the GitHub login's takeover,
+schema 43). The address
+takes `https://` when it has none, keeps a path (`https://example.com/gitlab`) and drops a
+trailing dot of the host (`gitlab.corp.ru.` is `https://gitlab.corp.ru`); a user or
+password, a query, a fragment, another scheme, a space, tab or control character, or a
+host name with a character other than a letter, a digit, `-`, `.` and `_` is refused with
+exit 2 (`not a git server's
+address: <why>`, never naming the address). `github.com`, `www.github.com` and
+`api.github.com` are `https://github.com`; another port, a path or `http://` there is refused,
+exit 2 (`github.com is signed in to at https://github.com`), and so is `--kind` with it, exit
+1, before the token is asked (`github.com's kind is GitHub: add it without --kind`). The
+token is asked without echo (`Token of the server (not shown): `) or read from
+stdin when that is no terminal; one given on the command line (`--token <value>`, `--token=…`,
+a stray word) is refused without its value, as a model server's key, and an empty one too.
+Then LADO asks each kind's API at once, one GET each, cut at 5 s and following no redirect
+(the kind modules of `git_kinds/`): GitLab's `<address>/api/v4/user` with `PRIVATE-TOKEN`,
+GitHub's `<address>/api/v3/user` with `Authorization: token` (for github.com
+`https://api.github.com/user`, the only request). One kind that answers with its
+user prints `GitLab, signed in as <login>` (`GitHub, …`), then `Saved git server <address>.`
+and `Agents started from now on reach it; restart running agents to give it to them.`, exit
+0. The token's rights are read too: GitLab's `<address>/api/v4/personal_access_tokens/self`
+(GitLab 15.5 on; a token needs `read_repository` and `write_repository`, or `api`, which
+holds both) and GitHub's `X-OAuth-Scopes` header of the user answer (a classic token needs
+`repo`; a fine-grained token tells none). A token that lacks one is saved all the same, with
+`lado: warning: the token lacks write_repository: agents can clone but not push` (`…neither
+clone nor push` without the read right) and the hint `replace it with a token with the scopes
+…: lado git-server add <address> --token`, exit 0; a server that tells no rights warns of
+nothing. Refused, nothing saved, exit 1, with a hint: a token the server refuses (`GitLab at
+<address> refuses the token` and the kind's token page with the scopes it needs; GitLab's 403
+`insufficient_scope` says the token lacks `read_api`), even with `--kind`; a token every
+kind's API refuses (a sign-in gateway in front of the server, or a token cut short: `<address>
+refuses the token on GitHub's and GitLab's API alike`, hint `check that the token was copied
+whole; a sign-in gateway in front of the server refuses any token too`), naming no kind (a
+gateway that answers OAuth's `invalid_token` on every path is taken for GitLab, as one answer
+cannot tell them apart); a redirect (`<address>
+sends to <location>; give the server's own address`, nothing sent there); two kinds
+answering (`… answers as GitHub and as GitLab; say which: --kind github or --kind gitlab`);
+a server that does not answer (`<host> does not answer: the name is not found` / `the
+connection is refused` / `it did not answer in 5 s`) or answers as neither kind; those two
+name `--kind` in their hint. A certificate this computer does not trust is refused as `check`
+tells it (below), with the authority it offers and the hint `trust it in Settings → Git
+servers (Check), or give its certificate: lado git-server add <address> --token --certificate
+<file>`. `--certificate <file>` is checked as `lado git-server certificate` checks it, before
+the token is asked (`-` is refused with exit 2: stdin holds the token); the server is then asked trusting that certificate alone, and
+it is saved with the server, or neither is (`the certificate of <address> is not signed by
+the given certificate`, with the offer). With
+`--kind`, a server that does not answer or answers as neither is saved as that kind with no
+login, after `lado: warning: <address> could not be checked (<why>); saved as GitLab`; a
+server recognised as another kind is refused (`<address> answers as GitLab, not GitHub`). An
+`http://` address warns `the token goes to <host> over plain http://, unencrypted; use https://
+if the server has it` and goes on. A server is its host and port: adding one already saved
+replaces its address, kind, login and token, keeping its id and commit author (`Replaced
+git server <address>.`). One host name holds one server, as git's ssh addresses of a host carry no port:
+a server whose host name a saved server holds on another port is refused before the token is
+asked and before any request (`<host> already has a git server, <its address>; LADO keeps one
+server per host name, as git's ssh addresses (git@<host>:…) carry no port`, hint `remove it
+first: lado git-server remove <its address>`). The token is kept in `<LADO_HOME>/git-servers/<id>/token` alone (folders 700,
+the file 600, written by LADO's secrets writer as a model server's key), never in lado.db,
+an output, a log, a git config file or a worktree. A git older than 2.31 on this PATH is
+refused before the token is asked (`git <version> is older than 2.31, which git servers need;
+update git, or remove the servers (lado git-server remove <address>)`). A save, a removal
+and a check's login write hold one lock, `<LADO_HOME>/git-servers.lock` (never while a server
+is asked); one waiting more than 10 s for another is refused (`another change of the git
+servers is running; try again`).
+
+`lado git-server check <address>` asks the saved server of the address's host and port again
+with its saved token, as `add` does (every kind at once, 5 s each, no redirect followed), judges
+the answers by its saved kind and reads the token's rights, storing nothing but the login of a
+check that passes (so a server saved with `--kind` is no longer `not checked`). It works:
+`Works: GitLab, signed in as <login>, may clone and push.` (`…; the token's rights are not
+checked.` when the server tells none), exit 0; a GitLab token whose told rights do not grant
+`api` (`read_api` reads the API only) still works for git and says so: `Works: GitLab, signed
+in as <login>, may clone and push; glab cannot open merge requests: the token lacks api.`,
+exit 0, and `add`'s first line ends `; glab cannot open merge requests: the token lacks api`
+(GitLab's token hint is `scope api`). Any other outcome is `lado: <line>` and its
+hint on stderr, exit 1: `GitLab refused the token: it expired or was revoked` (`replace it:
+lado git-server add <address> --token`); `the token lacks write_repository: agents can clone
+but not push` (as `add` warns); `GitLab takes the token, but it lacks the scope read_api` (a
+server saved with `--kind`; the same hint); `<host> does not answer: it did not answer in 5 s` (or `the
+name is not found`, `the connection is refused`; `check that this computer reaches it: the
+company VPN or proxy; with LADO in Docker, its container`); `the certificate of <address> is
+not trusted` or, for a server with a certificate that no longer fits, `the certificate of
+<address> has changed since you trusted it` with `  Before     <name> · <first 8 bytes of its
+SHA-256>…`, each followed by the authority to trust as three lines (`  Signed by  <subject> ·
+<issuer>` — `  Certificate  <host> · signed by itself` (`signed by <issuer>` when the server
+sends its own certificate alone) and a fourth line that it changes when renewed, a note for
+an intermediate —, `  Valid      <from> to <until>`, `  SHA-256    <AA:BB:…>`) and
+the hint `trust it in Settings → Git servers (Check), or give its certificate: lado git-server
+certificate <address> <file>`; nothing is saved and nothing is asked. The authority comes from
+the chain of a bare TLS handshake to the server (no request, no token; lado.git_certificates):
+the chain's top when it signed itself, else its issuer by `CA Issuers` links (at most 3, 5 s
+and 64 KB each, no header but `User-Agent`), else the highest one sent; it is offered only when
+a connection trusting it alone reaches the server. Otherwise trust would not help: `the
+certificate of <address> is not issued for <host>: trusting it would not help` (`ask the
+server's administrator`), `… names its host only in the old Common Name field, which LADO
+refuses` (`… to reissue it`), `… expired on <date>` (`… to renew it`), or `<host> does not
+answer: TLS failed (<why>)`; `it redirects to <location>: add that address instead`; `it
+answers as GitLab, not GitHub: remove it and add it again` (`lado git-server remove <address>,
+then lado git-server add <address> --token`); `it answers as neither GitHub nor GitLab`. An
+address of no saved server (`<address> is no saved git server`, `see them: lado git-server
+list`) and a missing token file (`the token file of <address> is missing`, `replace it: …`)
+send no request, exit 1; an address it does not take exits 2.
+
+`lado git-server list` prints `ADDRESS KIND LOGIN TOKEN CERTIFICATE AUTHOR`, one line per
+server by host, asking none: `not checked` for one saved with `--kind` unchecked, `yes`/`no`
+for its token file, `until <date>` or `expired <date>` for its certificate (`-` for none), its
+commit author `<name> <<email>>` or `-`; with none, `No git servers. Add one: lado git-server
+add <address> --token`.
+
+`lado git-server certificate <address> <file>` trusts the certificate file (`-`: stdin) for
+the saved server of the address's host and port alone, replacing its certificate: `Trusted
+<name> for <address>.`, the line of a check that follows (on stderr, with its offer, when the
+check fails; exit 0 all the same) and the restart line. The file is a company's authority from
+IT, PEM, one certificate or a chain: refused, nothing saved, exit 1, when it is larger than 1
+MB (`<file> is larger than 1 MB`), holds no PEM certificate (`<file> holds no certificate`) or
+every certificate in it expired (`<file>: the certificate expired on <date>`); LADO keeps its
+certificates alone, no key or text, in `<LADO_HOME>/git-servers/<id>/ca.pem` beside the token
+(600, the same writer, never in lado.db). `--clear` removes it (`<address> is trusted by this
+computer's authorities again.`); with neither it prints `<name>, valid until <date>` (`expired
+on`) or `No certificate: LADO trusts this computer's authorities for <address>.`. An address of
+no saved server exits 1, a file with `--clear` 2 (`--clear takes no file`). A new token by
+`add` keeps the certificate; removing the server removes it. A LADO before certificates reads
+no `ca.pem`: after going back, git to that host fails as before and the file stays unused,
+and removing the server there leaves its folder with `could not remove <folder>: directory not
+empty`.
+
+`lado git-server author <address> --name <name> --email <email>` sets the commit author of
+the saved server of the address's host and port, without its token again: `Agents commit to
+<address> as <name> <<email>>.` and `Agents started from now on commit so; restart running
+agents to give it to them.`. `--clear` removes it (`Agents commit to <address> with your own
+git author again.` and the same second line; also when there was none), and with neither it
+prints `<name> <<email>>` or `<address> has no commit author: agents commit there with your
+own git author.`. Exit 2 for an address it does not take, `--name` without `--email` or the
+other way round (`--name and --email go together`), or `--clear` with either (`--clear takes no
+--name or --email`). Refused with exit 1, nothing saved: an address of no saved server
+(`<address> is no saved git server`, hint `see them: lado git-server list`), a name empty
+after trimming (`the author's name is empty`) or holding `<`, `>` or a control character
+(`the author's name holds no < or > or line break`), an email that is not text on both sides
+of one `@` with no space, `<`, `>` or control character (`not an email address: name@host`),
+either over 256 characters, and a git older than 2.36 on this PATH (`git <version> is older
+than 2.36, which a commit author of a git server needs; update git`); clearing needs no git. `lado git-server
+remove <address>` finds the server by the host and port of the address, with or without its
+scheme, removes it and its token folder, and `<LADO_HOME>/git-servers/` itself with the last
+server: `Removed git server <address>.`; an address of no saved server is refused (exit 1).
+The server goes first: a folder the disk keeps (a file of the human's in `git-servers/`) is
+`lado: warning: could not remove <path>: <why>`, exit 0.
+`lado git-server` alone prints its help; the commands migrate lado.db as `lado ls` does.
+Settings → Git servers in the web UI does the same with the same rules (docs/design/ui.md,
+Git servers).
+
+What a saved server gives: each agent at its launch, and LADO's own network git at each call
+(kits, packs, marketplaces, a clone or listing of a URL), gets through `GIT_CONFIG_COUNT`,
+`GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>`, per server: an empty
+`credential.<scheme>://<host[:port]>.helper` (every helper set before it there is dropped, so
+no other helper, a `store` of the global config included, keeps the token), LADO's helper
+(`lado.git_credential`, run with LADO's own Python by its absolute path, so no `lado` on the
+agent's PATH is needed), and `git@<host>:`, `ssh://git@<host>/` and `ssh://git@<host>:22/`
+rewritten to the server's address; an ssh address with another port goes over ssh as before;
+for a server with a certificate, `http.<address>/.sslCAInfo` naming its `ca.pem`, which git
+takes for that address alone (its rewritten ssh addresses too; the trailing `/` keeps `/git`
+from matching `/gitlab`) instead of the computer's authorities. No `GIT_SSL_CAINFO`,
+`SSL_CERT_FILE` or trust store is set. `gh` gets no certificate: a launch with a GitHub server
+that has one warns `gh does not get the certificate of <address>: agents' gh cannot reach it;
+git can`.
+
+Each agent's `glab` gets `GLAB_CONFIG_DIR=<its config folder>/glab`, where its launch writes
+`config.yml` whole (folder 700, file 600, as glab wants), even with no GitLab saved, so the
+human's own glab configuration is never read: update check and statistics off, git over
+https, no prompt, and per saved GitLab server a host entry by its `host[:port]` with its scheme
+(`api_protocol`), its path (`subfolder`), its `ca.pem` (`ca_cert`, for that host alone) and a
+`PRIVATE-TOKEN` header from LADO's helper (`lado.git_credential … token`, with LADO's own
+Python), which reads the token file at each call: a token replaced in Settings works at the
+agent's next `glab` call, a removed server's sends none. No token is in the file. glab sends
+such a header from 1.114.0 on. `glab auth status` says logged in, with its own note `No token
+found` (the token comes by the header). glab has one client per repository: a call by a whole
+URL of another host (`glab api https://<host>/…`) from a saved server's repository trusts
+that server's certificate too, but carries no token; outside such a repository a host with
+no entry gets the computer's authorities alone.
+
+When the session repository's `origin` is on a saved server, every agent's instructions carry
+one line about it, by the kind's tool (`gh`, `glab`): `The repository's origin is on GitLab
+(<host[:port]>), a git server LADO signs you in to: use `glab` for its merge requests; it is
+logged in already.` (GitHub: `gh` and pull requests), or why not: `…, but its tool `glab` is not
+installed here, so you cannot open its merge requests; tell the human.`, `…, but `glab` here is
+<version>, older than 1.114.0, which LADO needs to sign it in, …`, `…, but LADO has no token for
+it, so `glab` is not logged in and git cannot push there; tell the human.`; a GitHub server with
+a certificate adds `` `gh` does not get the server's certificate and cannot reach it; git
+can.``. The tool is asked `--version` once per launch, for the origin's server alone, cut at 10
+s, with a configuration folder of the call's own (glab writes one at any call); a version it
+cannot read counts as fit. A missing or too old tool is warned, and the agent starts: `glab is
+not on the agents' PATH: agents cannot open merge requests on <address>; install glab 1.114.0
+or newer`, `glab 1.80.0 is older than 1.114.0, which LADO needs to sign it in to <address>;
+update glab` (`gh is not on the agents' PATH: … install gh`). Another remote, or none, gets no
+line and runs no tool.
+The entries come after the `GIT_CONFIG_*` entries the agent's layers already hold; with no
+server saved none is set. A host not in the list goes as before, and the global and system
+git configs are never written. An agent gets the list at its launch: a server added or
+removed reaches running agents after their restart; the helper of a removed server tells git
+to stop (`lado: no token for <address>; add it again: lado git-server add <address>
+--token`), so git never prompts. git reads `GIT_CONFIG_COUNT` from 2.31 on: while a server is
+saved, a launch whose agents' git is older is refused before anything starts, and so is LADO's
+own git for a saved server's address; with no server, nothing changes.
+
+A server with a commit author gives agents, and not LADO's own git (which commits nothing to a
+server), that name and email as author and committer in every repository with a remote on the
+server, as git wrote the remote: `<address>/…`, the same with a user before the host
+(`https://oauth2@host/…`), `git@<host>:…` and `ssh://git@<host>[:22]/…`, the forms whose
+token LADO gives. The agent's launch writes `<its config folder>/git-authors/<server id>.gitconfig`
+(only `[user]` `name` and `email`, mode 600, gone with the folder when the agent stops) and
+adds, after the server's entries, `includeIf.hasconfig:remote.*.url:<pattern>.path` entries
+pointing to it: eight for an address without a port, six for one with its own. In such a repository the server's author wins over the repository's
+own `user.name`/`user.email`; `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME` and
+`GIT_COMMITTER_EMAIL` in the agent's environment win over it, and the launch warns `<VAR> is
+set for <agent>: it wins over the commit author of the git servers`. A repository with no
+remote yet (`git init` before `git remote add`) commits with the human's own author; one with
+remotes on two servers with authors takes the author of the server later by host. A
+https remote whose host is written in another letter case (`GitLab.Corp.example`) or with the
+scheme's own port (`:443`, `:80`) matches too, as git gives such a remote the token; an ssh
+remote matches as written only, as git rewrites it to https only so. The condition needs git
+2.36: while a server has a commit author, a launch whose agents' git is older is refused
+before anything starts (`git <version> is older than 2.36, which a commit author of a git
+server needs; update git, or clear the author (lado git-server author <address> --clear)`,
+`the authors (…, …)` naming each server with one); without one, 2.31 is enough. A
+running agent keeps the author of its launch until it restarts.
 
 `lado ui` prints (or opens) the local link with the token, then, when the running server
 has a link for another device, `From another machine: <link>`: it asks the server

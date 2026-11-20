@@ -19,7 +19,25 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     start's own look, `scratch.author_problem("/")`: `OK` with both `user.name` and
     `user.email`, else `WARN` with its hint (the `.env` one in LADO's container); it never
     prints them.
-    `Workspace` (after `git author`, `check_workspace`, always; the workspace,
+    `git server <address>` (after `git author`, `check_git_servers`, one per saved server,
+    none without one): `git_servers.check` with `save_login=False`, as doctor writes nothing;
+    all in a pool started before the model servers' probes and collected after them; `OK` with
+    its `Works:` line (`WARN` with the replace hint for a GitLab token without `api`), else
+    `WARN` with its line and hint (also a `Refused`, a saved address the
+    address rule no longer takes, an `OSError`), never `FAIL`; one `INFO` `git servers` line
+    `NOT_AT_SCHEMA` at another schema. `glab`, `gh` (`check_host_tools`, one per tool of the
+    saved servers' kinds, on the agents' merged PATH by `git_servers.tool_state`): `OK` with
+    its `--version` line, `WARN` missing or older than the kind's `tool_oldest`.
+    `GitHub login` and `GitHub login outside LADO` (after them, `check_github_login`): the
+    takeover's record (`github_takeover.py`) and the GitHub variables of the layers and
+    projects no agent gets, by name, then `gh`'s own login (docs/cli.md); `GitLab login
+    outside LADO` (`check_gitlab_login`): the GitLab variables no agent gets, by
+    `github_takeover.unused` with their names, an `OAUTH_TOKEN` agents keep
+    (`GLAB_KEPT_TOKENS`, which glab sends to a GitLab not in the list), then glab's own login,
+    its configuration read as text (`GLAB_LOGIN`); the checks of
+    lado.db through `_busy`, whose lado.db locked past its wait is one `WARN` `git servers`
+    line `BUSY`, never a failed doctor.
+    `Workspace` (after the git servers, `check_workspace`, always; the workspace,
     `projects.workspace`: [projects.md](projects.md)): `<path> (LADO_REPOS)` or `<path>
     (default)`, `OK` for a folder, `INFO` for one not made yet, `WARN` for a path that is no
     folder or LADO may not look at (one `stat`, never `exists()`, which raises there on some
@@ -253,7 +271,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     waits for it instead (`_held_for_login`). `check_new_session` is every check of a new
     session that needs no repository (the kits not empty, a folder of LADO's projects/
     without a project, the name, the title, a taken name,
-    the provider, the permission mode, `kits.resolve`, the kits' commands, the model, the
+    the provider, the permission mode, `kits.resolve`, the kits' commands and, while a git
+    server is saved, the agents' git of 2.31 or newer (`_check_commands`), the model, the
     login), for a folder that may not exist yet; it returns a `NewSession`, which
     `start_session` goes on with, and a fresh start, a set-up and `lado start <git-url>`
     call it before they change the disk (openspec change scratch-checks-first). Whether a folder can hold a session is `check_repo` (its repository's
@@ -332,10 +351,20 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     failure, never a wait; LADO uses the access the machine, the outside folder and the
     project give and keeps no password or token. A failure is a `CloneError` (a `LadoError`
     with `kind` and a `runtime.Hint`) by git's words, `KINDS`, the first that matches
-    (`failure`: `cannot read|clone <url>: <reason> (<git's line>)`; github.com's login hint
-    names the project's `GH_TOKEN` secret for a clone into a project, else the outside
-    folder's `GH_TOKEN` file when that folder is a folder, else `gh auth login`; `explain`
-    tells gitcache's failures by the same kinds on one line), a URL in any text only
+    (`failure`: `cannot read|clone <url>: <reason> (<git's line>)`; git's 403 is
+    `access_denied`. An access failure (`ACCESS_KINDS`) of the saved git server git took the
+    token of (`git_servers.server_for`, the scheme the URL's) names it by its host and port and
+    hints, a step a line (`runtime.Hint.more`), `lado git-server check` and the token's
+    replace; one of an unsaved http(s) host, github.com's included, hints `lado git-server add`
+    (not for `not_found`, nor for a host saved under another scheme or port); the error's
+    `server` (`ServerWay`: `check` or `add`, the host, the address, the UI's sentence) is the
+    API's `CloneRefused.git_server`. In LADO's container (`update.in_container`), which has
+    no ssh, an ssh kind (`SSH_KINDS`) of an ssh address is `_container_ssh`'s: `git@<host>`
+    on port 22 of a host no server is saved for, `no ssh key for <host>` with the `add` hint
+    and way of `https://<host>`; any other, `clone by the repository's https address`, no
+    hint. The saved servers are read only at this LADO's schema,
+    never made or migrated; `explain` tells gitcache's failures by the same kinds on one line),
+    a URL in any text only
     through `runtime.public_remote`; git missing or not running is LAD-5's `no_git` /
     `git_broken`, a folder LADO may not look at or write in `no_access`, a URL that names
     no repository (no default folder) `no_repo_name`. `ABANDONED` and `KEPT` are the server's clone jobs' times.
@@ -683,7 +712,14 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     variables, given as names, taken whole from the highest layer that sets any), `resolve`
     (both), `for_git` (the
     environment of LADO's own network git, gitcache's and clone's: the process's, the
-    outside folder's over it, then a project's layer when given; no login shell), and
+    outside folder's over it, then a project's layer when given; no login shell; a call
+    that names its `remote` gets the saved git servers' `GIT_CONFIG_*` over it,
+    `git_servers.variables`, and the old-git refusal for a saved server's remote). `merge`
+    and `for_git` drop `GITHUB_VARIABLES` (GitHub's tokens, `GH_HOST`, `GH_CONFIG_DIR`) of
+    every layer: they come from the saved servers alone (`git_servers.gh_variables`;
+    `for_git`'s `GH_CONFIG_DIR` is `<LADO_HOME>/gh`), and`layers` keeps them for the
+    takeover and doctor (`github_takeover.py`); `merge` drops `GITLAB_VARIABLES` too (an
+    agent's glab: `git_servers.glab_variables`). And
     `command`, the window's command that runs the agent with exactly that environment. `read_folder` is
     the one reader of a folder of variables, the outside folder's and a project's secrets
     folder's (`Folder`: the values and each file not used with why); with `own`, for a folder
@@ -915,7 +951,107 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     context (three GETs at once within `LIMIT_TIMEOUT`, read by shape: LM Studio's loaded context,
     Ollama's running model, a list's `max_input_tokens`, `context_length` or `max_model_len`, with
     `max_output_tokens` or `top_provider.max_completion_tokens`; never raises); standard library only,
-    the key only in the requests' headers.
+    the key only in the requests' headers. `ask`, `ask_all`, `no_answer`, `NoRedirect` and
+    `Answer` (its `headers` by lowercase name, read by a git kind's `rights`) are its request
+    path, shared with the git server probe.
+  - `git_kinds/`: the kinds of git server, one module each (`github.py`, `gitlab.py`, the
+    frozen `base.Kind`: the user API's request with the token in the kind's header, the
+    login told from its answer as one line of visible text, the refusal of a token, the user
+    name git sends, the host tool, the variable of its config folder (`config_variable`), its
+    word for a change request (`changes`), the oldest version LADO signs in (`tool_oldest`)
+    and the rights it needs besides (`tool_needs`, `tool_missing`: GitLab's `api`), the token
+    page and its scopes; `needs`, the rights agents
+    need of a token, the one to clone first, and `rights`, the rights the server tells of it:
+    GitHub's `X-OAuth-Scopes`, GitLab's `personal_access_tokens/self`, whose `api` grants both
+    repository rights (`granted`); None when it tells none); `KINDS` in `__init__.py` is the one
+    list of them (`--kind`'s choices, the probe's requests).
+  - `git_servers.py`: the human's git servers (`lado git-server add|list|check|remove`):
+    `check` (a saved server asked again with its saved token, judged by its saved kind: a
+    `Check` with its outcome, the rights it lacks and its lines in the command's and the page's
+    words, the one check of the command and the API; a passing one saves its login), the
+    token's rights read at `add` too (`Checked.missing_scopes`, `lacks`), `locked` (one flock
+    of `<LADO_HOME>/git-servers.lock` around a save, a removal and a check's login write, 10 s,
+    never while a server is asked; `save_locked` saves under it held), `address`
+    (`https://` added, a path kept, the default port and a trailing dot dropped; its `key`, host and port, is
+    the server's identity; `BadAddress` with its line for the page; github.com, `www.` and
+    `api.` alike, is `https://github.com` alone), `kinds` (GitHub alone for github.com,
+    whose API is `https://api.github.com/user`, `git_kinds/github.py`), `check_kind` (no
+    `--kind` for github.com),
+    `check_host` (one server per host name: git's ssh forms carry no port; checked again by
+    `state.save_git_server` inside its write, `HostTaken`), `check_token`, `probe` (every kind
+    asked at once through `model_servers.ask_all`, no redirect, the verdicts and their words;
+    `--kind` gives `Checked.unchecked`), `hint` (the same requests with no credential: the
+    kind an address looks like, or why it must be chosen; a redirect refused), `add` (the one
+    add sequence of the command and the page: the checks, the plain-http warning, the token
+    read only then, its check, `probe`, `save`), `save` and `remove`/`remove_host` (the row in
+    lado.db's `git_servers` and the token file `<LADO_HOME>/git-servers/<id>/token` by
+    `project_secrets.write_at`/`remove_at`: a new server's file first, a replaced one's row
+    first, its id kept; `git-servers/` itself goes once empty, and a write whose folder went
+    under it tries once more; a removal whose folder stays is `Removed.warning`). `Refused`
+    carries the form `field` it concerns, `page`/`page_hint`, its words without a command,
+    `choose_kind` for a server that gave no HTTP answer, and `offer`/`before` for a certificate
+    not trusted. A server's certificate (`ca.pem` beside its token, written and removed by the
+    same writer, kept by a token's replacement, gone with the server; no lado.db column):
+    `certificate`, `set_certificate`, `clear_certificate` (it returns the PEM for Undo); with
+    one, LADO's requests to the server trust it alone (`_opener`, lado.git_certificates'
+    context) and a check whose request fails on the certificate becomes `cert_untrusted` with
+    the offer, `cert_changed` (the saved one's fingerprint differs) with `before`, `cert_name`
+    or `cert_expired` (`_trust`); `gh_without_certificate` the line of a GitHub server with one,
+    for the launch and doctor. `variables` (per server an empty `credential.<origin>.helper`, then
+    `helper_command`, then three `url.<root>/.insteadOf` of its ssh forms and, with a
+    certificate file, `http.<address>/.sslCAInfo`, numbered after
+    the environment's own `GIT_CONFIG_COUNT`; nothing for no server; with `authors`, an
+    agent's, `author_entries` after each server's own), `gh_variables` (an agent's `gh`:
+    `GH_CONFIG_DIR` its own folder, made, with no `hosts.yml`; `GH_TOKEN` the github.com
+    server's token; `GH_ENTERPRISE_TOKEN` the GitHub Enterprise server's of the repository's
+    origin, else of the only one, and `GH_HOST` the origin's; the tokens ride in the launch
+    file alone), `glab_variables` (an agent's `glab`: `GLAB_CONFIG_DIR` its own folder, 700,
+    where `glab_config` is written whole, 600: per saved GitLab its `host[:port]`,
+    `api_protocol`, `subfolder`, `ca_cert` and a `PRIVATE-TOKEN` header from `glab_command`,
+    LADO's helper in its `token` mode; no token), `tool_state` (the kind's tool on a PATH and
+    its version, asked with a config folder of the call's own), `tool_line` (the agent's line
+    about its repository's server) and `tool_warning` (the launch's for a tool missing or too
+    old); a check of a GitLab whose token lacks `api` stays ok and says what glab cannot
+    (`Check.tool_missing`, `tool_cannot`), `server_for` (the
+    saved server a remote reaches) and `check_git` (a `Refused` naming the version for a git
+    below `runtime.GIT_MIN` on a given PATH). A server's commit author (`lado git-server
+    author`): `check_author` (the name's and the email's rules, fields `name`/`email`),
+    `set_author`/`clear_author` (the command and the page alike; `saved_server`,
+    `saved_address` find the server), `check_author_git` (below `runtime.GIT_AUTHOR_MIN`, 2.36,
+    the version `includeIf hasconfig:` needs), `author_text`, `author_files` (an agent's author
+    files, only `[user]` name and email) and `author_entries` (the `includeIf` entries of a
+    server's address forms, escaped for git's wildmatch). The HTTP client is imported by `probe`
+    alone: hooks and launches import this module.
+  - `git_certificates.py`: a git server's certificates, with `cryptography`: `chain` (the DER
+    certificates of a bare TLS handshake that checks and sends nothing; the private
+    `_sslobj.get_unverified_chain` before Python 3.13, pinned by a test), `offer` (the authority
+    to trust: the chain's top when it signed itself, else its issuer by `CA Issuers` links, at
+    most `LINKS`, `LINK_TIMEOUT` and `LINK_MAX` each, no header but `User-Agent`, no redirect,
+    a certificate kept only when it signed the one below; else the highest held, `intermediate`,
+    or the server's own, `own`; offered only once a connection trusting it alone reaches the
+    server, else `NoOffer` with `NAME`, `EXPIRED` or `TLS`), `context` (that PEM alone, an
+    intermediate taken as the last authority, the Common Name never a host name), `from_file`
+    (a file's checks: 1 MB, a PEM certificate, not all expired; the certificates alone kept),
+    `parse` and `describe`. Loaded by a check, an add and the listing, never by a launch.
+  - `git_credential.py`: LADO's git credential helper, run by git with LADO's Python
+    (`interpreter.run_module`) and its arguments (`--home`, `--server`, `--user`,
+    `--address`): `get` prints the user and the token read by the link-refusing reader of
+    LADO's secrets, or `quit=1` and one stderr line with no token file; `store` and `erase`
+    do nothing; `token`, glab's header command, reads no stdin and prints the token alone, or
+    nothing, the stderr line and exit 1; it never opens lado.db.
+  - `github_takeover.py`: the GitHub login agents had before github.com was a git server,
+    taken over once (`run`, called by `lado start` and `lado ui` with its line on stdout, the
+    UI server's start with its line in server.log, and every launch of agents through
+    `runtime.agent_layers`, which says nothing and makes no lado.db): `GH_TOKEN`, else
+    `GITHUB_TOKEN`, of the highest layer without a project, else `gh auth token --hostname
+    github.com` in those layers (their `GH_CONFIG_DIR` kept), checked by `git_servers.probe`
+    and saved as github.com; the outcome (`saved`, `unchecked`, `refused`, `none`, `kept`, or
+    `pending` with why after a `gh` that failed otherwise, tried again) and the source in
+    words in lado.db's `github_takeover` (schema 43), never the token; once recorded, never
+    again. The record and the save are written under `git_servers.locked`, nothing asked
+    meanwhile, so two starts save once. `unused` names the GitHub variables of the layers and
+    the projects no agent gets, and `own_login` whether `gh` holds a login of its own, for
+    `lado doctor`.
   - `model_settings.py`: the human's model servers, configured models under names and agent
     CLIs' default models (`lado model-server add|list|remove`, `lado model
     add|list|remove|default`, and Settings → Model servers and Agent CLIs through
@@ -1312,6 +1448,17 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `app.py`; a server's probe kept `KEPT` seconds by its id and address for `check_model`
     only (a failed one not kept); the key comes in only in `ModelServerAdd` and `ModelServerCheck`,
     whose routes are in `app.SECRET_ROUTE`;
+    `git_entries.py`: Settings → Git servers' routes (docs/design/ui.md, Git servers) over
+    `git_servers.py`: `listing` (asks no server; empty with no lado.db), `check` (the add
+    form's check, saving nothing: the address's, host name's and git's refusals, which ask no
+    server, then the plain-http warning, whether it is saved and `git_servers.hint`), `add`
+    (`git_servers.add` with the token of `GitServerAdd`, the saved line, the page's warning of
+    a token without a right), `check_saved` (`git_servers.check` by the server's host and port;
+    a 404 for no such server, a 422 for a missing token file: `Refusal.status`), `set_author`/
+    `clear_author` (the commit author by the server's host and port, the command's line) and
+    `remove` (by the server's host and port); each refusal a `model_entries.Refusal` with the core's page words
+    and field; the token comes in only in `GitServerAdd`, whose route is in
+    `app.SECRET_ROUTE`;
     `GET /api/sessions/{name}/about` (`SessionAbout`, `launch.session_about`; docs/design/ui.md,
     Session head) is what the session's head shows besides its settings, read anew: `repos`
     (path, public remote, branch; one now), each kit by `kits.find` with its version and
@@ -1445,8 +1592,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   a final; docs/release.md, The image). `Dockerfile`: Debian 12 (tmux 3.3a, git 2.39),
   Node 22 and npm from the official `node` image, uv from its own, every base pinned by
   digest; LADO from the one wheel of the build context (`Dockerfile.dockerignore`, an
-  allowlist: `dist/lado-*.whl`, `profile.sh`, `entrypoint.sh`, `ssh-agent-socket.sh`,
-  `ssh-agent-env.sh`, `ssh_known_hosts` and `mise.toml`; the image holds no one's key or login, only public host keys), the
+  allowlist: `dist/lado-*.whl`, `profile.sh`, `entrypoint.sh` and `mise.toml`; the image
+  holds no key or login of anyone's), the
   four agent CLIs at
   `smoke_ci.py`'s `PINS`, one `ARG <NAME>_VERSION` and one layer each (`CLAUDE_VERSION`,
   `CODEX_VERSION`, `OPENCODE_VERSION`, `KILO_VERSION`; Codex's login is not carried yet;
@@ -1477,12 +1624,12 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   runs its command as `lado` too. Every start then warns in `docker logs` about a `LADO_REPOS` that is no
   folder or not writable (a probe file), and execs the command. `/opt` stays uid 1000's,
   but for `/opt/uv`, `/opt/uv/python` and `/opt/fallback`, root's (below).
-  git's system config has `safe.directory = *` and `gh auth git-credential` as the one
-  credential helper of `https://github.com` (`GH_TOKEN`, or `gh auth login` inside, its
-  token on the home volume). `/etc/ssh/ssh_known_hosts` is `docker/ssh_known_hosts`,
-  GitHub's published public host keys (api.github.com/meta), so an agent's first ssh to
-  github.com asks nothing; a container test does a real ssh to GitHub, which turns red when
-  GitHub rotates them. The environment is set twice with the same
+  git's system config has `safe.directory = *` and no credential helper: github.com's token,
+  as any git server's, comes from Settings → Git servers (`git_servers.py`), and a `gh` login
+  on the home volume reaches neither git nor an agent. The container has no ssh: the ssh
+  client is there with no key, no agent and no host keys, so git on an ssh address a saved
+  server does not rewrite fails with ssh's own error, which `clone._told` tells (the clone's
+  hint in the container). The environment is set twice with the same
   values (`tests/test_docker.py`): in `ENV` for the server and `docker exec`, and in
   `profile.sh`, the image's `/etc/profile.d/lado.sh`, for the agents, whose environment
   comes from the login shell (`LADO_CONTAINER=1`, `PATH`, `CLAUDE_CONFIG_DIR`,
@@ -1490,7 +1637,7 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   `OPENSPEC_TELEMETRY=0`, `OPENSPEC_NO_UPDATE_CHECK=1`;
   `LADO_REPOS` is the entrypoint's `lado-repos.sh`, read before `lado.sh` by name, so
   `profile.sh` sets `MISE_TRUSTED_CONFIG_PATHS` from it, in the profile only, as the ENV
-  cannot follow `-e LADO_REPOS`; `SSH_AUTH_SOCK` from `ssh-agent-env.sh`, below). The repositories' toolchains:
+  cannot follow `-e LADO_REPOS`; no `SSH_AUTH_SOCK`). The repositories' toolchains:
   `make`, `gcc`, `g++` and `libc6-dev` in the first apt layer, and mise at
   `/usr/local/bin/mise`, root's (copied before `USER lado`, so `mise self-update` cannot
   replace it), from `jdxcode/mise` pinned by digest, which Dependabot's `docker` ecosystem
@@ -1531,18 +1678,10 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   Every start, as `lado`,
   writes `LADO_GIT_NAME` and `LADO_GIT_EMAIL` (compose passes both from `.env`) to git's
   global config on the home volume and warns in `docker logs` when git still has no
-  identity. The host's ssh agent: compose binds `${LADO_SSH_AGENT:-/dev/null}` at
-  `/run/lado/ssh-agent.sock` (`/run/lado` root's, 755; `/dev/null`: none), and
-  `ssh-agent-env.sh` (`/etc/profile.d/lado-ssh-agent.sh`, the one rule) sets
-  `SSH_AUTH_SOCK` there only when it is a socket: every login shell reads it, and the
-  entrypoint sources it before the command, once the socket is `lado`'s, so the UI server's
-  Clone from URL and branch listing use the agent too (a container test reads the
-  server's `/proc/<pid>/environ`). Docker Desktop's socket is root's in
-  a container: every start that finds a socket `lado` cannot use (`ssh-add -l` exit 2) and
-  root's runs `sudo -n /usr/local/bin/lado-ssh-agent-socket` (`ssh-agent-socket.sh`; the
-  rule `/etc/sudoers.d/lado-ssh-agent`, no SETENV, which the first start leaves), which
-  takes no argument and gives that one socket, no symbolic link, to `lado`, keeping its
-  group; a socket still unusable is one warning line. No `group_add`.
+  identity. compose binds no ssh agent, and the image has no sudo rule but the
+  entrypoint's: a `LADO_SSH_AGENT` an `.env` of a version before 0.48.0 still holds changes
+  nothing, and the container says nothing about it (only the installer notes it). No
+  `group_add`.
   The sessions go with the container (`server/`, above): its stop stops them with a mark,
   and its start resumes them after the migration; tini sends the stop's SIGTERM to `lado
   server`, its one child, and the default grace period is kept (no `stop_grace_period`).
@@ -1583,15 +1722,17 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
   container of its compose project was made from another folder (compose's
   `working_dir` label). A fresh install asks from `/dev/tty` (the defaults with `--yes` or
   no terminal) for the workspace and only the git identity `git config --global` lacks,
-  picks the first port of 8765–8799 nothing listens on (`nc`, else `lsof`), takes Docker
-  Desktop's or `$SSH_AUTH_SOCK`'s ssh agent, asks about the phone after its warning (Enter
-  no; `--phone`/`--no-phone`) and then writes `LADO_LISTEN=0.0.0.0` and `LADO_PUBLIC_HOST`
-  (macOS LocalHostName, WSL's Windows name, avahi's hostname, else the address with a
+  picks the first port of 8765–8799 nothing listens on (`nc`, else `lsof`), asks about the
+  phone after its warning (Enter no; `--phone`/`--no-phone`) and then writes
+  `LADO_LISTEN=0.0.0.0` and `LADO_PUBLIC_HOST` (macOS LocalHostName, WSL's Windows name,
+  avahi's hostname, else the address with a
   warning), all `.local`; `.env` holds only variables this header names. A rerun compares
   `.env`'s `LADO_VERSION` with its own (`X.Y.Z[rcN]`, an RC before its final): older,
   `compose.yaml.bak` and only every `LADO_VERSION` line changed; the same, no file
-  rewritten; newer or another form, a refusal naming the guide. Files are written as
-  `.new` and moved in place when complete. Then `docker compose up -d`, a wait of up to
+  rewritten; newer or another form, a refusal naming the guide. A rerun keeps a
+  `LADO_SSH_AGENT` line, which the way back reads, and notes it as no longer used. Files
+  are written as `.new` and moved in place when complete. Then `docker compose up -d`, a
+  wait of up to
   180 s for `/api/health` inside the container (before `lado ui`, which would otherwise
   start a server of its own), `lado ui --no-open`'s link printed and opened (`open`,
   `xdg-open` with a display, `wslview` or `cmd.exe /c start` from WSL). Every stop is a

@@ -329,6 +329,7 @@ export const getScratchTarget = (text: string, path: string | null) =>
 export type RemoteInfo = components["schemas"]["RemoteInfo"];
 export type CloneTarget = components["schemas"]["CloneTarget"];
 export type CloneRefused = components["schemas"]["CloneRefused"];
+export type GitServerWay = components["schemas"]["GitServerWay"];
 export type CloneStart = components["schemas"]["CloneStart"];
 export type CloneJob = components["schemas"]["CloneJob"];
 
@@ -447,6 +448,69 @@ export const checkSessionModel = (cli: string, model: string, project: string | 
   post<SessionModelCheck>("/api/session-model/check", { cli, model, project });
 
 export const clearModelDefault = (cli: string) => post<ModelSettings>(modelDefaultPath(cli), undefined, "DELETE");
+
+// Settings → Git servers (docs/design/ui.md): the saved git servers, read anew, no feed. A
+// refusal is a 400 whose `detail` is a GitEntryRefused (refusalOf, gitRefusalOf).
+export type GitServers = components["schemas"]["GitServers"];
+export type GitServerInfo = components["schemas"]["GitServerInfo"];
+export type GitKindInfo = components["schemas"]["GitKindInfo"];
+export type GitServerCheck = components["schemas"]["GitServerCheck"];
+export type GitServerAdded = components["schemas"]["GitServerAdded"];
+export type GitServerRemoved = components["schemas"]["GitServerRemoved"];
+export type GitServerChecked = components["schemas"]["GitServerChecked"];
+export type GitEntryRefused = components["schemas"]["GitEntryRefused"];
+
+// A refusal of the git servers' API, with whether the server's kind may be chosen.
+export function gitRefusalOf(error: unknown): GitEntryRefused {
+  const detail = (error instanceof ApiError ? error.detail : null) as Partial<GitEntryRefused> | null;
+  return { ...refusalOf(error), choose_kind: detail?.choose_kind === true };
+}
+
+// Check a saved server again with its saved token, as `lado git-server check`; a 404 for no
+// such server, a 422 for its token file missing.
+export const checkSavedGitServer = (host: string) =>
+  post<GitServerChecked>(`/api/git-servers/${encodeURIComponent(host)}/check`);
+
+export const getGitServers = () => get<GitServers>("/api/git-servers");
+
+// What the add form says of an address before Add, the server asked with no token; trusting
+// `certificate` (the PEM the human trusted in the form) alone when given.
+export const checkGitServer = (address: string, certificate?: string) =>
+  post<GitServerCheck>("/api/git-servers/check", certificate === undefined ? { address } : { address, certificate });
+
+// Check and save a server; `kind` only when the human chose one, `certificate` the PEM
+// trusted for it, saved with it. The token goes in this request's body only, never in an
+// address, and no answer gives it back.
+export const addGitServer = (address: string, token: string, kind: string | null, certificate?: string) =>
+  post<GitServerAdded>("/api/git-servers", certificate === undefined ? { address, token, kind } : { address, token, kind, certificate });
+
+export type CertificateOffer = components["schemas"]["CertificateOffer"];
+export type GitServerCertificateRemoved = components["schemas"]["GitServerCertificateRemoved"];
+const gitCertificatePath = (host: string) => `/api/git-servers/${encodeURIComponent(host)}/certificate`;
+
+// Trust the PEM a check offered (or Undo gives back) for the server of `host`; the server is
+// checked again with it.
+export const setGitServerCertificate = (host: string, pem: string) =>
+  post<GitServerChecked>(gitCertificatePath(host), { pem }, "PUT");
+
+// Remove it; the answer holds its PEM for Undo.
+export const clearGitServerCertificate = (host: string) =>
+  post<GitServerCertificateRemoved>(gitCertificatePath(host), undefined, "DELETE");
+
+// Remove the server of `host` (its host and port, as the list gives it) and its token.
+export const removeGitServer = (host: string) =>
+  post<GitServerRemoved>(`/api/git-servers/${encodeURIComponent(host)}`, undefined, "DELETE");
+
+export type GitServerAuthorDone = components["schemas"]["GitServerAuthorDone"];
+const gitAuthorPath = (host: string) => `/api/git-servers/${encodeURIComponent(host)}/author`;
+
+// Set the commit author of the server of `host`, as `lado git-server author --name --email`.
+export const setGitServerAuthor = (host: string, name: string, email: string) =>
+  post<GitServerAuthorDone>(gitAuthorPath(host), { name, email }, "PUT");
+
+// Clear it: agents commit there with the human's own git author again.
+export const clearGitServerAuthor = (host: string) =>
+  post<GitServerAuthorDone>(gitAuthorPath(host), undefined, "DELETE");
 
 // A request LADO's server gave no answer to.
 export const unreachable = (error: unknown) => error instanceof Unreached;

@@ -7713,6 +7713,13 @@ button.locked:disabled,
   display: none;
 }
 
+/* A git server's way out (LaunchWhere.tsx, GitServerNote): a link that looks as a button. */
+.git-server-way a.quiet {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
 .where-box {
   position: relative;
 }
@@ -8456,7 +8463,8 @@ button.locked:disabled,
   .setup-left label,
   .place-aside .quiet,
   .setup-refuse .quiet,
-  .folder-hint .chip-button {
+  .folder-hint .chip-button,
+  .git-server-way a.quiet {
     min-height: 44px;
   }
 
@@ -12336,6 +12344,324 @@ section.artifact-group + section.artifact-group {
   flex-direction: column;
   gap: 10px;
   padding: 12px 14px 14px;
+}
+
+/* A block's heading with its info button beside it, not in it (Settings → Git servers). */
+.mx-h {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 32px;
+  margin: 0 0 10px;
+}
+
+.mx-block .mx-h h3 {
+  margin: 0;
+}
+
+/* A field's label row: the label, and its info button outside the label, so a press on the
+   button never focuses the field. */
+.field-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.mx-l2.warn {
+  color: var(--warn);
+}
+
+.mx-l2.bad {
+  color: var(--danger);
+}
+
+/* An open server's head shows its address alone: its panel says the rest just below. */
+.mx-open .mx-l2 {
+  display: none;
+}
+
+.setting p.mx-empty {
+  margin: 0 0 10px;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.mx-empty b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Settings → Git servers: a server's panel, its settings as rows (text | buttons), Remove
+   server at its foot; a panel narrower than 460 px puts a row's buttons under its text. */
+.gx-body {
+  padding: 0 14px;
+  container: gx-panel / inline-size;
+}
+
+.gx-top {
+  padding: 12px 0 0;
+}
+
+.gx-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gx-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 20px;
+  min-height: 56px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.gx-name {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.setting p.gx-val {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.gx-val b {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.gx-val .w {
+  color: var(--warn);
+}
+
+.gx-ctl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-self: end;
+}
+
+.gx-under {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gx-under:empty {
+  display: none;
+}
+
+.gx-form {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ground);
+}
+
+.gx-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 0 14px;
+}
+
+.gx-foot .mx-confirm {
+  align-self: stretch;
+  margin: -12px -14px -14px;
+  border-radius: 0 0 8px 8px;
+}
+
+.mx-confirm .sub {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@container gx-panel (max-width: 460px) {
+  .gx-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gx-ctl {
+    justify-self: start;
+  }
+}
+
+/* A form-opener while its form is open. */
+.quiet[aria-pressed="true"] {
+  border-color: var(--muted);
+  background: var(--raised);
+}
+
+/* One result line: its sentence, an info button may end it, its way out at its end. */
+.setting .gx-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 0;
+  padding: 6px 8px 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.gx-result.ok {
+  background: var(--done-ground);
+}
+
+/* A check's `Works: …` says it in words: no ✓ before it. */
+.gx-result.ok:not(.works) > .t::before {
+  content: "✓ ";
+  color: var(--done);
+  font-weight: 600;
+}
+
+.gx-result.warn {
+  background: var(--warn-ground);
+}
+
+.gx-result.bad {
+  background: var(--danger-ground);
+}
+
+.gx-result.bad > .t::before {
+  content: "!";
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--danger);
+  color: var(--on-danger);
+  font: 700 11px/15px var(--sans);
+  text-align: center;
+  vertical-align: 1px;
+}
+
+.gx-result > .t {
+  flex: 1 1 200px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.gx-result .info-wrap,
+.field-note .info-wrap {
+  vertical-align: baseline;
+}
+
+.gx-result .quiet {
+  flex: none;
+}
+
+/* Trust this server? A check's offer of an authority: who signed it, its validity and its
+   fingerprint, the buttons under them; a changed certificate louder, with a border. */
+.gx-trust {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--warn-ground);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.gx-trust.changed {
+  border: 2px solid var(--danger);
+  background: var(--danger-ground);
+}
+
+.setting .gx-trust-h {
+  margin: 0;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.gx-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 8px 0;
+}
+
+.gx-facts dt {
+  color: var(--muted);
+}
+
+.gx-facts dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+}
+
+.gx-fp {
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.setting .gx-trust-n {
+  margin: 4px 0 8px;
+  color: var(--ink);
+}
+
+@media (max-width: 600px) {
+  .gx-trust .primary,
+  .gx-trust .danger,
+  .gx-trust .quiet {
+    height: 44px;
+    min-width: 44px;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 600px) {
+  .gx-body {
+    padding: 0 12px;
+  }
+
+  .gx-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gx-ctl {
+    justify-self: start;
+  }
+
+  .gx-ctl .quiet,
+  .gx-foot .quiet,
+  .gx-result .quiet,
+  .gx-form .quiet,
+  .gx-form .primary,
+  .gx-foot .danger {
+    height: 44px;
+    min-width: 44px;
+    font-size: 14px;
+  }
+
+  .gx-foot .mx-confirm {
+    margin: -12px -12px -14px;
+  }
+
+  /* The info button's 44 px hit area ends above the field under its label. */
+  .field-head {
+    min-height: 44px;
+  }
 }
 
 .mx-body > .field-note {

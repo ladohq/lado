@@ -11,6 +11,7 @@ import os
 import re
 import sqlite3
 import time
+import urllib.parse
 import uuid
 from collections import Counter, defaultdict
 from collections.abc import Callable, Collection, Iterator, Sequence
@@ -22,7 +23,7 @@ from lado.flows import IDENTIFIER
 
 # `lado update` of a later LADO reads this line from this release's wheel to learn the schema
 # it knows (update.release_schema): keep its form, `SCHEMA_VERSION = <N>` on a line of its own.
-SCHEMA_VERSION = 40
+SCHEMA_VERSION = 43
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -1056,6 +1057,43 @@ OLD_MESSAGES_READ_REMINDED = "UPDATE messages SET read_reminded = 1"
 SCHEMA += MESSAGES_READ_REMINDED + ";\n"
 MIGRATIONS[39] = [MESSAGES_READ_REMINDED, OLD_MESSAGES_READ_REMINDED]
 
+# From version 41: the human's git servers (lado.git_servers), one per host and port. A
+# server's token is no column: it is the file `<LADO_HOME>/git-servers/<id>/token`.
+GIT_SERVERS_TABLE = """
+CREATE TABLE IF NOT EXISTS git_servers (
+    id TEXT PRIMARY KEY,          -- never changes: the token file's folder
+    address TEXT NOT NULL,        -- the root (lado.git_servers.address)
+    host TEXT NOT NULL UNIQUE,    -- host[:port], the server's identity
+    kind TEXT NOT NULL,           -- a name of lado.git_kinds.KINDS
+    login TEXT,                   -- NULL: saved with --kind, not checked
+    added_at TEXT NOT NULL DEFAULT (datetime('now'))  -- UTC
+)"""
+SCHEMA += GIT_SERVERS_TABLE + ";\n"
+MIGRATIONS[40] = [GIT_SERVERS_TABLE]
+
+# From version 42: a git server's commit author (lado.git_servers.set_author), both or
+# neither; agents commit to its repositories with it.
+GIT_SERVERS_AUTHOR = [
+    "ALTER TABLE git_servers ADD COLUMN author_name TEXT",
+    "ALTER TABLE git_servers ADD COLUMN author_email TEXT",
+]
+SCHEMA += "".join(f"{step};\n" for step in GIT_SERVERS_AUTHOR)
+MIGRATIONS[41] = GIT_SERVERS_AUTHOR
+
+# From version 43: the takeover of the GitHub login into the github.com git server
+# (lado.github_takeover), at most one row, apart from the server, so a removal of the
+# server never makes it run again. Its source in words, never a token.
+GITHUB_TAKEOVER_TABLE = """
+CREATE TABLE IF NOT EXISTS github_takeover (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    ran_at TEXT NOT NULL DEFAULT (datetime('now')),  -- UTC
+    outcome TEXT NOT NULL,        -- saved, unchecked, refused, none, kept; pending: again
+    source TEXT,                  -- e.g. "GH_TOKEN of your shell"; NULL for none found
+    why TEXT                      -- a pending one's: why the GitHub CLI's login was not read
+)"""
+SCHEMA += GITHUB_TAKEOVER_TABLE + ";\n"
+MIGRATIONS[42] = [GITHUB_TAKEOVER_TABLE]
+
 # Where an agent's model or effort came from. Each later way of choosing one adds a token;
 # a token this LADO does not know (a newer LADO's row) is shown as itself (source_words).
 CLI_DEFAULT = "cli"  # the CLI's own choice: its default or its own settings
@@ -1451,7 +1489,18 @@ def _open() -> sqlite3.Connection:
         conn = sqlite3.connect(home() / "lado.db", timeout=10, isolation_level=None)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
+    # Switching a new lado.db to WAL takes no busy wait: another process opening it at the
+    # same moment makes it "locked" at once. Tried again within the connection's timeout.
+    deadline = time.monotonic() + 10
+    while True:
+        try:
+            conn.execute("PRAGMA journal_mode = WAL")
+            break
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc) or time.monotonic() >= deadline:
+                conn.close()
+                raise
+            time.sleep(0.05)
     # In WAL a commit then holds the write lock without an fsync (a busy disk stretched it
     # to seconds); a power cut may lose the last commits, never the database.
     conn.execute("PRAGMA synchronous = NORMAL")
@@ -1502,18 +1551,43 @@ def read_schema_refusal() -> tuple[str, str] | None:
 
 
 @contextmanager
+def _making() -> Iterator[None]:
+    """One process at a time opens a lado.db that is not at this LADO's schema, and makes
+    it when there is none: an exclusive flock on LADO_HOME itself (no file of its own),
+    released when the folder's descriptor closes. None while LADO_HOME is not there and
+    must not be made (home_not_made: no lado.db to make either)."""
+    import fcntl
+
+    if _not_made and not home_path().is_dir():
+        yield
+        return
+    fd = os.open(home(), os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)
+
+
+@contextmanager
 def connect() -> Iterator[sqlite3.Connection]:
     """lado.db, made when there is none. It never migrates: another schema version is a
     SchemaError, so no process opening it upgrades the database under a running session
-    (only migrate() does, which the CLI calls when no session runs)."""
-    conn = _open()
-    if conn.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION:
-        refused = schema_refusal(conn)
-        if refused is not None:
+    (only migrate() does, which the CLI calls when no session runs). One process makes it at
+    a time (`_making`): another that opens it meanwhile waits and finds it whole."""
+    conn = _open() if _not_made or (home_path() / "lado.db").exists() else None
+    if conn is None or conn.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION:
+        if conn is not None:
             conn.close()
-            raise SchemaError(refused[1])
-        conn.executescript(SCHEMA)
-        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        with _making():
+            conn = _open()
+            if conn.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION:
+                refused = schema_refusal(conn)
+                if refused is not None:
+                    conn.close()
+                    raise SchemaError(refused[1])
+                conn.executescript(SCHEMA)
+                conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     try:
         yield conn
     finally:
@@ -4162,6 +4236,123 @@ def remove_model_server(id: str) -> bool:
     it."""
     with connect() as db:
         return db.execute("DELETE FROM model_servers WHERE id = ?", (id,)).rowcount == 1
+
+
+@dataclass(frozen=True)
+class GitServer:
+    id: str
+    address: str  # the root, e.g. https://gitlab.corp.ru
+    host: str  # host[:port]
+    kind: str
+    login: str | None  # None: saved unchecked
+    added_at: str  # UTC, YYYY-MM-DD HH:MM:SS
+    author_name: str | None = None  # the commit author: both or neither
+    author_email: str | None = None
+
+
+def _git_server(row: sqlite3.Row) -> GitServer:
+    return GitServer(
+        row["id"],
+        row["address"],
+        row["host"],
+        row["kind"],
+        row["login"],
+        row["added_at"],
+        row["author_name"],
+        row["author_email"],
+    )
+
+
+class HostTaken(Exception):
+    """A git server holds the host name of the one to save on another port: `server`."""
+
+    def __init__(self, server: GitServer):
+        super().__init__(server.address)
+        self.server = server
+
+
+def save_git_server(id: str, address: str, host: str, kind: str, login: str | None) -> GitServer:
+    """Save a git server under `id`, or, when one of `host` is saved, replace its address,
+    kind and login, keeping its id and commit author: the server as saved. HostTaken, nothing
+    saved, when a server of the address's host name is saved on another port
+    (lado.git_servers.check_host, checked again here inside the write against an add at the
+    same moment)."""
+    hostname = urllib.parse.urlsplit(address).hostname
+    with connect() as db:
+        db.execute("BEGIN IMMEDIATE")
+        for row in db.execute("SELECT * FROM git_servers WHERE host != ?", (host,)).fetchall():
+            if urllib.parse.urlsplit(row["address"]).hostname == hostname:
+                db.execute("ROLLBACK")
+                raise HostTaken(_git_server(row))
+        db.execute(
+            "INSERT INTO git_servers (id, address, host, kind, login) VALUES (?, ?, ?, ?, ?)"
+            " ON CONFLICT(host) DO UPDATE SET address = excluded.address,"
+            " kind = excluded.kind, login = excluded.login",
+            (id, address, host, kind, login),
+        )
+        row = db.execute("SELECT * FROM git_servers WHERE host = ?", (host,)).fetchone()
+        db.execute("COMMIT")
+    return _git_server(row)
+
+
+def git_servers() -> list[GitServer]:
+    """Every saved git server, by host."""
+    with connect() as db:
+        rows = db.execute("SELECT * FROM git_servers ORDER BY host").fetchall()
+    return [_git_server(row) for row in rows]
+
+
+def git_server_by_host(host: str) -> GitServer | None:
+    with connect() as db:
+        row = db.execute("SELECT * FROM git_servers WHERE host = ?", (host,)).fetchone()
+    return _git_server(row) if row else None
+
+
+def set_git_server_author(id: str, name: str | None, email: str | None) -> GitServer | None:
+    """Set the commit author of the git server `id` (None and None: clear it): the server as
+    saved, or None when there is no such server."""
+    with connect() as db:
+        db.execute(
+            "UPDATE git_servers SET author_name = ?, author_email = ? WHERE id = ?",
+            (name, email, id),
+        )
+        row = db.execute("SELECT * FROM git_servers WHERE id = ?", (id,)).fetchone()
+    return _git_server(row) if row else None
+
+
+def remove_git_server(id: str) -> bool:
+    """False when there was no such server."""
+    with connect() as db:
+        return db.execute("DELETE FROM git_servers WHERE id = ?", (id,)).rowcount == 1
+
+
+@dataclass(frozen=True)
+class GithubTakeover:
+    """The record of the GitHub login's takeover (lado.github_takeover)."""
+
+    ran_at: str  # UTC, YYYY-MM-DD HH:MM:SS
+    outcome: str
+    source: str | None
+    why: str | None = None
+
+
+def github_takeover() -> GithubTakeover | None:
+    with connect() as db:
+        row = db.execute("SELECT * FROM github_takeover").fetchone()
+    if row is None:
+        return None
+    return GithubTakeover(row["ran_at"], row["outcome"], row["source"], row["why"])
+
+
+def record_github_takeover(outcome: str, source: str | None, why: str | None = None) -> None:
+    """Write the takeover's one row, over any before."""
+    with connect() as db:
+        db.execute(
+            "INSERT INTO github_takeover (id, outcome, source, why) VALUES (1, ?, ?, ?)"
+            " ON CONFLICT(id) DO UPDATE SET ran_at = datetime('now'),"
+            " outcome = excluded.outcome, source = excluded.source, why = excluded.why",
+            (outcome, source, why),
+        )
 
 
 class ModelsChanged(Exception):

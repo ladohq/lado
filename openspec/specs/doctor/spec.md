@@ -12,8 +12,8 @@ on, so the human sees what is missing before a session fails on it.
 (`git --version` on the PATH of its process): `FAIL` when git is not found (with the
 `no_git` hint for this OS) or does not run (with git's first line and the `git_broken`
 hint); `WARN` when its version is older than 2.31, saying that the folder-trust lookup of
-the providers (`git rev-parse --path-format=absolute`) needs 2.31; `OK` with the version
-otherwise.
+the providers (`git rev-parse --path-format=absolute`) and git servers
+(`lado git-server`) need 2.31; `OK` with the version otherwise.
 
 #### Scenario: git missing
 - **WHEN** no git is on PATH
@@ -26,8 +26,8 @@ otherwise.
 
 #### Scenario: An old git
 - **WHEN** `git --version` reports 2.30.2
-- **THEN** the `git` line is `[warn]` naming 2.31 as the version LADO needs, and the
-  exit status is that of the other checks
+- **THEN** the `git` line is `[warn]` naming 2.31 as the version LADO needs, the hint names
+  git servers among what needs it, and the exit status is that of the other checks
 
 #### Scenario: A current git
 - **WHEN** `git --version` reports 2.47.1
@@ -148,3 +148,185 @@ removal.
 - **WHEN** `LADO_HOME/agents/` holds `.DS_Store`, a file `notes`, and the folder `old` of a
   session that does not run
 - **THEN** the check warns with `LADO_HOME/agents/old` alone, and its `rm -rf` names only it
+
+### Requirement: lado doctor checks each saved git server
+
+`lado doctor` SHALL print one line per saved git server, after `git author`, named `git
+server <address>`: `ok` with the check's line when it works, `warn` with its line and hint
+otherwise, by the same check as `lado git-server check`. With no saved server it SHALL print
+no such line; with lado.db not at this LADO's schema, one `git servers` line `not checked`.
+
+#### Scenario: A server that works and one whose token was revoked
+- **WHEN** `https://gitlab.corp.example` works for `a.sample` and the token of
+  `https://ghe.corp.example` is refused
+- **THEN** doctor prints `[ok  ] git server https://gitlab.corp.example: Works: GitLab,
+  signed in as a.sample, may clone and push.` and `[warn] git server
+  https://ghe.corp.example: GitHub refused the token: it expired or was revoked` with the
+  hint `replace it: lado git-server add https://ghe.corp.example --token`
+
+#### Scenario: No saved server
+- **WHEN** no git server is saved
+- **THEN** doctor prints no `git server` line
+
+#### Scenario: lado.db at another schema
+- **WHEN** lado.db is at an older schema than this LADO's
+- **THEN** doctor prints `[info] git servers: not checked: lado.db is not at this LADO's
+  schema (see lado.db)` and asks no server
+
+### Requirement: A git server's failure never fails lado doctor
+
+A git server's line SHALL never be `FAIL` and SHALL NOT change doctor's exit status: a
+server that does not answer, a missing token file or a saved address this LADO no longer
+takes SHALL be its own `warn` line, and the other lines SHALL follow. The servers SHALL be
+asked at once, so doctor waits about one check's time (at most about 10 s) for all of them.
+
+#### Scenario: A server that does not answer
+- **WHEN** one of two saved servers does not answer in 5 seconds
+- **THEN** its line is `[warn]` with `does not answer` and the reach hint, the other
+  server's line follows, and the exit status is that of the other checks
+
+#### Scenario: A missing token file
+- **WHEN** a saved server's token file is gone
+- **THEN** its line is `[warn] git server <address>: the token file of <address> is
+  missing` with `replace it: lado git-server add <address> --token`, and no request is sent
+  to it
+
+### Requirement: lado doctor's check of a git server writes nothing
+
+Doctor's check of a git server SHALL write nothing to lado.db, also when it works and the
+saved login differs from the one it saw, as doctor never writes lado.db.
+
+#### Scenario: A server saved without a check
+- **WHEN** doctor checks a server saved with `--kind` and it works as `a.sample`
+- **THEN** its line says it works, and `lado git-server list` still says `not checked`
+
+### Requirement: lado doctor names the GitHub login outside LADO
+
+`lado doctor` SHALL print `[warn] GitHub login outside LADO: <names> set but not used:
+github.com takes its token from Settings → Git servers` while a layer or a project's
+secret sets a GitHub variable, never a value; `[info]` that `gh`'s own login is not used
+while `gh` is logged in; no line otherwise. The exit status SHALL not change.
+
+#### Scenario: The outside folder and a project
+- **WHEN** `/run/secrets/GH_TOKEN` is set and project `shop` has the secret `GH_TOKEN`
+- **THEN** doctor prints `[warn] GitHub login outside LADO: GH_TOKEN in /run/secrets,
+  GH_TOKEN of project shop set but not used: github.com takes its token from Settings → Git
+  servers`
+
+#### Scenario: gh logged in
+- **WHEN** `gh auth status` says it is logged in to github.com
+- **THEN** doctor prints `[info] GitHub login outside LADO: the GitHub CLI's own login is
+  not used by agents`
+
+#### Scenario: None
+- **WHEN** no GitHub variable is set and `gh` is not logged in
+- **THEN** doctor prints no `GitHub login outside LADO` line
+
+### Requirement: lado doctor names the takeover of the GitHub login
+
+`lado doctor` SHALL print `[info] GitHub login: taken over from <source> on <date>` after
+the takeover saved a token, `[warn] GitHub login: GitHub refused the token of <source>` for
+a refused one, and `[info] GitHub login: taken over at the next lado ui or lado start`
+(with why, after a failed `gh`) before it ran.
+
+#### Scenario: Before the first start
+- **WHEN** lado.db is at schema 43 and the takeover has not run
+- **THEN** doctor prints `[info] GitHub login: taken over at the next lado ui or lado
+  start`
+
+#### Scenario: Taken over
+- **WHEN** the takeover saved `GH_TOKEN in /run/secrets` on 2026-11-18
+- **THEN** doctor prints `[info] GitHub login: taken over from GH_TOKEN in /run/secrets on
+  2026-11-18`
+
+### Requirement: A busy lado.db never fails lado doctor's git lines
+
+When lado.db stays locked longer than its 10-second wait, the git server and GitHub lines
+SHALL be one `[warn] git servers: not checked: lado.db is busy` line, and the other checks
+SHALL follow.
+
+#### Scenario: A locked lado.db
+- **WHEN** another process holds lado.db's write lock for longer than 10 seconds
+- **THEN** doctor prints `[warn] git servers: not checked: lado.db is busy` and goes on
+
+### Requirement: lado doctor names a git server's certificate
+
+doctor's line of a saved server SHALL be `warn` with the check's line for a certificate not
+trusted, changed or one trust cannot fix, with the hint `trust it: lado git-server check
+<address>, or Check in Settings → Git servers` (the check's own hint for one trust cannot
+fix), never asking to trust; a GitHub server with a certificate SHALL get an `info` line that
+`gh` does not get it.
+
+#### Scenario: Not trusted
+- **WHEN** `https://gitlab.corp.example`'s certificate is not trusted
+- **THEN** doctor prints `[warn] git server https://gitlab.corp.example: the certificate of
+  https://gitlab.corp.example is not trusted` with the hint, and saves nothing
+
+#### Scenario: GitHub Enterprise with a certificate
+- **WHEN** `https://ghe.corp.example` (GitHub) works with its certificate
+- **THEN** doctor prints its `ok` line and `[info] gh: does not get the certificate of
+  https://ghe.corp.example: agents' gh cannot reach it; git can`
+
+### Requirement: lado doctor checks the tool of each saved server's kind
+
+`lado doctor` SHALL print, after the `git server` lines, one line per tool of the saved
+servers' kinds, named by the tool: `ok` with its version on the agents' PATH, `warn` when it
+is missing or older than its kind's oldest, with what to install. It SHALL never fail for it,
+and print no such line with no saved server.
+
+#### Scenario: glab in the image
+- **WHEN** a GitLab server is saved and `glab` 1.130.0 is on the agents' PATH
+- **THEN** doctor prints `[ok  ] glab: glab 1.130.0`
+
+#### Scenario: glab missing
+- **WHEN** a GitLab server is saved and no `glab` is on the agents' PATH
+- **THEN** doctor prints `[warn] glab: not on the agents' PATH: agents cannot open merge
+  requests on https://gitlab.corp.example` with the hint `install glab 1.114.0 or newer`,
+  and the exit status does not change
+
+#### Scenario: Only GitHub saved
+- **WHEN** only github.com is saved
+- **THEN** doctor prints a `gh` line and no `glab` line
+
+### Requirement: lado doctor names the GitLab login outside LADO
+
+`lado doctor` SHALL print `[warn] GitLab login outside LADO: <names> set but not used: a
+GitLab takes its token from Settings → Git servers` while a layer or a project's secret sets
+a dropped GitLab variable, never a value; `[warn]` that `OAUTH_TOKEN`, which agents keep,
+reaches their glab while a layer or a project sets it; `[info]` that `glab`'s own login is not
+used while the human's `glab` configuration holds a token or a keyring login; no line
+otherwise.
+
+#### Scenario: A token in the shell
+- **WHEN** the login shell sets `GITLAB_TOKEN`
+- **THEN** doctor prints `[warn] GitLab login outside LADO: GITLAB_TOKEN of your shell set
+  but not used: a GitLab takes its token from Settings → Git servers`
+
+#### Scenario: An OAuth token in the shell
+- **WHEN** the login shell sets `OAUTH_TOKEN`
+- **THEN** doctor prints `[warn] GitLab login outside LADO: OAUTH_TOKEN of your shell reaches
+  agents: their glab sends it to a GitLab not in Settings → Git servers (gitlab.com by
+  default)` with the hint `remove it from the agents' environment unless another tool needs
+  it`
+
+#### Scenario: glab logged in
+- **WHEN** the human's `glab` configuration holds a token for `gitlab.com`
+- **THEN** doctor prints `[info] GitLab login outside LADO: the GitLab CLI's own login is not
+  used by agents`
+
+#### Scenario: None
+- **WHEN** no GitLab variable is set and the human's `glab` holds no login
+- **THEN** doctor prints no `GitLab login outside LADO` line
+
+### Requirement: lado doctor warns of a GitLab token without api
+
+doctor's line of a saved GitLab whose check works but whose token lacks `api` SHALL be
+`warn` with the check's line and the hint `replace it with a token with the scope api: lado
+git-server add <address> --token`; the exit status SHALL not change.
+
+#### Scenario: A token for git alone
+- **WHEN** `https://gitlab.corp.example`'s token has `read_repository, write_repository,
+  read_api`
+- **THEN** doctor prints `[warn] git server https://gitlab.corp.example: Works: GitLab, signed
+  in as a.sample, may clone and push; glab cannot open merge requests: the token lacks api.`
+  with that hint

@@ -5,7 +5,7 @@ There are two ways to install LADO: **Docker**, the recommended one, and **PyPI*
 | | Docker (recommended) | PyPI (`uv tool install lado`) |
 |---|---|---|
 | What you install | Docker only: the image holds LADO, tmux, git, gh and the four agent CLIs at the versions LADO is tested with | tmux, git, uv and an agent CLI on your computer, then LADO |
-| What the agents reach | your workspace folder and the keys you give them (files in `secrets/`, your ssh agent); not the rest of your computer | everything you can: they run as you |
+| What the agents reach | your workspace folder and the keys you give them (files in `secrets/`, the tokens of Settings → Git servers); no ssh; not the rest of your computer | everything you can: they run as you |
 | Agent CLI logins | made once inside the container, or a token in `secrets/`; your own CLI config stays as it is | the logins and config your CLIs already have |
 | How you work | the web UI; commands as `docker compose exec lado lado ...` | the terminal (`lado start`, tmux windows with `lado attach`) and the web UI |
 | Install | one command, which asks for your workspace folder and what else it cannot find out | `uv tool install lado`, after tmux, git and an agent CLI |
@@ -43,6 +43,7 @@ missing. The short version of this guide is in [README.md](../README.md#install)
   [Your first session](#your-first-session), [Uninstall](#uninstall)
 - [Update](#update): Docker and PyPI
 - [Common problems](#common-problems)
+- [Connect your git server](git-servers.md): a step-by-step guide in plain words
 
 ## Docker
 
@@ -51,7 +52,7 @@ and the four agent CLIs at the versions LADO is tested with: nothing to install 
 Docker. It runs the web UI on this computer's loopback; the agents work in your workspace
 folder, which the container sees at the same path as your computer, so their commits and
 worktrees are yours too. The image holds no one's keys or logins: you give your own at run
-time (a login inside, your ssh agent, a secrets folder if you want one). Compose keeps
+time (a login inside, your git servers' tokens, a secrets folder if you want one). Compose keeps
 every setting in `.env`, so an update is a new `compose.yaml` and one line;
 [`docker run`](#with-docker-run) works too. One command does all of it for you, or you do
 the steps [by hand](#by-hand).
@@ -93,7 +94,7 @@ your computer cannot tell it:
   see [Open LADO on your phone](#open-lado-on-your-phone)).
 
 It writes `.env` in `~/lado-docker` (the version is its release's; the port 8765, or the
-next free one; your ssh agent when there is one), downloads its release's `compose.yaml`
+next free one), downloads its release's `compose.yaml`
 next to it, starts LADO, waits for it, prints the UI's link and opens it in your browser.
 Keep the link as a bookmark: its key stays the same across restarts and updates. A
 variable `LADO_*` or `COMPOSE_*` of your shell never reaches its compose; it names them,
@@ -191,7 +192,6 @@ LADO_WORKSPACE=/Users/ann/workspace # your workspace folder, a full path
 LADO_PORT=8765                      # the UI's port on this computer
 LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
 LADO_GIT_EMAIL=ann@example.com
-LADO_SSH_AGENT=/run/host-services/ssh-auth.sock   # Docker Desktop's ssh agent
 # LADO_LISTEN=0.0.0.0               # a phone too: see Open LADO on your phone
 # LADO_PUBLIC_HOST=ann-mbp.local
 ```
@@ -204,7 +204,6 @@ LADO_WORKSPACE=/home/ann/workspace  # your workspace folder, a full path
 LADO_PORT=8765                      # the UI's port on this computer
 LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
 LADO_GIT_EMAIL=ann@example.com
-LADO_SSH_AGENT=/run/user/1000/ssh-agent.socket    # your ssh agent: echo $SSH_AUTH_SOCK
 # LADO_LISTEN=0.0.0.0               # a phone too: see Open LADO on your phone
 # LADO_PUBLIC_HOST=ann-laptop.local
 ```
@@ -219,10 +218,9 @@ examples above:
 mkdir -p ~/workspace
 ```
 
-`LADO_SSH_AGENT` is
-optional: without it there is no ssh in the container. On Linux the socket's path may
-change with each login: point it at a stable one, or run `docker compose up -d` again after
-a new login.
+The container has no ssh: git reaches your servers over https with the tokens of
+Settings → Git servers ([git over ssh](#git-over-ssh)). An `.env` of a version before
+0.48.0 may still name `LADO_SSH_AGENT`; it changes nothing now.
 
 ### Start
 
@@ -256,15 +254,65 @@ With `LADO_SECRETS` set, compose refuses to start while the folder is missing ra
 make it; without it the container has none and says nothing about it
 (`docker compose exec lado lado doctor` says how to give them). LADO reads the files at
 each agent's start, so a new file reaches the next agent with no restart; they never show
-in `docker inspect`, and `lado doctor` lists the names it uses. For example, git over
-https and `gh` with your GitHub token:
+in `docker inspect`, and `lado doctor` lists the names it uses. For example, a kit's key:
 
 ```bash
-printf %s "$(gh auth token)" > secrets/GH_TOKEN
+printf %s "$KEY" > secrets/YOUGILE_API_KEY
 ```
 
-LADO's own git uses it as well, read at each call: a kit, skill pack or marketplace of a
-private repository, and a clone by URL from the UI (New session → Clone).
+LADO's own git uses the folder as well, read at each call: a kit, skill pack or marketplace
+of a private repository, and a clone by URL from the UI (New session → Clone). Your GitHub
+token does not go here: GitHub, like your other git servers, is signed in to in Settings →
+Git servers (below, GitHub and your git servers).
+
+#### GitHub and your git servers
+
+New to git servers? [Connect your git server](git-servers.md) walks through it step by step;
+this section is the reference.
+
+GitHub, GitHub Enterprise and GitLab are signed in to in the UI's Settings → Git servers, or
+with `docker compose exec -it lado lado git-server add github.com --token` (the token typed
+without echo; make one at https://github.com/settings/tokens with the scope `repo`). The
+agents' git and `gh` then use that token, and nothing else: a `GH_TOKEN` in `secrets/`, in a
+project or in your shell, and `gh auth login`, are not used ([cli.md](cli.md), `lado
+git-server`). `repo` is the minimum; add `read:org` when the agents run `gh` on pull
+requests of an organization's repository, and `workflow` when they push `.github/workflows/`.
+A saved server's ssh addresses (`git@github.com:…`) go over https with its token too.
+
+**GitLab** (gitlab.com or your company's) is added the same way, by its address: Settings →
+Git servers → Add server, or `docker compose exec -it lado lado git-server add
+https://gitlab.example.com --token`. Make the token at
+`<address>/-/user_settings/personal_access_tokens` with the scope `api`: git alone needs
+`read_repository`, `write_repository` and `read_api`, but the agents open merge requests
+with `glab`, which needs `api`. Check in Settings (or `lado git-server check <address>`) says
+`Works: GitLab, signed in as <you>, may clone and push.`; with a token without `api` it adds
+`glab cannot open merge requests: the token lacks api`, and `lado doctor` warns. The image has
+`glab`, and each agent's `glab` is signed in to every saved GitLab with its token and, when
+you trusted it, its certificate, for that server alone; your own glab configuration is not
+read or changed. Every agent is told in one line on which server its repository is and which
+tool goes with it (`glab` for GitLab's merge requests, `gh` for GitHub's pull requests), so a
+kit need not say it. `glab auth status` in an agent says it is logged in, with glab's own note
+`No token found`: the token reaches glab as a header from LADO, not from a file. A
+`GITLAB_TOKEN` in `secrets/`, in a project or in your shell, and `glab auth login`, are not
+used; `lado doctor` names them. An `OAUTH_TOKEN` there does reach the agents, as other tools
+read it too, and their glab would send it to a GitLab not in the list: `lado doctor` warns.
+
+A company's server whose certificate the computer, or LADO's container, does not trust is
+trusted from its Check in Settings → Git servers: LADO shows the authority that signed it with
+its fingerprint, and Trust makes LADO and the agents' git trust it for that server alone;
+nothing is added to the image or the computer. Or ask your IT department for the company's
+root certificate as PEM (a text file starting with `-----BEGIN CERTIFICATE-----`, often
+`.pem` or `.crt`; a binary DER `.crt` is refused) and give it: `lado git-server certificate
+<address> <file>`. The agents' `gh` does not get it ([cli.md](cli.md)).
+
+Coming from a version before 0.48.0, where the agents used a `GH_TOKEN` in `secrets/` or `gh
+auth login` inside, nothing is to do: the first start of the new version moves that login
+into Settings → Git servers once, as the row `https://github.com`, and says so in `docker
+compose logs lado` (`LADO took your GitHub login (…) into Settings → Git servers: github.com,
+signed in as <you>.`); `lado doctor` says it too, and names the old token as set but not
+used. From then on change it in Settings only. The old `secrets/GH_TOKEN` and `gh`'s login
+are left as they were, so going back to the version before works as before; remove them
+yourself when you no longer need them.
 
 **Local models.** A model server you run yourself (LM Studio, Ollama, LiteLLM) is added in
 Settings → Model servers or with `lado model-server add`. OpenCode and Kilo CLI agents then have its
@@ -411,16 +459,16 @@ A variable only one project's agents should get, or with another value there (a 
 address, a local model's), is set per project instead, no file needed: `docker compose exec
 lado lado project set <project> NAME VALUE` ([cli.md](cli.md)); the project's value wins
 over the folder's for that project's sessions. A key one project's agents should get (each
-client's own board or GitHub token) is set as the project's secret, typed without echo or
-piped in, never on the command line:
+client's own board) is set as the project's secret, typed without echo or piped in, never on
+the command line:
 
 ```bash
 docker compose exec -it lado lado project set <project> YOUGILE_API_KEY --secret
-printf %s "$(gh auth token)" | docker compose exec -T lado lado project set <project> GH_TOKEN --secret
 ```
 
-A project's `GH_TOKEN` (and its other variables) also serve LADO's own clone into the
-project: `lado project repo add` and the project page's Add repository with its branch list.
+A project's variables also serve LADO's own clone into the project: `lado project repo add`
+and the project page's Add repository with its branch list. A project's `GH_TOKEN` is not
+used: GitHub's token is the one of Settings → Git servers, for every project.
 
 LADO keeps it in its home volume (`~/.lado/projects/<project>/secrets/`), shows only its
 name (`lado project show`), and removes it with `lado project unset` or with the project. A
@@ -477,19 +525,14 @@ ways:
 
 ### git over ssh
 
-The agents push over ssh with your computer's ssh agent (`LADO_SSH_AGENT`), and the web
-UI's **Clone from URL** clones an ssh address (`git@github.com:...`) with it: every agent of
-this LADO may use the keys it holds. The key GitHub knows must be in that agent:
-
-```bash
-ssh-add -l                                   # your keys; none: add yours
-ssh-add --apple-use-keychain ~/.ssh/id_ed25519   # on a Mac; on Linux: ssh-add ~/.ssh/id_ed25519
-docker compose exec lado bash -lc 'ssh -T git@github.com'
-```
-
-The last line answers `Hi <you>! You've successfully authenticated`. The image knows
-GitHub's host keys, so ssh asks nothing; another host's key: see
-[If something goes wrong in Docker](#if-something-goes-wrong-in-docker).
+The container has no ssh: no ssh key, no ssh agent of your computer, and no ssh to other
+machines from an agent. A server saved in Settings → Git servers takes its ssh addresses
+(`git@<host>:…`, `ssh://git@<host>/…`) over https with its token, so **Clone from URL**,
+the agents' pushes and `gh` work on `git@github.com:…` once github.com is saved. An ssh
+address of a host no server is saved for fails, and the window offers **Add git server ↗**
+(in the terminal: `lado git-server add https://<host> --token`); an ssh address on another
+port or with another user than `git` needs the repository's https address instead. For
+ssh from the agents, run LADO without Docker ([macOS](#macos), [Linux](#linux)).
 
 ### Your first session
 
@@ -617,8 +660,8 @@ docker compose up -d
 ```
 
 Every update takes its version's `compose.yaml`, since a release may add a mount or a
-setting to it: 0.40.0 added git's identity, the ssh agent and the secrets folder, which an
-older file does not give the container. `.env`, `secrets/` and the home volume stay. A
+setting to it: 0.40.0 added git's identity and the secrets folder, which an older file
+does not give the container. `.env`, `secrets/` and the home volume stay. A
 change you made to `compose.yaml` by hand is replaced: `diff compose.yaml.bak
 compose.yaml` shows it, carry it over to the new file (your settings belong in `.env`,
 which stays). With several LADOs on this computer, update each in its own folder, with its
@@ -661,9 +704,15 @@ docker compose up -d
 When an upgrade's migration failed, the database is as it was: the first and the last
 command do it.
 
+Going back to a version before 0.48.0 with its ssh agent: the `compose.yaml` you have binds
+no ssh agent, so put that version's back too, `cp compose.yaml.bak compose.yaml`, before
+`docker compose up -d` (`LADO_SSH_AGENT` stays in `.env` for it).
+
 Going back to a version before 0.45.0 forgets your model servers, models and default models,
 and their keys stay in `~/.lado/model-servers/` of the home volume. Remove them when you no
 longer need them: `docker compose run --rm lado sh -c 'rm -rf ~/.lado/model-servers'`.
+Going back to a version without git servers leaves their tokens in `~/.lado/git-servers/`
+the same way: `docker compose run --rm lado sh -c 'rm -rf ~/.lado/git-servers'`.
 
 ### A second LADO
 
@@ -726,7 +775,7 @@ The image brings tmux, git and the agent CLIs at their tested versions, so there
 `docker compose exec lado lado doctor` says whether the workspace is there and
 writable, which files of `secrets/` the agents get (names only) and which are not used, and
 which agent CLIs run. `docker compose logs lado` has the container's own warnings (git's
-identity, the ssh agent, the workspace).
+identity, the workspace).
 
 - **Another version, port or folder than `.env` says**: a variable of your shell beats
   `.env`. `env | grep -E '^(LADO|COMPOSE)_'`, `unset` each, and `docker compose up -d`
@@ -740,13 +789,12 @@ identity, the ssh agent, the workspace).
   `secrets/`. Values for some agents only need another LADO with its own folder.
 - **A file in `secrets/` does not reach the agents**: `LADO_SECRETS=./secrets` is missing
   from `.env` (`lado doctor` says `/run/secrets: none`). Add it, then `docker compose up -d`.
-- **No git identity, no ssh agent or no secrets after an update from 0.39.0**: the
+- **No git identity or no secrets after an update from 0.39.0**: the
   `compose.yaml` is still 0.39.0's. Take the new version's, as
   [Update the container](#update-the-container) says.
-- **Two LADOs on a Mac and ssh works only in one**: Docker Desktop's ssh agent socket is
-  one for all containers, and each LADO's start gives it to its own user. With
-  workspaces of two owners the LADO started last has it; `docker compose restart` takes it
-  back for the other. Workspaces of the same owner share it.
+- **`LADO's container has no ssh key for <host>`** at a clone: the container has no ssh.
+  Add the host in Settings → Git servers (**Add git server ↗**); its `git@` addresses then
+  go over https ([git over ssh](#git-over-ssh)).
 - **`docker run --user root --cap-drop ALL` does not start**: drop one of them. Without
   `--user root` the server runs as the container's user anyway.
 - **`could not give lado the uid and gid of LADO_REPOS's owner` or `could not give lado
@@ -757,10 +805,6 @@ identity, the ssh agent, the workspace).
   workspace, on the container's home volume (the New session window and `lado start` warn).
   Put the repository under `LADO_WORKSPACE`. `~` in the container is `/home/lado`, not your
   home: type the full path.
-- **Another git host over ssh asks about its key**: the image knows only GitHub's. Add the
-  host's key on the home volume, which trusts the first answer: compare its fingerprint
-  with the one the host publishes.
-  `docker compose exec lado sh -c 'mkdir -p -m 700 ~/.ssh && ssh-keyscan gitlab.com >> ~/.ssh/known_hosts && ssh-keygen -lf ~/.ssh/known_hosts'`.
 - **An agent closed right after the session started**: LADO could not record Claude
   Code's trust (Needs you said why), and Enter on Claude Code's trust question answered
   "No, exit". Stop the session and resume it in the UI (or
@@ -1039,10 +1083,10 @@ no session running).
 - The plan warns before it asks: `lado.db` goes back to the copy
   `~/.lado/backups/lado.db.schema-31`, made when 0.43.0 upgraded it; everything LADO
   recorded since then is lost (sessions, runs, gates, messages, projects, model servers,
-  models, default models); repositories, worktrees and project folders stay on disk. It
-  names the running sessions the copy does not have: they are not started again. It lists
-  the folders of model server keys the copy has no server for: they stay on disk (What
-  stays, below). `Update? [y/N]`, or `--yes`, is your yes to that.
+  models, default models, git servers); repositories, worktrees and project folders stay
+  on disk. It names the running sessions the copy does not have: they are not started
+  again. It lists the folders of model server keys and of git server tokens the copy has
+  no server for: they stay on disk (What stays, below). `Update? [y/N]`, or `--yes`, is your yes to that.
 - After the installer and the version check it puts the copy back into `lado.db`, keeps
   the copy, says `Restored lado.db from … (schema 31)` and starts the sessions the copy
   has on 0.42.x.
@@ -1083,6 +1127,19 @@ and `~/.lado/model-servers/` stays with the key of each server: remove it with
 back, and `lado doctor` calls each folder left over until you remove it. Going back to a
 version that knows model servers, remove only the folders the warning listed: the others hold
 the keys of servers still saved.
+
+Going back to a version without git servers forgets them, and `~/.lado/git-servers/` stays
+with each server's token: the warning lists each folder; remove them (`rm -rf
+~/.lado/git-servers/<id>`) when you no longer need them. The older LADO does not use them:
+git reaches those servers as it did before you added them. Upgrading again brings no server
+back: add it again with `lado git-server add`.
+
+Going back to a version before 0.48.0 forgets github.com in Settings → Git servers too: the
+copy was made before the first start of 0.48.0 took your GitHub login over. The older LADO
+uses the login it used before, which LADO never changed or removed: the `GH_TOKEN` of the
+outside folder (`secrets/` in Docker) or your shell, or `gh auth login`. Upgrading again takes
+nothing over a second time if the record of the takeover is in the copy; from a copy made
+before it, the first start takes the login over again.
 
 ### The check for a newer version
 
@@ -1226,6 +1283,15 @@ as "not inside a git repository".
 LADO works, but its look at whether an agent CLI trusts the folder (`git rev-parse
 --path-format=absolute`) needs git 2.31: with an older git LADO may not foresee a CLI's
 "trust this folder?" question, or expect one that does not come. Install a newer git.
+
+### `glab is not on the agents' PATH` or `glab … is older than 1.114.0`
+
+Outside Docker LADO does not install GitLab's CLI: with a GitLab saved in Settings → Git
+servers, the agents' git works, but they cannot open merge requests until you install glab
+1.114.0 or newer (`brew install glab` on macOS; on Linux GitLab's packages from
+https://gitlab.com/gitlab-org/cli/-/releases). Older glab sends no token from LADO, so LADO
+does not sign it in. The start of each agent and `lado doctor` say so; the agents start all
+the same. The same for `gh` with a GitHub server saved.
 
 ### `Agent CLI: no agent CLI installed`
 

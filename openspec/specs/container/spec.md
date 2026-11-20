@@ -380,15 +380,13 @@ with the uid it took from the workspace's owner.
 
 The change of `lado`'s uid SHALL be made by a step that runs as root once per container
 and, first of all, removes its way to it (a sudo rule for the entrypoint alone), so
-that no process started after it, an agent included, can become root through it; the
-image's one other sudo rule, for the ssh agent's socket (requirement "The host's ssh agent
-reaches the agents without root's group"), runs one fixed program that takes no argument
-and no variable and gives no root shell.
+that no process started after it, an agent included, can become root through it. The
+image SHALL have no other sudo rule.
 
 #### Scenario: No way to root is left
 
 - **WHEN** the container has started
-- **THEN** `sudo -n true` run as `lado` in it fails
+- **THEN** `sudo -n true` run as `lado` in it fails, and `sudo -n -l` run as `lado` grants no command
 
 ### Requirement: With the entrypoint replaced, the root step runs nothing its caller chose
 
@@ -730,15 +728,15 @@ processes that launch agents), so the agents get the variables of the files moun
 ### Requirement: compose binds the secrets folder read-only, no folder by default
 
 `docker/compose.yaml` SHALL bind the path `LADO_SECRETS` names read-only at
-`/run/secrets`, by default `/dev/null`: no secrets, as for the ssh agent. It SHALL refuse
+`/run/secrets`, by default `/dev/null`: no secrets. It SHALL refuse
 to start when a folder `LADO_SECRETS` names does not exist, rather than letting Docker
 make it (`create_host_path: false`).
 
 #### Scenario: Secrets enabled by one line
 - **WHEN** `.env` has `LADO_SECRETS=./secrets`, the folder `secrets/` next to
-  `compose.yaml` holds `GH_TOKEN` with a fake value, and `docker compose up -d` runs
-- **THEN** an agent's shell has `GH_TOKEN` with that value, and `lado doctor` prints
-  `[ok  ] Variables from outside: /run/secrets: GH_TOKEN`
+  `compose.yaml` holds `YOUGILE_API_KEY` with a fake value, and `docker compose up -d` runs
+- **THEN** an agent's shell has `YOUGILE_API_KEY` with that value, and `lado doctor` prints
+  `[ok  ] Variables from outside: /run/secrets: YOUGILE_API_KEY`
 
 #### Scenario: The folder named but missing
 - **WHEN** `.env` has `LADO_SECRETS=./secrets` and there is no `secrets/`
@@ -773,15 +771,15 @@ run`).
 ### Requirement: The headers say how to fill the secrets folder
 
 The headers SHALL say to make the secrets folder with mode 700 and to put one file per
-variable in it (`GH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN`, a kit's key such as
-`YOUGILE_API_KEY`, a model provider's key). A new file reaches the agents started after
-it, with no restart. Each LADO container has its own folder or none, and every agent of
-one container can read every variable given to it.
+variable in it (`CLAUDE_CODE_OAUTH_TOKEN`, a kit's key such as `YOUGILE_API_KEY`, a model
+provider's key). A new file reaches the agents started after it, with no restart. Each
+LADO container has its own folder or none, and every agent of one container can read every
+variable given to it.
 
 #### Scenario: The headers on the folder's files
 - **WHEN** the human reads the headers of `docker/compose.yaml` and `docker/Dockerfile`
 - **THEN** they say to make the folder with mode 700 and to put one file per variable in
-  it, such as `GH_TOKEN`
+  it, such as `YOUGILE_API_KEY`
 
 ### Requirement: The container gives the agents the human's git identity
 
@@ -811,63 +809,6 @@ LADO_GIT_NAME and LADO_GIT_EMAIL`.
 - **WHEN** the container runs without either variable on a fresh home volume
 - **THEN** `docker logs` has the warning line, and the server starts
 
-### Requirement: git over https to GitHub uses gh's token
-
-The image's system git config SHALL make `gh auth git-credential` the only credential
-helper for `https://github.com`. With `GH_TOKEN` in an agent's environment, or after `gh
-auth login` in the container (its token in `~/.config/gh` on the home volume), git SHALL
-get that token for `https://github.com` with no prompt and no extra step.
-
-#### Scenario: The token from the secrets folder
-- **WHEN** the secrets folder holds `GH_TOKEN` with a fake value and an agent's shell runs
-  `git credential fill` for `protocol=https`, `host=github.com`
-- **THEN** git prints `password=<that value>`
-
-### Requirement: The host's ssh agent reaches the agents without root's group
-
-`docker/compose.yaml` SHALL bind the path that `LADO_SSH_AGENT` names (default
-`/dev/null`: no ssh agent) at `/run/lado/ssh-agent.sock`, refusing to start when that
-path does not exist. The container SHALL need no `group_add`. The headers SHALL give `LADO_SSH_AGENT` for a
-Mac (`/run/host-services/ssh-auth.sock`, Docker Desktop's) and for Linux (the host's
-`$SSH_AUTH_SOCK`), and SHALL say that every agent of the container may then use the
-host's keys.
-
-#### Scenario: A missing ssh agent socket
-- **WHEN** `.env` has `LADO_SSH_AGENT=/run/missing.sock` and that path does not exist
-- **THEN** compose refuses to start and names the path
-
-### Requirement: The entrypoint gives a root's socket to lado through one fixed program
-
-At every start, the entrypoint SHALL check, as `lado`, whether `lado` can use the socket:
-- when it cannot and the socket belongs to uid 0, it SHALL run through `sudo` the image's
-  program `/usr/local/bin/lado-ssh-agent-socket`, which takes no argument and keeps no
-  variable of its caller (no `SETENV`). That program SHALL give that one path, only when
-  it is a socket that is no symbolic link and belongs to uid 0, to `lado`'s uid, keeping
-  its group.
-
-#### Scenario: Docker Desktop's root-owned socket
-- **WHEN** an ssh agent holding a test key listens on a socket owned by uid 0 at
-  `/run/lado/ssh-agent.sock` (made by another container on a shared volume) and LADO's
-  container starts, or restarts
-- **THEN** `ssh-add -l` in an agent's login shell lists the test key, the UI server's
-  process has `SSH_AUTH_SOCK=/run/lado/ssh-agent.sock`, and `id -G` of `lado` has no 0
-
-#### Scenario: The rule gives no root
-- **WHEN** an agent runs `sudo -n /usr/local/bin/lado-ssh-agent-socket` with any variable
-  or argument
-- **THEN** it can at most give that socket to `lado`, and `sudo -n true` fails
-
-### Requirement: An ssh agent's socket lado cannot use is a warning
-
-When `lado` still cannot use the ssh agent's socket after the entrypoint's check, `docker
-logs` SHALL get one line, `lado: warning: lado (uid <uid>) cannot use the ssh agent socket
-of uid <owner>: <reason>`, and the server SHALL start.
-
-#### Scenario: A socket of another user
-- **WHEN** the socket belongs to uid 1234, not 0, and `lado` (uid 1000) may not use it
-- **THEN** `docker logs` has `lado: warning: lado (uid 1000) cannot use the ssh agent
-  socket of uid 1234: <reason>`, and the server starts
-
 ### Requirement: The headers say how the agents log in and get access
 
 The headers of `docker/compose.yaml` and `docker/Dockerfile` SHALL say:
@@ -875,15 +816,17 @@ The headers of `docker/compose.yaml` and `docker/Dockerfile` SHALL say:
   `LADO_SECRETS=./secrets` in `.env` or `-v <folder>:/run/secrets:ro`, one file per
   variable);
 - the git identity (`LADO_GIT_NAME`, `LADO_GIT_EMAIL`);
-- GitHub over https (`GH_TOKEN` in the folder, or `gh auth login` inside);
-- the ssh agent (`LADO_SSH_AGENT` for a Mac and for Linux).
+- GitHub and other git servers (Settings → Git servers, or `lado git-server add`), their
+  ssh addresses going over https, never `GH_TOKEN` or `gh auth login`;
+- that the container has no ssh.
 
 #### Scenario: The steps are in the headers
 - **WHEN** `tests/test_docker.py` reads the headers
-- **THEN** each names `secrets`, `LADO_GIT_NAME`, `LADO_GIT_EMAIL`, `GH_TOKEN`, `gh auth
-  login`, `LADO_SSH_AGENT`, `CLAUDE_CODE_OAUTH_TOKEN`, `opencode auth login`, `kilo auth
-  login`, `CODEX_ACCESS_TOKEN`, `OPENAI_API_KEY` and `codex login --device-auth`; compose's
-  names `LADO_SECRETS=./secrets`
+- **THEN** each names `secrets`, `LADO_GIT_NAME`, `LADO_GIT_EMAIL`, `Git servers`,
+  `no ssh`, `CLAUDE_CODE_OAUTH_TOKEN`, `opencode auth login`, `kilo auth login`,
+  `CODEX_ACCESS_TOKEN`, `OPENAI_API_KEY` and `codex login --device-auth`, neither names
+  `GH_TOKEN`, `gh auth login`, `LADO_SSH_AGENT` nor `SSH_AUTH_SOCK`; compose's names
+  `LADO_SECRETS=./secrets`
 
 ### Requirement: The headers say how the agent CLIs log in, and the first start makes no folder
 
@@ -903,38 +846,17 @@ no secrets.
 - **WHEN** `tests/test_docker.py` reads the first start's commands of both headers
 - **THEN** none of them is a `mkdir`
 
-### Requirement: The image knows GitHub's ssh host keys
-
-The image SHALL hold GitHub's published public ssh host keys for `github.com` in
-`/etc/ssh/ssh_known_hosts`, copied from `docker/ssh_known_hosts`, so the first ssh to
-github.com on a new home volume asks no question and ssh still refuses a key that is not
-GitHub's. The file SHALL hold only lines for `github.com`, one per key type GitHub
-publishes (ed25519, ecdsa-sha2-nistp256, rsa).
-
-#### Scenario: The first ssh on a new volume
-- **WHEN** a container on a new home volume, with no ssh agent, runs `ssh -T -o
-  BatchMode=yes git@github.com` in `lado`'s login shell
-- **THEN** it fails on the missing key (`Permission denied (publickey)`), never with
-  `Host key verification failed`, and `~/.ssh/known_hosts` gets no line
-
-#### Scenario: The file
-- **WHEN** `tests/test_docker.py` reads `docker/ssh_known_hosts`
-- **THEN** every line names `github.com`, and its key types are ed25519,
-  ecdsa-sha2-nistp256 and rsa
-
 ### Requirement: The image holds no private data
 
 The image SHALL hold no key, login, password or token of any person: the human gives
-their own at run time (the secrets folder, logins on the home volume, the host's ssh
-agent). The only keys the build puts in it SHALL be public host keys. The build context
-SHALL stay the allowlist of `docker/Dockerfile.dockerignore`, which names each file the
-build takes.
+their own at run time (the secrets folder, logins on the home volume, Settings → Git
+servers). The build context SHALL stay the allowlist of
+`docker/Dockerfile.dockerignore`, which names each file the build takes.
 
 #### Scenario: The build context
 - **WHEN** `tests/test_docker.py` reads `docker/Dockerfile.dockerignore`
 - **THEN** it lets in only `dist/lado-*.whl`, `docker/profile.sh`,
-  `docker/entrypoint.sh`, `docker/ssh-agent-socket.sh`, `docker/ssh-agent-env.sh` and
-  `docker/ssh_known_hosts`
+  `docker/entrypoint.sh` and `docker/mise.toml`
 
 ### Requirement: The install guide leads with the installer, then compose by hand
 
@@ -1325,24 +1247,6 @@ with one warning line, and the server SHALL start anyway.
   container: /home/me/projects; mount the host's folder at this same path`, and the server
   starts
 
-### Requirement: The image gives the agents and the server the host's ssh agent socket
-
-When the path `/run/lado/ssh-agent.sock` in the container is a socket, the image SHALL set
-`SSH_AUTH_SOCK=/run/lado/ssh-agent.sock` for every login shell, so for every agent, and
-for the UI server, whose Clone from URL and branch listing run git over ssh: one rule,
-`docker/ssh-agent-env.sh` at `/etc/profile.d/lado-ssh-agent.sh`, which the entrypoint
-sources before the command, after the entrypoint's check of the socket.
-
-#### Scenario: A Linux host's socket of the workspace's owner
-- **WHEN** the socket belongs to the uid of the workspace's owner, which `lado` takes
-- **THEN** `ssh-add -l` in an agent's login shell lists the key, and the socket's owner is
-  unchanged
-
-#### Scenario: No ssh agent
-- **WHEN** `LADO_SSH_AGENT` is not set
-- **THEN** agents and the UI server have no `SSH_AUTH_SOCK` from the image, and `docker
-  logs` has no ssh line
-
 ### Requirement: The image carries mise and keeps its data on the home volume
 
 The image SHALL carry mise at `/usr/local/bin/mise`, owned by root, copied from mise's
@@ -1495,3 +1399,52 @@ a unit test SHALL keep each of the four install lines so, the command being its
   runs its `--version` at build
 - **THEN** it writes them into `/tmp/cli-home`, removed in the same `RUN` line, and
   nothing of it is in the image's `/home/lado`
+
+### Requirement: The image gives github.com no credential helper of its own
+
+The image's system git config SHALL set no credential helper for `https://github.com`:
+git reaches github.com with the github.com entry of Settings → Git servers (capability
+`git-servers`), and without one as any host not in the list.
+
+#### Scenario: gh logged in on the home volume, no entry
+- **WHEN** `~/.config/gh/hosts.yml` on the home volume holds a login, github.com has no
+  entry, and an agent's shell runs `git credential fill` for `protocol=https`,
+  `host=github.com` with no prompt
+- **THEN** git prints no password
+
+### Requirement: The container has no ssh
+
+`docker/compose.yaml` SHALL bind no ssh agent's socket, and the image SHALL hold no ssh
+host key, no sudo rule or program for a socket and no profile file that sets
+`SSH_AUTH_SOCK`. A `LADO_SSH_AGENT` in `.env` SHALL change nothing, and the container SHALL
+say nothing about it. A saved git server's ssh addresses SHALL go over https with its token.
+
+#### Scenario: An old .env with LADO_SSH_AGENT
+- **WHEN** `.env` has `LADO_SSH_AGENT=<a socket on the host>` and `docker compose up -d` runs
+- **THEN** the container starts, `/run/lado/ssh-agent.sock` does not exist, neither an
+  agent's login shell nor the UI server has `SSH_AUTH_SOCK`, and neither `docker compose
+  logs lado` nor `lado doctor` has a line about ssh
+
+#### Scenario: An ssh address of a saved server
+- **WHEN** `https://github.com` is saved and the UI clones `git@github.com:acme/app.git`
+- **THEN** git asks the saved server's token over https, and no ssh runs
+
+### Requirement: The image carries glab at its pin
+
+The image SHALL carry `glab` at the exact version of the build argument `GLAB_VERSION`, from
+its release archive checked against a SHA-256 per architecture, in a layer of its own under
+`/opt/tools`, with `GLAB_CHECK_UPDATE=false` and `GLAB_SEND_TELEMETRY=false` in the image's
+`ENV` and profile; the image SHALL grow by at most 60 MB with it.
+
+#### Scenario: A clean home volume
+- **WHEN** a login shell as `lado` in a new container runs `glab --version`
+- **THEN** it answers with `GLAB_VERSION`'s default, on amd64 and on arm64
+
+#### Scenario: A loose pin
+- **WHEN** `GLAB_VERSION` is not an exact version, or an architecture has no SHA-256
+- **THEN** the unit tests fail and name the line
+
+#### Scenario: An agent's glab in the image
+- **WHEN** a GitLab server under a test authority is saved with its certificate and an agent
+  of the container runs `glab auth status`
+- **THEN** it is logged in, and `~/.config/glab-cli` and `~/.gitconfig` are unchanged

@@ -69,7 +69,11 @@ when, after a test without `telemetry_on`, its `LADO_HOME` holds `telemetry/sent
 file in `telemetry/outbox/`; the live and smoke tests, under `tests/`, get it too. And
 `BROWSER=true`, so no test opens a browser (`lado bug-report`'s `y`: `webbrowser` runs
 `true <url>`), a test that forgot to replace `webbrowser.open` neither
-(`tests/test_cli_bug_report.py` checks it is set).
+(`tests/test_cli_bug_report.py` checks it is set). No test takes the GitHub login of the
+machine running it (`lado.github_takeover`): conftest drops GitHub's token and host variables
+and points `GH_CONFIG_DIR` at an empty folder of the run, and the autouse `_no_gh_login` makes
+`gh_token` find none in a unit test; the takeover's tests take `real_gh_token` with a stub
+`gh` on PATH.
 
 No test leaves a process alive (`tests/leftovers.py`). Every process a test starts carries
 the test's `LADO_HOME` in its environment: the tmux server, the agents, their hooks and
@@ -259,7 +263,8 @@ The secrets folder (`test_secrets.py`; only fake values): compose with no `LADO_
 and no folder starts, `lado doctor` exits 0 with `[info] … /run/secrets: none` and the hint
 naming `LADO_SECRETS=./secrets`, a Claude Code session reaches idle, and `docker compose
 logs` names neither `/run/secrets` nor `LADO_ENV_DIR`; `LADO_SECRETS=./secrets` and a
-fake `GH_TOKEN` in `secrets/` reach the supervisor's process and doctor's `[ok  ]` line;
+fake `YOUGILE_API_KEY` in `secrets/` reach the supervisor's process and doctor's `[ok  ]`
+line;
 with the line but no folder `up -d` fails naming the path and makes no folder.
 The sessions (`test_sessions.py`): `docker compose stop` with a Claude Code session and one
 stopped by hand exits 0 with the stop's line naming only the first, both stopped in
@@ -286,14 +291,12 @@ The agents' access (`test_access.py`; only fake values): a secrets folder of the
 variable, `lado doctor` names it, and neither `docker inspect` nor `docker logs` holds the
 value; `LADO_GIT_NAME` with an apostrophe and `LADO_GIT_EMAIL` are a commit's author and
 committer, a new email on the same home volume replaces the old, and without them
-`docker logs` warns; `GH_TOKEN` of the folder is `git credential fill`'s password for
-github.com and `gh auth token`; an ssh agent of a sidecar container (OpenSSH's agent
-serves only its own uid, so it runs as lado's) on a shared volume, its socket given to
-root as Docker Desktop's is, lists its key in an agent's login shell, also after a
-restart that found it root's again, with no 0 in `id -G`; one of the workspace's owner
-(2001) works as it is and stays 2001's; under no-new-privileges a root socket is the
-warning; compose's default (`/dev/null`) gives no `SSH_AUTH_SOCK` and no line; and the
-ssh rule refuses an argument and a variable, `sudo -n true` fails.
+`docker logs` warns; a `GH_TOKEN` of the folder and a `gh` login on the home volume give
+github.com no password (`git credential fill`) and the real `gh` no token, until github.com
+is a saved git server, whose token both then take; and compose started with an old `.env`'s
+`LADO_SSH_AGENT` naming a socket of the host has no `/run/lado`, ssh host keys or ssh sudo
+rule, no `SSH_AUTH_SOCK` in a login shell or the server, no word of ssh in its logs or
+`lado doctor`, and `sudo -n -l` grants nothing.
 A new image on an old home volume (`test_migration.py`; `old_home` seeds a volume with a
 `lado.db` this checkout's `lado.state` made on the host, a stopped session in it, at the
 schema before by `previous_schema`): the server migrates it, `/api/health` answers,
@@ -313,7 +316,18 @@ dir>/lado-container-shots/` (in CI's artifact `container-<arch>-<k>` of its shar
 toolchains' Go test (`test_toolchains.py`) has mise install Go from a mirror inside the
 container (`python3 -m http.server` on its loopback), fed by one download of the archive on
 the host per run, checked against its sha256; each install is bounded by `timeout` and its
-failure shows both exit codes and mise's debug logs (LAD-178). A
+failure shows both exit codes and mise's debug logs (LAD-178). glab (`test_glab.py`): a login
+shell's `glab --version` is the Dockerfile's `GLAB_VERSION`, its layer (`docker history`) at
+most 60 MB; a GitLab user API run inside the container over https under a test authority,
+saved with LADO's own Python as a GitLab with that authority, and the agent's configuration
+written by `git_servers.glab_variables`: `glab auth status` is logged in, `glab api user`
+carries the token, another host of the same authority gets no token by its whole URL from
+the repository and is refused on the certificate outside it, and
+`~/.config/glab-cli` and `git config --global --list` are as before. The integration test
+`test_git_server_host_tool.py` runs the same against the fake git server when a glab 1.114.0
+or newer is on PATH, and skips otherwise; there besides, two saved GitLab servers each get
+their own token while the shell's `GITLAB_API_HOST` and `GITLAB_REPO` name a third host the
+agents' trust store accepts, which gets no request. A
 test that fails in its setup or its
 call keeps, for each container it started (a compose project's too), `docker logs` and
 LADO's logs in `real_clis.EVIDENCE`: the container is registered on the test before
@@ -515,7 +529,10 @@ Seven layers; each change gets tests at the lowest layer that can catch its bugs
    Test infrastructure), and in WSL2 in the Windows probe, a job per provider.
 6. **Live e2e** (`make test-live`, marker `live`): real agent CLIs and real models, one short
    scenario per provider: a worker commits a file, reports to the supervisor and gets a
-   message; then the session stops and no process is left. Never in the default run or
+   message; then the session stops and no process is left. With Claude Code and Codex a
+   worker also pushes a commit over https to a saved git server (`fake_git_server.Server`
+   under a test authority, saved as GitLab with its token and certificate), which must get
+   the token on its receive-pack. Never in the default run or
    `ci-ok`: weekly and by hand in `live.yml`, every provider on OpenRouter, on each RC, and a
    provider's after changing it.
    When a live or smoke test fails, its report names a folder
@@ -531,3 +548,72 @@ Seven layers; each change gets tests at the lowest layer that can catch its bugs
 What must be green before a release (CI, `live.yml`): [docs/release.md](release.md).
 The Windows probe is not a release step: it runs weekly, and a red run is fixed as any
 other regression.
+
+## Tests of files that are not Python
+
+The Dockerfile, compose.yaml, the installers, the workflows and the documents have unit tests
+too, which read the file (stage 3 of docs/research/test-audit.md). Such a test breaks on
+every edit of the file and rarely finds a bug unless it checks a property, so a new one:
+
+- **Runs what it can run.** A script (install.sh, install.ps1 on a fake Windows, a
+  workflow's shell step, a script of `scripts/`) is run with fakes and its behaviour
+  checked, not grepped. What the image does is a container test's (layer 7), on the built
+  image, not a unit test of the Dockerfile's text.
+- **Parses, then checks the property.** A workflow or compose file is read as YAML and the
+  key that matters is checked (a step's `if`, a job's `needs`, the shards a command divides
+  into), not a whole `run` line, a dict copied from the file or the order of keys where
+  order does not matter.
+- **Derives what it compares from the other file.** Two files that must agree are compared
+  with each other (the build context with the Dockerfile's COPY lines, the variables a
+  header sets with those compose reads, a pin with `scripts/smoke_ci.py`'s), never each
+  with a list in the test, which is a third copy to keep in step.
+- **Checks what a reader or a user is hurt by.** A command or a link a document gives must
+  be real (an anchor resolves, a URL is a release asset, an option is one the script
+  takes, a button a label the UI has); its wording, its headings' order and old wording
+  that must not come back are not tested.
+- **Keeps the guards.** A security setting (an image pinned by digest, a workflow's
+  permissions, no piped install), a check that must exist for `ci-ok`, a property of a
+  reported bug: these stay as they are, even when they read the text.
+
+## When to add, merge or remove a test
+
+The test audit (docs/research/test-audit.md) found four of five unit test functions
+running no branch of their own, and hundreds that caught no mutant another test did not:
+a test added for each fix, and the one it made redundant left in place. So that the suite
+does not grow back the same way:
+
+- **A new test fails without the change.** Before adding a test for a bug or a behaviour,
+  run the existing tests with the change reverted: when one fails on it, that is its test;
+  extend its assertion or its table instead of adding a function. A new test is added when
+  none fails, and is seen failing once.
+- **One table, not copies.** Tests that differ only in their input and expected result are
+  one `pytest.mark.parametrize`d test, its cases named by `ids` where a value says nothing;
+  tests that check different things on the same path stay apart.
+- **The lowest layer, once.** What a unit test checks is not checked again in an
+  integration or browser test, unless that layer catches what the unit cannot (a process
+  crossing, a real browser's layout, a real CLI). Of a module tested through two layers,
+  the lower one holds the cases, the higher one the path through.
+- **A change takes its stale tests with it.** A change that replaces a behaviour, or moves
+  its check to another layer, rewrites or removes the tests of the old one in the same
+  pull request. A test that the old wording or the old way must not come back is not
+  added, unless it guards a reported bug.
+- **What stays.** A test is removed only under the rules of section 5 of the audit: never
+  one of a reported bug (its task id in `git log`, LAD-...), of SQL in a string, of a
+  layout or of what only a real browser does, nor a guard of a secret; the pull request
+  lists each removed test with its reason.
+
+**The count.** CI's job `unit (3.14)` writes the Python tests per layer, functions and
+cases (`scripts/test_counts.py`, which collects and runs nothing), to the run's summary: a
+pull request's next to main's last run shows what it adds.
+
+**Mutation testing, by hand.** For a module whose tests look too many or too weak, the
+workflow `Mutants` (`.github/workflows/mutants.yml`; `gh workflow run mutants.yml -f
+module=src/lado/flows.py -f tests=tests/test_flows.py`) measures the unit tests' coverage
+per test, runs each mutant of the module against the tests of its line and, with a test
+file, lists that file's tests that catch no mutant and run no branch another test does
+not. The kill matrix and the list are the run's artifact `mutants`; a list is candidates,
+never removals, until the rules above and section 5 say so. Hours for a large module
+(`cli.py` about seven on six jobs), the job's limit six; a run that timed out uploads its
+`kills.json.partial`, from which `scripts/mutants.py run` with the same arguments goes on.
+Locally: `scripts/mutants.py measure <dir>`, then `run` and `removable` (the script's
+docstring; the tests of a module's other layers through `measure <dir> -- -m integration`).

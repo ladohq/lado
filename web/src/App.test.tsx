@@ -698,6 +698,7 @@ test("Settings opens General beside the list of its sections; a section is a pag
     "General",
     "Agent CLIs",
     "Model servers",
+    "Git servers",
     "Statistics",
   ]);
   // The routes and redirects themselves: Settings.test.tsx.

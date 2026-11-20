@@ -19,8 +19,8 @@ whether a tag was moved since its clone was made.
 The clone of a marketplace (lado.marketplaces) follows its main branch instead:
 clone_branch makes it, refresh brings it up to date. All of LADO's git commands for kits
 run here, with no prompt; the network ones in the outside folder's variables over LADO's
-process environment (lado.agent_env.for_git: a GH_TOKEN of /run/secrets reaches gh's
-credential helper), their failures told by a clone's kinds (lado.clone.explain).
+process environment (lado.agent_env.for_git, with the saved git servers' tokens, github.com's
+among them), their failures told by a clone's kinds (lado.clone.explain).
 """
 
 import hashlib
@@ -33,7 +33,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from urllib.parse import quote, unquote
 
-from lado import agent_env, state
+from lado import agent_env, git_servers, state
 
 # Each git process of this module, lado.clone and lado.projects: no prompt, git's words in
 # English (lado.clone.KINDS). An empty GIT_ASKPASS stops git before core.askPass and
@@ -220,10 +220,13 @@ def commit(clone: Path) -> str:
 def _git(cwd: Path | None, *args: str, remote: str | None = None) -> str:
     """git's output, with no prompt (NO_PROMPT). A network call names its `remote`: it runs
     in the environment of LADO's own git (lado.agent_env.for_git: the outside folder's
-    variables, never a project's), and its failure is told by a clone's kinds
-    (lado.clone.explain); a local one runs in LADO's process environment."""
+    variables, never a project's, and the saved git servers), and its failure is told by a
+    clone's kinds (lado.clone.explain); a local one runs in LADO's process environment."""
     where = ["-C", str(cwd)] if cwd else []
-    env = {**(agent_env.for_git() if remote else os.environ), **NO_PROMPT}
+    try:
+        env = {**(agent_env.for_git(remote=remote) if remote else os.environ), **NO_PROMPT}
+    except git_servers.Refused as exc:
+        raise GitError(str(exc)) from None
     try:
         result = subprocess.run(
             ["git", *where, *args], capture_output=True, text=True, check=False, env=env

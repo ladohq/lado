@@ -3,8 +3,10 @@ and LADO's telemetry token checked before it is built (scripts/release_check.py,
 scripts/check_telemetry.py, docs/release.md), and LADO's image tested on each architecture
 before anything is published (openspec capability image-release)."""
 
+import shlex
 from pathlib import Path
 
+import pytest
 import yaml
 
 from lado import update
@@ -26,31 +28,22 @@ def test_the_checkout_has_every_tag_and_the_history():
     assert checkout["with"]["fetch-depth"] == 0
 
 
-def test_the_release_check_runs_after_the_version_check_and_before_the_build():
-    check = index(lambda s: "scripts/release_check.py" in s.get("run", ""))
-    assert steps()[check]["run"].strip() == 'python3 scripts/release_check.py "$GITHUB_REF_NAME"'
-    assert index(lambda s: "uv version --short" in s.get("run", "")) < check
-    assert check < index(lambda s: s.get("run") == "make dist")
-
-
-def test_the_telemetry_check_runs_after_the_version_check_and_before_the_build():
-    check = index(lambda s: "scripts/check_telemetry.py" in s.get("run", ""))
-    assert steps()[check]["run"].strip() == "uv run python scripts/check_telemetry.py"
+@pytest.mark.parametrize(
+    ("script", "of_the_tag"),
+    [("release_check.py", True), ("release_notes.py", True), ("check_telemetry.py", False)],
+)
+def test_each_release_gate_runs_after_the_version_check_and_before_the_build(script, of_the_tag):
+    """The release check (against the last candidate), the release notes and the telemetry
+    token: each runs once the tag is known to be pyproject's version, and before anything
+    is built or published; the first two for the tag itself."""
+    check = index(lambda s: f"scripts/{script}" in s.get("run", ""))
+    assert ('"$GITHUB_REF_NAME"' in steps()[check]["run"]) == of_the_tag
     assert index(lambda s: "uv version --short" in s.get("run", "")) < check
     assert check < index(lambda s: s.get("run") == "make dist")
 
 
 def jobs() -> dict:
     return yaml.safe_load(WORKFLOW.read_text())["jobs"]
-
-
-def test_the_release_notes_are_checked_before_anything_is_built_or_published():
-    check = index(lambda s: "scripts/release_notes.py" in s.get("run", ""))
-    assert steps()[check]["run"].strip() == (
-        'python3 scripts/release_notes.py "$GITHUB_REF_NAME" > /dev/null'
-    )
-    assert index(lambda s: "uv version --short" in s.get("run", "")) < check
-    assert check < index(lambda s: s.get("run") == "make dist")
 
 
 def test_the_files_published_to_pypi_go_to_the_github_release():
@@ -114,17 +107,21 @@ def test_the_image_job_tests_the_very_image_it_pushes():
     assert build < tests < digest
     run = steps[build]["run"]
     assert run.count("docker buildx build") == 1
-    assert '--output "type=docker,name=lado:release"' in run
-    assert (
-        f'--output "type=image,name={update.IMAGE},push-by-digest=true,name-canonical=true,'
-        'push=true"'
-    ) in run
-    assert "--metadata-file" in run
-    assert "--label org.opencontainers.image.source=https://github.com/ladohq/lado" in run
-    assert steps[tests]["env"]["LADO_TEST_IMAGE"] == "lado:release"
-    assert steps[tests]["run"].strip() == (
-        'uv run python scripts/smoke_ci.py container "$RUNNER_TEMP/container"'
-    )
+    words = shlex.split(run.replace("\\\n", " "))
+    outputs = [
+        dict(part.split("=", 1) for part in words[i + 1].split(","))
+        for i, word in enumerate(words)
+        if word == "--output"
+    ]
+    [loaded] = [one for one in outputs if one["type"] == "docker"]
+    [pushed] = [one for one in outputs if one["type"] == "image"]
+    assert pushed["name"] == update.IMAGE
+    assert pushed["push-by-digest"] == pushed["push"] == "true"
+    assert "--metadata-file" in words
+    # openspec image-release: the package links back to its repository.
+    labels = [words[i + 1] for i, word in enumerate(words) if word == "--label"]
+    assert "org.opencontainers.image.source=https://github.com/ladohq/lado" in labels
+    assert steps[tests]["env"]["LADO_TEST_IMAGE"] == loaded["name"]
     assert any(s.get("run") == "uv sync --locked" for s in steps[:tests])
     download = at(steps, lambda s: s.get("uses", "").startswith("actions/download-artifact@"))
     assert download < build

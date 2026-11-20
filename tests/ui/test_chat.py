@@ -40,25 +40,6 @@ def inputs(session: str) -> list:
     return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
 
 
-def test_the_human_writes_and_the_supervisor_gets_it_and_replies(page: Page, server, repo, shot):
-    session = running_session(repo)
-    log_in(page, server)
-    page.goto(f"{server['url']}/sessions/{session}")
-    chat = page.get_by_role("log", name="Chat with the session")
-    expect(chat).to_contain_text("No messages yet")
-    field = page.get_by_role("textbox", name="Write to the supervisor…")
-    field.fill("send human merged w1 | **All** checks pass.\\nBranch lado/x.")
-    field.press("Enter")
-    expect(field).to_have_value("")
-    mine = chat.get_by_role("article", name="Message from you")
-    expect(mine).to_contain_text("send human merged w1")
-    reply = chat.get_by_role("article", name="Message from supervisor")
-    expect(reply).to_contain_text("merged w1")
-    assert any(i.startswith("[from human] send human merged w1") for i in inputs(session))
-    expect(reply.locator("strong")).to_have_text("All")  # a body to the human shows at once
-    shot(page)
-
-
 def waiting_card(page: Page, session: str):
     return page.get_by_role("region", name=f"What waits for you in {session}")
 

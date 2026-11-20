@@ -1,18 +1,19 @@
 """The agents' access in LADO's image (openspec capability container, change
 container-secrets-and-git): variables from the secrets folder at /run/secrets (a kit that
 needs one starts, and docker inspect holds no value), git's identity from LADO_GIT_NAME and
-LADO_GIT_EMAIL, github.com's https credentials from gh, and the host's ssh agent without
-root's group, through a socket of root's (Docker Desktop's) or of the workspace's owner.
-Only fake values."""
+LADO_GIT_EMAIL, github.com's token from its git server, and no ssh: an old .env's
+LADO_SSH_AGENT changes nothing. Only fake values."""
 
 import json
-import time
+import os
+import shutil
+import socket
+import tempfile
 import urllib.error
 import urllib.request
 
 import pytest
 from container_helpers import (
-    IMAGE,
     agent_environ,
     claude_session,
     docker,
@@ -28,7 +29,6 @@ GIT_WARNING = (
     "lado: warning: git has no user.name or user.email: agents cannot commit; set "
     "LADO_GIT_NAME and LADO_GIT_EMAIL"
 )
-SOCKET = "/run/lado/ssh-agent.sock"
 FAKE_KEY = "fake-6c1d-not-a-key"
 FAKE_GH = "fake-gh-123-not-a-token"
 
@@ -113,19 +113,55 @@ def test_a_new_git_email_on_the_same_home_volume(start):
     assert got.split() == ["Ann", "b@example.com"]
 
 
-def test_gh_gives_github_its_token(start, tmp_path):
+FAKE_ENTRY = "fake-entry-456-not-a-token"
+GITHUB_ACCESS = """
+import pathlib, subprocess, tempfile
+from lado import agent_env, git_kinds, git_servers, state
+
+def fill(env):
+    asked = "protocol=https\\nhost=github.com\\n\\n"
+    done = subprocess.run(["git", "credential", "fill"], env={**env, "GIT_TERMINAL_PROMPT": "0"},
+                          text=True, capture_output=True, input=asked)
+    return done.stdout.replace("\\n", " ")
+
+def gh(env):
+    done = subprocess.run(["gh", "auth", "token"], env=env, text=True, capture_output=True)
+    return done.stdout.strip() or "none"
+
+def launched():
+    env, servers = agent_env.resolve(), state.git_servers()
+    folder = pathlib.Path(tempfile.mkdtemp()) / "gh"
+    return {**env, **git_servers.variables(env, servers),
+            **git_servers.gh_variables(servers, folder, lambda: None)}
+
+import time
+for _ in range(100):  # the server's start takes the GitHub login over first: let it end
+    if state.github_takeover() is not None:
+        break
+    time.sleep(0.2)
+if state.git_server_by_host("github.com"):  # whatever GitHub said of the fake GH_TOKEN
+    git_servers.remove(git_servers.address("github.com"))
+print("before", fill(launched()), "|", gh(launched()))
+checked = git_servers.Checked(git_kinds.by_name("github"), "octo")
+git_servers.save(git_servers.address("github.com"), checked, "%s")
+print("after", fill(launched()), "|", gh(launched()))
+"""
+
+
+def test_github_com_takes_the_token_of_its_git_server_alone(start, tmp_path):
+    """No credential helper of the image's and no login outside LADO: a GH_TOKEN in the
+    secrets folder and gh's own login on the home volume give github.com nothing; once
+    github.com is saved, the agents' git and the real gh take its token."""
     c = served(start, *with_secrets(tmp_path, GH_TOKEN=FAKE_GH))
-    # The environment an agent starts from (agent_env.resolve), with the folder's GH_TOKEN.
-    script = (
-        "import subprocess; from lado import agent_env; env = agent_env.resolve(); "
-        "print(subprocess.run(['git', 'credential', 'fill'], env=env, text=True, "
-        "capture_output=True, check=True, input='protocol=https\\nhost=github.com\\n\\n').stdout); "
-        "print(subprocess.run(['gh', 'auth', 'token'], env=env, text=True, "
-        "capture_output=True).stdout)"
+    c.sh(
+        "mkdir -p ~/.config/gh && printf 'github.com:\\n    oauth_token: gho-home-volume\\n"
+        "    user: someone\\n' > ~/.config/gh/hosts.yml"
     )
-    out = c.python(script)
-    assert f"password={FAKE_GH}" in out.splitlines(), out
-    assert out.splitlines()[-1] == FAKE_GH, out
+    out = c.python(GITHUB_ACCESS % FAKE_ENTRY).splitlines()
+    before, after = out[-2], out[-1]
+    assert "password=" not in before and before.endswith("| none"), out
+    assert f"password={FAKE_ENTRY}" in after and after.endswith(f"| {FAKE_ENTRY}"), out
+    assert FAKE_GH not in "\n".join(out)
     assert FAKE_GH not in docker("inspect", c.name).stdout
 
 
@@ -172,60 +208,6 @@ def test_lados_own_git_takes_the_secrets_folders_access(start, tmp_path):
     assert f"from {PRIVATE}" in c.exec("lado", "kits").stdout
 
 
-AGENT_SOCKET = "/agent/ssh-agent.sock"  # the sidecar's path of the same socket
-
-
-def remove_volume(volume: str) -> None:
-    """The volume, after every container that mounts it (LADO's, the sidecar)."""
-    users = docker("ps", "-aq", "--filter", f"volume={volume}").stdout.split()
-    if users:
-        docker("rm", "-f", *users, check=False)
-    docker("volume", "rm", "-f", volume, check=False)
-
-
-@pytest.fixture
-def ssh_agent(request):
-    """`ssh_agent(uid, owner)`: an ssh agent holding one test key, run as `uid` by a
-    container of its own, its socket in a new volume that LADO's container mounts at
-    /run/lado, the socket then given to `owner`: 0 as Docker Desktop's looks in a
-    container, or the agent's own uid as a Linux host's. OpenSSH's agent serves only its
-    own uid (Docker Desktop's forwarder serves any), so `uid` is the one lado gets.
-    Returns the volume and the sidecar's name; both removed after the test."""
-
-    def make(uid: int, owner: int) -> tuple[str, str]:
-        volume = f"{new_name()}-ssh"
-        request.addfinalizer(lambda: remove_volume(volume))
-        # Mounted where the image has no folder, so Docker copies no owner onto it.
-        docker(
-            "run", "--rm", "-u", "0", "--entrypoint", "sh", "-v", f"{volume}:/agent", IMAGE,
-            "-c", f"chown {uid}:{uid} /agent",
-        )  # fmt: skip
-        name = new_name()
-        docker(
-            "run", "-d", "--name", name, "-u", str(uid), "--entrypoint", "sh",
-            "-v", f"{volume}:/agent", IMAGE, "-c", f"exec ssh-agent -D -a {AGENT_SOCKET}",
-        )  # fmt: skip
-        deadline = time.monotonic() + 30
-        while docker("exec", name, "test", "-S", AGENT_SOCKET, check=False).returncode != 0:
-            assert time.monotonic() < deadline, docker("logs", name, check=False).stderr
-            time.sleep(0.2)
-        # ssh-keygen needs a user of that uid, which only 1000 has: made as root.
-        docker(
-            "exec", "-u", "0", name, "sh", "-c",
-            f"ssh-keygen -q -t ed25519 -N '' -C lado-test -f /tmp/k && chown {uid} /tmp/k",
-        )  # fmt: skip
-        docker("exec", name, "sh", "-c", f"SSH_AUTH_SOCK={AGENT_SOCKET} ssh-add -q /tmp/k")
-        docker("exec", "-u", "0", name, "chown", str(owner), AGENT_SOCKET)
-        return volume, name
-
-    return make
-
-
-def keys(c) -> str:
-    """`ssh-add -l` in an agent's login shell."""
-    return c.exec("bash", "-lc", "ssh-add -l", check=False).stdout
-
-
 def server_ssh_sock(run) -> str:
     """The UI server's own SSH_AUTH_SOCK (its clone and branch listing run git with the
     server's environment), or "none"; `run(script)` runs a shell script in the container,
@@ -238,83 +220,39 @@ def server_ssh_sock(run) -> str:
     return run(script).stdout.strip() or "none"
 
 
-def test_the_first_ssh_to_github_knows_its_host_key(container):
-    """A new home volume and no ssh agent: ssh to github.com fails on the missing key of
-    the user, never on the host's key, and writes no known_hosts. A real ssh to GitHub: when
-    GitHub rotates its keys this turns red, and the image needs the new ones
-    (docker/ssh_known_hosts)."""
-    done = container.exec(
-        "bash", "-lc", "ssh -T -o BatchMode=yes -o ConnectTimeout=20 git@github.com",
-        check=False,
-    )  # fmt: skip
-    assert "Permission denied (publickey)" in done.stderr, done.stderr
-    assert "Host key verification failed" not in done.stderr
-    assert container.sh("test -e ~/.ssh/known_hosts && echo made || echo none").stdout.strip() == (
-        "none"
-    )
+def test_an_old_ssh_agent_line_changes_nothing(compose):
+    """An .env of a version before still names the host's ssh agent: the container has no
+    ssh and says nothing about it, neither in its logs nor in `lado doctor`."""
+    # AF_UNIX paths are short: a socket of the host's in a folder of its own under /tmp.
+    folder = tempfile.mkdtemp(prefix="lado-agent-", dir="/tmp")
+    path = os.path.join(folder, "agent.sock")
+    try:
+        with socket.socket(socket.AF_UNIX) as sock:
+            sock.bind(path)
+            compose.env["LADO_SSH_AGENT"] = path
+            compose.run("up", "-d")
+            health(compose.port)
 
+            def in_lado(script: str, check: bool = True):
+                return compose.run("exec", "-T", "lado", "sh", "-c", script, check=check)
 
-def test_ssh_agent_through_a_root_owned_socket(start, ssh_agent):
-    volume, agent = ssh_agent(1000, 0)
-    c = served(start, "-v", f"{volume}:/run/lado")
-    assert "lado-test (ED25519)" in keys(c), c.logs()
-    assert server_ssh_sock(c.sh) == SOCKET
-    assert "0" not in c.exec("id", "-G").stdout.split()
-    assert "ssh agent" not in c.logs()
-    # Docker Desktop's restart makes the socket root's again; the next start gives it back.
-    docker("exec", "-u", "0", agent, "chown", "0", AGENT_SOCKET)
-    docker("restart", c.name)
-    health(c.port)
-    assert "lado-test (ED25519)" in keys(c), c.logs()
-    assert server_ssh_sock(c.sh) == SOCKET
-
-
-def test_ssh_agent_of_the_projects_owner_stays_its(start, ssh_agent, projects_volume):
-    volume, agent = ssh_agent(2001, 2001)
-    projects = projects_volume(2001, 2001)
-    c = served(start, "-v", f"{volume}:/run/lado", "-v", f"{projects}:/srv/projects",
-               "-e", "LADO_REPOS=/srv/projects")  # fmt: skip
-    assert c.exec("id", "-u").stdout.strip() == "2001"
-    assert "lado-test (ED25519)" in keys(c), c.logs()
-    assert docker("exec", agent, "stat", "-c", "%u", AGENT_SOCKET).stdout.strip() == "2001"
-
-
-def test_a_root_owned_socket_where_lado_may_not_become_root_is_named(start, ssh_agent):
-    volume, _ = ssh_agent(1000, 0)
-    c = served(start, "--security-opt", "no-new-privileges", "-v", f"{volume}:/run/lado")
-    line = (
-        "lado: warning: lado (uid 1000) cannot use the ssh agent socket of uid 0: no root to "
-        "give it to lado (no-new-privileges or dropped capabilities)"
-    )
-    assert line in c.logs().splitlines(), c.logs()
-
-
-def test_no_ssh_agent_no_line(compose):
-    """compose's default, /dev/null: no socket, no SSH_AUTH_SOCK from the image, no line."""
-    compose.run("up", "-d")
-    health(compose.port)
-    shell = compose.run("exec", "-T", "lado", "bash", "-lc", "echo ${SSH_AUTH_SOCK:-none}")
-    assert shell.stdout.strip() == "none"
-
-    def in_lado(script: str):
-        return compose.run("exec", "-T", "lado", "sh", "-c", script)
-
-    assert server_ssh_sock(in_lado) == "none"
-    assert "ssh agent" not in compose.run("logs", "lado").stdout
-
-
-def test_the_ssh_rule_gives_no_root(start, ssh_agent):
-    volume, _ = ssh_agent(1000, 0)
-    c = served(start, "-v", f"{volume}:/run/lado")
-    assert c.exec("sudo", "-n", "true", check=False).returncode != 0
-    with_arg = c.exec("sudo", "-n", "/usr/local/bin/lado-ssh-agent-socket", "x", check=False)
-    assert with_arg.returncode == 2, with_arg.stderr
-    # No SETENV: sudo refuses a variable for it.
-    with_env = c.exec(
-        "sudo", "-n", "PATH=/tmp", "/usr/local/bin/lado-ssh-agent-socket", check=False
-    )
-    assert with_env.returncode != 0 and "lado-ssh-agent-socket" not in with_env.stdout
-    # Run again on lado's socket, it changes nothing.
-    again = c.exec("sudo", "-n", "/usr/local/bin/lado-ssh-agent-socket", check=False)
-    assert again.returncode == 0, again.stderr
-    assert c.exec("stat", "-c", "%u", SOCKET).stdout.strip() == c.exec("id", "-u").stdout.strip()
+            gone = in_lado(
+                "for p in /run/lado /etc/ssh/ssh_known_hosts /etc/sudoers.d/lado-ssh-agent "
+                "/usr/local/bin/lado-ssh-agent-socket /etc/profile.d/lado-ssh-agent.sh; do "
+                'test -e "$p" && echo "$p"; done; true'
+            )
+            assert gone.stdout.strip() == ""
+            shell = compose.run("exec", "-T", "lado", "bash", "-lc", "echo ${SSH_AUTH_SOCK:-none}")
+            assert shell.stdout.strip() == "none"
+            assert server_ssh_sock(in_lado) == "none"
+            # The workspace's path is the test's folder, whose name says ssh.
+            workspace = compose.env["LADO_WORKSPACE"]
+            logs = compose.run("logs", "lado")
+            assert "ssh" not in (logs.stdout + logs.stderr).replace(workspace, "").lower()
+            doctor = in_lado("lado doctor", check=False)
+            assert "ssh" not in (doctor.stdout + doctor.stderr).replace(workspace, "").lower()
+            # The root step's way to root is gone, and no other rule is left.
+            listed = in_lado("sudo -n -l", check=False)
+            assert listed.returncode != 0 and "NOPASSWD" not in listed.stdout, listed
+    finally:
+        shutil.rmtree(folder)

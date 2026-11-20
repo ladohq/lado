@@ -1,5 +1,55 @@
 # Changelog
 
+## 0.48.0 (unreleased)
+
+### New
+
+- **Your own GitLab, GitHub or GitHub Enterprise server.** `lado git-server add <address>
+  --token` checks the server and keeps your token; agents and LADO then clone, push and run
+  `gh` there without a password, `git@…` addresses included. Needs git 2.31+. Also in Settings
+  → Git servers, which shows the token page with the rights the token needs.
+- **github.com in Settings → Git servers.** The GitHub login agents used (`GH_TOKEN`, or `gh
+  auth login`) is moved there once, at the first start of this version; `lado doctor` says so.
+  From then on a `GH_TOKEN` or `gh` login outside LADO is not used: change it in Settings.
+- **Your commit name and email per git server.** `lado git-server author` or Commit author in
+  Settings → Git servers: agents commit to that server's repositories with this name and
+  email, and elsewhere as before. Your global git settings stay untouched. Needs git 2.36+.
+- **Check a git server again.** `lado git-server check <address>` or Check in Settings → Git
+  servers says in one line whether the saved token still works and has the rights agents need
+  to clone and push; a token without them is saved with a warning. Replace token on its row.
+- **`lado doctor` checks your git servers.** One line per saved server says whether its token
+  still works, all asked at once; a server that does not answer is a warning, never a failure.
+- **A failed clone says which git server to check.** When a saved server refuses the token,
+  the clone names it and how to check it; a host not in the list that asks for a login,
+  github.com too, suggests adding it. In New session a button opens Settings → Git servers.
+- **Trust your company's git server.** When a server's certificate is signed by your company,
+  Check in Settings → Git servers shows it with its fingerprint: Trust it, and LADO and agents'
+  git trust it for that server only. A file from IT: `lado git-server certificate`.
+- **Agents open GitLab merge requests with glab.** Each agent's `glab` is signed in to your
+  saved GitLab servers with their tokens and certificates; your own glab login stays yours.
+  Make the token with the scope `api`; Check, Add and Replace token say when it lacks it.
+- **Agents know their repository's server.** Every agent is told on which saved server its
+  repository is and which tool goes with it (`gh` or `glab`), so kits need not say it. A
+  missing or too old tool is said at the start and by `lado doctor`; the agent starts anyway.
+- **A guide to connecting your git server.** [docs/git-servers.md](docs/git-servers.md) walks
+  you in plain words from making a token to agents that push: which rights to tick, what each
+  answer of Check means and what to do, and your company's certificate.
+
+### Fixed
+
+- **An open tip or menu follows its button.** When the window is resized or a phone is
+  turned, an open ⓘ tip or menu moves with its button instead of staying where it was.
+- **A kit chip stays put when you change Where.** In New session a kit chip no longer loses
+  its version for a moment, so its × does not jump away from your finger.
+
+### Docker image
+
+- **No ssh in LADO's container.** Agents in Docker have no ssh, to other machines neither:
+  git goes over https with the tokens of Settings → Git servers, `git@…` addresses included.
+  `LADO_SSH_AGENT` in `.env` is no longer used; the installer no longer asks for it.
+- **glab in LADO's image.** GitLab's CLI 1.130.0 is in the image, its update check and usage
+  statistics off. Outside Docker install glab 1.114.0 or newer yourself.
+
 ## 0.47.0 (2026-11-15)
 
 ### Fixed

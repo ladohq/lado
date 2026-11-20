@@ -17,20 +17,18 @@
 # file's, its value the content): `mkdir -m 700 secrets`, then add
 # `-v "$PWD/secrets:/run/secrets:ro"` to the `docker run`. Without it there are none and
 # LADO says nothing about it. They are read at each agent's start and never in `docker
-# inspect`: GH_TOKEN
-# (git over https to github.com and gh; or `docker exec -it lado gh auth login`),
-# CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`; or log in once with `docker exec -it
-# lado claude`), Codex's CODEX_ACCESS_TOKEN (a ChatGPT Business or Enterprise access
-# token) or OPENAI_API_KEY (or log in once with `docker exec -it lado codex login
-# --device-auth`), a kit's key, a model provider's key for OpenCode and Kilo (or `opencode
-# auth login` / `kilo auth login` inside). Logins made inside stay on the home volume;
-# Codex's is shared by every Codex agent. Every agent of the container can read every
-# variable given to it; another LADO keeps its own folder. LADO_GIT_NAME and LADO_GIT_EMAIL are git's
-# identity for the agents' commits, written at every start (without them `docker logs`
-# warns). The host's ssh agent, for git over ssh: on a Mac add
-# `-v /run/host-services/ssh-auth.sock:/run/lado/ssh-agent.sock` (Docker Desktop's), on
-# Linux `-v "$SSH_AUTH_SOCK:/run/lado/ssh-agent.sock"`; every agent may then use the
-# host's keys. compose.yaml names it LADO_SSH_AGENT.
+# inspect`: CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`; or log in once with
+# `docker exec -it lado claude`), Codex's CODEX_ACCESS_TOKEN (a ChatGPT Business or
+# Enterprise access token) or OPENAI_API_KEY (or log in once with `docker exec -it lado
+# codex login --device-auth`), a kit's key such as YOUGILE_API_KEY, a model provider's key
+# for OpenCode and Kilo (or `opencode auth login` / `kilo auth login` inside). Logins made
+# inside stay on the home volume; Codex's is shared by every Codex agent. Every agent of the
+# container can read every variable given to it; another LADO keeps its own folder.
+# LADO_GIT_NAME and LADO_GIT_EMAIL are git's identity for the agents' commits, written at
+# every start (without them `docker logs` warns). GitHub and your other git servers over
+# https: Settings → Git servers (or `docker exec -it lado lado git-server add github.com
+# --token`); the agents' git, gh and glab get their tokens from there. The container has no ssh:
+# a git server's ssh addresses go over https with its token.
 #
 # Update: `docker rm -f lado`, then the same `docker run` with the new version; the home
 # volume keeps LADO's state, and the new version upgrades its lado.db after a backup. Back:
@@ -46,8 +44,7 @@
 # a running container: `docker exec -u 0`. Another port: -e LADO_PORT=8766 -p
 # 127.0.0.1:8766:8766. compose.yaml runs the same image. The build context is the
 # repository through Dockerfile.dockerignore's allowlist: one wheel (dist/), profile.sh,
-# entrypoint.sh, ssh-agent-socket.sh, ssh-agent-env.sh, ssh_known_hosts (GitHub's
-# public host keys, the only keys in the image) and mise.toml.
+# entrypoint.sh and mise.toml. The image holds no key of anyone's.
 #
 # The repositories' toolchains: make, gcc and g++ are here, and mise installs the rest (Go,
 # Rust, Java, a Python, ...) into the home volume, where it stays for every agent after a
@@ -55,20 +52,23 @@
 # exec lado mise use -g go@1.23`. An agent's `npm install -g` and `uv tool install` go to
 # ~/.local on the home volume too; the image's Node 22 stays first on PATH. The agents' base
 # tools are here too (jq, rg, unzip, zip, xz, bzip2, patch, file, rsync, sqlite3, tree, lsof,
-# nc), and openspec at its pin, its usage statistics and update check off. python3 and
+# nc), openspec at its pin, and glab (GitLab's CLI) at its pin, both with their usage
+# statistics and update check off. python3 and
 # python are the image's Python 3.13, root's, unless a repository's version file or `mise use
 # -g` names another. The system libraries of Playwright's Chromium are here, for the UI
 # tests; the browser itself comes from `make browser`, into the home volume. Other apt
 # packages and databases are not covered.
 
-FROM ghcr.io/astral-sh/uv:0.13.7@sha256:96f40d3904aad8d0bd010539001d36c8e2188b981e1334471a90c4a1d93bb490 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.9@sha256:d3b601f0c7b118bc1753febf7c41cc80981df678445e0254284eecf84db79a7d AS uv
 FROM node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS node
-FROM jdxcode/mise:2026.11.0@sha256:6e05da4113a812cc8ac72b21a38889d019fb0f97df6ce8075c0de98d1cf48cc4 AS mise
-FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
+FROM jdxcode/mise:2026.11.6@sha256:d4de1845114f6d73e90e15f7642885f74f3ca93074491038a2b9c43e4b897f21 AS mise
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc
 
-# tmux 3.3a and git 2.39 from Debian 12; tini reaps what tmux and the agents leave; gh and
-# the ssh client for the agents' pushes; curl fetches gh's keyring (a binary .gpg); make,
-# gcc and g++ build the repositories' Makefiles, Go's cgo and native modules of Node and Python.
+# tmux 3.3a and git 2.39 from Debian 12; tini reaps what tmux and the agents leave; gh; the
+# ssh client, with no key and no agent, so git on an ssh address fails with ssh's own error,
+# which the clone's hint tells (without it git says only `cannot run ssh`); curl fetches
+# gh's keyring (a binary .gpg); make, gcc and g++ build the repositories' Makefiles, Go's
+# cgo and native modules of Node and Python.
 # The agents' base tools, which the kits' scripts and the agent CLIs call before any repository
 # installs a thing: jq (JSON), ripgrep (Codex, OpenCode and Kilo search with rg), archives
 # (unzip, zip, xz, bzip2), patch, file, rsync, sqlite3, tree, lsof and nc.
@@ -142,29 +142,10 @@ RUN printf '%s\n' 'lado ALL=(root) NOPASSWD:SETENV: /usr/local/bin/lado-entrypoi
  && visudo -cf /etc/sudoers.d/lado-entrypoint \
  && mkdir -p /etc/lado && touch /etc/lado/first-start \
  && printf "export LADO_REPOS='/projects'\n" > /etc/profile.d/lado-repos.sh
-# The host's ssh agent: compose binds its socket at /run/lado/ssh-agent.sock, in a folder
-# root's so no agent plants a file there. Docker Desktop's socket is root's in the
-# container; at every start the entrypoint gives it to lado by this program, through a rule
-# of its own that the first start leaves (no SETENV: the program gets a clean environment).
-COPY --chmod=755 docker/ssh-agent-socket.sh /usr/local/bin/lado-ssh-agent-socket
-# SSH_AUTH_SOCK when that is a socket: every login shell reads it, the entrypoint sources it
-# for the server (Clone from URL over ssh).
-COPY docker/ssh-agent-env.sh /etc/profile.d/lado-ssh-agent.sh
-RUN printf '%s\n' 'lado ALL=(root) NOPASSWD: /usr/local/bin/lado-ssh-agent-socket' > /etc/sudoers.d/lado-ssh-agent \
- && chmod 0440 /etc/sudoers.d/lado-ssh-agent \
- && visudo -cf /etc/sudoers.d/lado-ssh-agent \
- && mkdir -p /run/lado && chmod 755 /run/lado
-# GitHub's public host keys, so an agent's first ssh to github.com asks nothing (its shell
-# cannot answer) and ssh still refuses a key that is not GitHub's. The only keys in the
-# image: the human's own come at run time.
-COPY --chmod=644 docker/ssh_known_hosts /etc/ssh/ssh_known_hosts
 # git trusts every repository: the workspace's owner may seem another user (git 2.39 has no
-# `<path>/*` form, and the container has one user). It gets github.com's https credentials
-# from gh: GH_TOKEN, or gh's own login on the home volume (what `gh auth setup-git` writes;
-# the empty helper drops any helper set before it).
-RUN git config --system --add safe.directory '*' \
- && git config --system credential.https://github.com.helper '' \
- && git config --system --add credential.https://github.com.helper '!/usr/bin/gh auth git-credential'
+# `<path>/*` form, and the container has one user). No credential helper of the image's:
+# github.com's token, as any git server's, comes from Settings → Git servers.
+RUN git config --system --add safe.directory '*'
 
 USER lado
 WORKDIR /home/lado
@@ -202,6 +183,30 @@ ARG OPENSPEC_VERSION=1.14.1
 RUN npm install -g --prefix /opt/tools "@fission-ai/openspec@${OPENSPEC_VERSION}" \
  && npm cache clean --force
 
+# glab, GitLab's CLI, at its pin in /opt/tools/bin, beside openspec: agents open merge
+# requests with it on a saved GitLab, signed in by LADO per agent. From the release's
+# archive, checked by the SHA-256 of the release's checksums.txt for the build's
+# architecture; run once, with a configuration folder removed at once, as glab writes one
+# at any call. Its update check and usage statistics are off (GLAB_CHECK_UPDATE,
+# GLAB_SEND_TELEMETRY; each agent's configuration says so too). Dependabot does not read
+# it: move the pin and both sums by hand.
+ARG GLAB_VERSION=1.130.0
+ARG GLAB_SHA256_AMD64=ce06313b2075af25180cd195ab3496d42bc5857c85a1c12ba996838dfe9d822c
+ARG GLAB_SHA256_ARM64=062d53acb0f2cbcc79a014600df1aa0fb440bb3a08a5d4900d3b49b553b22767
+ARG TARGETARCH
+RUN arch="${TARGETARCH:-$(dpkg --print-architecture)}" \
+ && case "$arch" in \
+      amd64) sum="$GLAB_SHA256_AMD64" ;; \
+      arm64) sum="$GLAB_SHA256_ARM64" ;; \
+      *) echo "no glab for $arch" >&2; exit 1 ;; \
+    esac \
+ && curl -fsSL -o /tmp/glab.tar.gz "https://gitlab.com/gitlab-org/cli/-/releases/v${GLAB_VERSION}/downloads/glab_${GLAB_VERSION}_linux_${arch}.tar.gz" \
+ && echo "$sum  /tmp/glab.tar.gz" | sha256sum -c - \
+ && mkdir -p /opt/tools/bin \
+ && tar -xzf /tmp/glab.tar.gz -C /opt/tools/bin --strip-components=1 bin/glab \
+ && rm /tmp/glab.tar.gz \
+ && GLAB_CONFIG_DIR=/tmp/glab-config /opt/tools/bin/glab --version && rm -rf /tmp/glab-config
+
 # LADO from the build's one wheel, last: it changes with every commit, so a build that
 # reuses the earlier layers (a developer's own Docker) rebuilds only from here on.
 # Installed as lado: a chown afterwards would copy the layer. /opt only here and in the
@@ -223,6 +228,8 @@ ENV PATH=/opt/uv/bin:/opt/agents/bin:/opt/tools/bin:/usr/local/sbin:/usr/local/b
     DISABLE_AUTOUPDATER=1 \
     OPENSPEC_TELEMETRY=0 \
     OPENSPEC_NO_UPDATE_CHECK=1 \
+    GLAB_CHECK_UPDATE=false \
+    GLAB_SEND_TELEMETRY=false \
     LADO_PORT=8765
 
 EXPOSE 8765

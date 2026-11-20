@@ -37,6 +37,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: sudo apt-get install -y tmux
       - run: uv sync --locked
+      # The count of the tests per layer in the run's summary, once: a pull request's growth
+      # of the suite next to main's (docs/testing.md, When to add, merge or remove a test).
+      - name: Tests per layer
+        if: matrix.python-version == '3.14'
+        run: uv run python scripts/test_counts.py >> "$GITHUB_STEP_SUMMARY"
       - run: uv run ruff format --check
       - run: uv run ruff check
       - run: uv run pytest -n auto --junitxml=junit.xml

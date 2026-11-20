@@ -1,3 +1,4 @@
+import os
 import subprocess
 from urllib.parse import quote
 
@@ -175,6 +176,34 @@ def test_no_git_is_a_git_error_not_a_crash(tmp_path, monkeypatch):
         gitcache.remote_tags("https://example.invalid/kit.git")
 
 
+def test_kits_git_reaches_the_saved_git_servers(tmp_path, monkeypatch):
+    from lado import git_kinds, git_servers
+
+    for key, value in fake_git(tmp_path, "fail").items():
+        monkeypatch.setenv(key, value)
+    checked = git_servers.Checked(git_kinds.by_name("gitlab"), "ivan")
+    server = git_servers.save(git_servers.address("gitlab.corp.ru"), checked, "glpat-x")[0]
+    expected = git_servers.variables(os.environ, [server])
+    with pytest.raises(gitcache.GitError):
+        gitcache.remote_tags("https://gitlab.corp.ru/kits/k.git")
+    [call] = [c for c in fake_git_calls(tmp_path) if c["args"][0] == "ls-remote"]
+    assert {k: call["env"][k] for k in expected} == expected
+
+
+def test_an_old_git_refuses_kits_git_for_a_saved_server(tmp_path, monkeypatch):
+    from lado import git_kinds, git_servers
+
+    folder = tmp_path / "old-git"
+    folder.mkdir()
+    (folder / "git").write_text("#!/bin/sh\necho 'git version 2.30.2'\n")
+    (folder / "git").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
+    checked = git_servers.Checked(git_kinds.by_name("gitlab"), "ivan")
+    git_servers.save(git_servers.address("gitlab.corp.ru"), checked, "glpat-x")
+    with pytest.raises(gitcache.GitError, match=r": git 2\.30\.2 is older than 2\.31"):
+        gitcache.remote_tags("https://gitlab.corp.ru/kits/k.git")
+
+
 # LADO's git for kits takes the outside folder's variables (lado.agent_env.for_git).
 KIT_URL = "https://example.invalid/acme/kit.git"
 
@@ -221,9 +250,8 @@ def test_a_kits_login_failure_is_told_by_the_clones_kinds(tmp_path, monkeypatch)
     with pytest.raises(gitcache.GitError) as failed:
         gitcache.remote_tags(url)
     assert str(failed.value) == (
-        f"cannot read the tags of {url}: github.com asks for a login ({login}). Log in with "
-        f"GitHub's CLI, or put a token into the file GH_TOKEN of {tmp_path} (LADO_ENV_DIR): "
-        "gh auth login"
+        f"cannot read the tags of {url}: github.com asks for a login ({login}). Add it as a "
+        "git server with a token: lado git-server add https://github.com --token"
     )
     [call] = fake_git_calls(tmp_path / "fake")
     assert (call["env"]["GIT_ASKPASS"], call["env"]["LC_ALL"]) == ("", "C")

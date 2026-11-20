@@ -53,7 +53,16 @@ from lado import (
     tmux,
     update,
 )
-from lado.server import clones, feed, launch, model_entries, models, provider_check, terminals
+from lado.server import (
+    clones,
+    feed,
+    git_entries,
+    launch,
+    model_entries,
+    models,
+    provider_check,
+    terminals,
+)
 from lado.server.auth import Guard
 from lado.server.models import (
     AccessInfo,
@@ -149,7 +158,7 @@ STATIC = Path(__file__).parent / "static"  # the built bundle (make web); not in
 BUILD_HINT = "build it with `make web` in a LADO checkout"
 # The routes whose body is a secret's value: a 422 there repeats none of what it was given.
 SECRET_ROUTE = re.compile(
-    r"/api/((projects/[^/]+/secrets|providers/[^/]+/variables)/|model-servers(/|$))"
+    r"/api/((projects/[^/]+/secrets|providers/[^/]+/variables)/|(model|git)-servers(/|$))"
 )
 
 
@@ -899,7 +908,7 @@ def create_app(
         try:
             return action(*args)
         except model_entries.Refusal as refused:
-            raise HTTPException(400, refused.detail.model_dump(mode="json")) from None
+            raise HTTPException(refused.status, refused.detail.model_dump(mode="json")) from None
 
     @app.get("/api/model-settings", dependencies=[Depends(guard)])
     def model_settings_listing(has_db: bool = Depends(database)) -> models.ModelSettings:
@@ -1035,6 +1044,101 @@ def create_app(
     def clear_model_default(cli: str) -> models.ModelSettings:
         """Clear an agent CLI's default model, installed or not."""
         return entries(model_entries.clear_default, cli)
+
+    # Settings → Git servers: one route per action of `lado git-server`
+    # (lado.server.git_entries). Reading the list asks no server; a refusal is a 400 with
+    # GitEntryRefused. A server's token comes in only in the body of POST /api/git-servers
+    # (SECRET_ROUTE) and is in no answer.
+    git_refused = {400: {"model": models.GitEntryRefused, "description": "refused"}}
+
+    @app.get("/api/git-servers", dependencies=[Depends(guard)])
+    def git_servers_listing(has_db: bool = Depends(database)) -> models.GitServers:
+        """The saved git servers, asking none; no lado.db made."""
+        return git_entries.listing(has_db)
+
+    @app.post("/api/git-servers/check", dependencies=[Depends(guard.changes)])
+    def check_git_server(
+        given: models.GitServerCheckAsked, has_db: bool = Depends(database)
+    ) -> models.GitServerCheck:
+        """What the add form says of an address before Add, the server asked with no token;
+        saves nothing."""
+        return git_entries.check(given, has_db)
+
+    @app.post(
+        "/api/git-servers",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=git_refused,
+    )
+    def add_git_server(given: models.GitServerAdd) -> models.GitServerAdded:
+        """Check and save a server with its token as `lado git-server add` does."""
+        return entries(git_entries.add, given)
+
+    @app.post(
+        "/api/git-servers/{host}/check",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses={
+            404: {"model": models.GitEntryRefused, "description": "no such server"},
+            422: {"model": models.GitEntryRefused, "description": "its token file is missing"},
+        },
+    )
+    def check_saved_git_server(host: str) -> models.GitServerChecked:
+        """Check the saved server of `host` again with its saved token as `lado git-server
+        check` does; a passing check saves the login it saw. The token is in no answer."""
+        return entries(git_entries.check_saved, host)
+
+    # Before the removal's route, whose `{host:path}` would take `<host>/certificate` too.
+    @app.put(
+        "/api/git-servers/{host}/certificate",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=git_refused,
+    )
+    def set_git_server_certificate(
+        host: str, given: models.GitServerCertificateSet
+    ) -> models.GitServerChecked:
+        """Trust the certificate a check offered for the server (or Undo gives back), then
+        check it again with it, as `lado git-server certificate <address> <file>` does."""
+        return entries(git_entries.set_certificate, host, given)
+
+    @app.delete(
+        "/api/git-servers/{host}/certificate",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=git_refused,
+    )
+    def clear_git_server_certificate(host: str) -> models.GitServerCertificateRemoved:
+        """Remove the server's certificate as `lado git-server certificate --clear` does;
+        the answer holds its PEM for Undo."""
+        return entries(git_entries.clear_certificate, host)
+
+    # Before the removal's route, whose `{host:path}` would take `<host>/author` too.
+    @app.put(
+        "/api/git-servers/{host}/author",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=git_refused,
+    )
+    def set_git_server_author(
+        host: str, given: models.GitServerAuthor
+    ) -> models.GitServerAuthorDone:
+        """Set the server's commit author as `lado git-server author --name --email` does."""
+        return entries(git_entries.set_author, host, given)
+
+    @app.delete(
+        "/api/git-servers/{host}/author",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=git_refused,
+    )
+    def clear_git_server_author(host: str) -> models.GitServerAuthorDone:
+        """Clear the server's commit author as `lado git-server author --clear` does."""
+        return entries(git_entries.clear_author, host)
+
+    @app.delete(
+        "/api/git-servers/{host:path}",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=git_refused,
+    )
+    def remove_git_server(host: str) -> models.GitServerRemoved:
+        """Remove the server of `host` and its token as `lado git-server remove` does; a
+        folder of it the disk keeps is a `warning`."""
+        return entries(git_entries.remove, host)
 
     @app.get("/api/providers/logins", dependencies=[Depends(guard)])
     def provider_logins() -> ProvidersPage:

@@ -17,8 +17,9 @@ export DISABLE_AUTOUPDATER=1
 # openspec sends no usage statistics and asks npm for no newer version: the image is its pin.
 export OPENSPEC_TELEMETRY=0
 export OPENSPEC_NO_UPDATE_CHECK=1
+# glab checks no newer version and sends no usage statistics: the image is its pin.
+export GLAB_CHECK_UPDATE=false
+export GLAB_SEND_TELEMETRY=false
 export LANG=en_US.UTF-8
 # The agents' variables, one file each (a worker the supervisor's `lado mcp` spawns too).
 export LADO_ENV_DIR=/run/secrets
-# The host's ssh agent: lado-ssh-agent.sh beside this file (docker/ssh-agent-env.sh), which
-# the entrypoint sources for the server too.

@@ -36,31 +36,6 @@ def said(text: str) -> str:
     return text.replace("$Arrow", ARROW)
 
 
-def test_the_stamp_and_the_versions_install_sh():
-    assert re.findall(r"(?m)^\$LadoVersion = .*$", TEXT) == ["$LadoVersion = ''"]
-    assert '"https://github.com/ladohq/lado/releases/download/v$LadoVersion/install.sh"' in TEXT
-
-
-def test_an_unstamped_copy_refuses():
-    assert "if (-not $LadoVersion)" in TEXT
-    assert (
-        "this install.ps1 carries no version: take the release's "
-        "(https://github.com/ladohq/lado/releases/latest/download/install.ps1)"
-    ) in TEXT
-
-
-def test_the_switches_map_to_the_flags():
-    assert re.search(r"param\(\s*\[switch\]\$Yes,\s*\[switch\]\$Phone,\s*\[switch\]\$NoPhone", TEXT)
-    for switch, flag in (("Yes", "--yes"), ("Phone", "--phone"), ("NoPhone", "--no-phone")):
-        assert f"if (${switch}) {{ $Flags += '{flag}' }}" in TEXT
-
-
-def test_install_sh_runs_in_the_distribution_with_its_terminal():
-    """Not captured or piped, so install.sh's questions reach the human's console."""
-    assert "& wsl.exe -d $Distro --cd '~' -- sh -c $Line" in TEXT
-    assert "$Line = \"curl -fsSL '$Url' | sh -s -- $($Flags -join ' ')\"" in TEXT
-
-
 def test_it_never_calls_exit_under_iex():
     """`exit` under `irm | iex` would close the human's PowerShell window: only a file run
     (PSCommandPath) exits with the code."""
@@ -88,45 +63,6 @@ def test_no_powershell_7_only_syntax():
 def test_it_stops_on_errors_and_strict_mode():
     assert "Set-StrictMode -Version 2.0" in TEXT
     assert "$ErrorActionPreference = 'Stop'" in TEXT
-
-
-def test_no_docker_names_docker_desktop():
-    assert "Get-Command docker -ErrorAction SilentlyContinue" in TEXT
-    assert "https://www.docker.com/products/docker-desktop/" in TEXT
-    assert "Docker Desktop is not installed" in TEXT
-
-
-def test_a_stopped_docker_desktop_is_started_and_waited_for():
-    assert "Docker\\Docker\\Docker Desktop.exe" in TEXT
-    assert "Start-Process $Exe" in TEXT
-    assert "AddSeconds(120)" in TEXT
-
-
-def test_ubuntu_is_found_and_docker_desktop_skipped():
-    assert "[System.Text.Encoding]::Unicode" in TEXT  # wsl -l -q answers in UTF-16
-    assert "-replace \"`0\", ''" in TEXT
-    assert "$_ -notlike 'docker-desktop*' -and $_ -like 'Ubuntu*'" in TEXT
-
-
-def test_no_ubuntu_offers_wsl_install_and_a_rerun():
-    assert "LADO runs in Ubuntu inside WSL" in TEXT
-    assert "Read-Host 'Install Ubuntu now? [y/N]'" in TEXT
-    assert "& wsl.exe --install -d Ubuntu" in TEXT
-    assert "administrator" in TEXT and "restart" in TEXT
-    assert "open Ubuntu from the Start menu once, make its user, then run the same command" in TEXT
-
-
-def test_no_wsl_says_docker_desktop_needs_wsl2():
-    assert "Docker Desktop needs WSL 2" in TEXT
-
-
-def test_no_integration_names_the_setting():
-    assert "Settings $Arrow Resources $Arrow WSL integration" in TEXT
-    assert said("Settings $Arrow Resources $Arrow WSL integration") == (
-        f"Settings {ARROW} Resources {ARROW} WSL integration"
-    )
-    assert "$Arrow = [char]0x2192" in TEXT
-    assert "'docker', 'version', '--format', '{{.Server.Version}}'" in TEXT
 
 
 needs_pwsh = pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh is not on PATH")
@@ -175,40 +111,131 @@ def test_the_scriptblock_form_takes_the_switches(tmp_path):
     assert "CODE=1" in done.stdout
 
 
+# A fake Windows: docker, wsl.exe and Docker Desktop.exe as Python scripts on PATH (and
+# under ProgramFiles), each set by the environment. Each wsl.exe call but the two it answers
+# itself goes to LOG, and prints a line, which the human's console must show.
+FAKE_DOCKER = r"""
+import os, sys
+# FAKE_DOCKER=down: `docker info` fails until Docker Desktop.exe has run.
+if os.environ.get("FAKE_DOCKER") == "down" and not os.path.exists(STARTED):
+    sys.exit(1)
+"""
+FAKE_DESKTOP = r"""
+open(STARTED, "w").close()
+"""
 FAKE_WSL = r"""
-import json, sys
+import json, os, sys
 args = sys.argv[1:]
 if args == ["-l", "-q"]:  # as WSL answers: UTF-16, Docker Desktop's own first
-    sys.stdout.buffer.write("docker-desktop\r\nUbuntu-24.04\r\n".encode("utf-16-le"))
-elif "docker" in args:
+    names = os.environ.get("FAKE_DISTROS", "docker-desktop,Ubuntu-24.04").split(",")
+    sys.stdout.buffer.write("".join(n + "\r\n" for n in names).encode("utf-16-le"))
+elif "docker" in args:  # Docker in the distribution, as Desktop's WSL integration gives it
+    if os.environ.get("FAKE_INTEGRATION") == "off":
+        sys.exit(1)
     print("27.0.0")
 else:
     with open(LOG, "a") as log:
         log.write(json.dumps(args) + "\n")
+    print("install.sh speaks")
 """
 
 
-@needs_pwsh
-def test_it_runs_its_install_sh_in_ubuntu_with_the_switches(tmp_path):
-    """On a fake Windows (fake docker and wsl.exe on PATH): Ubuntu is taken, never
-    docker-desktop, and install.sh of its version runs there with the switches' flags."""
+def on_fake_windows(
+    tmp_path: Path,
+    *switches: str,
+    wsl: bool = True,
+    docker: bool = True,
+    desktop: bool = False,
+    answer: str | None = None,
+    **env: str,
+) -> tuple[subprocess.CompletedProcess, list[list[str]]]:
+    """The stamped script run with `switches` on a fake Windows (without wsl.exe, docker or
+    Docker Desktop.exe where those are False): its run and the wsl.exe calls LOG got.
+    `answer` is typed in at its question; without one it runs -NonInteractive."""
     script, fakes, log = stamped(tmp_path), tmp_path / "fakes", tmp_path / "wsl.jsonl"
+    programs = tmp_path / "Program Files"
+    started = tmp_path / "desktop-started"
     fakes.mkdir()
-    for name, body in (("docker", "pass"), ("wsl.exe", FAKE_WSL)):
-        (fakes / name).write_text(f"#!{sys.executable}\nLOG = {str(log)!r}\n{body}\n")
-        (fakes / name).chmod(0o755)
+    exe = programs / "Docker" / "Docker" / "Docker Desktop.exe"
+    wanted = [(fakes / "docker", FAKE_DOCKER, docker), (fakes / "wsl.exe", FAKE_WSL, wsl)]
+    for path, body, made in [*wanted, (exe, FAKE_DESKTOP, desktop)]:
+        if made:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                f"#!{sys.executable}\nLOG = {str(log)!r}\nSTARTED = {str(started)!r}\n{body}"
+            )
+            path.chmod(0o755)
     path = f"{Path(shutil.which('pwsh')).resolve().parent}{os.pathsep}{fakes}"
+    mode = [] if answer is not None else ["-NonInteractive"]
     done = subprocess.run(
-        ["pwsh", "-NoProfile", "-NonInteractive", "-Command",
-         f"& ([scriptblock]::Create((Get-Content -Raw '{script}'))) -Yes -Phone"],
-        capture_output=True, text=True, timeout=120, env={**os.environ, "PATH": path},
+        ["pwsh", "-NoProfile", *mode, "-Command",
+         f"& ([scriptblock]::Create((Get-Content -Raw '{script}'))) {' '.join(switches)}"],
+        capture_output=True, text=True, timeout=120, input=answer,
+        env={**os.environ, "PATH": path, "ProgramFiles": str(programs), **env},
     )  # fmt: skip
+    calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+    return done, calls
+
+
+URL = "https://github.com/ladohq/lado/releases/download/v0.44.0/install.sh"
+
+
+@needs_pwsh
+@pytest.mark.parametrize(
+    ("switches", "flags"),
+    [(("-Yes", "-Phone"), "--yes --phone"), (("-NoPhone",), "--no-phone")],
+)
+def test_it_runs_its_install_sh_in_ubuntu_with_the_switches(tmp_path, switches, flags):
+    """Ubuntu is taken, never docker-desktop (listed first, in UTF-16), and install.sh of
+    its version runs there with the switches' flags, its output on the human's console."""
+    done, calls = on_fake_windows(tmp_path, *switches)
     assert "Installing LADO 0.44.0 in Ubuntu-24.04" in done.stdout, done.stdout + done.stderr
-    url = "https://github.com/ladohq/lado/releases/download/v0.44.0/install.sh"
-    assert [json.loads(line) for line in log.read_text().splitlines()] == [
+    assert calls == [
         ["-d", "Ubuntu-24.04", "--cd", "~", "--", "sh", "-c",
-         f"curl -fsSL '{url}' | sh -s -- --yes --phone"],
+         f"curl -fsSL '{URL}' | sh -s -- {flags}"],
     ]  # fmt: skip
+    assert "install.sh speaks" in done.stdout
+
+
+@needs_pwsh
+def test_a_stopped_docker_desktop_is_started_and_waited_for(tmp_path):
+    done, calls = on_fake_windows(tmp_path, "-Yes", desktop=True, FAKE_DOCKER="down")
+    assert "Waiting for Docker Desktop to start" in done.stdout, done.stdout + done.stderr
+    assert "Installing LADO 0.44.0 in Ubuntu-24.04" in done.stdout
+    assert len(calls) == 1
+
+
+DESKTOP = "https://www.docker.com/products/docker-desktop/"
+INTEGRATION = f"Settings {ARROW} Resources {ARROW} WSL integration for Ubuntu-24.04"
+
+
+@needs_pwsh
+@pytest.mark.parametrize(
+    ("windows", "said"),
+    [
+        ({"docker": False}, f"Docker Desktop is not installed: get it from {DESKTOP}"),
+        ({"FAKE_DOCKER": "down"}, "Docker does not answer and Docker Desktop is not found"),
+        ({"wsl": False}, "WSL is missing, and Docker Desktop needs WSL 2"),
+        ({"FAKE_DISTROS": "docker-desktop"}, "install it (wsl --install -d Ubuntu)"),
+        ({"FAKE_INTEGRATION": "off"}, f"in Docker Desktop turn on {INTEGRATION}"),
+    ],
+    ids=["no docker", "no desktop", "no wsl", "no ubuntu", "no integration"],
+)
+def test_a_stop_names_its_next_step_and_installs_nothing(tmp_path, windows, said):
+    """With -Yes nothing is asked: Ubuntu is not installed either."""
+    done, calls = on_fake_windows(tmp_path, "-Yes", **windows)
+    assert "lado install: " in done.stdout and said in done.stdout, done.stdout + done.stderr
+    assert calls == []
+
+
+@needs_pwsh
+def test_a_yes_to_its_question_installs_ubuntu_and_says_to_run_it_again(tmp_path):
+    done, calls = on_fake_windows(tmp_path, answer="y\n", FAKE_DISTROS="docker-desktop")
+    assert "LADO runs in Ubuntu inside WSL" in done.stdout, done.stdout + done.stderr
+    assert calls == [["--install", "-d", "Ubuntu"]]
+    said = " ".join(done.stdout.split())
+    assert "open Ubuntu from the Start menu once, make its user, then run the same command" in said
+    assert "irm https://github.com/ladohq/lado/releases/latest/download/install.ps1 | iex" in said
 
 
 @needs_pwsh

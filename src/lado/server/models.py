@@ -251,6 +251,16 @@ class ScratchTarget(BaseModel):
     project: "ProjectPlace | None" = None  # for in_project: the project the folder is in
 
 
+class GitServerWay(BaseModel):
+    """An access failure's way out through Settings → Git servers (lado.clone.ServerWay):
+    check the saved server git took the token of, or add the unsaved host."""
+
+    way: Literal["check", "add"]
+    host: str  # the server's key, host[:port]: `?check=<host>`
+    address: str  # its root: `?add=<address>`
+    text: str  # the sentence the UI shows instead of the hint's
+
+
 class CloneRefused(BaseModel):
     """The detail of a 400 to a listing or a clone: why, by kind, and what the human can do."""
 
@@ -258,6 +268,7 @@ class CloneRefused(BaseModel):
     # lado.clone's kinds (ssh_denied, login_needed, not_found, ...), a target state, no_git
     kind: str
     hint: "HintInfo | None"
+    git_server: GitServerWay | None = None
 
 
 class CloneStart(BaseModel):
@@ -779,6 +790,13 @@ class EntryRefused(BaseModel):
     warnings: list[str]
 
 
+class GitEntryRefused(EntryRefused):
+    """A refusal of Settings → Git servers' API; `choose_kind` for a server that gave no
+    HTTP answer, whose kind may be chosen to save it without a check."""
+
+    choose_kind: bool
+
+
 class ServerCheck(BaseModel):
     """What the server form says before Add: the probe of its address (None when it was not
     probed or failed), the refusals Add would meet, each under its field, the warnings (a
@@ -788,6 +806,192 @@ class ServerCheck(BaseModel):
     refusals: list[EntryRefused]
     warnings: list[str]
     notes: list[str]
+
+
+class GitServerCertificate(BaseModel):
+    """The certificate trusted for a saved server, from its file: its name, the date its
+    validity ends (YYYY-MM-DD) and whether it has."""
+
+    name: str
+    not_after: str
+    expired: bool
+
+
+class CertificateOffer(BaseModel):
+    """A certificate a check shows (lado.git_certificates.Certificate): its subject, its
+    issuer's organization, its validity (YYYY-MM-DD), its SHA-256 as colon hex, whether it
+    is the server's own signed by itself (`own`), the server's own at all (`leaf`: renewed
+    with the server) or an authority below the root (`intermediate`), and its PEM, which `PUT
+    /api/git-servers/{host}/certificate` takes back when the human trusts it."""
+
+    subject: str
+    issuer: str
+    valid_from: str
+    valid_until: str
+    sha256: str
+    own: bool
+    intermediate: bool
+    leaf: bool
+    pem: str
+
+
+class GitServerInfo(BaseModel):
+    """A saved git server as lado.db keeps it, asking it nothing: `host` its key (host and a
+    port other than the scheme's), `login` None for one saved without a check, whether
+    its token file is there (never the token), its commit author (both or neither), and
+    the certificate trusted for it (None for none)."""
+
+    address: str
+    host: str
+    kind: str
+    kind_title: str
+    login: str | None
+    has_token: bool
+    author_name: str | None
+    author_email: str | None
+    certificate: GitServerCertificate | None = None
+
+
+class GitKindInfo(BaseModel):
+    """A kind of git server: its token page under a server's root and what a token needs."""
+
+    name: str
+    title: str
+    token_path: str
+    scopes: str
+
+
+class GitServers(BaseModel):
+    """The saved git servers, by host, and the kinds LADO knows."""
+
+    servers: list[GitServerInfo]
+    kinds: list[GitKindInfo]
+
+
+class GitServerRemoved(GitServers):
+    """The git servers left after a removal, and why a folder of the removed one stayed
+    (`could not remove <path>: <why>`; None when none did)."""
+
+    warning: str | None
+
+
+class GitServerCheckAsked(BaseModel):
+    """An address the add form checks; `certificate` the PEM the human trusted for it,
+    which the check trusts alone."""
+
+    address: str
+    certificate: str | None = None
+
+
+class GitServerCheck(BaseModel):
+    """What the add form says of an address before Add, asking the server with no token:
+    its root (None when it is no address), the kind it looks like (a hint only) with its
+    token page and scopes, whether the kind must be chosen and why (`unchecked`), whether the
+    address is saved already, the refusals Add would meet and the plain-http warning; for a
+    certificate not trusted, the authority to trust (`certificate_offer`) and the one given
+    that did not fit (`certificate_before`)."""
+
+    address: str | None
+    hint: str | None
+    token_page: str | None
+    scopes: str | None
+    choose_kind: bool
+    unchecked: GitEntryRefused | None
+    saved: bool
+    refusals: list[GitEntryRefused]
+    warnings: list[str]
+    certificate_offer: CertificateOffer | None = None
+    certificate_before: CertificateOffer | None = None
+
+
+class GitServerAdd(BaseModel):
+    """A git server to check and save with its token; `kind` only when the human chose one
+    (--kind); `certificate` the PEM the human trusted for it, saved with it. No answer gives
+    the token back."""
+
+    address: str
+    token: str
+    kind: str | None = None
+    certificate: str | None = None
+
+
+class GitServerCertificateSet(BaseModel):
+    """The certificate to trust for a saved server: the PEM a check offered (or Undo gives
+    back)."""
+
+    pem: str
+
+
+class GitServerCertificateRemoved(BaseModel):
+    """A server's certificate removed: the server as saved and the PEM it held, for Undo
+    (None when it held none)."""
+
+    server: GitServerInfo
+    pem: str | None
+
+
+class GitServerAdded(BaseModel):
+    """A git server saved or replaced: as saved, the line that says so, the warnings (its
+    token over plain http://), for a token that lacks a right agents need, the page's
+    `warning` and the rights it lacks (`missing_scopes`), and, for one that leaves the
+    kind's tool without its changes, what the tool cannot do (`tool_cannot`)."""
+
+    server: GitServerInfo
+    line: str
+    replaced: bool
+    warnings: list[str]
+    warning: str | None
+    missing_scopes: list[str]
+    tool_cannot: str | None = None
+
+
+class GitServerChecked(BaseModel):
+    """A saved git server checked again with its saved token (lado.git_servers.check):
+    `outcome` one of git_servers.OUTCOMES, its saved kind, the login seen (ok,
+    scopes_missing), the rights the token lacks, whether the server told them, whether it
+    had a login before, the page's line (`message`) and its info tip (`hint`, "" for none),
+    and the server as saved after it (a passing check saves its login; None when it was
+    removed meanwhile); for a certificate not trusted or changed, the authority to trust and
+    the saved one that no longer fits."""
+
+    outcome: Literal[
+        "ok",
+        "token_refused",
+        "scopes_missing",
+        "no_answer",
+        "cert_untrusted",
+        "cert_changed",
+        "cert_name",
+        "cert_expired",
+        "redirect",
+        "other_kind",
+        "unrecognised",
+    ]
+    kind: str
+    login: str | None
+    missing_scopes: list[str]
+    rights_checked: bool
+    was_checked: bool
+    message: str
+    hint: str
+    server: GitServerInfo | None
+    certificate_offer: CertificateOffer | None = None
+    certificate_before: CertificateOffer | None = None
+
+
+class GitServerAuthor(BaseModel):
+    """A git server's commit author to set: both its name and its email."""
+
+    name: str
+    email: str
+
+
+class GitServerAuthorDone(BaseModel):
+    """A git server's commit author set or cleared: the server as saved and the line of
+    `lado git-server author` that says so."""
+
+    server: GitServerInfo
+    line: str
 
 
 class LoginInfo(BaseModel):

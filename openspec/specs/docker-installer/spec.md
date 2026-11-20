@@ -145,21 +145,6 @@ listens on at this computer's loopback; with none free it SHALL stop and say so.
 - **WHEN** something listens on 127.0.0.1:8765
 - **THEN** `.env` has `LADO_PORT=8766` and the printed link has `:8766`
 
-### Requirement: The installer gives the agents the ssh agent there is
-
-A fresh install SHALL write `LADO_SSH_AGENT`: on macOS `/run/host-services/ssh-auth.sock`
-(Docker Desktop's), elsewhere `$SSH_AUTH_SOCK` when it is a socket, saying that this path
-may change at a new login; with neither it SHALL write none and say that git over ssh is
-off.
-
-#### Scenario: macOS
-- **WHEN** a fresh install runs on macOS
-- **THEN** `.env` has `LADO_SSH_AGENT=/run/host-services/ssh-auth.sock`
-
-#### Scenario: Linux without an agent
-- **WHEN** `SSH_AUTH_SOCK` is unset on Linux
-- **THEN** `.env` has no `LADO_SSH_AGENT` and the script says git over ssh is off
-
 ### Requirement: The installer's folder and its compose project
 
 The installer SHALL work in `~/lado-docker`, made when missing, or in the folder `--dir`
@@ -378,3 +363,24 @@ and stop.
 #### Scenario: No WSL integration
 - **WHEN** `tests/test_install_ps1.py` reads the script
 - **THEN** its stop names `Settings → Resources → WSL integration`
+
+### Requirement: The installer gives the container no ssh agent
+
+A fresh install SHALL neither look for an ssh agent nor write `LADO_SSH_AGENT`. A rerun
+SHALL keep a `LADO_SSH_AGENT` line of `.env` as it is, for the way back to a version
+before, and SHALL print one note: `LADO_SSH_AGENT in .env is no longer used: git goes over
+https through Settings → Git servers; remove the line once you no longer go back to a
+version before 0.48.0.`
+
+#### Scenario: macOS
+- **WHEN** a fresh install runs on macOS
+- **THEN** `.env` has no `LADO_SSH_AGENT`, and the output names no ssh agent
+
+#### Scenario: Linux with an ssh agent
+- **WHEN** a fresh install runs on Linux with `SSH_AUTH_SOCK` naming a socket
+- **THEN** `.env` has no `LADO_SSH_AGENT`
+
+#### Scenario: An update of an .env with the ssh agent
+- **WHEN** `.env` has `LADO_VERSION=0.47.0` and
+  `LADO_SSH_AGENT=/run/host-services/ssh-auth.sock`, and the script is `0.48.0`
+- **THEN** it updates, `.env` still has that line, and the output has the note once

@@ -3762,6 +3762,51 @@ test("a way the human picks before the recent places answer is kept", async () =
   expect(placeBox().value).toBe("Clone from URL");
 });
 
+// Each ask of the recent places waits for its own answer (LAD-287).
+function holdRecent() {
+  const pending: ((value: Response) => void)[] = [];
+  answers["GET /api/folders/recent"] = () => new Promise<Response>((resolve) => pending.push(resolve));
+  return pending;
+}
+
+test("a window closed before the recent places answer opens again on the last place, the task kept", async () => {
+  const pending = holdRecent();
+  folders["/src/lado"] = folder("/src/lado");
+  open();
+  fireEvent.click(within(rail()).getByRole("button", { name: "New session" }));
+  const dialog = await screen.findByRole("dialog", { name: "New session" });
+  writeFirst("Look at the tests");
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  fireEvent.click(within(rail()).getByRole("button", { name: "New session" }));
+  await screen.findByRole("dialog", { name: "New session" });
+  await waitFor(() => expect(pending.length).toBe(2));
+  await act(async () => pending[1](json([recentFolder("/src/lado")])));
+  await waitFor(() => expect(placeBox().value).toBe("lado"));
+  expect(firstField().value).toBe("Look at the tests");
+  fireEvent.keyDown(screen.getByRole("dialog", { name: "New session" }), { key: "Escape" });
+  delete answers["GET /api/folders/recent"];
+  recent = [recentFolder("/src/lado")];
+  fireEvent.click(within(rail()).getByRole("button", { name: "New session" }));
+  await screen.findByRole("dialog", { name: "New session" });
+  await waitFor(() => expect(placeBox().value).toBe("lado"));
+});
+
+test("a place picked before a close that came before the recent places is kept", async () => {
+  const pending = holdRecent();
+  open();
+  fireEvent.click(within(rail()).getByRole("button", { name: "New session" }));
+  const dialog = await screen.findByRole("dialog", { name: "New session" });
+  await pickPlace("New empty folder…");
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await act(async () => pending[0](json([recentFolder("/src/lado")])));
+  fireEvent.click(within(rail()).getByRole("button", { name: "New session" }));
+  await screen.findByRole("dialog", { name: "New session" });
+  await waitFor(() => expect(pending.length).toBe(2));
+  await act(async () => pending[1](json([recentFolder("/src/lado")])));
+  await waitFor(() => expect(calls.filter((c) => c.path === "/api/folders/recent").length).toBe(2));
+  expect(placeBox().value).toBe("New empty folder");
+});
+
 test("no author: the text and the hint with Copy under Folder name, Create and start off", async () => {
   answers["GET /api/scratch-target"] = () =>
     json(

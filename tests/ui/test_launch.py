@@ -1176,6 +1176,100 @@ def test_an_untouched_focus_goes_to_task_when_the_recent_places_come(page: Page,
     expect(dialog.get_by_role("textbox", name="Task")).to_be_focused()
 
 
+def test_a_window_closed_before_the_recent_places_came_opens_again_on_the_last_place(
+    page: Page, server, repo, shot
+):
+    """LAD-287: a task typed and Esc before the recent places answer; the next opening
+    shows the last place once they come, the task kept, and so does the one after."""
+    stopped_session(repo)
+    dialog, give = opened_with_the_recent_places_held(page, server)
+    where = dialog.get_by_role("combobox", name="Where")
+    dialog.get_by_role("textbox", name="Task").fill("Look at the tests")
+    page.keyboard.press("Escape")
+    expect(dialog).to_have_count(0)
+    rail = page.get_by_role("navigation", name="Sections")
+    rail.get_by_role("button", name="New session").click()
+    give()
+    expect(where).to_have_value(repo.name)
+    expect(dialog.get_by_role("textbox", name="Task")).to_have_value("Look at the tests")
+    shot(page, "again")
+    page.unroute("**/api/folders/recent")
+    page.keyboard.press("Escape")
+    expect(dialog).to_have_count(0)
+    rail.get_by_role("button", name="New session").click()
+    expect(where).to_have_value(repo.name)
+
+
+def test_a_kit_that_expects_a_skill_no_kit_gives_is_refused_in_the_windows_words(
+    page: Page, server, repo, shot
+):
+    """A start refused because kit sdlc expects skill tracker and no kit of the session
+    gives it: the window's advice names no CLI option (LAD-287)."""
+    folder = repo.parent / "kits" / "sdlc"
+    folder.mkdir(parents=True)
+    (folder / "kit.yaml").write_text("name: sdlc\nversion: 1.0.0\nexpects:\n  skills: [tracker]\n")
+    agent_helpers.install_kit(folder)
+    log_in(page, server)
+    dialog, where = other_folder(page)
+    where.fill(str(repo))
+    expect(dialog).to_contain_text("✓ Ready · branch main")
+    agent(dialog).select_option("fake")
+    add_kit(dialog).select_option("sdlc")
+    start_button(dialog).click()
+    alert = dialog.get_by_role("alert")
+    expect(alert).to_contain_text(
+        'kit "sdlc" expects skill "tracker", which no kit of the session provides: add a kit '
+        "that provides it to the session"
+    )
+    expect(alert).not_to_contain_text("--kit")
+    shot(page, "refused")
+    assert state.get_session("my-repo") is None
+
+
+@pytest.fixture
+def claude_cli(tmp_path, monkeypatch):
+    """A stand-in of Claude Code on the server's PATH that prints a version; taken before
+    `server`."""
+    folder = tmp_path / "clis"
+    folder.mkdir()
+    script = folder / "claude"
+    script.write_text("#!/bin/sh\necho 2.1.295\n")
+    script.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
+
+
+def test_claude_codes_permissions_name_auto_in_words_and_list_no_alias(
+    page: Page, claude_cli, server, repo, shot
+):
+    """Claude Code's auto mode is a row in words, its description shown once chosen, Team's
+    summary in words; neither `auto` nor its other name `manual` is a row (LAD-287)."""
+    log_in(page, server)
+    dialog, where = other_folder(page)
+    where.fill(str(repo))
+    agent(dialog).select_option("claude")
+    modes = dialog.locator(".mode-list .mode-title")
+    expect(modes).to_have_text(
+        [
+            "Ask before changes (recommended)",
+            "Edit files without asking",
+            "Let Claude judge the risk",
+            "Full access, never ask ⚠",
+            "Only what your settings allow",
+            "Plan only, no changes",
+        ]
+    )
+    dialog.get_by_role("radio", name="Let Claude judge the risk").check()
+    chosen = dialog.locator(".mode-list li.on")
+    expect(chosen).to_contain_text(
+        "Checks each action for risk, runs what it judges safe and stops the rest. Needs a "
+        "plan and model with Claude Code's auto mode."
+    )
+    shot(page, "permissions")
+    dialog.get_by_role("button", name="Hide").click()
+    expect(dialog.locator(".team-sum")).to_contain_text("Permissions Claude judges the risk")
+    shot(page, "team")
+
+
 def test_team_opens_with_permissions_in_words(page: Page, server, repo, shot):
     log_in(page, server)
     dialog, where = other_folder(page)

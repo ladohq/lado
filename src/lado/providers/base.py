@@ -475,6 +475,9 @@ class Provider(ABC):
     # The words of each mode the CLI's own behaviour confirms (mode_words); a mode without
     # them is named by its value.
     permission_mode_words: Mapping[str, ModeWords] = {}
+    # Other names the CLI takes for one of its modes (alias -> mode): taken, stored as the
+    # mode, never listed.
+    permission_mode_aliases: Mapping[str, str] = {}
     # The model server API its CLI speaks (one of SERVER_APIS); "" for none.
     server_api: str = ""
     # Whether a model on a server takes the CLI's whole process (its one endpoint), rather
@@ -494,9 +497,13 @@ class Provider(ABC):
             for mode in self.permission_modes
         ]
 
+    def resolve_permission_mode(self, mode: str | None) -> str | None:
+        """The mode an alias names (permission_mode_aliases); any other value as it is."""
+        return self.permission_mode_aliases.get(mode, mode)
+
     def check_permission_mode(self, mode: str | None) -> None:
         """Raise ValueError for a permission mode this provider cannot honour."""
-        if mode and mode not in self.permission_modes:
+        if mode and self.resolve_permission_mode(mode) not in self.permission_modes:
             raise ValueError(
                 f'permission mode "{mode}" is not supported by {self.title} ({self.name}); '
                 f"supported: {', '.join(self.permission_modes)}"

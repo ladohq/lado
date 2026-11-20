@@ -1346,8 +1346,7 @@ def commands_error(missing: list[tuple[Kit, str]], path: str) -> str:
         what, are, them = ("commands", "are", "them") if len(names) > 1 else ("command", "is", "it")
         lines.append(
             f'kit "{kit}" expects {what} {quoted}, which {are} not on the agents\' PATH: '
-            f"install {them} (each launch looks again), or leave out --kit {kit} when the "
-            "session starts"
+            f'install {them} (each launch looks again), or start the session without kit "{kit}"'
         )
     lines.append(
         f"the agents' PATH: {path}; for a command installed elsewhere: {agent_env.PATH_ADVICE}"
@@ -1538,7 +1537,8 @@ def _check_expected(
                 f"{'switch' if several else 'switches'} off; the kit does not work without it: "
                 f"drop {'those --without items' if several else 'that --without item'}"
             )
-        hint = "add a kit that provides it with --kit <kit>"
+        # Words of the CLI and the New session window alike: both show this text.
+        hint = "add a kit that provides it to the session"
         owner = next((k for k, own in private.items() if name in own), None)
         if owner is not None:
             raise KitError(

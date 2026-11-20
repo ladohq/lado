@@ -127,6 +127,20 @@ def _shell(monkeypatch, env):
     )
 
 
+def test_manual_starts_and_resumes_claude_code_as_default(repo, fake_tmux, lado_home):
+    runtime.start_session(str(repo), "s", "manual", provider="claude")
+    assert state.get_session("s").permission_mode == "default"
+    _, cmd = agent_helpers.launched(fake_tmux[0])
+    assert cmd[cmd.index("--permission-mode") + 1] == "default"
+    runtime.stop_session("s")
+    with state.connect() as db:  # as 0.47 stored `lado start --permission-mode manual`
+        db.execute("UPDATE sessions SET permission_mode = 'manual' WHERE name = 's'")
+    runtime.start_session(str(repo), "s", None)
+    assert state.get_session("s").permission_mode == "default"
+    _, cmd = agent_helpers.launched(fake_tmux[-1])
+    assert cmd[cmd.index("--permission-mode") + 1] == "default"
+
+
 def test_a_resume_whose_environment_fails_leaves_the_session_as_it_was(
     repo, fake_tmux, monkeypatch
 ):
@@ -3323,9 +3337,9 @@ def _commanding_kits(repo):
 def _missing_text(path: str) -> str:
     return (
         'kit "sdlc" expects commands "openspec", "uv", which are not on the agents\' PATH: '
-        "install them (each launch looks again), or leave out --kit sdlc when the session "
-        'starts\nkit "host" expects command "gh", which is not on the agents\' PATH: install '
-        "it (each launch looks again), or leave out --kit host when the session starts\n"
+        'install them (each launch looks again), or start the session without kit "sdlc"\n'
+        'kit "host" expects command "gh", which is not on the agents\' PATH: install it (each '
+        'launch looks again), or start the session without kit "host"\n'
         f"the agents' PATH: {path}; for a command installed elsewhere: {agent_env.PATH_ADVICE}"
     )
 
@@ -3365,7 +3379,7 @@ def test_a_spawn_whose_kits_expect_a_missing_command_is_refused(repo, fake_tmux,
         runtime.spawn_worker("s", "t", role="analyst")
     assert str(exc.value) == (
         'kit "host" expects command "gh", which is not on the agents\' PATH: install it (each '
-        "launch looks again), or leave out --kit host when the session starts\n"
+        'launch looks again), or start the session without kit "host"\n'
         f"the agents' PATH: {agent_env.resolve()['PATH']}; for a command installed elsewhere: "
         f"{agent_env.PATH_ADVICE}"
     )

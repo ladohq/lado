@@ -842,6 +842,19 @@ def test_every_mode_has_its_words_or_its_value(name):
         if mode not in provider.permission_mode_words:
             assert words == base.ModeWords(mode, mode, "", False)
     assert set(provider.permission_mode_words) <= set(provider.permission_modes)
+    for alias, mode in provider.permission_mode_aliases.items():
+        assert alias not in provider.permission_modes and mode in provider.permission_modes
+
+
+def test_a_modes_other_name_is_taken_as_its_mode():
+    claude = providers.get("claude")
+    assert claude.resolve_permission_mode("manual") == "default"
+    assert claude.resolve_permission_mode("plan") == "plan"
+    assert claude.resolve_permission_mode(None) is None
+    claude.check_permission_mode("manual")  # taken
+    with pytest.raises(ValueError, match=r"supported: default, acceptEdits, auto,"):
+        claude.check_permission_mode("ask")
+    assert providers.get("kilo").resolve_permission_mode("manual") == "manual"
 
 
 def test_the_modes_words():
@@ -853,9 +866,13 @@ def test_the_modes_words():
     )
     assert claude["bypassPermissions"].title == "Full access, never ask ⚠"
     assert claude["bypassPermissions"].risky
-    # Claude Code 2.1.295's --help lists auto and manual with no words of what they do.
-    assert claude["auto"] == base.ModeWords("auto", "auto", "")
-    assert claude["manual"] == base.ModeWords("manual", "manual", "")
+    assert claude["auto"] == base.ModeWords(
+        "Let Claude judge the risk",
+        "Claude judges the risk",
+        "Checks each action for risk, runs what it judges safe and stops the rest. Needs a "
+        "plan and model with Claude Code's auto mode.",
+    )
+    assert "manual" not in claude  # another name of default, not a row of its own
     codex = dict(providers.get("codex").mode_words())
     assert codex["default"].title == "Work inside this folder (recommended)"
     assert codex["bypassPermissions"].risky

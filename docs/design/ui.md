@@ -1749,7 +1749,8 @@ connection, above).
   move; a failed ask shows its error at once and drops the last list),
   **Permissions** (radio rows titled by the provider's words, `ProviderInfo.mode_words`, the
   description under the chosen one and always under a risky one; a mode without words by its
-  value; `No permission modes.` for a CLI without), **Model** (the one picker of LAD-207, its
+  value; a provider's other name of a mode, `permission_mode_aliases`, never a row, as Claude
+  Code's `manual`; `No permission modes.` for a CLI without), **Model** (the one picker of LAD-207, its
   notes and refusals as before; the picked name whole, the server's mark giving way first, down
   to its icon, and carrying the refusal's round `!`, not `⚠`, when its server does not answer;
   LAD-209) and **Switch off** (the `--without` text field, its format
@@ -1823,7 +1824,9 @@ connection, above).
 - **The draft**: Esc, ×, Cancel keep Where's choice, Task, a typed Name and Team's fields in
   `LaunchProvider`'s state for the next opening (the Model field's choice too, for the agent
   CLI it was made for); a start
-  clears them, a reload of the page loses them.
+  clears them, a reload of the page loses them. A Where nobody set before the close (closed
+  before the recent places came) is not kept as a choice (`Draft.placeChosen` false): the next
+  opening sets the last place once they come, Task and Team as the draft kept them (LAD-287).
 - **Info buttons** (`InfoTip.tsx`): a 16 px (i) in a 24 px target (44 px on a phone) beside a
   label, `About <field>`, `aria-expanded`; a press, Enter or Space opens and closes it, its
   text put in a `role="status"` region placed under it (`Menu.tsx`'s `useBelow`), or above it

@@ -17,9 +17,10 @@ rollback names the same sessions itself, in its plan before `Roll back? [y/N]`:
 
 Options weighed:
 
-- A (taken, the human's choice, #7684): the documents say where the line is. 4.4 says the plan of `rollback` names the
-  sessions not started again and `lado update`'s warning names what the database loses; the
-  spec of the plan names that line. Long-term cost: none; the script does not change.
+- A (taken, the human's choice, #7684): the documents say where the line is. 4.4 says the
+  plan of `rollback` names the sessions not started again and `lado update`'s warning
+  names what the database loses; the spec of the plan names that line. Long-term cost:
+  none; the script does not change.
 - B: `rollback` leaves the stops to `lado update`, whose warning then names the sessions.
   Closer to the user's way back, but the mechanism of the rollback changes right before
   0.48.0rc1, with new tests; the user's way back is already checked on its own (4.4).
@@ -35,13 +36,14 @@ volumes, not compose's networks (`<project>_default`) nor the image tags `folder
 
 Options weighed:
 
-- A (taken, the human's choice, #7684): SIGTERM and SIGHUP end the run as Ctrl-C does, through the finalizers; each
-  run holds a lock of its own prefix while it lives, and the next run's start removes what
-  a run whose lock is free left (containers, volumes, networks, tags of its prefix); the
-  end's check covers networks and tags too. Leftovers no lock ties to a dead run (of runs
-  before this change, or of another machine on the same Docker) are named with the one
-  command that removes them, never removed. Long-term cost: one small module of the
-  container tests, the same idea as `tests/leftovers.py`'s reaping of processes.
+- A (taken, the human's choice, #7684): SIGTERM and SIGHUP end the run as Ctrl-C does,
+  through the finalizers; each run holds a lock of its own prefix while it lives, and the
+  next run's start removes what a run whose lock is free left (containers, volumes,
+  networks, tags of its prefix); the end's check covers networks and tags too. Leftovers
+  no lock ties to a dead run (of runs before this change, or of another machine on the
+  same Docker) are named with the one command that removes them, never removed. Long-term
+  cost: one small module of the container tests, the same idea as `tests/leftovers.py`'s
+  reaping of processes.
 - B: remove every `lado-test-*` object at a run's start. Simple, but it breaks a run of
   another worktree that goes on meanwhile, which the prefix exists to protect.
 - C: label every object with the run's pid and reap by pid. Docker gives no label to a
@@ -60,7 +62,7 @@ the fake agent earns because it reads no bodies. A race in the test, not a defec
   (`- not started again, not in the copy: …`), before its question; `lado update
   <final>`'s warning names what the database loses. 4.7 says a release's own item about
   going back quotes the plan's line for them, not the update's.
-- The spec of `rollback`'s plan names that line (release-candidates).
+- A requirement of release-candidates names that line of `rollback`'s plan.
 - The container tests: SIGTERM and SIGHUP run the teardown as Ctrl-C does; a run's lock of
   its prefix; the start's reaping of dead runs' containers, volumes, networks and tags; a
   warning naming leftovers of no known run with their removing command; the end's check
@@ -100,5 +102,5 @@ the fake agent earns because it reads no bodies. A race in the test, not a defec
 - `tests/container/conftest.py`, `tests/container/container_helpers.py`, a new module
   of the container tests for the run's lock and the reaping, a new container test.
 - `tests/integration/test_flow_runs.py` and the other tests named in Scope.
-- Specs: release-candidates (modified), test-processes (added).
+- Specs: release-candidates (added), test-processes (added).
 - Patch-level: tests and docs only, no code of LADO, no schema, no CLI or MCP change.

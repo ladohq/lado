@@ -912,7 +912,8 @@ def test_model_of_a_codex_agent_on_a_server_shows_its_model_alone(
     does not read the list, it would show OpenAI's models here."""
     codex_session(smoke_repo, codex_server)
     tmux.send_text(SESSION, "supervisor", "/model")
-    shown = lambda: CODEX_MODEL in tmux.capture(SESSION, "supervisor")  # noqa: E731
+    # Codex's status line shows the model's name before /model too; only the list has "On Шлюз".
+    shown = lambda: "On Шлюз" in tmux.capture(SESSION, "supervisor")  # noqa: E731
     wait_for(shown, "/model's list", 30)
     screen = tmux.capture(SESSION, "supervisor")
     print(f"codex: /model shows\n{screen}")

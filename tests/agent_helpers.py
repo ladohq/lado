@@ -740,3 +740,14 @@ def gone(pid: int) -> bool:
     except OSError:
         return False
     return state_.startswith("Z") or not state_
+
+
+def ended(pid: int, timeout: float = 10) -> bool:
+    """Whether process `pid` is gone within `timeout` seconds: a kill returns before its
+    target is gone, so a check right after one waits for it."""
+    deadline = time.monotonic() + timeout
+    while not gone(pid):
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.05)
+    return True

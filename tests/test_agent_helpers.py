@@ -2,6 +2,7 @@ import dataclasses
 import os
 import shutil
 import subprocess
+import threading
 
 import agent_helpers
 import pytest
@@ -280,3 +281,24 @@ def test_the_db_scan_reads_the_wal_checkpointed_away_mid_scan_through_lado_db(
     monkeypatch.setattr(type(db), "read_bytes", checkpointed)
     with pytest.raises(AssertionError, match="lado.db$"):
         agent_helpers.check_no_secret_in_db(tmp_path, SECRET)
+
+
+def test_ended_is_true_once_a_process_ends_a_moment_after_the_call():
+    sleeper = subprocess.Popen(["sleep", "60"])
+    killer = threading.Timer(0.2, sleeper.kill)
+    killer.start()
+    try:
+        assert agent_helpers.ended(sleeper.pid)
+    finally:
+        killer.join()
+        sleeper.kill()
+        sleeper.wait()
+
+
+def test_ended_is_false_when_the_process_outlives_the_timeout():
+    sleeper = subprocess.Popen(["sleep", "60"])
+    try:
+        assert not agent_helpers.ended(sleeper.pid, timeout=0.3)
+    finally:
+        sleeper.kill()
+        sleeper.wait()

@@ -1,8 +1,8 @@
 ## 1. The helper
 
-- [ ] 1.1 `tests/agent_helpers.py`: `ended(pid, timeout=10)`, polling `gone(pid)` every 0.05 s
+- [x] 1.1 `tests/agent_helpers.py`: `ended(pid, timeout=10)`, polling `gone(pid)` every 0.05 s
   until it is true (returns True) or the timeout passes (returns False) (AC-1).
-- [ ] 1.2 A unit test of `ended` (in the unit tests of the helpers, or `tests/test_clone.py`
+- [x] 1.2 A unit test of `ended` (in the unit tests of the helpers, or `tests/test_clone.py`
   beside its users): a `sleep` killed a moment after the call gives True; a `sleep 60` with
   `timeout=0.3` gives False, then is killed and reaped (AC-3).
 

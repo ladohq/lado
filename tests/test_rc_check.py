@@ -832,9 +832,7 @@ def test_rollback_hands_the_copy_to_lado_update_and_resumes(recorder, homes, on_
     assert "[ok  ] session app started on 0.37.1" in out
 
 
-def test_a_session_the_copy_lacks_is_not_started_again(
-    recorder, homes, on_rc, capsys, monkeypatch
-):
+def test_a_session_the_copy_lacks_is_not_started_again(recorder, homes, on_rc, capsys, monkeypatch):
     """The plan names it before the question: `lado update`, after the stops, names none."""
     (homes.lado / "lado.db").unlink()
     make_db(homes.lado / "lado.db", 27, [("app", "/r/app", None), ("web2", "/r/web2", None)])

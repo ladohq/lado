@@ -39,6 +39,8 @@
 
 - **An open tip or menu follows its button.** When the window is resized or a phone is
   turned, an open ⓘ tip or menu moves with its button instead of staying where it was.
+- **A kit chip stays put when you change Where.** In New session a kit chip no longer loses
+  its version for a moment, so its × does not jump away from your finger.
 
 ### Docker image
 

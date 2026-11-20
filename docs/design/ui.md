@@ -1744,7 +1744,9 @@ connection, above).
   and version; `<title> · not installed`, `<title> · not logged in` off; `<name> · unknown`
   for a resumed session's CLI the list lacks), **Kits** (the kit chips, `+ Add kit`, an info
   button `Kits add roles, skills and ways of working to the team. Install more on the Kits
-  page.` then the chosen kits' descriptions),
+  page.` then the chosen kits' descriptions; while the kit list of a new place is asked, the
+  chips and `+ Add kit` keep the last list's versions and validity, so a chip's × does not
+  move; a failed ask shows its error at once and drops the last list),
   **Permissions** (radio rows titled by the provider's words, `ProviderInfo.mode_words`, the
   description under the chosen one and always under a risky one; a mode without words by its
   value; `No permission modes.` for a CLI without), **Model** (the one picker of LAD-207, its

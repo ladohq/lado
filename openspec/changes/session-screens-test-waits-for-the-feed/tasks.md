@@ -24,6 +24,6 @@
 
 ## 4. Regression run
 
-- [ ] 4.1 `make lint`, `make test`, `uv run pytest -m ui -n auto tests/ui/test_artifacts_tab.py
+- [x] 4.1 `make lint`, `make test`, `uv run pytest -m ui -n auto tests/ui/test_artifacts_tab.py
   tests/ui/test_main_screen.py`, `openspec validate session-screens-test-waits-for-the-feed
   --strict`, the trial archive with `--skip-specs`.

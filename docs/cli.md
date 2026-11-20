@@ -614,7 +614,10 @@ stops it before the migration: run it again), migrates, then marks them stopped.
 as before. `lado start` with the same name resumes it (also when
 its tmux server died without `lado stop`): the repo must be the same, and `--kit`,
 `--without`, `--provider` and `--permission-mode`, when given, replace the stored ones
-(the output says what changed). The new supervisor starts with one message from `lado`,
+(the output says what changed). `--permission-mode` takes a provider's other name of one of
+its modes as that mode, at a start and a resume, stored so too: Claude Code's `manual` is
+`default` (as Claude Code itself takes it), so a session stored with `manual` resumes as
+`default`; `lado start --help` lists only the modes. The new supervisor starts with one message from `lado`,
 `session resumed: <n> open runs`, whose body says per open run what waits: the human at a
 gate (answer with `lado answer`), the supervisor's own step (its step message follows), or a
 worker to start with `spawn_worker(run=...)`. Such a worker opens in the run's worktree on

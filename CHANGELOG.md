@@ -41,6 +41,13 @@
   turned, an open ⓘ tip or menu moves with its button instead of staying where it was.
 - **A kit chip stays put when you change Where.** In New session a kit chip no longer loses
   its version for a moment, so its × does not jump away from your finger.
+- **Where shows the last place after an early close.** New session closed before its recent
+  places came, on a slow network, opens again on the last place, your task kept, instead of
+  `Choose a place` until a reload.
+- **The kit advice fits New session.** A start refused for a skill or command a kit expects
+  says to add a kit that provides it, or to start without that kit, not to use `--kit`.
+- **Claude Code's auto mode in words.** Permissions shows it as `Let Claude judge the risk`;
+  `manual` is no longer a row: Claude Code takes it as `Ask before changes`, and so does LADO.
 
 ### Docker image
 

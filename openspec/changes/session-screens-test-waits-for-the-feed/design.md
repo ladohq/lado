@@ -37,6 +37,16 @@ with the URL, the status's word as it reads then, and one line per request, for 
 So the next occurrence tells the browser's side (nothing sent) from the server's (sent, no
 headers) and from a refused stream (an answer of 401 or 503). No product code changes.
 
+Rejected: the server's access log on in the UI tests (`run.py`, `access_log=False`). It
+needs a test-only switch in the server, and the browser's record already tells the same.
+
+### D3. Only this test takes the helper
+
+The helper lives in `tests/ui/test_main_screen.py`, beside `log_in`, which other test files
+import already, so a later task can use it without moving it. Only
+`test_the_session_screens_changed_hold_at_every_width` changes, at its four `page.goto`
+calls. The other UI tests are out of scope (proposal).
+
 ### D4. A slow `live` leaves the record as a warning
 
 When `live` comes, but more than 2 s after the `goto` (`SLOW_LIVE_S = 2.0` beside the
@@ -55,16 +65,6 @@ and well under the bound, so a normal run leaves no warning and a stall short of
 
 Rejected: a `print` (hidden on a pass, above); `logging` (pytest shows captured logs only for
 a failed test too).
-
-Rejected: the server's access log on in the UI tests (`run.py`, `access_log=False`). It
-needs a test-only switch in the server, and the browser's record already tells the same.
-
-### D3. Only this test takes the helper
-
-The helper lives in `tests/ui/test_main_screen.py`, beside `log_in`, which other test files
-import already, so a later task can use it without moving it. Only
-`test_the_session_screens_changed_hold_at_every_width` changes, at its four `page.goto`
-calls. The other UI tests are out of scope (proposal).
 
 ## Tests
 

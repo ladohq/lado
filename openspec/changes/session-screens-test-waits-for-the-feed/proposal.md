@@ -82,5 +82,6 @@ In: `tests/ui/test_main_screen.py` (the helper), `tests/ui/test_artifacts_tab.py
 
 - Users see nothing: tests only. No CHANGELOG line.
 - Version: patch.
-- No API, MCP, CLI or schema change; no delta spec (no behaviour rule changes): archive with
+- No API, MCP, CLI or schema change; no delta spec (no behaviour rule changes, `skip_specs:
+  true` in `.openspec.yaml`): archive with
   `--skip-specs`.

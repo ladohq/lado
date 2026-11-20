@@ -34,7 +34,7 @@
   recorder, in `tests/test_container_runs.py` or beside the module's existing unit tests:
   a free lock, a held lock (a lock taken by a child process), no lock file, a failed
   removal. Check: `uv run pytest -n0 <that file>`.
-- [ ] 2.6 The container test of the cleanup (D6): `tests/container/cleanup_target.py` and
+- [x] 2.6 The container test of the cleanup (D6): `tests/container/cleanup_target.py` and
   `tests/container/test_cleanup.py`, its three cases (SIGTERM, SIGKILL then the reaping, a
   prefix without a lock file). Check: written here, run in CI's container cells (no Docker
   in LADO's container); the build report says so.
@@ -57,7 +57,7 @@
 
 ## 4. Regression run
 
-- [ ] 4.1 `make lint`, `make test`, `uv run pytest -m integration -n auto` on the changed
+- [x] 4.1 `make lint`, `make test`, `uv run pytest -m integration -n auto` on the changed
   files of `tests/integration/`, `uv run pytest -m ui -n auto tests/ui/test_gates.py`,
   `openspec validate rollback-wording-container-leftovers --strict`, the trial archive in a
   copy, and CI's container cells green on the pull request (amd64 and arm64).

@@ -125,6 +125,7 @@ export type StartedState = { started: Started };
 // What the New session window keeps when it closes without a start, until a start or a
 // reload of the page.
 type Draft = {
+  placeChosen: boolean; // false: closed before anyone (or the recent places) set Where
   source: Way;
   otherFolder: boolean;
   projectPick: boolean;
@@ -327,8 +328,8 @@ function LaunchDialog({
   const [otherFolder, setOtherFolder] = useState(draft?.otherFolder ?? false);
   const [projectPick, setProjectPick] = useState(asksProject !== null || (draft?.projectPick ?? false));
   // The window opens on the last place once the recent places answer, unless it was told
-  // where (the project's page, Start a new session instead) or kept a draft.
-  const placeTouched = useRef(asksProject !== null || asksPath !== null || draft !== null);
+  // where (the project's page, Start a new session instead) or kept a draft whose place was set.
+  const placeTouched = useRef(asksProject !== null || asksPath !== null || (draft?.placeChosen ?? false));
   const [projectAsk, setProjectAsk] = useState<{ project: string | null; repo: string | null }>(
     asksProject !== null
       ? { project: asksProject, repo: (mode.kind === "new" && mode.repo) || null }
@@ -680,6 +681,7 @@ function LaunchDialog({
   const close = () => {
     if (!resuming) {
       onDraft({
+        placeChosen: placeTouched.current,
         source,
         otherFolder,
         projectPick,

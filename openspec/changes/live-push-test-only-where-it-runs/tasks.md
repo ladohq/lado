@@ -1,6 +1,6 @@
 ## 1. The push test
 
-- [ ] 1.1 `tests/live/test_live.py`: `test_an_agent_pushes_through_a_saved_git_server` gets
+- [x] 1.1 `tests/live/test_live.py`: `test_an_agent_pushes_through_a_saved_git_server` gets
   `@pytest.mark.parametrize("live_provider", ["claude", "codex"], indirect=True)`, and the
   `if live_provider not in ("claude", "codex"): pytest.skip(...)` goes; the rest of the test
   stays as it is (AC-2). Check: `uv run pytest -m live --collect-only -q -k <p>
@@ -10,7 +10,7 @@
 
 ## 2. Docs
 
-- [ ] 2.1 `docs/testing.md`, the live paragraph of the test layers (item 6) or the live
+- [x] 2.1 `docs/testing.md`, the live paragraph of the test layers (item 6) or the live
   workflow's paragraph: a live test meant for some providers only narrows `live_provider`
   by an indirect parametrization, so the others do not collect it, since a skip makes their
   cell red; the push test is the one so. Check: read it.

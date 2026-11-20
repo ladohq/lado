@@ -461,7 +461,9 @@ merge. Weekly on main (Monday 04:23 UTC), by hand (`gh workflow run live.yml`) a
 release candidate, a cell per provider on Linux, each with its model of the matrix:
 `scripts/smoke_ci.py live <provider> <out>` installs the CLI at its pin and is red unless the
 tests passed and none skipped; `tests/live/test_codex_login.py` is left out, as it needs a
-person's login. It runs them for at most 25 minutes outside `<out>` and silently, then redacts
+person's login. So a live test meant for some providers only narrows `live_provider` by an
+indirect parametrization and the other cells do not collect it, as the push through a saved
+git server does (Claude Code and Codex): a skip would turn their cells red. It runs them for at most 25 minutes outside `<out>` and silently, then redacts
 the key, also where a window wrapped it, prints the log to the job's and moves the log and the
 evidence to `<out>` for the upload. A test ended by that limit keeps no evidence of its own,
 only the log and what the tests before it kept; a job killed before the redaction uploads

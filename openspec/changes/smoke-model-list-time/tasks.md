@@ -18,6 +18,6 @@
 
 ## 3. Regression run
 
-- [ ] 3.1 `make lint`, `make test`, `openspec validate smoke-model-list-time --strict`, the
+- [x] 3.1 `make lint`, `make test`, `openspec validate smoke-model-list-time --strict`, the
   trial archive; CI of the pull request green, `smoke macos-latest kilo` on its first attempt
   (AC-4).

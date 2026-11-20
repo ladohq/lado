@@ -10,7 +10,7 @@ import uuid
 import agent_helpers
 import pytest
 from playwright.sync_api import Page, expect
-from test_main_screen import log_in, running_session
+from test_main_screen import goto_live, log_in, running_session
 
 from lado import artifacts, loop, runs, runtime, state
 
@@ -199,7 +199,7 @@ def test_the_session_screens_changed_hold_at_every_width(
         assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), name
         shot(page, f"{name}-{width}-{theme}", full_page=False)
 
-    page.goto(f"{server['url']}/sessions/{session}/flows")
+    goto_live(page, f"{server['url']}/sessions/{session}/flows")
     expect(page.get_by_role("link", name="ship/x")).to_be_visible()
     expect(page.locator(".run-task-line").first).to_have_text("Add a login page")
     fits("runs")
@@ -213,7 +213,7 @@ def test_the_session_screens_changed_hold_at_every_width(
     assert box["y"] >= line["y"] + line["height"], (box, line)  # under its line, not beside it
     fits("event")
 
-    page.goto(f"{server['url']}/sessions/{session}/artifacts")
+    goto_live(page, f"{server['url']}/sessions/{session}/artifacts")
     page.locator(".artifact-link").filter(has_text="design").click()
     panel = page.get_by_role("dialog", name="Artifact ship/x/design")
     expect(panel.get_by_role("heading", name="Design v1")).to_be_visible()
@@ -230,10 +230,10 @@ def test_the_session_screens_changed_hold_at_every_width(
     fits("stop")
     page.keyboard.press("Escape")
 
-    page.goto(f"{server['url']}/sessions/{empty}/flows")
+    goto_live(page, f"{server['url']}/sessions/{empty}/flows")
     expect(page.get_by_text("No flow runs yet")).to_be_visible()
     fits("no-runs")
-    page.goto(f"{server['url']}/sessions/{empty}/artifacts")
+    goto_live(page, f"{server['url']}/sessions/{empty}/artifacts")
     expect(page.get_by_text("No artifacts yet")).to_be_visible()
     fits("no-artifacts")
 

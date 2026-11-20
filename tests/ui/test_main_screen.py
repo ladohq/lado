@@ -1,11 +1,14 @@
 """The main screen in a browser: the rail and its sections, a session's tabs, the link that
 logs in on any page, the theme. Database → API → UI, behind the token."""
 
+import time
 import uuid
+import warnings
+from urllib.parse import urlsplit
 
 import agent_helpers
 import pytest
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Page, Request, Response, expect
 
 from lado import loop, runtime, state
 
@@ -27,6 +30,71 @@ def running_session(repo) -> str:
 def log_in(page: Page, server) -> None:
     page.goto(f"{server['url']}/?token={server['token']}")
     assert page.url == f"{server['url']}/"
+
+
+SLOW_LIVE_S = 2.0  # five times the slowest open of the stream measured under load (LAD-305)
+
+
+def goto_live(page: Page, url: str) -> None:
+    """Go to `url` and wait up to 15 s for the banner's status to read `live`: a session's
+    page draws nothing before the change feed's stream opens. A timeout fails, and a `live`
+    later than `SLOW_LIVE_S` warns, with each request of `/api/events` and what came of it."""
+    start = time.monotonic()
+    sent: list[tuple[Request, list[str]]] = []
+
+    def since() -> str:
+        return f"{time.monotonic() - start:.2f} s"
+
+    def record(request: Request) -> list[str] | None:
+        return next((notes for each, notes in sent if each is request), None)
+
+    def on_request(request: Request) -> None:
+        if urlsplit(request.url).path == "/api/events":
+            sent.append((request, [f"sent at {since()}"]))
+
+    def on_response(response: Response) -> None:
+        notes = record(response.request)
+        if notes is not None:
+            notes.append(f"answered {response.status} at {since()}")
+
+    def on_failed(request: Request) -> None:
+        notes = record(request)
+        if notes is not None:
+            notes.append(f"failed at {since()}: {request.failure}")
+
+    def told() -> str:
+        if not sent:
+            return "\n  (no request of /api/events)"
+        lines = []
+        for _request, notes in sent:
+            if len(notes) == 1:
+                notes = [*notes, "no answer"]
+            lines.append("\n  /api/events " + ", ".join(notes))
+        return "".join(lines)
+
+    events = {"request": on_request, "response": on_response, "requestfailed": on_failed}
+    for event, handler in events.items():
+        page.on(event, handler)
+    try:
+        page.goto(url)
+        status = page.get_by_role("banner").get_by_role("status")
+        try:
+            expect(status).to_have_text("live", timeout=15000)
+        except AssertionError:
+            word = status.inner_text() if status.count() else "(no status)"
+            raise AssertionError(
+                f"the stream did not open within 15 s at {url}; status: {word}{told()}"
+            ) from None
+        took = time.monotonic() - start
+        if took > SLOW_LIVE_S:
+            warnings.warn(
+                f"the stream opened {took:.2f} s after going to {url}{told()}",
+                UserWarning,
+                stacklevel=2,
+            )
+    finally:
+        for event, handler in events.items():
+            page.remove_listener(event, handler)
 
 
 def test_the_link_opens_the_page_it_names_and_the_session_shows_there(

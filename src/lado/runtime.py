@@ -839,7 +839,7 @@ def check_new_session(
     sess = state.Session(
         session,
         repo,
-        permission_mode,
+        agent_cli.resolve_permission_mode(permission_mode),
         agent_cli.name,
         kit_names or [kits.DEFAULT_KIT],
         without if without is not None else [],
@@ -953,7 +953,7 @@ def start_session(
         sess = state.Session(
             session,
             repo,
-            permission_mode or old.permission_mode,
+            agent_cli.resolve_permission_mode(permission_mode or old.permission_mode),
             agent_cli.name,
             kit_names or old.kits,
             without if without is not None else old.without,

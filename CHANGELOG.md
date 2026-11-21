@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.48.0 (unreleased)
+## 0.48.0 (2026-11-21)
 
 ### New
 

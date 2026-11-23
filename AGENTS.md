@@ -77,7 +77,7 @@ One line per module; each module's behaviour in detail: [docs/design/modules.md]
   - `git_servers.py`: git servers, tokens, certificates (`git_certificates.py`), `git_kinds/`,
     the helper `git_credential.py`, `github_takeover.py`; `marketplaces.py`: kit marketplaces.
   - `flows.py`: the flow format and its validator; `runs.py`: flow runs, steps, gates.
-  - `mcp_server.py`: the MCP tools agents use (`lado mcp`).
+  - `mcp_server.py`: the MCP tools agents use; `mcp_stdio.py` its lean process (`lado mcp`).
   - `artifacts.py`: artifacts, a session's named documents; `artifacts_local.py` its store;
     `images.py` image sizes.
   - `hooks.py`: neutral hook logic: status, hand-over, the forgotten-reply check.

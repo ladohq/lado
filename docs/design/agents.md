@@ -1007,7 +1007,18 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   the `lado` MCP server records `mcp_ready` (with the launch's instance) when the CLI lists
   its tools, and the session-start hook of a provider with `hold_first_turn` waits for it
   (looking every `hooks.MCP_READY_POLL`, 0.02 s, at most `hooks.MCP_READY_TIMEOUT`; giving
-  up is written to `hooks.log`). Verified by hand with Claude Code 2.1.289; the tested
+  up is written to `hooks.log`). The server's process is `lado.mcp_stdio`, which every
+  provider's config starts straight away (`providers.base.mcp_server`; `lado mcp` runs the
+  same): it answers `initialize` and the lists of tools, prompts and resources from a
+  cache of the SDK's own answers (`LADO_HOME/mcp-cache/`, keyed by `mcp_server.py`, the
+  installed SDK and pydantic, the agent's tool set and the requested protocol version)
+  while the SDK loads, about 0.05 s after its start instead of 0.38 s, and records
+  `mcp_ready` itself when it answers `tools/list`; a cold start (a new key) is the SDK's
+  as before and fills the cache. Everything else, and everything once the SDK is up, the
+  SDK answers, behind two pipes; once up, it is asked the lists the front answered, and a
+  difference replaces the cache's entry and is journaled (`mcp:cache`). A client whose
+  first request is not `initialize` (the protocol's era without the handshake) is the
+  SDK's alone. Verified by hand with Claude Code 2.1.289; the tested
   version is `providers/claude.py`'s `TESTED_VERSION` (`lado doctor` warns about others);
   the live test checks w1's transcript. Codex CLI needs no hold: its first turn waits for a
   `required` MCP server, which `lado` is in its config, and one that fails to start makes

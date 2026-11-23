@@ -10,7 +10,7 @@ from pathlib import Path
 import agent_helpers
 import pytest
 
-from lado import hooks, providers, runtime, state, tmux
+from lado import hooks, interpreter, providers, runtime, state, tmux
 from lado.providers import Event, base, opencode_family
 from lado.providers import claude as claude_provider
 
@@ -787,7 +787,7 @@ def test_kilo_launch_writes_config_and_env(repo, lado_home):
     assert open(role).read() == "the role"
     mcp = config["mcp"]["lado"]
     assert mcp["type"] == "local"
-    assert mcp["command"][-1] == "mcp"
+    assert mcp["command"][-1] == "lado.mcp_stdio"
     assert mcp["environment"] == {
         "LADO_HOME": str(lado_home),
         "LADO_SESSION": "s",
@@ -909,7 +909,7 @@ def test_opencode_launch_writes_config_and_env(repo, lado_home):
     [role] = config["instructions"]
     assert open(role).read() == "the role"
     mcp = config["mcp"]["lado"]
-    assert (mcp["type"], mcp["command"][-1]) == ("local", "mcp")
+    assert (mcp["type"], mcp["command"][-1]) == ("local", "lado.mcp_stdio")
     assert mcp["environment"]["LADO_INSTANCE"] == "i1"
     [[plugin, options]] = config["plugin"]
     assert plugin == opencode_family.PLUGIN.as_uri()
@@ -1371,6 +1371,13 @@ def skill_dir(tmp_path):
     return path
 
 
+def test_the_lado_mcp_server_of_every_provider_starts_the_lean_front(repo):
+    """lado.mcp_stdio straight away, not through lado.cli, whose imports cost 0.05 s."""
+    agent = state.Agent("s", "w1", "worker", str(repo), None, None, state.STARTING, "claude")
+    command = base.mcp_server(agent).command
+    assert command == interpreter.run_module("lado.mcp_stdio")
+
+
 def test_claude_gets_skills_and_kit_mcp(repo, skill_dir):
     sess = state.Session("s", str(repo), None, provider="claude")
     agent = state.Agent(
@@ -1380,7 +1387,7 @@ def test_claude_gets_skills_and_kit_mcp(repo, skill_dir):
     cmd = claude.launch_command(agent, sess, _spec_with_kit_parts(agent, skill_dir)).argv
     mcp = json.loads(open(cmd[cmd.index("--mcp-config") + 1]).read())["mcpServers"]
     assert mcp["db"] == {"command": "db-server", "args": ["--port", "1"], "env": {"T": "x"}}
-    assert mcp["lado"]["args"][-1] == "mcp"
+    assert mcp["lado"]["args"][-1] == "lado.mcp_stdio"
     # LADO's tools are in the prompt from the start, not deferred behind tool search.
     assert mcp["lado"]["alwaysLoad"] is True
     # The server says which launch it serves; the session-start hook waits for it.

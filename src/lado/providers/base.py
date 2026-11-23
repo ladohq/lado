@@ -849,8 +849,10 @@ def hook_command(agent: state.Agent, event: str) -> str:
 
 def mcp_server(agent: state.Agent) -> McpServer:
     """The LADO MCP server of the agent. It records which launch it serves when the CLI
-    lists its tools (lado.hooks waits for that)."""
-    return McpServer(lado_command("mcp"), {**agent_env(agent), "LADO_INSTANCE": agent.instance})
+    lists its tools (lado.hooks waits for that). Its lean front straight away, which is
+    `lado mcp` without lado.cli's imports."""
+    command = interpreter.run_module("lado.mcp_stdio")
+    return McpServer(command, {**agent_env(agent), "LADO_INSTANCE": agent.instance})
 
 
 def link_skills(target: Path, skills: dict[str, Path]) -> Path:

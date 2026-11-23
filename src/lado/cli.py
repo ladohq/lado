@@ -2909,9 +2909,9 @@ def main(argv: list[str] | None = None) -> int:
     if more:  # as parse_args says it
         parser.error(f"unrecognized arguments: {' '.join(more)}")
     if args.command == "mcp":
-        from lado import mcp_server
+        from lado import mcp_stdio
 
-        return mcp_server.main()
+        return mcp_stdio.main()
     if args.command == "hook":
         from lado import hooks
 

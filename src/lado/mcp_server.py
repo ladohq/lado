@@ -1,20 +1,24 @@
-"""MCP server that gives agents LADO tools. Each agent's CLI starts one over stdio.
+"""MCP server that gives agents LADO tools. Each agent's CLI starts one over stdio, whose
+process is lado.mcp_stdio's: it loads this module, and with it the MCP SDK, meanwhile.
 
 The calling agent is identified by LADO_SESSION and LADO_AGENT, which lado.runtime writes
 into that agent's MCP config.
 """
 
 import datetime
-import os
+import io
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
+from typing import BinaryIO
 
+import anyio
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
 from mcp.server.mcpserver.utilities.types import Image
+from mcp.server.stdio import stdio_server
 from mcp.types import CallToolResult, TextContent
 
-from lado import artifacts, kits, model_settings, runs, runtime, state, telemetry, tmux
+from lado import artifacts, kits, mcp_stdio, model_settings, runs, runtime, state, telemetry, tmux
 
 
 @contextmanager
@@ -38,9 +42,7 @@ class _Server(MCPServer):
     waits for it, so that its first turn has them (lado.hooks)."""
 
     def __init__(self, session: str, agent: str, instance: str):
-        super().__init__(
-            "lado", instructions=f'You are agent "{agent}" in LADO session "{session}".'
-        )
+        super().__init__("lado", instructions=mcp_stdio.instructions(session, agent))
         self._lado_agent = (session, agent)
         self._lado_instance = instance  # "" when started without one: nothing to record
         self._lado_read_only: str | None = None  # the role of a read-only agent
@@ -326,11 +328,12 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
         me = state.get_agent(session, agent)
     except state.SchemaError:
         me = None  # the shared tools only; each call says why it cannot work
+    tools = mcp_stdio.tool_set(me)
     if me and me.read_only:
         server._lado_read_only = me.role
     # The lead's own view on each question to the human; a read-only lead's too: it changes
     # nothing but the card.
-    if me and me.name == runtime.SUPERVISOR:
+    if tools in ("supervisor", "read-only-supervisor"):
 
         @server.tool()
         def recommend(
@@ -368,7 +371,7 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
                 return runtime.list_models(session, provider)
 
     # COMMAND_TOOLS, the supervisor's.
-    if me and me.name == runtime.SUPERVISOR and not me.read_only:
+    if tools == "supervisor":
 
         @server.tool()
         def spawn_worker(
@@ -508,9 +511,22 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
     return server
 
 
-def main() -> int:
-    session, agent = os.environ.get("LADO_SESSION"), os.environ.get("LADO_AGENT")
-    if not session or not agent:
-        raise SystemExit("lado mcp is started by LADO agents; LADO_SESSION/LADO_AGENT not set")
-    build(session, agent, os.environ.get("LADO_INSTANCE", "")).run("stdio")
-    return 0
+def serve(server: MCPServer, stdin: BinaryIO, stdout: BinaryIO) -> None:
+    """Run `server` as MCPServer.run("stdio") does, but on these streams: the process's own
+    are lado.mcp_stdio's, which passes the client's lines on. Ends at the end of `stdin`,
+    and closes both."""
+
+    async def run() -> None:
+        with (
+            io.TextIOWrapper(stdin, encoding="utf-8", errors="replace") as text_in,
+            io.TextIOWrapper(stdout, encoding="utf-8") as text_out,
+        ):
+            async with stdio_server(anyio.wrap_file(text_in), anyio.wrap_file(text_out)) as (
+                read,
+                write,
+            ):
+                # The SDK's private server (mcp<3; tests/test_mcp_stdio.py fails when it goes).
+                lowlevel = server._lowlevel_server
+                await lowlevel.run(read, write, lowlevel.create_initialization_options())
+
+    anyio.run(run)

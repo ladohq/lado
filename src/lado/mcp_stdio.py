@@ -312,7 +312,7 @@ class Front:
             else:
                 self._for_sdk(line)
             if reply is not None:
-                self._send({"jsonrpc": "2.0", "id": message["id"], "result": reply})
+                self._wire(_line({"jsonrpc": "2.0", "id": message["id"], "result": reply}))
 
     def _cached(self, method: str) -> dict | None:
         """The cache's answer, while the front answers: until the SDK is up."""
@@ -329,9 +329,6 @@ class Front:
             except state.SchemaError:
                 pass  # nothing is recorded; each tool call then says why (lado.mcp_server)
         self._ready = True
-
-    def _send(self, message: dict) -> None:
-        self._wire(_line(message))
 
     def _wire(self, line: bytes) -> None:
         with self._out_lock:

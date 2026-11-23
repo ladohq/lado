@@ -122,10 +122,11 @@ def to_the_end(page: Page) -> None:
     page.evaluate(
         "() => { const c = document.querySelector('.content'); c.scrollTop = c.scrollHeight; }"
     )
-    assert page.evaluate(
+    end = page.evaluate(
         "() => { const c = document.querySelector('.content');"
-        " return c.scrollHeight > c.clientHeight && c.scrollTop >= c.scrollHeight - c.clientHeight - 1; }"
+        " return [c.scrollTop, c.scrollHeight - c.clientHeight]; }"
     )
+    assert end[1] > 0 and end[0] >= end[1] - 1, end  # a page that scrolls, at its end
 
 
 def room(page: Page) -> float:
@@ -936,6 +937,7 @@ def test_a_section_above_growing_is_no_change_to_undo(page: Page, clis, server, 
         "() => { const d = document.createElement('div'); d.style.height = '300px';"
         " document.querySelector('.setting.mx .spage-head').after(d); }"
     )
+    page.wait_for_timeout(300)  # the growth itself made up for, past the page's end too
     before = page.evaluate("document.querySelector('.content').scrollTop")
     assert len(held) == 1
     held[0].continue_()

@@ -761,6 +761,8 @@ machine's fonts on main too).
 real processes, and the one way around the server's start (a server shared by tests)
 breaks their isolation. The one safe reserve is the start of `lado mcp`, which delays
 every agent's start for users too: task LAD-294, a product change, outside this audit.
+LAD-294 took it (2026-11-23): `lado mcp` answers the handshake and the tools from a cache
+of the SDK's answers while the SDK loads, 0.39 s → 0.05 s to `tools/list`.
 The plugin and the data: outside the repository.
 ### Stage 3, part 1 (2026-11-17, branch `chore/test-audit-stage-3-remove`): the removals
 

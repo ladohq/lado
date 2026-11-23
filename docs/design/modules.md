@@ -878,6 +878,20 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     recommendation (`runs._ask_recommendation`, `runs.recommendation_request`; How agents
     talk), and `runs.resume` asks again for each open gate without a given one, and tells
     the new supervisor of the questions a stop closed.
+  - `mcp_stdio.py`: the process of an agent's LADO MCP server (`lado mcp`, and what each
+    provider's config starts, `providers.base.mcp_server`), importing the standard library
+    and `state` only. It claims fds 0 and 1 as the SDK's `stdio_server` does
+    (`claim_stdio`), and its `Front` answers `initialize` and `LISTS` without a cursor from
+    the cache in `LADO_HOME/mcp-cache/` (`cache_key`: the bytes of `mcp_server.py`, the
+    path, size and mtime of the `mcp`, `mcp_types` and `pydantic` packages' `__init__.py`,
+    the `tool_set`; one JSON file per key, by requested protocol version, written whole,
+    the `CACHE_FILES` newest kept) while the main thread loads `mcp_server`; then the SDK
+    gets every line in order behind two pipes (`mcp_server.serve`), the answers to what the
+    front answered are dropped, and the SDK's answers fill the cache and check it
+    (`CHECK` requests; a difference journaled `mcp:cache`, once a process). `mcp_ready` is
+    the front's when it answers `tools/list`, else `_Server.list_tools`'. A failure of its
+    threads is journaled (`mcp:stdio`) and ends the process. `tool_set` and `instructions`
+    are `mcp_server`'s too.
   - `mcp_server.py`: MCP tools for agents (`send_message`, `ask_human`, `read_messages`,
     `list_agents`, `flow_advance`, `flow_status`, `write_artifact`, `read_artifact`,
     `list_artifacts`; `send_message`, `ask_human` and `flow_advance` take `artifacts` to

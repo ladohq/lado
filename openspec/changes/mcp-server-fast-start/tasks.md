@@ -23,15 +23,15 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-23-mcp-server-f
 
 ## 5. End-to-end tests
 
-- [ ] 5.1 Cold and warm real `lado mcp`: equal answers, tool calls, per tool set. Check:
+- [x] 5.1 Cold and warm real `lado mcp`: equal answers, tool calls, per tool set. Check:
   `uv run pytest -m integration tests/integration/test_mcp_start.py`.
-- [ ] 5.2 Readiness and every tool through the fake agent. Check: `uv run pytest -m
+- [x] 5.2 Readiness and every tool through the fake agent. Check: `uv run pytest -m
   integration tests/integration/test_agents.py tests/integration/test_fake_agent.py
   tests/integration/test_mid_turn_messages.py`.
 
 ## 6. Docs and CHANGELOG
 
-- [ ] 6.1 docs/design/agents.md, docs/design/modules.md, AGENTS.md, docs/research/test-audit.md,
+- [x] 6.1 docs/design/agents.md, docs/design/modules.md, AGENTS.md, docs/research/test-audit.md,
   CHANGELOG. Check: `tests/test_agents_md.py`.
 
 ## 7. Regression run

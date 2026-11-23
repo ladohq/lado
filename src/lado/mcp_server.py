@@ -1,17 +1,21 @@
-"""MCP server that gives agents LADO tools. Each agent's CLI starts one over stdio.
+"""MCP server that gives agents LADO tools. Each agent's CLI starts one over stdio, whose
+process is lado.mcp_stdio's: it loads this module, and with it the MCP SDK, meanwhile.
 
 The calling agent is identified by LADO_SESSION and LADO_AGENT, which lado.runtime writes
 into that agent's MCP config.
 """
 
 import datetime
-import os
+import io
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
+from typing import BinaryIO
 
+import anyio
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
 from mcp.server.mcpserver.utilities.types import Image
+from mcp.server.stdio import stdio_server
 from mcp.types import CallToolResult, TextContent
 
 from lado import artifacts, kits, mcp_stdio, model_settings, runs, runtime, state, telemetry, tmux
@@ -507,9 +511,22 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
     return server
 
 
-def main() -> int:
-    session, agent = os.environ.get("LADO_SESSION"), os.environ.get("LADO_AGENT")
-    if not session or not agent:
-        raise SystemExit("lado mcp is started by LADO agents; LADO_SESSION/LADO_AGENT not set")
-    build(session, agent, os.environ.get("LADO_INSTANCE", "")).run("stdio")
-    return 0
+def serve(server: MCPServer, stdin: BinaryIO, stdout: BinaryIO) -> None:
+    """Run `server` as MCPServer.run("stdio") does, but on these streams: the process's own
+    are lado.mcp_stdio's, which passes the client's lines on. Ends at the end of `stdin`,
+    and closes both."""
+
+    async def run() -> None:
+        with (
+            io.TextIOWrapper(stdin, encoding="utf-8", errors="replace") as text_in,
+            io.TextIOWrapper(stdout, encoding="utf-8") as text_out,
+        ):
+            async with stdio_server(anyio.wrap_file(text_in), anyio.wrap_file(text_out)) as (
+                read,
+                write,
+            ):
+                # The SDK's private server (mcp<3; tests/test_mcp_stdio.py fails when it goes).
+                lowlevel = server._lowlevel_server
+                await lowlevel.run(read, write, lowlevel.create_initialization_options())
+
+    anyio.run(run)

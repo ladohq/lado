@@ -14,7 +14,7 @@ from mcp.server.mcpserver.exceptions import ToolError, UnexpectedToolError
 from mcp.server.mcpserver.utilities.types import Image
 from mcp.types import CallToolResult, TextContent
 
-from lado import artifacts, kits, model_settings, runs, runtime, state, telemetry, tmux
+from lado import artifacts, kits, mcp_stdio, model_settings, runs, runtime, state, telemetry, tmux
 
 
 @contextmanager
@@ -38,9 +38,7 @@ class _Server(MCPServer):
     waits for it, so that its first turn has them (lado.hooks)."""
 
     def __init__(self, session: str, agent: str, instance: str):
-        super().__init__(
-            "lado", instructions=f'You are agent "{agent}" in LADO session "{session}".'
-        )
+        super().__init__("lado", instructions=mcp_stdio.instructions(session, agent))
         self._lado_agent = (session, agent)
         self._lado_instance = instance  # "" when started without one: nothing to record
         self._lado_read_only: str | None = None  # the role of a read-only agent
@@ -326,11 +324,12 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
         me = state.get_agent(session, agent)
     except state.SchemaError:
         me = None  # the shared tools only; each call says why it cannot work
+    tools = mcp_stdio.tool_set(me)
     if me and me.read_only:
         server._lado_read_only = me.role
     # The lead's own view on each question to the human; a read-only lead's too: it changes
     # nothing but the card.
-    if me and me.name == runtime.SUPERVISOR:
+    if tools in ("supervisor", "read-only-supervisor"):
 
         @server.tool()
         def recommend(
@@ -368,7 +367,7 @@ def build(session: str, agent: str, instance: str = "") -> MCPServer:
                 return runtime.list_models(session, provider)
 
     # COMMAND_TOOLS, the supervisor's.
-    if me and me.name == runtime.SUPERVISOR and not me.read_only:
+    if tools == "supervisor":
 
         @server.tool()
         def spawn_worker(

@@ -2,7 +2,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-23-mcp-server-f
 
 ## 1. Tool set and instructions without the SDK
 
-- [ ] 1.1 `tool_set` and `instructions` in `lado.mcp_stdio`, used by `mcp_server.build`
+- [x] 1.1 `tool_set` and `instructions` in `lado.mcp_stdio`, used by `mcp_server.build`
   and `_Server` (D6). Check: `tests/test_mcp_stdio.py`, `tests/test_mcp_server.py`.
 
 ## 2. The cache

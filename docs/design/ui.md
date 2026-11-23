@@ -2949,13 +2949,18 @@ core's why (`ProbeInfo.cannot`); the CLIs a tick can save a model of are `ProbeI
   anchor out of the container's view before a change is not held through it, so what the
   human sees stays: its distance is noted anew. When the anchor leaves the page (× turned into Undo,
   a name's field into the name, a server into its line) the nearest `[data-anchor]` that held
-  it (a source's row) keeps its place instead; a scroll inside the section (a list's
-  own) notes it anew. The browser's own scroll anchoring is off in the section and the ones
-  after it (`overflow-anchor: none`), else it would move the page a second time; Safari has
-  none. No row leaves the section on a timer. At the very end of the page the browser stops
-  the scroll earlier by itself when the page gets shorter: what went above the anchor is made
-  up for by that, and the hook scrolls only what is left. What went below it cannot be made up
-  for: with nothing left to scroll, a form closing there moves what shows.
+  it (a source's row, or the list of servers for the add form) keeps its place instead; a
+  scroll inside the section (a list's own) notes it anew. The browser's own scroll anchoring
+  is off in the section and the ones after it (`overflow-anchor: none`), else it would move
+  the page a second time; Safari has none. No row leaves the section on a timer. At the very
+  end of the page the browser stops the scroll earlier by itself when the page gets shorter:
+  what went above the anchor is made up for by that, and the hook scrolls only what is left.
+  What went below it (a form closing there) moved the whole section down: the hook scrolls
+  that back too, and where the place it needs lies past the page's end it leaves blank room
+  under the section (its inline bottom padding) as tall as is missing. Each scroll of the
+  container shrinks that room to the part of it in view, so nothing that shows moves;
+  scrolled up past it, the page ends at its last block again. Settings → Git servers uses the
+  same hook and behaves the same.
 - **A CLI's default** (Agent CLIs' rows, `CliDefault.tsx`): the picker's notes stand under it,
   tied to the field by `aria-describedby`: a refusal as an alert, a warning from a background
   read as a status.

@@ -38,8 +38,11 @@ const position = (on: Scroller) => (on === window ? window.scrollY : (on as HTML
 // The farthest the container scrolls (0 or less: it has nothing to scroll).
 function end(on: Scroller): number {
   const box = on === window ? document.documentElement : (on as HTMLElement);
-  return box.scrollHeight - (on === window ? window.innerHeight : box.clientHeight);
+  return box.scrollHeight - seen(on);
 }
+
+// The height of the container's view.
+const seen = (on: Scroller) => (on === window ? window.innerHeight : (on as HTMLElement).clientHeight);
 
 // Whether the page is scrolled to its very end, where a page getting shorter stops the scroll
 // earlier by itself; a page left too short to scroll is at its end too.
@@ -113,9 +116,13 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
         const kept = last && last.on === on && Math.abs(now - last.left) < 1 && Math.abs(last.left - last.want) < 1;
         const want = (kept ? last.want : now) + moved + stopped;
         // A place past the page's end: blank room under the section, as tall as is missing. A
-        // page too short to scroll tells no more than its view's height: measured again then.
-        for (let pass = 0; pass < 2 && want > end(on); pass++)
-          root.style.paddingBottom = `${room(root) + Math.ceil(want - end(on))}px`;
+        // page too short to scroll tells no more than its view's height, so the room first gets
+        // a view's height more, which makes the page scroll past that place whatever its
+        // height; what it then scrolls past it is taken off again.
+        if (want > end(on)) {
+          root.style.paddingBottom = `${room(root) + Math.ceil(want - end(on)) + seen(on)}px`;
+          root.style.paddingBottom = `${room(root) - Math.floor(end(on) - want)}px`;
+        }
         on.scrollTo(0, want);
         ours.current = { on, want, left: position(on) };
       }

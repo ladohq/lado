@@ -47,7 +47,9 @@ noted while the page is at its end) so as not to correct twice. Two gaps remain 
   not move when the form under it closes, and a server's own elements still find their row
   first. The page may also be left too short to scroll at all: `atEnd` counts that as the end
   (a stop shows only as a position below the one noted), and a container that short reports
-  its view's height as `scrollHeight`, so the room is measured again once the page scrolls.
+  its view's height as `scrollHeight`, so the room first gets a view's height more (the page
+  then scrolls past the place whatever its height), and what it scrolls past is taken off
+  again (review F2: two plain measures fell short on a page far shorter than its view).
 
 ## Root cause against the principles
 

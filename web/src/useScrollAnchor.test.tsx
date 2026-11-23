@@ -425,6 +425,20 @@ test("a form going leaves a page too short to scroll: the anchor stays all the s
   expect(tops.a).toBe(400);
 });
 
+test("a form going leaves a page far shorter than its view: the room is as tall as is missing", () => {
+  wide(true);
+  tops = { section: -200, a: 400, form: 430 };
+  const view = render(page(["a", "form"], "a"));
+  const box = ending(view, 1100, 200); // at the end: 200 + 900
+  view.rerender(page(["a", "form"], "a"));
+  box.shrink(600); // 500 px of content in a view of 900
+  delete tops.form;
+  view.rerender(page(["a"], "a"));
+  expect(box.at()).toBe(200);
+  expect(box.section.style.paddingBottom).toBe("600px");
+  expect(tops.a).toBe(400);
+});
+
 test("at the page's end, a correction past the end for what grew above: padding makes it reachable", () => {
   wide(true);
   tops = { section: -1000, x: -990, a: 400, form: 430 };

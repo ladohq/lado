@@ -430,7 +430,8 @@ export function GitServersPage() {
               <b>No git servers yet.</b>
             </p>
           )}
-          <ul className="mx-srcs">
+          {/* The list holds the place of the add form once it closes (useScrollAnchor). */}
+          <ul className="mx-srcs" data-anchor="">
             {(order.current ?? []).map((host) => {
               const server = servers.find((s) => s.host === host);
               const mine = result?.host === host ? result : null;

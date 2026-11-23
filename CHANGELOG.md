@@ -7,6 +7,12 @@
 - **Agents start sooner.** An agent's first turn no longer waits about a third of a second
   for LADO's tools to load, once an agent of the same kind has started on this version.
 
+### Fixed
+
+- **Nothing jumps at the bottom of Model servers.** Closing Add server, Change or Remove at
+  the very end of Settings → Model servers or Git servers keeps the server where it was; a
+  blank space left below goes as you scroll up.
+
 ## 0.48.0 (2026-11-21)
 
 ### New

@@ -11,11 +11,10 @@ model`; and the API it uses, which a server's key enters and never leaves.
 ### Requirement: Nothing moves under the pointer
 
 No change in the section SHALL scroll the page or move the element the human acts on or
-holds the focus on, whatever it changes above it: a tick, a rename, × and Undo, a default
-picked, a server added, changed or removed, the reload after any of them, and a list's read
-ending. The page SHALL keep that element at its place on the screen by scrolling by the height
-changed above it, No row
-SHALL leave the section on a timer.
+holds the focus on, whatever it changes above or below it: a tick, a rename, × and Undo, a
+default picked, a server added, changed or removed, the reload after any of them, and a list's
+read ending. The page SHALL keep that element at its place on the screen; no row SHALL leave
+the section on a timer.
 
 #### Scenario: A tick adds a card above
 - **WHEN** the human ticks an agent CLI under a model in the middle of a server's open list and the model adds a row to Your models below
@@ -27,10 +26,15 @@ SHALL leave the section on a timer.
   does not move
 
 #### Scenario: The very end of the page
-- **WHEN** the page is scrolled to its end and a form closes there, so the page gets shorter
-  below what the human acted on
-- **THEN** the page, with nothing left to scroll, moves by what it lost; a change above that
-  element still moves nothing
+- **WHEN** the page is scrolled to its end and a form closes there (Add server, a server's
+  Change, the Remove question), so the page would get shorter below what the human acted on
+- **THEN** what the human acted on keeps its place on the screen, and blank room as tall as
+  what was lost shows under the section
+
+#### Scenario: The blank room goes as the human scrolls
+- **WHEN** blank room was left under the section and the human scrolls up
+- **THEN** the room shrinks to the part of it still in view, nothing on the screen moves, and
+  scrolled back down the page ends at its last block
 
 #### Scenario: Nothing acted on
 - **WHEN** the human opens `/settings` and presses nothing on Model servers while Servers and Your models render their rows

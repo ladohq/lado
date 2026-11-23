@@ -36,6 +36,6 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-23-mcp-server-f
 
 ## 7. Regression run
 
-- [ ] 7.1 `make lint`, `make test`, the integration files above, `openspec validate
+- [x] 7.1 `make lint`, `make test`, the integration files above, `openspec validate
   mcp-server-fast-start --strict`, CI green; the probe's medians before and after in the
   pull request.

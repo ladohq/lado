@@ -21,6 +21,7 @@ from lado import (
     cli,
     gitcache,
     marketplaces,
+    mcp_stdio,
     project_secrets,
     projects,
     runs,
@@ -28,6 +29,12 @@ from lado import (
     state,
 )
 from lado.cli import format_duration, main
+
+
+def test_lado_mcp_runs_the_lean_front(monkeypatch):
+    """The agents of a session started before an upgrade keep `lado.cli mcp`."""
+    monkeypatch.setattr(mcp_stdio, "main", lambda: 7)
+    assert main(["mcp"]) == 7
 
 
 def test_version_flag_prints_version():

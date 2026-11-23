@@ -12,13 +12,13 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-23-mcp-server-f
 
 ## 3. The front
 
-- [ ] 3.1 fd claim, reader and writer threads, pipes into `stdio_server`, replay and
+- [x] 3.1 fd claim, reader and writer threads, pipes into `stdio_server`, replay and
   dropped duplicates, the check after the hand-over, `mcp_ready`, failures (D1, D3, D5,
   D8, D9). Check: `tests/test_mcp_stdio.py`.
 
 ## 4. The entry
 
-- [ ] 4.1 `providers.base`'s LADO MCP server runs `lado.mcp_stdio`; `lado mcp` runs the
+- [x] 4.1 `providers.base`'s LADO MCP server runs `lado.mcp_stdio`; `lado mcp` runs the
   front (D1). Check: the providers' config tests, `tests/test_cli*.py`.
 
 ## 5. End-to-end tests

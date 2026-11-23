@@ -1,12 +1,12 @@
 ## 1. The hook
 
-- [ ] 1.1 `web/src/useScrollAnchor.ts`: `settle` acts on `moved + stopped !== 0`; a target past
+- [x] 1.1 `web/src/useScrollAnchor.ts`: `settle` acts on `moved + stopped !== 0`; a target past
   the container's end first grows the section's inline bottom padding by what is missing (D1,
   D2); the hook's header comment says so in place of "a page getting shorter stops the scroll
   earlier by itself". Check: the unit tests of 1.3.
-- [ ] 1.2 The container's `scroll` listener trims the padding to the part in view; the
+- [x] 1.2 The container's `scroll` listener trims the padding to the part in view; the
   cleanup empties it (D3, D4). Check: the unit tests of 1.3.
-- [ ] 1.3 `web/src/useScrollAnchor.test.tsx`: the browser imitation clamps at the content's
+- [x] 1.3 `web/src/useScrollAnchor.test.tsx`: the browser imitation clamps at the content's
   end and counts the section's padding; the five new tests of design.md, Tests. Check: `make
   web` (vitest) green, the old tests unchanged and green.
 

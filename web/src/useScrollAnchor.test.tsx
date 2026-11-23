@@ -355,3 +355,125 @@ test("the human's own scroll moves the whole section: no change to undo", () => 
   view.rerender(page(["a", "b"], "b"));
   expect(by).not.toHaveBeenCalled();
 });
+
+// A `.content` that ends: `height` of content and the section's bottom padding in a view of 900;
+// it scrolls as a browser's does, by whole pixels and never past its end, and stops anew at a
+// new end when the content gets shorter. Starts scrolled to `at`.
+function ending(view: ReturnType<typeof render>, height: number, at: number) {
+  const content = view.container.querySelector(".content") as HTMLElement;
+  const section = content.querySelector("section") as HTMLElement;
+  const pad = () => Number.parseFloat(section.style.paddingBottom) || 0;
+  const end = () => Math.max(0, height + pad() - 900);
+  const go = (y: number) => {
+    const to = Math.min(end(), Math.max(0, Math.round(y)));
+    tops = Object.fromEntries(Object.entries(tops).map(([k, t]) => [k, t - (to - at)]));
+    at = to;
+  };
+  Object.defineProperty(content, "scrollTop", { get: () => at, configurable: true });
+  Object.defineProperty(content, "clientHeight", { get: () => 900, configurable: true });
+  Object.defineProperty(content, "scrollHeight", { get: () => height + pad(), configurable: true });
+  const by = vi.fn((_x: number, y: number) => go(y));
+  content.scrollTo = by as unknown as typeof content.scrollTo;
+  return {
+    by,
+    section,
+    at: () => at,
+    // The content `by` px shorter: the browser stops the scroll at the new end.
+    shrink(by: number) {
+      height -= by;
+      go(at);
+    },
+    // The human's scroll to `y`.
+    scroll(y: number) {
+      go(y);
+      act(() => {
+        content.dispatchEvent(new Event("scroll"));
+      });
+    },
+  };
+}
+
+test("at the page's end, a form below the anchor going: the section gets the lost height as padding and the anchor stays", () => {
+  wide(true);
+  tops = { section: -1000, a: 400, form: 430 };
+  const view = render(page(["a", "form"], "a"));
+  const box = ending(view, 2900, 2000); // at the end: 2000 + 900
+  view.rerender(page(["a", "form"], "a")); // noted at the end
+  box.shrink(200); // the form, 200 px, closes below a
+  delete tops.form;
+  view.rerender(page(["a"], "a"));
+  expect(box.by).toHaveBeenLastCalledWith(0, 2000);
+  expect(box.section.style.paddingBottom).toBe("200px");
+  expect(box.at()).toBe(2000);
+  expect(tops.a).toBe(400);
+  view.unmount();
+  expect(box.section.style.paddingBottom).toBe("");
+});
+
+test("at the page's end, a correction past the end for what grew above: padding makes it reachable", () => {
+  wide(true);
+  tops = { section: -1000, x: -990, a: 400, form: 430 };
+  const view = render(page(["x", "a", "form"], "a"));
+  const box = ending(view, 2900, 2000);
+  view.rerender(page(["x", "a", "form"], "a"));
+  // 120 px grow above a while 200 px go below it: 80 px shorter, the browser stops 80 px earlier.
+  box.shrink(80);
+  tops = { section: tops.section, x: tops.x, y: tops.x + 30, a: tops.a + 120 };
+  view.rerender(page(["x", "y", "a"], "a"));
+  expect(box.by).toHaveBeenLastCalledWith(0, 2120);
+  expect(box.section.style.paddingBottom).toBe("200px");
+  expect(tops.a).toBe(400);
+});
+
+test("the human's scroll up trims the padding to what is in view; scrolled past it, none is left", () => {
+  wide(true);
+  tops = { section: -1000, a: 400, form: 430 };
+  const view = render(page(["a", "form"], "a"));
+  const box = ending(view, 2900, 2000);
+  view.rerender(page(["a", "form"], "a"));
+  box.shrink(200);
+  delete tops.form;
+  view.rerender(page(["a"], "a"));
+  expect(box.section.style.paddingBottom).toBe("200px");
+  box.scroll(1950); // 50 px up: those 50 px of padding below the view go
+  expect(box.section.style.paddingBottom).toBe("150px");
+  expect(box.at()).toBe(1950);
+  expect(tops.a).toBe(450);
+  view.rerender(page(["a"], "a")); // the section's size changed: nothing to make up for
+  expect(box.by).toHaveBeenCalledTimes(1);
+  expect(tops.a).toBe(450);
+  box.scroll(1400); // past the padding
+  expect(box.section.style.paddingBottom).toBe("");
+  view.rerender(page(["a"], "a"));
+  box.scroll(5000); // back down: the page ends at its last block
+  expect(box.at()).toBe(1800);
+  expect(box.section.style.paddingBottom).toBe("");
+  expect(box.by).toHaveBeenCalledTimes(1);
+});
+
+test("with room to scroll under the anchor no padding is added", () => {
+  wide(true);
+  tops = { section: -1000, x: -990, a: 400, form: 430 };
+  const view = render(page(["x", "a", "form"], "a"));
+  const box = ending(view, 2900, 1000); // 800 px above the end
+  view.rerender(page(["x", "a", "form"], "a"));
+  box.shrink(200); // the form goes below a, 60 px grow above it
+  tops = { section: -1000, x: -990, y: -960, a: 460 };
+  view.rerender(page(["x", "y", "a"], "a"));
+  expect(box.by).toHaveBeenLastCalledWith(0, 1060);
+  expect(box.section.style.paddingBottom).toBe("");
+  expect(tops.a).toBe(400);
+});
+
+test("nothing held: a form going at the page's end adds no padding", () => {
+  wide(true);
+  tops = { section: -1000, a: 400, form: 430 };
+  const view = render(page(["a", "form"]));
+  const box = ending(view, 2900, 2000);
+  view.rerender(page(["a", "form"]));
+  box.shrink(200);
+  delete tops.form;
+  view.rerender(page(["a"]));
+  expect(box.by).not.toHaveBeenCalled();
+  expect(box.section.style.paddingBottom).toBe("");
+});

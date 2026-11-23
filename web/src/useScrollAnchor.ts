@@ -9,9 +9,15 @@
 // or under it) is scrolled by what that distance gained. An anchor out of that container's
 // view before a change is not held through it (the page stays as the human sees it), only
 // noted anew. When the anchor leaves the page (× turned into Undo, a field into a name, a
-// server into its line), the nearest `[data-anchor]` that held it stands for it. The page
-// scrolls by whole pixels: the anchor keeps the distance it was first noted at, so half
-// pixels do not add up; a scroll inside the section (a list's own) notes it anew.
+// server into its line), the nearest `[data-anchor]` that held it stands for it. At the page's
+// very end a change can make the page shorter below the anchor too, and the browser then stops
+// the scroll at the new end, moving the whole section down; a place to scroll to past that end
+// is made reachable by blank room under the section (its inline bottom padding), as tall as is
+// missing. Each scroll of the container shrinks that room to the part of it in view, so taking
+// it away moves nothing that shows; scrolled up past it, the page ends at its last block again,
+// and the room goes with the hook. The page scrolls by whole pixels: the anchor keeps the
+// distance it was first noted at, so half pixels do not add up; a scroll inside the section
+// (a list's own) notes it anew.
 // `overflow-anchor` is not relied on: Safari has none.
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 
@@ -29,13 +35,22 @@ function scroller(section: HTMLElement): Scroller {
 
 const position = (on: Scroller) => (on === window ? window.scrollY : (on as HTMLElement).scrollTop);
 
+// The farthest the container scrolls, and whether it can scroll at all.
+function end(on: Scroller): { last: number; scrolls: boolean } {
+  const box = on === window ? document.documentElement : (on as HTMLElement);
+  const seen = on === window ? window.innerHeight : box.clientHeight;
+  return { last: box.scrollHeight - seen, scrolls: box.scrollHeight > seen };
+}
+
 // Whether the page is scrolled to its very end, where a page getting shorter stops the scroll
 // earlier by itself.
 function atEnd(on: Scroller): boolean {
-  const box = on === window ? document.documentElement : (on as HTMLElement);
-  const seen = on === window ? window.innerHeight : box.clientHeight;
-  return box.scrollHeight > seen && position(on) >= box.scrollHeight - seen - 1;
+  const { last, scrolls } = end(on);
+  return scrolls && position(on) >= last - 1;
 }
+
+// The blank room the hook left under the section (its inline bottom padding), in px.
+const room = (section: HTMLElement) => Number.parseFloat(section.style.paddingBottom) || 0;
 
 // Whether a box from `top` to `bottom` on the screen showed in what scrolls.
 function shown(on: Scroller, top: number, bottom: number): boolean {
@@ -86,21 +101,23 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
       const box = spot.el.getBoundingClientRect();
       const moved = box.top - root.getBoundingClientRect().top - spot.at;
       const on = scroller(root);
-      if (moved !== 0 && shown(on, box.top - moved, box.bottom - moved)) {
+      const now = position(on);
+      // A page got shorter under a scroll near its end: the browser stopped the scroll at the
+      // new end, by all or part of what went above, or moved the whole section down for what
+      // went below. What went above is made up for by that much; scrolling it again would move
+      // the anchor by as much. No human scroll ends above where the page ends.
+      const stopped = atEnd(on) && noted.current > now ? noted.current - now : 0;
+      if (moved + stopped !== 0 && shown(on, box.top - moved, box.bottom - moved)) {
         const last = ours.current;
-        const now = position(on);
-        // A page got shorter under a scroll near its end: the browser stopped the scroll at the
-        // new end, all or part of what went above. That much is made up for; scrolling it again
-        // would move the anchor by as much. No human scroll ends above where the page ends.
-        const stopped = atEnd(on) && noted.current > now ? noted.current - now : 0;
-        if (moved + stopped !== 0) {
-          // The place it wanted, while the page is where that put it and it put it there (a
-          // scroll stopped at the top or the bottom is no place wanted): else where the page is.
-          const kept = last && last.on === on && Math.abs(now - last.left) < 1 && Math.abs(last.left - last.want) < 1;
-          const want = (kept ? last.want : now) + moved + stopped;
-          on.scrollTo(0, want);
-          ours.current = { on, want, left: position(on) };
-        }
+        // The place it wanted, while the page is where that put it and it put it there (a
+        // scroll stopped at the top or the bottom is no place wanted): else where the page is.
+        const kept = last && last.on === on && Math.abs(now - last.left) < 1 && Math.abs(last.left - last.want) < 1;
+        const want = (kept ? last.want : now) + moved + stopped;
+        // A place past the page's end: blank room under the section, as tall as is missing.
+        const short = want - end(on).last;
+        if (short > 0) root.style.paddingBottom = `${room(root) + Math.ceil(short)}px`;
+        on.scrollTo(0, want);
+        ours.current = { on, want, left: position(on) };
       }
       spot.at += moved; // made up for, or not held: the distance it has now
     }
@@ -122,16 +139,30 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
     };
     const fresh = () => note(held.current);
     const scrolled = () => note();
+    // A scroll of the container: the blank room shrinks to the part of it in view, so nothing
+    // that shows moves; the page is where the human put it, no stop of the browser's.
+    const trim = (event: Event) => {
+      const on = scroller(root);
+      const pad = room(root);
+      if (pad <= 0 || event.target !== (on === window ? document : on)) return;
+      const below = end(on).last - position(on);
+      if (below <= 0) return;
+      root.style.paddingBottom = pad > below ? `${pad - below}px` : "";
+      noted.current = position(on);
+    };
     document.addEventListener("pointerdown", press, true);
     root.addEventListener("focusin", fresh);
     root.addEventListener("scroll", scrolled, { capture: true, passive: true });
+    window.addEventListener("scroll", trim, { capture: true, passive: true });
     const sized = typeof ResizeObserver === "function" ? new ResizeObserver(settle) : null;
     sized?.observe(root);
     return () => {
       document.removeEventListener("pointerdown", press, true);
       root.removeEventListener("focusin", fresh);
       root.removeEventListener("scroll", scrolled, { capture: true });
+      window.removeEventListener("scroll", trim, { capture: true });
       sized?.disconnect();
+      root.style.paddingBottom = "";
     };
   }, [section, note, settle]);
 }

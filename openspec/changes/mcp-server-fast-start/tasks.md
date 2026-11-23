@@ -7,7 +7,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-23-mcp-server-f
 
 ## 2. The cache
 
-- [ ] 2.1 Key, read, atomic write, pruning, per-version `initialize` (D2, D4, D7). Check:
+- [x] 2.1 Key, read, atomic write, pruning, per-version `initialize` (D2, D4, D7). Check:
   `tests/test_mcp_stdio.py`.
 
 ## 3. The front

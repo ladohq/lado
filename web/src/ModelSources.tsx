@@ -223,7 +223,8 @@ export function ModelServers(props: Sources) {
         Servers {settings.servers.length > 0 && <span className="mx-count">{settings.servers.length}</span>}
       </h3>
       <p className="mx-lead">{SERVERS_LEAD}</p>
-      <ul className="mx-srcs">
+      {/* The list holds the place of the add form once it closes (useScrollAnchor). */}
+      <ul className="mx-srcs" data-anchor="">
         {order.current.map((name) => {
           const key = serverKey(name);
           const server = settings.servers.find((s) => fold(s.name) === fold(name));

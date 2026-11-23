@@ -35,19 +35,15 @@ function scroller(section: HTMLElement): Scroller {
 
 const position = (on: Scroller) => (on === window ? window.scrollY : (on as HTMLElement).scrollTop);
 
-// The farthest the container scrolls, and whether it can scroll at all.
-function end(on: Scroller): { last: number; scrolls: boolean } {
+// The farthest the container scrolls (0 or less: it has nothing to scroll).
+function end(on: Scroller): number {
   const box = on === window ? document.documentElement : (on as HTMLElement);
-  const seen = on === window ? window.innerHeight : box.clientHeight;
-  return { last: box.scrollHeight - seen, scrolls: box.scrollHeight > seen };
+  return box.scrollHeight - (on === window ? window.innerHeight : box.clientHeight);
 }
 
 // Whether the page is scrolled to its very end, where a page getting shorter stops the scroll
-// earlier by itself.
-function atEnd(on: Scroller): boolean {
-  const { last, scrolls } = end(on);
-  return scrolls && position(on) >= last - 1;
-}
+// earlier by itself; a page left too short to scroll is at its end too.
+const atEnd = (on: Scroller) => position(on) >= end(on) - 1;
 
 // The blank room the hook left under the section (its inline bottom padding), in px.
 const room = (section: HTMLElement) => Number.parseFloat(section.style.paddingBottom) || 0;
@@ -113,9 +109,10 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
         // scroll stopped at the top or the bottom is no place wanted): else where the page is.
         const kept = last && last.on === on && Math.abs(now - last.left) < 1 && Math.abs(last.left - last.want) < 1;
         const want = (kept ? last.want : now) + moved + stopped;
-        // A place past the page's end: blank room under the section, as tall as is missing.
-        const short = want - end(on).last;
-        if (short > 0) root.style.paddingBottom = `${room(root) + Math.ceil(short)}px`;
+        // A place past the page's end: blank room under the section, as tall as is missing. A
+        // page too short to scroll tells no more than its view's height: measured again then.
+        for (let pass = 0; pass < 2 && want > end(on); pass++)
+          root.style.paddingBottom = `${room(root) + Math.ceil(want - end(on))}px`;
         on.scrollTo(0, want);
         ours.current = { on, want, left: position(on) };
       }
@@ -145,7 +142,7 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
       const on = scroller(root);
       const pad = room(root);
       if (pad <= 0 || event.target !== (on === window ? document : on)) return;
-      const below = end(on).last - position(on);
+      const below = end(on) - position(on);
       if (below <= 0) return;
       root.style.paddingBottom = pad > below ? `${pad - below}px` : "";
       noted.current = position(on);

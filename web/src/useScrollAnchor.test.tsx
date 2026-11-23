@@ -371,7 +371,8 @@ function ending(view: ReturnType<typeof render>, height: number, at: number) {
   };
   Object.defineProperty(content, "scrollTop", { get: () => at, configurable: true });
   Object.defineProperty(content, "clientHeight", { get: () => 900, configurable: true });
-  Object.defineProperty(content, "scrollHeight", { get: () => height + pad(), configurable: true });
+  // A browser's: never less than the view, however short the content.
+  Object.defineProperty(content, "scrollHeight", { get: () => Math.max(900, height + pad()), configurable: true });
   const by = vi.fn((_x: number, y: number) => go(y));
   content.scrollTo = by as unknown as typeof content.scrollTo;
   return {
@@ -408,6 +409,20 @@ test("at the page's end, a form below the anchor going: the section gets the los
   expect(tops.a).toBe(400);
   view.unmount();
   expect(box.section.style.paddingBottom).toBe("");
+});
+
+test("a form going leaves a page too short to scroll: the anchor stays all the same", () => {
+  wide(true);
+  tops = { section: -100, a: 400, form: 430 };
+  const view = render(page(["a", "form"], "a"));
+  const box = ending(view, 1300, 400); // at the end: 400 + 900
+  view.rerender(page(["a", "form"], "a"));
+  box.shrink(500); // 800 px of content in a view of 900: nothing to scroll
+  delete tops.form;
+  view.rerender(page(["a"], "a"));
+  expect(box.by).toHaveBeenLastCalledWith(0, 400);
+  expect(box.section.style.paddingBottom).toBe("500px");
+  expect(tops.a).toBe(400);
 });
 
 test("at the page's end, a correction past the end for what grew above: padding makes it reachable", () => {

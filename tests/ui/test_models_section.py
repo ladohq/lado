@@ -117,6 +117,22 @@ def stays(locator: Locator, before: float) -> None:
     assert abs(top(locator) - before) < 1, (top(locator), before)
 
 
+def to_the_end(page: Page) -> None:
+    """`.content` scrolled to its very end, where the page getting shorter stops the scroll."""
+    page.evaluate(
+        "() => { const c = document.querySelector('.content'); c.scrollTop = c.scrollHeight; }"
+    )
+    assert page.evaluate(
+        "() => { const c = document.querySelector('.content');"
+        " return c.scrollHeight > c.clientHeight && c.scrollTop >= c.scrollHeight - c.clientHeight - 1; }"
+    )
+
+
+def room(page: Page) -> float:
+    """The blank room left under Model servers (the section's bottom padding), in px."""
+    return section(page).evaluate("s => parseFloat(getComputedStyle(s).paddingBottom)")
+
+
 def open_settings(page: Page, server) -> None:
     """Settings → Model servers, its entries read."""
     log_in(page, server)
@@ -569,17 +585,18 @@ def test_a_server_added_ticked_renamed_unticked_refreshed_and_removed(
     assert looks[0] == looks[1] == looks[2], looks
     shot(page, "form-checked")
     add = models.get_by_role("button", name="Add server", exact=True)
-    # Room under the page and above it: with the form at its very end, the page getting
-    # shorter moves it whatever the page does, and lines going above a tick at the page's top
-    # (the saved server's) move it too, as the window has nothing left to scroll.
-    page.add_style_tag(content=".setting.mx { margin-top: 600px; margin-bottom: 1200px; }")
-    add.scroll_into_view_if_needed()
+    # Room above the page: lines going above a tick at the page's top (the saved server's)
+    # would move it, as the window has nothing left to scroll. None below: at the very end of
+    # the page the form closing leaves blank room under the section instead.
+    page.add_style_tag(content=".setting.mx { margin-top: 600px; }")
+    to_the_end(page)
     at = top(models.locator(".mx-form"))
     add.click()
     lm = source(page, "LM Studio дома")
     expect(lm.get_by_text('Saved model server "LM Studio дома".')).to_be_visible()
     expect(lm.get_by_text("Open a model to tick the agent CLIs that run it.")).to_be_visible()
     stays(lm, at)  # the new server takes the form's place
+    assert room(page) > 0  # the page would have got shorter under it
     expect(toggle(page, "LM Studio дома")).to_be_focused()
     expect(lm.get_by_text(fake.EMBEDDINGS)).to_have_count(0)
     shot(page, "server-added")
@@ -650,7 +667,7 @@ def test_a_server_added_ticked_renamed_unticked_refreshed_and_removed(
     expect(ask.get_by_role("button", name="Cancel")).to_be_focused()
     shot(page, "remove-asks")
     confirm = lm.get_by_role("button", name="Remove server and 1 model")
-    confirm.scroll_into_view_if_needed()
+    to_the_end(page)
     at = top(lm)
     confirm.click()
     removed = "Removed LM Studio дома and its 1 model."
@@ -1271,3 +1288,40 @@ def test_a_tick_at_the_page_s_end_stays_under_the_pointer(page: Page, clis, serv
     expect(tick).not_to_be_checked()
     page.wait_for_timeout(300)
     stays(tick, before)
+
+
+def test_a_change_saved_at_the_page_s_end_keeps_its_row_and_the_room_goes_on_a_scroll(
+    page: Page, clis, server, lms
+):
+    """At the very end of the page Change's form closing makes the page shorter below the row:
+    the row keeps its place over blank room under the section, which a scroll up trims away."""
+    saved_server(lms)
+    page.set_viewport_size({"width": 1280, "height": 900})
+    open_settings(page, server)
+    row = source(page, "LM Studio дома")
+    moved = fake.Server("lmstudio")
+    try:
+        row.get_by_role("button", name="Change LM Studio дома").click()
+        row.get_by_label("Address").fill(moved.url)
+        expect(row.get_by_text("✓ LM Studio answers · 1 model")).to_be_visible()
+        page.add_style_tag(content=".setting.mx { margin-top: 900px; }")  # a page that scrolls
+        to_the_end(page)
+        at = top(row)
+        row.get_by_role("button", name="Save").click()
+        expect(row.get_by_text('Saved model server "LM Studio дома".')).to_be_visible()
+        page.wait_for_timeout(300)
+        stays(row, at)
+        assert room(page) > 0  # the page would have got shorter under it
+        page.mouse.move(640, 450)
+        page.mouse.wheel(0, -40)  # up a little: the room below the view goes, nothing moves
+        page.wait_for_timeout(300)
+        stays(row, at + 40)
+        page.mouse.wheel(0, -2000)
+        page.wait_for_timeout(300)
+        assert room(page) == 0
+        page.mouse.wheel(0, 4000)  # back down: the page ends at its last block
+        page.wait_for_timeout(300)
+        to_the_end(page)
+        assert room(page) == 0
+    finally:
+        moved.close()

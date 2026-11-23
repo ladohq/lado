@@ -39,6 +39,13 @@ noted while the page is at its end) so as not to correct twice. Two gaps remain 
   stays as it is: the padding is what makes that place reachable.
 - D6. No room is added when nothing is held (no focus or press in the section, an anchor out of
   view): the rule stays "only what the human acts on is held".
+- D7 (found while building). Add server's form closing takes the pressed button with it, and
+  nothing `[data-anchor]` held it, so nothing was held when the page got shorter. The list of
+  servers (`ul.mx-srcs`, on Model servers and Git servers) is now `data-anchor`: its top does
+  not move when the form under it closes, and a server's own elements still find their row
+  first. The page may also be left too short to scroll at all: `atEnd` counts that as the end
+  (a stop shows only as a position below the one noted), and a container that short reports
+  its view's height as `scrollHeight`, so the room is measured again once the page scrolls.
 
 ## Root cause against the principles
 

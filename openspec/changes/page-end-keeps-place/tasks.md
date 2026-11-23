@@ -12,21 +12,22 @@
 
 ## 2. The page's e2e
 
-- [ ] 2.1 `tests/ui/test_models_section.py`,
+- [x] 2.1 `tests/ui/test_models_section.py`,
   `test_a_server_added_ticked_renamed_unticked_refreshed_and_removed`: `margin-bottom` gone
   from the injected style; the page scrolled to its very end before Add server and before the
   Remove confirm; the `stays` checks as now (AC-1). Check: `uv run pytest -m ui
-  tests/ui/test_models_section.py -k removed`.
-- [ ] 2.2 A new test there: Change of a saved server at the page's end keeps the row's place;
+  tests/ui/test_models_section.py -k removed`. It needed D7: the list of servers
+  `data-anchor` and a page left too short to scroll counted as at its end.
+- [x] 2.2 A new test there: Change of a saved server at the page's end keeps the row's place;
   a scroll up and back to the end leaves no padding (AC-2, AC-3). Check: `uv run pytest -m ui
-  tests/ui/test_models_section.py -k <its name>`.
+  tests/ui/test_models_section.py -k change_saved_at_the_page`.
 
 ## 3. Docs
 
-- [ ] 3.1 `docs/design/ui.md`, **Nothing moves under the pointer**: the closing sentences on
+- [x] 3.1 `docs/design/ui.md`, **Nothing moves under the pointer**: the closing sentences on
   the very end of the page say the hook leaves blank room under the section as tall as it
   needs, trimmed to what is in view on each scroll, instead of the limit. Check: read it.
-- [ ] 3.2 CHANGELOG.md, under the unreleased patch heading, group Fixed: at the bottom of
+- [x] 3.2 CHANGELOG.md, under the unreleased patch heading, group Fixed: at the bottom of
   Settings → Model servers and Git servers a form that closes no longer moves the page.
   Check: read it.
 

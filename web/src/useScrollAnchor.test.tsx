@@ -480,6 +480,36 @@ test("with room to scroll under the anchor no padding is added", () => {
   expect(tops.a).toBe(400);
 });
 
+test("the human scrolled up, then the page's end came to them: no stop of the browser's, nothing scrolls", () => {
+  wide(true);
+  tops = { section: -1000, a: 400, b: 1200 };
+  const view = render(page(["a", "b"], "a"));
+  const box = ending(view, 2900, 2000);
+  view.rerender(page(["a", "b"], "a")); // noted at the end
+  box.scroll(1700); // the wheel, 300 px up
+  box.shrink(300); // below the view: the end is now where the human is
+  view.rerender(page(["a", "b"], "a"));
+  expect(box.by).not.toHaveBeenCalled();
+  expect(box.section.style.paddingBottom).toBe("");
+  expect(tops.a).toBe(700);
+});
+
+test("the browser's stop told by a scroll event before the section's resize is still made up for", () => {
+  wide(true);
+  tops = { section: -1000, a: 400, form: 430 };
+  const view = render(page(["a", "form"], "a"));
+  const box = ending(view, 2900, 2000);
+  view.rerender(page(["a", "form"], "a"));
+  box.shrink(200);
+  delete tops.form;
+  act(() => {
+    (view.container.querySelector(".content") as HTMLElement).dispatchEvent(new Event("scroll"));
+  });
+  view.rerender(page(["a"], "a"));
+  expect(box.by).toHaveBeenLastCalledWith(0, 2000);
+  expect(tops.a).toBe(400);
+});
+
 test("nothing held: a form going at the page's end adds no padding", () => {
   wide(true);
   tops = { section: -1000, a: 400, form: 430 };

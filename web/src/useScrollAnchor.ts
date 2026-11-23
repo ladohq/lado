@@ -60,7 +60,8 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
   // Where the hook scrolled last: the exact place it wants (`want`) and where the page, which
   // scrolls by whole pixels, put it (`left`); a page found elsewhere was scrolled by another.
   const ours = useRef<{ on: Scroller; want: number; left: number } | null>(null);
-  const noted = useRef(0); // where the page was at the last note
+  // Where the page was at the last note, and how far it could scroll then.
+  const noted = useRef({ at: 0, end: 0 });
 
   // The anchor now; an element `kept` held already keeps the distance noted for it then.
   const note = useCallback(
@@ -68,7 +69,8 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
       const root = section.current;
       held.current = null;
       if (!root) return;
-      noted.current = position(scroller(root));
+      const on = scroller(root);
+      noted.current = { at: position(on), end: end(on) };
       const focused = document.activeElement;
       const last = acted.current;
       const gone = kept && !kept.own.el.isConnected && kept.around?.el.isConnected ? kept.around.el : null;
@@ -101,8 +103,9 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
       // A page got shorter under a scroll near its end: the browser stopped the scroll at the
       // new end, by all or part of what went above, or moved the whole section down for what
       // went below. What went above is made up for by that much; scrolling it again would move
-      // the anchor by as much. No human scroll ends above where the page ends.
-      const stopped = atEnd(on) && noted.current > now ? noted.current - now : 0;
+      // the anchor by as much. The human's scrolls of the container are noted as they end
+      // (`follow`), so a position below the one noted is the browser's stop alone.
+      const stopped = atEnd(on) && noted.current.at > now ? noted.current.at - now : 0;
       if (moved + stopped !== 0 && shown(on, box.top - moved, box.bottom - moved)) {
         const last = ours.current;
         // The place it wanted, while the page is where that put it and it put it there (a
@@ -137,27 +140,28 @@ export function useScrollAnchor(section: RefObject<HTMLElement | null>): void {
     const fresh = () => note(held.current);
     const scrolled = () => note();
     // A scroll of the container: the blank room shrinks to the part of it in view, so nothing
-    // that shows moves; the page is where the human put it, no stop of the browser's.
-    const trim = (event: Event) => {
+    // that shows moves. The page is noted where it is, unless this is the browser stopping it
+    // at a nearer end than the one noted (the page got shorter, its resize not settled yet).
+    const follow = (event: Event) => {
       const on = scroller(root);
+      if (event.target !== (on === window ? document : on)) return;
       const pad = room(root);
-      if (pad <= 0 || event.target !== (on === window ? document : on)) return;
       const below = end(on) - position(on);
-      if (below <= 0) return;
-      root.style.paddingBottom = pad > below ? `${pad - below}px` : "";
-      noted.current = position(on);
+      if (pad > 0 && below > 0) root.style.paddingBottom = pad > below ? `${pad - below}px` : "";
+      else if (atEnd(on) && end(on) < noted.current.end) return;
+      noted.current = { at: position(on), end: end(on) };
     };
     document.addEventListener("pointerdown", press, true);
     root.addEventListener("focusin", fresh);
     root.addEventListener("scroll", scrolled, { capture: true, passive: true });
-    window.addEventListener("scroll", trim, { capture: true, passive: true });
+    window.addEventListener("scroll", follow, { capture: true, passive: true });
     const sized = typeof ResizeObserver === "function" ? new ResizeObserver(settle) : null;
     sized?.observe(root);
     return () => {
       document.removeEventListener("pointerdown", press, true);
       root.removeEventListener("focusin", fresh);
       root.removeEventListener("scroll", scrolled, { capture: true });
-      window.removeEventListener("scroll", trim, { capture: true });
+      window.removeEventListener("scroll", follow, { capture: true });
       sized?.disconnect();
       root.style.paddingBottom = "";
     };

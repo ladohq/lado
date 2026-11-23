@@ -30,7 +30,9 @@ noted while the page is at its end) so as not to correct twice. Two gaps remain 
   view height)`, never below 0. The part below the view goes; the part in view stays, so
   nothing that shows moves. Scrolled up past it, it is 0 and the page ends at its last block.
   The padding is not trimmed while it is wholly in view, since then nothing of it is out of
-  view.
+  view. The same event notes where the page is, so `stopped` counts only the browser's stop,
+  never a scroll of the human's (review F1); a scroll event at a nearer end than the one
+  noted is that stop, told before the section's resize settles, and is not noted.
 - D4. The hook's cleanup sets the padding back to empty, so a section kept mounted but no longer
   using the hook leaves no room; a section that leaves the page takes it along anyway.
 - D5. The padding's own size change reaches `settle` through the `ResizeObserver`; the anchor's

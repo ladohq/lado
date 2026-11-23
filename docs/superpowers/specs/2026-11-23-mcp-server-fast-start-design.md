@@ -36,23 +36,50 @@ so that the developer and the reviewer measure the same way:
 
 ```python
 import json, os, subprocess, sys, time, tempfile, statistics
+
+
 def once(home):
     env = {**os.environ, "LADO_SESSION": "s", "LADO_AGENT": "a", "LADO_HOME": home}
     env.pop("LADO_INSTANCE", None)
     t0 = time.perf_counter()
-    p = subprocess.Popen(sys.argv[2:], stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env, text=True)
-    def send(m): p.stdin.write(json.dumps(m) + "\n"); p.stdin.flush()
-    send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "b", "version": "1"}}})
-    p.stdout.readline(); t1 = time.perf_counter()
+    p = subprocess.Popen(
+        sys.argv[2:], stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env, text=True
+    )
+
+    def send(m):
+        p.stdin.write(json.dumps(m) + "\n")
+        p.stdin.flush()
+
+    send(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": {"name": "b", "version": "1"},
+            },
+        }
+    )
+    p.stdout.readline()
+    t1 = time.perf_counter()
     send({"jsonrpc": "2.0", "method": "notifications/initialized"})
     send({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
-    p.stdout.readline(); t2 = time.perf_counter()
-    p.kill(); p.wait()
+    p.stdout.readline()
+    t2 = time.perf_counter()
+    p.kill()
+    p.wait()
     return t1 - t0, t2 - t0
+
+
 home = tempfile.mkdtemp()
 once(home)  # the cold start, which writes the cache
 r = [once(home) for _ in range(int(sys.argv[1]))]
-print("initialize median %.3f s, tools/list median %.3f s" % (statistics.median(x[0] for x in r), statistics.median(x[1] for x in r)))
+print(
+    "initialize median %.3f s, tools/list median %.3f s"
+    % (statistics.median(x[0] for x in r), statistics.median(x[1] for x in r))
+)
 ```
 
 Run as `.venv/bin/python probe.py 10 .venv/bin/python -m lado.cli mcp` before the change

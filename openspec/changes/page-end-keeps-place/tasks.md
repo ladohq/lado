@@ -33,6 +33,6 @@
 
 ## 4. Regression run
 
-- [ ] 4.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui
+- [x] 4.1 `make lint`, `make test`, `make web`, `uv run pytest -m ui
   tests/ui/test_models_section.py tests/ui/test_git_servers_section.py`, `openspec validate
   page-end-keeps-place --strict`, the trial archive; CI of the pull request green (AC-6).

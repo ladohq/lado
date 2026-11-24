@@ -1,6 +1,6 @@
 // A project's commit author (docs/design/ui.md, Projects): one line under the project's facts.
-// Without an author of its own, who its repositories' agents commit as and from where (the
-// author most of them share, then each repository that differs) and a quiet `Set one for this
+// Without an author of its own, who its agents commit as and from where (the author a new
+// repository gets, then each repository that differs, e.g. one on a git server with its own) and a quiet `Set one for this
 // project`; with nobody anywhere, a warning and a link to LADO's author in Settings; with one,
 // the author with Edit and Remove (Undo), as on Settings → Git servers. The form, its
 // refusals and the result line are Settings' (AuthorForm).
@@ -75,11 +75,9 @@ export function ProjectAuthor({ project, onChanged }: { project: ProjectInfo; on
   };
   const own = project.author ?? null;
   const repos = project.repos.filter((repo) => repo.commit_author);
-  // The author most repositories share, else the one a new repository gets.
-  const counts = new Map<string, number>();
-  for (const repo of repos) counts.set(keyOf(repo.commit_author), (counts.get(keyOf(repo.commit_author)) ?? 0) + 1);
-  const most = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-  const main = (most ? repos.find((repo) => keyOf(repo.commit_author) === most)?.commit_author : null) ?? project.commit_author ?? null;
+  // The author a new repository of the project gets (no remote: no server's), then each
+  // repository whose agents commit as another.
+  const main = project.commit_author ?? null;
   const others = repos.filter((repo) => keyOf(repo.commit_author) !== keyOf(main));
   const nobody = !main?.author && others.every((repo) => !repo.commit_author!.author);
   const opener = (

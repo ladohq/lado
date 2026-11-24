@@ -497,3 +497,16 @@ test("the variables that win over every author are named on the project's line",
   const page = await screen.findByRole("region", { name: "Project shop" });
   expect(within(page).getByText(/The agents' environment sets GIT_AUTHOR_EMAIL: these sign their commits/)).toBeTruthy();
 });
+
+test("a project of one repository on a server leads with LADO's author, then that repository", async () => {
+  server.projects.acme = {
+    ...server.projects.acme,
+    commit_author: { author: ANN, source: "lado" },
+    repos: [{ ...server.projects.acme.repos[0], name: "api", commit_author: { author: IVAN, source: "server" } }],
+  };
+  open("/projects/acme");
+  const page = await screen.findByRole("region", { name: "Project acme" });
+  expect(authorLine(page)).toBe(
+    "Commit author Ann Lee <ann@example.com> (LADO's); in api: Ivan Petrov <ivan@gitlab.example.com> (its git server's) · Set one for this project",
+  );
+});

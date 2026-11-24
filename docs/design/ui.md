@@ -2018,10 +2018,10 @@ New session (LAD-137) is in Launch and session control.
   line under the facts, not a section: `Commit author` ⓘ `About the project's commit author`
   (agents of this project sign their commits with this author in every repository of the
   project, over LADO's author and a git server's; most projects need none), then without an
-  author of the project's the author most repositories commit as (`ProjectRepo.commit_author`,
-  else `ProjectInfo.commit_author`, the one a new repository gets) with its source `(LADO's)`,
-  `(from git on this computer)` or `(its git server's)`, then `; in <repo>: <author> (its git
-  server's)` for each repository that differs, and `· Set one for this project` (a
+  author of the project's the author a new repository of it commits as
+  (`ProjectInfo.commit_author`) with its source `(LADO's)` or `(from git on this computer)`,
+  then `; in <repo>: <author> (its git server's)` for each repository whose
+  `ProjectRepo.commit_author` differs, in the order of the list, and `· Set one for this project` (a
   link-button, `Set a commit author for <title>`, pressed while its form is open); with nobody
   anywhere `⚠ Nobody to commit as: agents cannot commit.`, a link `Set LADO's author in
   Settings ↗` (`/settings/git-servers?author`, a new tab) and the same link-button; with one,

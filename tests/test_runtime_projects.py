@@ -238,6 +238,67 @@ def test_the_agents_of_a_session_in_a_project_get_its_variables(shop, fake_tmux,
     assert env["BOARD_URL"] == "out"  # the outside folder's again
 
 
+def _authors(env) -> list[tuple[str, str]]:
+    laid = [
+        (env[f"GIT_CONFIG_KEY_{n}"], env[f"GIT_CONFIG_VALUE_{n}"])
+        for n in range(int(env.get("GIT_CONFIG_COUNT", "0")))
+    ]
+    return [entry for entry in laid if entry[0].startswith("user.")]
+
+
+def test_the_agents_of_a_session_in_a_project_get_its_author_last(shop, fake_tmux):
+    state.set_commit_author("Ann Lee", "ann@example.com")
+    state.set_project_author("shop", "Shop Bot", "bot@shop.example")
+    _start(project="shop", repo_name="frontend")
+    runtime.spawn_worker("shop-frontend", "task", name="w1")
+    for call in (fake_tmux[0], fake_tmux[-1]):
+        assert _authors(agent_helpers.launched(call)[0]) == [
+            ("user.name", "Ann Lee"),
+            ("user.email", "ann@example.com"),
+            ("user.name", "Shop Bot"),
+            ("user.email", "bot@shop.example"),
+        ]
+
+
+def test_a_session_outside_the_project_gets_no_project_author(shop, fake_tmux, tmp_path):
+    state.set_project_author("shop", "Shop Bot", "bot@shop.example")
+    _start(path=str(init_repo(tmp_path / "app")))
+    assert _authors(agent_helpers.launched(fake_tmux[0])[0]) == []
+
+
+def test_an_old_git_refuses_a_launch_with_a_projects_author(shop, fake_tmux, tmp_path, monkeypatch):
+    folder = tmp_path / "old-git"
+    folder.mkdir()
+    (folder / "git").write_text("#!/bin/sh\necho 'git version 2.30.2'\n")
+    (folder / "git").chmod(0o755)
+    state.set_project_author("shop", "Shop Bot", "bot@shop.example")
+    real = runtime.agent_layers
+
+    def old_git_layers(project):
+        found = real(project)
+        path = f"{folder}{os.pathsep}{found.shell.get('PATH', os.environ['PATH'])}"
+        return found._replace(shell={**found.shell, "PATH": path})
+
+    monkeypatch.setattr(runtime, "agent_layers", old_git_layers)
+    with pytest.raises(runtime.LadoError) as raised:
+        _start(project="shop", repo_name="frontend")
+    assert str(raised.value) == (
+        "git 2.30.2 is older than 2.31, which a project's commit author needs; update git, or "
+        "clear it (lado project author shop --clear)"
+    )
+    assert fake_tmux == []
+
+
+def test_a_project_variable_of_an_author_is_named_at_the_launch(shop, fake_tmux):
+    state.set_project_author("shop", "Shop Bot", "bot@shop.example")
+    projects.set_variable("shop", "GIT_AUTHOR_EMAIL", "me@home")
+    started = _start(project="shop", repo_name="frontend")
+    assert (
+        "GIT_AUTHOR_EMAIL is set for supervisor: it wins over LADO's commit authors"
+        in started.warnings
+    )
+
+
 def test_a_resume_reads_the_variables_anew(shop, fake_tmux):
     _start(project="shop", repo_name="frontend")
     assert "MODEL_URL" not in agent_helpers.launched(fake_tmux[0])[0]

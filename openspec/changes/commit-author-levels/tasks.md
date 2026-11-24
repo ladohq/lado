@@ -16,7 +16,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-24-commit-autho
 
 ## 3. The launch
 
-- [ ] 3.1 `_ours` passes LADO's and the session's project's author; the 2.31 refusal; the
+- [x] 3.1 `_ours` passes LADO's and the session's project's author; the 2.31 refusal; the
   author variables' warning for any LADO author (D3, D6, D7). Check:
   `tests/test_runtime_git_servers.py`, `tests/test_runtime_projects.py`.
 

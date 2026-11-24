@@ -367,8 +367,9 @@ def test_update_to_an_older_schema_forgets_the_github_entry(
     monkeypatch.setenv("https_proxy", f"http://127.0.0.1:{closed_port()}")
     state.add_session(state.Session(session, str(repo), None, provider="fake"))
     state.stop_session(session)
-    agent_helpers.previous_schema()  # as the LADO before left it, with its session
-    before = state.SCHEMA_VERSION - 1
+    # As a LADO of schema 42, before the takeover's table (43), left it, with its session.
+    agent_helpers.schema_before(43)
+    before = 42
     assert lado_cli("ls").returncode == 0  # migrated, the copy first; ls takes nothing over
     assert state.github_takeover() is None
     start(repo, session)  # the login taken over before the supervisor starts

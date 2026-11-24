@@ -32,6 +32,7 @@ import {
   outsideAuthor,
   resumeSession,
   startSession,
+  type AuthorInfo,
   type CloneJob,
   type CloneRefused,
   type CloneTarget,
@@ -56,7 +57,7 @@ import { useCloneJob } from "./cloneJob";
 import { InfoTip } from "./InfoTip";
 import { useLaunchModel, type Choice } from "./LaunchModel";
 import { ProjectField } from "./LaunchProject";
-import { AuthorMissing, KnownAuthor, useFoundAuthor } from "./AuthorMissing";
+import { AuthorMissing, KnownAuthor } from "./AuthorMissing";
 import { LaunchSetup } from "./LaunchSetup";
 import { cannotStart, DEFAULT_MODE, LaunchTeam, modeWords } from "./LaunchTeam";
 import {
@@ -349,7 +350,7 @@ function LaunchDialog({
   const [include, setInclude] = useState<string[]>([]); // the set-up's left-out files ticked in
   const [checkTurn, setCheckTurn] = useState(0); // a plain folder checked again
   // Who agents commit as, once the note of a missing author found one in this window.
-  const [signer, foundSigner] = useFoundAuthor(null);
+  const [signer, foundSigner] = useState<AuthorInfo | null>(null);
   const authorLink = useRef<HTMLAnchorElement>(null);
   const clone = useCloneJob(); // its beacon cancels the clone of a page that goes away
   const job = clone.job;

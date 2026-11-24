@@ -1324,8 +1324,10 @@ def cmd_project(args: argparse.Namespace) -> int:
         print(f'{project.id} "{project.title}"' if project.title else project.id)
         print(f"  folder:  {_project_folder(folder, folder.is_dir())}")
         print(f"  made:    {made.astimezone():%Y-%m-%d %H:%M}")
-        author = _project_author_text(project)
-        print(f"  Commit author: {author or '-'}")
+        from lado import commit_authors
+
+        author = commit_authors.project(project.id)
+        print(f"  Commit author: {commit_authors.text(author) if author else '-'}")
         _print_repositories(project.id)
         _print_variables(project.id)
         _print_secrets(project.id)
@@ -1344,12 +1346,6 @@ PROJECT_AUTHOR_SET = "Agents of project {id} commit as {author}."
 PROJECT_AUTHOR_NONE = (
     "Project {id} has no commit author{now}: its agents commit as LADO's or a git server's."
 )
-
-
-def _project_author_text(project: state.Project) -> str | None:
-    if project.author_name is None or project.author_email is None:
-        return None
-    return f"{project.author_name} <{project.author_email}>"
 
 
 def cmd_project_author(args: argparse.Namespace) -> int:
@@ -1375,7 +1371,8 @@ def cmd_project_author(args: argparse.Namespace) -> int:
             text = commit_authors.text(author)
             lines = [PROJECT_AUTHOR_SET.format(id=project.id, author=text)]
         else:
-            text = _project_author_text(project)
+            author = commit_authors.project(project.id)
+            text = commit_authors.text(author) if author else None
             lines = [text or PROJECT_AUTHOR_NONE.format(id=project.id, now="")]
     except git_servers.Refused as exc:
         return _refused(exc)

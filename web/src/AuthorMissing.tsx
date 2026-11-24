@@ -13,15 +13,6 @@ export const SETTINGS_AUTHOR = "/settings/git-servers?author";
 
 export const authorText = (author: AuthorInfo) => `${author.name} <${author.email}>`;
 
-// Who agents commit as once known, for the window's key (a folder, a name): null until this
-// window found one with its note; a new key starts again.
-export function useFoundAuthor(key: string | null) {
-  const [found, setFound] = useState<{ key: string | null; author: AuthorInfo } | null>(null);
-  const author = found && found.key === key ? found.author : null;
-  const set = useCallback((author: AuthorInfo) => setFound({ key, author }), [key]);
-  return [author, set] as const;
-}
-
 export function KnownAuthor({ author }: { author: AuthorInfo }) {
   return (
     <span className="field-note ok" role="status">

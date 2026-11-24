@@ -8,6 +8,7 @@ import { Link } from "react-router";
 
 import {
   addProjectRepo,
+  type AuthorInfo,
   getProject,
   getRemoteBranches,
   getRepoRemoval,
@@ -18,7 +19,7 @@ import {
   type RepoRemoval,
   type SessionInfo,
 } from "./api";
-import { AuthorMissing, KnownAuthor, useFoundAuthor } from "./AuthorMissing";
+import { AuthorMissing, KnownAuthor } from "./AuthorMissing";
 import { since } from "./ChatText";
 import { useCloneJob, type CloneEnd } from "./cloneJob";
 import { BRANCHES_DEBOUNCE, CloneHint, CloneProgress, cloneRefused, defaultBranch, useDebounced, useLaunch } from "./Launch";
@@ -247,7 +248,7 @@ function AddRepoDialog({
   const typedName = name.trim();
   const off = busy || running;
   // From scratch, nobody to sign its first commit: no project's, LADO's or git's own author.
-  const [signer, foundSigner] = useFoundAuthor(null);
+  const [signer, foundSigner] = useState<AuthorInfo | null>(null);
   const unsigned = !project.commit_author?.author && !signer;
   const createRef = useRef<HTMLButtonElement>(null);
   const ready =

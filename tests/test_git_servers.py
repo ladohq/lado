@@ -652,6 +652,43 @@ def test_the_agents_own_entries_are_kept_and_lados_come_after():
     assert found["GIT_CONFIG_KEY_6"] == "credential.https://g.lan.helper"
 
 
+ANN = state.Author("Ann Lee", "ann@example.com")
+SHOP = state.Author("Shop Bot", "bot@shop.example")
+
+
+def test_ladOs_author_alone_is_laid_without_a_server():
+    found = git_servers.variables({}, [], lado=ANN)
+    assert _entries(found) == [("user.name", "Ann Lee"), ("user.email", "ann@example.com")]
+    assert found["LADO_GIT_CONFIG_BASE"] == ""
+    assert _entries(git_servers.variables({}, [], project=SHOP)) == [
+        ("user.name", "Shop Bot"),
+        ("user.email", "bot@shop.example"),
+    ]
+
+
+def test_ladOs_author_first_the_servers_between_the_projects_last(lado_home, tmp_path):
+    servers = [_server(), _server("b2", "https://g.lan", "g.lan")]
+    path = tmp_path / "a1.gitconfig"
+    middle = _entries(git_servers.variables({}, servers, authors={"a1": path}))
+    found = git_servers.variables(
+        {"GIT_CONFIG_COUNT": "2"}, servers, authors={"a1": path}, lado=ANN, project=SHOP
+    )
+    assert "GIT_CONFIG_KEY_1" not in found  # the environment's own two stay
+    assert found["GIT_CONFIG_KEY_2"] == "user.name"
+    count = int(found["GIT_CONFIG_COUNT"])
+    assert count == 2 + 2 + len(middle) + 2
+    entries = [
+        (found[f"GIT_CONFIG_KEY_{n}"], found[f"GIT_CONFIG_VALUE_{n}"]) for n in range(2, count)
+    ]
+    assert entries == [
+        ("user.name", "Ann Lee"),
+        ("user.email", "ann@example.com"),
+        *middle,
+        ("user.name", "Shop Bot"),
+        ("user.email", "bot@shop.example"),
+    ]
+
+
 @pytest.mark.parametrize("count", ["x", "-3", ""])
 def test_a_count_that_is_no_number_counts_as_none(count):
     found = git_servers.variables({"GIT_CONFIG_COUNT": count}, [_server()])

@@ -8,9 +8,9 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-24-commit-autho
 
 ## 2. The rules
 
-- [ ] 2.1 `lado.commit_authors`: the checks, LADO's and the project's author, `git_own`,
+- [x] 2.1 `lado.commit_authors`: the checks, LADO's and the project's author, `git_own`,
   `in_effect`, `author_variables` (D2, D5, D6). Check: `tests/test_commit_authors.py`.
-- [ ] 2.2 `git_servers.variables` with LADO's entries first and the project's last; none in
+- [x] 2.2 `git_servers.variables` with LADO's entries first and the project's last; none in
   `for_git` (D3). Check: `tests/test_git_servers.py` (a real `git config --get` under the
   variables agrees with `in_effect`).
 

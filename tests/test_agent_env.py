@@ -708,6 +708,21 @@ def test_lados_git_gets_the_git_servers_for_a_remote(monkeypatch):
     assert agent_env.for_git() == plain  # no remote: a local call
 
 
+def test_lados_git_gets_no_commit_author(monkeypatch):
+    from lado import state
+
+    monkeypatch.delenv("GIT_CONFIG_COUNT", raising=False)
+    state.set_commit_author("Ann Lee", "ann@example.com")
+    with state.creating_project("shop", None):
+        pass
+    state.set_project_author("shop", "Shop Bot", "bot@shop.example")
+    _git_server()
+    for remote in (None, "https://gitlab.corp.ru/a.git", "https://other.example/a.git"):
+        env = agent_env.for_git(remote=remote)
+        laid = range(int(env.get("GIT_CONFIG_COUNT", "0")))
+        assert not [n for n in laid if env[f"GIT_CONFIG_KEY_{n}"].startswith("user.")]
+
+
 def test_an_old_git_refuses_lados_git_only_for_a_saved_host(tmp_path, monkeypatch):
     from lado import git_servers
 

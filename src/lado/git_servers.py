@@ -874,26 +874,36 @@ def variables(
     env: Mapping[str, str],
     servers: Sequence[state.GitServer],
     authors: Mapping[str, Path] | None = None,
+    lado: state.Author | None = None,
+    project: state.Author | None = None,
 ) -> dict[str, str]:
     """The `GIT_CONFIG_*` variables to lay over `env` for `servers`: the entries of `env`'s
     own `GIT_CONFIG_COUNT` are kept, LADO's coming after them (a count that is no number
-    counts as none); after a server's own entries, those of its author file in `authors`
-    (server id → file, `author_files`; an agent's only). Nothing for no server."""
-    if not servers:
+    counts as none): LADO's commit author `lado` first, then each server's entries, after
+    its own those of its author file in `authors` (server id → file, `author_files`), then
+    the project's author `project`; the later entry wins, so a project's author wins over a
+    server's and a server's over LADO's (lado.commit_authors). The authors are an agent's
+    only. Nothing for no server and no author."""
+    if not servers and lado is None and project is None:
         return {}
+    from lado import commit_authors  # it builds on this module
+
     try:
         n = max(0, int(env.get("GIT_CONFIG_COUNT", "0")))
     except ValueError:
         n = 0
-    found = {}
+    laid = commit_authors.entries(lado) if lado else []
     for server in servers:
-        entries = _entries(server)
+        laid += _entries(server)
         if authors and server.id in authors:
-            entries += author_entries(server, authors[server.id])
-        for key, value in entries:
-            found[f"GIT_CONFIG_KEY_{n}"] = key
-            found[f"GIT_CONFIG_VALUE_{n}"] = value
-            n += 1
+            laid += author_entries(server, authors[server.id])
+    if project:
+        laid += commit_authors.entries(project)
+    found = {}
+    for key, value in laid:
+        found[f"GIT_CONFIG_KEY_{n}"] = key
+        found[f"GIT_CONFIG_VALUE_{n}"] = value
+        n += 1
     found["GIT_CONFIG_COUNT"] = str(n)
     # What a process this one starts gets back once LADO's entries are dropped
     # (agent_env.without_launch).
@@ -1197,37 +1207,11 @@ def author_text(server: state.GitServer) -> str | None:
     return f"{server.author_name} <{server.author_email}>"
 
 
-def _control(text: str) -> bool:
-    return any(ord(c) < 0x20 or 0x7F <= ord(c) < 0xA0 for c in text)
-
-
 def check_author(name: str, email: str) -> tuple[str, str]:
-    """The commit author's name and email, trimmed; Refused (field `name` or `email`) for a
-    name that is empty or holds `<`, `>` or a control character, an email that is not
-    `local@domain` (one `@`, text on both sides, no space, `<`, `>` or control character),
-    and a value over AUTHOR_MAX characters. git and the server decide the rest."""
-    name, email = name.strip(), email.strip()
-    if not name:
-        raise Refused("the author's name is empty", field=NAME_FIELD)
-    if len(name) > AUTHOR_MAX:
-        raise Refused(f"the author's name is longer than {AUTHOR_MAX} characters", field=NAME_FIELD)
-    if "<" in name or ">" in name or _control(name):
-        raise Refused("the author's name holds no < or > or line break", field=NAME_FIELD)
-    if len(email) > AUTHOR_MAX:
-        raise Refused(
-            f"the author's email is longer than {AUTHOR_MAX} characters", field=EMAIL_FIELD
-        )
-    local, at, domain = email.partition("@")
-    if (
-        not local
-        or not at
-        or not domain
-        or "@" in domain
-        or any(c.isspace() or c in "<>" for c in email)
-        or _control(email)
-    ):
-        raise Refused("not an email address: name@host", field=EMAIL_FIELD)
-    return name, email
+    """lado.commit_authors.check: every commit author's check, a server's among them."""
+    from lado import commit_authors  # it builds on this module's Refused
+
+    return commit_authors.check(name, email)
 
 
 def saved_server(at: Address) -> state.GitServer:

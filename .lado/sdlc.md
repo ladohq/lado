@@ -162,6 +162,11 @@ the base does above.
   `<style>` with `html, body { height: auto !important; overflow: visible !important;
   overscroll-behavior: auto !important; }` (`overflow: auto` is not enough: the wheel
   still does not scroll) and check with the wheel that it scrolls to its end.
+- A UI change that adds a feature, or removes, renames or moves an element marked
+  `data-guide` (the first-run guide, LAD-311) — the guide's own test catches only a lost
+  marker, never a new feature without a hint — check the guide's file: a hint whose
+  element is gone or moved is fixed in the same pull request, and a new feature gets a hint
+  or the pull request says why it needs none.
 
 ## Extra instructions
 

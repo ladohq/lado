@@ -512,6 +512,21 @@ export const setGitServerAuthor = (host: string, name: string, email: string) =>
 export const clearGitServerAuthor = (host: string) =>
   post<GitServerAuthorDone>(gitAuthorPath(host), undefined, "DELETE");
 
+// LADO's own commit author (lado.commit_authors): set and cleared as `lado git-server author`
+// without an address; a refusal is a GitEntryRefused under its field.
+export type AuthorInfo = components["schemas"]["AuthorInfo"];
+export type CommitAuthor = components["schemas"]["CommitAuthor"];
+export type GitAuthorDone = components["schemas"]["GitAuthorDone"];
+export const setGitAuthor = (name: string, email: string) => post<GitAuthorDone>("/api/git-author", { name, email }, "PUT");
+export const clearGitAuthor = () => post<GitAuthorDone>("/api/git-author", undefined, "DELETE");
+
+// Who agents commit as in a new repository outside a project: LADO's author, else git's own;
+// null for nobody.
+export const outsideAuthor = async (): Promise<AuthorInfo | null> => {
+  const found = await getGitServers();
+  return found.author ?? found.git_author ?? null;
+};
+
 // A request LADO's server gave no answer to.
 export const unreachable = (error: unknown) => error instanceof Unreached;
 export const LADO_DOWN = "LADO's server does not answer: your request may or may not have reached it.";
@@ -548,6 +563,11 @@ const projectPath = (id: string) => `/api/projects/${encodeURIComponent(id)}`;
 export const getProject = (id: string) => get<ProjectInfo>(projectPath(id));
 
 export const createProject = (id: string, title: string | null) => post<ProjectInfo>("/api/projects", { id, title });
+
+// Set or clear the project's commit author, as `lado project author`; the project after.
+export const setProjectAuthor = (id: string, name: string, email: string) =>
+  post<ProjectInfo>(`${projectPath(id)}/author`, { name, email }, "PUT");
+export const clearProjectAuthor = (id: string) => post<ProjectInfo>(`${projectPath(id)}/author`, undefined, "DELETE");
 
 // Set or clear (null) the project's title, as `lado project rename` does; the project after.
 export const renameProject = (id: string, title: string | null) =>

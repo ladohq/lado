@@ -5,7 +5,15 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import type { CertificateOffer, GitServerAdded, GitServerCheck, GitServerChecked, GitServerInfo, GitServers } from "./api";
+import type {
+  AuthorInfo,
+  CertificateOffer,
+  GitServerAdded,
+  GitServerCheck,
+  GitServerChecked,
+  GitServerInfo,
+  GitServers,
+} from "./api";
 import { GitServersPage, TIPS } from "./GitServers";
 
 const TOKEN = "glpat-CANARY-vitest";
@@ -100,6 +108,10 @@ type Call = { method: string; path: string; body: Record<string, unknown> | unde
 
 class Fake {
   servers: GitServerInfo[] = [];
+  lado: AuthorInfo | null = null; // LADO's own author
+  gitAuthor: AuthorInfo | null = null; // git's own, outside any repository
+  variables: string[] = []; // the author variables of the agents' environment
+  ladoAnswer: ((body: Record<string, unknown> | undefined) => Response) | null = null;
   calls: Call[] = [];
   checks: Record<string, GitServerCheck> = {};
   saved: Record<string, () => Response> = {}; // a saved server's check, by host
@@ -137,7 +149,19 @@ class Fake {
         const body = init?.body ? JSON.parse(String(init.body)) : undefined;
         this.calls.push({ method, path, body });
         const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
-        const listing = (): GitServers => ({ servers: this.servers, kinds: KINDS });
+        const listing = (): GitServers => ({
+          servers: this.servers,
+          kinds: KINDS,
+          author: this.lado,
+          git_author: this.gitAuthor,
+          author_variables: this.variables,
+        });
+        if (path === "/api/git-author") {
+          if (this.authorHeld) await this.authorHeld();
+          if (this.ladoAnswer) return this.ladoAnswer(body);
+          this.lado = method === "PUT" ? { name: String(body!.name).trim(), email: String(body!.email).trim() } : null;
+          return json({ author: this.lado, git_author: this.gitAuthor, line: "" });
+        }
         if (path === "/api/git-servers" && method === "GET") return json(listing());
         if (path === "/api/git-servers/check") return json(this.checks[(body as { address: string }).address] ?? nothing);
         if (path === "/api/git-servers" && method === "POST") return this.add(body!);
@@ -473,7 +497,7 @@ test("Set author saves it, the focus on Edit", async () => {
   fake.servers = [GHE];
   await mount();
   openRow(GHE);
-  press(`Set the commit author of ${GHE.address}`);
+  press(`Set a commit author for ${GHE.address}`);
   type(screen.getByRole("textbox", { name: "Name" }), "Ivan Petrov");
   type(screen.getByRole("textbox", { name: "Email" }), "ivan.petrov@corp.example");
   press("Save author");
@@ -488,7 +512,7 @@ test("Remove clears the author at once with Undo; Undo sets it again, the focus 
   openRow(CORP);
   press(`Remove the commit author of ${CORP.address}`);
   expect(await screen.findByText("Author removed.")).toBeTruthy();
-  expect(within(row(CORP)).getByText("Your own git author")).toBeTruthy();
+  expect(within(row(CORP)).getByText("none yet")).toBeTruthy(); // nobody: neither LADO nor git
   const undo = button(`Undo the removal of the commit author of ${CORP.address}`);
   await waitFor(() => expect(document.activeElement).toBe(undo));
   fireEvent.click(undo);
@@ -505,7 +529,7 @@ test("a wrong email shows under Email", async () => {
   await mount();
   openRow(GHE);
   fake.author = () => refused("not an email address: name@host", "email");
-  press(`Set the commit author of ${GHE.address}`);
+  press(`Set a commit author for ${GHE.address}`);
   type(screen.getByRole("textbox", { name: "Name" }), "Ivan");
   type(screen.getByRole("textbox", { name: "Email" }), "ivan.petrov");
   press("Save author");
@@ -641,7 +665,7 @@ test("github.com is a row like any other, with any server's panel", async () => 
   openRow(dotcom);
   expect(button(`Check ${dotcom.address}`)).toBeTruthy();
   expect(button(`Replace the token of ${dotcom.address}`)).toBeTruthy();
-  expect(button(`Set the commit author of ${dotcom.address}`)).toBeTruthy();
+  expect(button(`Set a commit author for ${dotcom.address}`)).toBeTruthy();
   expect(button(`Remove ${dotcom.address}`).textContent).toBe("Remove server");
   expect(document.body.textContent).not.toMatch(/GH_TOKEN|not signed in|taken over/);
 });
@@ -771,7 +795,7 @@ test("Remove and Undo of the author are off while they ask; a second press sends
   fake.authorHeld = null;
   removal.let_go(new Response());
   const undo = (await screen.findByRole("button", { name: `Undo the removal of the commit author of ${CORP.address}` })) as HTMLButtonElement;
-  const set = button(`Set the commit author of ${CORP.address}`) as HTMLButtonElement;
+  const set = button(`Set a commit author for ${CORP.address}`) as HTMLButtonElement;
   expect(set.disabled).toBe(false);
   const again = held();
   fake.authorHeld = again.answer;
@@ -888,7 +912,7 @@ test("Replace token cancelled while it saves: no line, no focus moved, the form 
   type(screen.getByRole("textbox", { name: "New token" }), TOKEN);
   press("Save token");
   press("Cancel");
-  press(`Set the commit author of ${GHE.address}`);
+  press(`Set a commit author for ${GHE.address}`);
   const name = screen.getByRole("textbox", { name: "Name" });
   late.let_go(json(added(CORP)));
   await new Promise((done) => setTimeout(done, 20));
@@ -946,7 +970,7 @@ test("the author saved after a Check closes its form and leaves the check's line
   fake.saved[GHE.host] = () => json(checked(GHE, { outcome: "unrecognised", message: "It answers as neither GitHub nor GitLab." }));
   await mount();
   openRow(GHE);
-  press(`Set the commit author of ${GHE.address}`);
+  press(`Set a commit author for ${GHE.address}`);
   type(screen.getByRole("textbox", { name: "Name" }), "Ivan");
   type(screen.getByRole("textbox", { name: "Email" }), "ivan@corp.example");
   press("Save author");
@@ -1339,4 +1363,135 @@ test("a certificate removed elsewhere already: the line has no Undo", async () =
   press(`Remove the certificate of ${saved.address}`);
   const line = (await screen.findByText("Certificate removed.")).closest(".gx-result") as HTMLElement;
   expect(within(line).queryByRole("button", { name: /Undo/ })).toBeNull();
+});
+
+// LADO's own commit author (openspec change commit-author-levels).
+
+const ANN = { name: "Ann Lee", email: "ann@example.com" };
+const ladoRow = () => screen.getByText("LADO's author").closest("li.gx-row") as HTMLElement;
+
+test("LADO's author: set, from git on this computer, or nobody with Set author as the main button", async () => {
+  fake.lado = ANN;
+  await mount();
+  expect(within(ladoRow()).getByText("Ann Lee <ann@example.com>", { selector: "b" })).toBeTruthy();
+  expect(button("Edit LADO's author")).toBeTruthy();
+  expect(button("Remove LADO's author")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "About Commit author" })).toBeTruthy();
+  cleanup();
+  fake.lado = null;
+  fake.gitAuthor = ANN;
+  await mount();
+  expect(ladoRow().textContent).toContain("Ann Lee <ann@example.com> · from git on this computer");
+  expect(button("Set LADO's author").className).toBe("quiet");
+  expect(screen.queryByRole("button", { name: "Remove LADO's author" })).toBeNull();
+  cleanup();
+  fake.gitAuthor = null;
+  await mount();
+  expect(within(ladoRow()).getByText("⚠ Nobody: agents cannot commit")).toBeTruthy();
+  expect(button("Set LADO's author").className).toBe("primary");
+});
+
+test("Set author saves LADO's author, one form at a time, the focus on Edit", async () => {
+  fake.servers = [GHE];
+  await mount();
+  openRow(GHE);
+  press(`Set a commit author for ${GHE.address}`);
+  press("Set LADO's author");
+  expect(screen.getAllByRole("textbox", { name: "Name" })).toHaveLength(1); // the server's closed
+  expect(button("Set LADO's author").getAttribute("aria-pressed")).toBe("true");
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Name" })));
+  type(screen.getByRole("textbox", { name: "Name" }), "Ann Lee");
+  type(screen.getByRole("textbox", { name: "Email" }), "ann@example.com");
+  press("Save author");
+  expect(await screen.findByText("Author saved.")).toBeTruthy();
+  expect(within(ladoRow()).getByText("Ann Lee <ann@example.com>")).toBeTruthy();
+  expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(button("Edit LADO's author")));
+  expect(fake.calls.filter((c) => c.path === "/api/git-author")).toEqual([
+    { method: "PUT", path: "/api/git-author", body: { name: "Ann Lee", email: "ann@example.com" } },
+  ]);
+  expect(results()).toHaveLength(1);
+});
+
+test("Esc closes LADO's form, the focus back on Set author", async () => {
+  await mount();
+  press("Set LADO's author");
+  const name = await screen.findByRole("textbox", { name: "Name" });
+  fireEvent.keyDown(name, { key: "Escape" });
+  expect(screen.queryByRole("textbox", { name: "Name" })).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(button("Set LADO's author")));
+});
+
+test("a refused email stands under Email, the values kept and the focus there", async () => {
+  await mount();
+  fake.ladoAnswer = () => refused("not an email address: name@host", "email");
+  press("Set LADO's author");
+  type(screen.getByRole("textbox", { name: "Name" }), "Ann Lee");
+  type(screen.getByRole("textbox", { name: "Email" }), "ann");
+  press("Save author");
+  const line = await screen.findByText("not an email address: name@host");
+  const email = screen.getByRole("textbox", { name: "Email" }) as HTMLInputElement;
+  expect(line.closest(".field")!.querySelector("input")).toBe(email);
+  expect(email.value).toBe("ann");
+  expect(email.getAttribute("aria-invalid")).toBe("true");
+  expect(email.getAttribute("aria-describedby")).toBeTruthy();
+  await waitFor(() => expect(document.activeElement).toBe(email));
+});
+
+test("Remove LADO's author falls back at once with Undo; Undo sets it again", async () => {
+  fake.lado = ANN;
+  fake.gitAuthor = { name: "Alex Home", email: "alex@home.example" };
+  await mount();
+  press("Remove LADO's author");
+  expect(await screen.findByText("Author removed.")).toBeTruthy();
+  expect(ladoRow().textContent).toContain("Alex Home <alex@home.example> · from git on this computer");
+  const undo = button("Undo the removal of LADO's author");
+  await waitFor(() => expect(document.activeElement).toBe(undo));
+  fireEvent.click(undo);
+  expect(await screen.findByText("Author saved.")).toBeTruthy();
+  expect(fake.lado).toEqual(ANN);
+  await waitFor(() => expect(document.activeElement).toBe(button("Edit LADO's author")));
+});
+
+test("the variables of the agents' environment are named, never their values", async () => {
+  fake.lado = ANN;
+  fake.variables = ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL"];
+  await mount();
+  expect(
+    within(ladoRow()).getByText(
+      "⚠ The agents' environment sets GIT_AUTHOR_NAME and GIT_AUTHOR_EMAIL: these sign their commits instead of any author here.",
+      { exact: false },
+    ),
+  ).toBeTruthy();
+  expect(screen.getByRole("button", { name: "About the environment variables" })).toBeTruthy();
+});
+
+test("a server without an author shows the minor line with the author in effect and its source", async () => {
+  fake.servers = [GHE];
+  fake.lado = ANN;
+  await mount();
+  openRow(GHE);
+  const line = () => row(GHE).querySelector(".gx-minor .gx-val")!.textContent;
+  expect(line()).toBe("Commit author: Ann Lee <ann@example.com> (LADO's) · Set one for this server");
+  expect(screen.getByRole("button", { name: `About the commit author of ${GHE.address}` })).toBeTruthy();
+  cleanup();
+  fake.lado = null;
+  fake.gitAuthor = ANN;
+  await mount();
+  openRow(GHE);
+  expect(line()).toBe("Commit author: Ann Lee <ann@example.com> (from git on this computer) · Set one for this server");
+  const opener = button(`Set a commit author for ${GHE.address}`);
+  fireEvent.click(opener);
+  expect(opener.getAttribute("aria-pressed")).toBe("true");
+});
+
+test("?author opens LADO's form once, drops the query, and the saved line says the way back", async () => {
+  await mountAt("/settings/git-servers?author");
+  const name = await screen.findByRole("textbox", { name: "Name" });
+  await waitFor(() => expect(document.activeElement).toBe(name));
+  await waitFor(() => expect(where()).toBe("/settings/git-servers"));
+  type(name, "Ann Lee");
+  type(screen.getByRole("textbox", { name: "Email" }), "ann@example.com");
+  press("Save author");
+  expect(await screen.findByText("Author saved. Go back to the New session tab: it checks again by itself.")).toBeTruthy();
 });

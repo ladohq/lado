@@ -14326,3 +14326,175 @@ button.quiet.danger-text {
   font-size: 14px;
   line-height: 20px;
 }
+
+/* Commit authors (docs/design/ui.md, Git servers and Projects): where an author comes from,
+   muted after the value; an optional level not set is a minor line, never a row with a
+   buttons column. */
+.ca-src {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.sep {
+  margin: 0 2px;
+  color: var(--muted);
+}
+
+.gx-row.gx-minor {
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+  padding: 8px 0;
+}
+
+.gx-row.gx-minor .gx-val {
+  margin: 0;
+}
+
+.gx-minor .link-button,
+.project-author .link-button {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* A link-button that opens a form, while it is open: horizontal padding only, so a phone's
+   vertical hit area stays. */
+.link-button[aria-pressed="true"] {
+  padding-right: 4px;
+  padding-left: 4px;
+  border-radius: 4px;
+  background: var(--action-ground);
+  text-decoration: none;
+}
+
+/* The project's commit author: one line under its facts, not a section. */
+.project-author {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: -8px 0 20px;
+}
+
+.pa-line {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.pa-line b {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.pa-line .w {
+  color: var(--warn);
+}
+
+.pa-label {
+  margin-right: 2px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.pa-line .info-wrap {
+  margin: 0 4px 0 2px;
+  vertical-align: middle;
+}
+
+.pa-line .link-like {
+  color: var(--action);
+  font-weight: 500;
+}
+
+.pa-acts {
+  display: flex;
+  gap: 8px;
+}
+
+.pa-acts .quiet {
+  height: 32px;
+}
+
+.project-author .gx-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 0;
+  padding: 6px 8px 6px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* The note of a missing commit author: its way to Settings and Check again. */
+.author-note .way-out {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.author-note .way-out a.quiet {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  text-decoration: none;
+}
+
+.author-note .way-out a.quiet,
+.author-note .way-out .quiet {
+  min-height: 44px;
+}
+
+.author-note .an-hint {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.author-note .an-again {
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+/* The footer's missing items stay inline text, not button boxes. */
+.launch-missing .link-button {
+  display: inline;
+  height: auto;
+  min-height: 0;
+  line-height: inherit;
+  vertical-align: baseline;
+}
+
+@media (max-width: 760px) {
+  .gx-minor .link-button,
+  .project-author .link-button,
+  .launch-missing .link-button {
+    display: inline-block;
+    margin: -12px 0;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .link-button[aria-pressed="true"] {
+    background-clip: content-box;
+  }
+
+  .pa-acts .quiet {
+    height: 44px;
+  }
+}
+
+@media (max-width: 600px) {
+  .project-author .gx-form .quiet,
+  .project-author .gx-form .primary,
+  .project-author .gx-result .quiet {
+    height: 44px;
+    min-width: 44px;
+  }
+}
+

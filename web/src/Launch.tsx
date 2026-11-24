@@ -29,6 +29,7 @@ import {
   getWorkspace,
   getRemoteBranches,
   getScratchTarget,
+  outsideAuthor,
   resumeSession,
   startSession,
   type CloneJob,
@@ -55,6 +56,7 @@ import { useCloneJob } from "./cloneJob";
 import { InfoTip } from "./InfoTip";
 import { useLaunchModel, type Choice } from "./LaunchModel";
 import { ProjectField } from "./LaunchProject";
+import { AuthorMissing, KnownAuthor, useFoundAuthor } from "./AuthorMissing";
 import { LaunchSetup } from "./LaunchSetup";
 import { cannotStart, DEFAULT_MODE, LaunchTeam, modeWords } from "./LaunchTeam";
 import {
@@ -345,7 +347,10 @@ function LaunchDialog({
   const [into, setInto] = useState<string | null>(draft?.into ?? null);
   const [picked, setPicked] = useState<{ url: string; branch: string } | null>(null);
   const [include, setInclude] = useState<string[]>([]); // the set-up's left-out files ticked in
-  const [checkTurn, setCheckTurn] = useState(0); // Check again of the set-up's author
+  const [checkTurn, setCheckTurn] = useState(0); // a plain folder checked again
+  // Who agents commit as, once the note of a missing author found one in this window.
+  const [signer, foundSigner] = useFoundAuthor(null);
+  const authorLink = useRef<HTMLAnchorElement>(null);
   const clone = useCloneJob(); // its beacon cancels the clone of a page that goes away
   const job = clone.job;
   const [cloneEnd, setCloneEnd] = useState<{ note: string } | { refused: CloneRefused } | null>(null);
@@ -633,7 +638,7 @@ function LaunchDialog({
   // A plain folder of files the start sets up first (lado.setup).
   const setup = !resuming && source === "folder" && current && !current.ok ? (current.setup ?? null) : null;
   const settingUp = setup !== null;
-  const setupReady = setup !== null && setup.refusal === null && setup.author === null;
+  const setupReady = setup !== null && setup.refusal === null && (setup.author === null || signer !== null);
 
   // What each way needs beyond the team; the team's part holds in every way.
   const teamReady = canStart && modelReady && kits.length > 0 && !promptOver;
@@ -646,7 +651,7 @@ function LaunchDialog({
     fresh.path !== null &&
     fresh.name !== null &&
     CAN_START.has(fresh.state) &&
-    fresh.author === null &&
+    (fresh.author === null || signer !== null) &&
     fresh.name_state === "free";
   const projectReady = teamReady && projectRepo !== null && nameReady;
   // Use this clone only turns Where to the clone that is there.
@@ -983,12 +988,13 @@ function LaunchDialog({
   };
   const missing: Missing[] = [];
   const toName = () => nameRef.current?.focus();
+  const toAuthor = () => authorLink.current?.focus();
   if (!resuming) {
     const toWhere = () => (whereRef.current ?? pathRef.current)?.focus();
     if (scratching) {
       if (!fresh?.name || (fresh.state !== null && !CAN_START.has(fresh.state)) || fresh.name_state !== "free")
         missing.push({ text: "name the folder", focus: () => scratchRef.current?.focus() });
-      if (fresh?.author) missing.push({ text: "tell git who you are", focus: () => scratchRef.current?.focus() });
+      if (fresh?.author && !signer) missing.push({ text: "set the commit author", focus: toAuthor });
     } else if (cloning) {
       if (remote === null || target === null || (!CAN_CLONE.has(target.state) && target.state !== "same_repo"))
         missing.push({ text: "choose a place", focus: () => urlRef.current?.focus() });
@@ -997,12 +1003,11 @@ function LaunchDialog({
     } else if (rechecking) {
       missing.push({ text: "wait for the count", focus: toWhere });
     } else if (current?.setup) {
-      const panel = () => document.getElementById(notesId)?.querySelector<HTMLElement>("button")?.focus();
       const refusal = current.setup.refusal;
       if (refusal) {
         const smaller = refusal.kind === "home" || refusal.kind === "too_big";
         missing.push({ text: smaller ? "choose a smaller folder" : "choose another folder", focus: toWhere });
-      } else if (current.setup.author) missing.push({ text: "tell git who you are", focus: panel });
+      } else if (current.setup.author && !signer) missing.push({ text: "set the commit author", focus: toAuthor });
     } else if (!(current?.ok ?? false)) {
       const asking = path.trim() !== "" && current === null && toCheck(path.trim()) !== null;
       missing.push({ text: asking ? "wait for the check" : "choose a place", focus: toWhere });
@@ -1128,6 +1133,8 @@ function LaunchDialog({
 
   const generalRefusal = refused !== null && (taken === null || !hasName) && modelRefusal === null;
   const notesId = `${ids}-place-notes`;
+  // Nobody signs a first commit here: the note leads to Settings and checks again.
+  const authorNote = <AuthorMissing check={outsideAuthor} onFound={foundSigner} next={() => taskRef.current} linkRef={authorLink} />;
 
   return (
     <dialog
@@ -1274,7 +1281,10 @@ function LaunchDialog({
                       include={include}
                       onInclude={setInclude}
                       checkingAgain={rechecking}
-                      onCheckAgain={() => setCheckTurn((turn) => turn + 1)}
+                      author={{
+                        missing: shownFolder.setup.author && !signer ? authorNote : null,
+                        known: shownFolder.setup.author && signer ? <KnownAuthor author={signer} /> : null,
+                      }}
                     />
                   ) : null
                 }
@@ -1328,6 +1338,7 @@ function LaunchDialog({
                 disabled={busyNow}
                 inputRef={scratchRef}
                 onProject={toProject}
+                author={fresh?.author ? signer ? <KnownAuthor author={signer} /> : authorNote : null}
               />
             )}
             {cloning && (

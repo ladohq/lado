@@ -413,3 +413,23 @@ test("Cancel closes Delete and removes nothing", async () => {
   expect(screen.queryByRole("dialog", { name: "Delete repository frontend?" })).toBeNull();
   expect(server.asked.filter((one) => one.method === "DELETE")).toEqual([]);
 });
+
+// Add repository → From scratch with nobody to sign its first commit.
+
+test("From scratch with nobody: the note, Create off; found, Create on and the focus on it", async () => {
+  const nobody = { author: null, source: "none" as const };
+  server.projects.shop = { ...server.projects.shop, commit_author: nobody };
+  await addRepository("From scratch");
+  fireEvent.change(inDialog("Name"), { target: { value: "web" } });
+  expect(within(addDialog()).getByText("Agents need a name and email to sign their commits, and none is set yet.")).toBeTruthy();
+  expect(within(addDialog()).getByRole("link", { name: /Set the commit author in Settings/ })).toBeTruthy();
+  expect(dialogButton("Create").disabled).toBe(true);
+  const ann = { name: "Ann Lee", email: "ann@example.com" };
+  server.projects.shop = { ...server.projects.shop, commit_author: { author: ann, source: "lado" } };
+  const again = dialogButton("Check again");
+  again.focus();
+  fireEvent.click(again);
+  expect(await within(addDialog()).findByText("✓ Agents commit as Ann Lee <ann@example.com>.")).toBeTruthy();
+  expect(dialogButton("Create").disabled).toBe(false);
+  await waitFor(() => expect(document.activeElement).toBe(dialogButton("Create")));
+});

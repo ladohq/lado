@@ -3,7 +3,7 @@
 // may tick in, and the same by hand under "Do it yourself". The counts and the command come
 // from the core's preview, each left-out path with its line of the by-hand command; the
 // window only adds what is ticked and puts the lines together.
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import type { LeftOutInfo, SetupInfo } from "./api";
 import { InfoTip } from "./InfoTip";
@@ -57,18 +57,20 @@ export function LaunchSetup({
   setup,
   include,
   onInclude,
-  onCheckAgain,
   checkingAgain,
+  author,
 }: {
   id: string; // the panel's, Where's aria-describedby
   setup: SetupInfo; // the last answer, while `checkingAgain` the one before the new
   include: string[];
   onInclude: (include: string[]) => void;
-  onCheckAgain: () => void;
-  checkingAgain: boolean; // the folder is checked again: the author's Check again waits, the rest counts
+  checkingAgain: boolean; // the folder is checked again: the panel counts
+  // The window's note of a missing author in the panel's place (null: somebody signs), or
+  // who agents commit as once its note found one, under the panel.
+  author: { missing: ReactNode | null; known: ReactNode | null };
 }) {
   const [shown, setShown] = useState<"review" | "diy" | null>(null); // one disclosure at a time
-  if (checkingAgain && !setup.author) {
+  if (checkingAgain) {
     return (
       <div id={id} className="setup-panel">
         <p>
@@ -87,19 +89,10 @@ export function LaunchSetup({
       </div>
     );
   }
-  if (setup.author) {
-    const inContainer = setup.author.hint?.text.includes("LADO_GIT_NAME") ?? false;
+  if (author.missing) {
     return (
       <div id={id} className="setup-refuse">
-        <p className="field-note bad" role="alert">
-          {inContainer ? setup.author.hint!.text : "Git doesn't know who you are yet. Tell it once for this computer:"}
-        </p>
-        {setup.author.hint && <FolderHint text="" command={setup.author.hint.command} />}
-        {!inContainer && (
-          <button type="button" className="quiet" aria-disabled={checkingAgain || undefined} onClick={() => !checkingAgain && onCheckAgain()}>
-            {checkingAgain ? "Checking…" : "Check again"}
-          </button>
-        )}
+        {author.missing}
       </div>
     );
   }
@@ -179,6 +172,7 @@ export function LaunchSetup({
           <FolderHint text="Run in this folder, then choose it again:" command={setupCommand(setup, left)} />
         </div>
       )}
+      {author.known}
     </div>
   );
 }

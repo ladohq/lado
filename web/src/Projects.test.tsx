@@ -428,3 +428,72 @@ test("a read begun before a change does not bring the page back to before it", a
   });
   expect(within(variables).getByText("https://new")).toBeTruthy();
 });
+
+// The project's commit author (openspec change commit-author-levels).
+
+const ANN = { name: "Ann Lee", email: "ann@example.com" };
+const IVAN = { name: "Ivan Petrov", email: "ivan@gitlab.example.com" };
+const authorLine = (page: HTMLElement) => page.querySelector(".pa-line")!.textContent;
+
+test("without a project author the line says who signs and where from, per repository that differs", async () => {
+  server.projects.shop = {
+    ...server.projects.shop,
+    repos: server.projects.shop.repos.map((one) => ({
+      ...one,
+      commit_author: one.name === "backend" ? { author: IVAN, source: "server" as const } : { author: ANN, source: "lado" as const },
+    })),
+  };
+  server.projects.shop.repos.push({ ...server.projects.shop.repos[1], name: "site" });
+  open("/projects/shop");
+  const page = await screen.findByRole("region", { name: "Project shop" });
+  expect(authorLine(page)).toBe(
+    "Commit author Ann Lee <ann@example.com> (LADO's); in backend: Ivan Petrov <ivan@gitlab.example.com> (its git server's) · Set one for this project",
+  );
+  expect(within(page).getByRole("button", { name: "About the project's commit author" })).toBeTruthy();
+  expect(within(page).getByRole("button", { name: "Set a commit author for Shop" })).toBeTruthy();
+});
+
+test("nobody anywhere: the warning and LADO's author in Settings in a new tab", async () => {
+  const nobody = { author: null, source: "none" as const };
+  server.projects.acme = {
+    ...server.projects.acme,
+    commit_author: nobody,
+    repos: server.projects.acme.repos.map((one) => ({ ...one, commit_author: nobody })),
+  };
+  open("/projects/acme");
+  const page = await screen.findByRole("region", { name: "Project acme" });
+  expect(within(page).getByText("⚠ Nobody to commit as: agents cannot commit.")).toBeTruthy();
+  const link = within(page).getByRole("link", { name: "Set LADO's author in Settings (opens a new tab)" });
+  expect(link.getAttribute("href")).toBe("/settings/git-servers?author");
+  expect(link.getAttribute("target")).toBe("_blank");
+});
+
+test("the project's author is set, removed and put back with Undo, the focus by rule", async () => {
+  open("/projects/shop");
+  const page = await screen.findByRole("region", { name: "Project shop" });
+  const opener = within(page).getByRole("button", { name: "Set a commit author for Shop" });
+  fireEvent.click(opener);
+  expect(opener.getAttribute("aria-pressed")).toBe("true");
+  fireEvent.change(within(page).getByRole("textbox", { name: "Name" }), { target: { value: "Coffee Team" } });
+  fireEvent.change(within(page).getByRole("textbox", { name: "Email" }), { target: { value: "team@example.com" } });
+  fireEvent.click(within(page).getByRole("button", { name: "Save author" }));
+  expect(await within(page).findByText("Author saved.")).toBeTruthy();
+  expect(authorLine(page)).toBe("Commit author Coffee Team <team@example.com> (this project's, in every repository)");
+  const edit = within(page).getByRole("button", { name: "Edit the commit author of Shop" });
+  await waitFor(() => expect(document.activeElement).toBe(edit));
+  fireEvent.click(within(page).getByRole("button", { name: "Remove the commit author of Shop" }));
+  expect(await within(page).findByText("Author removed.")).toBeTruthy();
+  expect(authorLine(page)).toContain("Set one for this project");
+  const undo = within(page).getByRole("button", { name: "Undo the removal of the commit author of Shop" });
+  await waitFor(() => expect(document.activeElement).toBe(undo));
+  fireEvent.click(undo);
+  expect(await within(page).findByText("Author saved.")).toBeTruthy();
+  expect(server.projects.shop.author).toEqual({ name: "Coffee Team", email: "team@example.com" });
+});
+
+test("the variables that win over every author are named on the project's line", async () => {
+  server.projects.shop = { ...server.projects.shop, author_variables: ["GIT_AUTHOR_EMAIL"] };
+  open("/projects/shop");
+  const page = await screen.findByRole("region", { name: "Project shop" });
+  expect(within(page).getByText(/The agents' environment sets GIT_AUTHOR_EMAIL: these sign their commits/)).toBeTruthy();
+});

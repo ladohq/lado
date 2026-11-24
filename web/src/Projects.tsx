@@ -23,6 +23,7 @@ import { useLive } from "./live";
 import { useModal } from "./modal";
 import { projectPath, sessionPath } from "./paths";
 import { useMedia, usePhone } from "./phone";
+import { ProjectAuthor } from "./ProjectAuthor";
 import { ProjectDelete } from "./ProjectDelete";
 import { ProjectRepos, ProjectSessions } from "./ProjectRepos";
 import { ProjectVariables } from "./ProjectVariables";
@@ -261,6 +262,7 @@ export function ProjectPage() {
           </>
         )}
       </p>
+      <ProjectAuthor project={project} onChanged={changed} />
       <ProjectRepos
         project={project}
         onAdded={() => {

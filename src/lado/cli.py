@@ -2014,7 +2014,10 @@ def _lado_author_line() -> str:
     found = commit_authors.lado()
     if found is not None:
         return commit_authors.text(found)
-    own = commit_authors.git_own("/")
+    try:
+        own = commit_authors.git_own("/")
+    except commit_authors.Unreadable as exc:
+        raise runtime.LadoError(f"git cannot read its config: {exc}") from None
     if own is not None:
         return commit_authors.LADO_GIT.format(author=commit_authors.text(own))
     return commit_authors.LADO_NOBODY
@@ -2030,7 +2033,8 @@ def _lado_author(args: argparse.Namespace) -> int:
     try:
         if args.clear:
             commit_authors.clear_lado()
-            lines = [commit_authors.LADO_CLEARED, _lado_author_line()]
+            print(commit_authors.LADO_CLEARED, flush=True)  # done, whatever git says next
+            lines = [_lado_author_line()]
         elif args.name is not None:
             author = commit_authors.set_lado(args.name, args.email)
             lines = [commit_authors.LADO_SET.format(author=commit_authors.text(author))]

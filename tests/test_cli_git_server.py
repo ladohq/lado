@@ -579,6 +579,15 @@ def test_nobody_known(capsys, git_config):
     assert capsys.readouterr().out == NOBODY
 
 
+@pytest.mark.parametrize("args", [[], ["--clear"]])
+def test_a_git_config_git_cannot_read_is_said_in_one_line(capsys, git_config, args):
+    git_config.write_text("[user\n broken")
+    assert _author(*args) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("lado: git cannot read its config: ")
+    assert "Traceback" not in err and len(err.splitlines()) == 1
+
+
 def test_ladOs_author_is_the_humans_alone(capsys, monkeypatch):
     monkeypatch.setenv("LADO_AGENT", "w1")
     for args in (["--name", "Bot", "--email", "bot@example.com"], ["--clear"]):

@@ -191,9 +191,10 @@ set up.
 ## Commit author (optional)
 
 Each server's row has **Commit author**: the name and email on the agents' commits to that
-server's repositories. Press **Set author** to give one, for example a work email for your
-company's server. Without one, the agents' commits carry your own git author, as everywhere
-else. The terminal's way: [cli.md](cli.md) (`lado git-server author`).
+server's repositories. Without one, the row says who signs there now (LADO's commit author,
+set above the servers, or your own git author); press **Set one for this server** to give
+one, for example a work email for your company's server. A project's own author wins over
+it. The terminal's way: [cli.md](cli.md) (`lado git-server author`).
 
 ## What LADO does not use
 

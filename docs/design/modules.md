@@ -15,10 +15,11 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `git` (after `tmux`, `check_git`) is the folder check's own look, `runtime.git_version`:
     `FAIL` with the core's text and hint when git is missing or does not run, `WARN` below
     `runtime.GIT_MIN` (2.31: `gitpaths`' `--path-format=absolute`), else `OK`.
-    `git author` (after `git`, `check_git_author`, no line when git does not run) is a fresh
-    start's own look, `scratch.author_problem("/")`: `OK` with both `user.name` and
-    `user.email`, else `WARN` with its hint (the `.env` one in LADO's container); it never
-    prints them.
+    `git author` (after `git`, `check_git_author`, no line when git does not run) asks
+    `lado.commit_authors` as a fresh start outside a project would: `OK` with LADO's commit
+    author, else with git's own `user.name` and `user.email` from `/`, else `WARN` with the
+    fresh start's hint (`scratch.AUTHOR_HINT`, the same in LADO's container); a busy lado.db
+    counts as no LADO author; it never prints a name or an email.
     `git server <address>` (after `git author`, `check_git_servers`, one per saved server,
     none without one): `git_servers.check` with `save_login=False`, as doctor writes nothing;
     all in a pool started before the model servers' probes and collected after them; `OK` with

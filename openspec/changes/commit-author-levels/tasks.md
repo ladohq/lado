@@ -52,10 +52,10 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-24-commit-autho
 - [x] 8.1 Settings → Git servers: LADO's author block, the server's minor line, `?author`
   (the flow's spec). Check: `web/src/GitServers.test.tsx`, `tests/ui/test_git_servers_section.py`.
 - [x] 8.2 The project page's author line. Check: `web/src/Projects.test.tsx`,
-  `tests/ui/test_project_page.py`.
+  `tests/ui/test_commit_author_pages.py`.
 - [x] 8.3 `AuthorMissing` in New empty folder, the folder set-up and Add repository → From
-  scratch; check again on focus. Check: `web/src/Launch.test.tsx`,
-  `web/src/LaunchSetup.test.tsx`, `web/src/ProjectRepos.test.tsx`.
+  scratch; check again on focus. Check: `web/src/Launch.test.tsx` (New empty folder and the
+  set-up), `web/src/ProjectRepos.test.tsx`.
 - [x] 8.4 The main scenario end to end, screenshots as run artifacts. Check:
   `uv run pytest -m ui tests/ui/test_commit_author_pages.py`.
 

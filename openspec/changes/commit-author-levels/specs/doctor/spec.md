@@ -2,8 +2,8 @@
 
 ### Requirement: lado doctor checks git's author
 
-`lado doctor` SHALL have a check `git author`, after `git`, by the same look as a fresh
-start (`scratch.author_problem`): `OK` with `LADO's commit author set` or `user.name and
+`lado doctor` SHALL have a check `git author`, after `git`, by the same order as a fresh
+start outside a project (capability commit-authors): `OK` with `LADO's commit author set` or `user.name and
 user.email set`, else `WARN` with `no LADO commit author and no user.name or user.email:
 agents cannot commit` and the fresh start's hint, and no line when git itself does not run
 (the `git` check says why).

@@ -566,8 +566,8 @@ def test_the_entrypoint_writes_lado_repos_for_the_agents():
 
 
 GIT_WARNING = (
-    "lado: warning: git has no user.name or user.email: agents cannot commit; set "
-    "LADO_GIT_NAME and LADO_GIT_EMAIL"
+    "lado: warning: git has no user.name or user.email; set LADO_GIT_NAME and LADO_GIT_EMAIL, "
+    "or the commit author in Settings → Git servers"
 )
 
 

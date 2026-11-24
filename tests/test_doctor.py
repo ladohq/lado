@@ -1232,23 +1232,38 @@ def test_a_fresh_machine(git_config, monkeypatch, capsys):
     status = doctor.main()
     out = capsys.readouterr().out
     assert (
-        "[warn] git author: no user.name or user.email: agents cannot commit\n"
-        "       Tell git who you are, once for this computer: git config --global user.name "
-        '"Your Name" && git config --global user.email you@example.com\n'
+        "[warn] git author: no LADO commit author and no user.name or user.email: agents "
+        "cannot commit\n"
+        "       Set the commit author in Settings → Git servers, or run: lado git-server "
+        'author --name "Your Name" --email you@example.com\n'
     ) in out
     assert "Ann Example" not in out
     assert status == status_before
 
 
-def test_the_containers_git_author_hint(git_config, monkeypatch):
+def test_ladOs_author_is_enough(git_config, monkeypatch, capsys):
+    _versions(monkeypatch)
+    git_config.write_text("")
+    state.set_commit_author("Ann Lee", "ann@example.com")
+    _, out = _doctor_output(monkeypatch, capsys)
+    assert "[ok  ] git author: LADO's commit author set\n" in out
+    assert "Ann Lee" not in out and "ann@example.com" not in out
+
+
+def test_the_containers_git_author_hint_is_the_same(git_config, monkeypatch):
     monkeypatch.setenv("LADO_CONTAINER", "1")
     git_config.write_text("")
     check = doctor.check_git_author()
     assert (check.name, check.level) == ("git author", doctor.WARN)
     assert check.hint == (
-        "Set LADO_GIT_NAME and LADO_GIT_EMAIL in the .env file next to compose.yaml, then "
-        "restart LADO there: docker compose up -d"
+        "Set the commit author in Settings → Git servers, or run: lado git-server author "
+        '--name "Your Name" --email you@example.com'
     )
+
+
+def test_the_git_author_check_makes_no_lado_db(lado_home, monkeypatch):
+    doctor.check_git_author()
+    assert not (lado_home / "lado.db").exists()
 
 
 def test_no_git_author_line_without_git(tmp_path, monkeypatch):

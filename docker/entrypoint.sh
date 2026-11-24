@@ -110,9 +110,11 @@ fi
 if [ -n "${LADO_GIT_EMAIL:-}" ] && ! git config --global user.email "$LADO_GIT_EMAIL"; then
     echo "lado: warning: could not write git's user.email" >&2
 fi
-# Outside any repository, so only the global and system configs answer.
+# Outside any repository, so only the global and system configs answer. LADO's own commit
+# author (Settings → Git servers) lives in lado.db, which this script does not read: the
+# warning does not say agents cannot commit.
 if [ -z "$(cd / && git config user.name)" ] || [ -z "$(cd / && git config user.email)" ]; then
-    echo "lado: warning: git has no user.name or user.email: agents cannot commit; set LADO_GIT_NAME and LADO_GIT_EMAIL" >&2
+    echo "lado: warning: git has no user.name or user.email; set LADO_GIT_NAME and LADO_GIT_EMAIL, or the commit author in Settings → Git servers" >&2
 fi
 
 repos=${LADO_REPOS:-/projects}

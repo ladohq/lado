@@ -34,7 +34,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-24-commit-autho
 
 ## 6. doctor and the container
 
-- [ ] 6.1 `git author`'s three lines, the entrypoint's warning, compose's header (D10).
+- [x] 6.1 `git author`'s three lines, the entrypoint's warning, compose's header (D10).
   Check: `tests/test_doctor.py`; `tests/container/test_access.py` (CI's container job).
 - [ ] 6.2 A clean container makes a repository from scratch with LADO's author set through
   the API. Check: `tests/container/test_access.py`.

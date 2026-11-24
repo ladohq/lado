@@ -103,8 +103,15 @@ def check_git(env: Mapping[str, str], what: str, clear: str | None = None) -> No
         raise git_servers.Refused(f"{older}, or clear it ({clear})" if clear else older, page=older)
 
 
+def _readable() -> bool:
+    """Whether lado.db is there at this LADO's schema: without one, or at another schema,
+    LADO has no author nor server to read (a read makes no lado.db, as `lado doctor` and a
+    fresh start's check ask before any)."""
+    return state.schema_version() == state.SCHEMA_VERSION
+
+
 def lado() -> Author | None:
-    return state.commit_author()
+    return state.commit_author() if _readable() else None
 
 
 def set_lado(name: str, email: str) -> Author:
@@ -123,7 +130,7 @@ def clear_lado() -> bool:
 
 def project(id: str) -> Author | None:
     """The project's commit author; None for none, or no such project."""
-    found = state.get_project(id)
+    found = state.get_project(id) if _readable() else None
     return _author(found.author_name, found.author_email) if found else None
 
 
@@ -179,7 +186,7 @@ def in_effect(path: str, project_id: str | None = None) -> InEffect:
     it (`author_variables`)."""
     if project_id is not None and (found := project(project_id)) is not None:
         return InEffect(found, PROJECT)
-    servers = state.git_servers()
+    servers = state.git_servers() if _readable() else []
     if servers:
         on = {s.id for s in (git_servers.server_for(url, servers) for url in _remotes(path)) if s}
         authored = [s for s in servers if s.id in on and git_servers.author_text(s)]

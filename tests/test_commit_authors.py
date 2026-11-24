@@ -149,6 +149,12 @@ def test_in_effect_nobody(nobody, tmp_path):
     assert commit_authors.in_effect(str(tmp_path)) == InEffect(None, "none")
 
 
+def test_in_effect_makes_no_lado_db(git_config, lado_home, tmp_path):
+    assert commit_authors.in_effect(str(tmp_path), "shop").source == "git"
+    assert commit_authors.lado() is None
+    assert not (lado_home / "lado.db").exists()
+
+
 def test_in_effect_gits_own(git_config, lado_home, tmp_path):
     assert commit_authors.in_effect(str(tmp_path)) == InEffect(
         Author("LADO test", "test@lado.invalid"), "git"

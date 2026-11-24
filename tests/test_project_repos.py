@@ -157,6 +157,23 @@ def test_add_new_makes_a_repository_with_an_empty_commit(shop):
     assert _git(shop / "site", "log", "--format=%s").split() == scratch.FIRST_COMMIT.split()
 
 
+def test_add_new_commits_as_the_projects_author(shop, git_config):
+    git_config.write_text("")
+    state.set_project_author("shop", "Shop Bot", "bot@shop.example")
+    projects.add_new("shop", "site")
+    assert _git(shop / "site", "log", "--format=%an <%ae>").strip() == (
+        "Shop Bot <bot@shop.example>"
+    )
+
+
+def test_add_new_without_any_author_makes_nothing(shop, git_config):
+    git_config.write_text("")
+    with pytest.raises(scratch.ScratchError) as refused:
+        projects.add_new("shop", "site")
+    assert refused.value.kind == "no_author"
+    assert list(shop.iterdir()) == []
+
+
 def test_add_new_refuses_a_taken_or_bad_name_and_an_unknown_project(shop):
     (shop / "site").mkdir()
     with pytest.raises(projects.ProjectError, match="already exists"):

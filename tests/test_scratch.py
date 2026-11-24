@@ -238,7 +238,14 @@ def test_the_default_folder_in_the_container(tmp_path, monkeypatch):
     assert scratch.check_target(str(folder)).state == "new"
 
 
-NO_AUTHOR = "git doesn't know who signs the agents' commits: it has no user.name or user.email"
+NO_AUTHOR = (
+    "nobody signs the agents' commits: LADO has no commit author and git has no user.name or "
+    "user.email"
+)
+HINT = runtime.Hint(
+    "Set the commit author in Settings → Git servers, or run:",
+    'lado git-server author --name "Your Name" --email you@example.com',
+)
 
 
 def test_a_developers_machine(git_config, tmp_path):
@@ -248,12 +255,7 @@ def test_a_developers_machine(git_config, tmp_path):
 def test_a_git_without_the_email(git_config, tmp_path):
     git_config.write_text("[user]\n\tname = Ann\n")
     problem = scratch.author_problem(str(tmp_path / "shop"))
-    assert (problem.kind, str(problem)) == ("no_author", NO_AUTHOR)
-    assert problem.hint == runtime.Hint(
-        "Tell git who you are, once for this computer:",
-        'git config --global user.name "Your Name" && git config --global user.email '
-        "you@example.com",
-    )
+    assert (problem.kind, str(problem), problem.hint) == ("no_author", NO_AUTHOR, HINT)
 
 
 def test_an_empty_name_is_no_author(git_config, tmp_path):
@@ -261,22 +263,61 @@ def test_an_empty_name_is_no_author(git_config, tmp_path):
     assert scratch.author_problem(str(tmp_path)).kind == "no_author"
 
 
-def test_the_container_without_the_variables(git_config, tmp_path, monkeypatch):
-    monkeypatch.setenv("LADO_CONTAINER", "1")
+@pytest.mark.parametrize("container", ["1", "0"])
+def test_the_container_has_the_same_hint(git_config, tmp_path, monkeypatch, container):
+    monkeypatch.setenv("LADO_CONTAINER", container)
     git_config.write_text("")
     problem = scratch.author_problem(str(tmp_path))
-    assert str(problem) == NO_AUTHOR
-    assert problem.hint == runtime.Hint(
-        "Set LADO_GIT_NAME and LADO_GIT_EMAIL in the .env file next to compose.yaml, then "
-        "restart LADO there:",
-        "docker compose up -d",
-    )
+    assert (str(problem), problem.hint) == (NO_AUTHOR, HINT)
 
 
-def test_a_container_switched_off_is_outside(git_config, tmp_path, monkeypatch):
-    monkeypatch.setenv("LADO_CONTAINER", "0")
+def test_ladOs_author_on_a_machine_without_gits(git_config, tmp_path):
     git_config.write_text("")
-    assert scratch.author_problem(str(tmp_path)).hint.command.startswith("git config --global")
+    state.set_commit_author("Ann Lee", "ann@example.com")
+    assert scratch.author_problem(str(tmp_path / "shop")) is None
+
+
+def test_a_projects_author_counts_for_its_place_only(git_config, tmp_path):
+    git_config.write_text("")
+    with state.creating_project("shop", None):
+        pass
+    state.set_project_author("shop", "Shop Bot", "bot@shop.example")
+    assert scratch.author_problem(str(tmp_path / "site"), "shop") is None
+    assert scratch.author_problem(str(tmp_path / "site")).kind == "no_author"
+
+
+@pytest.mark.parametrize("global_too", [False, True])
+def test_a_fresh_start_commits_as_ladOs_author(git_config, tmp_path, global_too):
+    if not global_too:
+        git_config.write_text("")
+    before = git_config.read_bytes()
+    state.set_commit_author("Ann Lee", "ann@example.com")
+    path = tmp_path / "coffee"
+    scratch.make(str(path), "coffee")
+    assert git_out(path, "log", "--format=%an <%ae> %cn <%ce>") == (
+        "Ann Lee <ann@example.com> Ann Lee <ann@example.com>"
+    )
+    assert git_config.read_bytes() == before
+    assert "user" not in (path / ".git" / "config").read_text()
+
+
+def test_a_projects_repository_commits_as_its_author(git_config, tmp_path):
+    state.set_commit_author("Ann Lee", "ann@example.com")
+    with state.creating_project("shop", None):
+        pass
+    state.set_project_author("shop", "Shop Bot", "bot@shop.example")
+    path = tmp_path / "site"
+    scratch.make(str(path), "site", project="shop")
+    assert git_out(path, "log", "--format=%an <%ae>") == "Shop Bot <bot@shop.example>"
+
+
+def test_nobody_known_makes_nothing(git_config, tmp_path):
+    git_config.write_text("")
+    path = tmp_path / "coffee"
+    with pytest.raises(scratch.ScratchError) as refused:
+        scratch.make(str(path), "coffee")
+    assert (str(refused.value), refused.value.hint) == (NO_AUTHOR, HINT)
+    assert not path.exists()
 
 
 def test_no_git_is_lad_5s_problem_not_an_author_one(git_config, tmp_path, monkeypatch):

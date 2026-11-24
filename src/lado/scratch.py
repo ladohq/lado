@@ -1,7 +1,8 @@
 """A session from scratch (openspec change start-from-scratch): from a name the human types
 in any script, the folder's and the session's name and the session's title; whether a
-folder may take a fresh start; whether git knows whom to sign commits with; and the
-repository itself, a new or empty folder with one empty commit. `lado start --new`, the UI
+folder may take a fresh start; who signs its commits (lado.commit_authors: the project's,
+LADO's or git's own author); and the repository itself, a new or empty folder with one
+empty commit. `lado start --new`, the UI
 server and `lado doctor` all call it, and print only what it says.
 
 None of the human's files ever goes into a commit: only a folder with nothing in it (but
@@ -17,7 +18,7 @@ from pathlib import Path
 from shlex import quote
 from typing import Literal
 
-from lado import projects, runtime, state
+from lado import commit_authors, projects, runtime, state
 from lado import text as visible
 
 
@@ -126,36 +127,47 @@ def _check_target(path: str, project: str | None) -> Target:
     return Target(path, "empty", "an empty folder")
 
 
-NO_AUTHOR = "git doesn't know who signs the agents' commits: it has no user.name or user.email"
-AUTHOR_HINT_CONTAINER = runtime.Hint(
-    "Set LADO_GIT_NAME and LADO_GIT_EMAIL in the .env file next to compose.yaml, then "
-    "restart LADO there:",
-    "docker compose up -d",
+NO_AUTHOR = (
+    "nobody signs the agents' commits: LADO has no commit author and git has no user.name or "
+    "user.email"
 )
+# The same in LADO's container: LADO's author needs no restart and no terminal.
 AUTHOR_HINT = runtime.Hint(
-    "Tell git who you are, once for this computer:",
-    'git config --global user.name "Your Name" && git config --global user.email you@example.com',
+    "Set the commit author in Settings → Git servers, or run:",
+    'lado git-server author --name "Your Name" --email you@example.com',
 )
 
 
-def author_problem(path: str) -> ScratchError | None:
-    """Why git cannot sign the commits of a repository at `path`: no `user.name` or
-    `user.email` where its nearest existing folder is, which outside any repository is
-    git's global and system config, the ones the agents' git reads. None when both are
-    set. A git that does not run raises LAD-5's FolderProblem; LADO never sets an author of
-    its own."""
-    folder = str(_nearest(Path(path)))
-    for key in ("user.name", "user.email"):
-        result = runtime._run_git(folder, "config", "--get", key, env=_english())
-        if result.returncode not in (0, 1):  # 1: not set
-            raise ScratchError("git_refused", f"git cannot read its config: {_line(result)}")
-        if not result.stdout.strip():
-            # Imported here: the CLI, which imports this module, imports update lazily.
-            from lado import update
+def author(path: str, project: str | None = None) -> commit_authors.InEffect:
+    """The author a commit of a repository at `path` carries, the `project`'s for its
+    repository (lado.commit_authors.in_effect). A git that does not run raises LAD-5's
+    FolderProblem, one that cannot read its config a ScratchError `git_refused`."""
+    try:
+        return commit_authors.in_effect(path, project)
+    except commit_authors.Unreadable as exc:
+        raise ScratchError("git_refused", f"git cannot read its config: {exc}") from None
 
-            hint = AUTHOR_HINT_CONTAINER if update.in_container() else AUTHOR_HINT
-            return ScratchError("no_author", NO_AUTHOR, hint)
+
+def author_problem(path: str, project: str | None = None) -> ScratchError | None:
+    """Why nobody signs the commits of a repository at `path`: neither the `project`, LADO
+    nor git (where its nearest existing folder is, which outside any repository is git's
+    global and system config, the ones the agents' git reads) has an author. None when one
+    does. LADO never writes an author into a git config."""
+    if author(path, project).author is None:
+        return ScratchError("no_author", NO_AUTHOR, AUTHOR_HINT)
     return None
+
+
+def author_options(found: commit_authors.InEffect) -> tuple[str, ...]:
+    """git's options that make LADO's own first commit carry `found`: LADO's or a project's
+    author with `-c`, nothing for git's own."""
+    if found.author is None or found.source not in (commit_authors.PROJECT, commit_authors.LADO):
+        return ()
+    return tuple(
+        option
+        for key, value in commit_authors.entries(found.author)
+        for option in ("-c", f"{key}={value}")
+    )
 
 
 def _refusal(target: Target) -> ScratchError:
@@ -184,7 +196,7 @@ def check(path: str, name: str, project: str | None = None) -> None:
     target = check_target(path, project)
     if target.state not in CAN_START:
         raise _refusal(target)
-    if (problem := author_problem(path)) is not None:
+    if (problem := author_problem(path, project)) is not None:
         raise problem
 
 
@@ -205,8 +217,9 @@ def make(path: str, name: str, project: str | None = None) -> Made:
     removes what this call made (the folders it created, or the `.git` of an empty folder
     it was given): a ScratchError `git_failed` with git's line. With `project` it adds a
     repository to that project (`check_target`'s `project`), and no session's name is
-    asked: none is made."""
+    asked: none is made. The commit carries the author an agent there gets (`author`)."""
     check(path, name, project)
+    signed = author_options(author(path, project))
     folder = Path(path)
     made = None if folder.exists() else _topmost_missing(folder)
     try:
@@ -216,7 +229,7 @@ def make(path: str, name: str, project: str | None = None) -> Made:
         _git(path, "symbolic-ref", "HEAD", f"refs/heads/{found or 'main'}")
         _git(
             path,
-            *("-c", "commit.gpgsign=false", "-c", f"core.hooksPath={os.devnull}"),
+            *("-c", "commit.gpgsign=false", "-c", f"core.hooksPath={os.devnull}", *signed),
             *("commit", "--allow-empty", "--no-verify", "--quiet", "-m", FIRST_COMMIT),
         )
         return Made(_git(path, "rev-parse", "--show-toplevel"), made)

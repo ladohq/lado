@@ -22,7 +22,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-24-commit-autho
 
 ## 4. LADO's own first commits
 
-- [ ] 4.1 `scratch.author_problem(path, project)`, the new text and hint, `make` and
+- [x] 4.1 `scratch.author_problem(path, project)`, the new text and hint, `make` and
   `setup.make` commit as the author in effect, `projects.add_new` passes its project (D4).
   Check: `tests/test_scratch.py`, `tests/test_setup.py`, `tests/test_project_repos.py`.
 

@@ -231,9 +231,12 @@ def make(path: str, include: list[str]) -> str:
     init`, the branch as a fresh start's, the left-out paths not in `include` appended to
     `.gitignore` (made when missing), `git add -A` and one commit with no signing and no
     hooks. A failed step removes the `.git` it made and puts `.gitignore` back as it was:
-    a SetupError `git_failed` with git's line."""
-    if (problem := scratch.author_problem(path)) is not None:
-        raise SetupError(problem.kind, str(problem))
+    a SetupError `git_failed` with git's line. The commit carries the author an agent there
+    gets (scratch.author)."""
+    found = scratch.author(path)
+    if found.author is None:
+        raise SetupError("no_author", scratch.NO_AUTHOR)
+    signed = scratch.author_options(found)
     if scratch._repository_of(path) is not None:
         raise SetupError("not_plain", f"{path} is already inside a git repository")
     found = preview(path)
@@ -258,7 +261,7 @@ def make(path: str, include: list[str]) -> str:
         git(path, "add", "-A")
         git(
             path,
-            *("-c", "commit.gpgsign=false", "-c", f"core.hooksPath={os.devnull}"),
+            *("-c", "commit.gpgsign=false", "-c", f"core.hooksPath={os.devnull}", *signed),
             *("commit", "--no-verify", "--quiet", "-m", FIRST_COMMIT),
         )
         return git(path, "rev-parse", "--show-toplevel")

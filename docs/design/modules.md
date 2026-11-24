@@ -380,10 +380,11 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `.DS_Store`, `inside_repo` with the repository's root, `not_empty`, `not_folder`; the
     path's nearest existing folder decides for a new path; only `CAN_START` lets a fresh
     start go on; `make` refuses each other state with its hint: LAD-5's `NOT_REPO_HINT` for
-    files, `lado start <root>` inside a repository), `author_problem` (git's `user.name`
-    and `user.email` where the folder would be, outside any repository the global and
-    system config; no author is a refusal with the `.env` hint in LADO's container, the
-    `git config --global` one elsewhere; LADO sets no author), `check` (the name as
+    files, `lado start <root>` inside a repository), `author` (the author in effect where
+    the folder would be, `commit_authors.in_effect` with the project for a project's
+    repository), `author_problem` (nobody: a refusal `NO_AUTHOR` with `AUTHOR_HINT`, Settings
+    → Git servers and `lado git-server author`, in LADO's container too), `author_options`
+    (`-c user.name`/`-c user.email` for a project's or LADO's author; nothing for git's own), `check` (the name as
     `runtime.check_name`, the target, the author: `make`'s refusals, making nothing) and
     `make` (`check` again, then the folders, `git init`, the branch of
     `init.defaultBranch` else `main` by `symbolic-ref`, one empty commit `Start from
@@ -979,6 +980,15 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     GitHub's `X-OAuth-Scopes`, GitLab's `personal_access_tokens/self`, whose `api` grants both
     repository rights (`granted`); None when it tells none); `KINDS` in `__init__.py` is the one
     list of them (`--kind`'s choices, the probe's requests).
+  - `commit_authors.py`: who agents and LADO's first commits sign as (openspec capability
+    commit-authors): LADO's author and a project's in lado.db (`lado`/`set_lado`/`clear_lado`,
+    `project`/`set_project`/`clear_project`, read only from a lado.db at this schema, so a
+    read makes none), `check` (every author's check, a server's too), `check_git` (2.31),
+    `entries` (the `user.*` entries `git_servers.variables` lays), `git_own` (git's own
+    author where a path is, the launch's entries left out), `in_effect` (project → the last
+    server by host with an author among the repository's remotes → LADO's → git's own →
+    none, with its source; what git takes under the laid entries) and `author_variables`
+    (the `GIT_AUTHOR_*`/`GIT_COMMITTER_*` names an environment holds); the CLI's lines.
   - `git_servers.py`: the human's git servers (`lado git-server add|list|check|remove`):
     `check` (a saved server asked again with its saved token, judged by its saved kind: a
     `Check` with its outcome, the rights it lacks and its lines in the command's and the page's
@@ -1469,7 +1479,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     (`git_servers.add` with the token of `GitServerAdd`, the saved line, the page's warning of
     a token without a right), `check_saved` (`git_servers.check` by the server's host and port;
     a 404 for no such server, a 422 for a missing token file: `Refusal.status`), `set_author`/
-    `clear_author` (the commit author by the server's host and port, the command's line) and
+    `clear_author` (the commit author by the server's host and port, the command's line),
+    `set_lado_author`/`clear_lado_author` (LADO's own, `PUT`/`DELETE /api/git-author`) and
     `remove` (by the server's host and port); each refusal a `model_entries.Refusal` with the core's page words
     and field; the token comes in only in `GitServerAdd`, whose route is in
     `app.SECRET_ROUTE`;

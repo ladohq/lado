@@ -73,7 +73,7 @@ One line per module; each module's behaviour in detail: [docs/design/modules.md]
   - `mcp_exec.py`: a kit's MCP server whose secrets never go on disk.
   - `text.py`: the one rule of a line of visible text; `terminal.py`: an agent's terminal for the UI.
   - `kits.py`: kits (roles, skills, MCP servers, flows), lookup, install, resolve; `builtin_kits/`.
-  - `gitcache.py`: the git cache of kits and packs; all git commands for kits.
+  - `gitcache.py`: the git cache of kits and packs; `commit_authors.py`: LADO's, a project's author.
   - `git_servers.py`: git servers, tokens, certificates (`git_certificates.py`), `git_kinds/`,
     the helper `git_credential.py`, `github_takeover.py`; `marketplaces.py`: kit marketplaces.
   - `flows.py`: the flow format and its validator; `runs.py`: flow runs, steps, gates.

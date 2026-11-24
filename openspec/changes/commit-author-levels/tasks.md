@@ -68,7 +68,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-24-commit-autho
 
 ## 10. Docs
 
-- [ ] 10.1 `docs/cli.md`, `docs/design/ui.md`, `docs/design/projects.md`,
+- [x] 10.1 `docs/cli.md`, `docs/design/ui.md`, `docs/design/projects.md`,
   `docs/design/agents.md`, `docs/design/modules.md`, AGENTS.md's Layout line, CHANGELOG.md's
   `0.49.0 (unreleased)`. Check: `tests/test_agents_md.py`.
 

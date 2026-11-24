@@ -106,8 +106,16 @@ with each agent CLI's facts checked by hand. Moved from AGENTS.md (LAD-82).
   as that server's author and elsewhere as before; the condition needs git 2.36
   (`GIT_AUTHOR_MIN`): while an author is set, an older agents' git refuses the launch
   (`_check_commands`). `GIT_AUTHOR_*`/`GIT_COMMITTER_*` of the agent's environment win over
-  every config: the launch names each in its warnings (`_author_warnings`). LADO's own git
-  (`agent_env.for_git`) gets no author.
+  every config: the launch names each in its warnings (`_git_server_warnings`) while any LADO
+  author is set. LADO's own git (`agent_env.for_git`) gets no author.
+- LADO's own commit author and the session's project's (`lado.commit_authors`, lado.db)
+  go as plain `user.name`/`user.email` entries of the same `GIT_CONFIG_*`: LADO's first,
+  before every server's entries, the project's last (`git_servers.variables`' `lado` and
+  `project`; the project is the session's, `sessions.project`, for its supervisor and
+  workers alike). The later entry wins, so the order is project → server → LADO's → git's own
+  config, and every one wins over git's system, global and the repository's own config. No
+  file is written for them; they need git 2.31, refused at the launch otherwise
+  (`commit_authors.check_git`, naming the command that clears the author).
 - The GitLab CLI: `_ours` sets `GLAB_CONFIG_DIR=<config folder>/glab`, where
   `git_servers.glab_variables` writes `config.yml` whole at each launch (600 in a 700 folder,
   glab's demand), with one host entry per saved GitLab server and its token as a

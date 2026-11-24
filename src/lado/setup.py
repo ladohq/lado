@@ -43,11 +43,13 @@ Reason = Literal["secret", "large", "repository"]
 
 
 class SetupError(runtime.LadoError):
-    """Why a folder was not set up, by kind; the folder is as it was."""
+    """Why a folder was not set up, by kind, with a hint when the human can act; the folder
+    is as it was."""
 
-    def __init__(self, kind: str, text: str) -> None:
+    def __init__(self, kind: str, text: str, hint: runtime.Hint | None = None) -> None:
         super().__init__(text)
         self.kind = kind
+        self.hint = hint
 
 
 @dataclass(frozen=True)
@@ -235,7 +237,7 @@ def make(path: str, include: list[str]) -> str:
     gets (scratch.author)."""
     found = scratch.author(path)
     if found.author is None:
-        raise SetupError("no_author", scratch.NO_AUTHOR)
+        raise SetupError("no_author", scratch.NO_AUTHOR, scratch.AUTHOR_HINT)
     signed = scratch.author_options(found)
     if scratch._repository_of(path) is not None:
         raise SetupError("not_plain", f"{path} is already inside a git repository")

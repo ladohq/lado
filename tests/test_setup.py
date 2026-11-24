@@ -9,7 +9,7 @@ from pathlib import Path
 import agent_helpers
 import pytest
 
-from lado import setup, state
+from lado import scratch, setup, state
 
 BIG = setup.MAX_FILE + 1
 
@@ -196,6 +196,7 @@ def test_make_needs_gits_author(notes, git_config):
     with pytest.raises(setup.SetupError) as refused:
         setup.make(str(notes), [])
     assert refused.value.kind == "no_author"
+    assert (str(refused.value), refused.value.hint) == (scratch.NO_AUTHOR, scratch.AUTHOR_HINT)
     assert not (notes / ".git").exists()
 
 

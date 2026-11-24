@@ -2010,17 +2010,6 @@ def _half_author(args: argparse.Namespace) -> bool:
     return False
 
 
-LADO_AUTHOR_SET = (
-    "Agents commit as {author} where no project or git server has an author of its own."
-)
-LADO_AUTHOR_CLEARED = "LADO has no commit author now."
-LADO_AUTHOR_GIT = "LADO has no commit author: agents commit as {author} from your git config."
-LADO_AUTHOR_NOBODY = (
-    "LADO has no commit author and git knows none: agents cannot commit.\n"
-    'Set one: lado git-server author --name "Your Name" --email you@example.com'
-)
-
-
 def _lado_author_line() -> str:
     """What agents commit as outside a project and a git server (lado.commit_authors)."""
     from lado import commit_authors
@@ -2030,8 +2019,8 @@ def _lado_author_line() -> str:
         return commit_authors.text(found)
     own = commit_authors.git_own("/")
     if own is not None:
-        return LADO_AUTHOR_GIT.format(author=commit_authors.text(own))
-    return LADO_AUTHOR_NOBODY
+        return commit_authors.LADO_GIT.format(author=commit_authors.text(own))
+    return commit_authors.LADO_NOBODY
 
 
 def _lado_author(args: argparse.Namespace) -> int:
@@ -2044,10 +2033,10 @@ def _lado_author(args: argparse.Namespace) -> int:
     try:
         if args.clear:
             commit_authors.clear_lado()
-            lines = [LADO_AUTHOR_CLEARED, _lado_author_line()]
+            lines = [commit_authors.LADO_CLEARED, _lado_author_line()]
         elif args.name is not None:
             author = commit_authors.set_lado(args.name, args.email)
-            lines = [LADO_AUTHOR_SET.format(author=commit_authors.text(author))]
+            lines = [commit_authors.LADO_SET.format(author=commit_authors.text(author))]
         else:
             lines = [_lado_author_line()]
     except git_servers.Refused as exc:

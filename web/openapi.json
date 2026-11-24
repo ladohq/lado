@@ -1353,6 +1353,113 @@
         }
       }
     },
+    "/api/projects/{id}/author": {
+      "put": {
+        "summary": "Set Project Author",
+        "description": "Set the project's commit author as `lado project author --name --email` does.",
+        "operationId": "set_project_author_api_projects__id__author_put",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitServerAuthor"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitEntryRefused"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "no such project"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Clear Project Author",
+        "description": "Clear the project's commit author as `lado project author --clear` does.",
+        "operationId": "clear_project_author_api_projects__id__author_delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused, with the reason"
+          },
+          "404": {
+            "description": "no such project, repository or variable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{id}/variables/{name}": {
       "put": {
         "summary": "Set Project Variable",
@@ -2417,6 +2524,72 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/git-author": {
+      "put": {
+        "summary": "Set Git Author",
+        "description": "Set LADO's commit author as `lado git-server author --name --email` does.",
+        "operationId": "set_git_author_api_git_author_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitServerAuthor"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitAuthorDone"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "refused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitEntryRefused"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Clear Git Author",
+        "description": "Clear LADO's commit author as `lado git-server author --clear` does.",
+        "operationId": "clear_git_author_api_git_author_delete",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitAuthorDone"
                 }
               }
             }
@@ -5359,6 +5532,25 @@
         "title": "AttachmentInfo",
         "description": "An artifact as a message or a note has it attached: the record it was at then. It\nchanged since when its artifact's latest record has another hash (the UI compares)."
       },
+      "AuthorInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "email"
+        ],
+        "title": "AuthorInfo",
+        "description": "A commit author (lado.commit_authors)."
+      },
       "BugReport": {
         "properties": {
           "title": {
@@ -5886,6 +6078,38 @@
         ],
         "title": "CloneTarget",
         "description": "The folder a clone would go to, as the core finds it (lado.clone.check_target)."
+      },
+      "CommitAuthor": {
+        "properties": {
+          "author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthorInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "project",
+              "server",
+              "lado",
+              "git",
+              "none"
+            ],
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "author",
+          "source"
+        ],
+        "title": "CommitAuthor",
+        "description": "The author a place's commits carry and where it comes from\n(lado.commit_authors.in_effect); `author` None for none."
       },
       "CommitInfo": {
         "properties": {
@@ -6569,6 +6793,42 @@
         "title": "GateInfo",
         "description": "A flow run's question to the human: open while `answer` is None."
       },
+      "GitAuthorDone": {
+        "properties": {
+          "author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthorInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "git_author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthorInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "line": {
+            "type": "string",
+            "title": "Line"
+          }
+        },
+        "type": "object",
+        "required": [
+          "author",
+          "git_author",
+          "line"
+        ],
+        "title": "GitAuthorDone",
+        "description": "LADO's commit author set or cleared: as it is now, git's own, and the line of `lado\ngit-server author` that says so."
+      },
       "GitEntryRefused": {
         "properties": {
           "message": {
@@ -7176,6 +7436,34 @@
             "type": "array",
             "title": "Kinds"
           },
+          "author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthorInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "git_author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthorInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "author_variables": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Author Variables",
+            "default": []
+          },
           "warning": {
             "anyOf": [
               {
@@ -7245,6 +7533,34 @@
             },
             "type": "array",
             "title": "Kinds"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthorInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "git_author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthorInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "author_variables": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Author Variables",
+            "default": []
           }
         },
         "type": "object",
@@ -7253,7 +7569,7 @@
           "kinds"
         ],
         "title": "GitServers",
-        "description": "The saved git servers, by host, and the kinds LADO knows."
+        "description": "The saved git servers, by host, and the kinds LADO knows; LADO's own commit author,\ngit's own outside any repository (`git_author`, what agents commit as without LADO's),\nand the names of the variables of the agents' environment that win over every author\n(`author_variables`, never their values)."
       },
       "GuiSession": {
         "properties": {
@@ -9869,6 +10185,34 @@
             },
             "type": "array",
             "title": "Unused"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthorInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "author_variables": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Author Variables",
+            "default": []
+          },
+          "commit_author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommitAuthor"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -10146,6 +10490,16 @@
           "name": {
             "type": "string",
             "title": "Name"
+          },
+          "commit_author": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommitAuthor"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -10156,7 +10510,7 @@
           "name"
         ],
         "title": "ProjectRepo",
-        "description": "A repository of a project, read from its folder (lado.projects.repositories)."
+        "description": "A repository of a project, read from its folder (lado.projects.repositories); on\nthe project's page (ProjectInfo), the author its agents commit as."
       },
       "ProjectSummary": {
         "properties": {

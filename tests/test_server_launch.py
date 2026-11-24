@@ -864,19 +864,28 @@ def test_a_refused_name_with_a_folder_checks_the_folder(client, git_config, tmp_
     )
 
 
-@pytest.mark.parametrize(
-    ("container", "command"),
-    [(None, 'git config --global user.name "Your Name"'), ("1", "docker compose up -d")],
-)
-def test_no_author_in_the_target(client, git_config, tmp_path, monkeypatch, container, command):
+NO_AUTHOR = {
+    "text": "nobody signs the agents' commits: LADO has no commit author and git has no "
+    "user.name or user.email",
+    "hint": {
+        "text": "Set the commit author in Settings → Git servers, or run:",
+        "command": 'lado git-server author --name "Your Name" --email you@example.com',
+    },
+}
+
+
+@pytest.mark.parametrize("container", [None, "1"])
+def test_no_author_in_the_target(client, git_config, tmp_path, monkeypatch, container):
     if container:
         monkeypatch.setenv("LADO_CONTAINER", container)
     git_config.write_text("")
-    author = scratch_target(client, "shop", tmp_path / "shop")["author"]
-    assert author["text"] == (
-        "git doesn't know who signs the agents' commits: it has no user.name or user.email"
-    )
-    assert author["hint"]["command"].startswith(command)
+    assert scratch_target(client, "shop", tmp_path / "shop")["author"] == NO_AUTHOR
+
+
+def test_ladOs_author_in_the_target(client, git_config, tmp_path):
+    git_config.write_text("")
+    state.set_commit_author("Ann Lee", "ann@example.com")
+    assert scratch_target(client, "shop", tmp_path / "shop")["author"] is None
 
 
 def test_the_name_taken_by_a_session_of_another_folder(
@@ -1161,9 +1170,9 @@ def test_the_setup_says_when_git_has_no_author(client, git_config, tmp_path):
     git_config.write_text("")
     (tmp_path / "notes").mkdir()
     (tmp_path / "notes" / "a.txt").write_text("hello")
-    author = folder(client, tmp_path / "notes")["setup"]["author"]
-    assert "user.name or user.email" in author["text"]
-    assert author["hint"]["command"].startswith("git config --global user.name")
+    assert folder(client, tmp_path / "notes")["setup"]["author"] == NO_AUTHOR
+    state.set_commit_author("Ann Lee", "ann@example.com")
+    assert folder(client, tmp_path / "notes")["setup"]["author"] is None
 
 
 def test_an_empty_folder_and_a_repository_have_no_setup(client, git_config, tmp_path, repo):
@@ -1339,6 +1348,7 @@ def test_a_project_with_its_repositories(client, shop):
     (shop / "notes").mkdir()
     answer = client.get("/api/projects/shop")
     assert answer.status_code == 200, answer.text
+    test_author = {"name": "LADO test", "email": "test@lado.invalid"}
     assert answer.json() == {
         "id": "shop",
         "title": "Shop",
@@ -1350,6 +1360,7 @@ def test_a_project_with_its_repositories(client, shop):
                 "path": str(shop / "frontend"),
                 "remote": "https://h.example/f",
                 "branch": "main",
+                "commit_author": {"author": test_author, "source": "git"},
             }
         ],
         "variables": [],
@@ -1357,6 +1368,9 @@ def test_a_project_with_its_repositories(client, shop):
         "running": [],
         "overrides": [],
         "unused": [],
+        "author": None,
+        "author_variables": [],
+        "commit_author": {"author": test_author, "source": "git"},
     }
     assert client.get("/api/projects/nope").status_code == 404
 

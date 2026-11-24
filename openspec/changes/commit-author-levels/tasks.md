@@ -36,12 +36,12 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-24-commit-autho
 
 - [x] 6.1 `git author`'s three lines, the entrypoint's warning, compose's header (D10).
   Check: `tests/test_doctor.py`; `tests/container/test_access.py` (CI's container job).
-- [ ] 6.2 A clean container makes a repository from scratch with LADO's author set through
+- [x] 6.2 A clean container makes a repository from scratch with LADO's author set through
   the API. Check: `tests/container/test_access.py`.
 
 ## 7. The server API
 
-- [ ] 7.1 `GitServers.author/git_author/author_variables`, `PUT`/`DELETE /api/git-author`,
+- [x] 7.1 `GitServers.author/git_author/author_variables`, `PUT`/`DELETE /api/git-author`,
   `ProjectInfo.author/author_variables`, repositories' `commit_author`, `PUT`/`DELETE
   /api/projects/{id}/author`, the scratch and setup infos (D9); `make web-types`. Check:
   `tests/test_server_git_servers.py`, `tests/test_server_projects.py`,

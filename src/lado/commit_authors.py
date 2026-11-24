@@ -34,6 +34,14 @@ LADO_NEEDS = "LADO's commit author needs"
 PROJECT_NEEDS = "a project's commit author needs"
 CLEAR_LADO = "lado git-server author --clear"
 CLEAR_PROJECT = "lado project author {id} --clear"
+# The lines of `lado git-server author` without an address, the page's too.
+LADO_SET = "Agents commit as {author} where no project or git server has an author of its own."
+LADO_CLEARED = "LADO has no commit author now."
+LADO_GIT = "LADO has no commit author: agents commit as {author} from your git config."
+LADO_NOBODY = (
+    "LADO has no commit author and git knows none: agents cannot commit.\n"
+    'Set one: lado git-server author --name "Your Name" --email you@example.com'
+)
 
 
 class InEffect(NamedTuple):

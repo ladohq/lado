@@ -623,6 +623,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{id}/author": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Project Author
+         * @description Set the project's commit author as `lado project author --name --email` does.
+         */
+        put: operations["set_project_author_api_projects__id__author_put"];
+        post?: never;
+        /**
+         * Clear Project Author
+         * @description Clear the project's commit author as `lado project author --clear` does.
+         */
+        delete: operations["clear_project_author_api_projects__id__author_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{id}/variables/{name}": {
         parameters: {
             query?: never;
@@ -990,6 +1014,30 @@ export interface paths {
          */
         post: operations["add_git_server_api_git_servers_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/git-author": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Git Author
+         * @description Set LADO's commit author as `lado git-server author --name --email` does.
+         */
+        put: operations["set_git_author_api_git_author_put"];
+        post?: never;
+        /**
+         * Clear Git Author
+         * @description Clear LADO's commit author as `lado git-server author --clear` does.
+         */
+        delete: operations["clear_git_author_api_git_author_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2102,6 +2150,16 @@ export interface components {
             hash: string;
         };
         /**
+         * AuthorInfo
+         * @description A commit author (lado.commit_authors).
+         */
+        AuthorInfo: {
+            /** Name */
+            name: string;
+            /** Email */
+            email: string;
+        };
+        /**
          * BugReport
          * @description The Report a bug page (lado.bug_report.Report): the whole report to show and copy,
          *     and GitHub's new issue form with it, the oldest kinds of errors left out until the link
@@ -2283,6 +2341,19 @@ export interface components {
             warning?: string | null;
             hint?: components["schemas"]["HintInfo"] | null;
             project?: components["schemas"]["ProjectPlace"] | null;
+        };
+        /**
+         * CommitAuthor
+         * @description The author a place's commits carry and where it comes from
+         *     (lado.commit_authors.in_effect); `author` None for none.
+         */
+        CommitAuthor: {
+            author: components["schemas"]["AuthorInfo"] | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "project" | "server" | "lado" | "git" | "none";
         };
         /** CommitInfo */
         CommitInfo: {
@@ -2493,6 +2564,17 @@ export interface components {
             /** Note By */
             note_by: string | null;
             recommendation: components["schemas"]["RecommendationInfo"] | null;
+        };
+        /**
+         * GitAuthorDone
+         * @description LADO's commit author set or cleared: as it is now, git's own, and the line of `lado
+         *     git-server author` that says so.
+         */
+        GitAuthorDone: {
+            author: components["schemas"]["AuthorInfo"] | null;
+            git_author: components["schemas"]["AuthorInfo"] | null;
+            /** Line */
+            line: string;
         };
         /**
          * GitEntryRefused
@@ -2726,6 +2808,13 @@ export interface components {
             servers: components["schemas"]["GitServerInfo"][];
             /** Kinds */
             kinds: components["schemas"]["GitKindInfo"][];
+            author?: components["schemas"]["AuthorInfo"] | null;
+            git_author?: components["schemas"]["AuthorInfo"] | null;
+            /**
+             * Author Variables
+             * @default []
+             */
+            author_variables: string[];
             /** Warning */
             warning: string | null;
         };
@@ -2749,13 +2838,23 @@ export interface components {
         };
         /**
          * GitServers
-         * @description The saved git servers, by host, and the kinds LADO knows.
+         * @description The saved git servers, by host, and the kinds LADO knows; LADO's own commit author,
+         *     git's own outside any repository (`git_author`, what agents commit as without LADO's),
+         *     and the names of the variables of the agents' environment that win over every author
+         *     (`author_variables`, never their values).
          */
         GitServers: {
             /** Servers */
             servers: components["schemas"]["GitServerInfo"][];
             /** Kinds */
             kinds: components["schemas"]["GitKindInfo"][];
+            author?: components["schemas"]["AuthorInfo"] | null;
+            git_author?: components["schemas"]["AuthorInfo"] | null;
+            /**
+             * Author Variables
+             * @default []
+             */
+            author_variables: string[];
         };
         /**
          * GuiSession
@@ -3705,6 +3804,13 @@ export interface components {
             overrides: string[];
             /** Unused */
             unused: components["schemas"]["UnusedSecret"][];
+            author?: components["schemas"]["AuthorInfo"] | null;
+            /**
+             * Author Variables
+             * @default []
+             */
+            author_variables: string[];
+            commit_author?: components["schemas"]["CommitAuthor"] | null;
         };
         /**
          * ProjectLaunch
@@ -3768,7 +3874,8 @@ export interface components {
         };
         /**
          * ProjectRepo
-         * @description A repository of a project, read from its folder (lado.projects.repositories).
+         * @description A repository of a project, read from its folder (lado.projects.repositories); on
+         *     the project's page (ProjectInfo), the author its agents commit as.
          */
         ProjectRepo: {
             /** Path */
@@ -3779,6 +3886,7 @@ export interface components {
             branch: string | null;
             /** Name */
             name: string;
+            commit_author?: components["schemas"]["CommitAuthor"] | null;
         };
         /**
          * ProjectSummary
@@ -5978,6 +6086,102 @@ export interface operations {
             };
         };
     };
+    set_project_author_api_projects__id__author_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GitServerAuthor"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectInfo"];
+                };
+            };
+            /** @description refused */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitEntryRefused"];
+                };
+            };
+            /** @description no such project */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_project_author_api_projects__id__author_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectInfo"];
+                };
+            };
+            /** @description refused, with the reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description no such project, repository or variable */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     set_project_variable_api_projects__id__variables__name__put: {
         parameters: {
             query?: never;
@@ -6816,6 +7020,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_git_author_api_git_author_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GitServerAuthor"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitAuthorDone"];
+                };
+            };
+            /** @description refused */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitEntryRefused"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_git_author_api_git_author_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitAuthorDone"];
                 };
             };
         };

@@ -61,7 +61,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-24-commit-autho
 
 ## 9. End to end
 
-- [ ] 9.1 The fake agent commits as LADO's, a server's and a project's author by the order;
+- [x] 9.1 The fake agent commits as LADO's, a server's and a project's author by the order;
   `lado start --new` with LADO's author alone; the warning (D12). Check: `uv run pytest -m
   integration tests/integration/test_commit_authors.py
   tests/integration/test_git_server_author.py`.

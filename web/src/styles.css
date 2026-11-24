@@ -12644,6 +12644,7 @@ section.artifact-group + section.artifact-group {
   }
 
   .gx-ctl .quiet,
+  .gx-ctl .primary,
   .gx-foot .quiet,
   .gx-result .quiet,
   .gx-form .quiet,

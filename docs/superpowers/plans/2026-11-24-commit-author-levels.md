@@ -160,7 +160,7 @@ Files: `src/lado/server/models.py`, `src/lado/server/git_entries.py`,
 Files: `web/src/GitServers.tsx`, `web/src/Projects.tsx` (or `ProjectAuthor.tsx`), a shared
 `AuthorMissing` component, `web/src/LaunchWhere.tsx`, `web/src/LaunchSetup.tsx`,
 `web/src/Launch.tsx`, `web/src/ProjectRepos.tsx`, `web/src/styles.css`, their `*.test.tsx`,
-`tests/ui/test_commit_authors.py` (new), `tests/ui/test_git_servers_section.py`,
+`tests/ui/test_commit_author_pages.py` (new), `tests/ui/test_git_servers_section.py`,
 `tests/ui/test_project_page.py`.
 
 - [ ] Vitest: each state, text and accessible name of the flow's spec (Settings A-screens,
@@ -174,7 +174,7 @@ Files: `web/src/GitServers.tsx`, `web/src/Projects.tsx` (or `ProjectAuthor.tsx`)
 
 ### Task 10: end to end with the fake agent
 
-Files: `tests/integration/test_commit_authors.py` (new),
+Files: `tests/integration/test_commit_author_order.py` (new),
 `tests/integration/test_git_server_author.py` (the cases whose `THEN` changed).
 
 - [ ] Test: an agent with `GIT_CONFIG_GLOBAL=/dev/null` and LADO's author commits in a
@@ -183,7 +183,7 @@ Files: `tests/integration/test_commit_authors.py` (new),
   the project's author; the repository's own `user.name` loses to LADO's; `lado start
   --new` with LADO's author alone; after clearing LADO's author and a restart, git's own;
   the `GIT_AUTHOR_EMAIL` warning in the launch notes. Git's config files unchanged.
-- [ ] `uv run pytest -m integration -n auto tests/integration/test_commit_authors.py
+- [ ] `uv run pytest -m integration -n auto tests/integration/test_commit_author_order.py
   tests/integration/test_git_server_author.py`; commit.
 
 ### Task 11: docs and CHANGELOG

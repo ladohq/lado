@@ -133,8 +133,8 @@ refusals and doctor share (D2, D5).
 | Requirement (capability) | Layer | Test |
 |---|---|---|
 | LADO keeps its own commit author and a project's in lado.db | unit | `tests/test_state.py`, `tests/test_commit_authors.py` |
-| The commit author follows one order | unit + integration | `tests/test_commit_authors.py` (entries under a real `git config --get`, every pair of levels); `tests/integration/test_commit_authors.py` (fake agent: LADO's author with no git config and no remote; server's over LADO's; project's over the server's in a project session's clone; repository's own config loses) |
-| LADO's own first commits take the same author | unit + integration | `tests/test_scratch.py`, `tests/test_setup.py`, `tests/test_project_repos.py`; `tests/integration/test_commit_authors.py` (`lado start --new` with `GIT_CONFIG_GLOBAL=/dev/null`) |
+| The commit author follows one order | unit + integration | `tests/test_commit_authors.py` (entries under a real `git config --get`, every pair of levels); `tests/integration/test_commit_author_order.py` (fake agent: LADO's author with no git config and no remote; server's over LADO's; project's over the server's in a project session's clone; repository's own config loses) |
+| LADO's own first commits take the same author | unit + integration | `tests/test_scratch.py`, `tests/test_setup.py`, `tests/test_project_repos.py`; `tests/integration/test_commit_author_order.py` (`lado start --new` with `GIT_CONFIG_GLOBAL=/dev/null`) |
 | A launch needs git 2.31 … | unit | `tests/test_runtime_git_servers.py` (a fake git on PATH) |
 | lado git-server author without an address …, list names LADO's author first | unit | `tests/test_cli_git_server.py` |
 | lado project author … | unit | `tests/test_cli.py` (the `lado project` cases), `tests/test_projects_core.py` |
@@ -145,7 +145,7 @@ refusals and doctor share (D2, D5).
 | session-scratch, projects: the author check and its hint (modified) | unit | `tests/test_scratch.py`, `tests/test_project_repos.py`, `tests/test_server_launch.py` |
 | doctor: git author (modified) | unit | `tests/test_doctor.py` |
 | container: the warning; a clean container starts a project with LADO's author | container | `tests/container/test_access.py` (beside the git identity cases) |
-| git-servers-page, projects page, folder-setup, New session (UI, from the flow) | vitest + UI e2e | `web/src/GitServers.test.tsx`, `web/src/Projects.test.tsx`, `web/src/Launch.test.tsx`, `LaunchSetup.test.tsx`, `ProjectRepos.test.tsx`; `tests/ui/test_commit_authors.py` (new), `tests/ui/test_git_servers_section.py`, `tests/ui/test_project_page.py` (the main scenario: New empty folder with nobody → Settings in a new tab → save → back → Create and start) |
+| git-servers-page, projects page, folder-setup, New session (UI, from the flow) | vitest + UI e2e | `web/src/GitServers.test.tsx`, `web/src/Projects.test.tsx`, `web/src/Launch.test.tsx`, `LaunchSetup.test.tsx`, `ProjectRepos.test.tsx`; `tests/ui/test_commit_author_pages.py` (new), `tests/ui/test_git_servers_section.py`, `tests/ui/test_project_page.py` (the main scenario: New empty folder with nobody → Settings in a new tab → save → back → Create and start) |
 
 Regression run: `make lint`, `make test`, the changed integration files with `-m
 integration`, the changed UI files with `-m ui`, `make web`, `openspec validate

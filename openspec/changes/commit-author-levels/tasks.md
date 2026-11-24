@@ -57,13 +57,13 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-24-commit-autho
   scratch; check again on focus. Check: `web/src/Launch.test.tsx`,
   `web/src/LaunchSetup.test.tsx`, `web/src/ProjectRepos.test.tsx`.
 - [x] 8.4 The main scenario end to end, screenshots as run artifacts. Check:
-  `uv run pytest -m ui tests/ui/test_commit_authors.py`.
+  `uv run pytest -m ui tests/ui/test_commit_author_pages.py`.
 
 ## 9. End to end
 
 - [x] 9.1 The fake agent commits as LADO's, a server's and a project's author by the order;
   `lado start --new` with LADO's author alone; the warning (D12). Check: `uv run pytest -m
-  integration tests/integration/test_commit_authors.py
+  integration tests/integration/test_commit_author_order.py
   tests/integration/test_git_server_author.py`.
 
 ## 10. Docs

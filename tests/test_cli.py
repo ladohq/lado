@@ -2417,6 +2417,7 @@ def test_project_create_list_show_rename(ws, capsys):
         'shop-eu "Shop EU"',
         f"  folder:  {folder}",
         f"  made:    {utc.astimezone():%Y-%m-%d %H:%M}",
+        "  Commit author: -",
         "  repositories: none",
         "  variables: none",
         "  secrets: none",
@@ -2529,6 +2530,65 @@ def shop(ws, git_config, capsys):
     return ws / "projects" / "shop"
 
 
+PROJECT_RESTART = "Agents started from now on commit so; restart running agents to give it to them."
+
+
+def test_project_author_set_shown_and_cleared(shop, capsys):
+    assert main(["project", "author", "shop"]) == 0
+    assert capsys.readouterr().out == (
+        "Project shop has no commit author: its agents commit as LADO's or a git server's.\n"
+    )
+    argv = ["project", "author", "shop", "--name", "Shop Bot", "--email", "bot@shop.example"]
+    assert main(argv) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "Agents of project shop commit as Shop Bot <bot@shop.example>.",
+        PROJECT_RESTART,
+    ]
+    assert main(["project", "author", "shop"]) == 0
+    assert capsys.readouterr().out == "Shop Bot <bot@shop.example>\n"
+    assert main(["project", "show", "shop"]) == 0
+    assert "  Commit author: Shop Bot <bot@shop.example>" in capsys.readouterr().out.splitlines()
+    assert main(["project", "author", "shop", "--clear"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "Project shop has no commit author now: its agents commit as LADO's or a git server's.",
+        PROJECT_RESTART,
+    ]
+    assert state.get_project("shop").author_name is None
+
+
+def test_project_author_of_an_unknown_project_exits_1(shop, capsys):
+    for args in ([], ["--clear"], ["--name", "A", "--email", "a@b.c"]):
+        assert main(["project", "author", "nope", *args]) == 1
+        assert capsys.readouterr().err == 'lado: unknown project "nope"\n'
+
+
+@pytest.mark.parametrize(
+    ("args", "err"),
+    [
+        (["--email", "a@b.c"], "lado: --name and --email go together\n"),
+        (["--clear", "--name", "A"], "lado: --clear takes no --name or --email\n"),
+    ],
+)
+def test_half_a_project_author_exits_2(shop, capsys, args, err):
+    assert main(["project", "author", "shop", *args]) == 2
+    assert capsys.readouterr().err == err
+
+
+def test_a_refused_project_author_exits_1(shop, capsys):
+    assert main(["project", "author", "shop", "--name", "<A>", "--email", "a@b.c"]) == 1
+    assert capsys.readouterr().err == "lado: the author's name holds no < or > or line break\n"
+
+
+def test_project_author_is_the_humans_to_change(shop, capsys, monkeypatch):
+    monkeypatch.setenv("LADO_AGENT", "w1")
+    for args in (["--name", "Bot", "--email", "bot@x.example"], ["--clear"]):
+        assert main(["project", "author", "shop", *args]) == 1
+        assert capsys.readouterr().err == (
+            'lado: lado project author is for the human; agent "w1" cannot use it\n'
+        )
+    assert main(["project", "author", "shop"]) == 0  # reading is an agent's too
+
+
 def test_start_in_a_project(shop, fake_tmux, capsys):
     argv = ["start", "--project", "shop", "--repo", "frontend", "--provider", "kilo", "--no-attach"]
     assert main(argv) == 0
@@ -2591,7 +2651,7 @@ def test_project_show_lists_the_repositories(shop, tmp_path, capsys):
     docs = init_repo(tmp_path / "docs")
     (shop / "docs").symlink_to(docs)
     assert main(["project", "show", "shop"]) == 0
-    assert capsys.readouterr().out.splitlines()[3:] == [
+    assert capsys.readouterr().out.splitlines()[4:] == [
         "  repositories:",
         "    backend   dev   (no remote)",
         f"    docs      (a link to {docs}: clone it into {shop} instead)",

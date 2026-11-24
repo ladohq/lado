@@ -1324,6 +1324,8 @@ def cmd_project(args: argparse.Namespace) -> int:
         print(f'{project.id} "{project.title}"' if project.title else project.id)
         print(f"  folder:  {_project_folder(folder, folder.is_dir())}")
         print(f"  made:    {made.astimezone():%Y-%m-%d %H:%M}")
+        author = _project_author_text(project)
+        print(f"  Commit author: {author or '-'}")
         _print_repositories(project.id)
         _print_variables(project.id)
         _print_secrets(project.id)
@@ -1335,6 +1337,51 @@ def cmd_project(args: argparse.Namespace) -> int:
         _print_preview(found.sessions, found.path, found.unpushed)
         projects.delete(args.id, args.yes)
         print(f"Deleted project {args.id}")
+    return 0
+
+
+PROJECT_AUTHOR_SET = "Agents of project {id} commit as {author}."
+PROJECT_AUTHOR_NONE = (
+    "Project {id} has no commit author{now}: its agents commit as LADO's or a git server's."
+)
+
+
+def _project_author_text(project: state.Project) -> str | None:
+    if project.author_name is None or project.author_email is None:
+        return None
+    return f"{project.author_name} <{project.author_email}>"
+
+
+def cmd_project_author(args: argparse.Namespace) -> int:
+    """`lado project author <id> [--name N --email E | --clear]`: set, clear or show the
+    project's commit author (lado.commit_authors); a change is the human's alone. Exit 1
+    for an unknown project or a refusal, 2 for a half author."""
+    from lado import commit_authors, git_servers
+
+    if _half_author(args):
+        return 2
+    changes = args.clear or args.name is not None
+    if changes:
+        _human_only("project author")
+    project = projects.get(args.id)  # an unknown project: refused before anything
+    try:
+        if args.clear:
+            commit_authors.clear_project(project.id)
+            lines = [PROJECT_AUTHOR_NONE.format(id=project.id, now=" now")]
+        elif args.name is not None:
+            author = commit_authors.set_project(project.id, args.name, args.email)
+            if author is None:  # deleted meanwhile
+                raise projects.NoSuchProject(f'unknown project "{project.id}"')
+            text = commit_authors.text(author)
+            lines = [PROJECT_AUTHOR_SET.format(id=project.id, author=text)]
+        else:
+            text = _project_author_text(project)
+            lines = [text or PROJECT_AUTHOR_NONE.format(id=project.id, now="")]
+    except git_servers.Refused as exc:
+        return _refused(exc)
+    if changes:
+        lines.append(git_servers.AUTHOR_RESTART)
+    print("\n".join(lines))
     return 0
 
 
@@ -1871,8 +1918,10 @@ def cmd_git_server_add(args: argparse.Namespace) -> int:
 
 def cmd_git_server_list(args: argparse.Namespace) -> int:
     """`lado git-server list`: the saved servers, asking none of them."""
-    from lado import git_kinds, git_servers
+    from lado import commit_authors, git_kinds, git_servers
 
+    lado = commit_authors.lado()
+    print(f"LADO's commit author: {commit_authors.text(lado) if lado else '-'}")
     servers = state.git_servers()
     if not servers:
         print(f"No git servers. Add one: {git_servers.ADD} <address> --token")
@@ -1948,22 +1997,82 @@ def cmd_git_server_certificate(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_git_server_author(args: argparse.Namespace) -> int:
-    """`lado git-server author <address> [--name N --email E | --clear]`: set, clear or show
-    the commit author of the server of the address's host (lado.git_servers); exit 1 for a
-    refusal, 2 for an address it does not take or a half author."""
-    from lado import git_servers
-
-    at = _git_address(args.address)
-    if at is None:
-        return 2
+def _half_author(args: argparse.Namespace) -> bool:
+    """Whether `--name`, `--email` and `--clear` do not go together, said on stderr: the
+    command exits 2."""
     given = args.name is not None or args.email is not None
     if args.clear and given:
         print("lado: --clear takes no --name or --email", file=sys.stderr)
-        return 2
+        return True
     if given and (args.name is None or args.email is None):
         print("lado: --name and --email go together", file=sys.stderr)
+        return True
+    return False
+
+
+LADO_AUTHOR_SET = (
+    "Agents commit as {author} where no project or git server has an author of its own."
+)
+LADO_AUTHOR_CLEARED = "LADO has no commit author now."
+LADO_AUTHOR_GIT = "LADO has no commit author: agents commit as {author} from your git config."
+LADO_AUTHOR_NOBODY = (
+    "LADO has no commit author and git knows none: agents cannot commit.\n"
+    'Set one: lado git-server author --name "Your Name" --email you@example.com'
+)
+
+
+def _lado_author_line() -> str:
+    """What agents commit as outside a project and a git server (lado.commit_authors)."""
+    from lado import commit_authors
+
+    found = commit_authors.lado()
+    if found is not None:
+        return commit_authors.text(found)
+    own = commit_authors.git_own("/")
+    if own is not None:
+        return LADO_AUTHOR_GIT.format(author=commit_authors.text(own))
+    return LADO_AUTHOR_NOBODY
+
+
+def _lado_author(args: argparse.Namespace) -> int:
+    """`lado git-server author [--name N --email E | --clear]`: LADO's own commit author;
+    a change is the human's alone, as it reaches every repository."""
+    from lado import commit_authors, git_servers
+
+    if args.clear or args.name is not None:
+        _human_only("git-server author")
+    try:
+        if args.clear:
+            commit_authors.clear_lado()
+            lines = [LADO_AUTHOR_CLEARED, _lado_author_line()]
+        elif args.name is not None:
+            author = commit_authors.set_lado(args.name, args.email)
+            lines = [LADO_AUTHOR_SET.format(author=commit_authors.text(author))]
+        else:
+            lines = [_lado_author_line()]
+    except git_servers.Refused as exc:
+        return _refused(exc)
+    if args.clear or args.name is not None:
+        lines.append(git_servers.AUTHOR_RESTART)
+    print("\n".join(lines))
+    return 0
+
+
+def cmd_git_server_author(args: argparse.Namespace) -> int:
+    """`lado git-server author [<address>] [--name N --email E | --clear]`: set, clear or
+    show the commit author of the server of the address's host (lado.git_servers), or
+    without an address LADO's own (lado.commit_authors); exit 1 for a refusal, 2 for an
+    address it does not take or a half author."""
+    from lado import git_servers
+
+    if _half_author(args):
         return 2
+    if args.address is None:
+        return _lado_author(args)
+    at = _git_address(args.address)
+    if at is None:
+        return 2
+    given = args.name is not None
     try:
         if args.clear:
             server = git_servers.clear_author(at)
@@ -1976,8 +2085,7 @@ def cmd_git_server_author(args: argparse.Namespace) -> int:
             server = git_servers.saved_server(at)
             lines = [
                 git_servers.author_text(server)
-                or f"{server.address} has no commit author: agents commit there with your own "
-                "git author."
+                or git_servers.AUTHOR_NONE.format(address=server.address)
             ]
     except git_servers.Refused as exc:
         return _refused(exc)
@@ -2542,6 +2650,18 @@ def main(argv: list[str] | None = None) -> int:
         help="a secret: asked without echo, or read from stdin; never shown again",
     )
     project_set.set_defaults(func=cmd_project, quiet_parser=project_set)
+    project_author = project_sub.add_parser(
+        "author",
+        help="the name and email the agents of a project commit with, in every repository",
+        description="Without options: show the project's commit author.",
+    )
+    project_author.add_argument("id")
+    project_author.add_argument("--name", help="the author's name, with --email")
+    project_author.add_argument("--email", help="the author's email, with --name")
+    project_author.add_argument(
+        "--clear", action="store_true", help="agents commit as LADO's or a git server's author"
+    )
+    project_author.set_defaults(func=cmd_project_author)
     project_unset = project_sub.add_parser("unset", help="remove a project's variable or secret")
     project_unset.add_argument("id")
     project_unset.add_argument("name")
@@ -2816,14 +2936,19 @@ def main(argv: list[str] | None = None) -> int:
     git_server_remove.set_defaults(func=cmd_git_server_remove)
     git_server_author = git_server_sub.add_parser(
         "author",
-        help="the name and email agents commit to a server's repositories with",
-        description="Without options: show the server's commit author.",
+        help="the name and email agents commit with: LADO's, or a server's repositories'",
+        description="Without an address: LADO's own commit author, where no project or git "
+        "server has one. Without options: show it.",
     )
-    git_server_author.add_argument("address")
+    git_server_author.add_argument(
+        "address", nargs="?", help="a saved git server; none: LADO's own author"
+    )
     git_server_author.add_argument("--name", help="the author's name, with --email")
     git_server_author.add_argument("--email", help="the author's email, with --name")
     git_server_author.add_argument(
-        "--clear", action="store_true", help="agents commit there with your own git author"
+        "--clear",
+        action="store_true",
+        help="remove it: agents commit with the next author in line (LADO's, your git's)",
     )
     git_server_author.set_defaults(func=cmd_git_server_author)
     git_server_certificate = git_server_sub.add_parser(

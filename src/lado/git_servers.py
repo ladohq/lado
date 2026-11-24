@@ -68,7 +68,10 @@ REMOVE = "lado git-server remove"
 AUTHOR = "lado git-server author"
 RESTART = "Agents started from now on reach it; restart running agents to give it to them."
 AUTHOR_SET = "Agents commit to {address} as {author}."
-AUTHOR_CLEARED = "Agents commit to {address} with your own git author again."
+# Without a server's own author: LADO's, else the human's git config (lado.commit_authors).
+FALLBACK = "LADO's commit author, or your own git author without one"
+AUTHOR_CLEARED = "Agents commit to {address} with " + FALLBACK + "."
+AUTHOR_NONE = "{address} has no commit author: agents commit there with " + FALLBACK + "."
 AUTHOR_RESTART = "Agents started from now on commit so; restart running agents to give it to them."
 AUTHOR_MAX = 256  # characters of the author's name, and of its email
 PLAIN_HTTP = (

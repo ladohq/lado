@@ -28,7 +28,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-24-commit-autho
 
 ## 5. The command line
 
-- [ ] 5.1 `lado git-server author` without an address, list's first line, the server's
+- [x] 5.1 `lado git-server author` without an address, list's first line, the server's
   cleared line, `lado project author`, `project show`'s line, human-only (D8). Check:
   `tests/test_cli_git_server.py`, `tests/test_cli.py`.
 

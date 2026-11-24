@@ -224,7 +224,7 @@ def test_add_list_and_remove_github_com(capsys, monkeypatch, tmp_path):
         "Saved git server https://github.com.",
     ]
     assert main(["git-server", "list"]) == 0
-    assert capsys.readouterr().out.splitlines()[1].split() == [
+    assert capsys.readouterr().out.splitlines()[2].split() == [
         "https://github.com",
         "GitHub",
         fake.LOGIN,
@@ -268,6 +268,7 @@ def test_list_shows_the_servers_without_asking_them(serve, capsys, lado_home):
     assert main(["git-server", "list"]) == 0
     rows = [line.split() for line in capsys.readouterr().out.splitlines()]
     assert rows == [
+        ["LADO's", "commit", "author:", "-"],
         ["ADDRESS", "KIND", "LOGIN", "TOKEN", "CERTIFICATE", "AUTHOR"],
         [server.url, "GitLab", fake.LOGIN, "yes", "-", "-"],
         ["https://git.lan", "GitLab", "not", "checked", "no", "-", "-"],
@@ -278,7 +279,7 @@ def test_list_shows_the_servers_without_asking_them(serve, capsys, lado_home):
 def test_list_with_none(capsys):
     assert main(["git-server", "list"]) == 0
     assert capsys.readouterr().out == (
-        "No git servers. Add one: lado git-server add <address> --token\n"
+        "LADO's commit author: -\nNo git servers. Add one: lado git-server add <address> --token\n"
     )
 
 
@@ -527,15 +528,99 @@ def test_author_sets_shows_and_clears(capsys):
     assert capsys.readouterr().out == "Ivan Petrov <ivan@corp.ru>\n"
     assert _author("gitlab.corp.ru", "--clear") == 0
     assert capsys.readouterr().out == (
-        "Agents commit to https://gitlab.corp.ru with your own git author again.\n" + AUTHOR_RESTART
+        "Agents commit to https://gitlab.corp.ru with LADO's commit author, or your own git "
+        "author without one.\n" + AUTHOR_RESTART
     )
     assert state.git_servers()[0].author_name is None
     assert _author("gitlab.corp.ru", "--clear") == 0  # none to clear: the same
     assert _author("gitlab.corp.ru") == 0
     assert capsys.readouterr().out.endswith(
-        "https://gitlab.corp.ru has no commit author: agents commit there with your own git "
-        "author.\n"
+        "https://gitlab.corp.ru has no commit author: agents commit there with LADO's commit "
+        "author, or your own git author without one.\n"
     )
+
+
+# LADO's own commit author: `lado git-server author` without an address.
+
+NOBODY = (
+    "LADO has no commit author and git knows none: agents cannot commit.\n"
+    'Set one: lado git-server author --name "Your Name" --email you@example.com\n'
+)
+
+
+def test_ladOs_author_set_shown_and_cleared(capsys, git_config):
+    git_config.write_text("[user]\n\tname = Alex Home\n\temail = alex@home.example\n")
+    assert _author() == 0
+    assert capsys.readouterr().out == (
+        "LADO has no commit author: agents commit as Alex Home <alex@home.example> from your "
+        "git config.\n"
+    )
+    assert _author("--name", "Ann Lee", "--email", "ann@example.com") == 0
+    assert capsys.readouterr().out == (
+        "Agents commit as Ann Lee <ann@example.com> where no project or git server has an "
+        "author of its own.\n" + AUTHOR_RESTART
+    )
+    assert state.commit_author() == state.Author("Ann Lee", "ann@example.com")
+    assert _author() == 0
+    assert capsys.readouterr().out == "Ann Lee <ann@example.com>\n"
+    assert _author("--clear") == 0
+    assert capsys.readouterr().out == (
+        "LADO has no commit author now.\n"
+        "LADO has no commit author: agents commit as Alex Home <alex@home.example> from your "
+        "git config.\n" + AUTHOR_RESTART
+    )
+    assert state.commit_author() is None
+    assert git_config.read_text() == "[user]\n\tname = Alex Home\n\temail = alex@home.example\n"
+
+
+def test_nobody_known(capsys, git_config):
+    git_config.write_text("")
+    assert _author() == 0
+    assert capsys.readouterr().out == NOBODY
+
+
+def test_ladOs_author_is_the_humans_alone(capsys, monkeypatch):
+    monkeypatch.setenv("LADO_AGENT", "w1")
+    for args in (["--name", "Bot", "--email", "bot@example.com"], ["--clear"]):
+        assert _author(*args) == 1
+        assert capsys.readouterr().err == (
+            'lado: lado git-server author is for the human; agent "w1" cannot use it\n'
+        )
+    assert state.commit_author() is None
+    _saved()
+    assert _author("gitlab.corp.ru", "--name", "Bot", "--email", "bot@example.com") == 0
+
+
+@pytest.mark.parametrize(
+    ("args", "err"),
+    [
+        (["--name", "Ann"], "lado: --name and --email go together\n"),
+        (["--clear", "--email", "a@b.c"], "lado: --clear takes no --name or --email\n"),
+    ],
+)
+def test_half_of_ladOs_author_exits_2(capsys, args, err):
+    assert _author(*args) == 2
+    assert capsys.readouterr().err == err
+    assert state.commit_author() is None
+
+
+def test_a_refused_ladOs_author_exits_1(capsys):
+    assert _author("--name", "Ann", "--email", "ann") == 1
+    assert capsys.readouterr().err == "lado: not an email address: name@host\n"
+
+
+def test_list_names_ladOs_author_first(capsys):
+    assert main(["git-server", "list"]) == 0
+    assert capsys.readouterr().out == (
+        "LADO's commit author: -\nNo git servers. Add one: lado git-server add <address> --token\n"
+    )
+    _author("--name", "Ann Lee", "--email", "ann@example.com")
+    _saved()
+    capsys.readouterr()
+    assert main(["git-server", "list"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[0] == "LADO's commit author: Ann Lee <ann@example.com>"
+    assert lines[1].startswith("ADDRESS")
 
 
 def test_list_shows_the_author_last(capsys):
@@ -544,7 +629,7 @@ def test_list_shows_the_author_last(capsys):
     _author("gitlab.corp.ru", "--name", "Ivan Petrov", "--email", "ivan@corp.ru")
     capsys.readouterr()
     assert main(["git-server", "list"]) == 0
-    lines = capsys.readouterr().out.splitlines()
+    lines = capsys.readouterr().out.splitlines()[1:]  # after LADO's author
     assert lines[0].split()[-1] == "AUTHOR"
     assert lines[1].startswith("https://git.lan ") and lines[1].endswith(" -")
     assert lines[2].startswith("https://gitlab.corp.ru ")
@@ -802,7 +887,7 @@ def test_list_shows_the_certificate_before_the_author(capsys, tmp_path):
     git_servers.set_certificate(git_servers.address("gitlab.corp.ru"), root.pem)
     capsys.readouterr()
     assert main(["git-server", "list"]) == 0
-    rows = [line.split() for line in capsys.readouterr().out.splitlines()]
+    rows = [line.split() for line in capsys.readouterr().out.splitlines()[1:]]
     assert rows[0] == ["ADDRESS", "KIND", "LOGIN", "TOKEN", "CERTIFICATE", "AUTHOR"]
     assert rows[1] == ["https://git.lan", "GitLab", "ivan", "yes", "-", "-"]
     assert rows[2] == [

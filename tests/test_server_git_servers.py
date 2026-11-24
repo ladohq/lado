@@ -370,6 +370,18 @@ def test_remove_by_host_lists_the_rest(client, serve, lado_home):
     )
 
 
+def test_a_removal_answers_ladOs_author_and_the_variables_too(client, git_config, monkeypatch):
+    git_config.write_text("[user]\n\tname = Alex Home\n\temail = alex@home.example\n")
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "me@home")
+    state.set_commit_author("Ann Lee", "ann@example.com")
+    ok(add(client, "https://git.lan", kind="github"))
+    left = ok(client.delete("/api/git-servers/git.lan"))
+    assert left["servers"] == []
+    assert left["author"] == {"name": "Ann Lee", "email": "ann@example.com"}
+    assert left["git_author"] == {"name": "Alex Home", "email": "alex@home.example"}
+    assert left["author_variables"] == ["GIT_AUTHOR_EMAIL"]
+
+
 def test_an_ipv6_host_is_removed_by_its_key(client):
     ok(add(client, f"https://[::1]:{closed_port()}", kind="gitlab"))
     host = state.git_servers()[0].host

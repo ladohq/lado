@@ -74,6 +74,6 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-24-commit-autho
 
 ## 11. Regression
 
-- [ ] 11.1 `make lint`, `make test`, the changed integration and UI files with their markers,
+- [x] 11.1 `make lint`, `make test`, the changed integration and UI files with their markers,
   `make web`, `openspec validate commit-author-levels --strict`, the trial archive. Check:
   the numbers in `build-report`.

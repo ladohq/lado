@@ -105,7 +105,8 @@ def results(page: Page):
 def listed(capsys) -> list[list[str]]:
     capsys.readouterr()
     assert main(["git-server", "list"]) == 0
-    return [line.split() for line in capsys.readouterr().out.splitlines()[1:]]
+    # After the line of LADO's commit author and the table's head.
+    return [line.split() for line in capsys.readouterr().out.splitlines()[2:]]
 
 
 def no_sideways_scroll(page: Page) -> None:
@@ -454,7 +455,9 @@ def test_replace_a_token(browser: Browser, lab, monkeypatch, server, tmp_path, l
         context.close()
 
 
-def test_the_author_with_undo_and_remove_server(browser: Browser, server, lado_home, capsys, shot):
+def test_the_author_with_undo_and_remove_server(
+    browser: Browser, git_config, server, lado_home, capsys, shot
+):
     corp = "https://gitlab.corp.example"
     other = "https://git.lab.example"
     for address in (corp, other):
@@ -467,8 +470,11 @@ def test_the_author_with_undo_and_remove_server(browser: Browser, server, lado_h
         git = section(page)
         head(page, corp).click()
         panel = row(page, corp)
-        expect(panel.get_by_text("Your own git author")).to_be_visible()
-        panel.get_by_role("button", name=f"Set the commit author of {corp}").click()
+        expect(panel.locator(".gx-minor .gx-val")).to_have_text(
+            "Commit author: LADO test <test@lado.invalid> (from git on this computer) · Set one "
+            "for this server"
+        )
+        panel.get_by_role("button", name=f"Set a commit author for {corp}").click()
         name = panel.get_by_role("textbox", name="Name")
         email = panel.get_by_role("textbox", name="Email")
         expect(name).to_be_focused()
@@ -565,7 +571,7 @@ def test_github_com_is_added_checked_and_removed_as_any_server(
         )
         shot(page, "checked")
 
-        dotcom.get_by_role("button", name="Set the commit author of https://github.com").click()
+        dotcom.get_by_role("button", name="Set a commit author for https://github.com").click()
         dotcom.get_by_role("textbox", name="Name").fill("Ivan Petrov")
         dotcom.get_by_role("textbox", name="Email").fill("ivan.petrov@example.com")
         dotcom.get_by_role("button", name="Save author").click()

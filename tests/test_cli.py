@@ -2417,7 +2417,7 @@ def test_project_create_list_show_rename(ws, capsys):
         'shop-eu "Shop EU"',
         f"  folder:  {folder}",
         f"  made:    {utc.astimezone():%Y-%m-%d %H:%M}",
-        "  Commit author: -",
+        "  author:  -",
         "  repositories: none",
         "  variables: none",
         "  secrets: none",
@@ -2547,7 +2547,7 @@ def test_project_author_set_shown_and_cleared(shop, capsys):
     assert main(["project", "author", "shop"]) == 0
     assert capsys.readouterr().out == "Shop Bot <bot@shop.example>\n"
     assert main(["project", "show", "shop"]) == 0
-    assert "  Commit author: Shop Bot <bot@shop.example>" in capsys.readouterr().out.splitlines()
+    assert "  author:  Shop Bot <bot@shop.example>" in capsys.readouterr().out.splitlines()
     assert main(["project", "author", "shop", "--clear"]) == 0
     assert capsys.readouterr().out.splitlines() == [
         "Project shop has no commit author now: its agents commit as LADO's or a git server's.",

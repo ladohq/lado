@@ -116,7 +116,7 @@ project list` prints one line per project by id, columns padded: the id, the tit
 without one) and the folder, `  (folder not found)` when it is missing (another workspace,
 or deleted by hand); with none, `No projects. Make one with: lado project create <id>`.
 `lado project show <id>` prints `<id> "<title>"`, `  folder:  <folder>`, `  made:    <local
-YYYY-MM-DD HH:MM>`, `  Commit author: <name> <<email>>` (`-` for none) and the project's
+YYYY-MM-DD HH:MM>`, `  author:  <name> <<email>>` (its commit author, `-` for none) and the project's
 repositories read from the disk (`projects.repositories`:
 the folders directly in the project folder, not hidden and not links, each a git root of its
 own): `  repositories:` and one line each by name, `    <name>  <branch>  <remote>` padded,

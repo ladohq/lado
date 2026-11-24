@@ -150,7 +150,7 @@ agent's environment like an outside one.
   line, before the table or the "No git servers" line.
 - `lado project author <id> [--name N --email E | --clear]`: the project's, with the same
   words for `in project <id>`; human-only as every `lado project` command. `lado project
-  show` gets a line `Commit author: <author>` (`-` for none).
+  show` gets a line `  author:  <author>` after `made:` (`-` for none).
 - `--name` without `--email`, the other way round, or `--clear` with either: exit 2, as
   today.
 

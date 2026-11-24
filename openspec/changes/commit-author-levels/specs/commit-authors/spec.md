@@ -143,15 +143,14 @@ as its first line, before the servers' table or the line that there is none.
 
 `lado project author <id> --name <name> --email <email>` SHALL set the project's author and
 print `Agents of project <id> commit as <name> <<email>>.`; `--clear` SHALL remove it; without
-options it SHALL print it or that the project has none. It SHALL be refused inside an agent,
-as every `lado project` command; an unknown project SHALL exit 1 and half an author exit 2.
-`lado project show <id>` SHALL print `Commit author: <name> <<email>>` (`-` for none).
+options it SHALL print it or that there is none. Inside an agent a change SHALL be refused, a
+show not (capability projects). An unknown project SHALL exit 1, half an author exit 2.
 
 #### Scenario: Setting a project's author
 - **WHEN** the human runs `lado project author shop --name "Shop Bot" --email
   bot@shop.example`
 - **THEN** the output is `Agents of project shop commit as Shop Bot <bot@shop.example>.` and
-  the restart line, and `lado project show shop` prints `Commit author: Shop Bot
+  the restart line, and `lado project show shop` prints `  author:  Shop Bot
   <bot@shop.example>`
 
 ### Requirement: The server's API sets LADO's and a project's author

@@ -1327,7 +1327,7 @@ def cmd_project(args: argparse.Namespace) -> int:
         from lado import commit_authors
 
         author = commit_authors.project(project.id)
-        print(f"  Commit author: {commit_authors.text(author) if author else '-'}")
+        print(f"  author:  {commit_authors.text(author) if author else '-'}")
         _print_repositories(project.id)
         _print_variables(project.id)
         _print_secrets(project.id)

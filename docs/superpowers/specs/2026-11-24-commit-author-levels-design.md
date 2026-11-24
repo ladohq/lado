@@ -77,7 +77,7 @@ Project shop has no commit author now: its agents commit as LADO's or a git serv
 
 $ lado project show shop
 …
-Commit author: Shop Bot <bot@shop.example>
+  author:  Shop Bot <bot@shop.example>
 ```
 
 Inside an agent, setting or clearing LADO's author is refused as the human's command

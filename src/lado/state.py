@@ -23,7 +23,7 @@ from lado.flows import IDENTIFIER
 
 # `lado update` of a later LADO reads this line from this release's wheel to learn the schema
 # it knows (update.release_schema): keep its form, `SCHEMA_VERSION = <N>` on a line of its own.
-SCHEMA_VERSION = 43
+SCHEMA_VERSION = 44
 
 # What happened to an agent, for `lado log`. Before version 6 events had no run column.
 EVENTS = """
@@ -1093,6 +1093,22 @@ CREATE TABLE IF NOT EXISTS github_takeover (
 )"""
 SCHEMA += GITHUB_TAKEOVER_TABLE + ";\n"
 MIGRATIONS[42] = [GITHUB_TAKEOVER_TABLE]
+
+# From version 44: LADO's own commit author (lado.commit_authors), at most one row, and a
+# project's, both or neither; agents and LADO's first commits take them. lado.db alone holds
+# them: nothing is written into a git config.
+COMMIT_AUTHOR_TABLE = """
+CREATE TABLE IF NOT EXISTS commit_author (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    name TEXT NOT NULL,
+    email TEXT NOT NULL
+)"""
+PROJECTS_AUTHOR = [
+    "ALTER TABLE projects ADD COLUMN author_name TEXT",
+    "ALTER TABLE projects ADD COLUMN author_email TEXT",
+]
+SCHEMA += COMMIT_AUTHOR_TABLE + ";\n" + "".join(f"{step};\n" for step in PROJECTS_AUTHOR)
+MIGRATIONS[43] = [COMMIT_AUTHOR_TABLE, *PROJECTS_AUTHOR]
 
 # Where an agent's model or effort came from. Each later way of choosing one adds a token;
 # a token this LADO does not know (a newer LADO's row) is shown as itself (source_words).
@@ -4029,10 +4045,14 @@ class Project:
     id: str
     title: str | None
     created_at: str  # UTC, YYYY-MM-DD HH:MM:SS
+    author_name: str | None = None  # the commit author: both or neither
+    author_email: str | None = None
 
 
 def _project(row: sqlite3.Row) -> Project:
-    return Project(row["id"], row["title"], row["created_at"])
+    return Project(
+        row["id"], row["title"], row["created_at"], row["author_name"], row["author_email"]
+    )
 
 
 @contextmanager
@@ -4071,6 +4091,18 @@ def set_project_title(id: str, title: str | None) -> bool:
         found = db.execute("UPDATE projects SET title = ? WHERE id = ?", (title, id)).rowcount == 1
         db.execute("UPDATE sessions SET project = project WHERE project = ?", (id,))
         return found
+
+
+def set_project_author(id: str, name: str | None, email: str | None) -> Project | None:
+    """Set the commit author of the project `id` (None and None: clear it): the project as
+    saved, or None when there is no such project."""
+    with connect() as db:
+        db.execute(
+            "UPDATE projects SET author_name = ?, author_email = ? WHERE id = ?",
+            (name, email, id),
+        )
+        row = db.execute("SELECT * FROM projects WHERE id = ?", (id,)).fetchone()
+    return _project(row) if row else None
 
 
 def delete_project(id: str) -> bool:
@@ -4324,6 +4356,37 @@ def remove_git_server(id: str) -> bool:
     """False when there was no such server."""
     with connect() as db:
         return db.execute("DELETE FROM git_servers WHERE id = ?", (id,)).rowcount == 1
+
+
+@dataclass(frozen=True)
+class Author:
+    """A commit author: a name and an email, checked by lado.commit_authors.check."""
+
+    name: str
+    email: str
+
+
+def commit_author() -> Author | None:
+    """LADO's own commit author, None when it has none."""
+    with connect() as db:
+        row = db.execute("SELECT name, email FROM commit_author").fetchone()
+    return Author(row["name"], row["email"]) if row else None
+
+
+def set_commit_author(name: str, email: str) -> None:
+    """Write LADO's commit author, over any before."""
+    with connect() as db:
+        db.execute(
+            "INSERT INTO commit_author (id, name, email) VALUES (1, ?, ?)"
+            " ON CONFLICT(id) DO UPDATE SET name = excluded.name, email = excluded.email",
+            (name, email),
+        )
+
+
+def clear_commit_author() -> bool:
+    """False when LADO had no commit author."""
+    with connect() as db:
+        return db.execute("DELETE FROM commit_author").rowcount == 1
 
 
 @dataclass(frozen=True)

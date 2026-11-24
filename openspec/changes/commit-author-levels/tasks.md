@@ -2,7 +2,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-24-commit-autho
 
 ## 1. Storage
 
-- [ ] 1.1 Schema 44: table `commit_author`, `author_name`/`author_email` on `projects`, the
+- [x] 1.1 Schema 44: table `commit_author`, `author_name`/`author_email` on `projects`, the
   state functions, `previous_schema` (D1). Check: `tests/test_state.py` (43 → 44, the
   rollback by the backup, a project's author gone with it).
 

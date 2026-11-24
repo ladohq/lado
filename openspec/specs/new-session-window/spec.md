@@ -159,7 +159,7 @@ While the start button is off, the footer SHALL show `To start: ` and the missin
 links that focus their fields (opening Team when needed): choose a place, wait for the check,
 name the folder, name the session, choose another name, shorten the name, wait for the agent
 CLIs, choose an agent (also when their list failed), choose a kit, choose a smaller folder,
-choose another folder, tell git who you are, wait for the count, fix the model, shorten the
+choose another folder, set the commit author, wait for the count, fix the model, shorten the
 task, log in to `<CLI>`.
 
 #### Scenario: The agent CLIs not known yet

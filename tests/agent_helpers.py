@@ -333,6 +333,7 @@ def schema_before(version: int) -> None:
     """Turn the LADO_HOME database back to the version before `version` (13 at the oldest),
     undoing the steps of state.MIGRATIONS from the latest on. Step 22 changes only data that
     cannot come back (the needs it drops): undoing it sets the version alone."""
+    assert state.MIGRATIONS[43] == [state.COMMIT_AUTHOR_TABLE, *state.PROJECTS_AUTHOR]
     assert state.MIGRATIONS[42] == [state.GITHUB_TAKEOVER_TABLE]
     assert state.MIGRATIONS[41] == state.GIT_SERVERS_AUTHOR
     assert state.MIGRATIONS[40] == [state.GIT_SERVERS_TABLE]
@@ -369,8 +370,14 @@ def schema_before(version: int) -> None:
     assert state.MIGRATIONS[14] == state.NOTES_STEP
     assert state.MIGRATIONS[13] == state.EVENTS_JOURNAL
     assert state.MIGRATIONS[12] == state.MESSAGES_HUMAN
-    assert 13 <= version <= state.SCHEMA_VERSION == 43
+    assert 13 <= version <= state.SCHEMA_VERSION == 44
     with state.connect() as db:
+        db.execute("DROP TABLE commit_author")
+        for column in ("author_name", "author_email"):
+            db.execute(f"ALTER TABLE projects DROP COLUMN {column}")
+        if version == 44:
+            db.execute("PRAGMA user_version = 43")
+            return
         db.execute("DROP TABLE github_takeover")
         if version == 43:
             db.execute("PRAGMA user_version = 42")

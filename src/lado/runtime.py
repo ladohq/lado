@@ -28,6 +28,7 @@ import yaml
 from lado import (
     agent_env,
     artifacts,
+    commit_authors,
     git_kinds,
     git_servers,
     gitcache,
@@ -392,12 +393,6 @@ GH_CONFIG = "gh"  # in an agent's config folder: the GitHub CLI's own (GH_CONFIG
 GLAB_CONFIG = "glab"  # in an agent's config folder: the GitLab CLI's own (GLAB_CONFIG_DIR)
 # The saved server of the session repository's origin and its tool (_repo_tool).
 RepoTool = tuple[state.GitServer, git_servers.ToolState]
-GIT_AUTHOR_VARIABLES = (
-    "GIT_AUTHOR_NAME",
-    "GIT_AUTHOR_EMAIL",
-    "GIT_COMMITTER_NAME",
-    "GIT_COMMITTER_EMAIL",
-)
 XCODE_TOOLS = "xcode-select --install"
 
 
@@ -851,7 +846,7 @@ def check_new_session(
     if layers is None:
         layers = agent_layers(project)
     base_env = agents_env(layers, agent_cli)
-    _check_commands(env, base_env)
+    _check_commands(env, base_env, project)
     start, servers, warnings = _start_model(sess, agent_cli, base_env, model)
     check_login(agent_cli, base_env, logins.SESSION, start)
     return NewSession(sess, chosen, agent_cli, env, layers, base_env, start, servers, warnings)
@@ -965,7 +960,7 @@ def start_session(
         env = kits.resolve(sess.kits, sess.without)
         layers = agent_layers(sess.project)
         base_env = agents_env(layers, agent_cli)
-        _check_commands(env, base_env)
+        _check_commands(env, base_env, sess.project)
         start, servers, checked = _start_model(sess, agent_cli, base_env, model)
         if not (wait_for_login or reason == AT_START):
             # A resume by hand; LADO's own (the container's start, lado update) waits for
@@ -1049,7 +1044,7 @@ def start_session(
         launch = _launch_command(agent_cli, agent, sess, spec, start.note)
         started.warnings += launch.warnings
         started.warnings += _layer_warnings(agent, launch, sess.project, files=True)
-        started.warnings += _git_server_warnings(agent, base_env, repo_tool)
+        started.warnings += _git_server_warnings(agent, base_env, repo_tool, sess.project)
         blocker, command = _before_window(
             agent_cli, agent, base_env, layers.shell, launch, sess.project
         )
@@ -1311,7 +1306,7 @@ def spawn_worker(
         agent_cli.name,
         run=run.name if run else None,
     )
-    _check_commands(env, base_env)
+    _check_commands(env, base_env, sess.project)
     check_login(agent_cli, base_env, logins.WORKER, start)
     repo_tool = _repo_tool(sess.repo, base_env)
     spec = _spec(
@@ -1339,7 +1334,7 @@ def spawn_worker(
         launch = _launch_command(agent_cli, agent, sess, spec, start.note)
         held = [*server_warnings, *launch.warnings]
         held += _layer_warnings(agent, launch, sess.project, files=False)
-        held += _git_server_warnings(agent, base_env, repo_tool)
+        held += _git_server_warnings(agent, base_env, repo_tool, sess.project)
         before, command = _before_window(
             agent_cli, agent, base_env, layers.shell, launch, sess.project
         )
@@ -3531,24 +3526,33 @@ def agents_env(layers: agent_env.Layers, agent_cli: providers.Provider) -> dict[
     return agent_env.merge(layers, agent_cli.login_variables)
 
 
-def _check_commands(env: kits.Environment, base_env: dict[str, str]) -> None:
+def _check_commands(
+    env: kits.Environment, base_env: dict[str, str], project: str | None = None
+) -> None:
     """Refuse a launch while a command the session's kits expect (expects.commands) is not
-    on the agents' PATH, while a git server is saved and the agents' git is older than
-    2.31 (lado.git_servers.check_git), or while one has a commit author and it is older than
-    2.36 (check_author_git); called before the launch changes anything."""
+    on the agents' PATH, while LADO's commit author or the session's `project`'s is set and
+    the agents' git is older than 2.31 (lado.commit_authors.check_git), while a git server
+    is saved and it is older than 2.31 (lado.git_servers.check_git), or while one has a
+    commit author and it is older than 2.36 (check_author_git); called before the launch
+    changes anything."""
     path = base_env.get("PATH", os.defpath)
     missing = kits.missing_commands(env.kits, path)
     if missing:
         raise LadoError(kits.commands_error(missing, path))
     servers = state.git_servers()
-    if servers:  # no server, no git asked: the launch goes as before
-        try:
+    try:
+        if commit_authors.lado() is not None:
+            commit_authors.check_git(base_env, commit_authors.LADO_NEEDS, commit_authors.CLEAR_LADO)
+        if project is not None and commit_authors.project(project) is not None:
+            clear = commit_authors.CLEAR_PROJECT.format(id=project)
+            commit_authors.check_git(base_env, commit_authors.PROJECT_NEEDS, clear)
+        if servers:  # no server nor author, no git asked: the launch goes as before
             git_servers.check_git(base_env)
             authored = [s.address for s in servers if git_servers.author_text(s)]
             if authored:
                 git_servers.check_author_git(base_env, authored)
-        except git_servers.Refused as exc:
-            raise LadoError(str(exc)) from None
+    except git_servers.Refused as exc:
+        raise LadoError(str(exc)) from None
 
 
 def _launch_env(
@@ -3567,17 +3571,22 @@ def _ours(
 ) -> dict[str, str]:
     """The variables LADO and the provider set for the agent's launch, over every layer:
     LADO's, the agent's own TMPDIR (its folder under the layers' TMPDIR,
-    providers.base.temp_path), git's way to the saved git servers (after the layers' own
-    `GIT_CONFIG_*` entries, lado.git_servers.variables; none without a server, with the
-    servers' commit authors written into the agent's config folder), the GitHub CLI's
-    config folder and tokens of the saved servers (lado.git_servers.gh_variables), the
-    GitLab CLI's config folder with the saved GitLab servers (glab_variables), then the
-    provider's."""
+    providers.base.temp_path), git's way to the saved git servers and the commit authors
+    (after the layers' own `GIT_CONFIG_*` entries, lado.git_servers.variables: LADO's
+    author, the servers' with their commit authors written into the agent's config folder,
+    then the author of the session's project; none without a server or an author), the
+    GitHub CLI's config folder and tokens of the saved servers (lado.git_servers.
+    gh_variables), the GitLab CLI's config folder with the saved GitLab servers
+    (glab_variables), then the provider's."""
     temp_dir = providers.base.temp_path(agent, base_env)
     servers = state.git_servers()
     config = providers.base.config_dir(agent)
     authors = git_servers.author_files(config / GIT_AUTHORS, servers)
-    git = git_servers.variables(base_env, servers, authors=authors)
+    sess = state.get_session(agent.session)
+    project = commit_authors.project(sess.project) if sess and sess.project else None
+    git = git_servers.variables(
+        base_env, servers, authors=authors, lado=commit_authors.lado(), project=project
+    )
     gh = git_servers.gh_variables(servers, config / GH_CONFIG, lambda: remote(agent.cwd))
     glab = git_servers.glab_variables(servers, config / GLAB_CONFIG)
     return {
@@ -3605,22 +3614,29 @@ def _repo_tool(repo: str, base_env: Mapping[str, str]) -> RepoTool | None:
 
 
 def _git_server_warnings(
-    agent: state.Agent, base_env: Mapping[str, str], repo_tool: RepoTool | None = None
+    agent: state.Agent,
+    base_env: Mapping[str, str],
+    repo_tool: RepoTool | None = None,
+    project: str | None = None,
 ) -> list[str]:
-    """One line per variable of `base_env` that sets git's author or committer over every
-    config, while a git server has a commit author: LADO leaves them, the human's choice;
-    then one per GitHub server with a certificate, which the agent's gh does not get; then
-    the tool of the repository's server (`repo_tool`) missing or too old."""
+    """One line per variable of `base_env` (a project's variable among them) that sets
+    git's author or committer over every config, while LADO's commit author, the session's
+    `project`'s or a git server's is set: LADO leaves them, the human's choice; then one
+    per GitHub server with a certificate, which the agent's gh does not get; then the tool
+    of the repository's server (`repo_tool`) missing or too old."""
     servers = state.git_servers()
     gh = [f"gh {line}" for line in git_servers.gh_without_certificate(servers)]
     if repo_tool and (warning := git_servers.tool_warning(*repo_tool)):
         gh.append(warning)
-    if not any(git_servers.author_text(s) for s in servers):
+    if not (
+        commit_authors.lado()
+        or (project is not None and commit_authors.project(project))
+        or any(git_servers.author_text(s) for s in servers)
+    ):
         return gh
     return [
-        f"{name} is set for {agent.name}: it wins over the commit author of the git servers"
-        for name in GIT_AUTHOR_VARIABLES
-        if name in base_env
+        f"{name} is set for {agent.name}: it wins over LADO's commit authors"
+        for name in commit_authors.author_variables(base_env)
     ] + gh
 
 

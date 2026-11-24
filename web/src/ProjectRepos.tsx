@@ -8,6 +8,7 @@ import { Link } from "react-router";
 
 import {
   addProjectRepo,
+  type AuthorInfo,
   getProject,
   getRemoteBranches,
   getRepoRemoval,
@@ -18,6 +19,7 @@ import {
   type RepoRemoval,
   type SessionInfo,
 } from "./api";
+import { AuthorMissing, KnownAuthor } from "./AuthorMissing";
 import { since } from "./ChatText";
 import { useCloneJob, type CloneEnd } from "./cloneJob";
 import { BRANCHES_DEBOUNCE, CloneHint, CloneProgress, cloneRefused, defaultBranch, useDebounced, useLaunch } from "./Launch";
@@ -245,7 +247,12 @@ function AddRepoDialog({
 
   const typedName = name.trim();
   const off = busy || running;
-  const ready = !off && typedName !== "" && (source === "scratch" || (remote !== null && branch !== null));
+  // From scratch, nobody to sign its first commit: no project's, LADO's or git's own author.
+  const [signer, foundSigner] = useState<AuthorInfo | null>(null);
+  const unsigned = !project.commit_author?.author && !signer;
+  const createRef = useRef<HTMLButtonElement>(null);
+  const ready =
+    !off && typedName !== "" && (source === "scratch" ? !unsigned : remote !== null && branch !== null);
 
   const ended = (end: CloneEnd) => {
     if ("done" in end || end.ended === "away") return onAdded(); // the clone is there
@@ -407,6 +414,15 @@ function AddRepoDialog({
           <>
             {nameField}
             <span className="field-note">A new git repository with one empty commit.</span>
+            {unsigned ? (
+              <AuthorMissing
+                check={async () => (await getProject(project.id)).commit_author?.author ?? null}
+                onFound={foundSigner}
+                next={() => createRef.current}
+              />
+            ) : (
+              signer && <KnownAuthor author={signer} />
+            )}
           </>
         )}
         {clone.job && <CloneProgress job={clone.job} />}
@@ -425,7 +441,7 @@ function AddRepoDialog({
               <button type="button" className="quiet" disabled={busy} onClick={onClose}>
                 Cancel
               </button>
-              <button type="submit" className="primary" disabled={!ready}>
+              <button ref={createRef} type="submit" className="primary" disabled={!ready}>
                 {source === "url" ? "Clone" : "Create"}
               </button>
             </>

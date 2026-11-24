@@ -1,6 +1,14 @@
 # Changelog
 
-## 0.48.1 (unreleased)
+## 0.49.0 (unreleased)
+
+### New
+
+- **Start a project without a terminal.** Set the name and email agents commit with in
+  Settings → Git servers (or `lado git-server author --name … --email …`): a new project and
+  every repository use it, your git settings untouched. Needs git 2.31+.
+- **A commit author per project.** On the project's page (or `lado project author <id>`):
+  its agents commit with it in every repository of the project, over a git server's author.
 
 ### Improved
 

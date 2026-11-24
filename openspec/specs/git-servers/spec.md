@@ -204,10 +204,11 @@ and SHALL refuse a token given on the command line (`--token <value>`), naming t
 
 ### Requirement: lado git-server list shows the saved servers without asking them
 
-`lado git-server list` SHALL print one row per saved server with its address, its kind,
-the login seen when it was added (`not checked` for one saved with `--kind` unchecked),
-whether its token file is there, its certificate's expiry (`-` for none) and, last, its
-commit author (`-` for none), asking no server; with none saved it SHALL say how to add one.
+`lado git-server list` SHALL print, after the line of LADO's commit author, one row per
+saved server with its address, its kind, the login seen when it was added (`not checked`
+for one saved with `--kind` unchecked), whether its token file is there, its certificate's
+expiry (`-` for none) and, last, its commit author (`-` for none), asking no server; with
+none saved it SHALL say how to add one.
 
 #### Scenario: Two servers
 - **WHEN** `https://gitlab.corp.ru` (GitLab, ivan.petrov) and `https://git.lan` (GitLab,
@@ -215,8 +216,9 @@ commit author (`-` for none), asking no server; with none saved it SHALL say how
 - **THEN** the rows show `GitLab  ivan.petrov  yes` and `GitLab  not checked  yes`
 
 #### Scenario: None saved
-- **WHEN** no server is saved
-- **THEN** the output is `No git servers. Add one: lado git-server add <address> --token`
+- **WHEN** no server is saved and LADO has no commit author
+- **THEN** the output is `LADO's commit author: -` and then `No git servers. Add one: lado
+  git-server add <address> --token`
 
 #### Scenario: A server with an author
 - **WHEN** `https://gitlab.corp.ru` has the author `Ivan Petrov <ivan.petrov@corp.ru>` and
@@ -383,10 +385,10 @@ before.
 ### Requirement: lado git-server author sets, shows and clears a server's commit author
 
 `lado git-server author <address> --name <name> --email <email>` SHALL save the commit author
-(both values together) of the saved server of the address's host and port and say how agents
-commit there now; `--clear` SHALL remove it; without options it SHALL print the author or that
-there is none. An address of no saved server SHALL exit 1; `--name` without `--email`, the
-other way round, or `--clear` with either SHALL exit 2.
+(both together) of the saved server of the address's host and port and say how agents commit
+there now; `--clear` SHALL remove it; without options it SHALL print it or that there is none.
+An address of no saved server SHALL exit 1; half an author or `--clear` with either value
+SHALL exit 2. Without an address it is LADO's own author (capability commit-authors).
 
 #### Scenario: Setting an author
 - **WHEN** `https://gitlab.corp.ru` is saved and the human runs `lado git-server author
@@ -399,7 +401,8 @@ other way round, or `--clear` with either SHALL exit 2.
 - **WHEN** the human runs `lado git-server author gitlab.corp.ru`, then `lado git-server
   author gitlab.corp.ru --clear`, then `lado git-server author gitlab.corp.ru` again
 - **THEN** the first prints `Ivan Petrov <ivan.petrov@corp.ru>`, the second says agents commit
-  there with the human's own git author again, the third says the server has no commit author
+  there with LADO's commit author, or the human's own git author when LADO has none, the
+  third says the server has no commit author
 
 #### Scenario: A half author
 - **WHEN** the human runs `lado git-server author gitlab.corp.ru --name "Ivan Petrov"`
@@ -424,9 +427,9 @@ or a control character; its email SHALL be refused unless it has text on both si
 An agent launched while a saved server has a commit author SHALL commit, as author and
 committer, with that name and email in every repository with a remote on that server, in any
 form git servers take (`<address>/…`, with a user before the host, `git@<host>:…`,
-`ssh://git@<host>[:22]/…`), and in no other repository. That
-author SHALL win over a repository's own `user.name` and `user.email`; with remotes on two
-servers with authors, the server later by host SHALL win.
+`ssh://git@<host>[:22]/…`), and in no other repository. It SHALL win over git's configs and
+LADO's author and lose to the session's project's; with remotes on two servers with
+authors, the server later by host SHALL win.
 
 #### Scenario: A commit to the server's repository
 - **WHEN** `https://git.test:8443` is saved with the author `Ivan Petrov
@@ -443,11 +446,13 @@ servers with authors, the server later by host SHALL win.
 #### Scenario: Another host
 - **WHEN** the same agent commits in a repository whose only remote is on a host that is no
   saved server's, or that has no remote
-- **THEN** the commit carries the author of the human's own git settings, as without LADO
+- **THEN** the commit carries LADO's commit author when one is set, else the author of the
+  human's own git settings, as without LADO
 
 #### Scenario: After the author is cleared
 - **WHEN** the author is cleared and the agent is restarted
-- **THEN** its commits to the server's repository carry the human's own git author
+- **THEN** its commits to the server's repository carry LADO's commit author when one is
+  set, else the human's own git author
 
 #### Scenario: The global and system configs
 - **WHEN** an agent commits with a server's author
@@ -494,17 +499,6 @@ author set, the launch SHALL go as before.
 - **WHEN** `https://gitlab.corp.ru` and `https://git.lan` both have an author and the agents'
   git is 2.34.1
 - **THEN** the refusal names `lado git-server author` with `--clear` for both addresses
-
-### Requirement: The author variables of an agent's environment are named at its launch
-
-When a saved server has a commit author and an agent's environment holds
-`GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME` or `GIT_COMMITTER_EMAIL`, its
-launch SHALL warn that the variable wins over the git servers' commit authors.
-
-#### Scenario: An author variable from the login shell
-- **WHEN** the agent's login shell exports `GIT_AUTHOR_EMAIL` and a server has an author
-- **THEN** the launch's warnings name `GIT_AUTHOR_EMAIL` and that it wins over the commit
-  author of the git servers
 
 ### Requirement: lado git-server check checks a saved server again
 

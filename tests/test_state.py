@@ -990,7 +990,7 @@ def test_migrate_backs_up_the_older_schema_first(lado_home):
     with contextlib.closing(sqlite3.connect(backup)) as db:
         assert db.execute("SELECT name FROM sessions").fetchall() == [("s",)]
         tables = _tables(db)
-    assert "github_takeover" not in tables  # the content before the migration
+    assert "commit_author" not in tables  # the content before the migration
     assert _schema(lado_home / "lado.db") == state.SCHEMA_VERSION
 
 
@@ -1011,7 +1011,7 @@ def test_a_failing_step_leaves_the_schema_and_keeps_the_backup(lado_home, monkey
     assert _schema(lado_home / "lado.db") == old
     assert _schema(backup) == old
     with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
-        assert "github_takeover" not in _tables(db)  # rolled back
+        assert "commit_author" not in _tables(db)  # rolled back
 
 
 def test_version_2_database_gets_kits(lado_home):
@@ -2132,7 +2132,7 @@ def test_upgrade_from_42_keeps_servers_and_has_no_takeover(lado_home):
     with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
         assert "github_takeover" not in _tables(db)
     migrated = state.migrate()
-    assert (migrated.before, migrated.after) == (42, 43)
+    assert (migrated.before, migrated.after) == (42, state.SCHEMA_VERSION)
     assert migrated.backup.name == "lado.db.schema-42"
     assert [s.id for s in state.git_servers()] == ["a1"]
     assert state.github_takeover() is None
@@ -2152,9 +2152,90 @@ def test_the_schema_42_backup_put_back_has_no_github_entry(lado_home):
         assert "github_takeover" not in _tables(db)
 
 
-def test_previous_schema_drops_43(lado_home):
+def test_schema_before_43_drops_43(lado_home):
     state.record_github_takeover("none", None)
-    agent_helpers.previous_schema()
+    agent_helpers.schema_before(43)
     assert _schema(lado_home / "lado.db") == 42
     with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
         assert "github_takeover" not in _tables(db)
+
+
+# LADO's commit author and a project's (schema 44).
+
+
+def test_no_lado_author_until_set_and_one_row_after(lado_home):
+    assert state.commit_author() is None
+    state.set_commit_author("Ann Lee", "ann@example.com")
+    assert state.commit_author() == state.Author("Ann Lee", "ann@example.com")
+    state.set_commit_author("Ivan Petrov", "ivan@corp.ru")
+    assert state.commit_author() == state.Author("Ivan Petrov", "ivan@corp.ru")
+    with state.connect() as db:
+        assert db.execute("SELECT count(*) FROM commit_author").fetchone()[0] == 1
+    assert state.clear_commit_author() is True
+    assert state.commit_author() is None
+    assert state.clear_commit_author() is False
+
+
+def test_a_projects_author_is_set_cleared_and_goes_with_it(lado_home):
+    with state.creating_project("shop", "Shop"):
+        pass
+    assert (state.get_project("shop").author_name, state.get_project("shop").author_email) == (
+        None,
+        None,
+    )
+    found = state.set_project_author("shop", "Shop Bot", "bot@shop.example")
+    assert (found.author_name, found.author_email) == ("Shop Bot", "bot@shop.example")
+    assert state.get_project("shop").author_email == "bot@shop.example"
+    assert state.set_project_author("shop", None, None).author_name is None
+    assert state.set_project_author("nope", "A", "a@b.c") is None
+    state.set_project_author("shop", "Shop Bot", "bot@shop.example")
+    state.delete_project("shop")
+    with state.connect() as db:
+        assert db.execute("SELECT count(*) FROM projects").fetchone()[0] == 0
+
+
+def test_upgrade_from_43_keeps_projects_and_servers_without_authors(lado_home):
+    with state.creating_project("shop", "Shop"):
+        pass
+    state.save_git_server("a1", "https://gitlab.corp.ru", "gitlab.corp.ru", "gitlab", "ivan")
+    state.set_git_server_author("a1", "Ivan Petrov", "ivan@corp.ru")
+    agent_helpers.schema_before(44)
+    with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
+        assert "commit_author" not in _tables(db)
+        assert "author_name" not in _columns(db, "projects")
+    migrated = state.migrate()
+    assert (migrated.before, migrated.after) == (43, 44)
+    assert migrated.backup.name == "lado.db.schema-43"
+    [project] = state.list_projects()
+    assert (project.id, project.title, project.author_name) == ("shop", "Shop", None)
+    [server] = state.git_servers()
+    assert (server.author_name, server.author_email) == ("Ivan Petrov", "ivan@corp.ru")
+    assert state.commit_author() is None
+    with contextlib.closing(sqlite3.connect(migrated.backup)) as db:
+        assert "commit_author" not in _tables(db)
+        assert db.execute("SELECT id FROM projects").fetchall() == [("shop",)]
+
+
+def test_the_schema_43_backup_put_back_has_no_authors(lado_home):
+    with state.creating_project("shop", None):
+        pass
+    agent_helpers.schema_before(44)
+    backup = state.migrate().backup
+    state.set_commit_author("Ann Lee", "ann@example.com")
+    state.set_project_author("shop", "Shop Bot", "bot@shop.example")
+    (lado_home / "lado.db-wal").unlink(missing_ok=True)
+    (lado_home / "lado.db-shm").unlink(missing_ok=True)
+    (lado_home / "lado.db").write_bytes(backup.read_bytes())
+    assert _schema(lado_home / "lado.db") == 43
+    state.migrate()
+    assert state.commit_author() is None
+    assert state.get_project("shop").author_name is None
+
+
+def test_previous_schema_drops_44(lado_home):
+    state.set_commit_author("Ann Lee", "ann@example.com")
+    agent_helpers.previous_schema()
+    assert _schema(lado_home / "lado.db") == 43
+    with contextlib.closing(sqlite3.connect(lado_home / "lado.db")) as db:
+        assert "commit_author" not in _tables(db)
+        assert "author_name" not in _columns(db, "projects")

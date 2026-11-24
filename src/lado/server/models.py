@@ -861,11 +861,48 @@ class GitKindInfo(BaseModel):
     scopes: str
 
 
+class AuthorInfo(BaseModel):
+    """A commit author (lado.commit_authors)."""
+
+    name: str
+    email: str
+
+
+def author_info(author: state.Author | None) -> AuthorInfo | None:
+    return AuthorInfo(name=author.name, email=author.email) if author else None
+
+
+CommitAuthorSource = Literal["project", "server", "lado", "git", "none"]
+
+
+class CommitAuthor(BaseModel):
+    """The author a place's commits carry and where it comes from
+    (lado.commit_authors.in_effect); `author` None for none."""
+
+    author: AuthorInfo | None
+    source: CommitAuthorSource
+
+
 class GitServers(BaseModel):
-    """The saved git servers, by host, and the kinds LADO knows."""
+    """The saved git servers, by host, and the kinds LADO knows; LADO's own commit author,
+    git's own outside any repository (`git_author`, what agents commit as without LADO's),
+    and the names of the variables of the agents' environment that win over every author
+    (`author_variables`, never their values)."""
 
     servers: list[GitServerInfo]
     kinds: list[GitKindInfo]
+    author: AuthorInfo | None = None
+    git_author: AuthorInfo | None = None
+    author_variables: list[str] = []
+
+
+class GitAuthorDone(BaseModel):
+    """LADO's commit author set or cleared: as it is now, git's own, and the line of `lado
+    git-server author` that says so."""
+
+    author: AuthorInfo | None
+    git_author: AuthorInfo | None
+    line: str
 
 
 class GitServerRemoved(GitServers):
@@ -1380,9 +1417,11 @@ class ProjectRef(BaseModel):
 
 
 class ProjectRepo(RepoInfo):
-    """A repository of a project, read from its folder (lado.projects.repositories)."""
+    """A repository of a project, read from its folder (lado.projects.repositories); on
+    the project's page (ProjectInfo), the author its agents commit as."""
 
     name: str
+    commit_author: CommitAuthor | None = None
 
 
 class ProjectVariable(BaseModel):
@@ -1414,6 +1453,12 @@ class ProjectInfo(BaseModel):
     running: list[str]  # its sessions not stopped, by name
     overrides: list[str]  # names the outside folder gives too (lado.projects.overrides)
     unused: list[UnusedSecret]  # what its agents do not get (lado.project_secrets.unused)
+    author: AuthorInfo | None = None  # its own commit author
+    # GIT_AUTHOR_* and GIT_COMMITTER_* its agents' environment holds, its variables among
+    # them: they win over every author; names only
+    author_variables: list[str] = []
+    # the author a new repository of it commits as (no remote: no server's)
+    commit_author: CommitAuthor | None = None
 
 
 class ProjectSummary(BaseModel):

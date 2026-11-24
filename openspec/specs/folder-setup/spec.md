@@ -136,12 +136,13 @@ ticks and Copy, and the button `Set up and start in <folder>`.
 
 ### Requirement: Git's missing author keeps the set-up off
 
-When git has no `user.name` or `user.email` where the folder is, the window SHALL show `Git
-doesn't know who you are yet. Tell it once for this computer:` with the command, Copy and
-Check again (in LADO's container the `.env` text and no Check again), and keep the button off.
+When nobody signs the commits where the folder is (no LADO commit author and no `user.name`
+or `user.email` in git's config), the window SHALL show the note of the missing author (the
+session-scratch capability's: the link to Settings and Check again), never a command or the
+container's `.env` text, and keep the button off.
 
 #### Scenario: No author
-- **WHEN** git has no `user.email` and the human picks a plain folder
-- **THEN** the author's text and command show, the footer reads `To start: tell git who you
-  are`, and Check again checks the folder anew: until the answer the text stays and the
-  button reads `Checking…`, off with the focus on it
+- **WHEN** nobody signs the commits and the human picks a plain folder
+- **THEN** the note shows, the footer reads `To start: set the commit author`, and Check
+  again checks the folder anew: until the answer the button reads `Checking…`, off with the
+  focus on it

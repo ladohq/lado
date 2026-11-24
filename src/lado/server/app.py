@@ -808,6 +808,31 @@ def create_app(
         project_core(id, has_db, projects.remove_repo, name, True)
         return launch.project_info(id)
 
+    # A project's commit author (lado.commit_authors): the human's, through the token; a
+    # refusal is a 400 with GitEntryRefused, under its field.
+    @app.put(
+        "/api/projects/{id}/author",
+        dependencies=[Depends(guard.changes)],
+        responses={
+            400: {"model": models.GitEntryRefused, "description": "refused"},
+            404: {"description": "no such project"},
+        },
+    )
+    def set_project_author(
+        id: str, given: models.GitServerAuthor, has_db: bool = Depends(database)
+    ) -> ProjectInfo:
+        """Set the project's commit author as `lado project author --name --email` does."""
+        return entries(project_core, id, has_db, launch.set_project_author, given.name, given.email)
+
+    @app.delete(
+        "/api/projects/{id}/author",
+        dependencies=[Depends(guard.changes)],
+        responses=project_refused,
+    )
+    def clear_project_author(id: str, has_db: bool = Depends(database)) -> ProjectInfo:
+        """Clear the project's commit author as `lado project author --clear` does."""
+        return project_core(id, has_db, launch.clear_project_author)
+
     # A project's variables (docs/design/projects.md): set and removed by the human only,
     # through the token; the agents started after the change get it.
     @app.put(
@@ -1055,6 +1080,22 @@ def create_app(
     def git_servers_listing(has_db: bool = Depends(database)) -> models.GitServers:
         """The saved git servers, asking none; no lado.db made."""
         return git_entries.listing(has_db)
+
+    # LADO's own commit author (lado.commit_authors): not under /api/git-servers/, where
+    # the removal's `{host:path}` would take `author` for a host.
+    @app.put(
+        "/api/git-author",
+        dependencies=[Depends(guard.changes), Depends(database)],
+        responses=git_refused,
+    )
+    def set_git_author(given: models.GitServerAuthor) -> models.GitAuthorDone:
+        """Set LADO's commit author as `lado git-server author --name --email` does."""
+        return entries(git_entries.set_lado_author, given)
+
+    @app.delete("/api/git-author", dependencies=[Depends(guard.changes), Depends(database)])
+    def clear_git_author() -> models.GitAuthorDone:
+        """Clear LADO's commit author as `lado git-server author --clear` does."""
+        return git_entries.clear_lado_author()
 
     @app.post("/api/git-servers/check", dependencies=[Depends(guard.changes)])
     def check_git_server(

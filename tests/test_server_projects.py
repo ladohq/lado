@@ -111,6 +111,7 @@ def test_a_repository_from_scratch(client, shop):
         "path": str(shop / "site"),
         "remote": None,
         "branch": "main",
+        "commit_author": None,  # the project's page has it
     }
     assert _names(client) == ["frontend", "site"]
     taken = client.post("/api/projects/shop/repos", json={"name": "site"})
@@ -259,6 +260,80 @@ def test_no_variables_without_a_database(client, lado_home):
     assert client.put("/api/projects/shop/variables/X", json={"value": "x"}).status_code == 404
     assert client.delete("/api/projects/shop/variables/X").status_code == 404
     assert not (lado_home / "lado.db").exists()
+
+
+# A project's commit author (openspec change commit-author-levels).
+
+ANN = {"name": "Ann Lee", "email": "ann@example.com"}
+IVAN = {"name": "Ivan Petrov", "email": "ivan.petrov@corp.ru"}
+SHOP = {"name": "Shop Bot", "email": "bot@shop.example"}
+
+
+def _repo_authors(client) -> dict[str, dict]:
+    found = client.get("/api/projects/shop").json()
+    return {repo["name"]: repo["commit_author"] for repo in found["repos"]}
+
+
+def test_the_author_in_effect_per_repository(client, shop, git_config):
+    git_config.write_text("")
+    state.set_commit_author("Ann Lee", "ann@example.com")
+    state.save_git_server("s1", "https://git.test:8443", "git.test:8443", "gitlab", "ivan")
+    state.set_git_server_author("s1", IVAN["name"], IVAN["email"])
+    site = shop / "site"
+    subprocess.run(["git", "init", "-q", str(site)], check=True)
+    api = shop / "api"
+    subprocess.run(["git", "init", "-q", str(api)], check=True)
+    url = "https://git.test:8443/team/api.git"
+    subprocess.run(["git", "-C", str(api), "remote", "add", "origin", url], check=True)
+    authors = _repo_authors(client)
+    assert authors["site"] == {"author": ANN, "source": "lado"}
+    assert authors["api"] == {"author": IVAN, "source": "server"}
+    found = client.get("/api/projects/shop").json()
+    assert (found["author"], found["commit_author"]) == (None, {"author": ANN, "source": "lado"})
+
+
+def test_a_projects_author_is_set_and_cleared(client, shop, capsys):
+    from lado.cli import main
+
+    answer = client.put(
+        "/api/projects/shop/author", json={"name": " Shop Bot", **{"email": SHOP["email"]}}
+    )
+    assert answer.status_code == 200, answer.text
+    assert answer.json() == client.get("/api/projects/shop").json()
+    assert answer.json()["author"] == SHOP
+    assert set(map(lambda a: a["source"], _repo_authors(client).values())) == {"project"}
+    main(["project", "author", "shop"])
+    assert capsys.readouterr().out == "Shop Bot <bot@shop.example>\n"
+    cleared = client.delete("/api/projects/shop/author")
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["author"] is None
+    assert state.get_project("shop").author_name is None
+
+
+def test_a_projects_author_refused_under_its_field(client, shop):
+    answer = client.put("/api/projects/shop/author", json={"name": "Shop", "email": "bot"})
+    assert answer.status_code == 400
+    detail = answer.json()["detail"]
+    assert (detail["message"], detail["field"]) == ("not an email address: name@host", "email")
+    assert state.get_project("shop").author_name is None
+
+
+def test_the_author_of_an_unknown_project(client, shop):
+    assert client.put("/api/projects/nope/author", json=SHOP).status_code == 404
+    assert client.delete("/api/projects/nope/author").status_code == 404
+
+
+def test_a_project_variable_of_an_author_is_named(client, shop):
+    projects.set_variable("shop", "GIT_AUTHOR_NAME", "Me")
+    found = client.get("/api/projects/shop").json()
+    assert "GIT_AUTHOR_NAME" in found["author_variables"]
+
+
+def test_the_author_routes_need_the_token(client, shop):
+    del client.headers["origin"]
+    assert client.put("/api/projects/shop/author", json=SHOP).status_code == 403
+    assert client.delete("/api/projects/shop/author").status_code == 403
+    assert state.get_project("shop").author_name is None
 
 
 def test_the_variables_need_the_token_and_the_servers_own_origin(client, shop):

@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING
 
-from lado import git_kinds, git_servers, state
+from lado import commit_authors, git_kinds, git_servers, state
 from lado.server import models
 from lado.server.model_entries import Refusal
 
@@ -45,6 +45,9 @@ def _refusal(
     entry = _entry(exc)
     entry.warnings = warnings or []
     return Refusal(entry)
+
+
+refusal = _refusal  # a commit author's refusal on another page (a project's)
 
 
 def server_info(server: state.GitServer) -> models.GitServerInfo:
@@ -91,6 +94,8 @@ def _offer(found: git_certificates.Certificate | None) -> models.CertificateOffe
 def listing(has_db: bool = True) -> models.GitServers:
     """The saved servers, asking none, as `lado git-server list` lists them; none with no
     lado.db, which is not made."""
+    from lado.server import launch  # it builds on these models' routes
+
     servers = state.git_servers() if has_db else []
     return models.GitServers(
         servers=[server_info(server) for server in servers],
@@ -100,6 +105,39 @@ def listing(has_db: bool = True) -> models.GitServers:
             )
             for kind in git_kinds.KINDS
         ],
+        author=models.author_info(commit_authors.lado() if has_db else None),
+        git_author=_git_author(),
+        author_variables=launch.author_variables(),
+    )
+
+
+def _git_author() -> models.AuthorInfo | None:
+    """git's own author outside any repository; none for a git that does not run."""
+    from lado import runtime
+
+    try:
+        return models.author_info(commit_authors.git_own("/"))
+    except (runtime.LadoError, commit_authors.Unreadable):
+        return None
+
+
+def set_lado_author(given: models.GitServerAuthor) -> models.GitAuthorDone:
+    """Set LADO's commit author as `lado git-server author --name --email` does."""
+    try:
+        author = commit_authors.set_lado(given.name, given.email)
+    except git_servers.Refused as exc:
+        raise _refusal(exc) from None
+    line = commit_authors.LADO_SET.format(author=commit_authors.text(author))
+    return models.GitAuthorDone(
+        author=models.author_info(author), git_author=_git_author(), line=line
+    )
+
+
+def clear_lado_author() -> models.GitAuthorDone:
+    """Clear LADO's commit author as `lado git-server author --clear` does."""
+    commit_authors.clear_lado()
+    return models.GitAuthorDone(
+        author=None, git_author=_git_author(), line=commit_authors.LADO_CLEARED
     )
 
 
@@ -285,10 +323,10 @@ def clear_author(host: str) -> models.GitServerAuthorDone:
 
 def remove(host: str) -> models.GitServerRemoved:
     """Remove the server of `host` (its key) and its token as `lado git-server remove` does:
-    the servers left, and why a folder of it stayed."""
+    the listing as it is after (LADO's author and git's own too), and why a folder of it
+    stayed."""
     try:
         _, warning = git_servers.remove_host(host)
     except git_servers.Refused as exc:
         raise _refusal(exc) from None
-    left = listing()
-    return models.GitServerRemoved(servers=left.servers, kinds=left.kinds, warning=warning)
+    return models.GitServerRemoved(**listing().model_dump(), warning=warning)

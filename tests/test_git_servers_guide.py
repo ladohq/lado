@@ -206,7 +206,7 @@ QUOTES = [
     ("**Replace token**", TSX, ["Replace token"]),
     ("**Save token**", TSX, ["Save token"]),
     ("**Remove server**", TSX, ["Remove server"]),
-    ("**Set author**", TSX, ["Set author"]),
+    ("**Set one for this server**", TSX, ["Set one for this server"]),
     ("**Check again**", TSX, ["Check again"]),
 ]
 

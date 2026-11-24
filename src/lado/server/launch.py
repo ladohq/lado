@@ -14,6 +14,7 @@ from typing import Literal
 
 from lado import (
     agent_env,
+    commit_authors,
     doctor,
     kits,
     logins,
@@ -172,10 +173,12 @@ def scratch_target(text: str, path: str | None, has_db: bool) -> models.ScratchT
 
 
 def _author(path: str) -> models.ScratchProblem | None:
-    """Why git cannot sign a fresh start's commit at `path`; a git that does not run, or
-    cannot read its config, too."""
+    """Why nobody signs a fresh start's commit at `path` (the author of the project whose
+    folder it is in counts, scratch.author_problem); a git that does not run, or cannot
+    read its config, too."""
+    place = projects.place(path)
     try:
-        problem: runtime.LadoError | None = scratch.author_problem(path)
+        problem: runtime.LadoError | None = scratch.author_problem(path, place and place.id)
     except runtime.LadoError as refused:
         problem = refused
     if problem is None:
@@ -484,16 +487,42 @@ def session_about(sess: state.Session) -> models.SessionAbout:
     )
 
 
+def author_variables(project: str | None = None) -> list[str]:
+    """The names of GIT_AUTHOR_* and GIT_COMMITTER_* the agents' environment holds
+    (lado.commit_authors.author_variables), a `project`'s variables among them; none when
+    the environment cannot be had (the launch says why)."""
+    try:
+        layers = agent_env.layers(project_secrets.layer(project) if project else None)
+    except agent_env.AgentEnvError:
+        return []
+    return commit_authors.author_variables(agent_env.merge(layers))
+
+
+def commit_author(path: str, project: str | None = None) -> models.CommitAuthor:
+    """The author a commit at `path` carries, and its source; none for a git that does not
+    run or cannot read its config."""
+    try:
+        found = commit_authors.in_effect(path, project)
+    except (runtime.LadoError, commit_authors.Unreadable):
+        found = commit_authors.InEffect(None, commit_authors.NONE)
+    return models.CommitAuthor(author=models.author_info(found.author), source=found.source)
+
+
 def project_info(id: str) -> models.ProjectInfo:
-    """A project with its repositories as the disk has them now; NoSuchProject else."""
+    """A project with its repositories as the disk has them now, and who its agents commit
+    as in each; NoSuchProject else."""
     project = projects.get(id)
     where = projects.folder(id)
+    own = commit_authors.project(id)
     return models.ProjectInfo(
         id=project.id,
         title=project.title,
         folder=str(where),
         found=where.is_dir(),
-        repos=[project_repo(r) for r in projects.repositories(id)],
+        repos=[
+            project_repo(r).model_copy(update={"commit_author": commit_author(str(r.path), id)})
+            for r in projects.repositories(id)
+        ],
         variables=[
             models.ProjectVariable(name=name, value=value)
             for name, value in state.project_variables(id).items()
@@ -505,6 +534,10 @@ def project_info(id: str) -> models.ProjectInfo:
             models.UnusedSecret(name=name, reason=reason)
             for name, reason in project_secrets.unused(id)
         ],
+        author=models.author_info(own),
+        author_variables=author_variables(id),
+        # a folder of no repository: the author a new one gets
+        commit_author=commit_author(str(where / ".new"), id),
     )
 
 
@@ -664,3 +697,25 @@ def _session_kit(name: str) -> models.SessionKitInfo:
         problem=None,
         flows=list(kit.flows),
     )
+
+
+def set_project_author(id: str, name: str, email: str) -> models.ProjectInfo:
+    """Set the project's commit author as `lado project author --name --email` does;
+    NoSuchProject for none, a model_entries.Refusal under its field for a refused one."""
+    from lado import git_servers
+    from lado.server import git_entries
+
+    projects.get(id)
+    try:
+        if commit_authors.set_project(id, name, email) is None:
+            raise projects.NoSuchProject(f'unknown project "{id}"')
+    except git_servers.Refused as exc:
+        raise git_entries.refusal(exc) from None
+    return project_info(id)
+
+
+def clear_project_author(id: str) -> models.ProjectInfo:
+    """Clear the project's commit author as `lado project author --clear` does."""
+    projects.get(id)
+    commit_authors.clear_project(id)
+    return project_info(id)

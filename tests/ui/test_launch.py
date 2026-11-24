@@ -1021,29 +1021,32 @@ def test_start_from_scratch_here(page: Page, projects, server, tmp_path, shot):
     shot(page, "scratch")
 
 
-NO_AUTHOR = "git doesn't know who signs the agents' commits: it has no user.name or user.email"
+NO_AUTHOR = "Agents need a name and email to sign their commits, and none is set yet."
 
 
-def test_no_author_says_what_to_do(page: Page, projects, git_config, server, shot):
+def test_no_author_leads_to_settings(page: Page, projects, git_config, server, shot):
     git_config.write_text("")
     dialog = scratch_window(page, server)
     dialog.get_by_role("textbox", name="Folder name").fill("Сайт кофейни")
     expect(dialog).to_contain_text(NO_AUTHOR)
-    expect(dialog).to_contain_text("Tell git who you are, once for this computer:")
-    expect(dialog.get_by_role("button", name="Copy command")).to_be_visible()
+    link = dialog.get_by_role("link", name="Set the commit author in Settings (opens a new tab)")
+    expect(link).to_have_attribute("href", "/settings/git-servers?author")
+    expect(dialog.get_by_role("button", name="Copy command")).to_have_count(0)
     agent(dialog).select_option("fake")
     expect(dialog.get_by_role("button", name="Create and start")).to_be_disabled()
-    expect(dialog.locator(".launch-missing")).to_contain_text("tell git who you are")
+    expect(dialog.locator(".launch-missing")).to_contain_text("set the commit author")
     shot(page)
 
 
-def test_no_author_in_the_container(page: Page, projects, git_config, server_in_container, shot):
+def test_no_author_in_the_container_leads_to_settings_too(
+    page: Page, projects, git_config, server_in_container, shot
+):
     git_config.write_text("")
     dialog = scratch_window(page, server_in_container)
     dialog.get_by_role("textbox", name="Folder name").fill("Сайт кофейни")
     expect(dialog).to_contain_text(NO_AUTHOR)
-    expect(dialog).to_contain_text("Set LADO_GIT_NAME and LADO_GIT_EMAIL in the .env file")
-    expect(dialog.locator("code", has_text="docker compose up -d")).to_be_visible()
+    expect(dialog).not_to_contain_text("LADO_GIT_NAME")
+    expect(dialog.locator("code", has_text="docker compose up -d")).to_have_count(0)
     expect(dialog.get_by_role("button", name="Create and start")).to_be_disabled()
     shot(page)
 

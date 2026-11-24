@@ -58,7 +58,7 @@ def test_an_agent_commits_to_a_listed_servers_repositories_as_its_author(
     assert authored.returncode == 0, authored.stderr
     assert authored.stdout.splitlines()[0] == f"Agents commit to {listed.url} as {NAME} <{EMAIL}>."
     listing = lado("git-server", "list")
-    assert listing.stdout.splitlines()[1].endswith(f" {NAME} <{EMAIL}>")
+    assert listing.stdout.splitlines()[2].endswith(f" {NAME} <{EMAIL}>")
     [server] = state.git_servers()
 
     runtime.start_session(str(repo), SESSION, None, "fake")

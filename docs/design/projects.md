@@ -86,6 +86,11 @@ case). It never changes, and it is at once:
 A project also has a **title**, the human name the UI shows. It can change at any time, as a
 session's title can; without one the id is shown.
 
+A project may have a **commit author** (`lado project author`, the project's page; LAD-312):
+the name and email its sessions' agents commit with in every repository of it, over a git
+server's author and LADO's own (lado.commit_authors). It lives in the project's row and goes
+with it; agents get it at their launch.
+
 The project folder is always `<workspace>/projects/<id>`; another cannot be given. The path
 is stored nowhere: it is derived from the id, so there is nothing for it to drift from.
 The special cases:
@@ -255,9 +260,9 @@ an agent could slip every future agent, say, a model address of its own.
 
 The record and the folder are built, and so are plain variables and secrets.
 
-- **The project's record** (id, title, plain variables): in `lado.db` (the table
-  `projects`, schema 32; plain variables in `project_variables`, schema 34, one row per name,
-  removed with the project).
+- **The project's record** (id, title, commit author, plain variables): in `lado.db` (the
+  table `projects`, schema 32, its commit author's columns from schema 44; plain variables in
+  `project_variables`, schema 34, one row per name, removed with the project).
 - **Secrets**: in `~/.lado/projects/<id>/secrets/`, one file per secret. The format is that
   of Docker's outside secrets (`LADO_ENV_DIR`, `/run/secrets`): the file's name is the
   variable's, its content the value, exactly one trailing newline dropped, its size

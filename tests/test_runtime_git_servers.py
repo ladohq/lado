@@ -228,7 +228,69 @@ def test_a_git_older_than_2_36_without_an_author_starts(
     assert state.get_session("s") is not None
 
 
-WINS = "{name} is set for {agent}: it wins over the commit author of the git servers"
+WINS = "{name} is set for {agent}: it wins over LADO's commit authors"
+
+
+# LADO's commit author.
+
+
+def test_ladOs_author_reaches_an_agent_without_a_server(
+    repo, fake_tmux, lado_home, monkeypatch, agents_path
+):
+    _, path = agents_path
+    _shell(monkeypatch, {"PATH": path, "GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "a.b"})
+    state.set_commit_author("Ann Lee", "ann@example.com")
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    env = _launched(lado_home)
+    assert (env["GIT_CONFIG_COUNT"], env["GIT_CONFIG_KEY_0"]) == ("3", "a.b")
+    assert [(env[f"GIT_CONFIG_KEY_{n}"], env[f"GIT_CONFIG_VALUE_{n}"]) for n in (1, 2)] == [
+        ("user.name", "Ann Lee"),
+        ("user.email", "ann@example.com"),
+    ]
+    back = agent_env.without_launch(env)
+    assert {k: v for k, v in back.items() if k.startswith("GIT_CONFIG")} == {
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "a.b",
+    }
+
+
+def test_ladOs_author_comes_before_a_servers(repo, fake_tmux, lado_home, monkeypatch, agents_path):
+    _, path = agents_path
+    _shell(monkeypatch, {"PATH": path})
+    state.set_commit_author("Ann Lee", "ann@example.com")
+    server = _with_author()
+    runtime.start_session(str(repo), "s", None, provider="claude")
+    env = _launched(lado_home)
+    keys = [env[f"GIT_CONFIG_KEY_{n}"] for n in range(int(env["GIT_CONFIG_COUNT"]))]
+    assert keys[:2] == ["user.name", "user.email"]
+    assert keys[2] == f"credential.{server.address}.helper"
+    assert keys[-1].startswith("includeIf.")
+
+
+def test_an_old_git_refuses_a_launch_with_ladOs_author(
+    repo, fake_tmux, lado_home, monkeypatch, agents_path
+):
+    folder, path = agents_path
+    _old_git(folder)
+    _shell(monkeypatch, {"PATH": path})
+    state.set_commit_author("Ann Lee", "ann@example.com")
+    with pytest.raises(runtime.LadoError) as raised:
+        runtime.start_session(str(repo), "s", None, provider="claude")
+    assert str(raised.value) == (
+        "git 2.30.2 is older than 2.31, which LADO's commit author needs; update git, or "
+        "clear it (lado git-server author --clear)"
+    )
+    assert fake_tmux == []
+
+
+def test_an_author_variable_with_ladOs_author_is_named(
+    repo, fake_tmux, lado_home, monkeypatch, agents_path
+):
+    _, path = agents_path
+    _shell(monkeypatch, {"PATH": path, "GIT_AUTHOR_EMAIL": "me@home"})
+    state.set_commit_author("Ann Lee", "ann@example.com")
+    started = runtime.start_session(str(repo), "s", None, provider="claude")
+    assert WINS.format(name="GIT_AUTHOR_EMAIL", agent="supervisor") in started.warnings
 
 
 def test_an_author_variable_of_the_environment_is_named_at_the_launch(

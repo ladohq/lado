@@ -85,15 +85,16 @@ servers alone (`lado git-server`, below).
 
 `lado start --new [<folder>]` (default: the current folder; relative paths are taken from
 it) starts from scratch (`lado.scratch`): the folder must be new or empty (nothing but
-`.DS_Store`) and in no git repository, and git must know the commits' author (`user.name`
-and `user.email`). It makes the folder (and the folders above it), `git init`, the branch
+`.DS_Store`) and in no git repository, and somebody must sign its commit: LADO's commit
+author (`lado git-server author`), else git's `user.name` and `user.email`. It makes the folder (and the folders above it), `git init`, the branch
 of `init.defaultBranch` (else `main`) and one empty commit `Start from scratch` (no file, no
-signing, no hooks), prints `Made <folder> a git repository with an empty first commit`, and
+signing, no hooks; LADO's author signs it, passed with `-c`, else git's own), prints `Made <folder> a git repository with an empty first commit`, and
 starts the session as `lado start <folder>` does, named by `--name` or the folder. A refusal
 is exit 1 with its hint and changes nothing: a folder with files gets LAD-5's `git init`
-command, a folder of a repository `lado start <root>`, a git without the author the `git
-config --global` command (in LADO's container: `LADO_GIT_NAME` and `LADO_GIT_EMAIL` in
-`.env`); then the new session is checked whole as before a clone, so a kit's refusal too
+command, a folder of a repository `lado start <root>`, nobody to sign (`nobody signs the
+agents' commits: LADO has no commit author and git has no user.name or user.email`) the hint
+`Set the commit author in Settings → Git servers, or run:` with `lado git-server author --name
+"Your Name" --email you@example.com`, in LADO's container too; then the new session is checked whole as before a clone, so a kit's refusal too
 leaves the folder as it was; a git step that fails removes what it made. A start refused
 after the repository was made (its window did not open, the name was taken meanwhile)
 removes the folder it made, or the `.git` of an empty folder given, when it still holds
@@ -115,7 +116,8 @@ project list` prints one line per project by id, columns padded: the id, the tit
 without one) and the folder, `  (folder not found)` when it is missing (another workspace,
 or deleted by hand); with none, `No projects. Make one with: lado project create <id>`.
 `lado project show <id>` prints `<id> "<title>"`, `  folder:  <folder>`, `  made:    <local
-YYYY-MM-DD HH:MM>` and the project's repositories read from the disk (`projects.repositories`:
+YYYY-MM-DD HH:MM>`, `  author:  <name> <<email>>` (its commit author, `-` for none) and the project's
+repositories read from the disk (`projects.repositories`:
 the folders directly in the project folder, not hidden and not links, each a git root of its
 own): `  repositories:` and one line each by name, `    <name>  <branch>  <remote>` padded,
 `(detached)` and `(no remote)` for none, a symbolic link listed among them as `(a link to
@@ -187,6 +189,15 @@ with `project <id> has no variable or secret <NAME>; its variables: <names>; its
 <names>` (`none`), and a symbolic link on the way to a secret is refused as for `set`. `lado
 project
 rename <id> <title>` sets the title (`""` clears it); the id and the folder stay. `lado
+project author <id> --name <name> --email <email>` sets the project's commit author, which
+its agents commit as in every repository of it, over a git server's and LADO's (lado.db
+alone; it goes with the project): `Agents of project <id> commit as <name> <<email>>.` and
+the restart line; `--clear` removes it (`Project <id> has no commit author now: its agents
+commit as LADO's or a git server's.` and the restart line); with neither it prints `<name>
+<<email>>` or `Project <id> has no commit author: its agents commit as LADO's or a git
+server's.`. The checks and exits are `lado git-server author`'s (git 2.31 for a set, `… which
+a project's commit author needs`); an unknown project is exit 1; setting or clearing it is the
+human's alone, reading it an agent's too. `lado
 project delete <id>` refuses, exit 1, changing nothing, while a session of the project, or
 any session whose folder is inside the project folder (one started there before projects had
 sessions; never through a project folder that is a link), is not stopped (`project <id> has
@@ -233,7 +244,8 @@ into <folder>` and git's progress on stderr, a hidden temporary folder beside th
 renamed only once git succeeded, Ctrl-C `lado: clone cancelled` (exit 130) and SIGTERM or
 SIGHUP `lado: clone cancelled (<signal>)` (exit 128+n), leaving neither folder. `lado
 project repo add <id> --new <name>` makes the folder a repository with one empty commit, as
-`lado start --new` does (git's author checked first), and prints `Made <folder> a git
+`lado start --new` does (the author checked first: the project's, else LADO's, else git's
+own, which signs its commit), and prints `Made <folder> a git
 repository with an empty first commit`. Both then print `Added repository <name> to project
 <id>: <folder>` and `Start a session in it: lado start --project <id> --repo <name>`. A
 repository's name is 1 to 100 Latin letters, digits, `.`, `_` and `-`, not starting with `.`
@@ -1010,7 +1022,8 @@ address of no saved server (`<address> is no saved git server`, `see them: lado 
 list`) and a missing token file (`the token file of <address> is missing`, `replace it: …`)
 send no request, exit 1; an address it does not take exits 2.
 
-`lado git-server list` prints `ADDRESS KIND LOGIN TOKEN CERTIFICATE AUTHOR`, one line per
+`lado git-server list` prints first `LADO's commit author: <name> <<email>>` (`-` for none),
+then `ADDRESS KIND LOGIN TOKEN CERTIFICATE AUTHOR`, one line per
 server by host, asking none: `not checked` for one saved with `--kind` unchecked, `yes`/`no`
 for its token file, `until <date>` or `expired <date>` for its certificate (`-` for none), its
 commit author `<name> <<email>>` or `-`; with none, `No git servers. Add one: lado git-server
@@ -1036,10 +1049,10 @@ empty`.
 `lado git-server author <address> --name <name> --email <email>` sets the commit author of
 the saved server of the address's host and port, without its token again: `Agents commit to
 <address> as <name> <<email>>.` and `Agents started from now on commit so; restart running
-agents to give it to them.`. `--clear` removes it (`Agents commit to <address> with your own
-git author again.` and the same second line; also when there was none), and with neither it
-prints `<name> <<email>>` or `<address> has no commit author: agents commit there with your
-own git author.`. Exit 2 for an address it does not take, `--name` without `--email` or the
+agents to give it to them.`. `--clear` removes it (`Agents commit to <address> with LADO's
+commit author, or your own git author without one.` and the same second line; also when there
+was none), and with neither it prints `<name> <<email>>` or `<address> has no commit author:
+agents commit there with LADO's commit author, or your own git author without one.`. Exit 2 for an address it does not take, `--name` without `--email` or the
 other way round (`--name and --email go together`), or `--clear` with either (`--clear takes no
 --name or --email`). Refused with exit 1, nothing saved: an address of no saved server
 (`<address> is no saved git server`, hint `see them: lado git-server list`), a name empty
@@ -1047,7 +1060,19 @@ after trimming (`the author's name is empty`) or holding `<`, `>` or a control c
 (`the author's name holds no < or > or line break`), an email that is not text on both sides
 of one `@` with no space, `<`, `>` or control character (`not an email address: name@host`),
 either over 256 characters, and a git older than 2.36 on this PATH (`git <version> is older
-than 2.36, which a commit author of a git server needs; update git`); clearing needs no git. `lado git-server
+than 2.36, which a commit author of a git server needs; update git`); clearing needs no git. 
+
+Without an address, `lado git-server author` is LADO's own commit author (lado.commit_authors,
+kept in lado.db, written into no git config): `--name <name> --email <email>` sets it, `Agents
+commit as <name> <<email>> where no project or git server has an author of its own.` and the
+restart line; `--clear` removes it, `LADO has no commit author now.`, the line of who agents
+commit as now and the restart line; with neither it prints `<name> <<email>>`, or `LADO has no
+commit author: agents commit as <name> <<email>> from your git config.`, or `LADO has no commit
+author and git knows none: agents cannot commit.` and `Set one: lado git-server author --name
+"Your Name" --email you@example.com`. Setting or clearing it is the human's alone (`lado
+git-server author is for the human; agent "<name>" cannot use it`, exit 1); the refusals,
+exits and checks are a server's, but the git it needs is 2.31 (`git <version> is older than
+2.31, which LADO's commit author needs; update git`). `lado git-server
 remove <address>` finds the server by the host and port of the address, with or without its
 scheme, removes it and its token folder, and `<LADO_HOME>/git-servers/` itself with the last
 server: `Removed git server <address>.`; an address of no saved server is refused (exit 1).
@@ -1120,8 +1145,9 @@ adds, after the server's entries, `includeIf.hasconfig:remote.*.url:<pattern>.pa
 pointing to it: eight for an address without a port, six for one with its own. In such a repository the server's author wins over the repository's
 own `user.name`/`user.email`; `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME` and
 `GIT_COMMITTER_EMAIL` in the agent's environment win over it, and the launch warns `<VAR> is
-set for <agent>: it wins over the commit author of the git servers`. A repository with no
-remote yet (`git init` before `git remote add`) commits with the human's own author; one with
+set for <agent>: it wins over LADO's commit authors`. A repository with no
+remote yet (`git init` before `git remote add`) commits with LADO's author, else the human's
+own; one with
 remotes on two servers with authors takes the author of the server later by host. A
 https remote whose host is written in another letter case (`GitLab.Corp.example`) or with the
 scheme's own port (`:443`, `:80`) matches too, as git gives such a remote the token; an ssh
@@ -1131,6 +1157,18 @@ before anything starts (`git <version> is older than 2.36, which a commit author
 server needs; update git, or clear the author (lado git-server author <address> --clear)`,
 `the authors (…, …)` naming each server with one); without one, 2.31 is enough. A
 running agent keeps the author of its launch until it restarts.
+
+The commit authors' order (lado.commit_authors): an agent's commit carries the first of its
+session's project's author, the author of a saved server a remote of the repository is on,
+LADO's author, and git's own config. The launch lays LADO's author as plain `user.name` and
+`user.email` entries before the servers' entries and the project's after them, so the later
+wins; each wins over git's system, global and the repository's own config, and the author
+variables above win over all (the launch's warning names them when any LADO author is set,
+also a project's variable of that name). LADO's or a project's author needs git 2.31: a launch
+with either set and an older git is refused (`git <version> is older than 2.31, which LADO's
+commit author needs; update git, or clear it (lado git-server author --clear)`; for a
+project's: `… a project's commit author needs; … (lado project author <id> --clear)`). LADO's
+own network git (kits, packs, clones) gets no author.
 
 `lado ui` prints (or opens) the local link with the token, then, when the running server
 has a link for another device, `From another machine: <link>`: it asks the server

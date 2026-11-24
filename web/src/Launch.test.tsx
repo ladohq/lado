@@ -3807,24 +3807,53 @@ test("a place picked before a close that came before the recent places is kept",
   expect(placeBox().value).toBe("New empty folder");
 });
 
-test("no author: the text and the hint with Copy under Folder name, Create and start off", async () => {
-  answers["GET /api/scratch-target"] = () =>
-    json(
-      scratchTarget("Сайт кофейни", null, {
-        author: {
-          text: "git doesn't know who signs the agents' commits: it has no user.name or user.email",
-          hint: { text: "Tell git who you are, once for this computer:", command: "git config --global user.name x" },
-        },
-      }),
-    );
+// Nobody signs a first commit: the core's refusal, the window's own words.
+const NOBODY = {
+  text: "nobody signs the agents' commits: LADO has no commit author and git has no user.name or user.email",
+  hint: {
+    text: "Set the commit author in Settings → Git servers, or run:",
+    command: 'lado git-server author --name "Your Name" --email you@example.com',
+  },
+};
+const ANN = { name: "Ann Lee", email: "ann@example.com" };
+const gitServers = (author: typeof ANN | null) =>
+  json({ servers: [], kinds: [], author, git_author: null, author_variables: [] });
+
+test("nobody signs: the note under Folder name leads to Settings, no fields; Create and start off", async () => {
+  answers["GET /api/scratch-target"] = () => json(scratchTarget("Сайт кофейни", null, { author: NOBODY }));
   const dialog = await openLaunch(false);
   await waitFor(() => expect(placeBox().value).toBe("New empty folder"));
   fireEvent.change(scratchName(), { target: { value: "Сайт кофейни" } });
-  expect(await within(dialog).findByText(/git doesn't know who signs the agents' commits/)).toBeTruthy();
-  expect(within(dialog).getByText("git config --global user.name x")).toBeTruthy();
-  expect(within(dialog).getByRole("button", { name: "Copy command" })).toBeTruthy();
+  expect(await within(dialog).findByText("Agents need a name and email to sign their commits, and none is set yet.")).toBeTruthy();
+  expect(within(dialog).getByText("Then come back: this window checks again by itself.")).toBeTruthy();
+  const link = within(dialog).getByRole("link", { name: "Set the commit author in Settings (opens a new tab)" });
+  expect(link.getAttribute("href")).toBe("/settings/git-servers?author");
+  expect(link.getAttribute("target")).toBe("_blank");
+  expect(within(dialog).queryByText(NOBODY.hint.command)).toBeNull();
+  expect(within(dialog).queryByRole("textbox", { name: "Email" })).toBeNull();
   expect(createButton().disabled).toBe(true);
-  await waitFor(() => expect(footerText()).toContain("tell git who you are"));
+  await waitFor(() => expect(footerText()).toContain("To start: set the commit author"));
+  fireEvent.click(within(dialog).getByRole("button", { name: "set the commit author" }));
+  expect(document.activeElement).toBe(link);
+});
+
+test("Check again finds nobody, then the window finds the author when it gets the focus back", async () => {
+  answers["GET /api/scratch-target"] = () => json(scratchTarget("shop", null, { author: NOBODY }));
+  let author: typeof ANN | null = null;
+  answers["GET /api/git-servers"] = () => gitServers(author);
+  const dialog = await openLaunch(false);
+  await waitFor(() => expect(placeBox().value).toBe("New empty folder"));
+  fireEvent.change(scratchName(), { target: { value: "shop" } });
+  const again = await within(dialog).findByRole("button", { name: "Check again" });
+  fireEvent.click(again);
+  expect(await within(dialog).findByText("Checked again: still nobody. Save the name and email in Settings first.")).toBeTruthy();
+  author = ANN;
+  within(dialog).getByRole("link", { name: /Set the commit author in Settings/ }).focus();
+  await act(async () => window.dispatchEvent(new Event("focus")));
+  expect(await within(dialog).findByText("✓ Agents commit as Ann Lee <ann@example.com>.")).toBeTruthy();
+  expect(within(dialog).queryByText(/Agents need a name and email/)).toBeNull();
+  await waitFor(() => expect(footerText()).not.toContain("set the commit author"));
+  await waitFor(() => expect(document.activeElement).toBe(firstField()));
 });
 
 test("a refused name shows under Folder name, marked invalid, and Create and start stays off", async () => {
@@ -4061,26 +4090,19 @@ test("a folder too big or the home folder is refused, with the footer's reason",
   expect(await within(dialog).findByText("Choose a smaller folder: this is your home folder.")).toBeTruthy();
 });
 
-test("git's missing author keeps the set-up off; Check again checks the folder anew", async () => {
-  const author = {
-    text: "git doesn't know who signs the agents' commits: it has no user.name or user.email",
-    hint: {
-      text: "Tell git who you are, once for this computer:",
-      command: 'git config --global user.name "Your Name" && git config --global user.email you@example.com',
-    },
-  };
-  folders[NOTES] = plain({ author });
+test("nobody signs the set-up: the note in the panel's place; found, the panel and Set up and start come", async () => {
+  folders[NOTES] = plain({ author: NOBODY });
+  answers["GET /api/git-servers"] = () => gitServers(ANN);
   const dialog = await openLaunch();
   type(NOTES);
-  expect(await within(dialog).findByText("Git doesn't know who you are yet. Tell it once for this computer:")).toBeTruthy();
-  expect(within(dialog).getByText(author.hint.command)).toBeTruthy();
+  expect(await within(dialog).findByText("Agents need a name and email to sign their commits, and none is set yet.")).toBeTruthy();
+  expect(within(dialog).queryByText(/git config --global/)).toBeNull();
+  expect(within(dialog).queryByText(/LADO_GIT_NAME/)).toBeNull();
   expect(startButton().disabled).toBe(true);
-  await waitFor(() => expect(footerText()).toContain("To start: tell git who you are."));
-  const asked = () => calls.filter((c) => c.path === `/api/folders?path=${encodeURIComponent(NOTES)}`).length;
-  const before = asked();
-  folders[NOTES] = plain();
+  await waitFor(() => expect(footerText()).toContain("To start: set the commit author."));
   fireEvent.click(within(dialog).getByRole("button", { name: "Check again" }));
-  await waitFor(() => expect(asked()).toBe(before + 1));
+  expect(await within(dialog).findByText("✓ Agents commit as Ann Lee <ann@example.com>.")).toBeTruthy();
+  expect(within(dialog).getByText("128 files (4.2 MB)")).toBeTruthy();
   await waitFor(() => expect(startButton().disabled).toBe(false));
 });
 
@@ -4096,23 +4118,21 @@ function holdFolders() {
   return release;
 }
 
-test("Check again keeps the author's text with Checking… and the focus, then the panel follows the answer", async () => {
-  const author = { text: "no author", hint: { text: "Tell git who you are, once for this computer:", command: "git config x" } };
-  folders[NOTES] = plain({ author });
+test("Check again reads Checking…, off with the focus kept, until the answer", async () => {
+  folders[NOTES] = plain({ author: NOBODY });
+  let release = (_: Response) => {};
+  answers["GET /api/git-servers"] = () => new Promise<Response>((resolve) => (release = resolve));
   const dialog = await openLaunch();
   type(NOTES);
   const again = await within(dialog).findByRole("button", { name: "Check again" });
-  const release = holdFolders();
-  folders[NOTES] = plain();
   again.focus();
   fireEvent.click(again);
   await waitFor(() => expect(again.textContent).toBe("Checking…"));
   expect(again.getAttribute("aria-disabled")).toBe("true");
   expect(document.activeElement).toBe(again);
-  expect(footerText()).toContain("To start: wait for the count.");
-  await act(async () => release());
-  await within(dialog).findByText("128 files (4.2 MB)");
-  await waitFor(() => expect(document.activeElement).toBe(firstField()));
+  await act(async () => release(gitServers(null)));
+  await waitFor(() => expect(again.textContent).toBe("Check again"));
+  expect(within(dialog).getByText(/Checked again: still nobody/)).toBeTruthy();
 });
 
 test("while a plain folder without its author's problem is checked again, the panel reads Counting files…", async () => {

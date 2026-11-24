@@ -9,7 +9,7 @@ from pathlib import Path
 import agent_helpers
 import pytest
 
-from lado import setup
+from lado import scratch, setup, state
 
 BIG = setup.MAX_FILE + 1
 
@@ -196,7 +196,22 @@ def test_make_needs_gits_author(notes, git_config):
     with pytest.raises(setup.SetupError) as refused:
         setup.make(str(notes), [])
     assert refused.value.kind == "no_author"
+    assert (str(refused.value), refused.value.hint) == (scratch.NO_AUTHOR, scratch.AUTHOR_HINT)
     assert not (notes / ".git").exists()
+
+
+def test_make_commits_as_ladOs_author_without_gits(notes, git_config):
+    git_config.write_text("")
+    state.set_commit_author("Ann Lee", "ann@example.com")
+    setup.make(str(notes), [])
+    log = subprocess.run(
+        ["git", "-C", str(notes), "log", "--format=%an <%ae> %cn <%ce>"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert log == "Ann Lee <ann@example.com> Ann Lee <ann@example.com>"
+    assert git_config.read_text() == ""
 
 
 def failing_commit(tmp_path, monkeypatch):

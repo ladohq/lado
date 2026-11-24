@@ -26,8 +26,8 @@ from container_helpers import (
 pytestmark = pytest.mark.container
 
 GIT_WARNING = (
-    "lado: warning: git has no user.name or user.email: agents cannot commit; set "
-    "LADO_GIT_NAME and LADO_GIT_EMAIL"
+    "lado: warning: git has no user.name or user.email; set LADO_GIT_NAME and LADO_GIT_EMAIL, "
+    "or the commit author in Settings → Git servers"
 )
 FAKE_KEY = "fake-6c1d-not-a-key"
 FAKE_GH = "fake-gh-123-not-a-token"
@@ -101,6 +101,32 @@ def test_git_identity_and_the_warning_without_it(start):
 
     bare = served(start)
     assert GIT_WARNING in bare.logs().splitlines(), bare.logs()
+
+
+def api(port: int, token: str, method: str, path: str, body: dict | None = None) -> dict:
+    """The served server's answer to `method path` with `body` as JSON."""
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}",
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method=method,
+    )
+    with urllib.request.urlopen(request, timeout=60) as answer:
+        return json.load(answer)
+
+
+def test_a_clean_container_starts_a_project_with_ladOs_author_alone(start):
+    """No LADO_GIT_NAME, no terminal: LADO's author set through the API signs a repository
+    made from scratch, and git's global config stays without user.name."""
+    c = served(start)
+    token = c.exec("lado", "ui", "--no-open").stdout.strip().partition("?token=")[2]
+    api(c.port, token, "PUT", "/api/git-author", {"name": "Ann Lee", "email": "ann@example.com"})
+    api(c.port, token, "POST", "/api/projects", {"id": "shop", "title": None})
+    made = api(c.port, token, "POST", "/api/projects/shop/repos", {"name": "site"})
+    log = c.sh(f"git -C {made['path']} log -1 --format='%an <%ae>|%cn <%ce>'").stdout.strip()
+    assert log == "Ann Lee <ann@example.com>|Ann Lee <ann@example.com>"
+    assert c.sh("git config --global user.name", check=False).stdout.strip() == ""
+    assert "agents cannot commit" not in c.exec("lado", "doctor", check=False).stdout
 
 
 def test_a_new_git_email_on_the_same_home_volume(start):

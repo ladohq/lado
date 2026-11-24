@@ -51,6 +51,9 @@ export function project(id: string, more: Partial<ProjectInfo> = {}): ProjectInf
     running: [],
     overrides: [],
     unused: [],
+    author: null,
+    author_variables: [],
+    commit_author: { author: { name: "Ann Lee", email: "ann@example.com" }, source: "lado" },
     ...more,
   };
 }
@@ -118,6 +121,7 @@ export class FakeProjects {
   // A project's deletion by id, over its folder with no sessions and no unpushed work, its
   // variables' and secrets' names.
   deletions: Record<string, Partial<ProjectDeletion>> = {};
+  without: Record<string, ProjectInfo["repos"]> = {}; // a project's repositories before its author
   // While set, DELETE /api/projects/<id> answers only once it resolves.
   heldDelete: Promise<void> | null = null;
   // A remote's branches by URL; an unknown URL is refused as git's not_found.
@@ -242,6 +246,18 @@ export class FakeProjects {
       return new Response(null, { status: 204 });
     }
     if (kind === undefined) return json(found);
+    if (kind === "author") {
+      const author = method === "PUT" ? { name: String(body.name).trim(), email: String(body.email).trim() } : null;
+      const own = author && { author, source: "project" as const };
+      // Who each repository's agents commit as without the project's author.
+      this.without[id] ??= found.repos;
+      this.projects[id] = {
+        ...found,
+        author,
+        repos: own ? found.repos.map((one) => ({ ...one, commit_author: own })) : this.without[id],
+      };
+      return json(this.projects[id]);
+    }
     if (kind === "deletion") {
       return json({
         id,

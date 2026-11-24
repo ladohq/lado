@@ -17,6 +17,7 @@ import lado
 from lado import (
     agent_env,
     artifacts,
+    commit_authors,
     git_kinds,
     git_servers,
     gui_session,
@@ -239,21 +240,30 @@ def check_git() -> Check:
 
 
 def check_git_author() -> Check | None:
-    """Whether git knows whom to sign the agents' commits with, by a fresh start's own look
-    (`scratch.author_problem`, from `/` as the container's entrypoint looks); never the name
-    or the email. None when git does not run: the `git` check says why."""
+    """Whether anybody signs the agents' commits outside a project and a git server: LADO's
+    commit author, else git's own (lado.commit_authors, from `/` as the container's
+    entrypoint looks), as a fresh start looks; never the name or the email. None when git
+    does not run: the `git` check says why. A busy lado.db counts as no LADO author: the
+    git servers' line names it."""
     try:
         runtime.git_version()
     except runtime.FolderProblem:
         return None
+    with contextlib.suppress(sqlite3.OperationalError):
+        if commit_authors.lado() is not None:
+            return Check("git author", OK, "LADO's commit author set")
     try:
-        problem = scratch.author_problem("/")
-    except runtime.LadoError as error:
-        return Check("git author", WARN, str(error))
-    if problem is None:
+        own = commit_authors.git_own("/")
+    except commit_authors.Unreadable as error:
+        return Check("git author", WARN, f"git cannot read its config: {error}")
+    if own is not None:
         return Check("git author", OK, "user.name and user.email set")
-    hint = problem.hint.line() if problem.hint else ""
-    return Check("git author", WARN, "no user.name or user.email: agents cannot commit", hint)
+    return Check(
+        "git author",
+        WARN,
+        "no LADO commit author and no user.name or user.email: agents cannot commit",
+        scratch.AUTHOR_HINT.line(),
+    )
 
 
 def _git_fact() -> str:

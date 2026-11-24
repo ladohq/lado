@@ -518,7 +518,8 @@ export function FolderNotes({
 }
 
 // New empty folder…'s field: the name in the human's words, the folder it makes when its
-// slug differs from them, and why git cannot sign its commit yet.
+// slug differs from them, and who signs its commit (`author`: the window's note of a missing
+// author, or who agents commit as once its note found one).
 export function ScratchNameField({
   text,
   onText,
@@ -528,6 +529,7 @@ export function ScratchNameField({
   disabled,
   inputRef,
   onProject,
+  author,
 }: {
   text: string;
   onText: (text: string) => void;
@@ -537,6 +539,7 @@ export function ScratchNameField({
   disabled: boolean;
   inputRef: RefObject<HTMLInputElement | null>;
   onProject: (place: ProjectPlace) => void;
+  author: ReactNode;
 }) {
   const ids = useId();
   const name = target?.name;
@@ -569,12 +572,7 @@ export function ScratchNameField({
             <RefusedNote text={target.text} hint={target.hint ?? null} project={target.project ?? null} onProject={onProject} />
           )}
         {target?.warning && <span className="field-note warn">⚠ {target.warning}</span>}
-        {target?.author && (
-          <div className="field-note bad">
-            <div>{target.author.text}</div>
-            {target.author.hint && <FolderHint text={target.author.hint.text} command={target.author.hint.command} />}
-          </div>
-        )}
+        {author}
         {problem && <span className="field-note bad">{problem}</span>}
       </div>
     </div>

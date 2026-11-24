@@ -1,5 +1,7 @@
-// Settings → Git servers (docs/design/ui.md, Git servers): the human's GitLab, github.com and
-// GitHub Enterprise servers, as `lado git-server` keeps them; github.com is one like any other. On screen only values, states, one-line
+// Settings → Git servers (docs/design/ui.md, Git servers): LADO's own commit author first (Set
+// author, Edit, Remove with Undo; `?author` opens its form), then the human's GitLab,
+// github.com and GitHub Enterprise servers, as `lado git-server` keeps them; github.com is one
+// like any other. On screen only values, states, one-line
 // results and actions; every why stands behind an info button (InfoTip). The list is read when
 // the page opens and after each change of its own (GET /api/git-servers asks no server). A
 // server's row opens to its panel: Sign-in (Check, Replace token), Commit author (Set author,
@@ -17,9 +19,12 @@ import {
   type CertificateOffer,
   checkGitServer,
   checkSavedGitServer,
+  clearGitAuthor,
   clearGitServerAuthor,
   clearGitServerCertificate,
   type EntryRefused,
+  type AuthorInfo,
+  type GitAuthorDone,
   type GitEntryRefused,
   type GitKindInfo,
   type GitServerAdded,
@@ -31,6 +36,7 @@ import {
   gitRefusalOf,
   refusalOf,
   removeGitServer,
+  setGitAuthor,
   setGitServerAuthor,
   setGitServerCertificate,
 } from "./api";
@@ -49,7 +55,13 @@ export const TIPS = {
   signIn:
     "Agents clone and push here with this token. Check asks the server whether it still works. Replace the token when it expires or is revoked: the new one is checked before it is saved.",
   author:
-    "The name and email on agents' commits to this server's repositories. Without one, they carry your own git author, as everywhere else.",
+    "The name and email on agents' commits to this server's repositories. Without one, they carry LADO's author, or your own git author.",
+  ladoAuthor:
+    "Agents sign each commit, a saved step of their work, with a name and an email. LADO's author signs in every project, unless the project or the repository's git server has its own. A change reaches agents started after it; running agents keep theirs.",
+  serverAuthor:
+    "Commits to repositories on this server can be signed by another author than LADO's, e.g. your work account. Most people need none.",
+  variables:
+    "These variables come from the agents' environment (your login shell, LADO's variables or a project's) and win over every commit author LADO gives. Remove them there to let these authors sign.",
   address:
     "The address you open the server at in a browser. LADO asks the server what it is, GitLab or GitHub, as soon as you type it.",
   token:
@@ -78,7 +90,7 @@ type Trust = { offer: CertificateOffer; before: CertificateOffer | null };
 // certificate's line keeps its PEM for Undo (`pem`).
 type Result = {
   host: string;
-  place: "top" | "signin" | "author" | "cert" | "gone";
+  place: "top" | "signin" | "author" | "cert" | "gone" | "lado";
   tone: "ok" | "warn" | "bad";
   text: string;
   tip?: Tip;
@@ -146,6 +158,27 @@ function secondLine(server: GitServerInfo, failed: string | undefined): { text: 
 
 const authorOf = (server: GitServerInfo) =>
   server.author_name !== null ? `${server.author_name} <${server.author_email}>` : null;
+const textOf = (author: AuthorInfo) => `${author.name} <${author.email}>`;
+const LADO = ""; // the result line's `host` of LADO's own author
+
+// The names, never the values, of the variables that win over every author: `A and B`, `A, B
+// and C`.
+export function namesOf(names: string[]): string {
+  return names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+// The warning of the variables of the agents' environment that sign instead of any author.
+export function VariablesWin({ names }: { names: string[] }) {
+  if (names.length === 0) return null;
+  return (
+    <p className="gx-result warn" role="status">
+      <span className="t">
+        {`⚠ The agents' environment sets ${namesOf(names)}: these sign their commits instead of any author here.`}{" "}
+        <InfoTip about="the environment variables">{TIPS.variables}</InfoTip>
+      </span>
+    </p>
+  );
+}
 
 export function GitServersPage() {
   const id = useId();
@@ -162,7 +195,7 @@ export function GitServersPage() {
       if (asked !== latest.current) return;
       if (!Array.isArray(found?.servers) || !Array.isArray(found?.kinds))
         throw new Error("the server gave no git servers: reload the page");
-      setEntries({ servers: found.servers, kinds: found.kinds });
+      setEntries(found);
       setProblem(null);
     } catch (error) {
       if (asked === latest.current) setProblem(refusalOf(error).message);
@@ -320,6 +353,42 @@ export function GitServersPage() {
       tone: "ok",
       text: "Author saved.",
     }, true);
+  // LADO's own author: its form, a Remove or an Undo asking (its buttons off meanwhile), and
+  // whether the page was opened by the New session window's link (`?author`).
+  const [ladoBusy, setLadoBusy] = useState(false);
+  const [ladoForm, setLadoForm] = useState(false);
+  const [fromWindow, setFromWindow] = useState(false);
+  const ladoNow = (done: GitAuthorDone) =>
+    setEntries((now) => (now ? { ...now, author: done.author, git_author: done.git_author } : now));
+  const savedLine = () =>
+    fromWindow ? "Author saved. Go back to the New session tab: it checks again by itself." : "Author saved.";
+  const ladoAuthor = async (call: () => Promise<GitAuthorDone>, line: Result, keep = false) => {
+    if (ladoBusy) return;
+    const mine = keep ? ++actions.current : act();
+    setLadoBusy(true);
+    try {
+      ladoNow(await call());
+      if (stale(mine)) return;
+      setResult(line);
+      focusOn(line.way === "undo" ? "undo:lado" : "edit:lado");
+    } catch (error) {
+      if (!stale(mine)) setResult({ host: LADO, place: "lado", tone: "bad", text: refusalOf(error).message });
+    } finally {
+      setLadoBusy(false);
+    }
+  };
+  const removeLado = (author: AuthorInfo) => {
+    setLadoForm(false);
+    void ladoAuthor(clearGitAuthor, { host: LADO, place: "lado", tone: "ok", text: "Author removed.", way: "undo", undo: author });
+  };
+  const undoLado = (undo: { name: string; email: string }) =>
+    void ladoAuthor(() => setGitAuthor(undo.name, undo.email), { host: LADO, place: "lado", tone: "ok", text: savedLine() }, true);
+  const toggleLado = () => {
+    act();
+    setAdding(0); // one form at a time on the page
+    setForm(null);
+    setLadoForm((now) => !now);
+  };
   // The servers whose certificate is being trusted, removed or put back: their buttons are off.
   const [certBusy, setCertBusy] = useState<string[]>([]);
   const certificate = async (server: GitServerInfo, call: () => Promise<Result>, focus: string, keep = false) => {
@@ -379,16 +448,19 @@ export function GitServersPage() {
   const toggleForm = (host: string, what: Form["what"]) => {
     act();
     setAdding(0); // one form at a time on the page
+    setLadoForm(false);
     setForm((now) => (now?.host === host && now.what === what ? null : { host, what }));
   };
   const closeForm = (key: string) => {
     act(); // a save still under way answers to no form
     setForm(null);
+    setLadoForm(false);
     focusOn(key);
   };
   // A clone's note opens the page to check a saved server (`?check=<host>`) or to add one
-  // (`?add=<address>`, the focus in Token), once the list is read; the query then leaves the
-  // address bar, so a reload does neither again. A host no server is saved for opens nothing.
+  // (`?add=<address>`, the focus in Token), and the New session window's to LADO's author form
+  // (`?author`, the focus in Name), once the list is read; the query then leaves the address
+  // bar, so a reload does none again. A host no server is saved for opens nothing.
   const [params, setParams] = useSearchParams();
   const [addAt, setAddAt] = useState<string | null>(null);
   const fromQuery = useRef(false);
@@ -396,9 +468,16 @@ export function GitServersPage() {
     if (!entries || fromQuery.current) return;
     const host = params.get("check");
     const at = params.get("add");
-    if (host === null && at === null) return;
+    const asked = params.has("author");
+    if (host === null && at === null && !asked) return;
     fromQuery.current = true;
     setParams({}, { replace: true });
+    if (asked) {
+      act();
+      setFromWindow(true);
+      setLadoForm(true);
+      return;
+    }
     const server = host ? entries.servers.find((s) => s.host === host) : undefined;
     if (server) {
       open(server.host);
@@ -418,6 +497,93 @@ export function GitServersPage() {
         <p className="problem" role="alert">
           {problem}
         </p>
+      )}
+      {entries && (
+        <section className="mx-block" aria-labelledby={`${id}-author`}>
+          <div className="mx-h">
+            <h3 id={`${id}-author`}>Commit author</h3>
+            <InfoTip about="Commit author">{TIPS.ladoAuthor}</InfoTip>
+          </div>
+          <div className="gx-body ca-body">
+            <ul className="gx-rows">
+              <li className="gx-row">
+                <div>
+                  <div className="gx-name">LADO's author</div>
+                  <p className="gx-val">
+                    {entries.author ? (
+                      <b>{textOf(entries.author)}</b>
+                    ) : entries.git_author ? (
+                      <>
+                        <b>{textOf(entries.git_author)}</b> <span className="ca-src">· from git on this computer</span>
+                      </>
+                    ) : (
+                      <span className="w">⚠ Nobody: agents cannot commit</span>
+                    )}
+                  </p>
+                </div>
+                <div className="gx-ctl">
+                  <button
+                    ref={target("edit:lado")}
+                    type="button"
+                    className={entries.author || entries.git_author ? "quiet" : "primary"}
+                    aria-label={entries.author ? "Edit LADO's author" : "Set LADO's author"}
+                    aria-pressed={ladoForm}
+                    disabled={ladoBusy}
+                    onClick={toggleLado}
+                  >
+                    {entries.author ? "Edit" : "Set author"}
+                  </button>
+                  {entries.author && (
+                    <button
+                      type="button"
+                      className="quiet"
+                      aria-label="Remove LADO's author"
+                      disabled={ladoBusy}
+                      onClick={() => removeLado(entries.author!)}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+                <div className="gx-under">
+                  {ladoForm && (
+                    <AuthorForm
+                      saved={entries.author ?? null}
+                      save={setGitAuthor}
+                      onTouch={act}
+                      onCancel={() => closeForm("edit:lado")}
+                      onDone={(done, mine) => {
+                        ladoNow(done);
+                        setLadoForm(false);
+                        if (stale(mine)) return;
+                        setResult({ host: LADO, place: "lado", tone: "ok", text: savedLine() });
+                        focusOn("edit:lado");
+                      }}
+                    />
+                  )}
+                  {result?.place === "lado" && (
+                    <p className={`gx-result ${result.tone}`} role={result.tone === "ok" ? "status" : "alert"}>
+                      <span className="t">{result.text}</span>
+                      {result.way === "undo" && result.undo && (
+                        <button
+                          ref={target("undo:lado")}
+                          type="button"
+                          className="quiet"
+                          aria-label="Undo the removal of LADO's author"
+                          disabled={ladoBusy}
+                          onClick={() => undoLado(result.undo!)}
+                        >
+                          Undo
+                        </button>
+                      )}
+                    </p>
+                  )}
+                  <VariablesWin names={entries.author_variables ?? []} />
+                </div>
+              </li>
+            </ul>
+          </div>
+        </section>
       )}
       {entries && (
         <section className="mx-block" aria-labelledby={id}>
@@ -535,44 +701,77 @@ export function GitServersPage() {
                             )}
                           </div>
                         </li>
-                        <li className="gx-row">
-                          <div>
-                            <div className="gx-name">
-                              Commit author <InfoTip about="Commit author">{TIPS.author}</InfoTip>
-                            </div>
-                            <p className="gx-val">{commits ? <b>{commits}</b> : "Your own git author"}</p>
-                          </div>
-                          <div className="gx-ctl">
-                            <button
-                              ref={target(`edit:${host}`)}
-                              type="button"
-                              className="quiet"
-                              aria-label={`${commits ? "Edit" : "Set"} the commit author of ${server.address}`}
-                              aria-pressed={formHere === "author"}
-                              disabled={authorBusy.includes(host)}
-                              onClick={() => toggleForm(host, "author")}
-                            >
-                              {commits ? "Edit" : "Set author"}
-                            </button>
-                            {commits && (
+                        <li className={`gx-row${commits ? "" : " gx-minor"}`}>
+                          {commits ? (
+                            <>
+                              <div>
+                                <div className="gx-name">
+                                  Commit author <InfoTip about="Commit author">{TIPS.author}</InfoTip>
+                                </div>
+                                <p className="gx-val">
+                                  <b>{commits}</b>
+                                </p>
+                              </div>
+                              <div className="gx-ctl">
+                                <button
+                                  ref={target(`edit:${host}`)}
+                                  type="button"
+                                  className="quiet"
+                                  aria-label={`Edit the commit author of ${server.address}`}
+                                  aria-pressed={formHere === "author"}
+                                  disabled={authorBusy.includes(host)}
+                                  onClick={() => toggleForm(host, "author")}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  className="quiet"
+                                  aria-label={`Remove the commit author of ${server.address}`}
+                                  disabled={authorBusy.includes(host)}
+                                  onClick={() => {
+                                    setForm(null);
+                                    removeAuthor(server);
+                                  }}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <p className="gx-val">
+                              {"Commit author: "}
+                              {entries.author ? (
+                                <>
+                                  {textOf(entries.author)} <span className="ca-src">(LADO's)</span>
+                                </>
+                              ) : entries.git_author ? (
+                                <>
+                                  {textOf(entries.git_author)} <span className="ca-src">(from git on this computer)</span>
+                                </>
+                              ) : (
+                                <span className="w">none yet</span>
+                              )}{" "}
+                              <span className="sep">·</span>{" "}
                               <button
+                                ref={target(`edit:${host}`)}
                                 type="button"
-                                className="quiet"
-                                aria-label={`Remove the commit author of ${server.address}`}
+                                className="link-button"
+                                aria-label={`Set a commit author for ${server.address}`}
+                                aria-pressed={formHere === "author"}
                                 disabled={authorBusy.includes(host)}
-                                onClick={() => {
-                                  setForm(null);
-                                  removeAuthor(server);
-                                }}
+                                onClick={() => toggleForm(host, "author")}
                               >
-                                Remove
+                                Set one for this server
                               </button>
-                            )}
-                          </div>
+                              <InfoTip about={`the commit author of ${server.address}`}>{TIPS.serverAuthor}</InfoTip>
+                            </p>
+                          )}
                           <div className="gx-under">
                             {formHere === "author" && (
-                              <GitAuthor
-                                server={server}
+                              <AuthorForm
+                                saved={commits ? { name: server.author_name!, email: server.author_email! } : null}
+                                save={(name, email) => setGitServerAuthor(host, name, email)}
                                 onTouch={act}
                                 onCancel={() => closeForm(`edit:${host}`)}
                                 onDone={(done, mine) => {
@@ -724,6 +923,7 @@ export function GitServersPage() {
                   onClick={() => {
                     act();
                     setForm(null);
+                    setLadoForm(false);
                     setAddAt(null);
                     setAdding(++addForms.current);
                   }}
@@ -1319,37 +1519,43 @@ function AddGitServer({
   );
 }
 
-// The commit author: Name and Email under its row, the saved ones else empty, the focus on
-// Name; Save author once both are filled and differ from the saved; Esc cancels. A refusal
-// stands under its field, one of no field under the buttons.
-function GitAuthor({
-  server,
+// A commit author's form (LADO's, a server's, a project's): Name and Email under its row, the
+// saved ones else empty, the focus on Name; Save author once both are filled and differ from
+// the saved; Esc cancels. A refusal stands under its field, which keeps its value and takes
+// the focus; one of no field stands under the buttons.
+export function AuthorForm<T>({
+  saved,
+  save,
   onTouch,
   onCancel,
   onDone,
 }: {
-  server: GitServerInfo;
+  saved: { name: string; email: string } | null;
+  save: (name: string, email: string) => Promise<T>;
   onTouch: () => number;
   onCancel: () => void;
-  onDone: (done: { server: GitServerInfo }, mine: number) => void;
+  onDone: (done: T, mine: number) => void;
 }) {
   const id = useId();
-  const [name, setName] = useState(server.author_name ?? "");
-  const [email, setEmail] = useState(server.author_email ?? "");
+  const [name, setName] = useState(saved?.name ?? "");
+  const [email, setEmail] = useState(saved?.email ?? "");
   const [refused, setRefused] = useState<EntryRefused | null>(null);
   const [busy, setBusy] = useState(false);
-  const changed = name.trim() !== (server.author_name ?? "") || email.trim() !== (server.author_email ?? "");
+  const fields = { name: useRef<HTMLInputElement>(null), email: useRef<HTMLInputElement>(null) };
+  const changed = name.trim() !== (saved?.name ?? "") || email.trim() !== (saved?.email ?? "");
   const ready = !busy && name.trim() !== "" && email.trim() !== "" && changed;
-  const save = async () => {
+  const submit = async () => {
     if (!ready) return;
     const mine = onTouch();
     setBusy(true);
     setRefused(null);
     try {
-      onDone(await setGitServerAuthor(server.host, name, email), mine);
+      onDone(await save(name, email), mine);
     } catch (error) {
-      setRefused(refusalOf(error));
+      const found = refusalOf(error);
+      setRefused(found);
       setBusy(false);
+      if (found.field === "name" || found.field === "email") setTimeout(() => fields[found.field as "name" | "email"].current?.focus());
     }
   };
   const under = (field: string) => (refused?.field === field ? [refused] : []);
@@ -1362,18 +1568,21 @@ function GitAuthor({
         if (event.key === "Escape" && !event.defaultPrevented) {
           event.stopPropagation();
           onCancel();
-        } else if (event.key === "Enter" && event.target instanceof HTMLInputElement) void save();
+        } else if (event.key === "Enter" && event.target instanceof HTMLInputElement) void submit();
       }}
     >
       <div className="launch-grid">
         <div className="field">
           <label htmlFor={`${id}-name`}>Name</label>
           <input
+            ref={fields.name}
             id={`${id}-name`}
             className="words"
             value={name}
-            placeholder="Ivan Petrov"
+            placeholder="Ann Lee"
+            autoComplete="name"
             aria-invalid={under("name").length ? true : undefined}
+            aria-describedby={under("name").length ? `${id}-name-note` : undefined}
             autoFocus
             onChange={(event) => {
               setName(event.target.value);
@@ -1381,28 +1590,36 @@ function GitAuthor({
             }}
           />
           {under("name").map((r) => (
-            <CheckNote key={r.message} note={r} />
+            <span key={r.message} id={`${id}-name-note`}>
+              <CheckNote note={r} />
+            </span>
           ))}
         </div>
         <div className="field">
           <label htmlFor={`${id}-email`}>Email</label>
           <input
+            ref={fields.email}
             id={`${id}-email`}
+            type="email"
             value={email}
-            placeholder="ivan.petrov@example.com"
+            placeholder="ann@example.com"
+            autoComplete="email"
             aria-invalid={under("email").length ? true : undefined}
+            aria-describedby={under("email").length ? `${id}-email-note` : undefined}
             onChange={(event) => {
               setEmail(event.target.value);
               edited("email");
             }}
           />
           {under("email").map((r) => (
-            <CheckNote key={r.message} note={r} />
+            <span key={r.message} id={`${id}-email-note`}>
+              <CheckNote note={r} />
+            </span>
           ))}
         </div>
       </div>
       <div className="mx-form-acts">
-        <button type="button" className="primary" disabled={!ready} onClick={() => void save()}>
+        <button type="button" className="primary" disabled={!ready} onClick={() => void submit()}>
           Save author
         </button>
         <button type="button" className="quiet" onClick={onCancel}>

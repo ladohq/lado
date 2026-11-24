@@ -1654,12 +1654,11 @@ connection, above).
   folder.`, `… this one holds over 20,000 files.` or `… over 2 GB.` (the limit is
   `SetupInfo.max_files`), `Choose another folder: git cannot read all of it (<git's line>).`,
   `Choose another folder, or rename <name>: LADO cannot leave out a name with a line break or
-  bytes that are no text.` (`odd_name`); git's missing author: `Git doesn't know who you are
-  yet. Tell it once for this computer:` with the command, Copy and **Check again** (in LADO's
-  container the `.env` text and no Check again). The window cannot know a folder is plain
-  before its check answers (`checking…`, `wait for the check`); checked again (Check again, a
-  refused set-up), the last answer stays in place: the author's text with `Checking…` (off,
-  the focus kept), else `Counting files…`, and a failed ask shows its error. The
+  bytes that are no text.` (`odd_name`); nobody to sign its commit: the note of a missing
+  author (below) in the panel's place, `To start: set the commit author`. The window cannot
+  know a folder is plain before its check answers (`checking…`, `wait for the check`); checked
+  again (a refused set-up), the last answer stays in place with `Counting files…`, and a
+  failed ask shows its error. The
   button **Set up and start in <folder>** sends `where: {kind: "setup", path, include}`;
   the server sets the folder up (`setup.make`: one commit, the left-out paths not ticked
   appended to `.gitignore`, rolled back on a failure) and starts as for a folder.
@@ -1687,12 +1686,25 @@ connection, above).
 - **New empty folder…** shows **Folder name** (placeholder `Coffee shop site`, info `LADO
   creates it in <folder>.`), a quiet `folder <slug>` when the slug differs from the words
   (`lado.scratch.names`), the name's or the folder's refusal (`GET /api/scratch-target`) and
-  git's missing author with its hint and Copy, and always the note `Also the session’s name.`:
+  the note of a missing author (below), and always the note `Also the session’s name.`:
   the window has no Name field for it. **Create and start** sends `where: {kind: "scratch", path}` with the name and the title. The server checks
   the new session whole before it makes the folder, so a refusal (a kit's too, with Team
   open) keeps Where on New empty folder with the name as typed; a start refused after the
   repository was made turns Where to it when the repository stays (the server removes it
   while unused).
+- **The note of a missing author** (`AuthorMissing.tsx`; New empty folder, a plain folder's
+  set-up, and a project's Add repository → From scratch), when nobody signs the first commit
+  (`ScratchInfo.author`/`SetupInfo.author` set; a project's `commit_author` none): `Agents need
+  a name and email to sign their commits, and none is set yet.`, a link that looks as a quiet
+  button **Set it in Settings ↗** (`/settings/git-servers?author`, a new tab, named `Set the
+  commit author in Settings (opens a new tab)`), **Check again** (`Checking…`, off with the
+  focus kept, while it asks; still nobody: `Checked again: still nobody. Save the name and email
+  in Settings first.`) and `Then come back: this window checks again by itself.`; no author
+  fields. While it shows, the window asks again (`GET /api/git-servers`: LADO's author, else
+  git's own; a project's page for its repository) each time the window gets the focus back or
+  the tab becomes visible, never on a timer. Found: `✓ Agents commit as <name> <<email>>.` in its
+  place, the start button on, and the focus, when it was in the note, on Task (Create in Add
+  repository). The footer's `set the commit author` focuses the link.
 - **Project…** shows `LaunchProject.tsx`: **Project** (by title, one whose folder is not
   found off, its line of repositories, sessions running and folder) and **Repository** (a
   `radiogroup`, `✓ Ready · branch X`), from `GET /api/project-launch?project=&repo=` (the last
@@ -1993,7 +2005,8 @@ New session (LAD-137) is in Launch and session control.
 - **The page**, top to bottom: the head, the title (the id without one) with **Rename** (a
   pencil), the id, and **New session…**, which opens the New session window in Project with
   this project; `<N> repositories · <N> sessions running · folder <folder>` (`folder not
-  found` after it); the blocks Repositories and Sessions; always the warning `⚠ Projects of
+  found` after it); the line of its commit author (below); the blocks Repositories and
+  Sessions; always the warning `⚠ Projects of
   one LADO are not isolated from each other: …`; the line on who gets a change: `New values
   reach the agents started after a change; running agents keep the environment they
   started with. Running now: <sessions> — restart a session to give it the change.`, each
@@ -2001,6 +2014,21 @@ New session (LAD-137) is in Launch and session control.
   Variables and Secrets; and last the block **Delete project**: `Deletes its folder with
   every repository in it, its sessions, variables and secrets. Refused while a session of
   the project runs.` and the button **Delete project…** (red text) in its head.
+- **Commit author** (`ProjectAuthor.tsx`, LAD-312, design flow `ui-design/lad-312-ui`): one
+  line under the facts, not a section: `Commit author` ⓘ `About the project's commit author`
+  (agents of this project sign their commits with this author in every repository of the
+  project, over LADO's author and a git server's; most projects need none), then without an
+  author of the project's the author a new repository of it commits as
+  (`ProjectInfo.commit_author`) with its source `(LADO's)` or `(from git on this computer)`,
+  then `; in <repo>: <author> (its git server's)` for each repository whose
+  `ProjectRepo.commit_author` differs, in the order of the list, and `· Set one for this project` (a
+  link-button, `Set a commit author for <title>`, pressed while its form is open); with nobody
+  anywhere `⚠ Nobody to commit as: agents cannot commit.`, a link `Set LADO's author in
+  Settings ↗` (`/settings/git-servers?author`, a new tab) and the same link-button; with one,
+  `<author> (this project's, in every repository)` and `Edit`, `Remove` under it (named with
+  the title), Remove with Undo. The form, its refusals and the lines are Settings' (`AuthorForm`),
+  through `PUT`/`DELETE /api/projects/{id}/author`, which answer the project. With
+  `ProjectInfo.author_variables`, Settings' warning of the variables shows under the line.
 - **Rename**: the pencil or a click on the title puts the session title's field
   (`TitleEdit`, one component for both) in the title's place, `Project title`: Enter or
   leaving it saves through `PATCH /api/projects/{id}` (`projects.rename`, the CLI's), Esc
@@ -2027,7 +2055,9 @@ New session (LAD-137) is in Launch and session control.
   was cancelled`, the beacon of a page that goes away, and a cancel at once when the
   dialog goes away inside the app, by Back or another section, as the New session
   window's does; a job the server forgot ends as done when the project lists the name). From scratch: Name and **Create**, `POST
-  /api/projects/{id}/repos` (one empty commit). A refusal shows the core's text under
+  /api/projects/{id}/repos` (one empty commit); with nobody to sign it (`ProjectInfo.
+  commit_author` none) the note of a missing author between the name's note and the buttons,
+  Create off (Launch and session control). A refusal shows the core's text under
   Name (with its hint), the fields kept. On success the dialog closes and the page is read
   anew; no session starts (#1282).
 - **Delete repository <name>?**, a dialog from `GET …/repos/{name}/removal`: `Its folder
@@ -3226,6 +3256,22 @@ beside its heading or label, not in it (`div.mx-h` holds the `h3` and its tip; a
 ends above the field. Token's tip opens above its button (`place="above"`), so the token page
 link under the field stays visible and pressable.
 
+- **Commit author** (LAD-312, design flow `ui-design/lad-312-ui`), the page's first block,
+  above Servers: `Commit author` with its tip (agents sign each commit, a saved step of their
+  work, with a name and an email; LADO's author signs in every project, unless the project or
+  the repository's git server has its own; a change reaches agents started after it) and one
+  row, **LADO's author**: `<name> <<email>>` with `Edit` and `Remove` (`Edit|Remove LADO's
+  author`) when set; else git's own author outside any repository with `· from git on this
+  computer` and a quiet `Set author` (`Set LADO's author`); else `⚠ Nobody: agents cannot
+  commit` with `Set author` as the page's main button. The form, its refusals and the lines are
+  a server's author's (below), through `PUT`/`DELETE /api/git-author`; `Remove` falls back at
+  once to the author in effect, with Undo (`Undo the removal of LADO's author`). When the
+  agents' environment holds any of `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`, `GIT_COMMITTER_NAME`,
+  `GIT_COMMITTER_EMAIL` (`author_variables`, names only), a warning stays under the row: `⚠ The
+  agents' environment sets <A and B>: these sign their commits instead of any author here.` ⓘ
+  `About the environment variables`. `?author` opens its form once the list is read, Name
+  focused, and is dropped from the address bar; saved from there, the line reads `✓ Author
+  saved. Go back to the New session tab: it checks again by itself.`
 - **The list**: `Servers <n>` with its tip (your GitLab, gitlab.com, GitHub or GitHub
   Enterprise: agents clone and push there, and run gh, with the token; running agents get a
   change after they restart), then a row per server by host, as `lado git-server
@@ -3243,8 +3289,12 @@ link under the field stays visible and pressable.
 - **The panel** (`gx-body`, rows text | buttons, a panel narrower than 460 px puts a row's
   buttons under its text): Sign-in (tip; `Signed in as <login>`, `⚠ Not checked` or `⚠ Token
   missing`; `Check` and `Replace token`, or `Replace token` alone as the main button when the
-  token file is missing), Commit author (tip; `<name> <<email>>` with `Edit` and `Remove`, or
-  `Your own git author` with `Set author`), Certificate only when one is trusted (tip: the
+  token file is missing), Commit author (tip; `<name> <<email>>` with `Edit` and `Remove`; a
+  server without one shows a minor line instead, no buttons column: `Commit author: <the author
+  in effect there> (LADO's)` or `(from git on this computer)`, or `none yet`, then `·` and the
+  link-button **Set one for this server** (`Set a commit author for <address>`, pressed while
+  its form is open) and its tip: commits to repositories on this server can be signed by
+  another author than LADO's, e.g. your work account; most people need none), Certificate only when one is trusted (tip: the
   authority you trusted for this server, trusted for it only; `<name> · valid until <date>` or
   `⚠ <name> · expired on <date>`, with `Remove <the certificate of <address>>`), and at its foot
   `Remove server`. One `Replace token`
@@ -3313,8 +3363,11 @@ link under the field stays visible and pressable.
   not answer: `⚠ No answer in 5 seconds: save it without a check, as <Kind>.` and `Save without a
   check`, which saves it under the saved kind (`✓ Saved without a check as <Kind>.`, the row
   then `⚠ not checked`).
-- **Commit author**: `Set author` or `Edit` opens a form under its row: Name and Email (the
-  saved author, else empty; Name focused), `Save author` and Cancel; Esc cancels. It sets the
+- **Commit author**: `Set one for this server` or `Edit` opens a form under its row
+  (`AuthorForm`, shared with LADO's author and a project's): Name (`autocomplete=name`) and
+  Email (`type=email`, `autocomplete=email`) (the saved author, else empty; Name focused),
+  `Save author` and Cancel; Esc cancels. A refusal under its field sets it `aria-invalid`,
+  describes it and takes the focus, the values kept. It sets the
   author as `lado git-server author` does; a refusal shows under Name or Email (one of no field
   under the buttons). Done: `✓ Author saved.`, the focus on Edit. `Remove` clears it at once:
   `✓ Author removed.` [Undo], the focus on Undo; Undo sets the same name and email again
@@ -3356,7 +3409,7 @@ link under the field stays visible and pressable.
   Cancel or Esc gives the focus back to `+ Add server`.
 - **Opened from a clone's note**: `?check=<host>` opens that saved server's panel and checks it
   as Check does; `?add=<address>` opens Add with that address, checked as typed, the focus in
-  Token. Read once the list is read, then dropped from the address bar (`replace`), so a reload
+  Token; `?author` (the note of a missing author) opens LADO's author form. Read once the list is read, then dropped from the address bar (`replace`), so a reload
   does neither again; a host no server is saved for opens nothing.
 - **One result at a time**: the page shows at most one result line (a save, a check, a
   removal, an author line with Undo), kept as page state with its server and place; any next
@@ -3369,8 +3422,11 @@ link under the field stays visible and pressable.
 - **API** (`lado.server.git_entries` over `lado.git_servers`, under the token, no change-feed
   event): `GET /api/git-servers` (`GitServers {servers: GitServerInfo {address, host, kind,
   kind_title, login, has_token, author_name, author_email, certificate: {name, not_after,
-  expired} | null}, kinds: GitKindInfo {name, title, token_path, scopes}}`, asking none; no
-  `lado.db` made), `POST /api/git-servers/check` (`{address, certificate?}` → `GitServerCheck
+  expired} | null}, kinds: GitKindInfo {name, title, token_path, scopes}, author, git_author:
+  AuthorInfo {name, email} | null, author_variables}`, asking none; no `lado.db` made),
+  `PUT /api/git-author` (`{name, email}`) and `DELETE /api/git-author`, both → `GitAuthorDone
+  {author, git_author, line}` (LADO's author; not under `/api/git-servers/`, whose removal's
+  `{host:path}` would take it), `POST /api/git-servers/check` (`{address, certificate?}` → `GitServerCheck
   {address, hint, token_page, scopes, choose_kind, unchecked, saved, refusals, warnings,
   certificate_offer, certificate_before}`, saving nothing, sending no token), `POST
   /api/git-servers` (`GitServerAdd {address, token, kind, certificate?}` → `GitServerAdded

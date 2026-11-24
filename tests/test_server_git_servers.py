@@ -114,7 +114,8 @@ def test_the_list_is_the_commands(client, serve, capsys, lado_home):
     assert len(server.requests) == asked  # asking none
     capsys.readouterr()
     assert main(["git-server", "list"]) == 0
-    printed = [line.split() for line in capsys.readouterr().out.splitlines()[1:]]
+    # After the line of LADO's author and the head.
+    printed = [line.split() for line in capsys.readouterr().out.splitlines()[2:]]
     assert [
         [
             r["address"],
@@ -369,6 +370,18 @@ def test_remove_by_host_lists_the_rest(client, serve, lado_home):
     )
 
 
+def test_a_removal_answers_ladOs_author_and_the_variables_too(client, git_config, monkeypatch):
+    git_config.write_text("[user]\n\tname = Alex Home\n\temail = alex@home.example\n")
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "me@home")
+    state.set_commit_author("Ann Lee", "ann@example.com")
+    ok(add(client, "https://git.lan", kind="github"))
+    left = ok(client.delete("/api/git-servers/git.lan"))
+    assert left["servers"] == []
+    assert left["author"] == {"name": "Ann Lee", "email": "ann@example.com"}
+    assert left["git_author"] == {"name": "Alex Home", "email": "alex@home.example"}
+    assert left["author_variables"] == ["GIT_AUTHOR_EMAIL"]
+
+
 def test_an_ipv6_host_is_removed_by_its_key(client):
     ok(add(client, f"https://[::1]:{closed_port()}", kind="gitlab"))
     host = state.git_servers()[0].host
@@ -400,11 +413,76 @@ def test_an_author_is_set_and_cleared_by_host(client, capsys):
     assert listed == done["server"]
     capsys.readouterr()
     main(["git-server", "list"])
-    assert capsys.readouterr().out.splitlines()[1].endswith(" Ivan Petrov <ivan@corp.ru>")
+    assert capsys.readouterr().out.splitlines()[2].endswith(" Ivan Petrov <ivan@corp.ru>")
     cleared = ok(client.delete(f"/api/git-servers/{server.host}/author"))
-    assert cleared["line"] == "Agents commit to https://git.lan with your own git author again."
+    assert cleared["line"] == (
+        "Agents commit to https://git.lan with LADO's commit author, or your own git author "
+        "without one."
+    )
     assert (cleared["server"]["author_name"], cleared["server"]["author_email"]) == (None, None)
     assert [s.address for s in state.git_servers()] == ["https://git.lan"]  # not removed
+
+
+# LADO's own commit author.
+
+ANN = {"name": "Ann Lee", "email": "ann@example.com"}
+
+
+def test_the_listing_names_ladOs_author_gits_and_the_variables(client, git_config, monkeypatch):
+    git_config.write_text("[user]\n\tname = Alex Home\n\temail = alex@home.example\n")
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "me@home")
+    monkeypatch.setenv("GIT_COMMITTER_NAME", "Me")
+    listed = ok(client.get("/api/git-servers"))
+    assert listed["author"] is None
+    assert listed["git_author"] == {"name": "Alex Home", "email": "alex@home.example"}
+    assert listed["author_variables"] == ["GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME"]
+    assert "me@home" not in str(listed)
+
+
+def test_no_lado_db_no_author_and_none_made(client, lado_home, git_config):
+    git_config.write_text("")
+    listed = ok(client.get("/api/git-servers"))
+    assert (listed["author"], listed["git_author"]) == (None, None)
+    assert not (lado_home / "lado.db").exists()
+
+
+def test_ladOs_author_is_set_and_cleared(client, git_config, capsys):
+    git_config.write_text("")
+    done = ok(client.put("/api/git-author", json={"name": " Ann Lee", "email": "ann@example.com"}))
+    assert done == {
+        "author": ANN,
+        "git_author": None,
+        "line": "Agents commit as Ann Lee <ann@example.com> where no project or git server has "
+        "an author of its own.",
+    }
+    assert ok(client.get("/api/git-servers"))["author"] == ANN
+    main(["git-server", "author"])
+    assert capsys.readouterr().out == "Ann Lee <ann@example.com>\n"
+    cleared = ok(client.delete("/api/git-author"))
+    assert cleared == {"author": None, "git_author": None, "line": "LADO has no commit author now."}
+    assert state.commit_author() is None
+    assert git_config.read_text() == ""
+
+
+@pytest.mark.parametrize(
+    ("name", "email", "field", "message"),
+    [
+        ("", "ann@example.com", "name", "the author's name is empty"),
+        ("Ann Lee", "ann", "email", "not an email address: name@host"),
+    ],
+)
+def test_ladOs_author_refused_under_its_field(client, name, email, field, message):
+    detail = refused(client.put("/api/git-author", json={"name": name, "email": email}))
+    assert (detail["message"], detail["field"]) == (message, field)
+    assert state.commit_author() is None
+
+
+def test_ladOs_author_routes_need_the_token(lado_home):
+    plain = TestClient(server_app.create_app(auth.token(), PORT))
+    plain.headers["origin"] = OWN
+    assert plain.put("/api/git-author", json=ANN).status_code in (401, 403)
+    assert plain.delete("/api/git-author").status_code in (401, 403)
+    assert state.schema_version() is None or state.commit_author() is None
 
 
 def test_an_ipv6_hosts_author(client):

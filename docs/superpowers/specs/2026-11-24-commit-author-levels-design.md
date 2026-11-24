@@ -2,9 +2,13 @@
 
 Task: LAD-312. Change: `openspec/changes/commit-author-levels/` (proposal, a new capability
 `commit-authors`, deltas of `git-servers`, `session-scratch`, `doctor`, `projects`,
-`container`, `git-servers-page`, `folder-setup`, and `design.md` with decisions D1–D12). The
+`container`, `git-servers-page`, `folder-setup`, `new-session-window`, and `design.md` with decisions D1–D12). The
 screens come from the design flow `ui-design/lad-312-ui` (mockup, handoff spec, critique);
-this document names what the core gives them and every text outside the UI.
+this document names what the core gives them and every text outside the UI. The flow's
+critic approved its third round with no open findings; its artifacts are
+`ui-design/lad-312-ui/mockup.html` (screens A1–A9, B1–B5, C1–C5, D1–D3), `spec` (the
+handoff: states, texts, accessible names, focus, responsive), `design-system` and
+`critique`.
 
 The human's answers: three levels set in the UI, priority project → git server → LADO's →
 git's own, stored in LADO (the task, 24.11.2026); no fields in the New session window, a

@@ -2,11 +2,13 @@
 facts the server answers with while the guide is not completed."""
 
 import json
+import re
 import threading
+from pathlib import Path
 
 import pytest
 
-from lado import guide, state
+from lado import guide, providers, state
 
 
 def _journal():
@@ -95,6 +97,15 @@ def test_the_file_is_replaced_atomically(monkeypatch):
     assert str(target) == str(_file())
     assert str(source).startswith(str(state.home())) and str(source) != str(target)
     assert not [p for p in state.home().iterdir() if p.name.endswith(".tmp")]
+
+
+def test_the_guides_providers_are_the_servers():
+    """Each provider whose row the UI's guide has texts for (web/src/guide/hints.ts, `cli:`)
+    is one LADO knows by that name."""
+    hints = Path(__file__).parent.parent / "web" / "src" / "guide" / "hints.ts"
+    named = re.findall(r'^\s*cli: "([a-z0-9-]+)",$', hints.read_text(), re.M)
+    assert named == ["claude", "codex"]
+    assert set(named) <= set(providers.names())
 
 
 def test_off_reads_lado_guide():

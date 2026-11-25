@@ -19,10 +19,9 @@ import { postGuide, type GuideInfo } from "../api";
 import { findMarker, holds, partDone, visible, type Context } from "./conditions";
 import { currentFacts, subscribe } from "./facts";
 import { AGAIN, HINTS, PARTS, type Hint, type Part, type Texts } from "./hints";
-import { GAP, MARGIN, place, PAD, type Placement, type Rect } from "./place";
+import { GAP, MARGIN, place, ringRect, type Placement, type Rect } from "./place";
 
 export const MISSING_MS = 2000; // how long a hint waits for its marker
-const RING_OUT = 3; // the pointing ring outside its target
 const ANNOUNCE_MS = 150; // a tip's live region, empty, before its text
 
 type Props = {
@@ -698,7 +697,7 @@ function Step(props: {
   return (
     <>
       {dim && <Dim hole={hole} />}
-      <span className="gd-ring" style={ringBox(ringed, -PAD)} aria-hidden="true" />
+      <span className="gd-ring" style={ringBox(ringed)} aria-hidden="true" />
       <div
         ref={card}
         className="gd-card"
@@ -747,16 +746,15 @@ function Step(props: {
   );
 }
 
-const ringBox = (r: Rect, inset: number): CSSProperties => ({
-  left: r.x + inset,
-  top: r.y + inset,
-  width: r.w - 2 * inset,
-  height: r.h - 2 * inset,
-});
+// A ring around `r`: PAD out, cut 2px inside the screen (ringRect).
+const ringBox = (r: Rect): CSSProperties => {
+  const box = ringRect(r, viewport());
+  return { left: box.x, top: box.y, width: box.w, height: box.h };
+};
 
 // The dim around the hole: four blocks that swallow presses, the hole itself left open.
 function Dim({ hole }: { hole: Rect }) {
-  const h = { x: hole.x - PAD, y: hole.y - PAD, w: hole.w + 2 * PAD, h: hole.h + 2 * PAD };
+  const h = ringRect(hole, viewport());
   const swallow = (event: React.SyntheticEvent) => {
     event.preventDefault();
     event.stopPropagation();
@@ -830,10 +828,10 @@ function Tip(props: {
     const timer = setTimeout(() => setSaid(`Tip: ${hint.texts.body.map(plainText).join(" ")}`), ANNOUNCE_MS);
     return () => clearTimeout(timer);
   }, [hint]);
-  const pointing = placed && placed.ring === "dashed";
+  const pointing = placed && placed.ring === "pointing";
   return (
     <>
-      {pointing && <span className="gd-ring pointing" style={ringBox(shownRect(target), -RING_OUT)} aria-hidden="true" />}
+      {pointing && <span className="gd-ring" style={ringBox(shownRect(target))} aria-hidden="true" />}
       <span className="visually-hidden" aria-live="polite">
         {said}
       </span>

@@ -186,9 +186,13 @@ A card SHALL stand beside its target (a phone: below or above), clear of target,
 - **WHEN** Model servers' form grows under the step's card on a phone (the server asks for a key)
 - **THEN** the form scrolls so that Key and Add server show above the card
 
+#### Scenario: A target at the screen's edge
+- **WHEN** the step "Open the menu" rings ☰ at a phone's left edge
+- **THEN** the ring is solid, with a 12 px corner, and whole on screen, 2 px inside it
+
 ### Requirement: The guide works by keyboard and screen reader
 
-A guiding card SHALL be a dialog named by its title that takes the focus, names the highlighted element shortly, keeps Tab within itself and its target, and makes the dimmed page inert; Esc SHALL be Not now; on close the focus SHALL go where it was, else to the target, else to the page's heading, the first that takes it. A step's ring SHALL be dashed, off its target. A tip SHALL take no focus, be announced once, and be reachable by Tab from its target. Under reduced motion nothing SHALL move.
+A guiding card SHALL be a dialog named by its title that takes the focus, names the highlighted element shortly, keeps Tab within itself and its target, and makes the dimmed page inert; Esc SHALL be Not now; on close the focus SHALL go where it was, else to the target, else to the page's heading, the first that takes it. A step's ring SHALL stand 8 px off its target. A tip SHALL take no focus, be announced once, and be reachable by Tab from its target. Under reduced motion nothing SHALL move.
 
 #### Scenario: Esc
 - **WHEN** a guiding card has the focus and the person presses Esc

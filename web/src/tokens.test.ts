@@ -123,11 +123,12 @@ test.each([
   }
 });
 
-// The guide's card stands on the dimmed page: its edge, 3:1 against the dim over the page.
+// The guide's card stands on the dimmed page: its edge or its fill, 3:1 against the dim over
+// the page (light: the white card itself; dark: the edge, as the card is as dark as the dim).
 test.each([
   ["light", 0],
   ["dark", 1],
-] as const)("the guide's card edge stands out of the dim in %s", (_, theme) => {
+] as const)("the guide's card stands out of the dim in %s", (_, theme) => {
   const dim = [...tokens.matchAll(/--guide-dim:\s*light-dark\((#[0-9a-f]{8}),\s*(#[0-9a-f]{8})\)/gi)][0];
   expect(dim, "--guide-dim").toBeDefined();
   const [colour, alpha] = [dim[theme + 1].slice(0, 7), parseInt(dim[theme + 1].slice(7), 16) / 255];
@@ -138,5 +139,7 @@ test.each([
     .join("")}`;
   const edge = palette(theme)["guide-edge"];
   expect(edge, "--guide-edge").toBeDefined();
-  expect(contrast(edge, over)).toBeGreaterThanOrEqual(3);
+  const panel = palette(theme).panel;
+  expect(Math.max(contrast(edge, over), contrast(panel, over))).toBeGreaterThanOrEqual(3);
+  if (theme === 1) expect(contrast(edge, over)).toBeGreaterThanOrEqual(3);
 });

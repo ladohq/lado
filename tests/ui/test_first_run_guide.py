@@ -107,10 +107,19 @@ def apart(a, b) -> bool:
 
 
 def looks(page: Page) -> None:
-    """The step's ring is dashed, never the solid focus ring; the card draws no ring of its
+    """The step's ring is solid with a 12 px corner, told from the focus ring by its distance
+    and corner, and whole on screen, 2 px or more inside it; the card draws no ring of its
     own while it has the focus; Not now is one line."""
     ring = page.locator(".gd-ring")
-    assert ring.evaluate("(e) => getComputedStyle(e).outlineStyle") == "dashed"
+    style = ring.evaluate(
+        "(e) => { const s = getComputedStyle(e); return [s.outlineStyle, s.borderTopLeftRadius] }"
+    )
+    assert style == ["solid", "12px"], style
+    box, view = ring.bounding_box(), page.viewport_size
+    assert box and view
+    assert box["x"] >= 2 and box["y"] >= 2, box
+    assert box["x"] + box["width"] <= view["width"] - 2, (box, view)
+    assert box["y"] + box["height"] <= view["height"] - 2, (box, view)
     focused = page.evaluate("() => document.activeElement?.classList.contains('gd-card')")
     assert focused, "the card has the focus"
     assert card(page).evaluate("(e) => getComputedStyle(e).outlineStyle") == "none"
@@ -133,6 +142,7 @@ def walk_to_model_servers(page: Page, shot, phone: bool = False) -> None:
     page.get_by_role("button", name="Show me").click()
     if phone:
         step(page, "Open the menu")
+        looks(page)  # ☰ at the screen's edge: its ring clipped 2 px inside
         shot(page, "open-menu", full_page=False)
         target(page, "rail-menu").click()
     step(page, "Open Settings")
@@ -309,7 +319,7 @@ def test_the_main_path_on_a_fresh_lado(browser: Browser, fresh, models, server, 
 
 
 def test_by_keyboard_esc_closes_the_step_after_its_target_is_pressed(
-    browser: Browser, fresh, server
+    browser: Browser, fresh, server, shot
 ):
     """A step done with the keyboard (Tab to the rail's Settings, Enter) leaves the focus
     where Esc still reaches the next card: Not now, the focus not lost to the page."""
@@ -326,6 +336,7 @@ def test_by_keyboard_esc_closes_the_step_after_its_target_is_pressed(
                 break
             page.keyboard.press("Tab")
         expect(settings).to_be_focused()
+        shot(page, "focused-target", full_page=False)  # the focus ring inside the step's
         page.keyboard.press("Enter")
         step(page, "Open Agent CLIs")
         looks(page)  # the focus came by keyboard: the card still draws no second ring

@@ -57,11 +57,11 @@
   --run-4: light-dark(#6b6b1f, #c8c56a);
   --shadow: light-dark(#16181d1f, #0000008c);
   /* The first-run guide (guide/Guide.tsx): the page dimmed around a step's target, the ring
-     of the target, and its card's edge, 3:1 against the dim; never orange, which stays what
-     waits for the human. */
-  --guide-dim: light-dark(#16181d99, #000000b3);
+     of the target, and its card's edge, 3:1 against the dim; the ring is solid, 8px off the
+     target; never orange, which stays what waits for the human. */
+  --guide-dim: light-dark(#16181d80, #000000b3);
   --guide-ring: var(--action);
-  --guide-edge: light-dark(#e3e6eb, #596170);
+  --guide-edge: light-dark(#c9ced8, #596170);
   /* An agent's terminal: dark in both themes, as the CLIs' own colours expect. */
   --term-ground: light-dark(#1b1e24, #0d0f13);
   --term-ink: light-dark(#e8eaee, #e1e4e9);

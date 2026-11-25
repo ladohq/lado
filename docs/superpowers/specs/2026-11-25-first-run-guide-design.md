@@ -519,10 +519,23 @@ changed here, each in the code, the openspec change and its tests:
 - **The welcome after Getting started** says what is left: the author and New session, or
   New session only.
 - **The counter** is the part's place on the whole path, the same after a reload.
-- **The question's tip** says to press **Send answer** after choosing (the button adds the
-  agent's name).
+- **The question's tip** says to press **Send answer to …** after choosing.
 - **Look**: the card's edge `--guide-edge`, 3:1 against the dim (dark: it blended in); the
-  hole 10 px around the target, so the ring's line stands 8 px off it (the third check: at
-  4 px it touched the row's text).
+  hole 6 px around the target, so the ring's line stands 4 px off it.
+
+## 16. After the human's third manual check (25.11.2026)
+
+The human's third check, and the designer's spotlight scheme (`ui-design/lad-311-spotlight`,
+accepted by the human), replace the lines above where they differ:
+
 - **`model-no-cli`** keeps Add server in sight (`keep`): on a phone its card stood over it.
+- **The question's tip** says to press **Send answer** (the button adds the agent's name; the
+  ellipsis read as "Send answer to ….").
+- **The ring** is solid, 2 px `--guide-ring`, radius 12 px, 8 px off its target (the hole 10
+  px, radius 12 px): told from the focus ring, 2 px off with the control's corner, by its
+  distance and corner. A tip that cannot point rings its target the same way. The hole and
+  the ring are cut 2 px inside the screen, so the line stays whole at its edge.
+- **The dim** in light is ink at 50 % (dark: black at 70 %, as before); the light card edge
+  is `#c9ced8`. The card stands 3:1 out of the dim: in light by its white fill, in dark by
+  its edge.
 

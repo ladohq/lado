@@ -14521,7 +14521,7 @@ button.quiet.danger-text {
 
 .gd-hole {
   position: fixed;
-  border-radius: 8px;
+  border-radius: 12px;
   box-shadow: 0 0 0 100vmax var(--guide-dim);
 }
 
@@ -14530,18 +14530,15 @@ button.quiet.danger-text {
   pointer-events: auto;
 }
 
-/* Dashed: never taken for the focus ring, which is solid, of the same colour, on the same element. */
+/* Solid, 8px off the target (PAD 10): told from the focus ring, 2px off with the control's
+   corner, by distance and its 12px corner. A tip that cannot stand beside its target rings it
+   the same way. */
 .gd-ring {
   position: fixed;
   box-sizing: border-box;
-  border-radius: 8px;
-  outline: 2px dashed var(--guide-ring);
+  border-radius: 12px;
+  outline: 2px solid var(--guide-ring);
   outline-offset: -2px;
-}
-
-/* A tip that cannot stand beside its target rings it outside it. */
-.gd-ring.pointing {
-  outline-offset: 0;
 }
 
 .gd-card {

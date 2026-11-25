@@ -6,7 +6,7 @@
 // the window, centred on its anchor across: on a phone below, then above, the window's width
 // less 32px; wider, the hint's `prefer` list, else right, below, above, left. Inside a window
 // narrower than the screen it first tries the window's sides at the anchor's height, and a tip
-// also below and above it (without pointing: its target gets the dashed pointing ring). The
+// also below and above it (without pointing: its target gets the pointing ring). The
 // first place that fits whole, covers no part of the hole or anchor, nor what the hint keeps
 // clear (its `keep`) and, for a tip, no control outside its target wins. A tip with none goes
 // to the nearest free place (ringed), else onto a tall target's lower part, else beside its
@@ -21,7 +21,7 @@ export type Rect = { x: number; y: number; w: number; h: number };
 export type Placement = Rect & {
   side: Side | "edge" | "free" | "on-target";
   arrow?: { side: Side; x: number; y: number }; // on the card's edge facing the target, from its corner
-  ring: "solid" | "dashed" | "none"; // the hole's ring, a tip's pointing ring, or none
+  ring: "solid" | "pointing" | "none"; // the hole's ring, a tip's pointing ring, or none
   ringAnchor: boolean; // the anchor is ringed instead of the target (a target that fills a phone)
   cutAnchor: boolean; // the hole is the anchor's, not the target's
   dim: boolean;
@@ -47,6 +47,17 @@ const CORNER = 12; // the arrow from the card's corners
 const STEP = 8; // the grid of the nearest free place
 
 const grow = (r: Rect, by: number): Rect => ({ x: r.x - by, y: r.y - by, w: r.w + 2 * by, h: r.h + 2 * by });
+
+// What a ring and the hole draw: the target plus PAD, cut 2px inside the screen so that the
+// ring's line stays whole at its edge. place() tests overlaps against the uncut hole.
+export function ringRect(target: Rect, view: Rect): Rect {
+  const r = grow(target, PAD);
+  const x = Math.max(r.x, view.x + 2);
+  const y = Math.max(r.y, view.y + 2);
+  const right = Math.min(r.x + r.w, view.x + view.w - 2);
+  const bottom = Math.min(r.y + r.h, view.y + view.h - 2);
+  return { x, y, w: Math.max(0, right - x), h: Math.max(0, bottom - y) };
+}
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value));
 
@@ -109,7 +120,7 @@ export function place(input: PlaceInput): Placement {
       if (free(card, hole, keep))
         return point
           ? { ...card, side, arrow: arrowOf(side, card, on), ring, ...plain }
-          : { ...card, side, ring: "dashed", ...plain };
+          : { ...card, side, ring: "pointing", ...plain };
     }
     return null;
   };
@@ -127,7 +138,7 @@ export function place(input: PlaceInput): Placement {
 
   if (kind === "tip") {
     const spot = nearestFree(size, target, view, input.obstacles);
-    if (spot) return { ...spot, side: "free", ring: "dashed", ...plain };
+    if (spot) return { ...spot, side: "free", ring: "pointing", ...plain };
     if (target.h > view.h / 2) {
       const lower = {
         x: clamp(target.x + target.w / 2 - size.w / 2, view.x + MARGIN, view.x + view.w - MARGIN - size.w),
@@ -135,13 +146,13 @@ export function place(input: PlaceInput): Placement {
         ...size,
       };
       if (!(input.inTarget ?? []).some((one) => overlaps(lower, one)))
-        return { ...lower, side: "on-target", ring: "dashed", ...plain };
+        return { ...lower, side: "on-target", ring: "pointing", ...plain };
     }
     for (const side of order) {
       const card = beside(side, hole, on, size, view);
       if (fitsIn(card, view) && !overlaps(card, hole)) return { ...card, side, arrow: arrowOf(side, card, on), ring, ...plain };
     }
-    return { ...edge(), side: "edge", ring: "dashed", ...plain };
+    return { ...edge(), side: "edge", ring: "pointing", ...plain };
   }
 
   // A guiding card with no place: the anchor's hole instead, then an edge; what its hint keeps

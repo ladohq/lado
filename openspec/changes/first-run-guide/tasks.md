@@ -101,3 +101,12 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-25-first-run-gu
   server's fake agent CLI can use every server.
 - [x] 12.2 The question's tip says **Send answer**, with no ellipsis. Check: `hints.test.ts`.
 - [x] 12.3 The ring 8 px off its target (the hole 10 px). Check: `place.test.ts`, the UI e2e.
+
+## 13. The designer's spotlight scheme (`ui-design/lad-311-spotlight`, 25.11)
+
+- [x] 13.1 The ring solid with a 12 px corner, a tip's too, at `PAD`; the hole's corner 12
+  px. Check: the UI e2e's `looks`, a screenshot of a focused target in the ring.
+- [x] 13.2 The hole and the ring cut 2 px inside the screen (`ringRect`). Check:
+  `place.test.ts`, the UI e2e's "Open the menu" on a phone.
+- [x] 13.3 The light dim 50 %, the light card edge `#c9ced8`; the card 3:1 out of the dim by
+  its fill or edge. Check: `tokens.test.ts`.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { PAD, place, type Placement, type Rect } from "./place";
+import { PAD, place, ringRect, type Placement, type Rect } from "./place";
 
 const wide = { x: 0, y: 0, w: 1440, h: 900 };
 const phoneView = { x: 0, y: 0, w: 390, h: 844 };
@@ -60,6 +60,16 @@ describe("place", () => {
     expect(p.y).toBe(16);
   });
 
+  it("rings a target PAD out, kept 2px inside the screen", () => {
+    expect(ringRect({ x: 100, y: 100, w: 50, h: 20 }, phoneView)).toEqual({ x: 90, y: 90, w: 70, h: 40 });
+    // "‹ Settings" at x 10 on a phone: the hole from x 2, its line whole on screen.
+    expect(ringRect({ x: 10, y: 60, w: 78, h: 30 }, phoneView)).toEqual({ x: 2, y: 50, w: 96, h: 50 });
+    // The session's tabs, the phone's whole width.
+    expect(ringRect({ x: 0, y: 52, w: 390, h: 44 }, phoneView)).toEqual({ x: 2, y: 42, w: 386, h: 64 });
+    // Past the bottom.
+    expect(ringRect({ x: 20, y: 820, w: 100, h: 40 }, phoneView)).toEqual({ x: 10, y: 810, w: 120, h: 32 });
+  });
+
   it("leaves a phone's Add server in sight under a note no installed CLI can use", () => {
     // The human's check at 390 px: the note, Add server under it, a card 237px tall.
     const note = { x: 16, y: 190, w: 358, h: 38 };
@@ -107,7 +117,7 @@ describe("place", () => {
     expect(p.side).toBe("below");
     expect(p.y).toBeGreaterThanOrEqual(660 + 12);
     expect(p.arrow).toBeUndefined();
-    expect(p.ring).toBe("dashed");
+    expect(p.ring).toBe("pointing");
   });
 
   it("keeps a tip off the controls outside its target", () => {
@@ -118,7 +128,7 @@ describe("place", () => {
     expect(overlaps(box(p), control)).toBe(false);
   });
 
-  it("puts a tip with no side in the nearest free place, ringed dashed", () => {
+  it("puts a tip with no side in the nearest free place, its target ringed", () => {
     const target = { x: 500, y: 300, w: 200, h: 40 };
     const around = [
       { x: 0, y: 0, w: 1440, h: 290 },
@@ -129,7 +139,7 @@ describe("place", () => {
     const p = place({ card: tipCard, target, viewport: wide, phone: false, kind: "tip", obstacles: around });
     expect(p.side).toBe("free");
     expect(p.arrow).toBeUndefined();
-    expect(p.ring).toBe("dashed");
+    expect(p.ring).toBe("pointing");
     for (const one of around) expect(overlaps(box(p), one)).toBe(false);
     expect(overlaps(box(p), target)).toBe(false);
   });

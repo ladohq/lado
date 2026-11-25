@@ -2524,9 +2524,10 @@ is data in **`web/src/guide/hints.ts`**, the one list; this document does not re
   phone: below, then above), never over it nor over the text its hint keeps in sight
   (`keep`: a login window's choices, the session's task, the author just saved, the Add server
   a step names); a card at the
-  window's edge over a tall form scrolls the form's end clear of it. The ring is dashed, 8 px
-  off its target, never taken for the solid focus ring; the card's edge is `--guide-edge`,
-  3:1 against the dim. A step inside a window draws no dim of its own, nor one whose advice
+  window's edge over a tall form scrolls the form's end clear of it. The ring is solid, 8 px
+  off its target with a 12 px corner, told from the focus ring (2 px off, the control's
+  corner) by both; it and the hole are cut 2 px inside the screen. The card stands 3:1 out of
+  the dim (light: its fill; dark: its edge `--guide-edge`). A step inside a window draws no dim of its own, nor one whose advice
   leads elsewhere on the page (`dim: false`: a server no installed CLI can use); another window
   over a step hides the guide. The dimmed page is `inert`; a guiding card is a dialog that
   takes the focus, reads out the highlighted element's short name (a marked row or form has

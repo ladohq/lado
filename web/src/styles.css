@@ -14500,11 +14500,12 @@ button.quiet.danger-text {
 }
 
 /* Guide: the first-run guide's layer over the unchanged UI (guide/Guide.tsx). A guiding step
-   dims the page around its hole (the target plus 6px, the hole's shadow), swallows presses on
-   the dim (four clear blocks), rings the target inside the hole's edge, 4px off it, and stands
-   its card beside it; a tip is the same card, smaller, with no dim. The card's edge is
-   --guide-edge, which stands out of the dim. Inside a modal <dialog> the layer is
-   the dialog's own, so it sits above it. No orange: --guide-ring is the action's colour. */
+   dims the page around its hole (the target plus 10px, the hole's shadow), swallows presses on
+   the dim (four clear blocks), rings the target inside the hole's edge, 8px off it, and stands
+   its card beside it; a tip is the same card, smaller, with no dim. The card's fill and edge
+   stand out of the dim. Inside a modal <dialog> the layer is the dialog's own, so it sits
+   above it. No orange, and not the action's blue: --guide-ring, --guide-fill and
+   --guide-edge are the guide's violet. */
 .gd-layer {
   position: fixed;
   inset: 0;
@@ -14546,7 +14547,7 @@ button.quiet.danger-text {
   box-sizing: border-box;
   width: 320px;
   padding: 14px 16px 12px;
-  background: var(--panel);
+  background: var(--guide-fill);
   color: var(--ink);
   border: 1px solid var(--guide-edge);
   border-radius: 8px;
@@ -14602,7 +14603,7 @@ button.quiet.danger-text {
 .gd-body code {
   padding: 0 3px;
   border-radius: 4px;
-  background: var(--raised);
+  background: var(--guide-raised);
   font: 0.92em var(--mono);
 }
 
@@ -14716,7 +14717,7 @@ button.quiet.danger-text {
 }
 
 .gd-btn.second:hover {
-  background: var(--raised);
+  background: var(--guide-raised);
 }
 
 .gd-btn.small {
@@ -14748,7 +14749,7 @@ button.quiet.danger-text {
   width: 12px;
   height: 12px;
   margin: -7px 0 0 -7px;
-  background: var(--panel);
+  background: var(--guide-fill);
   border: 1px solid transparent;
   transform: rotate(45deg);
 }

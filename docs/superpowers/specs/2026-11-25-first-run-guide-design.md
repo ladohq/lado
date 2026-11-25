@@ -538,4 +538,10 @@ accepted by the human), replace the lines above where they differ:
 - **The dim** in light is ink at 50 % (dark: black at 70 %, as before); the light card edge
   is `#c9ced8`. The card stands 3:1 out of the dim: in light by its white fill, in dark by
   its edge.
+- **The guide's violet** (`ui-design/lad-311-spotlight-colour`, accepted by the human), over
+  the line above: the ring `--guide-ring` light-dark(#43188a, #d0b4ff) (light darker than the
+  design's #4c1d95, the critique's F1: 3.4:1 against the dim), every card's fill
+  `--guide-fill` light-dark(#f4f0ff, #261f3b), its edge `--guide-edge` light-dark(#8a76cc,
+  #7a6aa6), a code chip and a secondary button's hover `--guide-raised` light-dark(#e4dbf8,
+  #382e55). The ring is no longer the action's blue, so it is told from links and buttons.
 

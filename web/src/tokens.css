@@ -57,11 +57,17 @@
   --run-4: light-dark(#6b6b1f, #c8c56a);
   --shadow: light-dark(#16181d1f, #0000008c);
   /* The first-run guide (guide/Guide.tsx): the page dimmed around a step's target, the ring
-     of the target, and its card's edge, 3:1 against the dim; the ring is solid, 8px off the
-     target; never orange, which stays what waits for the human. */
+     of the target (solid, 8px off it), and the guide's cards. The ring and the cards are the
+     guide's own violet, never the action's blue (buttons, links, focus) nor orange (what
+     waits for the human): violet points, blue is what you can do. The ring is 3:1 against
+     the page and the dim (light: 3.4:1, darker than the design's #4c1d95 for room); the
+     card's fill carries ink, muted, action and done at 4.5:1. */
   --guide-dim: light-dark(#16181d80, #000000b3);
-  --guide-ring: var(--action);
-  --guide-edge: light-dark(#c9ced8, #596170);
+  --guide-ring: light-dark(#43188a, #d0b4ff);
+  --guide-fill: light-dark(#f4f0ff, #261f3b);
+  --guide-edge: light-dark(#8a76cc, #7a6aa6);
+  /* On the guide's fill: a code chip, and a secondary button's hover (--raised is the fill's lightness). */
+  --guide-raised: light-dark(#e4dbf8, #382e55);
   /* An agent's terminal: dark in both themes, as the CLIs' own colours expect. */
   --term-ground: light-dark(#1b1e24, #0d0f13);
   --term-ink: light-dark(#e8eaee, #e1e4e9);

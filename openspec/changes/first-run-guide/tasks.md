@@ -110,3 +110,8 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-25-first-run-gu
   `place.test.ts`, the UI e2e's "Open the menu" on a phone.
 - [x] 13.3 The light dim 50 %, the light card edge `#c9ced8`; the card 3:1 out of the dim by
   its fill or edge. Check: `tokens.test.ts`.
+- [x] 13.4 The guide's violet (`ui-design/lad-311-spotlight-colour`): `--guide-ring` (light
+  `#43188a`, darker than the design's for 3.2:1 against the dim), `--guide-fill`,
+  `--guide-edge`, `--guide-raised` on the cards, the arrow, code and the secondary button's
+  hover. Check: `tokens.test.ts` (the ring 3:1 against the page and the dim, an undimmed
+  card's edge 3:1 against the page, the card's text 4.5:1 on its fill).

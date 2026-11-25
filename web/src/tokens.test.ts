@@ -100,6 +100,12 @@ const PAIRS = [
   ["run-2", "ground"],
   ["run-3", "ground"],
   ["run-4", "ground"],
+  // The guide's card: its text, links and done line on its fill, code on its chip.
+  ["ink", "guide-fill"],
+  ["muted", "guide-fill"],
+  ["action", "guide-fill"],
+  ["done", "guide-fill"],
+  ["ink", "guide-raised"],
 ] as const;
 
 test("the UI's text is Inter, its code IBM Plex Mono, both bundled", () => {
@@ -122,24 +128,53 @@ test.each([
     );
   }
 });
-
-// The guide's card stands on the dimmed page: its edge or its fill, 3:1 against the dim over
-// the page (light: the white card itself; dark: the edge, as the card is as dark as the dim).
-test.each([
-  ["light", 0],
-  ["dark", 1],
-] as const)("the guide's card stands out of the dim in %s", (_, theme) => {
+// The guide's dim over the page, as one colour.
+function dimOver(theme: 0 | 1): string {
   const dim = [...tokens.matchAll(/--guide-dim:\s*light-dark\((#[0-9a-f]{8}),\s*(#[0-9a-f]{8})\)/gi)][0];
   expect(dim, "--guide-dim").toBeDefined();
   const [colour, alpha] = [dim[theme + 1].slice(0, 7), parseInt(dim[theme + 1].slice(7), 16) / 255];
   const ground = palette(theme).ground;
-  const over = `#${[1, 3, 5]
+  return `#${[1, 3, 5]
     .map((i) => Math.round(parseInt(colour.slice(i, i + 2), 16) * alpha + parseInt(ground.slice(i, i + 2), 16) * (1 - alpha)))
     .map((c) => c.toString(16).padStart(2, "0"))
     .join("")}`;
-  const edge = palette(theme)["guide-edge"];
+}
+
+// The guide's card stands on the dimmed page: its edge or its fill, 3:1 against the dim over
+// the page (light: the fill; dark: the edge).
+test.each([
+  ["light", 0],
+  ["dark", 1],
+] as const)("the guide's card stands out of the dim in %s", (_, theme) => {
+  const over = dimOver(theme);
+  const { "guide-edge": edge, "guide-fill": fill } = palette(theme);
   expect(edge, "--guide-edge").toBeDefined();
-  const panel = palette(theme).panel;
-  expect(Math.max(contrast(edge, over), contrast(panel, over))).toBeGreaterThanOrEqual(3);
-  if (theme === 1) expect(contrast(edge, over)).toBeGreaterThanOrEqual(3);
+  expect(fill, "--guide-fill").toBeDefined();
+  expect(Math.max(contrast(edge, over), contrast(fill, over))).toBeGreaterThanOrEqual(3);
+});
+
+// The guide's ring, its own violet: 3:1 against the page, a panel and the dim over the page.
+test.each([
+  ["light", 0],
+  ["dark", 1],
+] as const)("the guide's ring stands out of the page and the dim in %s", (_, theme) => {
+  const colours = palette(theme);
+  const ring = colours["guide-ring"];
+  expect(ring, "--guide-ring").toBeDefined();
+  for (const [name, under] of [
+    ["ground", colours.ground],
+    ["panel", colours.panel],
+    ["the dim", dimOver(theme)],
+  ])
+    expect(contrast(ring, under), `the ring on ${name}`).toBeGreaterThanOrEqual(3);
+});
+
+// A card with no dim under it (a tip, a step that dims nothing): its edge 3:1 against the page.
+test.each([
+  ["light", 0],
+  ["dark", 1],
+] as const)("an undimmed guide card's edge stands out of the page in %s", (_, theme) => {
+  const colours = palette(theme);
+  for (const under of ["ground", "panel", "raised"])
+    expect(contrast(colours["guide-edge"], colours[under]), `the edge on ${under}`).toBeGreaterThanOrEqual(3);
 });

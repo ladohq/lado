@@ -40,6 +40,7 @@ import {
   setGitServerAuthor,
   setGitServerCertificate,
 } from "./api";
+import { publish } from "./guide/facts";
 import { ChevronIcon } from "./icons";
 import { InfoTip } from "./InfoTip";
 import { MODEL_DEBOUNCE, useDebounced } from "./Launch";
@@ -201,6 +202,10 @@ export function GitServersPage() {
       if (asked === latest.current) setProblem(refusalOf(error).message);
     }
   }, []);
+  // The first-run guide's fact (guide/facts.ts): an author signs commits.
+  useEffect(() => {
+    if (entries) publish("author", Boolean(entries.author || entries.git_author));
+  }, [entries]);
   useEffect(() => {
     void reload();
     return () => {
@@ -506,9 +511,11 @@ export function GitServersPage() {
           </div>
           <div className="gx-body ca-body">
             <ul className="gx-rows">
-              <li className="gx-row">
+              <li className="gx-row" data-guide="author-row" aria-labelledby={`${id}-lado`}>
                 <div>
-                  <div className="gx-name">LADO's author</div>
+                  <div className="gx-name" id={`${id}-lado`}>
+                    LADO's author
+                  </div>
                   <p className="gx-val">
                     {entries.author ? (
                       <b>{textOf(entries.author)}</b>
@@ -548,6 +555,8 @@ export function GitServersPage() {
                 <div className="gx-under">
                   {ladoForm && (
                     <AuthorForm
+                      guide="author-form"
+                      labelledBy={`${id}-lado`}
                       saved={entries.author ?? null}
                       save={setGitAuthor}
                       onTouch={act}
@@ -1522,14 +1531,19 @@ function AddGitServer({
 // A commit author's form (LADO's, a server's, a project's): Name and Email under its row, the
 // saved ones else empty, the focus on Name; Save author once both are filled and differ from
 // the saved; Esc cancels. A refusal stands under its field, which keeps its value and takes
-// the focus; one of no field stands under the buttons.
+// the focus; one of no field stands under the buttons. `guide`: its first-run guide's marker;
+// `labelledBy`: its row's name, which makes it a group of that name.
 export function AuthorForm<T>({
+  guide,
+  labelledBy,
   saved,
   save,
   onTouch,
   onCancel,
   onDone,
 }: {
+  guide?: string;
+  labelledBy?: string;
   saved: { name: string; email: string } | null;
   save: (name: string, email: string) => Promise<T>;
   onTouch: () => number;
@@ -1564,6 +1578,9 @@ export function AuthorForm<T>({
   return (
     <div
       className="gx-form"
+      data-guide={guide}
+      role={labelledBy ? "group" : undefined}
+      aria-labelledby={labelledBy}
       onKeyDown={(event) => {
         if (event.key === "Escape" && !event.defaultPrevented) {
           event.stopPropagation();

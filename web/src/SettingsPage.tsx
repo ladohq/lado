@@ -20,7 +20,7 @@ export function SettingsPage(props: {
   return (
     <section ref={props.ref} className={`spage${props.className ? ` ${props.className}` : ""}`} aria-labelledby={id}>
       {phone && (
-        <Link className="back-link" to="/settings">
+        <Link className="back-link" to="/settings" data-guide="settings-back">
           <span aria-hidden="true">‹</span> Settings
         </Link>
       )}

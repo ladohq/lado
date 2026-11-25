@@ -286,6 +286,62 @@
         }
       }
     },
+    "/api/guide": {
+      "get": {
+        "summary": "Guide State",
+        "description": "The first-run guide's record and, while it is not completed, its facts\n(lado.guide.now). Read once per page load. A plain `def`: its first answer after\nthe server's start waits for the login check in a worker thread.",
+        "operationId": "guide_state_api_guide_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuideInfo"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Guide Mark",
+        "description": "A mark of the guide (lado.guide.change); `missing` journals the marker instead\n(lado.guide.missing). The facts follow while the guide is not completed, also under\nLADO_GUIDE=0 after Help \u2192 Getting started.",
+        "operationId": "guide_mark_api_guide_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuideAction"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuideInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/telemetry/preview": {
       "get": {
         "summary": "Telemetry Preview",
@@ -7596,6 +7652,116 @@
         ],
         "title": "GuiSession",
         "description": "On a Mac: where the server's process and LADO's tmux server run (lado.gui_session's\nplaces: gui, remote, no-gui, unknown)."
+      },
+      "GuideAction": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "shown",
+              "complete",
+              "tips_off",
+              "restart",
+              "missing"
+            ],
+            "title": "Action"
+          },
+          "ids": {
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9-]{1,64}$"
+            },
+            "type": "array",
+            "maxItems": 64,
+            "title": "Ids"
+          },
+          "marker": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{0,64}$",
+            "title": "Marker",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "GuideAction",
+        "description": "A mark of the guide: `shown` its `ids`, `complete`, `tips_off`, `restart`, or\n`missing`: the `ids`' `marker` was not on screen (to LADO's error journal)."
+      },
+      "GuideFacts": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "author": {
+            "type": "boolean",
+            "title": "Author"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "author"
+        ],
+        "title": "GuideFacts",
+        "description": "What the first-run guide skips (lado.guide.Facts)."
+      },
+      "GuideInfo": {
+        "properties": {
+          "auto": {
+            "type": "boolean",
+            "title": "Auto"
+          },
+          "completed": {
+            "type": "boolean",
+            "title": "Completed"
+          },
+          "shown": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Shown"
+          },
+          "tips_off": {
+            "type": "boolean",
+            "title": "Tips Off"
+          },
+          "telemetry_asked": {
+            "type": "boolean",
+            "title": "Telemetry Asked"
+          },
+          "facts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GuideFacts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "auto",
+          "completed",
+          "shown",
+          "tips_off",
+          "telemetry_asked",
+          "facts"
+        ],
+        "title": "GuideInfo",
+        "description": "The first-run guide's record and facts (lado.guide), read once per page load."
       },
       "HTTPValidationError": {
         "properties": {

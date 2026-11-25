@@ -17,6 +17,8 @@
 #                                       # (default 127.0.0.1, this computer only)
 #   LADO_PUBLIC_HOST=my-mac.local       # optional: this computer's name for the UI's link
 #                                       # for a phone (Open on another device)
+#   LADO_GUIDE=0                        # optional: the UI's first-run guide never starts
+#                                       # by itself (recording a video)
 #
 # An .env with LADO_PROJECTS, the workspace's name before 0.43.0, is still accepted;
 # LADO_WORKSPACE wins when both are set. Then, from this folder:
@@ -124,6 +126,8 @@ services:
       # computer by: the UI's link for a phone (Open on another device).
       LADO_LISTEN: ${LADO_LISTEN:-127.0.0.1}
       LADO_PUBLIC_HOST: ${LADO_PUBLIC_HOST:-}
+      # 0: the UI's first-run guide never starts by itself (recording a video).
+      LADO_GUIDE: ${LADO_GUIDE:-}
     ports:
       # This computer only, unless LADO_LISTEN names another address: the UI's token is
       # the one guard, and it travels unencrypted.

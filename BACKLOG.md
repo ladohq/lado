@@ -553,6 +553,18 @@ Found: 2026-10-11, release of 0.34.0 (the human's decision).
 
 # P2: when convenient
 
+## A render error anywhere in the web UI blanks the whole page
+
+Size: S. Why here: one failing component (a field the server answers otherwise, a chunk gone
+after an update) leaves an empty page and nothing in LADO's error journal.
+
+The web UI has no error boundary but the first-run guide's (`web/src/guide/mount.tsx`,
+`Contained`, LAD-311), and the router no `errorElement`: React unmounts the whole tree on an
+error in any render. Wanted: a boundary around each page (the Shell's `Outlet`) and the
+frame's own parts that shows a line with Reload and keeps the rail, with a vitest of a page
+that throws.
+Found: 2026-11-25, branch lado/lad-311/task-lad-311 (LAD-311, review round 1).
+
 ## A local smoke of kilo or opencode is red when the shell has `OPENROUTER_API_KEY`
 
 Size: S. Why here: a developer whose shell holds a provider's key, as LADO's container does,

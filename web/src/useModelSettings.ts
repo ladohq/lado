@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getModelSettings, type ModelSettings as Entries, refusalOf } from "./api";
+import { publish } from "./guide/facts";
 
 export type ModelSettingsState = {
   entries: Entries | null;
@@ -26,6 +27,7 @@ export function useModelSettings(): ModelSettingsState {
         throw new Error("the server gave no models: reload the page");
       setEntries(found);
       setProblem(null);
+      publish("models", found.models.length); // the first-run guide's fact (guide/facts.ts)
     } catch (error) {
       if (asked === latest.current) setProblem(refusalOf(error).message);
     }

@@ -1410,7 +1410,7 @@ function LaunchDialog({
             )}
           </div>
 
-          <div className="field launch-task">
+          <div className="field launch-task" data-guide="launch-task">
             <div className="task-head">
               <span className="field-label">
                 <label htmlFor={`${ids}-task`}>{resuming ? "Message" : "Task"}</label>{" "}

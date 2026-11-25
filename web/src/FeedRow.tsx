@@ -72,6 +72,7 @@ export function FeedRow({
   className = "",
   session,
   copy,
+  guide,
   children,
 }: {
   kind: RowKind;
@@ -84,6 +85,7 @@ export function FeedRow({
   className?: string;
   session?: string; // its text is a readable area of the selection bar, of this session
   copy?: string; // what Copy message copies; without it, no Copy message
+  guide?: string; // the first-run guide's marker (data-guide)
   children: ReactNode;
 }) {
   const time = <time dateTime={at}>{clock(at)}</time>;
@@ -93,7 +95,7 @@ export function FeedRow({
   );
   const classes = ["feed-row", kind === "human" && "mine", continued && "continued", className].filter(Boolean);
   return (
-    <article className={classes.join(" ")} id={id} aria-label={label}>
+    <article className={classes.join(" ")} id={id} aria-label={label} data-guide={guide}>
       <div className="feed-side">{continued ? time : <Avatar kind={kind} who={who} />}</div>
       <div className="feed-main" {...(session !== undefined && quoteArea(session))}>
         {!continued && (

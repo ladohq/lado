@@ -53,6 +53,10 @@ os.environ["LADO_TELEMETRY"] = "0"
 os.environ.pop("DO_NOT_TRACK", None)
 os.environ.pop("LADO_TELEMETRY_URL", None)
 
+# No test's UI starts the first-run guide by itself (lado.guide); the guide's own UI e2e
+# test and its server tests remove it.
+os.environ["LADO_GUIDE"] = "0"
+
 # No test opens a browser (`lado bug-report`'s y): webbrowser runs `true <url>`, which does
 # nothing, also in a test that forgot to replace webbrowser.open (test_cli_bug_report.py
 # checks it is set).

@@ -13,6 +13,7 @@ import {
   type TelemetryPreview,
 } from "./api";
 import { clock, day } from "./ChatText";
+import { publish } from "./guide/facts";
 import { useLive } from "./live";
 import { SettingsPage } from "./SettingsPage";
 
@@ -54,6 +55,10 @@ function useTelemetry(ready = true) {
       current = false;
     };
   }, [ready]);
+  // The first-run guide's welcome waits for the answer (guide/facts.ts).
+  useEffect(() => {
+    if (info) publish("statisticsAsked", info.ask);
+  }, [info]);
   return [info, setInfo, problem] as const;
 }
 

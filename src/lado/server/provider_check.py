@@ -8,7 +8,8 @@ than a short first wait.
 `start` begins a check unless one runs, else asks for one more after it (a login window
 ended meanwhile); `snapshot` is what the section shows now; `put` keeps a row read after an
 action on it (a saved token, a logout), which an older read of the check that runs does
-not replace."""
+not replace. `first` is the first-run guide's (lado.guide): the first check after the
+server's start, waited for."""
 
 import shutil
 import threading
@@ -23,19 +24,33 @@ _puts: dict[str, int] = {}  # per provider, the rows `put` kept: a check's older
 _environment = ""  # why the agents' environment could not be read, at the last check
 _thread: threading.Thread | None = None  # the check that runs, if one does
 _again = False  # a check was asked for while one ran: one more runs after it
+_started = False  # a check started since the server did (or since `reset`)
+_ended = threading.Event()  # a check's pass ended since then
 
 
 def start() -> bool:
     """Begin a check in the background; False when one runs already: it goes on, and one
     more runs after it, so what changed meanwhile (a login window's end) is read too."""
-    global _thread, _again
+    global _thread, _again, _started
     with _lock:
+        _started = True
         if _thread is not None:
             _again = True
             return False
         _thread = threading.Thread(target=_check, name="provider-check", daemon=True)
         _thread.start()
     return True
+
+
+def first(timeout: float) -> bool:
+    """Start a check unless one started since the server did, and wait up to `timeout`
+    seconds for a pass to end; whether one has. Two callers start one check."""
+    global _started
+    with _lock:
+        begin, _started = not _started, True
+    if begin:
+        start()
+    return _ended.wait(timeout)
 
 
 def snapshot() -> models.ProvidersPage:
@@ -60,13 +75,14 @@ def put(row: models.ProviderLogins) -> None:
 
 def reset() -> None:
     """Forget every row, once the check that runs has ended (tests)."""
-    global _environment, _again
+    global _environment, _again, _started
     if (running := _thread) is not None:
         running.join()
     with _lock:
         _rows.clear()
         _puts.clear()
-        _environment, _again = "", False
+        _environment, _again, _started = "", False, False
+        _ended.clear()
 
 
 def _check() -> None:
@@ -74,6 +90,7 @@ def _check() -> None:
     while True:
         try:
             _pass()
+            _ended.set()  # a pass that raised read nothing: no answer for `first`
         except Exception as error:  # the check ends, and says so, whatever happens
             telemetry.record("server:provider-check", error)
         with _lock:

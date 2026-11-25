@@ -90,6 +90,30 @@ test("without a login the first choice is chosen and nothing is marked current",
   expect(screen.queryByRole("button", { name: "Log out…" })).toBeNull();
 });
 
+test("pressing the choice chosen by default is a pick for the first-run guide", () => {
+  sheet(claude());
+  const box = document.querySelector<HTMLElement>('[data-guide="login-sheet"]')!;
+  expect(box.dataset.guidePicked).toBeUndefined();
+  fireEvent.click(screen.getByRole("radio", { name: /Subscription/ })); // checked already: no change
+  expect(box.dataset.guidePicked).toBe("true");
+});
+
+test("the first-run guide's markers follow the chosen choice, its pick and a refusal", async () => {
+  sheet(codex({ login: { ...LOGIN, state: "no" } }));
+  const box = document.querySelector<HTMLElement>('[data-guide="login-sheet"]')!;
+  expect(box.dataset.guideCli).toBe("codex");
+  expect(box.dataset.guidePicked).toBeUndefined(); // the first choice is chosen, not picked
+  expect(box.querySelector('[data-guide-choice="chatgpt"] [data-guide="login-action"]')).not.toBeNull();
+  fireEvent.click(screen.getByRole("radio", { name: /Pay per use/ }));
+  expect(box.dataset.guidePicked).toBe("true");
+  expect(box.querySelectorAll("[data-guide-choice]")).toHaveLength(1);
+  expect(box.querySelector('[data-guide-choice="usage"] [data-guide="login-secret"]')).not.toBeNull();
+  answer = () => new Response(JSON.stringify({ detail: "not a key" }), { status: 400 });
+  fireEvent.change(screen.getByLabelText("OPENAI_API_KEY"), { target: { value: "x" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect((await screen.findByRole("alert")).dataset.guide).toBe("login-refusal");
+});
+
 test("a key is sent in the body once under its choice's variable, never shown", async () => {
   const { changed, closed } = sheet(claude());
   fireEvent.click(screen.getByRole("radio", { name: /Pay per use — API billing/ }));

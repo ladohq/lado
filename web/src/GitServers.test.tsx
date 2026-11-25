@@ -1391,6 +1391,13 @@ test("LADO's author: set, from git on this computer, or nobody with Set author a
   expect(button("Set LADO's author").className).toBe("primary");
 });
 
+test("LADO's author's row and form are named by the row's name, as the guide reads them out", async () => {
+  await mount();
+  expect(screen.getByRole("listitem", { name: "LADO's author" })).toBe(ladoRow());
+  press("Set LADO's author");
+  expect(await screen.findByRole("group", { name: "LADO's author" })).toBe(document.querySelector('[data-guide="author-form"]'));
+});
+
 test("Set author saves LADO's author, one form at a time, the focus on Edit", async () => {
   fake.servers = [GHE];
   await mount();

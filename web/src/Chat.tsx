@@ -543,6 +543,8 @@ function Rows({
   const late = new Set(rows.flatMap((row) => ("late" in row ? [row.late.id] : [])));
   // A run's flow, while the runs are loaded and its snapshot can be read.
   const flows = new Map((runs ?? []).flatMap((run) => (run.problem ? [] : [[run.name, run.states] as const])));
+  // The feed's first message (a session's task): the first-run guide's tip keeps it in sight.
+  const first = rows.find((row) => "message" in row && !isReply(row.message) && row.message.kind !== "question");
   return rows.map((row) => {
     if ("day" in row) return <DayDivider key={`day-${row.day}`} at={row.day} />;
     if ("events" in row) {
@@ -587,7 +589,15 @@ function Rows({
       return <Answer key={message.id} session={session} message={message} reply={reply} continued={continued} go={go} />;
     }
     if (message.kind !== "question") {
-      return <Message key={message.id} session={session} message={message} continued={continued} />;
+      return (
+        <Message
+          key={message.id}
+          session={session}
+          message={message}
+          continued={continued}
+          guide={row === first ? "session-first" : undefined}
+        />
+      );
     }
     if (isOpen(message)) {
       return (
@@ -808,7 +818,17 @@ export function messageText(message: MessageInfo): string {
   return repeatsSummary(summary, body) ? body : `${summary}\n\n${body}`;
 }
 
-function Message({ session, message, continued }: { session: string; message: MessageInfo; continued: boolean }) {
+function Message({
+  session,
+  message,
+  continued,
+  guide,
+}: {
+  session: string;
+  message: MessageInfo;
+  continued: boolean;
+  guide?: string; // the first-run guide's marker
+}) {
   const mine = message.from === HUMAN;
   const between = !withHuman(message);
   const label = between ? `Message from ${message.from} to ${message.to}` : `Message from ${mine ? "you" : message.from}`;
@@ -824,6 +844,7 @@ function Message({ session, message, continued }: { session: string; message: Me
       className={`chat-message${between ? " between" : ""}`}
       session={session}
       copy={messageText(message)}
+      guide={guide}
     >
       <MessageText message={message} />
       {mine && <ImagePreviews session={session} attachments={message.attachments} />}

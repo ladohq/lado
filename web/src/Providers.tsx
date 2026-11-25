@@ -17,6 +17,7 @@ import { Link, useLocation } from "react-router";
 
 import { checkProviders, getProviderLogins, type ProviderLogins, type ProvidersPage } from "./api";
 import { CliDefault, type SavedProps } from "./CliDefault";
+import { publish } from "./guide/facts";
 import { LoginSheet } from "./LoginSheet";
 import { MODEL_SERVERS_PATH, terminalPath } from "./paths";
 import { messageOf } from "./SessionControl";
@@ -87,6 +88,20 @@ export function Providers() {
     });
   }, [page, hash]);
 
+  // The first-run guide reads the rows from here (guide/facts.ts), not from a request of its own.
+  useEffect(() => {
+    if (!page) return;
+    publish("logins", {
+      checking: page.checking,
+      rows: page.providers.map((p) => ({
+        name: p.cli.name,
+        ready: p.ready,
+        installed: p.cli.installed,
+        loggedIn: p.ready && p.cli.installed && p.login.state === "yes",
+      })),
+    });
+  }, [page]);
+
   const models = useModelSettings();
   // The CLI whose row says `✓ Saved` (CliDefault.tsx): one for the page, so the next save anywhere
   // takes it; a login sheet opened and ↻ take it too, never a timer.
@@ -155,7 +170,10 @@ export function Providers() {
           </ul>
           {noServers && !noneInstalled && (
             <p className="srow-desc cli-more">
-              Models of your own come from a model server: <Link to={MODEL_SERVERS_PATH}>Model servers</Link>
+              Models of your own come from a model server:{" "}
+              <Link to={MODEL_SERVERS_PATH} data-guide="model-servers-link">
+                Model servers
+              </Link>
             </p>
           )}
         </>
@@ -204,7 +222,7 @@ function ProviderRow({
   );
   if (!row.ready) {
     return (
-      <li className="srow pv cli" id={cli.name} aria-labelledby={id}>
+      <li className="srow pv cli" id={cli.name} data-guide={`cli-row-${cli.name}`} aria-labelledby={id}>
         <div className="srow-text">
           <p className="pv-head">{name}</p>
           <p className="srow-desc">checking…</p>
@@ -214,7 +232,7 @@ function ProviderRow({
   }
   if (!cli.installed) {
     return (
-      <li className="srow pv cli pv-off" id={cli.name} aria-labelledby={id}>
+      <li className="srow pv cli pv-off" id={cli.name} data-guide={`cli-row-${cli.name}`} aria-labelledby={id}>
         <div className="srow-text">
           <p className="pv-head">
             {name}
@@ -235,7 +253,12 @@ function ProviderRow({
   const one = row.waiting.length === 1;
 
   return (
-    <li className={`srow pv cli${missing ? " pv-need" : ""}`} id={cli.name} aria-labelledby={id}>
+    <li
+      className={`srow pv cli${missing ? " pv-need" : ""}`}
+      id={cli.name}
+      data-guide={`cli-row-${cli.name}`}
+      aria-labelledby={id}
+    >
       <div className="srow-text">
         <p className="pv-head">
           {name}

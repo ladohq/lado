@@ -142,6 +142,14 @@ export const HelpIcon = () => (
   </Icon>
 );
 
+// A compass: its ring and needle; Help's Getting started (the first-run guide).
+export const CompassIcon = () => (
+  <Icon>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M15.9 8.1 13.8 13.8 8.1 15.9 10.2 10.2z" />
+  </Icon>
+);
+
 // A bug: its body, legs and feelers; Report a bug on the rail.
 export const BugIcon = () => (
   <Icon>

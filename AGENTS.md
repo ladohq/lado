@@ -57,7 +57,7 @@ One line per module; each module's behaviour in detail: [docs/design/modules.md]
   - `bug_report.py`: the bug report of `lado bug-report` and the UI; sends nothing.
   - `update.py`: PyPI's releases, the daily update check, the installer, the update result.
   - `self_update.py`: `lado update` (stop, back up, install, resume, roll back).
-  - `uninstall.py`: `lado uninstall`.
+  - `uninstall.py`: `lado uninstall`; `guide.py`: the UI's first-run guide's record and facts.
   - `telemetry.py`: LADO's error journal and, with the human's yes, usage statistics.
   - `runtime.py`: sessions and agents in tmux, workers' worktrees, message delivery.
   - `clone.py`: a repository from its git URL (`lado start <git-url>`, the UI's clone).

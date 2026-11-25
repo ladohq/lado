@@ -700,7 +700,7 @@ function AgentTerminal({
 
   return (
     <div className="term" data-mode={mode} data-link={link.phase}>
-      <div className="term-tools">
+      <div className="term-tools" data-guide="terminal-tools">
         {mode === "control" ? (
           <span className="term-mode term-control" title={typingInto}>
             <KeyboardIcon />

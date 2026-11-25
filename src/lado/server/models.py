@@ -4,9 +4,9 @@ API and for the event stream's items (lado.server.feed)."""
 import dataclasses
 import datetime
 import logging
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from lado import (
     artifacts,
@@ -1354,6 +1354,36 @@ class TelemetryInfo(BaseModel):
 
 class TelemetryChoice(BaseModel):
     choice: Literal["on", "off"]
+
+
+GuideId = Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{1,64}$")]
+
+
+class GuideFacts(BaseModel):
+    """What the first-run guide skips (lado.guide.Facts)."""
+
+    model: bool | None  # a model is connected; None: the first login check has not ended
+    author: bool  # LADO's or git's own author signs commits
+
+
+class GuideInfo(BaseModel):
+    """The first-run guide's record and facts (lado.guide), read once per page load."""
+
+    auto: bool  # the guide may start by itself: no LADO_GUIDE=0
+    completed: bool  # the main guide is completed (also while its first record waits)
+    shown: list[str]  # the ids of the hints shown, each once
+    tips_off: bool
+    telemetry_asked: bool  # the statistics banner still asks: the welcome waits for it
+    facts: GuideFacts | None  # while not completed
+
+
+class GuideAction(BaseModel):
+    """A mark of the guide: `shown` its `ids`, `complete`, `tips_off`, `restart`, or
+    `missing`: the `ids`' `marker` was not on screen (to LADO's error journal)."""
+
+    action: Literal["shown", "complete", "tips_off", "restart", "missing"]
+    ids: list[GuideId] = Field(default_factory=list, max_length=64)
+    marker: Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{0,64}$")] = ""
 
 
 class TelemetryPreview(BaseModel):

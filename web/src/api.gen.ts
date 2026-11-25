@@ -202,6 +202,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/guide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Guide State
+         * @description The first-run guide's record and, while it is not completed, its facts
+         *     (lado.guide.now). Read once per page load. A plain `def`: its first answer after
+         *     the server's start waits for the login check in a worker thread.
+         */
+        get: operations["guide_state_api_guide_get"];
+        put?: never;
+        /**
+         * Guide Mark
+         * @description A mark of the guide (lado.guide.change); `missing` journals the marker instead
+         *     (lado.guide.missing). The facts follow while the guide is not completed, also under
+         *     LADO_GUIDE=0 after Help → Getting started.
+         */
+        post: operations["guide_mark_api_guide_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/telemetry/preview": {
         parameters: {
             query?: never;
@@ -2867,6 +2895,52 @@ export interface components {
             /** Server */
             server: string | null;
         };
+        /**
+         * GuideAction
+         * @description A mark of the guide: `shown` its `ids`, `complete`, `tips_off`, `restart`, or
+         *     `missing`: the `ids`' `marker` was not on screen (to LADO's error journal).
+         */
+        GuideAction: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "shown" | "complete" | "tips_off" | "restart" | "missing";
+            /** Ids */
+            ids?: string[];
+            /**
+             * Marker
+             * @default
+             */
+            marker: string;
+        };
+        /**
+         * GuideFacts
+         * @description What the first-run guide skips (lado.guide.Facts).
+         */
+        GuideFacts: {
+            /** Model */
+            model: boolean | null;
+            /** Author */
+            author: boolean;
+        };
+        /**
+         * GuideInfo
+         * @description The first-run guide's record and facts (lado.guide), read once per page load.
+         */
+        GuideInfo: {
+            /** Auto */
+            auto: boolean;
+            /** Completed */
+            completed: boolean;
+            /** Shown */
+            shown: string[];
+            /** Tips Off */
+            tips_off: boolean;
+            /** Telemetry Asked */
+            telemetry_asked: boolean;
+            facts: components["schemas"]["GuideFacts"] | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -5207,6 +5281,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TelemetryInfo"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    guide_state_api_guide_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuideInfo"];
+                };
+            };
+        };
+    };
+    guide_mark_api_guide_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuideAction"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuideInfo"];
                 };
             };
             /** @description Validation Error */

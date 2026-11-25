@@ -10,6 +10,14 @@ that cannot be read is journaled and counts as no record, never as completed.
 
 No record is made while LADO_GUIDE=0 (`off`): nothing starts by itself, for recording
 videos on a live LADO and for every test but the guide's own UI e2e.
+
+The facts (`facts`) are whether a model is connected (a model server saved, or an agent
+CLI logged in as the server's login check read it) and whether an author signs commits
+(LADO's or git's own), as Settings shows them. With no record, the first answer waits up
+to WAIT seconds for the first login check since the server started and makes the record
+once the model is known: completed when one is connected, so a LADO set up before the
+guide never sees its welcome; while it is not known, the answer is completed and nothing
+is written. A completed guide costs one file read.
 """
 
 import contextlib
@@ -26,8 +34,10 @@ from lado import state, telemetry
 
 ID_RE = re.compile(r"[a-z0-9-]{1,64}")
 ACTIONS = ("shown", "complete", "tips_off", "restart")
+WAIT = 20.0  # seconds the first answer waits for the first login check
 
 _lock = threading.Lock()
+_missing: set[str] = set()  # the hints whose missing marker was journaled, per server
 
 
 @dataclasses.dataclass(frozen=True)
@@ -40,13 +50,24 @@ class Record:
 EMPTY = Record(completed=False, shown=(), tips_off=False)
 
 
+@dataclasses.dataclass(frozen=True)
+class Facts:
+    model: bool | None  # None: the first login check has not ended within WAIT
+    author: bool
+
+
 class Broken(ValueError):
     """guide.json is there but is not a record."""
 
 
-def off(environ: Mapping[str, str]) -> bool:
-    """LADO_GUIDE=0: the guide never starts by itself."""
-    return environ.get("LADO_GUIDE") == "0"
+class GuideMarkerMissing(Exception):
+    """A hint's condition held, but no visible element carried its marker (the UI's
+    report: `<id>: <marker>`)."""
+
+
+def off(environ: Mapping[str, str] | None = None) -> bool:
+    """LADO_GUIDE=0 (in `environ`, else os.environ): the guide never starts by itself."""
+    return (os.environ if environ is None else environ).get("LADO_GUIDE") == "0"
 
 
 def path() -> Path:
@@ -124,3 +145,66 @@ def change(action: str, ids: Sequence[str] = ()) -> Record:
             found = dataclasses.replace(found, completed=False, tips_off=False)
         write(found)
         return found
+
+
+def facts(has_db: bool, wait: float | None = None) -> Facts:
+    """Whether a model is connected and an author signs commits (`has_db`: lado.db is
+    there, which is not made); the model's fact waits up to `wait` (WAIT) seconds for the
+    first login check since the server started, which it starts unless one did."""
+    from lado import commit_authors
+    from lado.server import git_entries, provider_check
+
+    author = (has_db and commit_authors.lado() is not None) or git_entries.git_author() is not None
+    if has_db and state.model_servers():
+        return Facts(model=True, author=author)
+    ended = provider_check.first(WAIT if wait is None else wait)
+    logged_in = any(
+        row.ready and row.cli.installed and row.login.state == "yes"
+        for row in provider_check.snapshot().providers
+    )
+    return Facts(model=True if logged_in else (False if ended else None), author=author)
+
+
+def now(
+    has_db: bool, environ: Mapping[str, str] | None = None
+) -> tuple[bool, Record, Facts | None]:
+    """What GET /api/guide answers: whether the guide may start by itself, the record, and
+    the facts while it is not completed. With no record it is made once the model's fact
+    is known (completed when a model is connected); until then the guide counts as
+    completed and nothing is written. Under LADO_GUIDE=0 nothing is computed or made."""
+    auto = not off(environ)
+    found = read()
+    if not auto:
+        return auto, found or dataclasses.replace(EMPTY, completed=True), None
+    if found is None:
+        known = facts(has_db)
+        if known.model is None:
+            return auto, dataclasses.replace(EMPTY, completed=True), None
+        found = _first(completed=known.model)
+        return auto, found, None if found.completed else known
+    return auto, found, None if found.completed else facts(has_db)
+
+
+def _first(completed: bool) -> Record:
+    """Make the record, unless another answer made it meanwhile."""
+    with _lock:
+        found = read()
+        if found is None:
+            found = dataclasses.replace(EMPTY, completed=completed)
+            write(found)
+        return found
+
+
+def missing(id: str, marker: str) -> None:
+    """Journal a marker the UI did not find, once per hint while the server runs."""
+    with _lock:
+        if id in _missing:
+            return
+        _missing.add(id)
+    telemetry.record("ui:guide", GuideMarkerMissing(f"{id}: {marker}"))
+
+
+def forget_missing() -> None:
+    """Forget which missing markers were journaled (tests)."""
+    with _lock:
+        _missing.clear()

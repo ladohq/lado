@@ -112,6 +112,15 @@ export const chooseTelemetry = (choice: "on" | "off") => post<TelemetryInfo>("/a
 // What the next send posts, as `lado telemetry show` prints it.
 export const getTelemetryPreview = () => get<TelemetryPreview>("/api/telemetry/preview");
 
+export type GuideInfo = components["schemas"]["GuideInfo"];
+export type GuideAction = components["schemas"]["GuideAction"];
+
+// The first-run guide's record and, while it is not completed, its facts: once per page load.
+export const getGuide = () => get<GuideInfo>("/api/guide");
+
+// A mark of the guide: shown ids, complete, tips off, restart, or a missing marker.
+export const postGuide = (action: GuideAction) => post<GuideInfo>("/api/guide", action);
+
 export type SystemInfo = components["schemas"]["SystemInfo"];
 
 // The system panel's facts and the report to copy.

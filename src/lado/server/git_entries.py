@@ -106,13 +106,14 @@ def listing(has_db: bool = True) -> models.GitServers:
             for kind in git_kinds.KINDS
         ],
         author=models.author_info(commit_authors.lado() if has_db else None),
-        git_author=_git_author(),
+        git_author=git_author(),
         author_variables=launch.author_variables(),
     )
 
 
-def _git_author() -> models.AuthorInfo | None:
-    """git's own author outside any repository; none for a git that does not run."""
+def git_author() -> models.AuthorInfo | None:
+    """git's own author outside any repository; none for a git that does not run (also
+    the first-run guide's fact, lado.guide)."""
     from lado import runtime
 
     try:
@@ -129,7 +130,7 @@ def set_lado_author(given: models.GitServerAuthor) -> models.GitAuthorDone:
         raise _refusal(exc) from None
     line = commit_authors.LADO_SET.format(author=commit_authors.text(author))
     return models.GitAuthorDone(
-        author=models.author_info(author), git_author=_git_author(), line=line
+        author=models.author_info(author), git_author=git_author(), line=line
     )
 
 
@@ -137,7 +138,7 @@ def clear_lado_author() -> models.GitAuthorDone:
     """Clear LADO's commit author as `lado git-server author --clear` does."""
     commit_authors.clear_lado()
     return models.GitAuthorDone(
-        author=None, git_author=_git_author(), line=commit_authors.LADO_CLEARED
+        author=None, git_author=git_author(), line=commit_authors.LADO_CLEARED
     )
 
 

@@ -36,6 +36,7 @@ from lado import (
     artifacts,
     bug_report,
     doctor,
+    guide,
     kits,
     logins,
     marketplaces,
@@ -81,6 +82,9 @@ from lado.server.models import (
     Forgotten,
     GateAnswer,
     GateInfo,
+    GuideAction,
+    GuideFacts,
+    GuideInfo,
     InstalledKitInfo,
     InstallKit,
     KitFactInfo,
@@ -559,6 +563,36 @@ def create_app(
             raise HTTPException(409, f"{found.off_by} is set in the LADO server's environment")
         telemetry.choose(given.choice)
         return models.telemetry_info(telemetry.state())
+
+    def guide_info(auto: bool, record: guide.Record, facts: guide.Facts | None) -> GuideInfo:
+        return GuideInfo(
+            auto=auto,
+            completed=record.completed,
+            shown=list(record.shown),
+            tips_off=record.tips_off,
+            telemetry_asked=telemetry.state().ask,
+            facts=GuideFacts(model=facts.model, author=facts.author) if facts else None,
+        )
+
+    @app.get("/api/guide", dependencies=[Depends(guard)])
+    def guide_state(has_db: bool = Depends(database)) -> GuideInfo:
+        """The first-run guide's record and, while it is not completed, its facts
+        (lado.guide.now). Read once per page load. A plain `def`: its first answer after
+        the server's start waits for the login check in a worker thread."""
+        return guide_info(*guide.now(has_db))
+
+    @app.post("/api/guide", dependencies=[Depends(guard.changes)])
+    def guide_mark(given: GuideAction, has_db: bool = Depends(database)) -> GuideInfo:
+        """A mark of the guide (lado.guide.change); `missing` journals the marker instead
+        (lado.guide.missing). The facts follow while the guide is not completed, also under
+        LADO_GUIDE=0 after Help → Getting started."""
+        if given.action == "missing":
+            for id in given.ids:
+                guide.missing(id, given.marker)
+            found = guide.read() or guide.EMPTY
+        else:
+            found = guide.change(given.action, given.ids)
+        return guide_info(not guide.off(), found, None if found.completed else guide.facts(has_db))
 
     @app.get("/api/telemetry/preview", dependencies=[Depends(guard)])
     def telemetry_preview() -> TelemetryPreview:

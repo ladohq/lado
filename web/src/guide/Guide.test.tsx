@@ -166,6 +166,53 @@ describe("the main guide", () => {
   });
 });
 
+describe("on a phone", () => {
+  afterEach(() => {
+    delete document.documentElement.dataset.phone;
+  });
+  const section = (sentence: boolean) => ({
+    path: "/settings/agent-clis",
+    element: (
+      <main>
+        <a href="/settings" data-guide="settings-back">
+          ‹ Settings
+        </a>
+        <ul>
+          <li data-guide="cli-row-claude">Claude Code</li>
+        </ul>
+        {sentence && (
+          <a href="/settings/model-servers" data-guide="model-servers-link">
+            Model servers
+          </a>
+        )}
+      </main>
+    ),
+  });
+
+  it("goes back to the Settings list only when the next target is not on the section's page", async () => {
+    document.documentElement.dataset.phone = "portrait";
+    showGuide("/settings/agent-clis", INFO, { pages: [section(true)] });
+    press("Show me");
+    publishLogins([{ name: "claude" }, { name: "codex", installed: false }]);
+    await titled("Claude Pro or Max, or an Anthropic API key?");
+    press("I have neither");
+    await titled("An OpenRouter key, or a model on your computer?");
+    cleanup();
+    document.documentElement.dataset.phone = "portrait";
+    showGuide("/settings/agent-clis", INFO, { pages: [section(false)] });
+    press("Show me");
+    publishLogins([{ name: "claude", installed: false }, { name: "codex", installed: false }]);
+    await titled("Back to Settings");
+  });
+
+  it("opens the menu before a step on the rail", async () => {
+    document.documentElement.dataset.phone = "portrait";
+    showGuide("/");
+    press("Show me");
+    await titled("Open the menu");
+  });
+});
+
 describe("tips", () => {
   const sessionPage = {
     path: "/sessions/x",

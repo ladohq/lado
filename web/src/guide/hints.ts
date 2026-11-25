@@ -134,7 +134,7 @@ export const HINTS: Hint[] = [
     part: "model",
     target: "settings-back",
     precede: { for: SETTINGS_LIST },
-    when: [["phone"], ["settingsSection"]],
+    when: [["phone"], ["settingsSection"], ["!nextVisible"]],
     texts: {
       title: "Back to Settings",
       body: ["**Model servers** is on the Settings list."],
@@ -384,7 +384,7 @@ export const HINTS: Hint[] = [
     part: "author",
     target: "settings-back",
     precede: { for: SETTINGS_LIST },
-    when: [["phone"], ["settingsSection"]],
+    when: [["phone"], ["settingsSection"], ["!nextVisible"]],
     texts: {
       done: MODEL_DONE,
       title: "Back to Settings",

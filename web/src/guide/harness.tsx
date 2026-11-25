@@ -47,6 +47,7 @@ export function serveGuide(start: GuideInfo = INFO) {
 export function Rail({ drawer = false }: { drawer?: boolean }) {
   return (
     <nav className="rail" data-open={drawer || undefined}>
+      <button type="button" data-guide="rail-menu" aria-label="Menu" />
       <Link to="/" className="rail-link">
         Home
       </Link>

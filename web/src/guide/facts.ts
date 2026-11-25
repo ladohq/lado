@@ -8,7 +8,7 @@ export type CliFact = { name: string; ready: boolean; installed: boolean; logged
 
 export type Facts = {
   logins?: { rows: CliFact[]; checking: boolean }; // Agent CLIs' rows
-  servers?: number; // the saved model servers
+  models?: number; // the models of saved model servers ticked for an agent CLI (Model servers)
   author?: boolean; // LADO's or git's own author signs commits (Git servers)
   statisticsAsked?: boolean; // the statistics banner still asks (Telemetry.tsx)
 };

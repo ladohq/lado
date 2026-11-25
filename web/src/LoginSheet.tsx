@@ -158,6 +158,8 @@ function ChoiceSheet({ row, onChanged, onClose }: Props) {
                       type="radio"
                       name={id}
                       checked={c.id === chosen}
+                      // A press on the choice chosen by default changes nothing, but is a pick.
+                      onClick={() => setPicked(true)}
                       onChange={() => {
                         setChosen(c.id);
                         setPicked(true);

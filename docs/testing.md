@@ -546,8 +546,9 @@ Seven layers; each change gets tests at the lowest layer that can catch its bugs
    Playwright only Playwright's event loop. In `make check` and in CI (four shards; `make dist` in the
    job `web`). The first-run guide is off in every UI e2e test (`LADO_GUIDE=0`, Test
    infrastructure) but its own, `tests/ui/test_first_run_guide.py`, which walks its main
-   path with stand-ins of Claude Code and Codex CLI on the server's PATH, logged out, and no
-   provider's key in the environment; the guide's login-window steps are vitest's
+   path with stand-ins of Claude Code and Codex CLI on the server's PATH, logged out, and of
+   OpenCode, which runs the fake model server's model, and no provider's key in the
+   environment; the guide's login-window steps are vitest's
    (`web/src/guide/Guide.login.test.tsx`).
 5. **Smoke** (`make test-smoke`, marker `smoke`): each provider's real CLI with real tmux,
    hooks, `lado mcp` and SQLite, and a local endpoint that answers 401 instead of a model

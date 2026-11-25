@@ -55,3 +55,22 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-25-first-run-gu
   Not by hand: the statistics question (the test servers have no statistics endpoint; its
   wait is vitest's, `Guide.test.tsx`) and the restart with a model connected (no welcome:
   `tests/test_server_guide.py`).
+
+## 10. The human's manual check (25.11.2026)
+
+- [x] 10.1 A model is a model ticked for an agent CLI, or a login: `guide.facts`, the
+  published `models` fact, and Model servers' steps after Add server (`model-pick`,
+  `model-clis`, `model-id`, `model-server-row`). Check: `tests/test_server_guide.py`,
+  `Guide.test.tsx`, the UI e2e's main path.
+- [x] 10.2 The guide starts by itself only while a model or an author is missing. Check:
+  `tests/test_server_guide.py`, the UI e2e's reload after Getting started and Esc.
+- [x] 10.3 A press on the login window's choice chosen by default is a pick. Check:
+  `LoginSheet.test.tsx`, `Guide.login.test.tsx`.
+- [x] 10.4 `docker/compose.yaml` passes `LADO_GUIDE`; `docs/install.md` says so. Check:
+  `tests/test_docker.py`.
+- [x] 10.5 A tall form on a phone scrolls its end clear of the card; hints keep their `keep`
+  text in sight; the terminal's tip at its bar. Check: `place.test.ts`, the UI e2e.
+- [x] 10.6 The ring dashed, the card without a focus ring, Not now on one line, the focus to
+  the page's heading after Not now. Check: the UI e2e, `Guide.a11y.test.tsx`.
+- [x] 10.7 The texts of the server form's refusals and the highlighted element's name. Check:
+  `hints.test.ts`, `Guide.login.test.tsx`, `Guide.a11y.test.tsx`.

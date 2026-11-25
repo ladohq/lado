@@ -194,6 +194,7 @@ LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
 LADO_GIT_EMAIL=ann@example.com
 # LADO_LISTEN=0.0.0.0               # a phone too: see Open LADO on your phone
 # LADO_PUBLIC_HOST=ann-mbp.local
+# LADO_GUIDE=0                      # the UI's guide never starts by itself
 ```
 
 On Linux:
@@ -206,6 +207,7 @@ LADO_GIT_NAME="Ann Lee"             # git's identity for the agents' commits
 LADO_GIT_EMAIL=ann@example.com
 # LADO_LISTEN=0.0.0.0               # a phone too: see Open LADO on your phone
 # LADO_PUBLIC_HOST=ann-laptop.local
+# LADO_GUIDE=0                      # the UI's guide never starts by itself
 ```
 
 `<version>` is a LADO version without `v`, e.g. the newest on the
@@ -1153,7 +1155,8 @@ On a LADO with no model connected, the web UI shows a short guide to connecting 
 the commit author and starting a session, and tips the first time you meet a session, a gate,
 a question or a terminal. Help → Getting started shows it again. `LADO_GUIDE=0` in the
 environment of `lado ui` (or `lado server`) keeps it from starting by itself, e.g. while you
-record a video; Help → Getting started still starts it.
+record a video; Help → Getting started still starts it. In Docker, put `LADO_GUIDE=0` in the
+`.env` next to `compose.yaml` and run `docker compose up -d` again.
 
 ### Installed otherwise
 

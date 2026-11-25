@@ -27,7 +27,7 @@ export function useModelSettings(): ModelSettingsState {
         throw new Error("the server gave no models: reload the page");
       setEntries(found);
       setProblem(null);
-      publish("servers", found.servers.length); // the first-run guide's fact (guide/facts.ts)
+      publish("models", found.models.length); // the first-run guide's fact (guide/facts.ts)
     } catch (error) {
       if (asked === latest.current) setProblem(refusalOf(error).message);
     }

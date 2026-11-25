@@ -4,6 +4,7 @@
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { accessibleName } from "./Guide";
 import { card, cardTitle, INFO, showGuide } from "./harness";
 
 afterEach(() => {
@@ -74,6 +75,14 @@ describe("the guide's accessibility", () => {
     before.remove();
   });
 
+  it("gives the focus to the page's heading on Not now when it was on nothing", async () => {
+    showGuide("/");
+    await screen.findByRole("dialog", { name: "Welcome to LADO" });
+    fireEvent.click(screen.getByRole("button", { name: "Not now" }));
+    await waitFor(() => expect(card()).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Home" }));
+  });
+
   it("announces a tip once, takes no focus, and is reached by Tab from its target", async () => {
     showGuide("/sessions/x", { ...INFO, completed: true, facts: null }, {
       pages: [
@@ -104,5 +113,17 @@ describe("the guide's accessibility", () => {
     expect(document.activeElement).toBe(link);
     fireEvent.keyDown(link, { key: "Escape" });
     await waitFor(() => expect(tip.isConnected).toBe(false));
+  });
+});
+
+describe("the highlighted element's name", () => {
+  it("keeps its parts' words apart and is cut at a word", () => {
+    const row = document.createElement("li");
+    row.innerHTML = `<strong>Claude Code</strong><span>installed</span><p>${"logged in with a subscription ".repeat(4)}</p>`;
+    const name = accessibleName(row);
+    expect(name.startsWith("Claude Code installed logged in")).toBe(true);
+    expect(name.endsWith("…")).toBe(true);
+    expect(name.length).toBeLessThanOrEqual(81);
+    expect(name.slice(0, -1)).toMatch(/subscription$|logged$|in$|with$|a$/);
   });
 });

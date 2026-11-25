@@ -63,6 +63,8 @@ describe("the login window's steps", () => {
     fireEvent.click(screen.getByRole("button", { name: "Log in to Claude Code" }));
     await titled("Which one do you have?");
     expect(document.querySelector(".gd-block")).toBeNull(); // the sheet's own backdrop is the dim
+    choose(/Subscription/); // chosen by default: pressed, it is the person's choice
+    await titled("Make a token with Claude Code");
     choose(/Pay per use/);
     await titled("Paste your API key");
     choose(/Subscription/);
@@ -77,6 +79,10 @@ describe("the login window's steps", () => {
     await titled("A ChatGPT plan, or an OpenAI API key?");
     fireEvent.click(screen.getByRole("button", { name: "Log in to Codex CLI" }));
     await titled("Sign in with a one-time code");
+    // The highlighted window is named by its heading, not by all of its text run together.
+    expect(document.querySelector(".gd-card .visually-hidden")?.textContent).toBe(
+      `Highlighted: ${within(sheet()).getByRole("heading", { level: 3 }).textContent}`,
+    );
     choose(/Pay per use/);
     await titled("Paste it and press Save");
     choose(/access token/);

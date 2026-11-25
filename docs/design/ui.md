@@ -2499,9 +2499,12 @@ is data in **`web/src/guide/hints.ts`**, the one list; this document does not re
   arrow, no dim, takes no focus and blocks nothing: Got it, or Don't show tips like this.
 - **When.** The main guide runs while it is not completed and Not now / Esc was not pressed
   in this page load, after the statistics question is answered; its welcome only while no
-  model is connected (a LADO set up before it gets a completed record). Parts done in the
-  system are skipped (connect a model, sign your work, start working); opening New session
-  completes it. Tips show once each, in every browser, never over a guiding step, one at a
+  model is connected (a LADO set up before it gets a completed record). A model is connected
+  when an agent CLI has one to work on: the CLI logged in, or a model of a saved model server
+  ticked for it (a server saved alone is none, so the guide goes on to its models and ticks).
+  A page load whose `GET` finds a model and an author in effect completes the record: the
+  guide starts by itself only while one of them is missing. Parts done in the system are
+  skipped (connect a model, sign your work, start working); opening New session completes it. Tips show once each, in every browser, never over a guiding step, one at a
   time. Help → Getting started turns tips back on and starts the guide at its welcome.
 - **Aimed at markers.** Targets are `data-guide="<name>"` attributes on existing elements; a
   form's or window's state is read from them (`data-guide-cli`, `-choice`, `-picked`,
@@ -2512,7 +2515,10 @@ is data in **`web/src/guide/hints.ts`**, the one list; this document does not re
   moves or removes a marked element, or adds a feature, checks the guide's file (the review
   trap in `.lado/sdlc.md`).
 - **The layer.** Placement is one pure function (`guide/place.ts`): beside the target (a
-  phone: below, then above), never over it; a step inside a window draws no dim of its own;
+  phone: below, then above), never over it nor over the text its hint keeps in sight
+  (`keep`: a login window's choices, the session's task, the author just saved); a card at the
+  window's edge over a tall form scrolls the form's end clear of it. The ring is dashed, never
+  taken for the solid focus ring. A step inside a window draws no dim of its own;
   another window over a step hides the guide. The dimmed page is `inert`; a guiding card is a
   dialog that takes the focus and gives it back on Not now; Esc is Not now (a tip: Got it).
 - **Cost.** One `GET /api/guide` per page load (its record and, while not completed, the

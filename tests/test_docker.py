@@ -655,8 +655,15 @@ def test_compose_passes_the_git_identity_and_no_secret(compose):
         "LADO_GIT_EMAIL",
         "LADO_LISTEN",
         "LADO_PUBLIC_HOST",
+        "LADO_GUIDE",
     }
     assert "env_file" not in compose["services"]["lado"]
+
+
+def test_compose_passes_lado_guide(compose):
+    """`LADO_GUIDE=0 docker compose up -d` keeps the UI's guide from starting by itself; unset,
+    it is empty, which is not 0 (docs/install.md)."""
+    assert compose["services"]["lado"]["environment"]["LADO_GUIDE"] == "${LADO_GUIDE:-}"
 
 
 def test_compose_publishes_one_port_number_on_lado_listen(compose):

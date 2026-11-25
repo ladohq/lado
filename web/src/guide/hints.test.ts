@@ -1,7 +1,7 @@
 // The guide's marker test (openspec first-run-guide, "Hints are data aimed at markers"): every
-// target and anchor of hints.ts is a data-guide marker in the UI's code, every condition is one
-// the engine knows, ids are unique, texts are there and English, and every provider the guide
-// has texts for is one the server knows.
+// target, anchor and kept marker of hints.ts is a data-guide marker in the UI's code, every
+// condition is one the engine knows, ids are unique, texts are there and English, and every
+// provider the guide has texts for is one the server knows.
 import { describe, expect, it } from "vitest";
 
 import { CONDITIONS } from "./conditions";
@@ -13,13 +13,13 @@ const code = Object.entries(sources)
   .map(([, text]) => text)
   .join("\n");
 
-// The markers the code writes: data-guide="x", a "x" in a data-guide={…} expression,
+// The markers the code writes: data-guide="x", a "x" in a (data-)guide={…} expression,
 // data-guide={`x-${…}`} (a prefix), a name given to a prop that becomes one (guide="x"), and
 // the Settings list's GUIDE_MARKERS.
 const lists = [...code.matchAll(/GUIDE_MARKERS[^=]*= \{([^}]*)\}/g)].map(([, body]) => body).join("\n");
 function marked(marker: string): boolean {
   if (code.includes(`data-guide="${marker}"`) || code.includes(`guide="${marker}"`)) return true;
-  if (code.split("\n").some((line) => line.includes("data-guide={") && line.includes(`"${marker}"`))) return true;
+  if (code.split("\n").some((line) => /guide=\{/.test(line) && line.includes(`"${marker}"`))) return true;
   if (lists.includes(`"${marker}"`)) return true;
   return [...code.matchAll(/data-guide=\{`([a-z-]+)\$\{/g)].some(([, prefix]) => marker.startsWith(prefix));
 }
@@ -29,7 +29,7 @@ const texts = (all: Texts[]) => all.flatMap((t) => [t.title, ...t.body, t.waitin
 describe("the guide's hints", () => {
   it("aim at markers that are in the UI's code", () => {
     for (const hint of HINTS) {
-      for (const marker of [hint.target, hint.anchor, ...(hint.precede?.for ?? [])]) {
+      for (const marker of [hint.target, hint.anchor, ...(hint.precede?.for ?? []), ...(hint.keep ?? [])]) {
         if (marker) expect(marked(marker), `${hint.id}: no element marked ${marker}`).toBe(true);
       }
     }
@@ -79,6 +79,14 @@ describe("the guide's hints", () => {
       "https://www.alibabacloud.com/help/en/model-studio/get-api-key",
     ]);
     expect(card.texts.help).toBe("Not sure what any of this means? Ask your company's IT team, or someone who knows.");
+  });
+
+  it("say what the server form shows after a refusal", () => {
+    const error = HINTS.find((hint) => hint.id === "model-server-error")!;
+    // An address that does not answer: nothing about a key.
+    expect(error.variants!.unreachable.waiting).not.toMatch(/key/i);
+    // A key refused: Check key is gone until the key changes, so the hint says it comes back.
+    expect(error.texts.body.join(" ")).toMatch(/\*\*Check key\*\* comes back/);
   });
 
   it("list the five tips in their order", () => {

@@ -68,8 +68,10 @@ keeps no list of hints: the guide file is the one source, D7).
 
 ### D3. Facts and the first record
 
-`facts.model`: true when a model server is saved (lado.db, when it exists) or a provider's
-row in `provider_check`'s snapshot is logged in. When the snapshot has not been read since
+`facts.model`: true when an agent CLI has a model to work on: a configured model (a model of
+a saved model server ticked for an agent CLI, lado.db's `models`, when it exists) or a
+provider's row in `provider_check`'s snapshot logged in. A server saved with no model ticked
+is none: the agents would start on their CLI's own settings (the human's manual check, 25.11). When the snapshot has not been read since
 the server started, the server starts one check (`provider_check.start()`) and waits for it
 up to 20 s before it answers; past that it answers `model: null` and the check goes on, and
 the next page load reads its result. The guide shows nothing while its `GET` has not
@@ -82,7 +84,8 @@ when a model is connected (an existing set-up LADO never sees the welcome), else
 nothing shows; a check whose pass raised counts as not ended (null), never as "no model".
 A mark made while there is no record (a tip shown meanwhile) starts from that completed
 record, so it never starts the main guide on a LADO that may be set up; only `restart`
-makes a record not completed. Facts are computed only while not completed: a completed
+makes a record not completed. A `GET` that finds a record not completed with a model and an
+author both in effect makes it completed (D12). Facts are computed only while not completed: a completed
 guide costs one file read.
 
 Options: put logins and model servers into the change feed (rejected: a feed kind for data
@@ -93,7 +96,7 @@ needs); always show the welcome and let the person dismiss it (rejected by the c
 
 `web/src/guide/facts.ts`: a small store (`publish(part, value)`, `subscribe`), outside the
 lazy engine. `Providers.tsx` publishes its rows (installed, logged in, per provider),
-`ModelSources.tsx` and `useModelSettings` the saved servers, `GitServers.tsx` its author and
+`useModelSettings` the number of configured models, `GitServers.tsx` its author and
 git's own, each when it loads or changes them. The engine takes a published value over the
 server's `facts` (it is newer). No request of the guide's own on these pages.
 
@@ -140,9 +143,13 @@ server lifetime. Nothing is shown to the person.
 ### D10. Placement is a pure function
 
 `web/src/guide/place.ts`: `place(card, hole, anchor, window, options) → {x, y, side, arrow,
-pointingRing}` over plain rectangles, with the obstacle list (focusable elements) passed in.
-All rules of the design doc's §4 are unit tests over rectangles; the engine only measures and
-calls it.
+pointingRing}` over plain rectangles, with the obstacle list passed in: a hint's `keep`
+markers (text its card must leave in sight: a login window's choices, the task in the session,
+the author just saved; the human's manual check, 25.11) and, for a tip, the focusable
+elements. All rules of the design doc's §4 are unit tests over rectangles; the engine only
+measures (each rectangle cut to the boxes that clip it, a list that scrolls) and calls it. A
+card at the edge over its target gets room at the end of what scrolls the target, which
+scrolls the target's end clear of the card (a server form grown tall on a phone).
 
 ### D11. One switch for videos and tests: `LADO_GUIDE=0`
 
@@ -162,7 +169,10 @@ Option rejected: a Settings toggle (a new element on a screen, against the human
 ### D12. "Not now" lives for the page load
 
 Not now and Esc are kept in the engine's memory only; a reload brings the guide back, as the
-human decided. Chains (stage 2) will use the same.
+human decided, while a model or an author is missing: with both, only New session is left,
+which needs no guide, and the next `GET` completes the record (D3). So the guide restarted
+from Help and closed on a set-up LADO does not come back by itself (the human's decision
+after the manual check, 25.11). Chains (stage 2) will use the same.
 
 ### D13. Completion
 
@@ -174,7 +184,8 @@ unless the guide was restarted from Help in this page load.
 
 The UI e2e server runs the fake providers, whose names have no texts in the guide file, so
 the e2e path is: welcome → Open Settings → Model servers (the CLI steps are skipped by the
-neutral-core rule) → Add server → the form, against `tests/fake_endpoint.py` → Git servers →
+neutral-core rule) → Add server → the form, against `tests/fake_endpoint.py` → the server's
+model → its tick for an agent CLI → Git servers →
 Set author → the form → New session → the New session tip. The CLI and login-window steps are
 covered by vitest over the engine with rendered `Providers`/`LoginSheet` and fake facts. The
 test sets `GIT_CONFIG_GLOBAL` to an empty file so that nobody signs commits.

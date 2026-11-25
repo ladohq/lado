@@ -222,7 +222,9 @@ export function ModelServers(props: Sources) {
       <h3 id={id}>
         Servers {settings.servers.length > 0 && <span className="mx-count">{settings.servers.length}</span>}
       </h3>
-      <p className="mx-lead">{SERVERS_LEAD}</p>
+      <p className="mx-lead" data-guide="model-servers-lead">
+        {SERVERS_LEAD}
+      </p>
       {/* The list holds the place of the add form once it closes (useScrollAnchor). */}
       <ul className="mx-srcs" data-anchor="">
         {order.current.map((name) => {
@@ -231,7 +233,12 @@ export function ModelServers(props: Sources) {
           const line = gone[fold(name)];
           if (!server && !line) return null;
           return (
-            <li key={key} className={`mx-src${props.open.has(key) ? " mx-open" : ""}`} data-anchor="">
+            <li
+              key={key}
+              className={`mx-src${props.open.has(key) ? " mx-open" : ""}`}
+              data-anchor=""
+              data-guide={server ? "model-server-row" : undefined}
+            >
               {server ? (
                 <ServerSource
                   server={server}
@@ -775,6 +782,7 @@ function SourceBody({
         {opened && (
           <div
             className="mx-sub"
+            data-guide="model-clis"
             role="group"
             aria-label={`Agent CLIs for ${model}`}
             onKeyDown={(event) => event.key === "Escape" && setPop(null)}
@@ -849,7 +857,7 @@ function SourceBody({
       {probe?.apis_why && <span className="field-note warn">{`⚠ APIs: cannot be told: ${probe.apis_why}`}</span>}
       {columns.length === 0 && <p className="mx-note">No installed CLI can use this server.</p>}
       {rows.length > 0 && (
-        <div className={`mx-list${rows.length <= SHORT ? " mx-short" : ""}`}>
+        <div className={`mx-list${rows.length <= SHORT ? " mx-short" : ""}`} data-guide={columns.length ? "model-list" : undefined}>
           {shown.map((model) => serverRow(model))}
           {shown.length === 0 && <div className="mx-row mx-row-plain muted">{`No model matches “${search}”.`}</div>}
         </div>
@@ -927,7 +935,7 @@ function ModelId({
   const settled = check && typed === model.trim() ? check : null;
   const note = refused ?? settled;
   return (
-    <div className="mx-other mx-other-cli">
+    <div className="mx-other mx-other-cli" data-guide="model-id">
       <div className="field">
         <label htmlFor={id}>Model id</label>
         <input

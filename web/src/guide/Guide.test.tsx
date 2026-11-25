@@ -1,9 +1,10 @@
 import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { publish } from "./facts";
 import { merged, MISSING_MS } from "./Guide";
-import { card, cardTitle, INFO, publishLogins, showGuide } from "./harness";
+import { card, cardTitle, INFO, publishLogins, Settings, showGuide } from "./harness";
 
 afterEach(() => {
   cleanup();
@@ -54,6 +55,54 @@ describe("the main guide", () => {
     await titled("An OpenRouter key, or a model on your computer?");
     fireEvent.click(screen.getByRole("link", { name: "Model servers" }));
     await titled("Add your server");
+  });
+
+  it("leads from a saved server to a model ticked for an agent CLI, then to the author", async () => {
+    function Servers() {
+      const [open, setOpen] = useState(false);
+      const [model, setModel] = useState(false);
+      return (
+        <Settings>
+          <ul>
+            <li data-guide="model-server-row">
+              <button type="button" onClick={() => setOpen(!open)}>
+                Lab
+              </button>
+              {open && (
+                <div data-guide="model-list">
+                  <div role="button" tabIndex={0} onClick={() => setModel(true)}>
+                    qwen3-8b
+                  </div>
+                  {model && (
+                    <div role="group" data-guide="model-clis">
+                      <label>
+                        <input type="checkbox" onChange={() => publish("models", 1)} /> Codex CLI
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
+            </li>
+          </ul>
+          <button type="button" data-guide="model-server-add">
+            Add server
+          </button>
+        </Settings>
+      );
+    }
+    showGuide("/settings/model-servers", INFO, { pages: [{ path: "/settings/model-servers", element: <Servers /> }] });
+    press("Show me");
+    publishLogins([{ name: "claude", installed: false }, { name: "codex", installed: false }]);
+    act(() => publish("models", 0));
+    await titled("Open your server"); // a saved server is no model yet
+    fireEvent.click(screen.getByRole("button", { name: "Lab" }));
+    await titled("Choose a model");
+    fireEvent.click(screen.getByRole("button", { name: "qwen3-8b" }));
+    await titled("Tick the agent CLIs that run it");
+    expect(card()?.querySelector(".gd-done")).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox"));
+    await titled("Sign the agents' work");
+    expect(card()?.querySelector(".gd-done")?.textContent).toBe("✓ Model connected");
   });
 
   it("skips the row of a CLI not installed, and every row of a provider without texts", async () => {

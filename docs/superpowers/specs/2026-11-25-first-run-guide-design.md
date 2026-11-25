@@ -461,3 +461,31 @@ On a fresh `LADO_HOME` with no login, no model server and no commit author
 (`GIT_CONFIG_GLOBAL=/dev/null`), `uv run lado ui`: answer the statistics question, follow the
 guide to the New session window without reading docs, light and dark, at 390, 768 and 1440 px.
 Then restart with a model connected and a new `LADO_HOME`: no welcome.
+
+## 14. After the human's manual check (25.11.2026)
+
+The human walked the guide by hand (Docker and a working copy) before the merge; what it
+changed here, each in the code, the openspec change and its tests:
+
+- **A model is connected** when an agent CLI has one to work on: logged in, or a model of a
+  saved model server ticked for it. A server saved alone is no model. After Add server the
+  main path goes on in Model servers: `model-pick` ("Choose a model", marker `model-list`),
+  `model-clis` ("Tick the agent CLIs that run it", `model-clis`), `model-id` for a server
+  without a list ("Type the model's id", `model-id`), and `model-server-row` ("Open your
+  server") for a server closed again.
+- **Starts by itself** only while not completed and a model or an author is missing: a
+  `GET` that finds both completes the record, so the guide restarted from Help and closed on
+  a set-up LADO does not come back.
+- **`keep`**: a hint names the text its card must leave in sight (a login window's choices,
+  Model servers' first line, the author just saved, the session's task); the terminal's tip
+  stands at the terminal's bar (`terminal-tools`), off its newest lines.
+- **A tall form on a phone**: the card at the edge over it scrolls the form's end (Key, Add
+  server) clear of it.
+- **Look**: the step's ring is dashed (the focus ring is solid, of the same colour); the
+  card draws no focus ring of its own; Not now stays on one line.
+- **Texts**: the server form's refusal step says Check key comes back once the key changes;
+  an address that does not answer waits for "an address that answers". The highlighted
+  element is named by its heading, its words apart, cut at a word.
+- **Not now** with the focus on nothing gives it to the page's heading.
+- **Docker**: `docker/compose.yaml` passes `LADO_GUIDE`.
+

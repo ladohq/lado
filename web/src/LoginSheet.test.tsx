@@ -90,6 +90,14 @@ test("without a login the first choice is chosen and nothing is marked current",
   expect(screen.queryByRole("button", { name: "Log out…" })).toBeNull();
 });
 
+test("pressing the choice chosen by default is a pick for the first-run guide", () => {
+  sheet(claude());
+  const box = document.querySelector<HTMLElement>('[data-guide="login-sheet"]')!;
+  expect(box.dataset.guidePicked).toBeUndefined();
+  fireEvent.click(screen.getByRole("radio", { name: /Subscription/ })); // checked already: no change
+  expect(box.dataset.guidePicked).toBe("true");
+});
+
 test("the first-run guide's markers follow the chosen choice, its pick and a refusal", async () => {
   sheet(codex({ login: { ...LOGIN, state: "no" } }));
   const box = document.querySelector<HTMLElement>('[data-guide="login-sheet"]')!;

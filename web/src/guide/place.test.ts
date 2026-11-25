@@ -39,6 +39,26 @@ describe("place", () => {
     expect(left.side).toBe("left");
   });
 
+  it("keeps a guiding card off what its hint keeps clear while another place fits", () => {
+    const target = { x: 400, y: 100, w: 300, h: 40 };
+    const text = { x: 400, y: 150, w: 600, h: 200 }; // right of the target and below it
+    const p = place({ card, target, viewport: wide, phone: false, kind: "guiding", obstacles: [text] });
+    expect(overlaps(box(p), text)).toBe(false);
+    expect(p.side).toBe("left");
+    // Nowhere else: beside the target after all.
+    const all = { x: 0, y: 0, w: 1440, h: 900 };
+    expect(place({ card, target, viewport: wide, phone: false, kind: "guiding", obstacles: [all] }).side).toBe("right");
+  });
+
+  it("puts a card at the edge away from what its hint keeps clear", () => {
+    const sheet = { x: 0, y: 0, w: 390, h: 844 }; // a login window filling a phone
+    const anchor = { x: 16, y: 300, w: 358, h: 44 };
+    const choices = { x: 16, y: 560, w: 358, h: 260 };
+    const p = place({ card, target: sheet, anchor, viewport: phoneView, phone: true, kind: "guiding", obstacles: [choices] });
+    expect(p.side).toBe("edge");
+    expect(p.y).toBe(16);
+  });
+
   it("puts a phone's card below, then above, the window's width less 32px", () => {
     const target = { x: 10, y: 10, w: 44, h: 44 };
     const p = place({ card, target, viewport: phoneView, phone: true, kind: "guiding", obstacles: [] });

@@ -12,15 +12,18 @@ While LADO_GUIDE=0 (`off`) a GET makes no record and computes no facts: nothing 
 itself, for recording videos on a live LADO and for every test but the guide's own UI e2e;
 Help → Getting started still writes one (`restart`).
 
-The facts (`facts`) are whether a model is connected (a model server saved, or an agent
-CLI logged in as the server's login check read it) and whether an author signs commits
-(LADO's or git's own), as Settings shows them. With no record, the first answer waits up
-to WAIT seconds for the first login check since the server started and makes the record
-once the model is known: completed when one is connected, so a LADO set up before the
-guide never sees its welcome; while it is not known (the check did not end in time, or it
-failed), the answer is completed and nothing is written, and a mark made meanwhile (a
-tip shown) starts from that completed record (`UNKNOWN`), never from a guide to run. A
-completed guide costs one file read.
+The facts (`facts`) are whether a model is connected (an agent CLI has one to work on: a
+model of a saved model server ticked for it, or the CLI logged in as the server's login
+check read it; a server saved with no model ticked is none) and whether an author signs
+commits (LADO's or git's own), as Settings shows them. A record not completed whose answer
+finds both makes it completed: the guide starts by itself only while the model or the author
+is missing, so one restarted from Help and closed comes back on no later page load. With no
+record, the first answer waits up to WAIT seconds for the first login check since the
+server started and makes the record once the model is known: completed when one is
+connected, so a LADO set up before the guide never sees its welcome; while it is not known
+(the check did not end in time, or it failed), the answer is completed and nothing is
+written, and a mark made meanwhile (a tip shown) starts from that completed record
+(`UNKNOWN`), never from a guide to run. A completed guide costs one file read.
 """
 
 import contextlib
@@ -160,7 +163,7 @@ def facts(has_db: bool, wait: float | None = None) -> Facts:
     from lado.server import git_entries, provider_check
 
     author = (has_db and commit_authors.lado() is not None) or git_entries.git_author() is not None
-    if has_db and state.model_servers():
+    if has_db and state.models():
         return Facts(model=True, author=author)
     ended = provider_check.first(WAIT if wait is None else wait)
     logged_in = any(
@@ -176,7 +179,8 @@ def now(
     """What GET /api/guide answers: whether the guide may start by itself, the record, and
     the facts while it is not completed. With no record it is made once the model's fact
     is known (completed when a model is connected); until then the guide counts as
-    completed and nothing is written. Under LADO_GUIDE=0 nothing is computed or made."""
+    completed and nothing is written. A record not completed is completed once a model and
+    an author are both in effect. Under LADO_GUIDE=0 nothing is computed or made."""
     auto = not off(environ)
     found = read()
     if not auto:
@@ -187,7 +191,21 @@ def now(
             return auto, UNKNOWN, None
         found = _first(completed=known.model)
         return auto, found, None if found.completed else known
-    return auto, found, None if found.completed else facts(has_db)
+    if found.completed:
+        return auto, found, None
+    known = facts(has_db)
+    if known.model and known.author:
+        return auto, _done(), None
+    return auto, found, known
+
+
+def _done() -> Record:
+    """Complete the record a page load found not completed with nothing of the main path
+    left but New session (a model and an author in effect): it starts by itself no more."""
+    with _lock:
+        found = dataclasses.replace(read() or UNKNOWN, completed=True)
+        write(found)
+        return found
 
 
 def _first(completed: bool) -> Record:

@@ -94,10 +94,18 @@ def test_a_logged_in_cli_makes_the_record_completed(client, check):
     assert guide.read() == guide.Record(completed=True, shown=(), tips_off=False)
 
 
-def test_a_saved_model_server_makes_it_completed_without_a_check(client, check):
+def test_a_model_on_a_saved_server_makes_it_completed_without_a_check(client, check):
     state.add_model_server("s1", "lms", "http://lms", "LM Studio", (base.CHAT_COMPLETIONS,))
+    state.add_model("qwen", "opencode", "qwen3-8b", "s1")
     assert client.get("/api/guide").json()["completed"] is True
     assert check.passes == 0
+
+
+def test_a_saved_server_without_a_model_is_no_model(client, check):
+    """A server saved but no model of it ticked for an agent CLI: no agent has a model."""
+    state.add_model_server("s1", "lms", "http://lms", "LM Studio", (base.CHAT_COMPLETIONS,))
+    info = client.get("/api/guide").json()
+    assert info["completed"] is False and info["facts"]["model"] is False
 
 
 def test_a_check_that_does_not_end_in_time_writes_nothing(client, check, monkeypatch):
@@ -153,6 +161,26 @@ def test_facts_are_answered_while_not_completed(client, check, git_config):
     info = client.get("/api/guide").json()
     assert info["facts"] == {"model": False, "author": True}
     assert info["shown"] == ["welcome"]
+
+
+def test_a_restarted_guide_on_a_set_up_lado_does_not_come_back_by_itself(client, check):
+    """Help → Getting started, then Not now, on a LADO with a model and an author: the next
+    page load's answer completes the guide, so nothing starts by itself."""
+    check.logged_in = {"codex"}
+    state.set_commit_author("Ann Lee", "ann@example.com")
+    guide.write(guide.Record(completed=True, shown=("welcome",), tips_off=False))
+    restarted = client.post("/api/guide", json={"action": "restart"}).json()
+    assert restarted["completed"] is False  # this page load shows it
+    again = client.get("/api/guide").json()
+    assert again["completed"] is True and again["facts"] is None
+    assert guide.read() == guide.Record(completed=True, shown=("welcome",), tips_off=False)
+
+
+def test_a_guide_with_the_author_left_comes_back_by_itself(client, check):
+    check.logged_in = {"codex"}
+    guide.write(guide.Record(completed=False, shown=(), tips_off=False))
+    info = client.get("/api/guide").json()
+    assert info["completed"] is False and info["facts"] == {"model": True, "author": False}
 
 
 def test_ladOs_own_author_is_an_author(client, check):

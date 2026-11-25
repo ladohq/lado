@@ -39,10 +39,12 @@ function toLogIn(context: Context, cli: string): boolean {
   return row.installed && !row.loggedIn;
 }
 
+// An agent CLI has a model to work on: it is logged in, or a model of a saved server is ticked
+// for it (a server saved with no model ticked is none).
 export function modelConnected(context: Context): boolean {
-  const { logins, servers } = context.facts;
+  const { logins, models } = context.facts;
   if (logins?.rows.some((row) => row.loggedIn)) return true;
-  if (servers !== undefined && servers > 0) return true;
+  if (models !== undefined && models > 0) return true;
   return context.info.facts?.model === true;
 }
 

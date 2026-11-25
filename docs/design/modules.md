@@ -134,12 +134,14 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     lado.db, which may not exist at first start), changed by `change(action, ids)` under one
     lock with an atomic replace (`shown` a union; ids of `ID_RE`, the server keeps no list
     of hints); a file that cannot be read is journaled (`guide:read`) and counts as none.
-    `facts(has_db)`: a model connected (a saved model server, or a CLI logged in by
-    `provider_check`'s snapshot, waiting up to `WAIT` for its first check) and an author in
-    effect (LADO's, or git's own by `git_entries.git_author`). `now` is what
-    `GET /api/guide` answers: with no record, it is made once the model is known (completed
-    when one is connected), else the guide counts as completed (`UNKNOWN`) and nothing is
-    written, and a mark made meanwhile starts from `UNKNOWN`; under `LADO_GUIDE=0` (`off`)
+    `facts(has_db)`: a model connected (a configured model, i.e. a saved server's model
+    ticked for an agent CLI, or a CLI logged in by `provider_check`'s snapshot, waiting up
+    to `WAIT` for its first check) and an author in effect (LADO's, or git's own by
+    `git_entries.git_author`). `now` is what `GET /api/guide` answers: with no record, it is
+    made once the model is known (completed when one is connected), else the guide counts as
+    completed (`UNKNOWN`) and nothing is written, and a mark made meanwhile starts from
+    `UNKNOWN`; a record not completed with a model and an author in effect is completed
+    (the guide starts by itself only while one is missing); under `LADO_GUIDE=0` (`off`)
     a GET computes and makes nothing (`restart` still writes). `missing(id, marker)`
     journals a marker the UI did not find (`ui:guide`, `GuideMarkerMissing`), once per id
     while the server runs.

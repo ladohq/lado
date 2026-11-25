@@ -40,6 +40,10 @@ def fresh(tmp_path, monkeypatch, git_config, logins):
         "claude": 'if [ "$1" = auth ]; then echo \'{"loggedIn": false}\'; exit 1; fi\necho 2.1.0\n',
         "codex": 'if [ "$1" = login ]; then echo "Not logged in" >&2; exit 1; fi\n'
         "echo codex-cli 0.162.0\n",
+        # The CLI that runs the fake model server's model (Codex CLI cannot: its MCP tools).
+        "opencode": 'if [ "$1" = auth ]; then\n'
+        '  printf "┌ Credentials %s\\n└ 0 credentials\\n" "$HOME"; exit 0\nfi\n'
+        'if [ "$1" = models ]; then exit 0; fi\necho 1.18.35\n',
     }
     for name, body in scripts.items():
         script = folder / name
@@ -76,6 +80,37 @@ def target(page: Page, marker: str):
     return page.locator(f'[data-guide="{marker}"]:visible').first
 
 
+def apart(a, b) -> bool:
+    """The two elements' boxes do not overlap."""
+    x, y = a.bounding_box(), b.bounding_box()
+    assert x is not None and y is not None
+    return not (
+        x["x"] < y["x"] + y["width"]
+        and y["x"] < x["x"] + x["width"]
+        and x["y"] < y["y"] + y["height"]
+        and y["y"] < x["y"] + x["height"]
+    )
+
+
+def looks(page: Page) -> None:
+    """The step's ring is dashed, never the solid focus ring; the card draws no ring of its
+    own while it has the focus; Not now is one line."""
+    ring = page.locator(".gd-ring")
+    assert ring.evaluate("(e) => getComputedStyle(e).outlineStyle") == "dashed"
+    focused = page.evaluate("() => document.activeElement?.classList.contains('gd-card')")
+    assert focused, "the card has the focus"
+    assert card(page).evaluate("(e) => getComputedStyle(e).outlineStyle") == "none"
+    lines = (
+        card(page)
+        .get_by_role("button", name="Not now")
+        .evaluate(
+            "(e) => { const r = document.createRange(); r.selectNodeContents(e);"
+            " return new Set([...r.getClientRects()].map((b) => Math.round(b.top))).size }"
+        )
+    )
+    assert lines == 1, f"Not now takes {lines} lines"
+
+
 def walk_to_model_servers(page: Page, shot, phone: bool = False) -> None:
     """From the welcome to Model servers' Add server, passing both CLI rows."""
     expect(page.get_by_role("dialog", name="Welcome to LADO")).to_be_visible(timeout=30_000)
@@ -87,6 +122,7 @@ def walk_to_model_servers(page: Page, shot, phone: bool = False) -> None:
         shot(page, "open-menu", full_page=False)
         target(page, "rail-menu").click()
     step(page, "Open Settings")
+    looks(page)
     shot(page, "open-settings", full_page=False)
     target(page, "rail-settings").click()
     step(page, "Open Agent CLIs")
@@ -112,9 +148,12 @@ def walk_to_model_servers(page: Page, shot, phone: bool = False) -> None:
     step(page, "An OpenRouter key, or a model on your computer?")
     target(page, "model-servers-link").click()
     step(page, "Add your server")
+    assert apart(card(page), target(page, "model-servers-lead")), (
+        "the card covers which servers fit"
+    )
 
 
-def add_the_server(page: Page, models, shot) -> None:
+def add_the_server(page: Page, models, shot, phone: bool = False) -> None:
     """Add server, a wrong key refused, then the right one."""
     shot(page, "add-server", full_page=False)
     target(page, "model-server-add").click()
@@ -124,6 +163,17 @@ def add_the_server(page: Page, models, shot) -> None:
     form.get_by_label("Address").fill(models.url)
     key = form.get_by_label("Key", exact=True)
     expect(form.get_by_text("required by this server")).to_be_visible(timeout=30_000)
+    if phone:
+        # The form grew under the card, with no scroll by the person: Key and Add show.
+        add = form.get_by_role("button", name="Add server", exact=True)
+        for _ in range(40):
+            if apart(card(page), add) and apart(card(page), key):
+                break
+            page.wait_for_timeout(50)
+        shot(page, "server-form", full_page=False)
+        assert apart(card(page), add), (card(page).bounding_box(), add.bounding_box())
+        assert apart(card(page), key), "the card covers Key"
+        expect(form.get_by_label("Address")).to_be_in_viewport()
     key.fill("wrong-key")
     form.get_by_role("button", name="Check key").click()
     step(page, "The key wasn't accepted")
@@ -134,6 +184,22 @@ def add_the_server(page: Page, models, shot) -> None:
     add = form.get_by_role("button", name="Add server", exact=True)
     expect(add).to_be_enabled(timeout=30_000)
     add.click()
+    # A server saved is no model yet: its model, ticked for an agent CLI, is.
+    step(page, "Choose a model")
+    expect(card(page).locator(".gd-done")).to_have_count(0)
+    shot(page, "model-pick", full_page=False)
+    target(page, "model-list").get_by_role("button", name="qwen3-8b").click()
+    step(page, "Tick the agent CLIs that run it")
+    # The ring stays on what shows of the ticks, inside the list that scrolls them.
+    ring, models = (
+        page.locator(".gd-ring").bounding_box(),
+        target(page, "model-list").bounding_box(),
+    )
+    assert ring and models and ring["y"] + ring["height"] <= models["y"] + models["height"] + 8
+    shot(page, "model-clis", full_page=False)
+    tick = target(page, "model-clis").get_by_role("checkbox", name="qwen3-8b on OpenCode")
+    tick.click()  # saved by the server, then ticked
+    expect(tick).to_be_checked(timeout=30_000)
 
 
 def set_the_author(page: Page, shot) -> None:
@@ -188,6 +254,7 @@ def test_the_main_path_on_a_fresh_lado(browser: Browser, fresh, models, server, 
         set_the_author(page, shot)
         step(page, "Start your first session")
         expect(card(page).get_by_text("✓ Your work will be signed")).to_be_visible()
+        assert apart(card(page), target(page, "author-row")), "the card covers the author"
         shot(page, "new-session", full_page=False)
         target(page, "rail-new-session").click()
         tip = page.get_by_role("region", name="Tip")
@@ -210,6 +277,13 @@ def test_the_main_path_on_a_fresh_lado(browser: Browser, fresh, models, server, 
         page.get_by_role("button", name="Show me").click()
         step(page, "Start your first session")
         shot(page, "restarted", full_page=False)
+        # Closed on a LADO with a model and an author: it comes back on no later page load.
+        page.keyboard.press("Escape")
+        expect(card(page)).to_have_count(0)
+        page.reload()
+        expect(page.get_by_role("navigation", name="Sections", exact=True)).to_be_visible()
+        page.wait_for_timeout(1500)
+        expect(card(page)).to_have_count(0)
     finally:
         context.close()
 
@@ -234,6 +308,7 @@ def test_by_keyboard_esc_closes_the_step_after_its_target_is_pressed(
         expect(settings).to_be_focused()
         page.keyboard.press("Enter")
         step(page, "Open Agent CLIs")
+        looks(page)  # the focus came by keyboard: the card still draws no second ring
         page.keyboard.press("Escape")
         expect(card(page)).to_have_count(0)
         assert page.evaluate("() => document.activeElement !== document.body")
@@ -249,7 +324,7 @@ def test_the_main_path_on_a_phone(browser: Browser, fresh, models, server, shot)
         page = context.new_page()
         log_in(page, server)
         walk_to_model_servers(page, shot, phone=True)
-        add_the_server(page, models, shot)
+        add_the_server(page, models, shot, phone=True)
         step(page, "Back to Settings")
         shot(page, "settings-back", full_page=False)
         target(page, "settings-back").click()

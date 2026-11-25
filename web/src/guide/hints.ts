@@ -44,6 +44,7 @@ export type Hint = {
   precede?: { for: string[] }; // phone only: shown before a step aimed at one of these markers
   cli?: string; // a provider's row step: the provider the guide has texts for
   action?: "pass-row" | "none-of-these"; // what the card's link does
+  keep?: string[]; // markers of what the card must not cover where it can stand elsewhere
   texts: Texts;
   variants?: Record<string, Texts>; // texts by the target's data-guide-refusal
 };
@@ -178,6 +179,7 @@ export const HINTS: Hint[] = [
     part: "model",
     target: "login-sheet",
     anchor: "login-secret",
+    keep: ["login-choices"],
     when: [["loginWindow", "claude"], ["loginChoice", "claude", "subscription"]],
     texts: {
       title: "Make a token with Claude Code",
@@ -194,6 +196,7 @@ export const HINTS: Hint[] = [
     part: "model",
     target: "login-sheet",
     anchor: "login-secret",
+    keep: ["login-choices"],
     when: [["loginWindow", "claude"], ["loginChoice", "claude", "usage"]],
     texts: {
       title: "Paste your API key",
@@ -209,6 +212,7 @@ export const HINTS: Hint[] = [
     part: "model",
     target: "login-sheet",
     anchor: "login-action",
+    keep: ["login-choices"], // the other choices' names and what they are
     when: [["loginWindow", "codex"], ["loginChoice", "codex", "chatgpt"]],
     texts: {
       title: "Sign in with a one-time code",
@@ -227,6 +231,7 @@ export const HINTS: Hint[] = [
     part: "model",
     target: "login-sheet",
     anchor: "login-secret",
+    keep: ["login-choices"],
     when: [["marker", "login-secret"]],
     texts: {
       title: "Paste it and press Save",
@@ -280,7 +285,7 @@ export const HINTS: Hint[] = [
     texts: {
       title: "The key wasn't accepted",
       body: [
-        "The service refused this key. Copy it again from the service's site, the whole key with no spaces, paste it and press **Check key**.",
+        "The service refused this key. Copy it again from the service's site, the whole key with no spaces, and paste it over this one. **Check key** comes back once the key changes: press it, or **Add server**.",
       ],
       waiting: "Waiting for a key that works",
     },
@@ -290,7 +295,7 @@ export const HINTS: Hint[] = [
         body: [
           "Check the address against the service's instructions. For a model on your own computer, make sure its app is running.",
         ],
-        waiting: "Waiting for a key that works",
+        waiting: "Waiting for an address that answers",
       },
     },
   },
@@ -308,11 +313,67 @@ export const HINTS: Hint[] = [
       waiting: "Waiting for the server to be added",
     },
   },
+  // A server saved is no model yet: an agent CLI works on a model of it once it is ticked.
+  {
+    id: "model-clis",
+    kind: "guiding",
+    part: "model",
+    target: "model-clis",
+    when: [["marker", "model-clis"]],
+    texts: {
+      title: "Tick the agent CLIs that run it",
+      body: [
+        "Tick at least one. The agents of that CLI then work on this model; untick it to stop that.",
+      ],
+      waiting: "Waiting for a tick",
+    },
+  },
+  {
+    id: "model-pick",
+    kind: "guiding",
+    part: "model",
+    target: "model-list",
+    when: [["marker", "model-list"]],
+    texts: {
+      title: "Choose a model",
+      body: [
+        "These are the models your server offers. Press the one the agents should work on; you can add more later.",
+      ],
+      waiting: "Waiting for you to choose a model",
+    },
+  },
+  {
+    id: "model-id",
+    kind: "guiding",
+    part: "model",
+    target: "model-id",
+    when: [["marker", "model-id"]],
+    texts: {
+      title: "Type the model's id",
+      body: [
+        "This server doesn't list its models. Copy a model's id from the service's site, choose the agent CLI that runs it and press **Add**.",
+      ],
+      waiting: "Waiting for the model to be added",
+    },
+  },
+  {
+    id: "model-server-row",
+    kind: "guiding",
+    part: "model",
+    target: "model-server-row",
+    when: [["route", MODEL_SERVERS], ["marker", "model-server-row"]],
+    texts: {
+      title: "Open your server",
+      body: ["The server is saved; the agents still need a model of it. Press the server's row to see its models."],
+      waiting: "Waiting for you to open the server",
+    },
+  },
   {
     id: "model-server-add",
     kind: "guiding",
     part: "model",
     target: "model-server-add",
+    keep: ["model-servers-lead"], // which servers fit
     when: [["route", MODEL_SERVERS]],
     texts: {
       title: "Add your server",
@@ -455,6 +516,7 @@ export const HINTS: Hint[] = [
     kind: "guiding",
     part: "start",
     target: "rail-new-session",
+    keep: ["author-row"], // the author just saved
     when: [],
     texts: {
       done: AUTHOR_DONE,
@@ -483,6 +545,7 @@ export const HINTS: Hint[] = [
     kind: "tip",
     target: "session-tabs",
     prefer: ["below", "right"],
+    keep: ["session-first"], // the task, the first message
     when: [["marker", "session-tabs"]],
     texts: {
       body: [
@@ -515,8 +578,10 @@ export const HINTS: Hint[] = [
   {
     id: "tip-terminal",
     kind: "tip",
-    target: "terminal-panel",
-    when: [["marker", "terminal-panel"]],
+    // At the terminal's bar: on the terminal itself it would cover its newest lines.
+    target: "terminal-tools",
+    prefer: ["below", "left", "right", "above"],
+    when: [["marker", "terminal-tools"]],
     texts: {
       body: ["This is the agent's own window. You can watch it work; you don't have to type anything here."],
     },

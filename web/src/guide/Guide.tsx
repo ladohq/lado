@@ -18,7 +18,7 @@ import { postGuide, type GuideInfo } from "../api";
 import { findMarker, holds, partDone, visible, type Context } from "./conditions";
 import { currentFacts, subscribe } from "./facts";
 import { HINTS, PARTS, type Hint, type Part, type Texts } from "./hints";
-import { place, PAD, type Placement, type Rect } from "./place";
+import { GAP, MARGIN, place, PAD, type Placement, type Rect } from "./place";
 
 export const MISSING_MS = 2000; // how long a hint waits for its marker
 const RING_OUT = 3; // the pointing ring outside its target
@@ -56,6 +56,70 @@ const rectOf = (element: Element): Rect => {
   return { x: box.left, y: box.top, w: box.width, h: box.height };
 };
 
+// What shows of `element`: its box cut to every ancestor that clips it (a list that scrolls
+// within the page, like a server's models).
+function shownRect(element: Element): Rect {
+  let { left, top, right, bottom } = element.getBoundingClientRect();
+  for (let box = element.parentElement; box && box !== document.body; box = box.parentElement) {
+    const style = getComputedStyle(box);
+    if (style.overflowX === "visible" && style.overflowY === "visible") continue;
+    const clip = box.getBoundingClientRect();
+    left = Math.max(left, clip.left);
+    top = Math.max(top, clip.top);
+    right = Math.min(right, clip.right);
+    bottom = Math.min(bottom, clip.bottom);
+  }
+  return { x: left, y: top, w: Math.max(0, right - left), h: Math.max(0, bottom - top) };
+}
+
+// What a hint's card must not cover (its `keep` markers on screen).
+const kept = (hint: Hint): Rect[] =>
+  (hint.keep ?? []).flatMap((marker) => {
+    const found = findMarker(marker);
+    const box = found ? shownRect(found) : null;
+    return box && box.w > 0 && box.h > 0 ? [box] : [];
+  });
+
+// The box that scrolls `element`: its nearest ancestor that scrolls, else the page.
+function scrollerOf(element: HTMLElement): HTMLElement {
+  for (let box = element.parentElement; box && box !== document.body; box = box.parentElement)
+    if (/(auto|scroll)/.test(getComputedStyle(box).overflowY)) return box;
+  return document.documentElement;
+}
+
+// A card at the window's edge over its target (a form grown tall on a phone): what scrolls the
+// target gets room at its end as tall as the card, kept for the step, and scrolls the target's
+// end (its buttons) clear of the card, as far as the field in use, else the target's top, stays
+// in sight.
+function useRoom(placed: Placement | null, target: HTMLElement) {
+  const box = shownRect(target);
+  const over = placed?.side === "edge" && placed.y < box.y + box.h && box.y < placed.y + placed.h;
+  const most = useRef(0);
+  if (over) most.current = Math.max(most.current, Math.ceil(placed.h + MARGIN));
+  const room = most.current;
+  const edge = over ? placed.y : null;
+  const tall = Math.round(target.getBoundingClientRect().height);
+  useEffect(() => {
+    if (!room) return;
+    const scroller = scrollerOf(target);
+    const before = scroller.style.paddingBottom;
+    scroller.style.paddingBottom = `calc(${getComputedStyle(scroller).paddingBottom} + ${room}px)`;
+    return () => {
+      scroller.style.paddingBottom = before;
+    };
+  }, [room, target]);
+  useEffect(() => {
+    if (edge === null) return;
+    const now = target.getBoundingClientRect();
+    const field = document.activeElement;
+    const sight = field instanceof HTMLElement && target.contains(field) ? field.getBoundingClientRect().top : now.top;
+    const scroller = scrollerOf(target);
+    const top = scroller === document.documentElement ? 0 : scroller.getBoundingClientRect().top;
+    const by = Math.min(now.bottom + GAP - edge, sight - top - MARGIN);
+    if (by > 0) scroller.scrollBy({ top: by });
+  }, [edge, tall, target]);
+}
+
 const FOCUSABLE = "a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select, [tabindex]:not([tabindex='-1'])";
 
 // A paragraph's **names** in bold and `code` as code.
@@ -74,12 +138,22 @@ function Rich({ text }: { text: string }) {
 
 const plainText = (text: string) => text.replace(/\*\*(.+?)\*\*/g, "$1").replace(/`(.+?)`/g, "$1");
 
-function accessibleName(element: HTMLElement): string {
+const NAME_MAX = 80;
+
+// The highlighted element's name for a screen reader: its label, else its heading (a window,
+// a form), else its words, each element's apart, cut at a word.
+export function accessibleName(element: HTMLElement): string {
   const label = element.getAttribute("aria-label");
   if (label) return label;
   const labelled = element.getAttribute("aria-labelledby");
-  const by = labelled ? document.getElementById(labelled)?.textContent : null;
-  return (by ?? element.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+  const named = (labelled ? document.getElementById(labelled) : null) ?? element.querySelector("h1, h2, h3, h4, legend");
+  const words: string[] = [];
+  const walker = document.createTreeWalker(named ?? element, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) words.push(node.textContent ?? "");
+  const text = words.join(" ").replace(/\s+/g, " ").trim();
+  if (text.length <= NAME_MAX) return text;
+  const cut = text.slice(0, NAME_MAX + 1);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), 1)).trimEnd()}…`;
 }
 
 export default function Guide({ info, restarted, onInfo }: Props) {
@@ -317,10 +391,18 @@ export default function Guide({ info, restarted, onInfo }: Props) {
   useEffect(() => {
     if (!closed) return;
     const was = focusBefore.current;
+    const heading = () => {
+      // The page's heading, focusable by script only, else the page's content.
+      const found = ["main h1, main h2", ".topbar h1", "main"]
+        .map((selector) => document.querySelector<HTMLElement>(selector))
+        .find(Boolean);
+      if (found && !found.matches(FOCUSABLE)) found.tabIndex = -1;
+      return found;
+    };
     const back =
       (was instanceof HTMLElement && was.isConnected && was !== document.body ? was : null) ??
       (lastTarget.current?.isConnected ? lastTarget.current : null) ??
-      document.querySelector<HTMLElement>("main h2");
+      heading();
     back?.focus({ preventScroll: true });
   }, [closed]);
 
@@ -557,14 +639,14 @@ function Step(props: {
   const texts = variant ?? hint.texts;
   useInView(target);
   const placed = usePlacement(card, () => ({
-    target: rectOf(target),
-    anchor: anchor ? rectOf(anchor) : undefined,
+    target: shownRect(target),
+    anchor: anchor ? shownRect(anchor) : undefined,
     dialog: inWindow ? rectOf(inWindow.querySelector(".login-window") ?? inWindow) : undefined,
     viewport: viewport(),
     phone,
     kind: "guiding",
     prefer: hint.prefer,
-    obstacles: [],
+    obstacles: kept(hint),
   }));
   // The page is dimmed and inert but for the hole, unless the target's window dims it.
   const dim = !inWindow && (placed?.dim ?? true);
@@ -577,8 +659,9 @@ function Step(props: {
     focused.current = true;
     if (focusIsFree()) card.current?.focus({ preventScroll: true });
   }, [shownNow, inWindow]);
-  const hole = placed?.cutAnchor && anchor ? rectOf(anchor) : rectOf(target);
-  const ringed = (inWindow || placed?.ringAnchor) && anchor ? rectOf(anchor) : hole;
+  const hole = placed?.cutAnchor && anchor ? shownRect(anchor) : shownRect(target);
+  const ringed = (inWindow || placed?.ringAnchor) && anchor ? shownRect(anchor) : hole;
+  useRoom(placed, target);
   const named = accessibleName(target);
   return (
     <>
@@ -678,13 +761,13 @@ function Tip(props: {
     );
     const controls = [...target.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(visible);
     return {
-      target: rectOf(target),
+      target: shownRect(target),
       dialog: inWindow && inWindow.tagName === "DIALOG" ? rectOf(inWindow) : undefined,
       viewport: viewport(),
       phone,
       kind: "tip",
       prefer: hint.prefer,
-      obstacles: focusable.map(rectOf).filter((r) => r.w > 0 && r.h > 0),
+      obstacles: [...focusable.map(rectOf).filter((r) => r.w > 0 && r.h > 0), ...kept(hint)],
       inTarget: controls.map(rectOf),
     };
   });
@@ -717,7 +800,7 @@ function Tip(props: {
   const pointing = placed && placed.ring === "dashed";
   return (
     <>
-      {pointing && <span className="gd-ring pointing" style={ringBox(rectOf(target), -RING_OUT)} aria-hidden="true" />}
+      {pointing && <span className="gd-ring pointing" style={ringBox(shownRect(target), -RING_OUT)} aria-hidden="true" />}
       <span className="visually-hidden" aria-live="polite">
         {said}
       </span>

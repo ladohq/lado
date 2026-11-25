@@ -14529,17 +14529,17 @@ button.quiet.danger-text {
   pointer-events: auto;
 }
 
+/* Dashed: never taken for the focus ring, which is solid, of the same colour, on the same element. */
 .gd-ring {
   position: fixed;
   box-sizing: border-box;
   border-radius: 8px;
-  outline: 2px solid var(--guide-ring);
+  outline: 2px dashed var(--guide-ring);
   outline-offset: -2px;
 }
 
-/* A tip that cannot stand beside its target rings it, dashed and outside it: never the focus ring. */
+/* A tip that cannot stand beside its target rings it outside it. */
 .gd-ring.pointing {
-  outline: 2px dashed var(--guide-ring);
   outline-offset: 0;
 }
 
@@ -14558,13 +14558,10 @@ button.quiet.danger-text {
   animation: gd-in 120ms ease-out;
 }
 
+/* The card takes the focus as a dialog does, to be read out; drawn, its ring would stand beside
+   the target's ring as a second one. Its controls show the focus once Tab reaches them. */
 .gd-card:focus {
   outline: none;
-}
-
-.gd-card:focus-visible {
-  outline: 2px solid var(--action);
-  outline-offset: 2px;
 }
 
 .gd-card.centred {
@@ -14698,6 +14695,7 @@ button.quiet.danger-text {
 .gd-btn {
   height: 32px;
   padding: 0 14px;
+  white-space: nowrap;
   border: 0;
   border-radius: 6px;
   background: var(--action);
@@ -14723,8 +14721,10 @@ button.quiet.danger-text {
 }
 
 .gd-quiet {
+  flex: none;
   height: 28px;
   padding: 0 4px;
+  white-space: nowrap;
   border: 0;
   background: none;
   color: var(--muted);

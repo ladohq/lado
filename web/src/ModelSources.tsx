@@ -855,7 +855,11 @@ function SourceBody({
         <span className="field-note warn">{`⚠ no list of models: ${probe.models_why}`}</span>
       )}
       {probe?.apis_why && <span className="field-note warn">{`⚠ APIs: cannot be told: ${probe.apis_why}`}</span>}
-      {columns.length === 0 && <p className="mx-note">No installed CLI can use this server.</p>}
+      {columns.length === 0 && (
+        <p className="mx-note" data-guide="model-no-cli">
+          No installed CLI can use this server.
+        </p>
+      )}
       {rows.length > 0 && (
         <div className={`mx-list${rows.length <= SHORT ? " mx-short" : ""}`} data-guide={columns.length ? "model-list" : undefined}>
           {shown.map((model) => serverRow(model))}

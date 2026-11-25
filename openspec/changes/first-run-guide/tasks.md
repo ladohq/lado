@@ -60,7 +60,7 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-25-first-run-gu
 
 - [x] 10.1 A model is a model ticked for an agent CLI, or a login: `guide.facts`, the
   published `models` fact, and Model servers' steps after Add server (`model-pick`,
-  `model-clis`, `model-id`, `model-server-row`). Check: `tests/test_server_guide.py`,
+  `model-clis`, `model-id`, `model-no-cli`, `model-server-row`). Check: `tests/test_server_guide.py`,
   `Guide.test.tsx`, the UI e2e's main path.
 - [x] 10.2 The guide starts by itself only while a model or an author is missing. Check:
   `tests/test_server_guide.py`, the UI e2e's reload after Getting started and Esc.

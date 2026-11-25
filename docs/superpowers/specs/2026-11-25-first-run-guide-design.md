@@ -471,8 +471,10 @@ changed here, each in the code, the openspec change and its tests:
   saved model server ticked for it. A server saved alone is no model. After Add server the
   main path goes on in Model servers: `model-pick` ("Choose a model", marker `model-list`),
   `model-clis` ("Tick the agent CLIs that run it", `model-clis`), `model-id` for a server
-  without a list ("Type the model's id", `model-id`), and `model-server-row` ("Open your
-  server") for a server closed again.
+  without a list ("Type the model's id", `model-id`), `model-no-cli` for a server no
+  installed agent CLI can use ("No agent CLI here can use this server": install one from
+  Agent CLIs, or add a server of another kind; marker on the page's own note), and
+  `model-server-row` ("Open your server") for a server closed again.
 - **Starts by itself** only while not completed and a model or an author is missing: a
   `GET` that finds both completes the record, so the guide restarted from Help and closed on
   a set-up LADO does not come back.

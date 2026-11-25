@@ -357,6 +357,21 @@ export const HINTS: Hint[] = [
     },
   },
   {
+    // No installed CLI speaks the server's API: no model of it can be ticked here.
+    id: "model-no-cli",
+    kind: "guiding",
+    part: "model",
+    target: "model-no-cli",
+    when: [["marker", "model-no-cli"]],
+    texts: {
+      title: "No agent CLI here can use this server",
+      body: [
+        "None of the agent CLIs installed on this computer works with this server. Install one that does: **Agent CLIs** lists the others and how to install each. Or add a server of another kind.",
+      ],
+      waiting: "Waiting for an agent CLI that can use it",
+    },
+  },
+  {
     id: "model-server-row",
     kind: "guiding",
     part: "model",

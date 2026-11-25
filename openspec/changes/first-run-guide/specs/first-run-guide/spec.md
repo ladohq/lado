@@ -50,6 +50,10 @@ The main guide SHALL lead through three parts in order: connect a model (Agent C
 - **WHEN** the person adds a model server in the guide's form
 - **THEN** the step "Choose a model" points at its models, then "Tick the agent CLIs that run it" at the ticks, and the author's part follows the first tick
 
+#### Scenario: A server no installed agent CLI can use
+- **WHEN** Model servers says that no installed CLI can use the server just added
+- **THEN** the step "No agent CLI here can use this server" says to install one from Agent CLIs or add a server of another kind
+
 #### Scenario: A provider without texts
 - **WHEN** only a CLI the guide has no texts for is installed
 - **THEN** no row or login step shows for it, and the path goes to Model servers

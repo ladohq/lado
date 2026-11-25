@@ -105,6 +105,28 @@ describe("the main guide", () => {
     expect(card()?.querySelector(".gd-done")?.textContent).toBe("✓ Model connected");
   });
 
+  it("says what to do with a server no installed agent CLI can use", async () => {
+    const page = (
+      <Settings>
+        <ul>
+          <li data-guide="model-server-row">
+            <button type="button">Lab</button>
+            <p data-guide="model-no-cli">No installed CLI can use this server.</p>
+          </li>
+        </ul>
+        <button type="button" data-guide="model-server-add">
+          Add server
+        </button>
+      </Settings>
+    );
+    showGuide("/settings/model-servers", INFO, { pages: [{ path: "/settings/model-servers", element: page }] });
+    press("Show me");
+    publishLogins([{ name: "claude", installed: false }, { name: "codex", installed: false }]);
+    act(() => publish("models", 0));
+    await titled("No agent CLI here can use this server");
+    expect(card()?.textContent).toContain("Agent CLIs");
+  });
+
   it("skips the row of a CLI not installed, and every row of a provider without texts", async () => {
     showGuide("/settings/agent-clis", INFO, { rows: ["claude", "codex", "kilo"] });
     press("Show me");

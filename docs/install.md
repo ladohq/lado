@@ -1147,6 +1147,14 @@ before it, the first start takes the login over again.
 `LADO X.Y.Z is available: lado update` (the web UI: `↑ X.Y.Z` next to `live`).
 `LADO_NO_UPDATE_CHECK=1` in your environment switches the check off.
 
+### The first-run guide
+
+On a LADO with no model connected, the web UI shows a short guide to connecting one, setting
+the commit author and starting a session, and tips the first time you meet a session, a gate,
+a question or a terminal. Help → Getting started shows it again. `LADO_GUIDE=0` in the
+environment of `lado ui` (or `lado server`) keeps it from starting by itself, e.g. while you
+record a video; Help → Getting started still starts it.
+
 ### Installed otherwise
 
 LADO updates itself only when it was installed from PyPI with `uv tool install lado` or

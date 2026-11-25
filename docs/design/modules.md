@@ -128,6 +128,20 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     installer's argv, given the version as its last argument), `LADO_UNINSTALL_REMOVER`
     (the remover's argv) and `LADO_UPDATE_PREFIX` (the install's prefix instead of
     `sys.prefix`).
+  - `guide.py`: the web UI's first-run guide on the server (openspec change
+    first-run-guide, docs/design/ui.md, First-run guide): its record in
+    `LADO_HOME/guide.json` (`Record`: completed, the ids of the hints shown, tips off; not
+    lado.db, which may not exist at first start), changed by `change(action, ids)` under one
+    lock with an atomic replace (`shown` a union; ids of `ID_RE`, the server keeps no list
+    of hints); a file that cannot be read is journaled (`guide:read`) and counts as none.
+    `facts(has_db)`: a model connected (a saved model server, or a CLI logged in by
+    `provider_check`'s snapshot, waiting up to `WAIT` for its first check) and an author in
+    effect (LADO's, or git's own by `git_entries.git_author`). `now` is what
+    `GET /api/guide` answers: with no record, it is made once the model is known (completed
+    when one is connected), else the guide counts as completed and nothing is written;
+    under `LADO_GUIDE=0` (`off`) nothing is computed or made. `missing(id, marker)`
+    journals a marker the UI did not find (`ui:guide`, `GuideMarkerMissing`), once per id
+    while the server runs.
   - `telemetry.py`: LADO's own errors and, with the human's yes, usage statistics
     (openspec change usage-telemetry, docs/telemetry.md); standard library and
     `lado.state` only at its top (every hook imports it). `record(where, exc, ...)` is the
@@ -1453,7 +1467,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     raises a row with its login `unknown` and why (and the error journal); a `start()`
     while one runs makes one more pass run once after it; `put(row)` keeps an action's
     fresh row, which an older read of the running pass does not replace; `snapshot()` the
-    `ProvidersPage` (`ready: false` for a provider never read, `checking`, `environment`).
+    `ProvidersPage` (`ready: false` for a provider never read, `checking`, `environment`);
+    `first(timeout)`, the first-run guide's: starts a check unless one started since the
+    server did (two callers start one) and waits up to `timeout` for a pass to end.
     `GET /api/providers/logins` answers it, `POST /api/providers/check` starts a check, and
     the login actions put their row and start one; `GET /api/providers/{name}/model-choices`
     reads the CLI's list kept a minute (`launch.model_list`), with `fresh` read now and kept;
@@ -1518,6 +1534,12 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     (`TelemetryInfo`, `models.telemetry_info`, also `SystemInfo.telemetry`), `POST
     /api/telemetry` (under `Guard.changes`; 409 while the server's environment switches it
     off) and `GET /api/telemetry/preview` (`TelemetryPreview`, `telemetry.preview`);
+    the first-run guide's `GET /api/guide` (`GuideInfo`: `guide.now`, the record and, while
+    not completed, `GuideFacts`; `telemetry_asked` is `telemetry.state().ask`; a plain `def`,
+    its first answer may wait for the login check) and `POST /api/guide` (`GuideAction`,
+    under `Guard.changes`: `guide.change`, or `missing`, which `guide.missing` journals; the
+    facts follow while not completed, also under `LADO_GUIDE=0`; a bad action, id or marker
+    is 422);
     the Report a bug page's `GET /api/bug-report?browser=<line>` (`BugReport`,
     `bug_report.build` with the server's own `ServerState`; a `browser` that is not
     `bug_report.BROWSER_LINE`'s shape is 422; it reads only, so not under

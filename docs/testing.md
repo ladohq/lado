@@ -60,7 +60,9 @@ test its own `TMPDIR` and `LADO_TEMP_PARENT` (outside `tmp_path`): the agents' t
 folders (docs/design/agents.md) go there, also an agent's whose environment has no `TMPDIR`
 (a worker an agent's `lado mcp` spawns), never into the real `/tmp`. It also sets
 `LADO_NO_UPDATE_CHECK=1`, so no test looks on PyPI; the tests of the update check switch it
-on with the `published` fixture, a local index (`LADO_UPDATE_INDEX`). Likewise
+on with the `published` fixture, a local index (`LADO_UPDATE_INDEX`). And `LADO_GUIDE=0`, so
+no UI starts the first-run guide by itself and no server makes its record; the guide's server
+tests (`tests/test_server_guide.py`) and its UI e2e test remove it. Likewise
 `LADO_TELEMETRY=0` (and no `DO_NOT_TRACK` or `LADO_TELEMETRY_URL`), so no test sends
 statistics: `telemetry_on` switches sending on towards a closed local port and stores the
 yes, `telemetry_endpoint` adds a local endpoint that keeps each request. An autouse guard
@@ -542,7 +544,11 @@ Seven layers; each change gets tests at the lowest layer that can catch its bugs
    teardown does not run. 5 s before the limit every thread's stack goes to the log
    (Python's faulthandler): a wait in plain Python shows the test's line, a wait inside
    Playwright only Playwright's event loop. In `make check` and in CI (four shards; `make dist` in the
-   job `web`).
+   job `web`). The first-run guide is off in every UI e2e test (`LADO_GUIDE=0`, Test
+   infrastructure) but its own, `tests/ui/test_first_run_guide.py`, which walks its main
+   path with stand-ins of Claude Code and Codex CLI on the server's PATH, logged out, and no
+   provider's key in the environment; the guide's login-window steps are vitest's
+   (`web/src/guide/Guide.login.test.tsx`).
 5. **Smoke** (`make test-smoke`, marker `smoke`): each provider's real CLI with real tmux,
    hooks, `lado mcp` and SQLite, and a local endpoint that answers 401 instead of a model
    (Test infrastructure): the platform half of the live tests, without their model half. Needed for a

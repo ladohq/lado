@@ -2474,13 +2474,52 @@ One rail item, above Settings, in place of the rail item Report a bug (`Shell.ts
 circle, `HelpIcon`; folded, its icon with `Help` as its tooltip and name) is a button
 (`aria-haspopup="menu"`) that opens the UI's own menu (`Menu.tsx`): **Documentation ↗**
 (LADO's README, `DOCS_URL`) and **GitHub ↗** (the repository, `GITHUB`), each in a new tab with
-its icon, then under a line **Report a bug** (`/report`). The menu opens beside the rail, its
+its icon, then under a line **Getting started** (a compass, `CompassIcon`: the first-run guide
+again, below) and **Report a bug** (`/report`). The menu opens beside the rail, its
 bottom on Help's, kept 8 px inside the window (`useBeside`, `placeBeside`), in the page's body
 as the sticky rail is a layer under the page; the first item focused, ↑ ↓ move, Esc closes and
 gives the focus back to Help, a press outside closes it. On `/report` Help wears the rail's
 current look by a class (`is-current`): it is no link. On a phone the drawer's Help opens the
 same menu over itself, as wide as the drawer, its items 44 px high; choosing an item closes the
 menu and the drawer, Esc only the menu. The system panel keeps its GitHub icon.
+
+### First-run guide (decided 2026-11-25, LAD-311)
+
+A guide drawn over the unchanged screens leads a person on a fresh LADO to connect a model,
+set the commit author and open New session, and explains a few things the first time they
+show (openspec `first-run-guide`; behaviour, texts and look in
+`docs/superpowers/specs/2026-11-25-first-run-guide-design.md`; mockups
+`ui-design/lad-311-guide/mockup.html` and the run's `mockup-guide-stage1.html`). Every hint
+is data in **`web/src/guide/hints.ts`**, the one list; this document does not repeat it.
+
+- **Two kinds.** A *guiding step* dims the page, cuts its target out of the dim (presses there
+  reach the page, presses on the dim do nothing), rings it and stands its card beside it; it
+  moves on only when what it waits for happens. The two centred cards (the welcome, "Don't
+  have any of these yet?") point at nothing and have buttons. A *tip* is a small card with an
+  arrow, no dim, takes no focus and blocks nothing: Got it, or Don't show tips like this.
+- **When.** The main guide runs while it is not completed and Not now / Esc was not pressed
+  in this page load, after the statistics question is answered; its welcome only while no
+  model is connected (a LADO set up before it gets a completed record). Parts done in the
+  system are skipped (connect a model, sign your work, start working); opening New session
+  completes it. Tips show once each, in every browser, never over a guiding step, one at a
+  time. Help → Getting started turns tips back on and starts the guide at its welcome.
+- **Aimed at markers.** Targets are `data-guide="<name>"` attributes on existing elements; a
+  form's or window's state is read from them (`data-guide-cli`, `-choice`, `-picked`,
+  `-refusal` on the login sheet and Model servers' refusal). The Settings pages publish what
+  they loaded to `guide/facts.ts`, so the guide makes no request of its own there. A marker
+  not on screen for 2 s skips its hint for the page load and goes to LADO's error journal;
+  `guide/hints.test.ts` fails when a marker of the file is gone from the code. A change that
+  moves or removes a marked element, or adds a feature, checks the guide's file (the review
+  trap in `.lado/sdlc.md`).
+- **The layer.** Placement is one pure function (`guide/place.ts`): beside the target (a
+  phone: below, then above), never over it; a step inside a window draws no dim of its own;
+  another window over a step hides the guide. The dimmed page is `inert`; a guiding card is a
+  dialog that takes the focus and gives it back on Not now; Esc is Not now (a tip: Got it).
+- **Cost.** One `GET /api/guide` per page load (its record and, while not completed, the
+  facts: a model connected, an author in effect), `POST /api/guide` per mark; the engine
+  (`guide/Guide.tsx`) is a lazy chunk loaded only while something is left to show.
+- **`LADO_GUIDE=0`** in the server's environment: nothing starts by itself (videos of a live
+  LADO; every test but `tests/ui/test_first_run_guide.py`); Getting started still works.
 
 ### Statistics (decided 2026-10-13, LAD-32; a page of Settings since LAD-238)
 

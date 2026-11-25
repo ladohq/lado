@@ -150,7 +150,7 @@ server lifetime. Nothing is shown to the person.
 `web/src/guide/place.ts`: `place(card, hole, anchor, window, options) → {x, y, side, arrow,
 pointingRing}` over plain rectangles, with the obstacle list passed in: a hint's `keep`
 markers (text its card must leave in sight: a login window's choices, the task in the session,
-the author just saved; the human's manual check, 25.11) and, for a tip, the focusable
+the author just saved, the Add server a step names; the human's manual checks, 25.11) and, for a tip, the focusable
 elements. All rules of the design doc's §4 are unit tests over rectangles; the engine only
 measures (each rectangle cut to the boxes that clip it, a list that scrolls) and calls it. A
 card at the edge over its target gets room at the end of what scrolls the target, which

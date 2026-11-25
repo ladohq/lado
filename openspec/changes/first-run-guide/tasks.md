@@ -93,3 +93,11 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-25-first-run-gu
   the UI e2e's step names.
 - [x] 11.6 The card's edge `--guide-edge`, 3:1 against the dim; the ring 4 px off its target.
   Check: `tokens.test.ts`, `place.test.ts`, the UI e2e.
+
+## 12. The human's third manual check (25.11)
+
+- [x] 12.1 `model-no-cli` keeps Add server in sight: on a phone its card covered it. Check:
+  `hints.test.ts`, `place.test.ts` (the human's 390 px geometry); no UI e2e, as the e2e
+  server's fake agent CLI can use every server.
+- [x] 12.2 The question's tip says **Send answer**, with no ellipsis. Check: `hints.test.ts`.
+- [x] 12.3 The ring 8 px off its target (the hole 10 px). Check: `place.test.ts`, the UI e2e.

@@ -2522,8 +2522,9 @@ is data in **`web/src/guide/hints.ts`**, the one list; this document does not re
   trap in `.lado/sdlc.md`).
 - **The layer.** Placement is one pure function (`guide/place.ts`): beside the target (a
   phone: below, then above), never over it nor over the text its hint keeps in sight
-  (`keep`: a login window's choices, the session's task, the author just saved); a card at the
-  window's edge over a tall form scrolls the form's end clear of it. The ring is dashed, 4 px
+  (`keep`: a login window's choices, the session's task, the author just saved, the Add server
+  a step names); a card at the
+  window's edge over a tall form scrolls the form's end clear of it. The ring is dashed, 8 px
   off its target, never taken for the solid focus ring; the card's edge is `--guide-edge`,
   3:1 against the dim. A step inside a window draws no dim of its own, nor one whose advice
   leads elsewhere on the page (`dim: false`: a server no installed CLI can use); another window

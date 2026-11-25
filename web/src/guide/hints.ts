@@ -390,6 +390,7 @@ export const HINTS: Hint[] = [
     part: "model",
     target: "model-no-cli",
     dim: false,
+    keep: ["model-server-add"], // the Add server it names (a phone's card stood over it)
     when: [["marker", "model-no-cli"]],
     texts: {
       title: "No agent CLI here can use this server",
@@ -626,7 +627,7 @@ export const HINTS: Hint[] = [
     when: [["marker", "question-card"]],
     texts: {
       body: [
-        "An agent asks you something. Press one of its answers, or write your own in your words, then press **Send answer to …**.",
+        "An agent asks you something. Press one of its answers, or write your own in your words, then press **Send answer**.",
       ],
     },
   },

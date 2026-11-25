@@ -56,7 +56,7 @@ The main guide SHALL lead through three parts in order: connect a model (Agent C
 
 #### Scenario: A server no installed agent CLI can use
 - **WHEN** Model servers says that no installed CLI can use the server just added
-- **THEN** the step "No agent CLI here can use this server" dims nothing and says to install one from Agent CLIs or add a server of another kind; when no agent CLI could use it, installed or not, only to add a server of another kind
+- **THEN** the step "No agent CLI here can use this server" dims nothing, leaves Add server in sight and says to install one from Agent CLIs or add a server of another kind; when no agent CLI could use it, installed or not, only to add a server of another kind
 
 #### Scenario: A provider without texts
 - **WHEN** only a CLI the guide has no texts for is installed

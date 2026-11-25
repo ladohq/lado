@@ -331,7 +331,7 @@ step counter always counts the three parts.
 | `tip-launch` | `launch-task` | the New session window is open | | “Describe the task here in your own words. Above, choose where the team works; below, which team and model take it. The small i beside a field explains it.” |
 | `tip-session` | `session-tabs` | a session's page is open | below, right | “This is your session. **Activity** shows what the team does, and you write to its lead in the field at the bottom; the other tabs show the agents, the steps and the documents.” |
 | `tip-gate` | `gate-card` | a gate is on screen in the waiting card | above, left, right, below | “The team waits for your decision. Read the note and its documents, then press a button; a comment for the next step is optional.” |
-| `tip-question` | `question-card` | an agent's question is on screen in the waiting card | above, left, right, below | “An agent asks you something. Press one of its answers, or write your own in your words, then press **Send answer to …**.” |
+| `tip-question` | `question-card` | an agent's question is on screen in the waiting card | above, left, right, below | “An agent asks you something. Press one of its answers, or write your own in your words, then press **Send answer**.” |
 | `tip-terminal` | `terminal-panel` | an agent's terminal is on screen | | “This is the agent's own window. You can watch it work; you don't have to type anything here.” |
 
 Each tip has “Got it” and “Don't show tips like this”.
@@ -519,7 +519,10 @@ changed here, each in the code, the openspec change and its tests:
 - **The welcome after Getting started** says what is left: the author and New session, or
   New session only.
 - **The counter** is the part's place on the whole path, the same after a reload.
-- **The question's tip** says to press **Send answer to …** after choosing.
+- **The question's tip** says to press **Send answer** after choosing (the button adds the
+  agent's name).
 - **Look**: the card's edge `--guide-edge`, 3:1 against the dim (dark: it blended in); the
-  hole 6 px around the target, so the ring's line stands 4 px off it.
+  hole 10 px around the target, so the ring's line stands 8 px off it (the third check: at
+  4 px it touched the row's text).
+- **`model-no-cli`** keeps Add server in sight (`keep`): on a phone its card stood over it.
 

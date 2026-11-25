@@ -91,8 +91,15 @@ describe("the guide's hints", () => {
 
   it("say that an agent's answer is sent by its button, by the button's name", () => {
     const question = HINTS.find((hint) => hint.id === "tip-question")!;
-    expect(question.texts.body.join(" ")).toContain("**Send answer to …**");
+    // The button is "Send answer to <agent>"; the tip names its start, with no ellipsis.
+    expect(question.texts.body.join(" ")).toContain("then press **Send answer**.");
+    expect(question.texts.body.join(" ")).not.toContain("…");
     expect(code).toContain("`Send answer to ${");
+  });
+
+  it("keep Add server in sight while saying to add a server of another kind", () => {
+    const noCli = HINTS.find((hint) => hint.id === "model-no-cli")!;
+    expect(noCli.keep).toContain("model-server-add");
   });
 
   it("list the five tips in their order", () => {

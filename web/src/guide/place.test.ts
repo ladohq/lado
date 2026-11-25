@@ -17,7 +17,7 @@ describe("place", () => {
     const target = { x: 20, y: 400, w: 200, h: 40 };
     const p = place({ card, target, viewport: wide, phone: false, kind: "guiding", obstacles: [] });
     expect(p.side).toBe("right");
-    expect(PAD).toBe(6); // the hole is the target plus 6px: the ring's line stands off it
+    expect(PAD).toBe(10); // the hole is the target plus 10px: the ring's line stands 8px off it
     expect(p.x).toBe(20 + 200 + PAD + 12);
     expect(p.y + p.h / 2).toBe(420);
     expect(p.ring).toBe("solid");
@@ -58,6 +58,15 @@ describe("place", () => {
     const p = place({ card, target: sheet, anchor, viewport: phoneView, phone: true, kind: "guiding", obstacles: [choices] });
     expect(p.side).toBe("edge");
     expect(p.y).toBe(16);
+  });
+
+  it("leaves a phone's Add server in sight under a note no installed CLI can use", () => {
+    // The human's check at 390 px: the note, Add server under it, a card 237px tall.
+    const note = { x: 16, y: 190, w: 358, h: 38 };
+    const add = { x: 16, y: 323, w: 120, h: 44 };
+    const p = place({ card: { w: 320, h: 237 }, target: note, viewport: phoneView, phone: true, kind: "guiding", obstacles: [add] });
+    expect(overlaps(box(p), add)).toBe(false);
+    expect(overlaps(box(p), note)).toBe(false);
   });
 
   it("puts a phone's card below, then above, the window's width less 32px", () => {

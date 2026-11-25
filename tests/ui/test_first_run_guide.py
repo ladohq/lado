@@ -75,12 +75,12 @@ def step(page: Page, title: str, timeout: float = 30_000) -> None:
 
 
 def ring_clear(page: Page, marker: str) -> None:
-    """The step's dashed ring stands off its target: its line 4 px or more outside it."""
+    """The step's dashed ring stands off its target: its line 8 px or more outside it."""
     ring, box = page.locator(".gd-ring").bounding_box(), target(page, marker).bounding_box()
     assert ring and box
     # The line is 2 px wide, drawn inside the ring's box.
-    assert ring["x"] <= box["x"] - 6 and ring["y"] <= box["y"] - 6, (ring, box)
-    assert ring["x"] + ring["width"] >= box["x"] + box["width"] + 6, (ring, box)
+    assert ring["x"] <= box["x"] - 10 and ring["y"] <= box["y"] - 10, (ring, box)
+    assert ring["x"] + ring["width"] >= box["x"] + box["width"] + 10, (ring, box)
 
 
 def faded_in(page: Page) -> None:
@@ -212,7 +212,7 @@ def add_the_server(page: Page, models, shot, phone: bool = False) -> None:
         page.locator(".gd-ring").bounding_box(),
         target(page, "model-list").bounding_box(),
     )
-    assert ring and models and ring["y"] + ring["height"] <= models["y"] + models["height"] + 8
+    assert ring and models and ring["y"] + ring["height"] <= models["y"] + models["height"] + 10
     shot(page, "model-clis", full_page=False)
     tick = target(page, "model-clis").get_by_role("checkbox", name="qwen3-8b on OpenCode")
     tick.click()  # saved by the server, then ticked
@@ -247,7 +247,7 @@ def ring_follows_the_scroll(page: Page, marker: str) -> None:
 
     def lined_up() -> bool:
         a, b = row.bounding_box(), ring.bounding_box()
-        return a is not None and b is not None and abs((a["y"] - 6) - b["y"]) < 2
+        return a is not None and b is not None and abs((a["y"] - 10) - b["y"]) < 2
 
     page.wait_for_function("() => true")  # one frame for the guide's refresh
     for _ in range(50):

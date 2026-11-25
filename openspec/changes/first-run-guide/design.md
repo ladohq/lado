@@ -104,9 +104,13 @@ server's `facts` (it is newer). No request of the guide's own on these pages.
 
 Forms and windows already render their parts only while open; the guide reads "open" as "a
 visible element carries the marker". The login sheet adds `data-guide-cli="<provider>"`, the
-chosen choice's box `data-guide-choice="<choice id>"`, and Model servers' refusal line
-`data-guide-refusal="key" | "unreachable"`. No component gets a callback or a context for the
-guide: the markers are the whole interface, and the marker test (D8) keeps them honest.
+chosen choice's box `data-guide-choice="<choice id>"`, Model servers' refusal line
+`data-guide-refusal="key" | "unreachable"`, and its note of a server no installed CLI can use
+`data-guide-refusal="no-install"` when installing none would help. No component gets a
+callback or a context for the guide: the markers are the whole interface, and the marker test
+(D8) keeps them honest. A marked element the guide highlights has a short accessible name of
+its own (a row by its name, a form as a named group), which the card reads out as
+"Highlighted: …"; the UI e2e checks every step's.
 
 ### D6. One generic paste step (critique F12; the human's answer)
 
@@ -121,8 +125,9 @@ the value comes from.
 conditions with arguments), `done`, `prefer`, `part`, the texts, and per-provider texts keyed
 by the provider's name. It is in the main bundle (a few kB of data): the shell needs the ids
 to decide whether anything is left (`!completed`, or `!tips_off` and a tip id not in
-`shown`). `web/src/guide/Guide.tsx` and the placement code load with `React.lazy` only then.
-No guide text is written in a component.
+`shown`). `web/src/guide/Guide.tsx` and the placement code load with `React.lazy` only then,
+and stay for the page load: the last tip left is marked shown as it appears and must stay on
+screen until Got it (the second manual check). No guide text is written in a component.
 
 ### D8. The marker test
 
@@ -166,13 +171,21 @@ container's `.env` example when it lists such variables), and in `docs/testing.m
 Option rejected: a Settings toggle (a new element on a screen, against the human's
 "no new elements").
 
-### D12. "Not now" lives for the page load
+### D12. "Not now" closes the guide for good
 
-Not now and Esc are kept in the engine's memory only; a reload brings the guide back, as the
-human decided, while a model or an author is missing: with both, only New session is left,
-which needs no guide, and the next `GET` completes the record (D3). So the guide restarted
-from Help and closed on a set-up LADO does not come back by itself (the human's decision
-after the manual check, 25.11). Chains (stage 2) will use the same.
+Not now and Esc post `complete`, as New session does (D13): the main guide comes back on no
+page load and in no browser until Help → Getting started (`restart`), even while a model or
+an author is missing; tips keep their own Got it and Don't show tips like this. The welcome's
+note and a line under every step's Not now say so ("You can start the guide again from Help
+→ Getting started."). The human's decision after the second manual check (25.11), which
+replaced "closed until the next page load". No mark of its own: a guide closed and one
+completed behave alike, and `restart` reopens both. A `GET` still completes a record not
+completed with a model and an author in effect (D3), for a guide restarted from Help and
+left by a reload. Chains (stage 2) will use the same.
+
+Each step is counted by its part's place on the whole path ("Sign your work · Step 2 of 3"),
+never by the parts left when the page loaded, so a reload does not renumber it; a part done
+already is skipped and its number with it.
 
 ### D13. Completion
 

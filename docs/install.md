@@ -1153,7 +1153,8 @@ before it, the first start takes the login over again.
 
 On a LADO with no model connected, the web UI shows a short guide to connecting one, setting
 the commit author and starting a session, and tips the first time you meet a session, a gate,
-a question or a terminal. Help → Getting started shows it again. `LADO_GUIDE=0` in the
+a question or a terminal. Not now (or Esc) closes the guide for good, in every browser; the
+tips stay. Help → Getting started shows it again. `LADO_GUIDE=0` in the
 environment of `lado ui` (or `lado server`) keeps it from starting by itself, e.g. while you
 record a video; Help → Getting started still starts it. In Docker, put `LADO_GUIDE=0` in the
 `.env` next to `compose.yaml` and run `docker compose up -d` again.

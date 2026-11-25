@@ -32,16 +32,16 @@ The only new element on any screen is the Help menu's line **Getting started**.
 1. Nothing starts by itself while the server runs with `LADO_GUIDE=0` (for recording videos
    on a live LADO; set for every test but the guide's own UI e2e test): no welcome, no tip,
    no engine loaded. Help → Getting started still starts the guide for that page load.
-2. **The main guide** runs while it is not completed and the person has not pressed Not now
-   or Esc in this page load. It **starts only while no model is connected**: when the server
+2. **The main guide** runs while it is not completed; Not now and Esc complete it (§15). It
+   **starts only while no model is connected**: when the server
    first creates the guide's record and a model is connected already (an existing LADO
    updated to this version, or one set up by hand), the record is created completed and
    nothing shows; such a person meets the guide only through Help → Getting started. A
    person who has not answered the statistics question yet ("Help improve LADO?") sees the
    welcome only after answering it.
 3. It starts at `welcome`. Then it shows the first step whose condition holds and whose part
-   is not done in the system (§5). After Not now or Esc it comes back at the next page load,
-   until completed. Opening the New session window completes it.
+   is not done in the system (§5). After Not now or Esc it comes back on no page load until
+   Help → Getting started (§15). Opening the New session window completes it.
 4. **Tips** show only while no guiding step shows, tips are not off, the tip's id is not
    among the shown ones, and its condition holds. One at a time; when two apply on one
    screen they follow the file's order (session → gate → question → terminal), and the next
@@ -59,7 +59,7 @@ The only new element on any screen is the Help menu's line **Getting started**.
 ## 3. The layer
 
 - **Guiding with a target**: a fixed layer over the window. The **hole** is the target's box
-  plus 4 px, radius 8 px; around it the page is covered by `--guide-dim`. A 2 px
+  plus 6 px, radius 8 px; around it the page is covered by `--guide-dim`. A 2 px
   `--guide-ring` outline is drawn inside the hole's edge (offset −2 px). Clicks and taps
   inside the hole reach the page; outside it they are blocked, and a press on the dim does
   nothing (it does not close the guide). The hole holds every control the card asks the
@@ -113,8 +113,8 @@ Placement is one pure function of rectangles (D10), unit-tested.
 
 ## 5. Parts, conditions and completion
 
-Parts of the main guide, each done when its fact holds, a done part skipped and the
-counter ("Step N of M") recounted:
+Parts of the main guide, each done when its fact holds, a done part skipped; the counter
+("Step N of 3") is the part's place on the whole path (§15):
 
 | Part | Done when |
 |---|---|
@@ -145,18 +145,21 @@ A provider whose name has no texts in the guide file gets no row step and no log
 
 ## 6. The hints of stage 1
 
-`eyebrow` of the model part: “Connect a model · Step 1 of 3” (the counter recounts when a part
-is done). Every guiding card with a target has **Not now** and a waiting line.
+`eyebrow` of the model part: “Connect a model · Step 1 of 3”. Every guiding card with a
+target has **Not now**, a waiting line and, under them, “You can start the guide again from
+Help → Getting started.”
 
 ### Main path (guiding)
 
 **`welcome`** · centred
 - When: not completed; `telemetryAnswered`; no window open.
-- Done: Show me → the next step not done. Not now / Esc → closed until the next page load.
+- Done: Show me → the next step not done. Not now / Esc → completed (§15).
 - Title “Welcome to LADO”. Text “LADO runs a team of AI agents for you: you describe a task,
   they plan it, do the work, and ask you when a decision is yours. ¶ The agents need access
   to an AI model: a subscription or a key you already have. This guide shows where to connect
-  it.” Buttons “Show me”, “Not now”. Note “You can open the guide again from Help.”
+  it.” Buttons “Show me”, “Not now”. Note “You can start the guide again from Help → Getting
+  started.” After Getting started with a model set up, the second paragraph says what is left
+  (§15).
 
 **`open-menu`** · phone only · target `rail-menu`
 - When: the next step's target is in the closed drawer. Done: the drawer is open.
@@ -244,7 +247,7 @@ item, or the sentence on Agent CLIs)
 
 **`none-of-these`** · centred
 - When: the person pressed “I have none of these”.
-- Done: Back → the step it came from. Not now → closed until the next page load.
+- Done: Back → the step it came from. Not now → completed (§15).
 - Title “Don't have any of these yet?”. Text “The simplest way is a monthly plan: Claude Pro,
   or a paid ChatGPT plan such as Plus. With an API key from Anthropic, OpenAI, OpenRouter or
   Qwen (Alibaba Cloud) you pay for what the agents use instead. ¶ A plan, or an Anthropic or
@@ -281,12 +284,14 @@ item, or the sentence on Agent CLIs)
 
 **`settings-back`** · phone only · target `settings-back`
 - When: the next step's target is on the Settings list and a section page is open.
-- Done line “✓ Model connected”. Eyebrow “Sign your work · Step 2 of 3”. Title “Back to
+- Done line “✓ Model saved — agents check it when they start”. Eyebrow “Sign your work · Step
+  2 of 3”. Title “Back to
   Settings”. Text “One more setting, in **Git servers**.” Waiting “Waiting for you to go back”.
 
 **`open-git-servers`** · target `git-servers-link`
 - When: a model connected; nobody signs commits; Git servers not open.
-- Done line “✓ Model connected”. Eyebrow “Sign your work · Step 2 of 3”. Title “Sign the
+- Done line “✓ Model saved — agents check it when they start”. Eyebrow “Sign your work · Step
+  2 of 3”. Title “Sign the
   agents' work”. Text “Agents save each step of their work under a name and email, so a
   project's history shows who did what. Open **Git servers** to set yours.” Waiting “Waiting
   for you to open Git servers”.
@@ -326,7 +331,7 @@ step counter always counts the three parts.
 | `tip-launch` | `launch-task` | the New session window is open | | “Describe the task here in your own words. Above, choose where the team works; below, which team and model take it. The small i beside a field explains it.” |
 | `tip-session` | `session-tabs` | a session's page is open | below, right | “This is your session. **Activity** shows what the team does, and you write to its lead in the field at the bottom; the other tabs show the agents, the steps and the documents.” |
 | `tip-gate` | `gate-card` | a gate is on screen in the waiting card | above, left, right, below | “The team waits for your decision. Read the note and its documents, then press a button; a comment for the next step is optional.” |
-| `tip-question` | `question-card` | an agent's question is on screen in the waiting card | above, left, right, below | “An agent asks you something. Press one of its answers, or write your own in your words.” |
+| `tip-question` | `question-card` | an agent's question is on screen in the waiting card | above, left, right, below | “An agent asks you something. Press one of its answers, or write your own in your words, then press **Send answer to …**.” |
 | `tip-terminal` | `terminal-panel` | an agent's terminal is on screen | | “This is the agent's own window. You can watch it work; you don't have to type anything here.” |
 
 Each tip has “Got it” and “Don't show tips like this”.
@@ -368,7 +373,7 @@ Stage 2's markers are added with stage 2.
 Tokens (in `tokens.css`, both added): `--guide-dim: light-dark(#16181d99, #000000b3)`,
 `--guide-ring: var(--action)`. No orange (`--human` stays the team's request).
 
-- **Card (guiding)**: `--panel`, 1 px `--line`, radius 8 px, shadow `0 12px 32px var(--shadow)`,
+- **Card (guiding)**: `--panel`, 1 px `--guide-edge` (3:1 against the dim), radius 8 px, shadow `0 12px 32px var(--shadow)`,
   padding 14/16/12 px, width 320 px (centred 400 px, padding 20/22/16 px), `--sans` 14/1.45.
   Content in order, each optional: done line (13 px/600 `--done`), eyebrow (12 px/600,
   uppercase, 0.04 em, `--muted`), title (an `h2`, 15 px/600; centred 18 px), body (one or two
@@ -490,4 +495,30 @@ changed here, each in the code, the openspec change and its tests:
   element is named by its heading, its words apart, cut at a word.
 - **Not now** with the focus on nothing gives it to the page's heading.
 - **Docker**: `docker/compose.yaml` passes `LADO_GUIDE`.
+
+## 15. After the human's second manual check (25.11.2026)
+
+- **Not now closes the guide for good** (replaces "until the next page load"): Not now and
+  Esc post `complete`; the guide comes back on no page load, in no browser, until Help →
+  Getting started, even while a model or an author is missing. Tips are not touched. The
+  welcome's note and a line under every step's Not now: “You can start the guide again from
+  Help → Getting started.”
+- **The last tip left** stays on screen until Got it: once loaded, the engine stays for the
+  page load, though the tip is marked shown as it appears.
+- **Focus after Not now**: where it was, else the highlighted element, else the page's
+  heading, the first that really takes it (a row takes none).
+- **The done line** of the model part claims no working model, as LADO checks no key it
+  saves for an agent CLI: “✓ Model saved — agents check it when they start”.
+- **Short names**: a highlighted row or form has an accessible name of its own (LADO's
+  author's row and form: “LADO's author”; Model servers' form “New model server”, a server's
+  row its name, its models “Models of <server>”, Model id “A model by its id”).
+- **`model-no-cli`** dims nothing, so its advice can be followed; when no agent CLI could use
+  the server, installed or not (`data-guide-refusal="no-install"`), it advises only a server
+  of another kind.
+- **The welcome after Getting started** says what is left: the author and New session, or
+  New session only.
+- **The counter** is the part's place on the whole path, the same after a reload.
+- **The question's tip** says to press **Send answer to …** after choosing.
+- **Look**: the card's edge `--guide-edge`, 3:1 against the dim (dark: it blended in); the
+  hole 6 px around the target, so the ring's line stands 4 px off it.
 

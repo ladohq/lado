@@ -11,7 +11,8 @@
   its agents commit with it in every repository of the project, over a git server's author.
 - **A guide for the first start.** A fresh LADO shows where to connect an AI model, set the
   commit author and start the first session, with short tips the first time you meet a
-  session, a gate, a question or a terminal. Help → Getting started shows it again.
+  session, a gate, a question or a terminal. Not now closes it for good; Help → Getting
+  started shows it again.
   `LADO_GUIDE=0` (also in Docker's `.env`) keeps it from starting by itself.
 
 ### Improved

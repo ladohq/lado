@@ -20,7 +20,7 @@ The web UI SHALL show the guide's centred welcome on a page load while the guide
 
 #### Scenario: A server saved, no model ticked
 - **WHEN** the person saved a model server but ticked none of its models for an agent CLI
-- **THEN** the model counts as not connected: no "✓ Model connected" shows, and the guide leads on in Model servers
+- **THEN** the model counts as not connected: no done line shows, and the guide leads on in Model servers
 
 #### Scenario: The statistics question first
 - **WHEN** the statistics banner still asks
@@ -40,19 +40,23 @@ A guiding step SHALL dim the page, cut out and ring its target, let presses insi
 
 ### Requirement: The main path connects a model, then an author, then New session
 
-The main guide SHALL lead through three parts in order: connect a model (Agent CLIs' rows of the providers the guide has texts for, their login windows, then Model servers' Add server and its form, the server's models and the ticks of the agent CLIs that run one), sign your work (Git servers' Set author and its form, only while nobody signs commits), start working (New session). A part done in the system SHALL be skipped and the step counter recounted.
+The main guide SHALL lead through three parts in order: connect a model (Agent CLIs' rows of the providers the guide has texts for, their login windows, then Model servers' Add server, its form, the server's models and the ticks of agent CLIs), sign your work (Git servers' Set author and its form, only while nobody signs commits), start working (New session). A part done in the system SHALL be skipped; a step SHALL be counted by its part's place on the whole path.
 
 #### Scenario: An author already in effect
 - **WHEN** a model gets connected and git's own author is set
-- **THEN** the next step is New session, counted "Step 2 of 2"
+- **THEN** the next step is New session, counted "Step 3 of 3"
+
+#### Scenario: A reload after the model
+- **WHEN** the person connects a model and reloads the page on the author's step
+- **THEN** the step is still counted "Step 2 of 3"
 
 #### Scenario: A server just added
 - **WHEN** the person adds a model server in the guide's form
-- **THEN** the step "Choose a model" points at its models, then "Tick the agent CLIs that run it" at the ticks, and the author's part follows the first tick
+- **THEN** the step "Choose a model" points at its models, then "Tick the agent CLIs that run it" at the ticks, and the author's part follows the first tick, its done line saying the model is saved and checked when an agent starts
 
 #### Scenario: A server no installed agent CLI can use
 - **WHEN** Model servers says that no installed CLI can use the server just added
-- **THEN** the step "No agent CLI here can use this server" says to install one from Agent CLIs or add a server of another kind
+- **THEN** the step "No agent CLI here can use this server" dims nothing and says to install one from Agent CLIs or add a server of another kind; when no agent CLI could use it, installed or not, only to add a server of another kind
 
 #### Scenario: A provider without texts
 - **WHEN** only a CLI the guide has no texts for is installed
@@ -90,13 +94,13 @@ The main guide SHALL be marked completed when the New session window opens while
 - **WHEN** the step "Start your first session" shows and the person presses New session
 - **THEN** the guide is completed, and the New session window's tip shows
 
-### Requirement: Not now closes the guide until the next page load
+### Requirement: Not now closes the guide for good
 
-Not now, and Esc with the focus in a guiding card, SHALL close the main guide for the rest of the page load; on a later page load it SHALL start again, at the first step not done, while it is not completed and no model is connected or no author is in effect; with both, the record SHALL be made completed and nothing SHALL start by itself.
+Not now, and Esc with the focus in a guiding card, SHALL close the main guide and mark it completed on the server, in every browser, until Help → Getting started; tips SHALL stay as they are. The welcome and every step SHALL say that Help → Getting started starts it again. The guide SHALL start by itself only while it is not completed and a model or an author is missing; with both, a record not completed SHALL be made completed.
 
 #### Scenario: Reload after Not now
 - **WHEN** the person presses Not now and later reloads the page with no model connected
-- **THEN** the welcome shows again
+- **THEN** no guide shows, and Help → Getting started shows the welcome
 
 #### Scenario: Not now after Help on a set-up LADO
 - **WHEN** the person with a model and an author chooses Help → Getting started, presses Not now and reloads the page
@@ -104,7 +108,7 @@ Not now, and Esc with the focus in a guiding card, SHALL close the main guide fo
 
 ### Requirement: Tips show once and never over the guide
 
-A tip SHALL show only while no guiding step shows, tips are on, its condition holds and it was never shown; at most one tip SHALL show at a time. A hint SHALL be marked shown as soon as it appears. Got it SHALL close the tip; Don't show tips like this SHALL close it and turn every tip off. Stage 1's tips SHALL be: the New session window, the session page, a gate, an agent's question, an agent's terminal.
+A tip SHALL show only while no guiding step shows, tips are on, its condition holds and it was never shown; at most one tip SHALL show at a time. A hint SHALL be marked shown as soon as it appears, and a tip SHALL stay until Got it or until its target leaves, the last tip left too. Got it SHALL close the tip; Don't show tips like this SHALL close it and turn every tip off. Stage 1's tips SHALL be: the New session window, the session page, a gate, an agent's question, an agent's terminal.
 
 #### Scenario: Once
 - **WHEN** the session page's tip was shown and the person opens another session
@@ -113,6 +117,10 @@ A tip SHALL show only while no guiding step shows, tips are on, its condition ho
 #### Scenario: Tips off
 - **WHEN** the person presses Don't show tips like this
 - **THEN** no further tip shows in any browser until Help → Getting started
+
+#### Scenario: The last tip left
+- **WHEN** every tip but the gate's was shown and a gate comes
+- **THEN** the gate's tip stays on screen until Got it
 
 ### Requirement: The guide's marks are kept by the server
 
@@ -124,11 +132,11 @@ LADO SHALL keep whether the guide is completed, the ids of the hints shown and w
 
 ### Requirement: Help restarts the guide
 
-Help → Getting started SHALL turn tips back on, mark the guide not completed and start it at the welcome at once, even when a model is connected; steps done in the system SHALL be skipped and tips already shown SHALL stay shown.
+Help → Getting started SHALL turn tips back on, mark the guide not completed and start it at the welcome at once, even when a model is connected, the welcome saying what is left of the path; steps done in the system SHALL be skipped and tips already shown SHALL stay shown.
 
 #### Scenario: Restart on a set-up LADO
 - **WHEN** the person with a model and an author chooses Help → Getting started
-- **THEN** the welcome shows, and Show me leads straight to New session
+- **THEN** the welcome says nothing about connecting a model, and Show me leads straight to New session
 
 ### Requirement: The guide costs nothing once done
 
@@ -180,8 +188,12 @@ A card SHALL stand beside its target (a phone: below or above), clear of target,
 
 ### Requirement: The guide works by keyboard and screen reader
 
-A guiding card SHALL be a dialog named by its title that takes the focus, names the highlighted element, keeps Tab within itself and its target, and makes the dimmed page inert; Esc SHALL be Not now; the focus SHALL return where it was, else to the page's heading, when the guide closes. A step's ring SHALL be dashed, unlike the focus ring. A tip SHALL take no focus, be announced once, and be reachable by Tab from its target. Under reduced motion nothing SHALL move.
+A guiding card SHALL be a dialog named by its title that takes the focus, names the highlighted element shortly, keeps Tab within itself and its target, and makes the dimmed page inert; Esc SHALL be Not now; on close the focus SHALL go where it was, else to the target, else to the page's heading, the first that takes it. A step's ring SHALL be dashed, off its target. A tip SHALL take no focus, be announced once, and be reachable by Tab from its target. Under reduced motion nothing SHALL move.
 
 #### Scenario: Esc
 - **WHEN** a guiding card has the focus and the person presses Esc
 - **THEN** the guide closes and the focus returns to the element it was on
+
+#### Scenario: Not now on a row
+- **WHEN** the step "Who signs the work?" highlights LADO's author's row and the person presses Not now
+- **THEN** the focus goes to the page's heading, and the card had said "Highlighted: LADO's author"

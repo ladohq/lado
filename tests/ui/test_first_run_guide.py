@@ -64,9 +64,23 @@ def card(page: Page):
 
 
 def step(page: Page, title: str, timeout: float = 30_000) -> None:
-    """The guiding card titled `title` shows, its fade ended (for the screenshots)."""
+    """The guiding card titled `title` shows, its fade ended (for the screenshots), and it
+    names what it highlights shortly, not by all of its words."""
     expect(card(page).get_by_role("heading", level=2)).to_have_text(title, timeout=timeout)
     faded_in(page)
+    named = card(page).get_by_text("Highlighted: ")
+    if named.count():
+        name = named.text_content() or ""
+        assert len(name) <= len("Highlighted: ") + 40, f"{title}: {name}"
+
+
+def ring_clear(page: Page, marker: str) -> None:
+    """The step's dashed ring stands off its target: its line 4 px or more outside it."""
+    ring, box = page.locator(".gd-ring").bounding_box(), target(page, marker).bounding_box()
+    assert ring and box
+    # The line is 2 px wide, drawn inside the ring's box.
+    assert ring["x"] <= box["x"] - 6 and ring["y"] <= box["y"] - 6, (ring, box)
+    assert ring["x"] + ring["width"] >= box["x"] + box["width"] + 6, (ring, box)
 
 
 def faded_in(page: Page) -> None:
@@ -129,6 +143,7 @@ def walk_to_model_servers(page: Page, shot, phone: bool = False) -> None:
     shot(page, "open-agent-clis", full_page=False)
     target(page, "agent-clis-link").click()
     step(page, "Claude Pro or Max, or an Anthropic API key?")
+    ring_clear(page, "cli-row-claude")
     shot(page, "claude-row", full_page=False)
     card(page).get_by_role("button", name="I have neither").click()
     step(page, "A ChatGPT plan, or an OpenAI API key?")
@@ -204,6 +219,7 @@ def add_the_server(page: Page, models, shot, phone: bool = False) -> None:
 
 def set_the_author(page: Page, shot) -> None:
     step(page, "Who signs the work?")
+    ring_clear(page, "author-row")
     shot(page, "author-set", full_page=False)
     target(page, "author-row").get_by_role("button", name="Set LADO's author").click()
     step(page, "Your name and email")
@@ -229,7 +245,7 @@ def ring_follows_the_scroll(page: Page, marker: str) -> None:
 
     def lined_up() -> bool:
         a, b = row.bounding_box(), ring.bounding_box()
-        return a is not None and b is not None and abs((a["y"] - 4) - b["y"]) < 2
+        return a is not None and b is not None and abs((a["y"] - 6) - b["y"]) < 2
 
     page.wait_for_function("() => true")  # one frame for the guide's refresh
     for _ in range(50):
@@ -247,7 +263,9 @@ def test_the_main_path_on_a_fresh_lado(browser: Browser, fresh, models, server, 
         walk_to_model_servers(page, shot)
         add_the_server(page, models, shot)
         step(page, "Sign the agents' work")
-        expect(card(page).get_by_text("✓ Model connected")).to_be_visible()
+        expect(
+            card(page).get_by_text("✓ Model saved — agents check it when they start")
+        ).to_be_visible()
         expect(card(page).get_by_text("Sign your work · Step 2 of 3")).to_be_visible()
         shot(page, "git-servers-link", full_page=False)
         target(page, "git-servers-link").click()
@@ -312,6 +330,14 @@ def test_by_keyboard_esc_closes_the_step_after_its_target_is_pressed(
         page.keyboard.press("Escape")
         expect(card(page)).to_have_count(0)
         assert page.evaluate("() => document.activeElement !== document.body")
+        # Closed for good, though no model is connected: only Getting started brings it back.
+        page.reload()
+        expect(page.get_by_role("navigation", name="Sections", exact=True)).to_be_visible()
+        page.wait_for_timeout(1500)
+        expect(card(page)).to_have_count(0)
+        page.get_by_role("button", name="Help", exact=True).click()
+        page.get_by_role("menuitem", name="Getting started").click()
+        expect(page.get_by_role("dialog", name="Welcome to LADO")).to_be_visible()
     finally:
         context.close()
 

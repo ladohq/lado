@@ -9,7 +9,8 @@
 // target is in a window of the app (the login sheet, a <dialog>) draws no dim of its own: the
 // window's backdrop is the dim. Another window over a step hides the guide until it closes. A
 // tip has no dim, takes no focus and blocks nothing. A hint is marked shown as it appears; a
-// hint whose marker is not on screen for 2 s is skipped for the page load and journaled.
+// hint whose marker is not on screen for 2 s is skipped for the page load and journaled. Not
+// now and Esc complete the main guide for good, until Help → Getting started.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "react-router";
@@ -17,7 +18,7 @@ import { useLocation } from "react-router";
 import { postGuide, type GuideInfo } from "../api";
 import { findMarker, holds, partDone, visible, type Context } from "./conditions";
 import { currentFacts, subscribe } from "./facts";
-import { HINTS, PARTS, type Hint, type Part, type Texts } from "./hints";
+import { AGAIN, HINTS, PARTS, type Hint, type Part, type Texts } from "./hints";
 import { GAP, MARGIN, place, PAD, type Placement, type Rect } from "./place";
 
 export const MISSING_MS = 2000; // how long a hint waits for its marker
@@ -167,7 +168,7 @@ export default function Guide({ info, restarted, onInfo }: Props) {
   }, []);
 
   // This page load's state of the guide.
-  const [closed, setClosed] = useState(false); // Not now, Esc
+  const [closed, setClosed] = useState(false); // Not now, Esc: completed too
   const [welcomed, setWelcomed] = useState(false); // Show me, or no welcome due
   const [passed, setPassed] = useState<ReadonlySet<string>>(new Set());
   const [noneOfThese, setNoneOfThese] = useState(false);
@@ -368,7 +369,13 @@ export default function Guide({ info, restarted, onInfo }: Props) {
     if (!logins.rows.some((row) => row.name === cli && row.loggedIn)) setPassed((now) => new Set(now).add(cli));
   });
 
-  const close = () => setClosed(true);
+  // Not now and Esc close the main guide for good, in every browser, until Getting started.
+  const close = () => {
+    setClosed(true);
+    if (info.completed) return;
+    onInfo((now) => ({ ...now, completed: true, facts: null }));
+    mark({ action: "complete" });
+  };
   const act = (hint: Hint, index: number) => {
     if (hint.id === "welcome") return index === 0 ? setWelcomed(true) : close();
     if (hint.id === "none-of-these") return index === 0 ? setNoneOfThese(false) : close();
@@ -399,15 +406,20 @@ export default function Guide({ info, restarted, onInfo }: Props) {
       if (found && !found.matches(FOCUSABLE)) found.tabIndex = -1;
       return found;
     };
-    const back =
-      (was instanceof HTMLElement && was.isConnected && was !== document.body ? was : null) ??
-      (lastTarget.current?.isConnected ? lastTarget.current : null) ??
-      heading();
-    back?.focus({ preventScroll: true });
+    // The first that takes the focus: a row or a note highlighted takes none.
+    const candidates = [
+      was instanceof HTMLElement && was.isConnected && was !== document.body ? was : null,
+      lastTarget.current?.isConnected ? lastTarget.current : null,
+    ];
+    for (const one of candidates) {
+      one?.focus({ preventScroll: true });
+      if (one && document.activeElement === one) return;
+    }
+    heading()?.focus({ preventScroll: true });
   }, [closed]);
 
   if (shown.mode === "none" || shown.mode === "hidden" || shown.mode === "missing") return null;
-  const counter = counterOf(shown.hint, atStart.current, doneNow.current);
+  const counter = counterOf(shown.hint, doneNow.current);
   const host = shown.mode === "step" || shown.mode === "tip" ? shown.inWindow : null;
   // A layer over a window of the app is drawn in it: in a modal <dialog> (the New session
   // window) so it sits above it in the top layer and stays usable, in a dialog of the app's
@@ -417,7 +429,13 @@ export default function Guide({ info, restarted, onInfo }: Props) {
   return createPortal(
     <div ref={layer} className="gd-layer">
       {shown.mode === "centred" ? (
-        <Centred key={shown.hint.id} hint={shown.hint} onAct={(index) => act(shown.hint, index)} onClose={close} />
+        <Centred
+          key={shown.hint.id}
+          hint={shown.hint}
+          texts={shown.hint === welcome ? welcomeTexts(welcome, context) : shown.hint.texts}
+          onAct={(index) => act(shown.hint, index)}
+          onClose={close}
+        />
       ) : shown.mode === "step" ? (
         <Step
           key={shown.hint.id}
@@ -460,18 +478,22 @@ export function merged(now: GuideInfo, answer: GuideInfo): GuideInfo {
   };
 }
 
-// "<part> · Step N of M": the parts left when the guide started, and those done since; the
-// done line when the part before was done in this run.
-function counterOf(hint: Hint, atStart: Set<Part> | null, doneNow: Set<Part>) {
+// "<part> · Step N of M": the part's place on the whole path, the same on every page load
+// whatever is done already; the done line when the part before was done in this run.
+function counterOf(hint: Hint, doneNow: Set<Part>) {
   if (!hint.part || hint.centred) return { eyebrow: undefined, doneLine: false };
-  const counted = PARTS.filter(({ part }) => atStart?.has(part) || doneNow.has(part));
-  const at = counted.findIndex(({ part }) => part === hint.part);
-  const name = PARTS.find(({ part }) => part === hint.part)!.name;
-  const before = PARTS[PARTS.findIndex(({ part }) => part === hint.part) - 1];
+  const at = PARTS.findIndex(({ part }) => part === hint.part);
+  const before = PARTS[at - 1];
   return {
-    eyebrow: at < 0 ? name : `${name} · Step ${at + 1} of ${counted.length}`,
+    eyebrow: `${PARTS[at].name} · Step ${at + 1} of ${PARTS.length}`,
     doneLine: before !== undefined && doneNow.has(before.part),
   };
+}
+
+// The welcome's texts for what is left of the path (Getting started on a LADO set up).
+function welcomeTexts(hint: Hint, context: Context): Texts {
+  if (!partDone(context, "model")) return hint.texts;
+  return (partDone(context, "author") ? hint.variants?.ready : hint.variants?.author) ?? hint.texts;
 }
 
 // A card takes the focus as it appears only from nobody (the page, a card that went, a part
@@ -522,9 +544,18 @@ function Body({ texts, id, children }: { texts: Texts; id: string; children?: Re
   );
 }
 
-function Centred({ hint, onAct, onClose }: { hint: Hint; onAct: (index: number) => void; onClose: () => void }) {
+function Centred({
+  hint,
+  texts,
+  onAct,
+  onClose,
+}: {
+  hint: Hint;
+  texts: Texts;
+  onAct: (index: number) => void;
+  onClose: () => void;
+}) {
   const card = useRef<HTMLDivElement>(null);
-  const texts = hint.texts;
   useInert(true, null);
   useEffect(() => {
     card.current?.querySelector<HTMLElement>(".gd-btn")?.focus();
@@ -648,8 +679,9 @@ function Step(props: {
     prefer: hint.prefer,
     obstacles: kept(hint),
   }));
-  // The page is dimmed and inert but for the hole, unless the target's window dims it.
-  const dim = !inWindow && (placed?.dim ?? true);
+  // The page is dimmed and inert but for the hole, unless the target's window dims it or the
+  // step leads elsewhere on the page.
+  const dim = hint.dim !== false && !inWindow && (placed?.dim ?? true);
   useInert(dim, target);
   // Once placed: hidden until then, the card cannot take the focus.
   const focused = useRef(false);
@@ -709,6 +741,7 @@ function Step(props: {
             Not now
           </button>
         </div>
+        <p className="gd-again">{AGAIN}</p>
       </div>
     </>
   );

@@ -14500,9 +14500,10 @@ button.quiet.danger-text {
 }
 
 /* Guide: the first-run guide's layer over the unchanged UI (guide/Guide.tsx). A guiding step
-   dims the page around its hole (the target plus 4px, the hole's shadow), swallows presses on
-   the dim (four clear blocks), rings the target inside the hole's edge and stands its card
-   beside it; a tip is the same card, smaller, with no dim. Inside a modal <dialog> the layer is
+   dims the page around its hole (the target plus 6px, the hole's shadow), swallows presses on
+   the dim (four clear blocks), rings the target inside the hole's edge, 4px off it, and stands
+   its card beside it; a tip is the same card, smaller, with no dim. The card's edge is
+   --guide-edge, which stands out of the dim. Inside a modal <dialog> the layer is
    the dialog's own, so it sits above it. No orange: --guide-ring is the action's colour. */
 .gd-layer {
   position: fixed;
@@ -14550,7 +14551,7 @@ button.quiet.danger-text {
   padding: 14px 16px 12px;
   background: var(--panel);
   color: var(--ink);
-  border: 1px solid var(--line);
+  border: 1px solid var(--guide-edge);
   border-radius: 8px;
   box-shadow: 0 12px 32px var(--shadow);
   font: 14px/1.45 var(--sans);
@@ -14657,6 +14658,13 @@ button.quiet.danger-text {
   margin: 10px 0 0;
 }
 
+/* Under a step's Not now: how the guide comes back. */
+.gd-again {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .gd-foot {
   display: flex;
   align-items: center;
@@ -14749,23 +14757,23 @@ button.quiet.danger-text {
 }
 
 .gd-arrow[data-side="left"] {
-  border-bottom-color: var(--line);
-  border-left-color: var(--line);
+  border-bottom-color: var(--guide-edge);
+  border-left-color: var(--guide-edge);
 }
 
 .gd-arrow[data-side="right"] {
-  border-top-color: var(--line);
-  border-right-color: var(--line);
+  border-top-color: var(--guide-edge);
+  border-right-color: var(--guide-edge);
 }
 
 .gd-arrow[data-side="above"] {
-  border-top-color: var(--line);
-  border-left-color: var(--line);
+  border-top-color: var(--guide-edge);
+  border-left-color: var(--guide-edge);
 }
 
 .gd-arrow[data-side="below"] {
-  border-right-color: var(--line);
-  border-bottom-color: var(--line);
+  border-right-color: var(--guide-edge);
+  border-bottom-color: var(--guide-edge);
 }
 
 :root[data-phone] .gd-btn,

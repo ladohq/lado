@@ -83,6 +83,15 @@ describe("the guide's accessibility", () => {
     expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Home" }));
   });
 
+  it("gives the focus to the page's heading on Not now when the highlighted element takes none", async () => {
+    showGuide("/settings/git-servers", { ...INFO, facts: { model: true, author: false } });
+    await titled("Who signs the work?"); // its target is a row, not a control
+    expect(document.querySelector('[data-guide="author-row"]')!.matches("li")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Not now" }));
+    await waitFor(() => expect(card()).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Settings" }));
+  });
+
   it("announces a tip once, takes no focus, and is reached by Tab from its target", async () => {
     showGuide("/sessions/x", { ...INFO, completed: true, facts: null }, {
       pages: [

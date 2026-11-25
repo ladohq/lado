@@ -238,6 +238,7 @@ export function ModelServers(props: Sources) {
               className={`mx-src${props.open.has(key) ? " mx-open" : ""}`}
               data-anchor=""
               data-guide={server ? "model-server-row" : undefined}
+              aria-label={server ? server.name : undefined}
             >
               {server ? (
                 <ServerSource
@@ -856,12 +857,21 @@ function SourceBody({
       )}
       {probe?.apis_why && <span className="field-note warn">{`⚠ APIs: cannot be told: ${probe.apis_why}`}</span>}
       {columns.length === 0 && (
-        <p className="mx-note" data-guide="model-no-cli">
+        <p
+          className="mx-note"
+          data-guide="model-no-cli"
+          data-guide-refusal={clis.some((c) => c.why === "not installed") ? undefined : "no-install"}
+        >
           No installed CLI can use this server.
         </p>
       )}
       {rows.length > 0 && (
-        <div className={`mx-list${rows.length <= SHORT ? " mx-short" : ""}`} data-guide={columns.length ? "model-list" : undefined}>
+        <div
+          className={`mx-list${rows.length <= SHORT ? " mx-short" : ""}`}
+          data-guide={columns.length ? "model-list" : undefined}
+          role="group"
+          aria-label={`Models of ${server}`}
+        >
           {shown.map((model) => serverRow(model))}
           {shown.length === 0 && <div className="mx-row mx-row-plain muted">{`No model matches “${search}”.`}</div>}
         </div>
@@ -939,7 +949,7 @@ function ModelId({
   const settled = check && typed === model.trim() ? check : null;
   const note = refused ?? settled;
   return (
-    <div className="mx-other mx-other-cli" data-guide="model-id">
+    <div className="mx-other mx-other-cli" data-guide="model-id" role="group" aria-label="A model by its id">
       <div className="field">
         <label htmlFor={id}>Model id</label>
         <input
@@ -1159,7 +1169,7 @@ function AddServer({
   const keyBad = [...(!checking && !asksKey ? of("key") : []), ...(refused?.field === "key" ? [refused] : [])];
   const nameFree = !checking && name !== "" && result !== undefined && nameBad.length === 0;
   return (
-    <div className="mx-form" data-guide="model-server-form">
+    <div className="mx-form" data-guide="model-server-form" role="group" aria-label="New model server">
       <div className="launch-grid">
         <div className="field">
           <label htmlFor={`${id}-name`}>Name</label>

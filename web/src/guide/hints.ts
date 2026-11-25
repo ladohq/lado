@@ -45,8 +45,11 @@ export type Hint = {
   cli?: string; // a provider's row step: the provider the guide has texts for
   action?: "pass-row" | "none-of-these"; // what the card's link does
   keep?: string[]; // markers of what the card must not cover where it can stand elsewhere
+  dim?: false; // a step whose advice leads elsewhere on the page: no dim, nothing blocked
   texts: Texts;
-  variants?: Record<string, Texts>; // texts by the target's data-guide-refusal
+  // Texts by the target's (or anchor's) data-guide-refusal; the welcome's by what is left
+  // of the path (`author`, `ready`).
+  variants?: Record<string, Texts>;
 };
 
 // The parts of the main guide, in order; a part is done when its fact holds (conditions.ts).
@@ -56,7 +59,10 @@ export const PARTS: { part: Part; name: string }[] = [
   { part: "start", name: "Start working" },
 ];
 
-const MODEL_DONE = "✓ Model connected";
+// LADO checks no key it saves for an agent CLI (Claude Code's): the line claims no model that works.
+export const MODEL_DONE = "✓ Model saved — agents check it when they start";
+// Under the welcome and every step's Not now, which closes the main guide for good.
+export const AGAIN = "You can start the guide again from Help → Getting started.";
 const AUTHOR_DONE = "✓ Your work will be signed";
 const SETTINGS_LIST = ["agent-clis-link", "model-servers-link", "git-servers-link"];
 const AGENT_CLIS = "/settings/agent-clis";
@@ -77,7 +83,27 @@ export const HINTS: Hint[] = [
         "The agents need access to an AI model: a subscription or a key you already have. This guide shows where to connect it.",
       ],
       buttons: ["Show me", "Not now"],
-      note: "You can open the guide again from Help.",
+      note: AGAIN,
+    },
+    variants: {
+      author: {
+        title: "Welcome to LADO",
+        body: [
+          "LADO runs a team of AI agents for you: you describe a task, they plan it, do the work, and ask you when a decision is yours.",
+          "A model is set up already. This guide shows where to set who signs the agents' work, then how to start.",
+        ],
+        buttons: ["Show me", "Not now"],
+        note: AGAIN,
+      },
+      ready: {
+        title: "Welcome to LADO",
+        body: [
+          "LADO runs a team of AI agents for you: you describe a task, they plan it, do the work, and ask you when a decision is yours.",
+          "A model and an author are set up already. This guide shows how to start your first session.",
+        ],
+        buttons: ["Show me", "Not now"],
+        note: AGAIN,
+      },
     },
   },
   {
@@ -357,11 +383,13 @@ export const HINTS: Hint[] = [
     },
   },
   {
-    // No installed CLI speaks the server's API: no model of it can be ticked here.
+    // No installed CLI speaks the server's API: no model of it can be ticked here. No dim:
+    // the advice leads to Agent CLIs, or to Add server.
     id: "model-no-cli",
     kind: "guiding",
     part: "model",
     target: "model-no-cli",
+    dim: false,
     when: [["marker", "model-no-cli"]],
     texts: {
       title: "No agent CLI here can use this server",
@@ -369,6 +397,16 @@ export const HINTS: Hint[] = [
         "None of the agent CLIs installed on this computer works with this server. Install one that does: **Agent CLIs** lists the others and how to install each. Or add a server of another kind.",
       ],
       waiting: "Waiting for an agent CLI that can use it",
+    },
+    variants: {
+      // Every agent CLI that could is installed, or none could.
+      "no-install": {
+        title: "No agent CLI can use this server",
+        body: [
+          "None of the agent CLIs LADO runs works with this server. Add a server of another kind with **Add server**: its form says which agent CLIs can use it before you add it.",
+        ],
+        waiting: "Waiting for a server they can use",
+      },
     },
   },
   {
@@ -587,7 +625,9 @@ export const HINTS: Hint[] = [
     prefer: ["above", "left", "right", "below"],
     when: [["marker", "question-card"]],
     texts: {
-      body: ["An agent asks you something. Press one of its answers, or write your own in your words."],
+      body: [
+        "An agent asks you something. Press one of its answers, or write your own in your words, then press **Send answer to …**.",
+      ],
     },
   },
   {

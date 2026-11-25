@@ -89,6 +89,12 @@ describe("the guide's hints", () => {
     expect(error.texts.body.join(" ")).toMatch(/\*\*Check key\*\* comes back/);
   });
 
+  it("say that an agent's answer is sent by its button, by the button's name", () => {
+    const question = HINTS.find((hint) => hint.id === "tip-question")!;
+    expect(question.texts.body.join(" ")).toContain("**Send answer to …**");
+    expect(code).toContain("`Send answer to ${");
+  });
+
   it("list the five tips in their order", () => {
     expect(TIP_IDS).toEqual(["tip-launch", "tip-session", "tip-gate", "tip-question", "tip-terminal"]);
   });

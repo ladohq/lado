@@ -1,7 +1,8 @@
 """The web UI's first-run guide on the server (docs/design/ui.md, First-run guide): its
 record in LADO_HOME/guide.json and the facts its answer carries while it is not completed.
 
-The record is `{"completed", "shown", "tips_off"}`: whether the main guide was completed,
+The record is `{"completed", "shown", "tips_off"}`: whether the main guide was completed
+(New session opened, or Not now pressed: it closes the guide for good until a `restart`),
 the ids of the hints shown (each once in LADO's lifetime, in every browser) and whether
 tips are off. The ids are the guide file's (web/src/guide/hints.ts, the one list of
 hints); the server checks only their shape. Changes go through one lock and an atomic

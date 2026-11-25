@@ -122,3 +122,21 @@ test.each([
     );
   }
 });
+
+// The guide's card stands on the dimmed page: its edge, 3:1 against the dim over the page.
+test.each([
+  ["light", 0],
+  ["dark", 1],
+] as const)("the guide's card edge stands out of the dim in %s", (_, theme) => {
+  const dim = [...tokens.matchAll(/--guide-dim:\s*light-dark\((#[0-9a-f]{8}),\s*(#[0-9a-f]{8})\)/gi)][0];
+  expect(dim, "--guide-dim").toBeDefined();
+  const [colour, alpha] = [dim[theme + 1].slice(0, 7), parseInt(dim[theme + 1].slice(7), 16) / 255];
+  const ground = palette(theme).ground;
+  const over = `#${[1, 3, 5]
+    .map((i) => Math.round(parseInt(colour.slice(i, i + 2), 16) * alpha + parseInt(ground.slice(i, i + 2), 16) * (1 - alpha)))
+    .map((c) => c.toString(16).padStart(2, "0"))
+    .join("")}`;
+  const edge = palette(theme)["guide-edge"];
+  expect(edge, "--guide-edge").toBeDefined();
+  expect(contrast(edge, over)).toBeGreaterThanOrEqual(3);
+});

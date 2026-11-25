@@ -2,7 +2,7 @@
 // function of rectangles, so every rule is a unit test (place.test.ts); the engine only
 // measures and calls it. Part of the lazy engine.
 //
-// A card stands beside its target, 12px from the hole (the target plus 4px) and 16px inside
+// A card stands beside its target, 12px from the hole (the target plus 6px) and 16px inside
 // the window, centred on its anchor across: on a phone below, then above, the window's width
 // less 32px; wider, the hint's `prefer` list, else right, below, above, left. Inside a window
 // narrower than the screen it first tries the window's sides at the anchor's height, and a tip
@@ -42,7 +42,7 @@ export type PlaceInput = {
 
 export const MARGIN = 16;
 export const GAP = 12;
-export const PAD = 4; // the hole around the target
+export const PAD = 6; // the hole around the target: the ring's line stands 4 px off it
 const CORNER = 12; // the arrow from the card's corners
 const STEP = 8; // the grid of the nearest free place
 

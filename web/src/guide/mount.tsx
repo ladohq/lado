@@ -1,8 +1,8 @@
 // The first-run guide in the shell (docs/design/ui.md, First-run guide): one GET /api/guide per
 // page load, once the change feed is open (as the statistics banner asks), and the engine
-// (Guide.tsx, a lazy chunk) loaded only while the server lets it start by itself (no
+// (Guide.tsx, a lazy chunk) loaded only when the server lets it start by itself (no
 // LADO_GUIDE=0) and something is left to show, or after Help → Getting started, which
-// restarts the guide for this page load whatever the switch says.
+// restarts the guide for this page load whatever the switch says; once loaded, it stays.
 import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { getGuide, postGuide, type GuideInfo } from "../api";
@@ -35,7 +35,11 @@ export function GuideMount() {
       }),
     [],
   );
-  if (!info || !(restarts > 0 || (info.auto && leftToShow(info)))) return null;
+  // Once loaded, the engine stays for the page load: the last tip left is marked shown as it
+  // appears, and stays on screen until Got it.
+  const loaded = useRef(false);
+  if (info && (restarts > 0 || (info.auto && leftToShow(info)))) loaded.current = true;
+  if (!info || !loaded.current) return null;
   return (
     <Contained>
       <Suspense fallback={null}>

@@ -2497,15 +2497,21 @@ is data in **`web/src/guide/hints.ts`**, the one list; this document does not re
   moves on only when what it waits for happens. The two centred cards (the welcome, "Don't
   have any of these yet?") point at nothing and have buttons. A *tip* is a small card with an
   arrow, no dim, takes no focus and blocks nothing: Got it, or Don't show tips like this.
-- **When.** The main guide runs while it is not completed and Not now / Esc was not pressed
-  in this page load, after the statistics question is answered; its welcome only while no
-  model is connected (a LADO set up before it gets a completed record). A model is connected
+- **When.** The main guide runs while it is not completed, after the statistics question is
+  answered; Not now / Esc completes it for good, in every browser, and the welcome and every
+  step say that Help → Getting started starts it again. Its welcome shows only while no model
+  is connected (a LADO set up before it gets a completed record), or after Getting started,
+  saying what is left of the path. A model is connected
   when an agent CLI has one to work on: the CLI logged in, or a model of a saved model server
   ticked for it (a server saved alone is none, so the guide goes on to its models and ticks).
   A page load whose `GET` finds a model and an author in effect completes the record: the
   guide starts by itself only while one of them is missing. Parts done in the system are
-  skipped (connect a model, sign your work, start working); opening New session completes it. Tips show once each, in every browser, never over a guiding step, one at a
-  time. Help → Getting started turns tips back on and starts the guide at its welcome.
+  skipped (connect a model, sign your work, start working), each step counted by its part's
+  place on the whole path ("Step 2 of 3" on every page load); opening New session completes
+  it. A model saved is not claimed to work: LADO checks no key it saves for an agent CLI, so
+  the done line says the agents check it when they start. Tips show once each, in every
+  browser, never over a guiding step, one at a time; a tip stays until Got it, the last one
+  left too. Help → Getting started turns tips back on and starts the guide at its welcome.
 - **Aimed at markers.** Targets are `data-guide="<name>"` attributes on existing elements; a
   form's or window's state is read from them (`data-guide-cli`, `-choice`, `-picked`,
   `-refusal` on the login sheet and Model servers' refusal). The Settings pages publish what
@@ -2517,13 +2523,18 @@ is data in **`web/src/guide/hints.ts`**, the one list; this document does not re
 - **The layer.** Placement is one pure function (`guide/place.ts`): beside the target (a
   phone: below, then above), never over it nor over the text its hint keeps in sight
   (`keep`: a login window's choices, the session's task, the author just saved); a card at the
-  window's edge over a tall form scrolls the form's end clear of it. The ring is dashed, never
-  taken for the solid focus ring. A step inside a window draws no dim of its own;
-  another window over a step hides the guide. The dimmed page is `inert`; a guiding card is a
-  dialog that takes the focus and gives it back on Not now; Esc is Not now (a tip: Got it).
+  window's edge over a tall form scrolls the form's end clear of it. The ring is dashed, 4 px
+  off its target, never taken for the solid focus ring; the card's edge is `--guide-edge`,
+  3:1 against the dim. A step inside a window draws no dim of its own, nor one whose advice
+  leads elsewhere on the page (`dim: false`: a server no installed CLI can use); another window
+  over a step hides the guide. The dimmed page is `inert`; a guiding card is a dialog that
+  takes the focus, reads out the highlighted element's short name (a marked row or form has
+  one of its own), and on Not now gives the focus back where it was, else to the target,
+  else to the page's heading, the first that takes it; Esc is Not now (a tip: Got it).
 - **Cost.** One `GET /api/guide` per page load (its record and, while not completed, the
   facts: a model connected, an author in effect), `POST /api/guide` per mark; the engine
-  (`guide/Guide.tsx`) is a lazy chunk loaded only while something is left to show.
+  (`guide/Guide.tsx`) is a lazy chunk loaded only when something is left to show, and kept
+  for the page load.
 - **`LADO_GUIDE=0`** in the server's environment: nothing starts by itself (videos of a live
   LADO; every test but `tests/ui/test_first_run_guide.py`); Getting started still works.
 

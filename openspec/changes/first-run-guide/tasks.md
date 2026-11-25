@@ -74,3 +74,22 @@ The plan with each task's tests: `docs/superpowers/plans/2026-11-25-first-run-gu
   the page's heading after Not now. Check: the UI e2e, `Guide.a11y.test.tsx`.
 - [x] 10.7 The texts of the server form's refusals and the highlighted element's name. Check:
   `hints.test.ts`, `Guide.login.test.tsx`, `Guide.a11y.test.tsx`.
+
+## 11. The human's second manual check (25.11.2026)
+
+- [x] 11.1 Not now and Esc complete the main guide for good; the welcome and every step say
+  Help → Getting started brings it back (D12). Check: `Guide.test.tsx`, the UI e2e's reload
+  after Esc.
+- [x] 11.2 The engine stays once loaded, so the last tip left stays on screen. Check:
+  `mount.test.tsx`.
+- [x] 11.3 The focus after Not now goes to the first of where it was, the target, the page's
+  heading that takes it. Check: `Guide.a11y.test.tsx`.
+- [x] 11.4 The done line of the model part claims no working model. Check: `Guide.test.tsx`,
+  the UI e2e.
+- [x] 11.5 Short names of the highlighted rows and forms (Git servers, Model servers);
+  `model-no-cli` without dim, its advice by `data-guide-refusal="no-install"`; the welcome by
+  what is left; the counter on the whole path; the question's tip names Send answer to….
+  Check: `GitServers.test.tsx`, `ModelSources.test.tsx`, `Guide.test.tsx`, `hints.test.ts`,
+  the UI e2e's step names.
+- [x] 11.6 The card's edge `--guide-edge`, 3:1 against the dim; the ring 4 px off its target.
+  Check: `tokens.test.ts`, `place.test.ts`, the UI e2e.

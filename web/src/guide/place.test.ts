@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { place, type Placement, type Rect } from "./place";
+import { PAD, place, type Placement, type Rect } from "./place";
 
 const wide = { x: 0, y: 0, w: 1440, h: 900 };
 const phoneView = { x: 0, y: 0, w: 390, h: 844 };
@@ -17,7 +17,8 @@ describe("place", () => {
     const target = { x: 20, y: 400, w: 200, h: 40 };
     const p = place({ card, target, viewport: wide, phone: false, kind: "guiding", obstacles: [] });
     expect(p.side).toBe("right");
-    expect(p.x).toBe(20 + 200 + 4 + 12); // the hole is the target plus 4px
+    expect(PAD).toBe(6); // the hole is the target plus 6px: the ring's line stands off it
+    expect(p.x).toBe(20 + 200 + PAD + 12);
     expect(p.y + p.h / 2).toBe(420);
     expect(p.ring).toBe("solid");
     expect(p.dim).toBe(true);
@@ -28,7 +29,7 @@ describe("place", () => {
     const target = { x: 600, y: 100, w: 300, h: 40 };
     const p = place({ card, target, viewport: wide, phone: false, kind: "tip", prefer: ["below", "right"], obstacles: [] });
     expect(p.side).toBe("below");
-    expect(p.y).toBe(100 + 40 + 4 + 12);
+    expect(p.y).toBe(100 + 40 + PAD + 12);
   });
 
   it("goes on right, below, above, left when a side does not fit", () => {
@@ -86,7 +87,7 @@ describe("place", () => {
     const anchor = { x: 440, y: 500, w: 560, h: 40 };
     const p = place({ card, target: dialog, anchor, dialog, viewport: wide, phone: false, kind: "guiding", obstacles: [] });
     expect(p.side).toBe("right");
-    expect(p.x).toBe(400 + 640 + 4 + 12);
+    expect(p.x).toBe(400 + 640 + PAD + 12);
     expect(p.y + p.h / 2).toBe(520);
   });
 

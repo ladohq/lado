@@ -490,6 +490,20 @@ test("a server no installed CLI can use says so; its models open to the CLIs, no
   ]);
   expect(screen.queryByText("Open a model to tick the agent CLIs that run it.")).toBeNull();
   expect(server.of("POST", "/api/models/check")).toEqual([]);
+  // Installing Kilo CLI would do: the guide's note says nothing else.
+  expect(screen.getByText("No installed CLI can use this server.").dataset.guideRefusal).toBeUndefined();
+});
+
+test("a server no agent CLI could use, installed or not, tells the guide so", async () => {
+  server.entries = { models: [], servers: [LMSTUDIO] };
+  await mount();
+  const why = (name: string, title: string) => ({ name, title, why: "it has no API it speaks" });
+  await openModel("qwen3-8b", {
+    ...LMSTUDIO_PROBE,
+    clis: [],
+    cannot: [why("claude", "Claude Code"), why("codex", "Codex CLI"), why("opencode", "OpenCode"), why("kilo", "Kilo CLI")],
+  });
+  expect(screen.getByText("No installed CLI can use this server.").dataset.guideRefusal).toBe("no-install");
 });
 
 test("embeddings are hidden and counted; a model gone from the list first, ticked, marked", async () => {
@@ -635,12 +649,17 @@ test("Model id only for a server without a list, with a choice of its installed 
   const choice = within(lm).getByLabelText("Agent CLI") as HTMLSelectElement;
   expect(choice.closest(".field")).toBeTruthy(); // the launch window's field look
   expect([...choice.options].map((o) => o.textContent)).toEqual(["Codex CLI", "OpenCode"]);
+  // Named shortly, as the first-run guide reads out what it highlights.
+  expect(within(lm).getByRole("group", { name: "A model by its id" }).dataset.guide).toBe("model-id");
+  expect(lm.dataset.guide).toBe("model-server-row");
+  expect(screen.getByRole("listitem", { name: LMSTUDIO.name })).toBe(lm);
   cleanup();
   server.probes[LMSTUDIO.name] = LMSTUDIO_PROBE;
   await mount();
   fireEvent.click(await source(LMSTUDIO.name));
   await screen.findByRole("button", { name: "qwen3-8b" });
   expect(screen.queryByLabelText("Model id")).toBeNull();
+  expect(screen.getByRole("group", { name: `Models of ${LMSTUDIO.name}` }).dataset.guide).toBe("model-list");
 });
 
 test("Model id: the check after the typing settles, Add saves it, off while refused", async () => {

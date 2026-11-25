@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { publish } from "./facts";
 import { merged, MISSING_MS } from "./Guide";
 import { card, cardTitle, INFO, publishLogins, Settings, showGuide } from "./harness";
+import { AGAIN, MODEL_DONE } from "./hints";
 
 afterEach(() => {
   cleanup();
@@ -20,11 +21,26 @@ describe("the main guide", () => {
   it("welcomes a fresh LADO, then Show me leads to Settings", async () => {
     showGuide("/");
     expect(await screen.findByRole("dialog", { name: "Welcome to LADO" })).toBeTruthy();
-    expect(screen.getByText("You can open the guide again from Help.")).toBeTruthy();
+    expect(screen.getByText(AGAIN)).toBeTruthy();
+    expect(AGAIN).toBe("You can start the guide again from Help → Getting started.");
     press("Show me");
     await titled("Open Settings");
     expect(eyebrow()).toBe("Connect a model · Step 1 of 3");
     expect(screen.getByRole("status").textContent).toBe("Waiting for you to open Settings");
+    expect(card()?.querySelector(".gd-again")?.textContent).toBe(AGAIN); // beside Not now
+  });
+
+  it("welcomes a LADO restarted from Help with what is left of the path", async () => {
+    const body = () => screen.getByRole("dialog", { name: "Welcome to LADO" }).textContent;
+    showGuide("/", { ...INFO, facts: { model: true, author: false } }, { restarted: true });
+    await screen.findByRole("dialog", { name: "Welcome to LADO" });
+    expect(body()).not.toContain("connect it");
+    expect(body()).toContain("who signs the agents' work");
+    cleanup();
+    showGuide("/", { ...INFO, facts: { model: true, author: true } }, { restarted: true });
+    await screen.findByRole("dialog", { name: "Welcome to LADO" });
+    expect(body()).not.toContain("connect it");
+    expect(body()).toContain("start your first session");
   });
 
   it("waits for the statistics question to be answered", async () => {
@@ -35,10 +51,10 @@ describe("the main guide", () => {
     expect(await screen.findByRole("dialog", { name: "Welcome to LADO" })).toBeTruthy();
   });
 
-  it("shows no welcome while a model is connected, and goes on where it is", async () => {
+  it("shows no welcome while a model is connected, and goes on where it is, numbered on the whole path", async () => {
     showGuide("/", { ...INFO, facts: { model: true, author: false } });
     await titled("Open Settings");
-    expect(eyebrow()).toBe("Sign your work · Step 1 of 2");
+    expect(eyebrow()).toBe("Sign your work · Step 2 of 3"); // as before the page load that found the model
     expect(card()?.querySelector(".gd-done")).toBeNull(); // the model was connected before
   });
 
@@ -102,29 +118,50 @@ describe("the main guide", () => {
     expect(card()?.querySelector(".gd-done")).toBeNull();
     fireEvent.click(screen.getByRole("checkbox"));
     await titled("Sign the agents' work");
-    expect(card()?.querySelector(".gd-done")?.textContent).toBe("✓ Model connected");
+    expect(card()?.querySelector(".gd-done")?.textContent).toBe(MODEL_DONE);
   });
 
-  it("says what to do with a server no installed agent CLI can use", async () => {
-    const page = (
-      <Settings>
-        <ul>
-          <li data-guide="model-server-row">
-            <button type="button">Lab</button>
-            <p data-guide="model-no-cli">No installed CLI can use this server.</p>
-          </li>
-        </ul>
-        <button type="button" data-guide="model-server-add">
-          Add server
-        </button>
-      </Settings>
-    );
-    showGuide("/settings/model-servers", INFO, { pages: [{ path: "/settings/model-servers", element: page }] });
+  // LADO does not check a key it saves for an agent CLI: the done line claims no working model.
+  it("says a model is saved and checked when an agent starts, not that it works", () => {
+    expect(MODEL_DONE).toBe("✓ Model saved — agents check it when they start");
+  });
+
+  const noCli = (refusal?: string) => (
+    <Settings>
+      <ul>
+        <li data-guide="model-server-row">
+          <button type="button">Lab</button>
+          <p data-guide="model-no-cli" data-guide-refusal={refusal}>
+            No installed CLI can use this server.
+          </p>
+        </li>
+      </ul>
+      <button type="button" data-guide="model-server-add">
+        Add server
+      </button>
+    </Settings>
+  );
+
+  it("says what to do with a server no installed agent CLI can use, the page left usable", async () => {
+    showGuide("/settings/model-servers", INFO, { pages: [{ path: "/settings/model-servers", element: noCli() }] });
     press("Show me");
     publishLogins([{ name: "claude", installed: false }, { name: "codex", installed: false }]);
     act(() => publish("models", 0));
     await titled("No agent CLI here can use this server");
-    expect(card()?.textContent).toContain("Agent CLIs");
+    expect(card()?.textContent).toContain("Install one");
+    // No dim: Agent CLIs and Add server, where the advice leads, can be pressed.
+    expect(document.querySelector(".gd-block")).toBeNull();
+    expect(document.querySelector("[inert]")).toBeNull();
+  });
+
+  it("advises a server of another kind, not an install, when no CLI could use the server", async () => {
+    showGuide("/settings/model-servers", INFO, { pages: [{ path: "/settings/model-servers", element: noCli("no-install") }] });
+    press("Show me");
+    act(() => publish("models", 0));
+    await titled("No agent CLI can use this server");
+    const advice = [...card()!.querySelectorAll(".gd-body p")].map((p) => p.textContent).join(" ");
+    expect(advice).not.toMatch(/install/i);
+    expect(advice).toContain("another kind");
   });
 
   it("skips the row of a CLI not installed, and every row of a provider without texts", async () => {
@@ -144,7 +181,7 @@ describe("the main guide", () => {
     publishLogins([{ name: "claude", loggedIn: true }, { name: "codex" }]);
     await titled("Sign the agents' work");
     expect(eyebrow()).toBe("Sign your work · Step 2 of 3");
-    expect(card()?.querySelector(".gd-done")?.textContent).toBe("✓ Model connected");
+    expect(card()?.querySelector(".gd-done")?.textContent).toBe(MODEL_DONE);
     fireEvent.click(screen.getByRole("link", { name: "Git servers" }));
     await titled("Who signs the work?");
     act(() => publish("author", true));
@@ -181,15 +218,15 @@ describe("the main guide", () => {
     await titled("An OpenRouter key, or a model on your computer?");
   });
 
-  it("counts New session as Step 2 of 2 when an author is in effect already", async () => {
+  it("numbers New session Step 3 of 3 when an author is in effect already", async () => {
     showGuide("/settings/agent-clis", { ...INFO, facts: { model: false, author: true } });
     press("Show me");
     publishLogins([{ name: "claude" }, { name: "codex" }]);
     await titled("Claude Pro or Max, or an Anthropic API key?");
-    expect(eyebrow()).toBe("Connect a model · Step 1 of 2");
+    expect(eyebrow()).toBe("Connect a model · Step 1 of 3");
     publishLogins([{ name: "claude", loggedIn: true }, { name: "codex" }]);
     await titled("Start your first session");
-    expect(eyebrow()).toBe("Start working · Step 2 of 2");
+    expect(eyebrow()).toBe("Start working · Step 3 of 3");
   });
 
   it("is completed by the New session window whichever step shows", async () => {
@@ -200,22 +237,32 @@ describe("the main guide", () => {
     await waitFor(() => expect(guide.posts()).toContainEqual({ action: "complete" }));
   });
 
-  it("closes on Not now until the next page load, and comes back then", async () => {
+  it("closes for good on Not now: the server marks it, in every browser, until Getting started", async () => {
     const first = showGuide("/");
     press("Not now");
     await waitFor(() => expect(card()).toBeNull());
-    expect(first.posts()).not.toContainEqual({ action: "complete" });
-    cleanup();
-    showGuide("/"); // the next page load: a new engine
-    expect(await screen.findByRole("dialog", { name: "Welcome to LADO" })).toBeTruthy();
+    await waitFor(() => expect(first.posts()).toContainEqual({ action: "complete" }));
   });
 
-  it("closes on Esc in a card", async () => {
-    showGuide("/");
+  it("closes for good on Esc in a step's card, the tips left on", async () => {
+    const guide = showGuide("/");
     press("Show me");
     await titled("Open Settings");
     fireEvent.keyDown(card()!, { key: "Escape" });
     await waitFor(() => expect(card()).toBeNull());
+    await waitFor(() => expect(guide.posts()).toContainEqual({ action: "complete" }));
+    expect(guide.posts()).not.toContainEqual({ action: "tips_off" });
+  });
+
+  it("closes for good on Not now of the card for a person with none of these", async () => {
+    const guide = showGuide("/settings/agent-clis");
+    press("Show me");
+    publishLogins([{ name: "claude", installed: false }, { name: "codex", installed: false }]);
+    await titled("An OpenRouter key, or a model on your computer?");
+    press("I have none of these — what should I choose?");
+    await screen.findByRole("dialog", { name: "Don't have any of these yet?" });
+    press("Not now");
+    await waitFor(() => expect(guide.posts()).toContainEqual({ action: "complete" }));
   });
 
   it("swallows a press on the dim: the step stays", async () => {

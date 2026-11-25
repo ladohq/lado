@@ -220,7 +220,7 @@ test("the rail collapses to icons with names and remembers it", () => {
 
 const help = () => within(rail()).getByRole("button", { name: "Help" });
 
-test("Help opens its menu, the first item focused: Documentation and GitHub in a new tab, Report a bug", () => {
+test("Help opens its menu, the first item focused: Documentation and GitHub in a new tab, Getting started, Report a bug", () => {
   open("/sessions/lado");
   expect(help().getAttribute("aria-haspopup")).toBe("menu");
   expect(help().getAttribute("aria-expanded")).toBe("false");
@@ -229,20 +229,45 @@ test("Help opens its menu, the first item focused: Documentation and GitHub in a
   expect(help().getAttribute("aria-expanded")).toBe("true");
   const menu = screen.getByRole("menu", { name: "Help" });
   const items = within(menu).getAllByRole("menuitem");
-  expect(items.map((item) => item.textContent)).toEqual(["Documentation↗", "GitHub↗", "Report a bug"]);
+  expect(items.map((item) => item.textContent)).toEqual(["Documentation↗", "GitHub↗", "Getting started", "Report a bug"]);
   expect(items.map((item) => item.getAttribute("href"))).toEqual([
     "https://github.com/ladohq/lado#readme",
     "https://github.com/ladohq/lado",
     null,
+    null,
   ]);
   expect(items.slice(0, 2).map((item) => item.getAttribute("target"))).toEqual(["_blank", "_blank"]);
-  expect(items[2].previousElementSibling?.tagName).toBe("HR");
+  expect(items[2].previousElementSibling?.tagName).toBe("HR"); // Getting started opens Report a bug's group
+  expect(items[3].previousElementSibling).toBe(items[2]);
   expect(document.activeElement).toBe(items[0]);
   fireEvent.keyDown(items[0], { key: "ArrowDown" });
   expect(document.activeElement).toBe(items[1]);
-  fireEvent.click(items[2]);
+  fireEvent.click(items[3]);
   expect(heading()).toBe("Report a bug");
   expect(screen.queryByRole("menu")).toBeNull();
+});
+
+test("Help's Getting started closes the menu and restarts the first-run guide: its welcome shows", async () => {
+  const fetch = serve();
+  const base = fetch.getMockImplementation()!;
+  const guide = { auto: false, completed: false, shown: [], tips_off: false, telemetry_asked: false, facts: { model: true, author: true } };
+  const asked: [string, RequestInit | undefined][] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (path: string, init?: RequestInit) => {
+      asked.push([path, init]);
+      return path === "/api/guide" ? new Response(JSON.stringify(guide)) : base(path);
+    }),
+  );
+  open("/sessions/lado");
+  await waitFor(() => expect(asked.some(([path]) => path === "/api/guide")).toBe(true));
+  expect(screen.queryByRole("dialog", { name: "Welcome to LADO" })).toBeNull(); // LADO_GUIDE=0: nothing by itself
+  fireEvent.click(help());
+  fireEvent.click(within(screen.getByRole("menu", { name: "Help" })).getByRole("menuitem", { name: "Getting started" }));
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(await screen.findByRole("dialog", { name: "Welcome to LADO" })).toBeTruthy();
+  const restart = asked.find(([path, init]) => path === "/api/guide" && init?.method === "POST");
+  expect(JSON.parse(String(restart![1]!.body))).toEqual({ action: "restart" });
 });
 
 test("Esc closes Help's menu, the focus back on Help; a press outside closes it too", () => {

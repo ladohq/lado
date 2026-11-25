@@ -980,7 +980,7 @@ function SessionTabs({
   };
   const scroll = (side: 1 | -1) => row.current?.scrollBy({ left: side * row.current.clientWidth });
   return (
-    <nav ref={bar} className="tab-bar session-tabs" aria-label="Session sections" data-fit={fit}>
+    <nav ref={bar} className="tab-bar session-tabs" aria-label="Session sections" data-fit={fit} data-guide="session-tabs">
       <div className="session-tabs-box">
         <div ref={row} className="session-tabs-scroll" onScroll={lookAtEnds} onFocus={focused}>
           {TABS.map((one) => {

@@ -14499,3 +14499,300 @@ button.quiet.danger-text {
   }
 }
 
+/* Guide: the first-run guide's layer over the unchanged UI (guide/Guide.tsx). A guiding step
+   dims the page around its hole (the target plus 4px, the hole's shadow), swallows presses on
+   the dim (four clear blocks), rings the target inside the hole's edge and stands its card
+   beside it; a tip is the same card, smaller, with no dim. Inside a modal <dialog> the layer is
+   the dialog's own, so it sits above it. No orange: --guide-ring is the action's colour. */
+.gd-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.gd-veil {
+  position: fixed;
+  inset: 0;
+  background: var(--guide-dim);
+  pointer-events: auto;
+}
+
+.gd-hole {
+  position: fixed;
+  border-radius: 8px;
+  box-shadow: 0 0 0 100vmax var(--guide-dim);
+}
+
+.gd-block {
+  position: fixed;
+  pointer-events: auto;
+}
+
+.gd-ring {
+  position: fixed;
+  box-sizing: border-box;
+  border-radius: 8px;
+  outline: 2px solid var(--guide-ring);
+  outline-offset: -2px;
+}
+
+/* A tip that cannot stand beside its target rings it, dashed and outside it: never the focus ring. */
+.gd-ring.pointing {
+  outline: 2px dashed var(--guide-ring);
+  outline-offset: 0;
+}
+
+.gd-card {
+  position: fixed;
+  box-sizing: border-box;
+  width: 320px;
+  padding: 14px 16px 12px;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px var(--shadow);
+  font: 14px/1.45 var(--sans);
+  pointer-events: auto;
+  animation: gd-in 120ms ease-out;
+}
+
+.gd-card:focus {
+  outline: none;
+}
+
+.gd-card:focus-visible {
+  outline: 2px solid var(--action);
+  outline-offset: 2px;
+}
+
+.gd-card.centred {
+  top: 50%;
+  left: 50%;
+  width: min(400px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 20px 22px 16px;
+  transform: translate(-50%, -50%);
+}
+
+.gd-card.tip {
+  width: 296px;
+  padding: 12px 14px 10px;
+  font-size: 13.5px;
+}
+
+@keyframes gd-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.gd-title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.gd-title.big {
+  font-size: 18px;
+}
+
+.gd-body p {
+  margin: 0 0 8px;
+}
+
+.gd-body code {
+  padding: 0 3px;
+  border-radius: 4px;
+  background: var(--raised);
+  font: 0.92em var(--mono);
+}
+
+.gd-done {
+  margin: 0 0 4px;
+  color: var(--done);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.gd-eyebrow {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.gd-links {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin: 2px 0 8px;
+}
+
+.gd-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--action);
+  font-size: 13.5px;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.gd-help,
+.gd-note {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.gd-note {
+  margin: 10px 0 0;
+}
+
+.gd-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.gd-foot > .gd-quiet:last-child {
+  margin-left: auto;
+}
+
+.gd-wait {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.gd-wait::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--action);
+  animation: gd-pulse 1.6s ease-in-out 3;
+}
+
+@keyframes gd-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.gd-btn {
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--action);
+  color: var(--on-action);
+  font: 600 14px var(--sans);
+}
+
+.gd-btn.second {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  font-weight: 400;
+}
+
+.gd-btn.second:hover {
+  background: var(--raised);
+}
+
+.gd-btn.small {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.gd-quiet {
+  height: 28px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: 13px var(--sans);
+}
+
+.gd-quiet:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+/* The arrow: a 12px square turned 45°, its centre on the card's edge at the anchor; only
+   its two outer edges drawn. */
+.gd-arrow {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -7px 0 0 -7px;
+  background: var(--panel);
+  border: 1px solid transparent;
+  transform: rotate(45deg);
+}
+
+.gd-arrow[data-side="left"] {
+  border-bottom-color: var(--line);
+  border-left-color: var(--line);
+}
+
+.gd-arrow[data-side="right"] {
+  border-top-color: var(--line);
+  border-right-color: var(--line);
+}
+
+.gd-arrow[data-side="above"] {
+  border-top-color: var(--line);
+  border-left-color: var(--line);
+}
+
+.gd-arrow[data-side="below"] {
+  border-right-color: var(--line);
+  border-bottom-color: var(--line);
+}
+
+:root[data-phone] .gd-btn,
+:root[data-phone] .gd-quiet {
+  height: 44px;
+}
+
+:root[data-phone] .gd-link {
+  min-height: 44px;
+}
+
+:root[data-phone] .gd-foot {
+  flex-wrap: wrap;
+}
+
+:root[data-phone] .gd-foot > button {
+  flex: 1;
+}
+
+:root[data-phone] .gd-wait {
+  flex-basis: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gd-card,
+  .gd-wait::before {
+    animation: none;
+  }
+}
+

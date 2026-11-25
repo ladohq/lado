@@ -1,7 +1,7 @@
 // A menu of the UI's own (role=menu): the first item gets the focus, the arrow keys move
 // it, Esc closes; `useDismiss` closes it, or a popover, on a press outside. An item is a
 // button or a link, which opens in a new tab; both are menuitems. An item may have an icon
-// (a link with one then shows ↗) and a line above it (`divided`).
+// (a link with one then shows ↗), a line above it (`divided`) and a guide's marker.
 import {
   Fragment,
   useEffect,
@@ -12,7 +12,8 @@ import {
   type RefObject,
 } from "react";
 
-type ItemLook = { label: string; icon?: ReactNode; divided?: boolean };
+// `guide`: the item's first-run guide's marker (guide/hints.ts).
+type ItemLook = { label: string; icon?: ReactNode; divided?: boolean; guide?: string };
 export type MenuItem = (ItemLook & { onSelect: () => void }) | (ItemLook & { href: string });
 
 const MARGIN = 8; // between a popover and the window's edges
@@ -199,7 +200,7 @@ export function Menu({
               )}
             </a>
           ) : (
-            <button type="button" role="menuitem" onClick={item.onSelect}>
+            <button type="button" role="menuitem" data-guide={item.guide} onClick={item.onSelect}>
               {item.icon}
               {item.icon ? <span>{item.label}</span> : item.label}
             </button>

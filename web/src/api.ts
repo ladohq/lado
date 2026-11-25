@@ -119,7 +119,8 @@ export type GuideAction = components["schemas"]["GuideAction"];
 export const getGuide = () => get<GuideInfo>("/api/guide");
 
 // A mark of the guide: shown ids, complete, tips off, restart, or a missing marker.
-export const postGuide = (action: GuideAction) => post<GuideInfo>("/api/guide", action);
+export const postGuide = (action: Pick<GuideAction, "action"> & Partial<GuideAction>) =>
+  post<GuideInfo>("/api/guide", action);
 
 export type SystemInfo = components["schemas"]["SystemInfo"];
 

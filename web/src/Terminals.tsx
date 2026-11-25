@@ -433,6 +433,7 @@ export function TerminalPanel({
               role="tabpanel"
               aria-label={agent}
               className="term-body"
+              data-guide="terminal-panel"
               hidden={collapsed || agent !== active}
             >
               {stopped ? (

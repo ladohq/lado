@@ -507,6 +507,7 @@ export function WaitingCard({
       ref={cardRef}
       className={`waiting-card${chat ? "" : " whole"}${expanded ? " expanded" : ""}${folds ? " minimized" : ""}${given !== null ? " sized" : ""}${typing && !expanded ? " typing" : ""}`}
       aria-label={`What waits for you in ${session}`}
+      data-guide={folds ? undefined : "gate" in shown ? "gate-card" : "question-card"}
       style={style}
       // Files go to a field under them (its own drop zone); dropped elsewhere on the card,
       // nowhere: neither the composer (it leaves the card alone) nor the browser opens them.

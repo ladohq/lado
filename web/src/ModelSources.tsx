@@ -273,7 +273,13 @@ export function ModelServers(props: Sources) {
               }}
             />
           ) : (
-            <button ref={addButton} type="button" className="quiet mx-add" onClick={() => setAdding(true)}>
+            <button
+              ref={addButton}
+              type="button"
+              className="quiet mx-add"
+              data-guide="model-server-add"
+              onClick={() => setAdding(true)}
+            >
               <span aria-hidden="true">+</span> Add server
             </button>
           )}
@@ -962,10 +968,15 @@ function ModelId({
 }
 
 // A check or a refusal under its field, in the launch window's note look.
-export function CheckNote({ note }: { note: ModelCheck | EntryRefused }) {
+export function CheckNote({ note, guide }: { note: ModelCheck | EntryRefused; guide?: "key" | "unreachable" }) {
   if ("message" in note)
     return (
-      <span className="field-note bad" role="alert">
+      <span
+        className="field-note bad"
+        role="alert"
+        data-guide={guide ? "model-server-error" : undefined}
+        data-guide-refusal={guide}
+      >
         {note.message}
         {note.hint && <span className="mx-hint">{note.hint}</span>}
       </span>
@@ -1128,13 +1139,15 @@ function AddServer({
       setBusy(false);
     }
   };
-  const bad = (lines: EntryRefused[]) => lines.map((r) => <CheckNote key={r.message} note={r} />);
+  // `guide`: the first-run guide's kind of the refusal (data-guide-refusal).
+  const bad = (lines: EntryRefused[], guide?: "key" | "unreachable") =>
+    lines.map((r) => <CheckNote key={r.message} note={r} guide={guide} />);
   const nameBad = [...of("name"), ...(refused?.field === "name" ? [refused] : [])];
   const addressBad = [...of("address"), ...(refused?.field === "address" ? [refused] : [])];
   const keyBad = [...(!checking && !asksKey ? of("key") : []), ...(refused?.field === "key" ? [refused] : [])];
   const nameFree = !checking && name !== "" && result !== undefined && nameBad.length === 0;
   return (
-    <div className="mx-form">
+    <div className="mx-form" data-guide="model-server-form">
       <div className="launch-grid">
         <div className="field">
           <label htmlFor={`${id}-name`}>Name</label>
@@ -1172,7 +1185,7 @@ function AddServer({
             </span>
           ) : (
             <>
-              {bad(addressBad)}
+              {bad(addressBad, "unreachable")}
               {asksKey &&
                 of("key").map((r) => (
                   <span key={r.message} className="field-note warn">
@@ -1206,7 +1219,7 @@ function AddServer({
           />
           {filled && warnings(result?.warnings ?? [])}
           {warnings((refused?.warnings ?? []).filter((line) => !(filled && result?.warnings.includes(line))))}
-          {bad(keyBad)}
+          {bad(keyBad, "key")}
           <span className="field-note">
             {asksKey && filled
               ? `The key is sent to the server only when you press Check key or Add server. ${KEY_NOTE}`

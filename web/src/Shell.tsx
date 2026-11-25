@@ -21,9 +21,12 @@ import { createPortal } from "react-dom";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 
 import { getHealth, onDenied } from "./api";
+import { restartGuide } from "./guide/facts";
+import { GuideMount } from "./guide/mount";
 import {
   BugIcon,
   CollapseIcon,
+  CompassIcon,
   DocumentIcon,
   GitHubIcon,
   HelpIcon,
@@ -169,6 +172,7 @@ export function Shell() {
       <TabTitle title={title} />
       <Notifier />
       <SelectionBar />
+      <GuideMount />
       {drawer && <button type="button" className="menu-scrim" aria-label="Close menu" onClick={closeDrawer} />}
       <nav
         ref={rail}
@@ -216,7 +220,7 @@ export function Shell() {
         </ul>
         <div className="rail-bottom">
           <HelpButton collapsed={folded} phone={phone !== null} />
-          <RailLink to="/settings" name="Settings" icon={<SettingsIcon />} collapsed={folded} />
+          <RailLink to="/settings" name="Settings" icon={<SettingsIcon />} collapsed={folded} guide="rail-settings" />
         </div>
       </nav>
       <div className="main">
@@ -358,13 +362,21 @@ function TabTitle({ title }: { title: string }) {
   return null;
 }
 
-function RailLink(props: { to: string; name: string; icon: ReactNode; collapsed: boolean; count?: number }) {
+function RailLink(props: {
+  to: string;
+  name: string;
+  icon: ReactNode;
+  collapsed: boolean;
+  count?: number;
+  guide?: string; // its first-run guide's marker (guide/hints.ts)
+}) {
   const label = props.count ? `${props.name}, ${props.count} waiting` : props.name;
   return (
     <NavLink
       to={props.to}
       end={props.to === "/"}
       className="rail-link"
+      data-guide={props.guide}
       aria-label={label}
       title={props.collapsed ? label : undefined}
     >
@@ -387,6 +399,7 @@ function MenuButton({ ref, open, onClick }: { ref: Ref<HTMLButtonElement>; open:
       ref={ref}
       type="button"
       className="ghost menu-button"
+      data-guide="rail-menu"
       aria-label={count ? `Menu, ${count} waiting` : "Menu"}
       aria-expanded={open}
       onClick={onClick}
@@ -412,6 +425,7 @@ function LaunchLink({ collapsed }: { collapsed: boolean }) {
     <button
       type="button"
       className="rail-link"
+      data-guide="rail-new-session"
       aria-label="New session"
       title={collapsed ? "New session" : undefined}
       onClick={() => launch()}
@@ -422,7 +436,8 @@ function LaunchLink({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-// Help on the rail: a menu of Documentation and GitHub, in a new tab, and Report a bug. It
+// Help on the rail: a menu of Documentation and GitHub, in a new tab, Getting started (the
+// first-run guide again, guide/mount.tsx) and Report a bug. It
 // opens beside the rail (useBeside), in the body, as the sticky rail is a layer under the page;
 // on a phone over Help across the drawer (styles.css). Esc gives the focus back to Help. On /report Help wears the rail's current look: Report a
 // bug lives in it. It is no link, so the look is a class, not aria-current.
@@ -466,9 +481,18 @@ function HelpButton({ collapsed, phone }: { collapsed: boolean; phone: boolean }
             { label: "Documentation", href: DOCS_URL, icon: <DocumentIcon /> },
             { label: "GitHub", href: GITHUB, icon: <GitHubIcon /> },
             {
+              label: "Getting started",
+              icon: <CompassIcon />,
+              divided: true,
+              guide: "help-getting-started",
+              onSelect: () => {
+                setOpen(false);
+                restartGuide();
+              },
+            },
+            {
               label: "Report a bug",
               icon: <BugIcon />,
-              divided: true,
               onSelect: () => {
                 setOpen(false);
                 navigate("/report");

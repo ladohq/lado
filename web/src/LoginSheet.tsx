@@ -73,6 +73,9 @@ function ChoiceSheet({ row, onChanged, onClose }: Props) {
   const { login } = row;
   const current = login.state === "yes" ? login.choice : "";
   const [chosen, setChosen] = useState(current || row.choices[0].id);
+  // The human picked a choice or focused its field (or one is the current login): the
+  // first-run guide's data-guide-picked; the first choice chosen by default is no pick.
+  const [picked, setPicked] = useState(current !== "");
   const [filled, setFilled] = useState(false);
   const [asking, setAsking] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -121,14 +124,19 @@ function ChoiceSheet({ row, onChanged, onClose }: Props) {
   }
   return (
     <div className="login-sheet" role="dialog" aria-modal="true" aria-labelledby={id}>
-      <div className="login-window">
+      <div
+        className="login-window"
+        data-guide="login-sheet"
+        data-guide-cli={row.cli.name}
+        data-guide-picked={picked || undefined}
+      >
         <div className="login-top">
           <h3 id={id}>{row.question}</h3>
           <button type="button" className="quiet" disabled={busy} onClick={onClose}>
             Close
           </button>
         </div>
-        <div className="login-help">
+        <div className="login-help" data-guide="login-choices">
           {asking ? (
             <Confirm
               title={row.from_lado ? null : row.cli.title}
@@ -140,7 +148,11 @@ function ChoiceSheet({ row, onChanged, onClose }: Props) {
           ) : (
             <>
               {row.choices.map((c) => (
-                <div key={c.id} className={c.id === chosen ? "login-choice login-chosen" : "login-choice"}>
+                <div
+                  key={c.id}
+                  className={c.id === chosen ? "login-choice login-chosen" : "login-choice"}
+                  data-guide-choice={c.id === chosen ? c.id : undefined}
+                >
                   <label>
                     <input
                       type="radio"
@@ -148,6 +160,7 @@ function ChoiceSheet({ row, onChanged, onClose }: Props) {
                       checked={c.id === chosen}
                       onChange={() => {
                         setChosen(c.id);
+                        setPicked(true);
                         setFilled(false);
                         setFailed(null);
                       }}
@@ -161,6 +174,7 @@ function ChoiceSheet({ row, onChanged, onClose }: Props) {
                       <button
                         type="button"
                         className="primary"
+                        data-guide="login-action"
                         disabled={busy}
                         onClick={() => void win.start(c.action)}
                       >
@@ -169,7 +183,7 @@ function ChoiceSheet({ row, onChanged, onClose }: Props) {
                     </div>
                   )}
                   {c.id === chosen && !c.action && (
-                    <div className="login-send">
+                    <div className="login-send" data-guide="login-secret" onFocus={() => setPicked(true)}>
                       <SecretField
                         key={c.id}
                         field={field}
@@ -195,7 +209,7 @@ function ChoiceSheet({ row, onChanged, onClose }: Props) {
             </>
           )}
           {refused && (
-            <p className="field-note bad" role="alert">
+            <p className="field-note bad" role="alert" data-guide="login-refusal">
               {refused}
             </p>
           )}

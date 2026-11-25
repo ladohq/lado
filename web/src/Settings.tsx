@@ -24,6 +24,13 @@ const PAGES: Record<SectionSlug, () => JSX.Element> = {
   statistics: StatisticsSetting,
 };
 
+// The first-run guide's markers of the list's items (guide/hints.ts).
+const GUIDE_MARKERS: Partial<Record<SectionSlug, string>> = {
+  "agent-clis": "agent-clis-link",
+  "model-servers": "model-servers-link",
+  "git-servers": "git-servers-link",
+};
+
 export function Settings() {
   const phone = usePhone() !== null;
   const { section } = useParams();
@@ -50,7 +57,7 @@ export function Settings() {
           <ul>
             {SETTINGS_SECTIONS.map(({ slug, name, icon: Icon }) => (
               <li key={slug}>
-                <NavLink className="snav-item" to={`/settings/${slug}`}>
+                <NavLink className="snav-item" to={`/settings/${slug}`} data-guide={GUIDE_MARKERS[slug]}>
                   <span className="snav-ic">
                     <Icon />
                   </span>

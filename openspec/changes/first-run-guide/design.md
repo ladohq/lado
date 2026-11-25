@@ -177,7 +177,8 @@ Not now and Esc post `complete`, as New session does (D13): the main guide comes
 page load and in no browser until Help → Getting started (`restart`), even while a model or
 an author is missing; tips keep their own Got it and Don't show tips like this. The welcome's
 note and a line under every step's Not now say so ("You can start the guide again from Help
-→ Getting started."). The human's decision after the second manual check (25.11), which
+→ Getting started."); on a phone only the welcome, as the line made a step's card cover the
+server form's Add server in CI. The human's decision after the second manual check (25.11), which
 replaced "closed until the next page load". No mark of its own: a guide closed and one
 completed behave alike, and `restart` reopens both. A `GET` still completes a record not
 completed with a model and an author in effect (D3), for a guide restarted from Help and

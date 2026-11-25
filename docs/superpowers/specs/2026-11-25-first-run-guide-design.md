@@ -501,7 +501,8 @@ changed here, each in the code, the openspec change and its tests:
 - **Not now closes the guide for good** (replaces "until the next page load"): Not now and
   Esc post `complete`; the guide comes back on no page load, in no browser, until Help →
   Getting started, even while a model or an author is missing. Tips are not touched. The
-  welcome's note and a line under every step's Not now: “You can start the guide again from
+  welcome's note and a line under every step's Not now (a phone: the welcome only, its step
+  cards are tall already): “You can start the guide again from
   Help → Getting started.”
 - **The last tip left** stays on screen until Got it: once loaded, the engine stays for the
   page load, though the tip is marked shown as it appears.

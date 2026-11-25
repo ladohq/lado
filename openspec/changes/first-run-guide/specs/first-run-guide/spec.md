@@ -96,7 +96,7 @@ The main guide SHALL be marked completed when the New session window opens while
 
 ### Requirement: Not now closes the guide for good
 
-Not now, and Esc with the focus in a guiding card, SHALL close the main guide and mark it completed on the server, in every browser, until Help → Getting started; tips SHALL stay as they are. The welcome and every step SHALL say that Help → Getting started starts it again. The guide SHALL start by itself only while it is not completed and a model or an author is missing; with both, a record not completed SHALL be made completed.
+Not now, and Esc with the focus in a guiding card, SHALL close the main guide and mark it completed on the server, in every browser, until Help → Getting started; tips SHALL stay as they are. The welcome and every step (a phone: the welcome) SHALL say that Help → Getting started starts it again. The guide SHALL start by itself only while it is not completed and a model or an author is missing; with both, a record not completed SHALL be made completed.
 
 #### Scenario: Reload after Not now
 - **WHEN** the person presses Not now and later reloads the page with no model connected

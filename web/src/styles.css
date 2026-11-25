@@ -14797,6 +14797,11 @@ button.quiet.danger-text {
   flex-basis: 100%;
 }
 
+/* A phone's card is tall already, over a form it must leave in sight: the welcome says it. */
+:root[data-phone] .gd-again {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .gd-card,
   .gd-wait::before {

@@ -2499,7 +2499,7 @@ is data in **`web/src/guide/hints.ts`**, the one list; this document does not re
   arrow, no dim, takes no focus and blocks nothing: Got it, or Don't show tips like this.
 - **When.** The main guide runs while it is not completed, after the statistics question is
   answered; Not now / Esc completes it for good, in every browser, and the welcome and every
-  step say that Help → Getting started starts it again. Its welcome shows only while no model
+  step (a phone: the welcome) say that Help → Getting started starts it again. Its welcome shows only while no model
   is connected (a LADO set up before it gets a completed record), or after Getting started,
   saying what is left of the path. A model is connected
   when an agent CLI has one to work on: the CLI logged in, or a model of a saved model server

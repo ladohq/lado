@@ -179,6 +179,8 @@ def add_the_server(page: Page, models, shot, phone: bool = False) -> None:
     key = form.get_by_label("Key", exact=True)
     expect(form.get_by_text("required by this server")).to_be_visible(timeout=30_000)
     if phone:
+        # A phone's card keeps short (in CI the line under Not now made it cover Add server).
+        expect(card(page).locator(".gd-again")).to_be_hidden()
         # The form grew under the card, with no scroll by the person: Key and Add show.
         add = form.get_by_role("button", name="Add server", exact=True)
         for _ in range(40):

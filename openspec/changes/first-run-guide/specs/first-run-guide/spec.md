@@ -24,7 +24,7 @@ The web UI SHALL show the guide's centred welcome on a page load while the guide
 
 ### Requirement: Guiding steps wait for the real action
 
-A guiding step SHALL dim the page, cut out and ring its target, let presses inside the cut-out reach the page, block presses outside it without closing the guide, and SHALL move on only when the person's action makes its completion true. Only the centred cards SHALL have buttons that move on.
+A guiding step SHALL dim the page, cut out and ring its target, let presses inside the cut-out reach the page, block presses outside it without closing the guide, and SHALL move on only when the person's action makes its completion true. Besides the centred cards' buttons, only a step's link saying the person lacks what it asks for (I have neither, I have none of these) SHALL move the guide on.
 
 #### Scenario: Open Settings
 - **WHEN** the step "Open Settings" shows and the person presses the rail's Settings
@@ -150,9 +150,9 @@ With `LADO_GUIDE=0` in the environment of LADO's server, the guide SHALL neither
 - **WHEN** any UI e2e test but the guide's opens the UI
 - **THEN** no guide card or tip shows
 
-### Requirement: A hint never covers its target
+### Requirement: A hint stands beside its target
 
-A card SHALL be placed beside its target (on a phone below or above), never over the target or its anchor; a tip SHALL cover no control outside its target; when no side fits, a tip SHALL ring its target with a dashed ring, and a guiding card SHALL go to the window's bottom edge. A login window that fills a phone SHALL get no dim, its anchor ringed and the card at the bottom.
+A card SHALL stand beside its target (a phone: below or above), clear of target and anchor, where that fits; a tip first where it covers no control outside its target. Failing that, a tip SHALL take the nearest free place and ring its target dashed, else a tall target's lower part, else its side over controls; a guiding card SHALL cut out only its anchor, else take the bottom edge. A login window filling a phone SHALL get no dim, its anchor ringed, the card at the bottom.
 
 #### Scenario: A phone
 - **WHEN** the step "Open Settings" shows at 390 px wide

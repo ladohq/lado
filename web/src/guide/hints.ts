@@ -1,5 +1,6 @@
 // The first-run guide's hints (docs/design/ui.md, First-run guide): every hint of the guide is
-// data here, the one list; no guide text is written in a component. In the main bundle (a few
+// data here, the one list, with all of its texts; only the engine's own controls (Not now,
+// Got it, Don't show tips like this) and its screen reader lines are Guide.tsx's. In the main bundle (a few
 // kB): the shell reads the ids to decide whether the lazy engine (Guide.tsx) is needed at all.
 //
 // A hint points at a `data-guide` marker on an existing element (`target`; `anchor`: what its

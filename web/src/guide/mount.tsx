@@ -3,7 +3,7 @@
 // (Guide.tsx, a lazy chunk) loaded only while the server lets it start by itself (no
 // LADO_GUIDE=0) and something is left to show, or after Help → Getting started, which
 // restarts the guide for this page load whatever the switch says.
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { getGuide, postGuide, type GuideInfo } from "../api";
 import { useLive } from "../live";
@@ -37,8 +37,34 @@ export function GuideMount() {
   );
   if (!info || !(restarts > 0 || (info.auto && leftToShow(info)))) return null;
   return (
-    <Suspense fallback={null}>
-      <Guide key={restarts} info={info} restarted={restarts > 0} onInfo={setInfo} />
-    </Suspense>
+    <Contained>
+      <Suspense fallback={null}>
+        <Guide
+          key={restarts}
+          info={info}
+          restarted={restarts > 0}
+          onInfo={(change) => setInfo((now) => (now ? change(now) : now))}
+        />
+      </Suspense>
+    </Contained>
   );
+}
+
+// What fails in the guide (its chunk gone after `lado update` in a tab opened before) costs
+// the guide only: it draws nothing for the rest of the page load and says why in the console,
+// while the page goes on.
+class Contained extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error("The first-run guide could not load; the page goes on without it.", error);
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
 }

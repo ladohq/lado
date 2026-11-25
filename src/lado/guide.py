@@ -8,16 +8,19 @@ hints); the server checks only their shape. Changes go through one lock and an a
 replace, and `shown` is a union, so two tabs marking different hints lose neither. A file
 that cannot be read is journaled and counts as no record, never as completed.
 
-No record is made while LADO_GUIDE=0 (`off`): nothing starts by itself, for recording
-videos on a live LADO and for every test but the guide's own UI e2e.
+While LADO_GUIDE=0 (`off`) a GET makes no record and computes no facts: nothing starts by
+itself, for recording videos on a live LADO and for every test but the guide's own UI e2e;
+Help → Getting started still writes one (`restart`).
 
 The facts (`facts`) are whether a model is connected (a model server saved, or an agent
 CLI logged in as the server's login check read it) and whether an author signs commits
 (LADO's or git's own), as Settings shows them. With no record, the first answer waits up
 to WAIT seconds for the first login check since the server started and makes the record
 once the model is known: completed when one is connected, so a LADO set up before the
-guide never sees its welcome; while it is not known, the answer is completed and nothing
-is written. A completed guide costs one file read.
+guide never sees its welcome; while it is not known (the check did not end in time, or it
+failed), the answer is completed and nothing is written, and a mark made meanwhile (a
+tip shown) starts from that completed record (`UNKNOWN`), never from a guide to run. A
+completed guide costs one file read.
 """
 
 import contextlib
@@ -48,6 +51,8 @@ class Record:
 
 
 EMPTY = Record(completed=False, shown=(), tips_off=False)
+# No record yet, the model's fact unknown: the guide counts as completed.
+UNKNOWN = Record(completed=True, shown=(), tips_off=False)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -123,17 +128,17 @@ def write(record: Record) -> None:
 
 
 def change(action: str, ids: Sequence[str] = ()) -> Record:
-    """Apply one of ACTIONS to the record (an empty one when there is none) and keep it:
-    `shown` adds `ids`, `complete` completes the main guide, `tips_off` turns tips off,
-    `restart` makes it not completed with tips on, the shown ids kept. ValueError for an
-    unknown action or an id not of ID_RE."""
+    """Apply one of ACTIONS to the record (UNKNOWN when there is none: the first GET did
+    not know the model yet) and keep it: `shown` adds `ids`, `complete` completes the main
+    guide, `tips_off` turns tips off, `restart` makes it not completed with tips on, the
+    shown ids kept. ValueError for an unknown action or an id not of ID_RE."""
     if action not in ACTIONS:
         raise ValueError(f"unknown action {action!r}")
     for id in ids:
         if not ID_RE.fullmatch(id):
             raise ValueError(f"not a hint's id: {id!r}")
     with _lock:
-        found = read() or EMPTY
+        found = read() or UNKNOWN
         if action == "shown":
             new = tuple(i for i in dict.fromkeys(ids) if i not in found.shown)
             found = dataclasses.replace(found, shown=found.shown + new)
@@ -175,11 +180,11 @@ def now(
     auto = not off(environ)
     found = read()
     if not auto:
-        return auto, found or dataclasses.replace(EMPTY, completed=True), None
+        return auto, found or UNKNOWN, None
     if found is None:
         known = facts(has_db)
         if known.model is None:
-            return auto, dataclasses.replace(EMPTY, completed=True), None
+            return auto, UNKNOWN, None
         found = _first(completed=known.model)
         return auto, found, None if found.completed else known
     return auto, found, None if found.completed else facts(has_db)

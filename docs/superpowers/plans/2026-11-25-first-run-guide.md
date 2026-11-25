@@ -66,7 +66,7 @@ run's `mockup-guide-stage1.html` (the "none of these" card, the paste step, Gett
 | The guide costs nothing once done | vitest | `guide/mount.test.tsx` (no chunk import, one fetch) |
 | Hints are data aimed at markers | vitest + unit (py) | `guide/hints.test.ts` (the marker test), `tests/test_server_guide.py` (missing → journal) |
 | LADO_GUIDE=0 keeps the guide from starting by itself | unit (py) + vitest + UI e2e | `tests/test_server_guide.py` (`auto: false`, no record, no facts), `mount.test.tsx` (no import until Getting started, then the welcome), every other UI e2e passes unchanged |
-| A hint never covers its target | vitest | `guide/place.test.ts` (all §4 rules over rectangles) |
+| A hint stands beside its target | vitest | `guide/place.test.ts` (all §4 rules over rectangles) |
 | The guide works by keyboard and screen reader | vitest | `Guide.a11y.test.tsx` |
 | `rail-help`: Getting started | vitest + UI e2e | `Shell.test.tsx`, e2e |
 

@@ -589,7 +589,7 @@ def create_app(
         if given.action == "missing":
             for id in given.ids:
                 guide.missing(id, given.marker)
-            found = guide.read() or guide.EMPTY
+            found = guide.read() or guide.UNKNOWN
         else:
             found = guide.change(given.action, given.ids)
         return guide_info(not guide.off(), found, None if found.completed else guide.facts(has_db))

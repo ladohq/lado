@@ -138,8 +138,9 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `provider_check`'s snapshot, waiting up to `WAIT` for its first check) and an author in
     effect (LADO's, or git's own by `git_entries.git_author`). `now` is what
     `GET /api/guide` answers: with no record, it is made once the model is known (completed
-    when one is connected), else the guide counts as completed and nothing is written;
-    under `LADO_GUIDE=0` (`off`) nothing is computed or made. `missing(id, marker)`
+    when one is connected), else the guide counts as completed (`UNKNOWN`) and nothing is
+    written, and a mark made meanwhile starts from `UNKNOWN`; under `LADO_GUIDE=0` (`off`)
+    a GET computes and makes nothing (`restart` still writes). `missing(id, marker)`
     journals a marker the UI did not find (`ui:guide`, `GuideMarkerMissing`), once per id
     while the server runs.
   - `telemetry.py`: LADO's own errors and, with the human's yes, usage statistics
@@ -1469,7 +1470,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     fresh row, which an older read of the running pass does not replace; `snapshot()` the
     `ProvidersPage` (`ready: false` for a provider never read, `checking`, `environment`);
     `first(timeout)`, the first-run guide's: starts a check unless one started since the
-    server did (two callers start one) and waits up to `timeout` for a pass to end.
+    server did (two callers start one) and waits up to `timeout` for a pass to end (one
+    that raised does not count).
     `GET /api/providers/logins` answers it, `POST /api/providers/check` starts a check, and
     the login actions put their row and start one; `GET /api/providers/{name}/model-choices`
     reads the CLI's list kept a minute (`launch.model_list`), with `fresh` read now and kept;

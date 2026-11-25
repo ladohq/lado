@@ -68,6 +68,8 @@ describe("the login window's steps", () => {
     choose(/Subscription/);
     await titled("Make a token with Claude Code");
     expect(document.querySelector(".gd-card code")?.textContent).toBe("claude setup-token");
+    // Inside the window's modal dialog, where a screen reader still reads.
+    expect(document.querySelector(".gd-card")!.closest('[role="dialog"][aria-modal="true"]')).toBe(sheet());
   });
 
   it("points at Codex CLI's sign-in code, and at the field of any other paste choice", async () => {

@@ -22,11 +22,12 @@ import { place, PAD, type Placement, type Rect } from "./place";
 
 export const MISSING_MS = 2000; // how long a hint waits for its marker
 const RING_OUT = 3; // the pointing ring outside its target
+const ANNOUNCE_MS = 150; // a tip's live region, empty, before its text
 
 type Props = {
   info: GuideInfo;
   restarted: boolean; // Help → Getting started in this page load
-  onInfo: (info: GuideInfo) => void;
+  onInfo: (change: (now: GuideInfo) => GuideInfo) => void;
 };
 
 type Shown =
@@ -108,7 +109,8 @@ export default function Guide({ info, restarted, onInfo }: Props) {
 
   const mark = useCallback(
     (action: Parameters<typeof postGuide>[0]) => {
-      postGuide(action).then(onInfo, () => {}); // a mark that fails is shown again next time
+      // A mark that fails is shown again next time; answers may come in any order.
+      postGuide(action).then((answer) => onInfo((now) => merged(now, answer)), () => {});
     },
     [onInfo],
   );
@@ -254,7 +256,7 @@ export default function Guide({ info, restarted, onInfo }: Props) {
   useEffect(() => {
     if (!launching || info.completed || completing.current) return;
     completing.current = true;
-    onInfo({ ...info, completed: true });
+    onInfo((now) => ({ ...now, completed: true, facts: null }));
     mark({ action: "complete" });
   });
 
@@ -303,7 +305,7 @@ export default function Guide({ info, restarted, onInfo }: Props) {
   };
   const gotIt = (id: string) => setTipsDone((done) => new Set(done).add(id));
   const tipsOff = () => {
-    onInfo({ ...info, tips_off: true });
+    onInfo((now) => ({ ...now, tips_off: true }));
     mark({ action: "tips_off" });
   };
 
@@ -325,9 +327,11 @@ export default function Guide({ info, restarted, onInfo }: Props) {
   if (shown.mode === "none" || shown.mode === "hidden" || shown.mode === "missing") return null;
   const counter = counterOf(shown.hint, atStart.current, doneNow.current);
   const host = shown.mode === "step" || shown.mode === "tip" ? shown.inWindow : null;
-  // A layer inside a modal <dialog> (the New session window) is drawn in it, so it sits above
-  // the dialog in the top layer and stays usable; elsewhere it is the body's.
-  const into = host?.tagName === "DIALOG" ? host : document.body;
+  // A layer over a window of the app is drawn in it: in a modal <dialog> (the New session
+  // window) so it sits above it in the top layer and stays usable, in a dialog of the app's
+  // own (the login sheet, aria-modal) so a screen reader, which reads only the modal dialog,
+  // reads it too; elsewhere it is the body's.
+  const into = host?.tagName === "DIALOG" || host?.getAttribute("aria-modal") === "true" ? host : document.body;
   return createPortal(
     <div ref={layer} className="gd-layer">
       {shown.mode === "centred" ? (
@@ -360,6 +364,20 @@ export default function Guide({ info, restarted, onInfo }: Props) {
   );
 }
 
+// A mark's answer taken into the record the page holds: what this page load completed,
+// turned off or showed stays so, whatever older answer comes later (only Help's restart,
+// mount.tsx, takes a record as it is).
+export function merged(now: GuideInfo, answer: GuideInfo): GuideInfo {
+  const completed = now.completed || answer.completed;
+  return {
+    ...answer,
+    completed,
+    tips_off: now.tips_off || answer.tips_off,
+    shown: [...new Set([...now.shown, ...answer.shown])],
+    facts: completed ? null : (answer.facts ?? now.facts),
+  };
+}
+
 // "<part> · Step N of M": the parts left when the guide started, and those done since; the
 // done line when the part before was done in this run.
 function counterOf(hint: Hint, atStart: Set<Part> | null, doneNow: Set<Part>) {
@@ -374,10 +392,13 @@ function counterOf(hint: Hint, atStart: Set<Part> | null, doneNow: Set<Part>) {
   };
 }
 
-// A card takes the focus as it appears only from nobody (the page, a card that went): a step
-// the person's action completed leaves the focus where that action put it (a form's field).
-const focusIsFree = () =>
-  !document.activeElement || document.activeElement === document.body || !document.activeElement.isConnected;
+// A card takes the focus as it appears only from nobody (the page, a card that went, a part
+// of the page the step just made inert, like the rail link that was pressed): a step the
+// person's action completed leaves the focus where that action put it (a form's field).
+const focusIsFree = () => {
+  const at = document.activeElement;
+  return !at || at === document.body || !at.isConnected || at.closest("[inert]") !== null;
+};
 
 // `inert` on everything but the guide's layer and the path to `keep` (null: everything but
 // the layer), removed when the step ends; a <dialog> is never made inert (a window the target
@@ -548,9 +569,14 @@ function Step(props: {
   // The page is dimmed and inert but for the hole, unless the target's window dims it.
   const dim = !inWindow && (placed?.dim ?? true);
   useInert(dim, target);
+  // Once placed: hidden until then, the card cannot take the focus.
+  const focused = useRef(false);
+  const shownNow = placed !== null;
   useEffect(() => {
-    if (!inWindow && focusIsFree()) card.current?.focus({ preventScroll: true });
-  }, [inWindow]);
+    if (focused.current || !shownNow || inWindow) return;
+    focused.current = true;
+    if (focusIsFree()) card.current?.focus({ preventScroll: true });
+  }, [shownNow, inWindow]);
   const hole = placed?.cutAnchor && anchor ? rectOf(anchor) : rectOf(target);
   const ringed = (inWindow || placed?.ringAnchor) && anchor ? rectOf(anchor) : hole;
   const named = accessibleName(target);
@@ -681,12 +707,20 @@ function Tip(props: {
     document.addEventListener("keydown", key, true);
     return () => document.removeEventListener("keydown", key, true);
   });
-  const text = hint.texts.body.map(plainText).join(" ");
+  // Announced once: the live region comes empty and gets its text just after, as a region
+  // that arrives with its text is read out unreliably.
+  const [said, setSaid] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setSaid(`Tip: ${hint.texts.body.map(plainText).join(" ")}`), ANNOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [hint]);
   const pointing = placed && placed.ring === "dashed";
   return (
     <>
       {pointing && <span className="gd-ring pointing" style={ringBox(rectOf(target), -RING_OUT)} aria-hidden="true" />}
-      <span className="visually-hidden" aria-live="polite">{`Tip: ${text}`}</span>
+      <span className="visually-hidden" aria-live="polite">
+        {said}
+      </span>
       <div ref={card} className="gd-card tip" role="region" aria-label="Tip" style={cardStyle(placed, phone)}>
         <Arrow placed={placed} />
         <Body texts={hint.texts} id={`gd-${hint.id}-body`} />

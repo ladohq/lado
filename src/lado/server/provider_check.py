@@ -90,9 +90,9 @@ def _check() -> None:
     while True:
         try:
             _pass()
+            _ended.set()  # a pass that raised read nothing: no answer for `first`
         except Exception as error:  # the check ends, and says so, whatever happens
             telemetry.record("server:provider-check", error)
-        _ended.set()
         with _lock:
             if not _again:
                 _thread = None

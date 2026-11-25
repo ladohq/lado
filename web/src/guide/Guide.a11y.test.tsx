@@ -92,7 +92,9 @@ describe("the guide's accessibility", () => {
     const tip = await screen.findByRole("region", { name: "Tip" });
     expect(document.activeElement).toBe(document.body);
     expect(inert()).toEqual([]);
-    expect(document.querySelector('[aria-live="polite"]')!.textContent).toMatch(/^Tip: This is your session\. Activity shows/);
+    const live = document.querySelector('[aria-live="polite"]')!;
+    expect(live.textContent).toBe(""); // the region is there before its text
+    await waitFor(() => expect(live.textContent).toMatch(/^Tip: This is your session\. Activity shows/));
     const link = screen.getByRole("link", { name: "Activity" });
     link.focus();
     fireEvent.keyDown(link, { key: "Tab" });

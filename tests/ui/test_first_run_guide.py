@@ -214,6 +214,33 @@ def test_the_main_path_on_a_fresh_lado(browser: Browser, fresh, models, server, 
         context.close()
 
 
+def test_by_keyboard_esc_closes_the_step_after_its_target_is_pressed(
+    browser: Browser, fresh, server
+):
+    """A step done with the keyboard (Tab to the rail's Settings, Enter) leaves the focus
+    where Esc still reaches the next card: Not now, the focus not lost to the page."""
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
+    try:
+        page = context.new_page()
+        log_in(page, server)
+        expect(page.get_by_role("dialog", name="Welcome to LADO")).to_be_visible(timeout=30_000)
+        page.keyboard.press("Enter")  # Show me has the focus
+        step(page, "Open Settings")
+        settings = target(page, "rail-settings")
+        for _ in range(10):
+            if settings.evaluate("(link) => link === document.activeElement"):
+                break
+            page.keyboard.press("Tab")
+        expect(settings).to_be_focused()
+        page.keyboard.press("Enter")
+        step(page, "Open Agent CLIs")
+        page.keyboard.press("Escape")
+        expect(card(page)).to_have_count(0)
+        assert page.evaluate("() => document.activeElement !== document.body")
+    finally:
+        context.close()
+
+
 def test_the_main_path_on_a_phone(browser: Browser, fresh, models, server, shot):
     context = browser.new_context(
         viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True

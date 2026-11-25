@@ -113,6 +113,40 @@ def test_a_check_that_does_not_end_in_time_writes_nothing(client, check, monkeyp
     assert check.passes == 1  # two GETs, one check
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"action": "shown", "ids": ["tip-session"]},
+        {"action": "missing", "ids": ["tip-session"], "marker": "session-tabs"},
+        {"action": "tips_off"},
+    ],
+)
+def test_a_mark_before_the_first_record_starts_no_guide(client, check, monkeypatch, body):
+    """The first check did not end in time: GET answered `completed` without a record. A
+    tip's mark then must not make a record that starts the main guide on a LADO that may be
+    set up."""
+    monkeypatch.setattr(guide, "WAIT", 0.1)
+    check.hold.clear()
+    assert client.get("/api/guide").json()["completed"] is True
+    answer = client.post("/api/guide", json=body).json()
+    assert answer["completed"] is True and answer["facts"] is None
+    assert guide.read() is None or guide.read().completed is True
+    check.hold.set()
+
+
+def test_a_check_that_failed_is_no_answer(client, monkeypatch):
+    """A login check whose pass raised says nothing of the logins: no record is made."""
+
+    def broken():
+        raise RuntimeError("the shell could not be read")
+
+    monkeypatch.setattr(provider_check, "_pass", broken)
+    monkeypatch.setattr(guide, "WAIT", 0.5)
+    info = client.get("/api/guide").json()
+    assert info["completed"] is True and info["facts"] is None
+    assert guide.read() is None
+
+
 def test_facts_are_answered_while_not_completed(client, check, git_config):
     guide.write(guide.Record(completed=False, shown=("welcome",), tips_off=False))
     git_config.write_text("[user]\n\tname = Alex Home\n\temail = alex@home.example\n")

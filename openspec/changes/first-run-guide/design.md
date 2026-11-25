@@ -79,8 +79,11 @@ them (`commit_authors.lado()`, `commit_authors.git_own`).
 With no `guide.json`, the server creates the record only once `model` is known: completed
 when a model is connected (an existing set-up LADO never sees the welcome), else not. While
 `model` is null and no record exists, `GET` answers `completed: true` without writing, so
-nothing shows. Facts are computed only while not completed: a completed guide costs one
-file read.
+nothing shows; a check whose pass raised counts as not ended (null), never as "no model".
+A mark made while there is no record (a tip shown meanwhile) starts from that completed
+record, so it never starts the main guide on a LADO that may be set up; only `restart`
+makes a record not completed. Facts are computed only while not completed: a completed
+guide costs one file read.
 
 Options: put logins and model servers into the change feed (rejected: a feed kind for data
 no table holds goes through `DERIVED`, which runs on every batch; much more than the guide
@@ -145,9 +148,9 @@ calls it.
 
 The human records videos on a live LADO, where the guide would get in the way; the menu line
 must stay for a realistic picture. With `LADO_GUIDE=0` in the server's environment,
-`GuideInfo.auto` is false: no facts are computed, no record is made, and the UI starts
+`GuideInfo.auto` is false: a `GET` computes no facts and makes no record, and the UI starts
 nothing by itself and loads no engine. Help → Getting started still works: it posts
-`restart` and the engine runs for that page load (the human's alternative, a stub, was not
+`restart`, which writes the record, and the engine runs for that page load (the human's alternative, a stub, was not
 needed: the line is pressed only on purpose, and a video of the guide itself stays
 possible). `tests/conftest.py` sets it for every test, beside `LADO_TELEMETRY=0`, since no
 other test presses Getting started; the guide's UI e2e test removes it before its server

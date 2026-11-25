@@ -52,8 +52,11 @@ def test_complete_tips_off_and_restart():
     assert guide.read() == again
 
 
-def test_a_change_without_a_record_starts_from_an_empty_one():
-    assert guide.change("shown", ["tip-launch"]) == guide.Record(False, ("tip-launch",), False)
+def test_a_change_without_a_record_starts_from_a_completed_one():
+    """No record: the first GET did not know the model, so a mark starts no guide."""
+    assert guide.change("shown", ["tip-launch"]) == guide.Record(True, ("tip-launch",), False)
+    _file().unlink()
+    assert guide.change("restart") == guide.Record(False, (), False)  # Getting started
 
 
 @pytest.mark.parametrize("bad", ["", "Welcome", "a b", "x" * 65, "../etc", "tip_launch"])
@@ -78,8 +81,8 @@ def test_a_broken_file_is_no_record_and_journaled(text):
 
 def test_a_broken_file_is_replaced_by_the_next_change():
     _file().write_text("{not json")
-    assert guide.change("tips_off") == guide.Record(False, (), True)
-    assert json.loads(_file().read_text()) == {"completed": False, "shown": [], "tips_off": True}
+    assert guide.change("tips_off") == guide.Record(True, (), True)
+    assert json.loads(_file().read_text()) == {"completed": True, "shown": [], "tips_off": True}
 
 
 def test_the_file_is_replaced_atomically(monkeypatch):

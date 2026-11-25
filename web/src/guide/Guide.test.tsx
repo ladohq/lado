@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { publish } from "./facts";
-import { MISSING_MS } from "./Guide";
+import { merged, MISSING_MS } from "./Guide";
 import { card, cardTitle, INFO, publishLogins, showGuide } from "./harness";
 
 afterEach(() => {
@@ -110,10 +110,30 @@ describe("the main guide", () => {
     await titled("An OpenRouter key, or a model on your computer?");
   });
 
+  it("counts New session as Step 2 of 2 when an author is in effect already", async () => {
+    showGuide("/settings/agent-clis", { ...INFO, facts: { model: false, author: true } });
+    press("Show me");
+    publishLogins([{ name: "claude" }, { name: "codex" }]);
+    await titled("Claude Pro or Max, or an Anthropic API key?");
+    expect(eyebrow()).toBe("Connect a model · Step 1 of 2");
+    publishLogins([{ name: "claude", loggedIn: true }, { name: "codex" }]);
+    await titled("Start your first session");
+    expect(eyebrow()).toBe("Start working · Step 2 of 2");
+  });
+
+  it("is completed by the New session window whichever step shows", async () => {
+    const guide = showGuide("/");
+    press("Show me");
+    await titled("Open Settings");
+    fireEvent.click(document.querySelector<HTMLElement>('[data-guide="rail-new-session"]')!);
+    await waitFor(() => expect(guide.posts()).toContainEqual({ action: "complete" }));
+  });
+
   it("closes on Not now until the next page load, and comes back then", async () => {
-    showGuide("/");
+    const first = showGuide("/");
     press("Not now");
     await waitFor(() => expect(card()).toBeNull());
+    expect(first.posts()).not.toContainEqual({ action: "complete" });
     cleanup();
     showGuide("/"); // the next page load: a new engine
     expect(await screen.findByRole("dialog", { name: "Welcome to LADO" })).toBeTruthy();
@@ -213,6 +233,14 @@ describe("on a phone", () => {
   });
 });
 
+describe("the marks' answers", () => {
+  it("never take back a completion, tips off or a hint shown in this page load", () => {
+    const now = { ...INFO, completed: true, tips_off: true, shown: ["welcome"], facts: null };
+    const older = { ...INFO, shown: ["tip-launch"] };
+    expect(merged(now, older)).toEqual({ ...INFO, completed: true, tips_off: true, shown: ["welcome", "tip-launch"], facts: null });
+  });
+});
+
 describe("tips", () => {
   const sessionPage = {
     path: "/sessions/x",
@@ -245,6 +273,24 @@ describe("tips", () => {
     press("Don't show tips like this");
     await waitFor(() => expect(screen.queryByRole("region", { name: "Tip" })).toBeNull());
     expect(guide.posts()).toContainEqual({ action: "tips_off" });
+  });
+
+  it("stay off when an older mark's answer comes after Don't show tips like this", async () => {
+    showGuide("/sessions/x", done, { pages: [sessionPage] });
+    const answers: ((value: Response) => void)[] = [];
+    const late = { ...done, shown: ["tip-session"], tips_off: false };
+    vi.mocked(fetch).mockImplementation(async (_path, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      if (body.action === "shown") return new Promise<Response>((resolve) => answers.push(resolve));
+      return new Response(JSON.stringify({ ...late, tips_off: true }));
+    });
+    await screen.findByRole("region", { name: "Tip" });
+    await waitFor(() => expect(answers).toHaveLength(1));
+    press("Don't show tips like this");
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Tip" })).toBeNull());
+    await act(async () => answers[0](new Response(JSON.stringify(late)))); // the older answer, last
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 100)));
+    expect(screen.queryByRole("region", { name: "Tip" })).toBeNull();
   });
 
   it("never show over a guiding step", async () => {

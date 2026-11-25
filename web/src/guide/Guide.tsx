@@ -10,7 +10,7 @@
 // window's backdrop is the dim. Another window over a step hides the guide until it closes. A
 // tip has no dim, takes no focus and blocks nothing. A hint is marked shown as it appears; a
 // hint whose marker is not on screen for 2 s is skipped for the page load and journaled.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "react-router";
 
@@ -406,7 +406,7 @@ function useInert(on: boolean, keep: HTMLElement | null) {
   }, [on, keep]);
 }
 
-function Body({ texts, id }: { texts: Texts; id: string }) {
+function Body({ texts, id, children }: { texts: Texts; id: string; children?: ReactNode }) {
   return (
     <div className="gd-body" id={id}>
       {texts.body.map((line) => (
@@ -414,6 +414,7 @@ function Body({ texts, id }: { texts: Texts; id: string }) {
           <Rich text={line} />
         </p>
       ))}
+      {children}
     </div>
   );
 }
@@ -579,14 +580,9 @@ function Step(props: {
         <h2 className="gd-title" id={`gd-${hint.id}-title`}>
           {texts.title}
         </h2>
-        <div className="gd-body" id={`gd-${hint.id}-body`}>
-          {texts.body.map((line) => (
-            <p key={line}>
-              <Rich text={line} />
-            </p>
-          ))}
+        <Body texts={texts} id={`gd-${hint.id}-body`}>
           {named && <span className="visually-hidden">{`Highlighted: ${named}`}</span>}
-        </div>
+        </Body>
         {texts.link && (
           <div className="gd-links">
             <button type="button" className="gd-link" onClick={props.onLink}>
@@ -687,14 +683,13 @@ function Tip(props: {
   });
   const text = hint.texts.body.map(plainText).join(" ");
   const pointing = placed && placed.ring === "dashed";
-  const body = useMemo(() => `gd-${hint.id}-body`, [hint.id]);
   return (
     <>
       {pointing && <span className="gd-ring pointing" style={ringBox(rectOf(target), -RING_OUT)} aria-hidden="true" />}
       <span className="visually-hidden" aria-live="polite">{`Tip: ${text}`}</span>
       <div ref={card} className="gd-card tip" role="region" aria-label="Tip" style={cardStyle(placed, phone)}>
         <Arrow placed={placed} />
-        <Body texts={hint.texts} id={body} />
+        <Body texts={hint.texts} id={`gd-${hint.id}-body`} />
         <div className="gd-foot">
           <button ref={gotIt} type="button" className="gd-btn small" onClick={props.onGotIt}>
             Got it

@@ -250,7 +250,7 @@ def test_help_beside_the_rail_and_in_the_phone_s_drawer(browser: Browser, server
         drawer.get_by_role("button", name="Help").click()
         menu = drawer.get_by_role("menu", name="Help")
         items = menu.get_by_role("menuitem")
-        expect(items).to_have_count(3)
+        expect(items).to_have_count(4)  # Documentation, GitHub, Getting started, Report a bug
         for item in items.all():
             assert item.bounding_box()["height"] >= 44
         box, rail = menu.bounding_box(), drawer.bounding_box()

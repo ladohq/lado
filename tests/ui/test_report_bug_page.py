@@ -28,7 +28,9 @@ def test_report_a_bug_from_a_session_s_page(page: Page, server, repo, shot):
     help_ = rail.get_by_role("button", name="Help")
     help_.click()
     menu = page.get_by_role("menu", name="Help")
-    expect(menu.get_by_role("menuitem")).to_have_text(["Documentation↗", "GitHub↗", "Report a bug"])
+    expect(menu.get_by_role("menuitem")).to_have_text(
+        ["Documentation↗", "GitHub↗", "Getting started", "Report a bug"]
+    )
     expect(menu.get_by_role("menuitem", name="Documentation")).to_be_focused()
     box, beside = help_.bounding_box(), menu.bounding_box()
     assert beside["x"] >= box["x"] + box["width"]  # beside the rail, its bottom on Help's

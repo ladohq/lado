@@ -79,6 +79,7 @@ def target(page: Page, marker: str):
 def walk_to_model_servers(page: Page, shot, phone: bool = False) -> None:
     """From the welcome to Model servers' Add server, passing both CLI rows."""
     expect(page.get_by_role("dialog", name="Welcome to LADO")).to_be_visible(timeout=30_000)
+    faded_in(page)
     shot(page, "welcome", full_page=False)
     page.get_by_role("button", name="Show me").click()
     if phone:
@@ -105,6 +106,7 @@ def walk_to_model_servers(page: Page, shot, phone: bool = False) -> None:
     expect(none.get_by_role("link", name="Qwen (Alibaba Cloud) keys ↗")).to_have_attribute(
         "target", "_blank"
     )
+    faded_in(page)
     shot(page, "none-of-these", full_page=False)
     none.get_by_role("button", name="Back").click()
     step(page, "An OpenRouter key, or a model on your computer?")

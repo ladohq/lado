@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Топологии LADO</title>
+<style>
+:root{--bg:#fafaf9;--fg:#1c1917;--muted:#57534e;--line:#a8a29e;--vm:#78716c;--lado:#2563eb;--lado-bg:#eff6ff;--run:#9333ea;--run-bg:#faf5ff;--sb:#16a34a;--sb-bg:#f0fdf4;--box:#ffffff;--net:#ea580c;--api:#2563eb;--vol:#f5f5f4;--tun:#0891b2}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1c1917;--fg:#f5f5f4;--muted:#a8a29e;--line:#57534e;--vm:#a8a29e;--lado:#60a5fa;--lado-bg:#172554;--run:#c084fc;--run-bg:#2e1065;--sb:#4ade80;--sb-bg:#052e16;--box:#292524;--net:#fb923c;--api:#60a5fa;--vol:#44403c;--tun:#22d3ee}}
+:root[data-theme="dark"]{--bg:#1c1917;--fg:#f5f5f4;--muted:#a8a29e;--line:#57534e;--vm:#a8a29e;--lado:#60a5fa;--lado-bg:#172554;--run:#c084fc;--run-bg:#2e1065;--sb:#4ade80;--sb-bg:#052e16;--box:#292524;--net:#fb923c;--api:#60a5fa;--vol:#44403c;--tun:#22d3ee}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1180px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:20px;margin:0 0 4px}
+h2{font-size:17px;margin:28px 0 4px}
+p{margin:4px 0 10px}
+.lead,.sub{color:var(--muted)}
+.wrap{overflow-x:auto}
+svg{width:100%;min-width:880px;height:auto;display:block}
+svg text{fill:var(--fg);font-size:12px}
+svg .t{font-weight:600;font-size:13px}
+svg .h{font-weight:700;font-size:14px}
+svg .m{fill:var(--muted);font-size:11px}
+.box{fill:var(--box);stroke:var(--line)}
+.vol{fill:var(--vol);stroke:var(--line)}
+.lado{fill:var(--lado-bg);stroke:var(--lado);stroke-width:2}
+.run{fill:var(--run-bg);stroke:var(--run);stroke-width:2}
+.sb{fill:var(--sb-bg);stroke:var(--sb);stroke-width:2.5}
+.host{fill:none;stroke:var(--line);stroke-width:1.5}
+.vm{fill:none;stroke:var(--vm);stroke-width:1.5;stroke-dasharray:7 5}
+.api{fill:none;stroke:var(--api);stroke-width:2}
+.net{fill:none;stroke:var(--net);stroke-width:2;stroke-dasharray:6 4}
+.tun{fill:none;stroke:var(--tun);stroke-width:3}
+.plain{fill:none;stroke:var(--muted);stroke-width:1.5}
+ul{margin:6px 0 0;padding-left:20px}
+li{margin:3px 0}
+table{border-collapse:collapse;width:100%;margin-top:8px;font-size:13px}
+th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+th{background:var(--vol)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 20px;color:var(--muted);font-size:12px;margin:8px 0 0}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{display:inline-block;width:30px;height:12px;border-radius:3px}
+</style>
+</head>
+<body>
+<main>
+<h1>Топологии LADO: локально, в облаке и гибрид</h1>
+<p class="lead">Черновик. Во всех трёх схемах одни и те же части: <b>пульт lado</b> (ядро, база, ключи, UI) и <b>runner</b> с песочницами gVisor, по одной на сессию. Меняется только то, где они стоят и чем соединены. Runner везде один и тот же; пульт подключается к указанному runner (как именно, решим позже, скорее всего SSH).</p>
+<div class="legend">
+<span><i class="sw" style="background:var(--lado-bg);border:2px solid var(--lado)"></i>пульт lado</span>
+<span><i class="sw" style="background:var(--run-bg);border:2px solid var(--run)"></i>runner</span>
+<span><i class="sw" style="background:var(--sb-bg);border:2px solid var(--sb)"></i>песочница сессии</span>
+<span><i class="sw" style="border-top:3px solid var(--tun);height:0"></i>пульт подключается к runner</span>
+<span><i class="sw" style="border-top:2px dashed var(--net);height:0"></i>трафик в интернет через прокси runner</span>
+</div>
+
+<svg width="0" height="0" style="position:absolute">
+<defs>
+<marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="var(--muted)"/></marker>
+<marker id="an" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="var(--net)"/></marker>
+<marker id="aa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="var(--api)"/></marker>
+<marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="var(--tun)"/></marker>
+</defs>
+</svg>
+
+<!-- ===================== 1. LOCAL ===================== -->
+<h2>1. Локально</h2>
+<p class="sub">Всё на компьютере пользователя, один <code>docker compose up</code>. Пульт подключается к runner по сети Docker тем же протоколом, что и к удалённому.</p>
+<div class="wrap">
+<svg viewBox="0 0 1120 480" role="img" aria-label="Локальная схема">
+<rect x="10" y="10" width="830" height="460" rx="12" class="host"/>
+<text x="26" y="34" class="h">Ноутбук или рабочий компьютер (macOS / Windows / Linux)</text>
+<rect x="30" y="48" width="790" height="318" rx="10" class="vm"/>
+<text x="46" y="68" class="t">Docker (на Mac и Windows: VM Docker Desktop)</text>
+
+<rect x="50" y="80" width="400" height="270" rx="10" class="run"/>
+<text x="66" y="101" class="h" style="fill:var(--run)">runner</text>
+<rect x="66" y="110" width="368" height="44" rx="8" class="box" style="stroke:var(--lado)"/>
+<text x="78" y="128" class="t">Agent API-шлюз + прокси ключей и git</text>
+<text x="78" y="145" class="m">ключи от пульта на время сессии, только в памяти</text>
+<rect x="66" y="162" width="178" height="112" rx="8" class="sb"/>
+<text x="78" y="182" class="t" style="fill:var(--sb)">сессия A (gVisor)</text>
+<text x="78" y="204">tmux: supervisor, workers</text>
+<text x="78" y="224">клон + worktree</text>
+<text x="78" y="244">lado mcp / hook</text>
+<text x="78" y="264" class="m">ключей не видит</text>
+<rect x="256" y="162" width="178" height="112" rx="8" class="sb"/>
+<text x="268" y="182" class="t" style="fill:var(--sb)">сессия B (gVisor)</text>
+<text x="268" y="204">tmux: supervisor, workers</text>
+<text x="268" y="224">свой клон + worktree</text>
+<text x="268" y="244">lado mcp / hook</text>
+<rect x="66" y="282" width="368" height="56" rx="8" class="box" style="stroke:var(--run)"/>
+<text x="78" y="301" class="t">агент runner</text>
+<text x="78" y="318">песочницы · netns · iptables · терминалы</text>
+<text x="78" y="333" class="m">volume с репозиториями сессий</text>
+
+<rect x="510" y="80" width="290" height="270" rx="10" class="lado"/>
+<text x="526" y="101" class="h" style="fill:var(--lado)">пульт lado</text>
+<rect x="526" y="112" width="258" height="40" rx="6" class="box"/><text x="538" y="130" class="t">UI-сервер</text><text x="538" y="146" class="m">127.0.0.1:8765</text>
+<rect x="526" y="160" width="258" height="40" rx="6" class="box"/><text x="538" y="178" class="t">ядро и lado.db</text><text x="538" y="194" class="m">цикл, очередь, flow runs, артефакты</text>
+<rect x="526" y="208" width="258" height="40" rx="6" class="box"/><text x="538" y="226" class="t">Agent API</text><text x="538" y="242" class="m">MCP и хуки от шлюза runner</text>
+<rect x="526" y="256" width="258" height="40" rx="6" class="box"/><text x="538" y="274" class="t">список runner</text><text x="538" y="290" class="m">здесь один: соседний контейнер</text>
+<rect x="526" y="304" width="258" height="34" rx="6" class="vol"/><text x="538" y="326" class="m">ключи: выдаёт runner на сессию</text>
+
+<path d="M524,226 C490,226 490,140 436,132" class="tun" marker-end="url(#at)"/>
+<text x="458" y="250" class="m" style="fill:var(--tun)">сеть</text>
+<text x="458" y="264" class="m" style="fill:var(--tun)">Docker</text>
+
+<rect x="510" y="390" width="290" height="62" rx="8" class="box"/>
+<text x="526" y="412" class="t">браузер</text><text x="526" y="430">127.0.0.1:8765</text>
+<path d="M655,388 L655,352" class="plain" marker-end="url(#a)"/>
+<rect x="50" y="390" width="400" height="62" rx="8" class="box" style="stroke-dasharray:5 4"/>
+<text x="66" y="412" class="t">твой репозиторий на диске</text><text x="66" y="430">результат приходит веткой через git</text>
+<path d="M250,352 L250,388" class="plain" stroke-dasharray="5 4" marker-end="url(#a)"/>
+
+<rect x="870" y="80" width="240" height="140" rx="10" class="host"/>
+<text x="886" y="104" class="h">Интернет</text>
+<text x="886" y="128">API моделей</text><text x="886" y="148">GitHub, git-серверы</text><text x="886" y="168">npm, PyPI</text>
+<path d="M420,108 C470,22 840,22 900,78" class="net" marker-end="url(#an)"/>
+</svg>
+</div>
+<ul>
+<li><b>Плюсы:</b> ничего не нужно, кроме Docker; данные не покидают компьютер, кроме запросов к моделям.</li>
+<li><b>Минусы:</b> сессии стоят, когда компьютер спит; ресурсы ограничены ноутбуком.</li>
+</ul>
+
+<!-- ===================== 2. CLOUD ===================== -->
+<h2>2. В облаке</h2>
+<p class="sub">Тот же compose на Linux-сервере (свой VPS, облако компании или наш хостинг). С ноутбука только браузер и git.</p>
+<div class="wrap">
+<svg viewBox="0 0 1120 480" role="img" aria-label="Облачная схема">
+<rect x="10" y="10" width="250" height="210" rx="12" class="host"/>
+<text x="26" y="34" class="h">Ноутбук</text>
+<rect x="26" y="48" width="218" height="62" rx="8" class="box"/>
+<text x="38" y="70" class="t">браузер</text><text x="38" y="88">UI по HTTPS, вход</text>
+<rect x="26" y="124" width="218" height="80" rx="8" class="box" style="stroke-dasharray:5 4"/>
+<text x="38" y="146" class="t">твой репозиторий</text><text x="38" y="164">git fetch веток сессий</text><text x="38" y="190" class="m">через GitHub или другой remote</text>
+
+<rect x="10" y="250" width="250" height="210" rx="12" class="host"/>
+<text x="26" y="274" class="h">Интернет</text>
+<text x="26" y="298">API моделей</text><text x="26" y="318">GitHub, git-серверы</text><text x="26" y="338">npm, PyPI</text>
+<path d="M135,222 L135,248" class="plain" marker-start="url(#a)" marker-end="url(#a)"/>
+
+<rect x="290" y="10" width="820" height="460" rx="12" class="host"/>
+<text x="306" y="34" class="h">Облачный Linux-сервер (лучше с KVM)</text>
+<rect x="310" y="48" width="780" height="406" rx="10" class="vm"/>
+<text x="326" y="68" class="t">Docker Engine (или Kubernetes)</text>
+
+<rect x="330" y="82" width="290" height="340" rx="10" class="lado"/>
+<text x="346" y="103" class="h" style="fill:var(--lado)">пульт lado</text>
+<rect x="346" y="114" width="258" height="44" rx="6" class="box"/><text x="358" y="133" class="t">UI-сервер</text><text x="358" y="150" class="m">TLS, нормальный вход</text>
+<rect x="346" y="166" width="258" height="40" rx="6" class="box"/><text x="358" y="184" class="t">ядро и lado.db</text><text x="358" y="200" class="m">всегда включено</text>
+<rect x="346" y="214" width="258" height="40" rx="6" class="box"/><text x="358" y="232" class="t">Agent API</text><text x="358" y="248" class="m">MCP и хуки от шлюза runner</text>
+<rect x="346" y="262" width="258" height="40" rx="6" class="box"/><text x="358" y="280" class="t">список runner</text><text x="358" y="296" class="m">этот же сервер, можно добавить другие</text>
+<rect x="346" y="310" width="258" height="34" rx="6" class="vol"/><text x="358" y="332" class="m">ключи: выдаёт runner на сессию</text>
+<text x="346" y="368" class="m">Платный хостинг для разных людей:</text>
+<text x="346" y="384" class="m">только свои API-ключи пользователей (BYOK),</text>
+<text x="346" y="400" class="m">подписки Claude и ChatGPT нельзя.</text>
+
+<rect x="680" y="82" width="390" height="356" rx="10" class="run"/>
+<text x="696" y="103" class="h" style="fill:var(--run)">runner</text>
+<rect x="696" y="112" width="358" height="44" rx="8" class="box" style="stroke:var(--lado)"/>
+<text x="708" y="130" class="t">Agent API-шлюз + прокси ключей и git</text>
+<text x="708" y="147" class="m">ключи от пульта на время сессии, только в памяти</text>
+<rect x="696" y="164" width="172" height="160" rx="8" class="sb"/>
+<text x="708" y="184" class="t" style="fill:var(--sb)">сессия A</text>
+<text x="708" y="206">tmux: supervisor,</text><text x="708" y="222">workers</text>
+<text x="708" y="246">клон с GitHub</text><text x="708" y="262">+ worktree</text>
+<text x="708" y="286">lado mcp / hook</text>
+<text x="708" y="310" class="m">gVisor или micro-VM</text>
+<rect x="882" y="164" width="172" height="160" rx="8" class="sb"/>
+<text x="894" y="184" class="t" style="fill:var(--sb)">сессия B</text>
+<text x="894" y="206">…</text>
+<rect x="696" y="334" width="358" height="88" rx="8" class="box" style="stroke:var(--run)"/>
+<text x="708" y="354" class="t">агент runner</text>
+<text x="708" y="372">песочницы · netns · iptables · терминалы</text>
+<text x="708" y="392" class="m">volume с репозиториями сессий</text>
+<text x="708" y="410" class="m">в Kubernetes: под на сессию, RuntimeClass gVisor/Kata</text>
+
+<path d="M606,232 C640,232 650,140 694,134" class="tun" marker-end="url(#at)"/>
+<text x="626" y="268" class="m" style="fill:var(--tun)">сеть</text>
+<text x="626" y="282" class="m" style="fill:var(--tun)">Docker</text>
+<path d="M694,146 L656,146 L656,440 L300,440 C280,440 280,330 262,330" class="net" marker-end="url(#an)"/>
+<path d="M246,80 C300,80 300,136 344,136" class="plain" marker-end="url(#a)"/>
+<text x="268" y="74" class="m">HTTPS</text>
+</svg>
+</div>
+<ul>
+<li><b>Плюсы:</b> сессии работают, пока ноутбук закрыт; ресурсов сколько угодно; с KVM можно micro-VM.</li>
+<li><b>Минусы:</b> нужен сервер и TLS со входом в UI; файлы видны только через git; ключи живут на сервере.</li>
+<li>Рабочие копии только clone и push: bind-папки с ноутбука в облаке нет в принципе.</li>
+</ul>
+
+<!-- ===================== 3. HYBRID ===================== -->
+<h2>3. Гибрид</h2>
+<p class="sub">Пульт всегда включён (в облаке или на домашнем сервере) и подключается к тем runner, которые ему указали: на ноутбуке, на своём сервере, в облаке. <b>Runner везде один и тот же</b>: тот же образ и тот же протокол. Место влияет только на то, какую изоляцию runner может включить (gVisor есть везде, micro-VM там, где есть KVM). Сессия целиком живёт на одном runner, и пульт выбирает, на каком её запустить.</p>
+<div class="wrap">
+<svg viewBox="0 0 1120 520" role="img" aria-label="Гибридная схема">
+<!-- control -->
+<rect x="380" y="10" width="360" height="250" rx="12" class="host"/>
+<text x="396" y="34" class="h">Облако или домашний сервер: пульт</text>
+<rect x="396" y="46" width="328" height="198" rx="10" class="lado"/>
+<text x="412" y="67" class="h" style="fill:var(--lado)">пульт lado</text>
+<rect x="412" y="78" width="296" height="38" rx="6" class="box"/><text x="424" y="96" class="t">UI-сервер</text><text x="424" y="110" class="m">HTTPS, вход; браузер откуда угодно</text>
+<rect x="412" y="122" width="296" height="38" rx="6" class="box"/><text x="424" y="140" class="t">ядро и lado.db</text><text x="424" y="154" class="m">сессии, очередь, flow runs, артефакты</text>
+<rect x="412" y="166" width="296" height="38" rx="6" class="box"/><text x="424" y="184" class="t">список runner</text><text x="424" y="198" class="m">адреса, доступ, ресурсы, где какая сессия</text>
+<rect x="412" y="210" width="296" height="28" rx="6" class="vol"/><text x="424" y="229" class="m">ключи: выдаёт runner на время сессии</text>
+
+<rect x="10" y="10" width="350" height="500" rx="12" class="host"/>
+<text x="26" y="34" class="h">Ноутбук</text>
+<text x="26" y="52" class="m">спит → его сессии на паузе, остальные работают</text>
+<rect x="26" y="64" width="318" height="430" rx="10" class="vm"/>
+<text x="38" y="84" class="t">Docker</text>
+<rect x="38" y="94" width="294" height="388" rx="10" class="run"/>
+<text x="52" y="115" class="h" style="fill:var(--run)">runner «ноутбук»</text>
+<text x="52" y="131" class="m">тот же образ, тот же протокол</text>
+<rect x="52" y="140" width="266" height="62" rx="8" class="box" style="stroke:var(--lado)"/>
+<text x="64" y="159" class="t">Agent API-шлюз + прокси</text>
+<text x="64" y="177" class="m">ключи от пульта на время сессии;</text>
+<text x="64" y="192" class="m">трафик к моделям идёт отсюда</text>
+<rect x="52" y="212" width="128" height="140" rx="8" class="sb"/>
+<text x="62" y="232" class="t" style="fill:var(--sb)">сессия</text>
+<text x="62" y="254">tmux, агенты</text><text x="62" y="274">клон + worktree</text>
+<text x="62" y="298">lado mcp / hook</text>
+<rect x="190" y="212" width="128" height="140" rx="8" class="sb"/>
+<text x="200" y="232" class="t" style="fill:var(--sb)">сессия</text>
+<text x="200" y="254">…</text>
+<rect x="52" y="362" width="266" height="106" rx="8" class="box" style="stroke:var(--run)"/>
+<text x="64" y="382" class="t">агент runner</text>
+<text x="64" y="400">песочницы · netns · терминалы</text>
+<text x="64" y="420" class="m">изоляция: gVisor везде;</text>
+<text x="64" y="436" class="m">micro-VM, если на машине есть KVM</text>
+<text x="64" y="456" class="m">volume с репозиториями сессий</text>
+
+<rect x="760" y="10" width="350" height="500" rx="12" class="host"/>
+<text x="776" y="34" class="h">Свой сервер или облако</text>
+<text x="776" y="52" class="m">таких машин может быть сколько угодно</text>
+<rect x="776" y="64" width="318" height="430" rx="10" class="vm"/>
+<text x="788" y="84" class="t">Docker</text>
+<rect x="788" y="94" width="294" height="388" rx="10" class="run"/>
+<text x="802" y="115" class="h" style="fill:var(--run)">runner «сервер-1»</text>
+<text x="802" y="131" class="m">тот же образ, тот же протокол</text>
+<rect x="802" y="140" width="266" height="62" rx="8" class="box" style="stroke:var(--lado)"/>
+<text x="814" y="159" class="t">Agent API-шлюз + прокси</text>
+<text x="814" y="177" class="m">ключи от пульта на время сессии;</text>
+<text x="814" y="192" class="m">трафик к моделям идёт отсюда</text>
+<rect x="802" y="212" width="128" height="140" rx="8" class="sb"/>
+<text x="812" y="232" class="t" style="fill:var(--sb)">сессия</text>
+<text x="812" y="254">tmux, агенты</text><text x="812" y="274">клон + worktree</text>
+<text x="812" y="298">lado mcp / hook</text>
+<rect x="940" y="212" width="128" height="140" rx="8" class="sb"/>
+<text x="950" y="232" class="t" style="fill:var(--sb)">сессия</text>
+<text x="950" y="254">…</text>
+<rect x="802" y="362" width="266" height="106" rx="8" class="box" style="stroke:var(--run)"/>
+<text x="814" y="382" class="t">агент runner</text>
+<text x="814" y="400">песочницы · netns · терминалы</text>
+<text x="814" y="420" class="m">изоляция: gVisor везде;</text>
+<text x="814" y="436" class="m">micro-VM, если на машине есть KVM</text>
+<text x="814" y="456" class="m">volume с репозиториями сессий</text>
+
+<!-- browser -->
+<rect x="380" y="456" width="360" height="54" rx="8" class="box"/>
+<text x="396" y="478" class="t">браузер</text><text x="396" y="496" class="m">с ноутбука, телефона, откуда угодно → UI пульта</text>
+<path d="M742,483 C756,483 756,236 726,236" class="plain" marker-end="url(#a)"/>
+
+<!-- connections: panel -> runner -->
+<path d="M396,150 C370,150 370,170 334,170" class="tun" marker-end="url(#at)"/>
+<path d="M724,150 C750,150 750,170 786,170" class="tun" marker-end="url(#at)"/>
+
+<!-- internet -->
+<rect x="380" y="290" width="360" height="140" rx="12" class="host"/>
+<text x="396" y="314" class="h">Интернет</text>
+<text x="396" y="338">API моделей</text><text x="396" y="358">GitHub, git-серверы: runner пушат ветки,</text><text x="396" y="374">ноутбук их забирает</text><text x="396" y="394">npm, PyPI</text>
+<text x="396" y="418" class="m">Каждый runner ходит в интернет сам, не через пульт.</text>
+<path d="M334,190 C360,190 360,330 378,330" class="net" marker-end="url(#an)"/>
+<path d="M786,190 C760,190 760,330 742,330" class="net" marker-end="url(#an)"/>
+</svg>
+</div>
+<ul>
+<li><b>Одна сущность runner.</b> Локальный, на своём сервере или в облаке: один образ, один протокол, одна настройка «адрес и доступ» в пульте. В схемах 1 и 2 это тот же runner, просто его адрес — соседний контейнер.</li>
+<li><b>Пульт подключается к указанному runner.</b> Как именно (SSH, туннель, обратное соединение для ноутбука за NAT), решим отдельно; на логику это не влияет.</li>
+<li><b>Плюсы:</b> сессии запускаются там, где удобно; пульт и история всегда доступны.</li>
+<li><b>Минусы:</b> нужны список runner, выдача ключей на время сессии, переподключение и буфер событий на runner, пока связи нет.</li>
+<li>Пульт может стоять и на ноутбуке, но тогда, пока ноутбук спит, сессии на других runner не получают ответов от пульта.</li>
+</ul>
+
+<h2>Сравнение</h2>
+<table>
+<tr><th></th><th>Локально</th><th>В облаке</th><th>Гибрид</th></tr>
+<tr><td>Где пульт</td><td>ноутбук</td><td>сервер</td><td>облако или домашний сервер</td></tr>
+<tr><td>Где сессии</td><td>ноутбук</td><td>сервер</td><td>любой подключённый runner</td></tr>
+<tr><td>Связь пульт → runner</td><td>сеть Docker</td><td>сеть Docker</td><td>пульт подключается к каждому указанному runner</td></tr>
+<tr><td>Где ключи</td><td colspan="3">хранятся в пульте; runner получает их на время сессии и держит только в памяти своего прокси; песочницы их не видят</td></tr>
+<tr><td>Выход в интернет</td><td colspan="3">всегда из runner, через его прокси (подставляет ключи, белый список, проверка веток). Строгий режим для недоверенных runner: прокси runner пересылает запросы в пульт, ключи подставляет пульт</td></tr>
+<tr><td>Изоляция сессий</td><td>gVisor</td><td>gVisor, с KVM micro-VM</td><td>тот же runner: gVisor везде, micro-VM где есть KVM</td></tr>
+<tr><td>Как пользователь получает код</td><td>git (или bind: медленно)</td><td>git через remote</td><td>git через remote</td></tr>
+<tr><td>Что нужно построить</td><td>Agent API, runner с прокси, выдача ключей</td><td>то же + TLS, вход</td><td>то же + подключение к удалённым runner</td></tr>
+</table>
+<p class="sub" style="margin-top:12px">Принцип для всех трёх: у локального runner нет особых путей, он говорит с пультом по тому же протоколу, что и удалённый. Тогда переход 1 → 2 → 3 не требует переписывать ни пульт, ни runner.</p>
+</main>
+</body>
+</html>

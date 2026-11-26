@@ -5,7 +5,8 @@ without tying LADO to one cloud, with any agent CLI, as an option next to the lo
 and never a requirement, and with a paid hosted offering kept possible for later. Research
 of 2026-10-18, no code changed; the human approved the summary and its staged plan the same
 day. Openspec change: `openspec/changes/cloud-workers-research/`. The staged plan, kept up
-to date after each step: [cloud-workers-plan.md](cloud-workers-plan.md).
+to date after each step: [cloud-workers-plan.md](cloud-workers-plan.md). The later research
+on isolating sessions (gVisor spikes, 2026-11-26): [session-isolation.md](session-isolation.md).
 
 The research went in several directions; the detailed reports (with sources and code
 references) are in [cloud-workers/](cloud-workers/):

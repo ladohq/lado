@@ -702,7 +702,15 @@ def print_plan(p: Plan) -> None:
     print(f"Roll back LADO {p.now} to {p.final}:")
     if p.sessions:
         listed = ", ".join(f"{name} ({repo})" for name, repo in p.sessions)
-        print(f"- stop your sessions and start them again on {p.final}: {listed}")
+        if p.started == p.sessions:
+            print(f"- stop your sessions and start them again on {p.final}: {listed}")
+        else:
+            # After a restore only the copy's sessions start again: the plan promises no other.
+            again = ", ".join(f"{name} ({repo})" for name, repo in p.started) or "none"
+            print(
+                f"- stop your sessions: {listed}; start again on {p.final} those in the copy:"
+                f" {again}"
+            )
     else:
         print("- no session runs")
     if p.server:

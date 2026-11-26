@@ -365,7 +365,8 @@ def print_plan(found: Plan, say: Say = print) -> None:
             f"  by the upgrade from schema {back.schema}. Everything LADO recorded since then "
             "is lost: sessions,",
             "  runs, gates, messages, projects, model servers, models, default models, git "
-            "servers.",
+            "servers,",
+            "  commit authors.",
             "  Repositories, worktrees and project folders stay on disk.",
         ]
         if back.missing:

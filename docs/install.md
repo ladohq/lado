@@ -1085,7 +1085,7 @@ no session running).
 - The plan warns before it asks: `lado.db` goes back to the copy
   `~/.lado/backups/lado.db.schema-31`, made when 0.43.0 upgraded it; everything LADO
   recorded since then is lost (sessions, runs, gates, messages, projects, model servers,
-  models, default models, git servers); repositories, worktrees and project folders stay
+  models, default models, git servers, commit authors); repositories, worktrees and project folders stay
   on disk. It names the running sessions the copy does not have: they are not started
   again. It lists the folders of model server keys and of git server tokens the copy has
   no server for: they stay on disk (What stays, below). `Update? [y/N]`, or `--yes`, is your yes to that.

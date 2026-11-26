@@ -598,7 +598,8 @@ def warning(copy) -> str:
         f"  lado.db goes back to {copy}, made 2026-10-20 14:03\n"
         f"  by the upgrade from schema {OLD_SCHEMA}. Everything LADO recorded since then is "
         "lost: sessions,\n"
-        "  runs, gates, messages, projects, model servers, models, default models, git servers.\n"
+        "  runs, gates, messages, projects, model servers, models, default models, git servers,\n"
+        "  commit authors.\n"
         "  Repositories, worktrees and project folders stay on disk.\n"
         "  Sessions not in that copy are not started again: web2\n"
     )

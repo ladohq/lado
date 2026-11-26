@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Изоляция сессий LADO</title>
+<style>
+:root{--bg:#fafaf9;--fg:#1c1917;--muted:#57534e;--line:#a8a29e;--vm:#78716c;--lado:#2563eb;--lado-bg:#eff6ff;--run:#9333ea;--run-bg:#faf5ff;--sb:#16a34a;--sb-bg:#f0fdf4;--box:#ffffff;--net:#ea580c;--api:#2563eb;--vol:#f5f5f4}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1c1917;--fg:#f5f5f4;--muted:#a8a29e;--line:#57534e;--vm:#a8a29e;--lado:#60a5fa;--lado-bg:#172554;--run:#c084fc;--run-bg:#2e1065;--sb:#4ade80;--sb-bg:#052e16;--box:#292524;--net:#fb923c;--api:#60a5fa;--vol:#44403c}}
+:root[data-theme="dark"]{--bg:#1c1917;--fg:#f5f5f4;--muted:#a8a29e;--line:#57534e;--vm:#a8a29e;--lado:#60a5fa;--lado-bg:#172554;--run:#c084fc;--run-bg:#2e1065;--sb:#4ade80;--sb-bg:#052e16;--box:#292524;--net:#fb923c;--api:#60a5fa;--vol:#44403c}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1240px;margin:0 auto;padding:20px 16px}
+h1{font-size:20px;margin:0 0 4px}
+p.lead{color:var(--muted);margin:0 0 14px}
+.wrap{overflow-x:auto}
+svg{width:100%;min-width:900px;height:auto;display:block}
+svg text{fill:var(--fg);font-size:12px}
+svg .t{font-weight:600;font-size:13px}
+svg .h{font-weight:700;font-size:14px}
+svg .m{fill:var(--muted);font-size:11px}
+.box{fill:var(--box);stroke:var(--line)}
+ul{margin:8px 0 0;padding-left:20px}
+li{margin:3px 0}
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:16px}
+.card{border:1px solid var(--line);border-radius:8px;padding:10px 14px}
+.card h2{font-size:15px;margin:0 0 4px}
+</style>
+</head>
+<body>
+<main>
+<h1>Изоляция сессий LADO: планируемая схема</h1>
+<p class="lead" style="border-left:3px solid var(--net);padding-left:8px"><b>Устарело в одном месте:</b> прокси ключей и git теперь живёт в runner (ключи runner получает от пульта на время сессии), а не в пульте. Актуальные схемы: артефакт lado-topologies.html.</p>
+<p class="lead">Черновик по итогам исследования и спайков gVisor. Пульт управления (<b>lado</b>) отдельно, сессии в песочницах gVisor внутри <b>runner</b>. Один compose на macOS, Windows и Linux.</p>
+<div class="wrap">
+<svg viewBox="0 0 1200 830" role="img" aria-label="Архитектурная схема">
+<defs>
+<marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="var(--muted)"/></marker>
+<marker id="an" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="var(--net)"/></marker>
+<marker id="aa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0L10,5L0,10z" fill="var(--api)"/></marker>
+</defs>
+
+<!-- host -->
+<rect x="10" y="10" width="920" height="730" rx="12" fill="none" stroke="var(--line)" stroke-width="1.5"/>
+<text x="26" y="34" class="h">Компьютер пользователя (macOS / Windows / Linux) или Linux-сервер</text>
+
+<!-- docker VM -->
+<rect x="30" y="50" width="880" height="560" rx="10" fill="none" stroke="var(--vm)" stroke-width="1.5" stroke-dasharray="7 5"/>
+<text x="46" y="72" class="t">Docker: VM Docker Desktop на Mac и Windows, сам хост на Linux</text>
+
+<!-- runner -->
+<rect x="50" y="86" width="470" height="504" rx="10" fill="var(--run-bg)" stroke="var(--run)" stroke-width="2"/>
+<text x="66" y="108" class="h" style="fill:var(--run)">контейнер runner: сессии</text>
+<text x="66" y="124" class="m">seccomp Docker + pivot_root, chroot · 6 capabilities · init · no-new-privileges</text>
+
+<!-- S1 -->
+<rect x="66" y="138" width="214" height="250" rx="8" fill="var(--sb-bg)" stroke="var(--sb)" stroke-width="2.5"/>
+<text x="78" y="158" class="t" style="fill:var(--sb)">gVisor: сессия A</text>
+<rect x="78" y="168" width="190" height="104" rx="6" class="box"/>
+<text x="88" y="186" class="t">tmux</text>
+<text x="88" y="204">· supervisor (Claude Code)</text>
+<text x="88" y="221">· worker-1 (Codex)</text>
+<text x="88" y="238">· worker-2 (OpenCode / Kilo)</text>
+<text x="88" y="258" class="m">bwrap для Codex работает</text>
+<rect x="78" y="280" width="190" height="44" rx="6" class="box"/>
+<text x="88" y="298">клон репо + worktree</text>
+<text x="88" y="314" class="m">на volume, не на bind</text>
+<rect x="78" y="332" width="190" height="44" rx="6" class="box"/>
+<text x="88" y="350">lado mcp / lado hook</text>
+<text x="88" y="366" class="m">тонкие: только запросы к API</text>
+
+<!-- S2 -->
+<rect x="296" y="138" width="208" height="250" rx="8" fill="var(--sb-bg)" stroke="var(--sb)" stroke-width="2.5"/>
+<text x="308" y="158" class="t" style="fill:var(--sb)">gVisor: сессия B</text>
+<rect x="308" y="168" width="184" height="104" rx="6" class="box"/>
+<text x="318" y="186" class="t">tmux</text>
+<text x="318" y="204">· supervisor</text>
+<text x="318" y="221">· workers…</text>
+<rect x="308" y="280" width="184" height="44" rx="6" class="box"/>
+<text x="318" y="298">свой клон + worktree</text>
+<rect x="308" y="332" width="184" height="44" rx="6" class="box"/>
+<text x="318" y="350">lado mcp / lado hook</text>
+<text x="318" y="366" class="m">свои токены агентов</text>
+
+<!-- node agent -->
+<rect x="66" y="402" width="438" height="62" rx="8" class="box" style="stroke:var(--run)"/>
+<text x="78" y="422" class="t">агент runner (lado node)</text>
+<text x="78" y="440">запуск runsc · rootfs · netns + veth на песочницу · iptables</text>
+<text x="78" y="456" class="m">tmux и pty сессий для терминалов UI; heartbeat</text>
+
+<!-- sessions volume -->
+<rect x="66" y="476" width="438" height="44" rx="8" fill="var(--vol)" stroke="var(--line)"/>
+<text x="78" y="494" class="t">volume sessions</text>
+<text x="78" y="510" class="m">репозитории и рабочие папки сессий; ключей и токенов здесь нет</text>
+<text x="66" y="544" class="m">Песочница видит только свою папку и свои процессы.</text>
+<text x="66" y="560" class="m">Сеть песочницы: только Agent API и прокси (iptables в runner,</text>
+<text x="66" y="576" class="m">изнутри не снять). Друг до друга и до runner не достать.</text>
+
+<!-- lado -->
+<rect x="560" y="86" width="330" height="504" rx="10" fill="var(--lado-bg)" stroke="var(--lado)" stroke-width="2"/>
+<text x="576" y="108" class="h" style="fill:var(--lado)">контейнер lado: пульт</text>
+<rect x="576" y="122" width="298" height="54" rx="6" class="box"/>
+<text x="588" y="141" class="t">Agent API</text>
+<text x="588" y="159">MCP-инструменты и хуки по сети,</text>
+<text x="588" y="172" class="m">токен на каждого агента (agents.instance)</text>
+<rect x="576" y="186" width="298" height="76" rx="6" class="box"/>
+<text x="588" y="205" class="t">прокси ключей и git</text>
+<text x="588" y="222">подставляет ключи моделей и токены git;</text>
+<text x="588" y="238">проверяет репозиторий и ветку при push;</text>
+<text x="588" y="254" class="m">белый список адресов; DNS тоже здесь</text>
+<rect x="576" y="272" width="298" height="76" rx="6" class="box"/>
+<text x="588" y="291" class="t">ядро</text>
+<text x="588" y="308">lado.db (один писатель), цикл сессий,</text>
+<text x="588" y="324">очередь сообщений, flow runs, артефакты</text>
+<text x="588" y="340" class="m">просит runner запустить и остановить сессию</text>
+<rect x="576" y="358" width="298" height="44" rx="6" fill="var(--vol)" stroke="var(--line)"/>
+<text x="588" y="376" class="t">volume home</text>
+<text x="588" y="392" class="m">секреты, токены git, логины CLI: только здесь</text>
+<rect x="576" y="412" width="298" height="44" rx="6" class="box"/>
+<text x="588" y="430" class="t">ретранслятор терминалов</text>
+<text x="588" y="446" class="m">WebSocket UI ↔ pty в runner</text>
+<rect x="576" y="466" width="298" height="54" rx="6" class="box"/>
+<text x="588" y="485" class="t">UI-сервер</text>
+<text x="588" y="502">порт 8765; удалённо: TLS и вход</text>
+<text x="576" y="544" class="m">Сокет Docker не нужен никому: runner сам</text>
+<text x="576" y="560" class="m">поднимает песочницы.</text>
+
+<!-- arrows sandbox -> lado -->
+<path d="M504,355 C530,355 535,150 574,150" fill="none" stroke="var(--api)" stroke-width="2" marker-end="url(#aa)"/>
+<text x="507" y="372" class="m" style="fill:var(--api)">API</text>
+<path d="M504,300 C540,300 540,224 574,224" fill="none" stroke="var(--net)" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#an)"/>
+<text x="508" y="292" class="m" style="fill:var(--net)">трафик</text>
+<!-- core <-> node -->
+<path d="M574,318 C540,318 540,420 506,420" fill="none" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="508" y="388" class="m">сессии</text>
+<path d="M574,434 L506,446" fill="none" stroke="var(--muted)" stroke-width="1.5" marker-start="url(#a)" marker-end="url(#a)"/>
+
+<!-- internet -->
+<rect x="950" y="110" width="240" height="170" rx="10" fill="none" stroke="var(--line)" stroke-width="1.5"/>
+<text x="966" y="134" class="h">Интернет</text>
+<text x="966" y="158">API моделей (Anthropic, OpenAI,</text>
+<text x="966" y="174">OpenRouter…)</text>
+<text x="966" y="196">GitHub и другие git-серверы</text>
+<text x="966" y="218">npm, PyPI, реестры пакетов</text>
+<text x="966" y="246" class="m">видит только запросы прокси</text>
+<text x="966" y="262" class="m">с подставленными ключами</text>
+<path d="M876,224 L948,200" fill="none" stroke="var(--net)" stroke-width="2" marker-end="url(#an)"/>
+
+<!-- remote note -->
+<rect x="950" y="300" width="240" height="210" rx="10" fill="none" stroke="var(--line)" stroke-dasharray="5 4"/>
+<text x="966" y="324" class="h">Удалённый вариант</text>
+<text x="966" y="348">тот же compose</text>
+<text x="966" y="366">на Linux-сервере; с ноутбука</text>
+<text x="966" y="384">только браузер (TLS и вход).</text>
+<text x="966" y="410">Где есть KVM, песочница может</text>
+<text x="966" y="428">стать micro-VM (Kata,</text>
+<text x="966" y="446">Firecracker) или gVisor</text>
+<text x="966" y="464">с платформой kvm.</text>
+<text x="966" y="490" class="m">Остальная схема не меняется.</text>
+
+<!-- browser -->
+<rect x="560" y="640" width="330" height="70" rx="8" class="box"/>
+<text x="576" y="664" class="t">браузер</text>
+<text x="576" y="682">UI, терминалы агентов, артефакты</text>
+<text x="576" y="698" class="m">локально 127.0.0.1:8765, удалённо по TLS</text>
+<path d="M725,638 L725,522" fill="none" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#a)"/>
+
+<!-- user repo -->
+<rect x="50" y="640" width="470" height="70" rx="8" class="box" style="stroke-dasharray:5 4"/>
+<text x="66" y="664" class="t">репозиторий пользователя на хосте</text>
+<text x="66" y="682">результат сессии приходит веткой через git</text>
+<text x="66" y="698" class="m">открыто: volume + git, bind (в 21× медленнее) или синхронизация</text>
+<path d="M285,522 L285,638" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<text x="292" y="600" class="m">ветки через git</text>
+
+<!-- legend -->
+<g transform="translate(10,760)">
+<line x1="6" y1="10" x2="40" y2="10" stroke="var(--vm)" stroke-width="1.5" stroke-dasharray="7 5"/><text x="48" y="14" class="m">граница VM (Mac, Windows)</text>
+<rect x="230" y="3" width="34" height="14" rx="3" fill="var(--run-bg)" stroke="var(--run)" stroke-width="2"/><text x="272" y="14" class="m">контейнер</text>
+<rect x="360" y="3" width="34" height="14" rx="3" fill="var(--sb-bg)" stroke="var(--sb)" stroke-width="2.5"/><text x="402" y="14" class="m">песочница gVisor: главная граница между сессиями</text>
+<line x1="740" y1="10" x2="774" y2="10" stroke="var(--api)" stroke-width="2"/><text x="782" y="14" class="m">Agent API</text>
+<line x1="870" y1="10" x2="904" y2="10" stroke="var(--net)" stroke-width="2" stroke-dasharray="6 4"/><text x="912" y="14" class="m">сетевой трафик через прокси</text>
+<text x="6" y="44" class="m">Сегодня всё в одном контейнере от одного пользователя: MCP и хуки пишут прямо в lado.db и tmux, все токены доступны всем агентам.</text>
+</g>
+</svg>
+</div>
+
+<div class="notes">
+<div class="card"><h2>Что изолировано</h2>
+<ul>
+<li>Сессии друг от друга: процессы, файлы, сеть (gVisor, свой netns, iptables).</li>
+<li>Ключи и токены: только в <b>lado</b>; песочница их не видит, прокси подставляет.</li>
+<li>Хост: на Mac и Windows ещё и VM Docker Desktop.</li>
+</ul></div>
+<div class="card"><h2>Что нужно сделать в LADO</h2>
+<ul>
+<li>Agent API: MCP и хуки по сети с токеном агента (этап B cloud workers).</li>
+<li>Прокси ключей и git с проверкой репозитория и ветки.</li>
+<li>Агент runner: песочницы, netns, терминалы.</li>
+<li>Репозитории сессий на volume, результат через git.</li>
+</ul></div>
+<div class="card"><h2>Открыто</h2>
+<ul>
+<li>Где живут репозитории пользователя (volume, bind или синхронизация).</li>
+<li>Linux: AppArmor, платформа kvm, micro-VM для сравнения.</li>
+<li>Windows: скорость папок, KVM в WSL2.</li>
+<li>Один runner на всех или runner на клиента.</li>
+</ul></div>
+</div>
+</main>
+</body>
+</html>

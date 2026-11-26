@@ -4,7 +4,8 @@ Based on: [cloud-workers.md](cloud-workers.md), the research of LAD-100, and its
 in [cloud-workers/](cloud-workers/) (R1-R4). Approved by the human on 2026-10-18. This plan
 is living: it is updated after each step (the status of each step, the decisions taken),
 as [docker-install-plan.md](docker-install-plan.md) is; the research report stays as
-written.
+written. Updated on 2026-11-26 after the session isolation research,
+[session-isolation.md](session-isolation.md) (gVisor spikes on macOS, Linux and WSL2).
 
 1. [Decisions taken](#1-decisions-taken)
 2. [How the work goes](#2-how-the-work-goes)
@@ -23,6 +24,42 @@ written.
 | Where the plan lives | In the repository: this file beside the research, as with Docker |
 | Tracker | Only the next task goes to the tracker, each on the human's yes |
 
+### 2026-11-26: session isolation
+
+After [session-isolation.md](session-isolation.md). **Decided by the human:**
+
+| Question | Decision (2026-11-26) |
+|---|---|
+| Base isolation | A runner container with one gVisor sandbox per session, gVisor running inside a plain container (nothing installed on the host), is the base isolation candidate for the local, cloud and hybrid topologies |
+| The runner | One universal runner, the same image and protocol everywhere; the panel connects to a specified runner. The connection (a tunnel, e.g. SSH) is not designed yet |
+| Internet | In every topology a sandbox reaches the internet only through the proxy in its runner |
+| Development | None yet; the research continues (round 3, section 3) |
+
+**Recommended by the research, not yet decided:**
+
+- **R+net as the base runner profile** (a root runner with six capabilities, a user
+  namespace and a netns per sandbox). Rootless runsc (R) is dropped because a process of the
+  runner's uid can `ptrace` every other sandbox's sentry, unless each sandbox gets a uid of
+  its own.
+- **The narrow seccomp profile**: Docker's default plus `pivot_root` and `chroot`, with the
+  `CAP_SYS_ADMIN` block cut to `clone clone3 mount setns umount2 unshare`; AppArmor
+  `unconfined`, or the custom `lado-runner-lite` as optional hardening loaded by the
+  installer.
+- **Repositories on a Docker volume, results through git**: never on `C:\` on Windows, not
+  bind-mounted on macOS.
+- **gVisor's systrap platform by default**; the `kvm` platform and Kata or another micro-VM
+  only as an option on bare metal.
+- **Stage B may need to come earlier**: a sandboxed agent cannot write `lado.db` or drive
+  tmux, so the agent API over the network is needed for local isolation too, not only for a
+  cloud.
+
+**Caveat** (R4 3.2): only API keys can stay out of the sandbox behind the proxy. Subscription
+OAuth tokens (Claude Pro/Max, ChatGPT) must live inside the sandbox that runs the CLI.
+
+**Conflict, open** (section 5): stage C1 below has the node connect **outbound** to the
+control plane; the human's direction is that the panel connects to the runner. A runner
+behind NAT then needs a reverse tunnel.
+
 ## 2. How the work goes
 
 - Each step is a working delivery that leaves the local mode unchanged: an existing user
@@ -34,9 +71,17 @@ written.
 
 ## 3. Step 0 and stages A-E
 
-Status of every step: not started.
+Status: step 0's isolation spikes, rounds 1 and 2, done (2026-11-25); round 3 pending.
+Every other step: not started.
 
 ### Step 0. Checks before the design (hands-on research, no product code)
+
+- **Session isolation with gVisor** (added 2026-11-26): rounds 1 and 2 done on macOS
+  (Docker Desktop), Linux x86 and arm64 and WSL2 (Docker Engine): gVisor runs inside a plain
+  container with six capabilities and a narrow seccomp profile, the proxy-only network holds,
+  and the sandboxes are apart ([session-isolation.md](session-isolation.md)). **Round 3,
+  Docker Desktop on Windows** (`docker compose` from PowerShell, Docker Desktop's file
+  sharing, ECI), is pending: [brief](session-isolation/gvisor-spike-3-brief.md).
 
 - **MCP over HTTP:** does it work with a Bearer header in each CLI at its tested version
   (4.3; R1 section 6, item 1; R4 4.4).
@@ -96,14 +141,26 @@ The stage continues the Docker epic LAD-52.
 **Result of stage B:** locally everything is as before, but a remote node can now be
 connected. Each item is a task of its own with the full set of tests.
 
+**Note (2026-11-26, recommended, not decided):** the same seam is what isolating local
+sessions needs: an agent in a gVisor sandbox reaches LADO only through B2 and B3. So stage B
+may have to come earlier than planned ([session-isolation.md](session-isolation.md)
+section 8).
+
 ### Stage C. A remote node for a session (split C)
 
 - **C1. `lado node`:** a daemon on the node. It holds tmux, the worktrees and the CLIs and
   connects to the control plane over an **outbound** connection, so NAT and pods are no
-  obstacle. A protocol version check. Details: 4.3.
-- **C2. The "Docker over SSH" backend:** any VPS, with a gVisor or Sysbox option.
+  obstacle. A protocol version check. Details: 4.3. *Since 2026-11-26 the node is the
+  runner of [session-isolation.md](session-isolation.md): it also holds the Agent API
+  gateway and the key and git proxy, and the human's direction is that the panel connects
+  to the runner, which conflicts with the outbound connection here (open, section 5).*
+- **C2. The "Docker over SSH" backend:** any VPS, running the same runner container as
+  locally: one gVisor sandbox per session inside a plain container (decided 2026-11-26 as the
+  base candidate). Recommended: systrap by default, `--platform=kvm` or Kata only as an
+  option where the host has bare-metal KVM. Sysbox was not part of the research.
 - **C3. The Kubernetes backend:** a pod plus a PVC, then the agent-sandbox mode (pause,
-  warm pools).
+  warm pools). With the runner: either the runner as a pod running its gVisor sandboxes, or a
+  pod per session with a gVisor or Kata RuntimeClass; not yet chosen or tested.
 - **C4. The agent's terminal in the UI through the node.** Stopping, resuming and updating
   nodes. Details: 4.2 (`open_terminal`), 4.3 (terminal relay, version check).
 - **C5. Choosing the place at session start:** `lado start --on <backend>` and the same
@@ -199,7 +256,8 @@ the rule.
 - **One channel, opened by the node.** The node agent (`lado node`) connects to the
   control plane over an outbound, authenticated connection (WebSocket or gRPC), so nodes
   behind NAT and in pods work; the control plane on a laptop is usually unreachable from a
-  pod.
+  pod. *Open since 2026-11-26: the human's direction is the reverse, the panel connects to
+  the runner (section 5).*
 - **Hook forwarding.** The hook command becomes a thin forwarder (`lado-agent hook
   <native>`, or a stdlib-only script) that POSTs `{session, agent, instance, native,
   payload}` to the control plane and prints the response body; `hooks.main`/`handle` run
@@ -329,7 +387,8 @@ Secret handling (R4 3):
   allowlist); the agent gets a placeholder. It works for API keys (`ANTHROPIC_BASE_URL`,
   Codex `model_providers` with `env_key`, OpenCode/Kilo `baseURL`); a subscription's OAuth
   token must sit in the container, and a proxy swapping it is the "intermediating"
-  Anthropic forbids.
+  Anthropic forbids. Since 2026-11-26 this proxy is planned in the runner for every
+  topology, not only for stage E (section 1); the subscription caveat holds there too.
 - **Git:** for a hosted LADO a GitHub App with one-hour installation tokens narrowed to
   the repository, served through a credential helper that calls the control plane; deploy
   keys or a forwarded ssh agent for single-repo self-hosting; a fine-grained `GH_TOKEN`
@@ -364,6 +423,12 @@ Secret handling (R4 3):
 
 ### Open questions (all: decide later)
 
+- **Who connects to whom** (2026-11-26): stage C1 and 4.3 have the node open an outbound
+  connection to the control plane; the human's direction after the isolation research is
+  that the panel connects to a specified runner (a tunnel, e.g. SSH). A runner behind NAT
+  (a laptop in the hybrid topology) then needs a reverse tunnel. Not designed yet.
+- **Session isolation, round 3** (Docker Desktop on Windows) and the other untested gaps:
+  [session-isolation.md](session-isolation.md) section 9.
 - **An example on a Russian cloud** (Selectel, Yandex) as a checked target next to the
   Docker host and Kubernetes.
 - **Running step 0 as a separate session by brief**, as in the Docker epic.

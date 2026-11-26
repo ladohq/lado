@@ -124,8 +124,8 @@ agent SHALL be refused; half an author SHALL exit 2.
 #### Scenario: Nobody known
 - **WHEN** LADO has no author, git knows none, and the human runs `lado git-server author`
 - **THEN** the output is `LADO has no commit author and git knows none: agents cannot
-  commit.` and the command `lado git-server author --name "Your Name" --email
-  you@example.com`
+  commit.` and `Set one in Settings → Git servers, or run: lado git-server author --name
+  "Your Name" --email you@example.com`
 
 #### Scenario: Inside an agent
 - **WHEN** an agent runs `lado git-server author --name Bot --email bot@example.com`
@@ -196,3 +196,63 @@ no project an author; `backups/lado.db.schema-43` SHALL hold the database as it 
 - **WHEN** LADO starts on a lado.db of schema 43 with a project and a server with an author
 - **THEN** the project and the server's author are kept, LADO and the project have no
   author, and the backup is there
+
+### Requirement: The CLI says when nobody is left to sign agents' commits
+
+When nobody signs agents' commits by the commit author order once `lado git-server author`
+or `lado project author` clears or shows an author (a project judged in its repositories,
+else its folder; LADO and a server outside any repository), the command SHALL say that agents
+cannot commit (naming the project's repositories when only some) and how to set an author,
+and a clear SHALL end with the line of running agents instead of the restart line.
+
+#### Scenario: Clearing LADO's last author
+- **WHEN** LADO's author is set, git knows none, and the human runs `lado git-server author
+  --clear`
+- **THEN** the output is `LADO has no commit author now.`, the two lines of nobody known and
+  `Running agents keep the author they started with until they restart.`, the exit status is
+  0, and no line says that agents commit
+
+#### Scenario: Clearing a project's author leaves nobody
+- **WHEN** neither LADO nor git has an author, the project `shop` has the author `Shop Bot
+  <bot@shop.example>` and its one repository `frontend` has no remote, and the human runs
+  `lado project author shop --clear`
+- **THEN** the output is `Project shop has no commit author now, and nobody else signs its
+  agents' commits: they cannot commit.`, `Set one: lado project author shop --name "Your
+  Name" --email you@example.com, or LADO's in Settings → Git servers.` and `Running agents
+  keep the author they started with until they restart.`, and the exit status is 0
+
+#### Scenario: Showing a project nobody signs for
+- **WHEN** neither LADO, git nor the project `shop` has an author and the human runs `lado
+  project author shop`
+- **THEN** the output is `Project shop has no commit author, and nobody else signs its
+  agents' commits: they cannot commit.` and the same hint
+
+#### Scenario: Nobody in some repositories only
+- **WHEN** neither LADO nor git has an author, the project `shop` has the repositories `api`,
+  whose remote is on a saved server with an author, and `site` without a remote, and the human
+  runs `lado project author shop --clear`
+- **THEN** the output is `Project shop has no commit author now: its agents cannot commit in
+  site (nobody signs there).`, the hint and the line of running agents
+
+#### Scenario: Clearing a server's author leaves nobody
+- **WHEN** neither LADO nor git has an author, `https://gitlab.corp.ru` has the author `Ivan
+  Petrov <ivan.petrov@corp.ru>`, and the human runs `lado git-server author gitlab.corp.ru
+  --clear`, then `lado git-server author gitlab.corp.ru`
+- **THEN** the first prints `Agents cannot commit to https://gitlab.corp.ru now: it has no
+  commit author, LADO has none and git knows none.`, `Set one in Settings → Git servers, or
+  run: lado git-server author --name "Your Name" --email you@example.com` and `Running agents
+  keep the author they started with until they restart.`, exit 0; the second prints
+  `https://gitlab.corp.ru has no commit author, LADO has none and git knows none: agents
+  cannot commit there.` and the same hint
+
+#### Scenario: Somebody is left
+- **WHEN** git's global config names `Ann Lee <ann@example.com>` and the human runs `lado
+  project author shop --clear`
+- **THEN** the output is `Project shop has no commit author now: its agents commit as LADO's
+  or a git server's.` and the restart line, as before
+
+#### Scenario: git cannot read its config
+- **WHEN** git's global config cannot be parsed and the human runs `lado project author shop
+  --clear`
+- **THEN** the project's author is cleared and the command says in one line that git cannot
+  read its config, exit 1

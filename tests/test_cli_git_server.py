@@ -518,7 +518,7 @@ def _author(*args: str) -> int:
     return main(["git-server", "author", *args])
 
 
-def test_author_sets_shows_and_clears(capsys):
+def test_author_sets_shows_and_clears(capsys, git_config):
     _saved()
     assert _author("gitlab.corp.ru", "--name", "Ivan Petrov", "--email", "ivan@corp.ru") == 0
     assert capsys.readouterr().out == (
@@ -542,10 +542,12 @@ def test_author_sets_shows_and_clears(capsys):
 
 # LADO's own commit author: `lado git-server author` without an address.
 
-NOBODY = (
-    "LADO has no commit author and git knows none: agents cannot commit.\n"
-    'Set one: lado git-server author --name "Your Name" --email you@example.com\n'
+SET_HINT = (
+    'Set one in Settings → Git servers, or run: lado git-server author --name "Your Name" '
+    "--email you@example.com\n"
 )
+NOBODY = "LADO has no commit author and git knows none: agents cannot commit.\n" + SET_HINT
+RUNNING_KEEP = "Running agents keep the author they started with until they restart.\n"
 
 
 def test_ladOs_author_set_shown_and_cleared(capsys, git_config):
@@ -579,10 +581,54 @@ def test_nobody_known(capsys, git_config):
     assert capsys.readouterr().out == NOBODY
 
 
-@pytest.mark.parametrize("args", [[], ["--clear"]])
+def test_clearing_the_last_ladOs_author(capsys, git_config):
+    git_config.write_text("")
+    assert _author("--name", "Ann Lee", "--email", "ann@example.com") == 0
+    capsys.readouterr()
+    assert _author("--clear") == 0
+    out = capsys.readouterr().out
+    assert out == "LADO has no commit author now.\n" + NOBODY + RUNNING_KEEP
+    assert "Agents started from now on commit" not in out
+    assert state.commit_author() is None
+
+
+def test_clearing_a_servers_author_that_leaves_nobody(capsys, git_config):
+    git_config.write_text("")
+    _saved()
+    assert _author("gitlab.corp.ru", "--name", "Ivan Petrov", "--email", "ivan@corp.ru") == 0
+    capsys.readouterr()
+    assert _author("gitlab.corp.ru", "--clear") == 0
+    assert capsys.readouterr().out == (
+        "Agents cannot commit to https://gitlab.corp.ru now: it has no commit author, LADO has "
+        "none and git knows none.\n" + SET_HINT + RUNNING_KEEP
+    )
+    assert state.git_servers()[0].author_name is None
+    assert _author("gitlab.corp.ru") == 0
+    assert capsys.readouterr().out == (
+        "https://gitlab.corp.ru has no commit author, LADO has none and git knows none: agents "
+        "cannot commit there.\n" + SET_HINT
+    )
+    state.set_commit_author("Ann Lee", "ann@example.com")  # somebody left: as before
+    assert _author("gitlab.corp.ru", "--clear") == 0
+    assert capsys.readouterr().out == (
+        "Agents commit to https://gitlab.corp.ru with LADO's commit author, or your own git "
+        "author without one.\n" + AUTHOR_RESTART
+    )
+
+
+@pytest.mark.parametrize(
+    "args", [[], ["--clear"], ["gitlab.corp.ru"], ["gitlab.corp.ru", "--clear"]]
+)
 def test_a_git_config_git_cannot_read_is_said_in_one_line(capsys, git_config, args):
+    server = _saved()
+    if args == ["--clear"]:
+        state.set_commit_author("Ann Lee", "ann@example.com")
+    elif "--clear" in args:
+        state.set_git_server_author(server.id, "Ivan Petrov", "ivan@corp.ru")
     git_config.write_text("[user\n broken")
     assert _author(*args) == 1
+    # The clear is kept.
+    assert state.commit_author() is None and state.git_servers()[0].author_name is None
     err = capsys.readouterr().err
     assert err.startswith("lado: git cannot read its config: ")
     assert "Traceback" not in err and len(err.splitlines()) == 1

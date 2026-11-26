@@ -195,7 +195,16 @@ alone; it goes with the project): `Agents of project <id> commit as <name> <<ema
 the restart line; `--clear` removes it (`Project <id> has no commit author now: its agents
 commit as LADO's or a git server's.` and the restart line); with neither it prints `<name>
 <<email>>` or `Project <id> has no commit author: its agents commit as LADO's or a git
-server's.`. The checks and exits are `lado git-server author`'s (git 2.31 for a set, `… which
+server's.`. Without the project's author, LADO judges each of its repositories (without
+any, its folder) by the commit author order (lado.commit_authors.unsigned): where nobody
+signs in any, the line is `Project <id> has no commit author now, and nobody else signs its
+agents' commits: they cannot commit.` (the show without `now`); where in some only, `Project
+<id> has no commit author now: its agents cannot commit in <repo>, <repo> (nobody signs
+there).`; either is followed by `Set one: lado project author <id> --name "Your Name" --email
+you@example.com, or LADO's in Settings → Git servers.`, and a clear then ends with `Running
+agents keep the author they started with until they restart.` instead of the restart line,
+exit 0. A git that cannot read its config is `git cannot read its config: <git's line>`,
+exit 1, the clear kept. The checks and exits are `lado git-server author`'s (git 2.31 for a set, `… which
 a project's commit author needs`); an unknown project is exit 1; setting or clearing it is the
 human's alone, reading it an agent's too. `lado
 project delete <id>` refuses, exit 1, changing nothing, while a session of the project, or
@@ -1052,7 +1061,13 @@ the saved server of the address's host and port, without its token again: `Agent
 agents to give it to them.`. `--clear` removes it (`Agents commit to <address> with LADO's
 commit author, or your own git author without one.` and the same second line; also when there
 was none), and with neither it prints `<name> <<email>>` or `<address> has no commit author:
-agents commit there with LADO's commit author, or your own git author without one.`. Exit 2 for an address it does not take, `--name` without `--email` or the
+agents commit there with LADO's commit author, or your own git author without one.`. When
+LADO has no author and git knows none outside a repository (a server's repositories are not
+known to LADO), the clear says `Agents cannot commit to <address> now: it has no commit
+author, LADO has none and git knows none.`, LADO's hint line (below) and `Running agents
+keep the author they started with until they restart.`, exit 0, and the show `<address> has
+no commit author, LADO has none and git knows none: agents cannot commit there.` and the
+hint; a git that cannot read its config is said in one line, exit 1, the clear kept. Exit 2 for an address it does not take, `--name` without `--email` or the
 other way round (`--name and --email go together`), or `--clear` with either (`--clear takes no
 --name or --email`). Refused with exit 1, nothing saved: an address of no saved server
 (`<address> is no saved git server`, hint `see them: lado git-server list`), a name empty
@@ -1060,16 +1075,18 @@ after trimming (`the author's name is empty`) or holding `<`, `>` or a control c
 (`the author's name holds no < or > or line break`), an email that is not text on both sides
 of one `@` with no space, `<`, `>` or control character (`not an email address: name@host`),
 either over 256 characters, and a git older than 2.36 on this PATH (`git <version> is older
-than 2.36, which a commit author of a git server needs; update git`); clearing needs no git. 
+than 2.36, which a commit author of a git server needs; update git`); clearing needs no git
+version. 
 
 Without an address, `lado git-server author` is LADO's own commit author (lado.commit_authors,
 kept in lado.db, written into no git config): `--name <name> --email <email>` sets it, `Agents
 commit as <name> <<email>> where no project or git server has an author of its own.` and the
 restart line; `--clear` removes it, `LADO has no commit author now.`, the line of who agents
-commit as now and the restart line; with neither it prints `<name> <<email>>`, or `LADO has no
+commit as now and the restart line (with nobody left, `Running agents keep the author they
+started with until they restart.` instead, exit 0); with neither it prints `<name> <<email>>`, or `LADO has no
 commit author: agents commit as <name> <<email>> from your git config.`, or `LADO has no commit
-author and git knows none: agents cannot commit.` and `Set one: lado git-server author --name
-"Your Name" --email you@example.com`. Setting or clearing it is the human's alone (`lado
+author and git knows none: agents cannot commit.` and `Set one in Settings → Git servers, or
+run: lado git-server author --name "Your Name" --email you@example.com`. Setting or clearing it is the human's alone (`lado
 git-server author is for the human; agent "<name>" cannot use it`, exit 1); the refusals,
 exits and checks are a server's, but the git it needs is 2.31 (`git <version> is older than
 2.31, which LADO's commit author needs; update git`). `lado git-server

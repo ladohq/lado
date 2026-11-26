@@ -212,6 +212,31 @@ def test_in_effect_the_projects_over_all(nobody, tmp_path):
     assert commit_authors.in_effect(str(repo), "plain") == InEffect(IVAN, "server")
 
 
+def test_unsigned_names_the_places_nobody_signs_in_their_order(nobody, tmp_path):
+    _server("s1", "gitlab.corp.ru", IVAN)
+    api = _repo(tmp_path, "https://gitlab.corp.ru/team/api.git", name="api")
+    site, new = _repo(tmp_path, name="site"), tmp_path / "new"
+    assert commit_authors.unsigned([str(site), str(api), str(new)]) == [str(site), str(new)]
+    assert commit_authors.unsigned([]) == []
+
+
+def test_unsigned_none_with_gits_own_or_ladOs_or_the_projects(git_config, lado_home, tmp_path):
+    site = str(_repo(tmp_path, name="site"))
+    assert commit_authors.unsigned([site]) == []  # git's own
+    git_config.write_text("")
+    assert commit_authors.unsigned([site]) == [site]
+    _project("shop", SHOP)
+    assert commit_authors.unsigned([site], "shop") == []
+    state.set_commit_author(ANN.name, ANN.email)
+    assert commit_authors.unsigned([site]) == []
+
+
+def test_unsigned_raises_what_git_says(git_config, lado_home, tmp_path):
+    git_config.write_text("[user\n broken")
+    with pytest.raises(commit_authors.Unreadable):
+        commit_authors.unsigned([str(tmp_path)])
+
+
 def test_author_variables_names_the_four_only():
     env = {"GIT_AUTHOR_EMAIL": "x", "GIT_COMMITTER_NAME": "y", "GIT_DIR": "z", "HOME": "/h"}
     assert commit_authors.author_variables(env) == ["GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME"]

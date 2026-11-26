@@ -9,6 +9,8 @@ project's go to an agent as plain `user.name`/`user.email` entries of `GIT_CONFI
 git reads from 2.31 (`check_git`); LADO's own first commits (lado.scratch, lado.setup) pass
 the author in effect with `-c`. `GIT_AUTHOR_*` and `GIT_COMMITTER_*` of an agent's
 environment win over all: `author_variables` names them, and `in_effect` leaves them out.
+`unsigned` names the places where nobody signs; the CLI's lines then give `SET_HINT` and,
+after a clear, `RUNNING_KEEP` instead of the restart promise.
 
 A server's own author stays lado.git_servers'; its check is `check` here."""
 
@@ -38,10 +40,13 @@ CLEAR_PROJECT = "lado project author {id} --clear"
 LADO_SET = "Agents commit as {author} where no project or git server has an author of its own."
 LADO_CLEARED = "LADO has no commit author now."
 LADO_GIT = "LADO has no commit author: agents commit as {author} from your git config."
-LADO_NOBODY = (
-    "LADO has no commit author and git knows none: agents cannot commit.\n"
-    'Set one: lado git-server author --name "Your Name" --email you@example.com'
+SET_HINT = (
+    'Set one in Settings → Git servers, or run: lado git-server author --name "Your Name" '
+    "--email you@example.com"
 )
+LADO_NOBODY = "LADO has no commit author and git knows none: agents cannot commit.\n" + SET_HINT
+# The last line of a clear that leaves nobody (`unsigned`), instead of the restart line.
+RUNNING_KEEP = "Running agents keep the author they started with until they restart."
 
 
 class InEffect(NamedTuple):
@@ -206,6 +211,12 @@ def in_effect(path: str, project_id: str | None = None) -> InEffect:
     if (found := git_own(path)) is not None:
         return InEffect(found, GIT)
     return InEffect(None, NONE)
+
+
+def unsigned(paths: list[str], project_id: str | None = None) -> list[str]:
+    """The paths of `paths`, in their order, where nobody signs a commit (`in_effect`'s
+    source NONE); raises what `in_effect` raises."""
+    return [path for path in paths if in_effect(path, project_id).source == NONE]
 
 
 def _remotes(path: str) -> list[str]:

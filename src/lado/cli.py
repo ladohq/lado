@@ -1346,6 +1346,36 @@ PROJECT_AUTHOR_SET = "Agents of project {id} commit as {author}."
 PROJECT_AUTHOR_NONE = (
     "Project {id} has no commit author{now}: its agents commit as LADO's or a git server's."
 )
+# With nobody else to sign (lado.commit_authors.unsigned): in all its places, in some.
+PROJECT_AUTHOR_NOBODY = (
+    "Project {id} has no commit author{now}, and nobody else signs its agents' commits: they "
+    "cannot commit."
+)
+PROJECT_AUTHOR_SOME = (
+    "Project {id} has no commit author{now}: its agents cannot commit in {repos} (nobody signs "
+    "there)."
+)
+PROJECT_AUTHOR_HINT = (
+    'Set one: lado project author {id} --name "Your Name" --email you@example.com, or '
+    "LADO's in Settings → Git servers."
+)
+
+
+def _project_author_none(id: str, now: str) -> tuple[list[str], bool]:
+    """The lines of a project without its own author, and whether nobody signs in any of its
+    places: its repositories, named by folder, else its folder (a server's author goes by a
+    repository's remote)."""
+    named = {str(r.path): r.name for r in projects.repositories(id)}
+    places = list(named) or [str(projects.folder(id))]
+    unsigned = _unsigned(places, id)
+    if not unsigned:
+        return [PROJECT_AUTHOR_NONE.format(id=id, now=now)], False
+    if len(unsigned) == len(places):
+        first = PROJECT_AUTHOR_NOBODY.format(id=id, now=now)
+    else:
+        repos = ", ".join(named[path] for path in unsigned)
+        first = PROJECT_AUTHOR_SOME.format(id=id, now=now, repos=repos)
+    return [first, PROJECT_AUTHOR_HINT.format(id=id)], True
 
 
 def cmd_project_author(args: argparse.Namespace) -> int:
@@ -1360,10 +1390,11 @@ def cmd_project_author(args: argparse.Namespace) -> int:
     if changes:
         _human_only("project author")
     project = projects.get(args.id)  # an unknown project: refused before anything
+    nobody = False
     try:
         if args.clear:
             commit_authors.clear_project(project.id)
-            lines = [PROJECT_AUTHOR_NONE.format(id=project.id, now=" now")]
+            lines, nobody = _project_author_none(project.id, " now")
         elif args.name is not None:
             author = commit_authors.set_project(project.id, args.name, args.email)
             if author is None:  # deleted meanwhile
@@ -1372,12 +1403,14 @@ def cmd_project_author(args: argparse.Namespace) -> int:
             lines = [PROJECT_AUTHOR_SET.format(id=project.id, author=text)]
         else:
             author = commit_authors.project(project.id)
-            text = commit_authors.text(author) if author else None
-            lines = [text or PROJECT_AUTHOR_NONE.format(id=project.id, now="")]
+            if author is not None:
+                lines = [commit_authors.text(author)]
+            else:
+                lines, _ = _project_author_none(project.id, "")
     except git_servers.Refused as exc:
         return _refused(exc)
     if changes:
-        lines.append(git_servers.AUTHOR_RESTART)
+        lines.append(_restart(nobody))
     print("\n".join(lines))
     return 0
 
@@ -2023,6 +2056,24 @@ def _lado_author_line() -> str:
     return commit_authors.LADO_NOBODY
 
 
+def _unsigned(paths: list[str], project_id: str | None = None) -> list[str]:
+    """lado.commit_authors.unsigned, a git that cannot read its config said as LadoError."""
+    from lado import commit_authors
+
+    try:
+        return commit_authors.unsigned(paths, project_id)
+    except commit_authors.Unreadable as exc:
+        raise runtime.LadoError(f"git cannot read its config: {exc}") from None
+
+
+def _restart(nobody: bool) -> str:
+    """The last line of a change: the restart promise, or with nobody left to sign the
+    commits that running agents keep their author."""
+    from lado import commit_authors, git_servers
+
+    return commit_authors.RUNNING_KEEP if nobody else git_servers.AUTHOR_RESTART
+
+
 def _lado_author(args: argparse.Namespace) -> int:
     """`lado git-server author [--name N --email E | --clear]`: LADO's own commit author;
     a change is the human's alone, as it reaches every repository."""
@@ -2043,7 +2094,7 @@ def _lado_author(args: argparse.Namespace) -> int:
     except git_servers.Refused as exc:
         return _refused(exc)
     if args.clear or args.name is not None:
-        lines.append(git_servers.AUTHOR_RESTART)
+        lines.append(_restart(lines == [commit_authors.LADO_NOBODY]))
     print("\n".join(lines))
     return 0
 
@@ -2053,7 +2104,7 @@ def cmd_git_server_author(args: argparse.Namespace) -> int:
     show the commit author of the server of the address's host (lado.git_servers), or
     without an address LADO's own (lado.commit_authors); exit 1 for a refusal, 2 for an
     address it does not take or a half author."""
-    from lado import git_servers
+    from lado import commit_authors, git_servers
 
     if _half_author(args):
         return 2
@@ -2063,24 +2114,31 @@ def cmd_git_server_author(args: argparse.Namespace) -> int:
     if at is None:
         return 2
     given = args.name is not None
+    nobody = False
     try:
-        if args.clear:
-            server = git_servers.clear_author(at)
-            lines = [git_servers.AUTHOR_CLEARED.format(address=server.address)]
-        elif given:
+        if given:
             server = git_servers.set_author(at, args.name, args.email)
             author = git_servers.author_text(server)
             lines = [git_servers.AUTHOR_SET.format(address=server.address, author=author)]
         else:
-            server = git_servers.saved_server(at)
-            lines = [
-                git_servers.author_text(server)
-                or git_servers.AUTHOR_NONE.format(address=server.address)
-            ]
+            server = git_servers.clear_author(at) if args.clear else git_servers.saved_server(at)
+            author = None if args.clear else git_servers.author_text(server)
+            # Outside any repository: the server's own are not known to LADO.
+            nobody = author is None and bool(_unsigned(["/"]))
+            if author is not None:
+                lines = [author]
+            elif nobody:
+                text = (
+                    git_servers.AUTHOR_CLEARED_NOBODY if args.clear else git_servers.AUTHOR_NOBODY
+                )
+                lines = [text.format(address=server.address), commit_authors.SET_HINT]
+            else:
+                text = git_servers.AUTHOR_CLEARED if args.clear else git_servers.AUTHOR_NONE
+                lines = [text.format(address=server.address)]
     except git_servers.Refused as exc:
         return _refused(exc)
     if args.clear or given:
-        lines.append(git_servers.AUTHOR_RESTART)
+        lines.append(_restart(nobody))
     print("\n".join(lines))
     return 0
 

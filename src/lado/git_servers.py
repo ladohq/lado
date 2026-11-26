@@ -72,6 +72,14 @@ AUTHOR_SET = "Agents commit to {address} as {author}."
 FALLBACK = "LADO's commit author, or your own git author without one"
 AUTHOR_CLEARED = "Agents commit to {address} with " + FALLBACK + "."
 AUTHOR_NONE = "{address} has no commit author: agents commit there with " + FALLBACK + "."
+# With neither LADO's author nor git's own (lado.commit_authors.unsigned).
+AUTHOR_CLEARED_NOBODY = (
+    "Agents cannot commit to {address} now: it has no commit author, LADO has none and git "
+    "knows none."
+)
+AUTHOR_NOBODY = (
+    "{address} has no commit author, LADO has none and git knows none: agents cannot commit there."
+)
 AUTHOR_RESTART = "Agents started from now on commit so; restart running agents to give it to them."
 AUTHOR_MAX = 256  # characters of the author's name, and of its email
 PLAIN_HTTP = (

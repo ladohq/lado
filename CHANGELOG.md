@@ -25,6 +25,9 @@
 - **Nothing jumps at the bottom of Model servers.** Closing Add server, Change or Remove at
   the very end of Settings → Model servers or Git servers keeps the server where it was; a
   blank space left below goes as you scroll up.
+- **Clearing the last commit author says agents cannot commit.** `lado git-server author
+  --clear` and `lado project author <id> --clear` no longer promise commits when nobody is
+  left to sign them: they say so, where, and how to set an author.
 
 ## 0.48.0 (2026-11-21)
 

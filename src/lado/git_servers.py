@@ -78,8 +78,7 @@ AUTHOR_CLEARED_NOBODY = (
     "knows none."
 )
 AUTHOR_NOBODY = (
-    "{address} has no commit author, LADO has none and git knows none: agents cannot commit "
-    "there."
+    "{address} has no commit author, LADO has none and git knows none: agents cannot commit there."
 )
 AUTHOR_RESTART = "Agents started from now on commit so; restart running agents to give it to them."
 AUTHOR_MAX = 256  # characters of the author's name, and of its email

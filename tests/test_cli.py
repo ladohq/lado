@@ -2556,6 +2556,91 @@ def test_project_author_set_shown_and_cleared(shop, capsys):
     assert state.get_project("shop").author_name is None
 
 
+PROJECT_HINT = (
+    'Set one: lado project author shop --name "Your Name" --email you@example.com, or '
+    "LADO's in Settings → Git servers."
+)
+RUNNING_KEEP = "Running agents keep the author they started with until they restart."
+
+
+def _unauthored(repo):
+    """`repo` (init_repo's) without its own author: git there knows only the global one."""
+    for key in ("user.name", "user.email"):
+        subprocess.run(["git", "-C", str(repo), "config", "--unset", key], check=True)
+    return repo
+
+
+@pytest.fixture
+def unsigned_shop(shop, git_config, capsys):
+    """shop with the author Shop Bot, and nobody else: no LADO's, no git's."""
+    git_config.write_text("")
+    _unauthored(shop / "frontend")
+    argv = ["project", "author", "shop", "--name", "Shop Bot", "--email", "bot@shop.example"]
+    assert main(argv) == 0
+    capsys.readouterr()
+    return shop
+
+
+def test_clearing_a_projects_author_that_leaves_nobody(unsigned_shop, capsys):
+    assert main(["project", "author", "shop", "--clear"]) == 0
+    out = capsys.readouterr().out
+    assert out.splitlines() == [
+        "Project shop has no commit author now, and nobody else signs its agents' commits: "
+        "they cannot commit.",
+        PROJECT_HINT,
+        RUNNING_KEEP,
+    ]
+    assert "Agents started from now on commit" not in out
+    assert state.get_project("shop").author_name is None
+    assert main(["project", "author", "shop"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "Project shop has no commit author, and nobody else signs its agents' commits: "
+        "they cannot commit.",
+        PROJECT_HINT,
+    ]
+
+
+def test_a_project_without_repositories_is_judged_at_its_folder(unsigned_shop, capsys):
+    shutil.rmtree(unsigned_shop / "frontend")
+    assert main(["project", "author", "shop", "--clear"]) == 0
+    assert capsys.readouterr().out.splitlines()[0] == (
+        "Project shop has no commit author now, and nobody else signs its agents' commits: "
+        "they cannot commit."
+    )
+
+
+def test_nobody_in_some_repositories_only(unsigned_shop, capsys):
+    shutil.rmtree(unsigned_shop / "frontend")
+    api = _unauthored(init_repo(unsigned_shop / "api"))
+    url = "https://gitlab.corp.ru/team/api.git"
+    subprocess.run(["git", "-C", str(api), "remote", "add", "origin", url], check=True)
+    _unauthored(init_repo(unsigned_shop / "site"))
+    state.save_git_server("s1", "https://gitlab.corp.ru", "gitlab.corp.ru", "gitlab", "ivan")
+    state.set_git_server_author("s1", "Ivan Petrov", "ivan.petrov@corp.ru")
+    assert main(["project", "author", "shop", "--clear"]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "Project shop has no commit author now: its agents cannot commit in site (nobody signs "
+        "there).",
+        PROJECT_HINT,
+        RUNNING_KEEP,
+    ]
+
+
+@pytest.mark.parametrize("args", [[], ["--clear"]])
+def test_a_git_config_git_cannot_read_in_a_project_is_said_in_one_line(
+    unsigned_shop, git_config, capsys, args
+):
+    if not args:
+        assert main(["project", "author", "shop", "--clear"]) == 0
+    capsys.readouterr()
+    git_config.write_text("[user\n broken")
+    assert main(["project", "author", "shop", *args]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("lado: git cannot read its config: ")
+    assert "Traceback" not in err and len(err.splitlines()) == 1
+    assert state.get_project("shop").author_name is None  # the clear is kept
+
+
 def test_project_author_of_an_unknown_project_exits_1(shop, capsys):
     for args in ([], ["--clear"], ["--name", "A", "--email", "a@b.c"]):
         assert main(["project", "author", "nope", *args]) == 1

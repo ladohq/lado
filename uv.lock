@@ -772,7 +772,7 @@ wheels = [
 
 [[package]]
 name = "lado"
-version = "0.49.0rc1"
+version = "0.49.0"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },

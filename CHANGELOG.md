@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.49.0 (unreleased)
+## 0.49.0 (2026-11-26)
 
 ### New
 
@@ -16,7 +16,8 @@
 ### Improved
 
 - **Agents start sooner.** An agent's first turn no longer waits about a third of a second
-  for LADO's tools to load, once an agent of the same kind has started on this version.
+  for LADO's tools to load, once an agent of the same kind has started on this version. Not
+  yet with Claude Code 2.1.332 and newer: their first turn is as fast as before.
 
 ### Fixed
 

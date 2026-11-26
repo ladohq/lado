@@ -1005,7 +1005,8 @@ Layout (LAD-82); AGENTS.md keeps one line per module.
     `entries` (the `user.*` entries `git_servers.variables` lays), `git_own` (git's own
     author where a path is, the launch's entries left out), `in_effect` (project → the last
     server by host with an author among the repository's remotes → LADO's → git's own →
-    none, with its source; what git takes under the laid entries) and `author_variables`
+    none, with its source; what git takes under the laid entries), `unsigned` (the places
+    where nobody signs, for the CLI's lines after a clear and on a show) and `author_variables`
     (the `GIT_AUTHOR_*`/`GIT_COMMITTER_*` names an environment holds); the CLI's lines.
   - `git_servers.py`: the human's git servers (`lado git-server add|list|check|remove`):
     `check` (a saved server asked again with its saved token, judged by its saved kind: a

@@ -806,7 +806,8 @@ def test_rollback_hands_the_copy_to_lado_update_and_resumes(recorder, homes, on_
     out = capsys.readouterr().out
     assert on_rc == ["Roll back? [y/N] "]
     assert "Roll back LADO 0.38.0rc1 to 0.37.1:" in out
-    assert "start them again on 0.37.1: app (/r/app)\n" in out  # not `done`: it is stopped
+    # Not `done`: it is stopped.
+    assert "- stop your sessions and start them again on 0.37.1: app (/r/app)\n" in out
     assert "restore lado.db from" in out and "schema 26" in out and "lost" in out
     assert recorder.verbs() == [
         "--version",
@@ -845,10 +846,31 @@ def test_a_session_the_copy_lacks_is_not_started_again(recorder, homes, on_rc, c
     assert rc.rollback() == 0
     ((plan, prompt),) = plans
     assert prompt == "Roll back? [y/N] "
-    assert "- stop your sessions and start them again on 0.37.1: app (/r/app)" in plan
+    assert (
+        "- stop your sessions: app (/r/app), web2 (/r/web2); start again on 0.37.1 those in the"
+        " copy: app (/r/app)\n" in plan
+    )
+    assert "start them again" not in plan  # it would promise web2 too
     assert "- not started again, not in the copy: web2\n" in plan
     assert recorder.argvs("start") == [[LADO, "start", "/r/app", "--name", "app", "--no-attach"]]
-    assert recorder.argvs("start") == [[LADO, "start", "/r/app", "--name", "app", "--no-attach"]]
+
+
+def test_no_session_in_the_copy_is_started_again(recorder, homes, on_rc, capsys, monkeypatch):
+    (homes.lado / "lado.db").unlink()
+    make_db(homes.lado / "lado.db", 27, [("rc1", "/r/rc1", None), ("rc2", "/r/rc2", None)])
+    recorder.alive = {"rc1", "rc2"}
+    plans = []
+    monkeypatch.setattr(
+        "builtins.input", lambda prompt: plans.append(capsys.readouterr().out) or "y"
+    )
+    assert rc.rollback() == 0
+    (plan,) = plans
+    assert (
+        "- stop your sessions: rc1 (/r/rc1), rc2 (/r/rc2); start again on 0.37.1 those in the"
+        " copy: none\n" in plan
+    )
+    assert "- not started again, not in the copy: rc1, rc2\n" in plan
+    assert recorder.argvs("start") == []
 
 
 def test_a_restore_lado_update_did_not_make_is_a_failure(recorder, homes, on_rc, capsys):

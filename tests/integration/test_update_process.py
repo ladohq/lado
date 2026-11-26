@@ -342,7 +342,7 @@ def test_update_to_an_older_schema_names_the_git_server_tokens_that_stay(
     publish(tmp_path, before)
     done = lado_cli("update", OLD, "--yes")
     assert done.returncode == 0, done.stdout + done.stderr
-    assert "default models, git servers.\n" in done.stderr
+    assert "default models, git servers,\n  commit authors.\n" in done.stderr
     assert (
         "  Git server tokens stay on disk; remove them when you no longer need them:\n"
         f"    {folder}\n"

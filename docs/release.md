@@ -248,8 +248,11 @@ docker pull ghcr.io/ladohq/lado:X.Y.ZrcN
 ```
 
 Run it with compose from a temporary folder, with a test workspace (one small
-git repository in it) and a port of its own, so it meets nothing of your own LADO. The
-`compose.yaml` comes as a user gets it, the release's asset, which the guide's update
+git repository in it), a port and a compose project of its own, so it meets nothing of your
+own LADO: `compose.yaml` names its project `lado`, as a Docker LADO installed by hand has
+it, and compose finds the container and the home volume by that name, not by the folder.
+Without `COMPOSE_PROJECT_NAME` the RC takes over your own container and migrates its home.
+The `compose.yaml` comes as a user gets it, the release's asset, which the guide's update
 downloads too; `cmp` checks it is the repository's file at the tag:
 
 ```
@@ -257,16 +260,21 @@ mkdir -p /tmp/lado-rc-image && cd /tmp/lado-rc-image
 curl -fLO https://github.com/ladohq/lado/releases/download/vX.Y.ZrcN/compose.yaml
 git -C <repository> show vX.Y.ZrcN:docker/compose.yaml | cmp - compose.yaml
 cat > .env <<'EOF'
+COMPOSE_PROJECT_NAME=lado-rc-image
 LADO_VERSION=X.Y.ZrcN
 LADO_WORKSPACE=/absolute/path/to/a/test/folder
 LADO_PORT=8799
 LADO_GIT_NAME="RC Check"
 LADO_GIT_EMAIL=rc-check@example.com
 EOF
+docker ps -a --filter label=com.docker.compose.project=lado-rc-image
 docker compose up -d
 docker compose logs lado
 docker compose exec lado lado ui --no-open
 ```
+
+`docker ps -a` lists no container before `up`: one it lists is a LADO of yours with that
+project name, which `up` would take over; choose another name.
 
 `docker compose logs lado` has no warning about `LADO_REPOS` (not mounted, not
 writable) nor about git's identity (`user.name`, `user.email`); the last command prints

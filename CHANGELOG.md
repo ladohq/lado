@@ -10,10 +10,8 @@
 - **A commit author per project.** On the project's page (or `lado project author <id>`):
   its agents commit with it in every repository of the project, over a git server's author.
 - **A guide for the first start.** A fresh LADO shows where to connect an AI model, set the
-  commit author and start the first session, with short tips the first time you meet a
-  session, a gate, a question or a terminal. Not now closes it for good; Help → Getting
-  started shows it again.
-  `LADO_GUIDE=0` (also in Docker's `.env`) keeps it from starting by itself.
+  commit author and start a session, then a tip the first time you meet a screen. Not now
+  closes it; Help → Getting started shows it again. `LADO_GUIDE=0` (Docker: `.env`) hides it.
 
 ### Improved
 
@@ -28,6 +26,17 @@
 - **Clearing the last commit author says agents cannot commit.** `lado git-server author
   --clear` and `lado project author <id> --clear` no longer promise commits when nobody is
   left to sign them: they say so, where, and how to set an author.
+
+### Docker image
+
+- **Git's name and email are optional in `.env`.** Without `LADO_GIT_NAME` and
+  `LADO_GIT_EMAIL` agents commit as the commit author set in Settings → Git servers; the
+  log's warning names that page.
+
+### Upgrade
+
+- **Running sessions restart with the update.** `lado update` stops and resumes them; after
+  an update made another way, restart them yourself.
 
 ## 0.48.0 (2026-11-21)
 

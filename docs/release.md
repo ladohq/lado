@@ -334,7 +334,12 @@ cd / && rm -rf /tmp/lado-rc-install
 ```
 
 On Windows 11 with Docker Desktop (the human, by hand: CI has no Windows with Linux
-containers), in PowerShell:
+containers). `install.ps1` has no folder of its own to give (only `-Yes`, `-Phone` and
+`-NoPhone`): it installs in Ubuntu's `~/lado-docker` as compose project `lado`, the place of
+a Docker LADO of yours, which it would update to the RC, and the clean-up below deletes it
+with its home volume. So run it only on a Windows machine with no Docker LADO: in Ubuntu,
+`ls ~/lado-docker` finds nothing and `docker ps -a --filter
+label=com.docker.compose.project=lado` lists no container. Then, in PowerShell:
 
 ```
 irm https://github.com/ladohq/lado/releases/download/vX.Y.ZrcN/install.ps1 | iex

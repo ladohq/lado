@@ -74,7 +74,7 @@ the code moves.
 | **M1** Agent API groundwork | Agents get a personal pass; the code that agents run is cut in two halves; the protocol is written down | — | E9, E14, E15 (done) for the threat model | no |
 | **M2a** Agent API in the server | The agents' requests go to `lado server` instead of touching LADO's files themselves | M1 gate | — | **yes, once (D2)**: `lado server` always runs |
 | **M2b** The boundary | An agent no longer gets LADO's folder, the tmux socket or other sessions' secrets; the code can run agents elsewhere | M2a's tools on the server | — | no |
-| **M3** Survive restarts | Work is snapshotted, conversations continue after a restart; a network proxy that watches; a separate user for agents if possible | M2b | E12 (conversations), E10 (uid) | no (all opt-in) |
+| **M3** Survive restarts | Work is snapshotted, conversations continue after a restart; a network proxy that watches; a separate user for agents if possible | M2b (hooks and `lado mcp` must no longer open `lado.db`: E10) | E12 (conversations); E10 done | no (all opt-in) |
 | **M4** The runner | Sessions can run in a separate container (the runner); on a Linux server, a container per session (runc) | M3 | E1 (storage default), E8 (limits, see Q-6), E7 (where runc is offered), E2 (warnings) | no (opt-in per project) |
 | **M4b** Closing the network and keys | The proxy enforces a list of allowed hosts; keys and git tokens never enter the sandbox; logins per session | M4 | E4 (logins) | no (opt-in with M4) |
 | **M5a** Cloud | LADO on an own server: protected panel, runner beside it, gVisor | M4b | E11 (hybrid only), E5 | no (a new install kind) |
@@ -102,7 +102,8 @@ M1 ──► M2a ──► M2b ──► M3 ──► M4 ──► M4b ──┬
   in their own sessions (plan, "How M0 and M1 run") while M1 is coded. M1 needs only the
   results already in (E9, E14, E15) for the threat model at its gate.
 - **Inside M1.** M1-1 (token), M1-2 (hook split), M1-3 (MCP front) and M1-4 (artifact
-  confinement) touch different files and can go in parallel; M1-6 (prototype) starts once
+  confinement) touch different files and can go in parallel; M1-10 (`LADO_HOME` closed)
+  depends on nothing and can ship first; M1-6 (prototype) starts once
   M1-2 and M1-3 are merged or from their branches; M1-7 (spec) and M1-8 (decision record)
   close the epic.
 - **Inside M2a.** After M2a-1 to M2a-4, the session passes (M2a-6) and the simple calls
@@ -131,7 +132,7 @@ M1 ──► M2a ──► M2b ──► M3 ──► M4 ──► M4b ──┬
 | E6 | not started | M5b on Windows | fix the installer before M5b |
 | E7 | not started | M4-7 and M5: where runc or runsc is offered at all | `lado doctor` says so; not offered there |
 | E8 | not started | M5b: limits in the nested runner; see Q-6 for M4 | limits per container |
-| E10 | not started | M3-5: the separate uid step | no uid step; the ladder skips step 2 |
+| E10 | done, passed with conditions | M1-10: `LADO_HOME` closed to other users; M3-5: the separate uid step in the Docker image, strictly after M2a and M2b; M2b-12: secrets out of command lines; M4-1: an entrypoint without sudo | — |
 | E11 | not started | M5a step 4 (the hybrid) | asynchronous hooks before the hybrid |
 | E12 | not started | M3-1 labels; M5b's default | a CLI that cannot is labelled; Claude or Codex failing blocks M5b's default |
 | E13 | not started | M5b: Docker Sandboxes as an external provider | the question is closed |
@@ -150,8 +151,9 @@ each agent a personal pass (a token), splits those helpers into a thin "client" 
 "server" half that still run in one process, writes the protocol between the halves down,
 and tries the whole idea once in a throwaway prototype.
 
-**What the user sees.** Nothing, except one fix: an agent can no longer make an artifact out
-of a file outside its own folders (M1-4).
+**What the user sees.** Nothing, except two fixes: an agent can no longer make an artifact
+out of a file outside its own folders (M1-4), and LADO's folder is closed to other users of
+the machine (M1-10).
 
 **What it protects against.** Nothing closed yet (the plan's threat table has no M1
 column). M1-4 closes one concrete path of T1 (an artifact of `~/.lado/lado.db` or of a token
@@ -363,6 +365,34 @@ decision record on the process model merged; the prototype reviewed; the threat 
   the plan's threat table with what M0 changed, bring it to the gate.
 - **Where.** `docs/research/session-isolation-plan.md`, section 4 and the M1 row.
 - **CHANGELOG.** No. **Size / depends on.** S. E9, E14, E15 (done).
+
+#### M1-10. LADO's folder closed to other users
+
+- **Goal.** `LADO_HOME` and the home of LADO's user in the Docker image have mode `700`,
+  so that no other uid on the machine can list them or copy `lado.db`. E10 found
+  `~/.lado` at `755` and `lado.db` at `644`: a second uid copied the database and read its
+  23 tables (the projects, the git servers' addresses). What LADO already writes with
+  `700`/`600` (secrets, tokens, `server-token`) stays as it is. Useful without the uid
+  step: on a shared Linux machine other local users can read `lado.db` today.
+- **Scope.** In: `state.home()` makes the folder with `700`; at start (`lado server`,
+  `lado start`) LADO tightens `LADO_HOME` to `700` when it owns it and it is wider, and
+  says so once; the server's umask `077` for the files it creates under `LADO_HOME`
+  (`lado.db`, `server.json`, lock files, messages, artifacts); the image's entrypoint does
+  `chmod 700 /home/lado`; a `lado doctor` check "LADO's folder is readable by others" with
+  the command that fixes it. Out: a `LADO_HOME` the user set to a folder LADO does not own
+  (doctor warns, LADO does not change it); the agent's uid (M3-5).
+- **Where in the code.** `state.py` (`home` 1482), `server/run.py` and `cli.py` (the
+  start), `docker/entrypoint.sh`, `doctor.py`.
+- **Users see.** On an install whose folder was wider, one line at start that LADO closed
+  it; a doctor check. Docs: docs/cli.md (`lado doctor`).
+- **Switch / rollback.** No switch: a revert. A user who relied on reading `~/.lado` from
+  another account loses that (CHANGELOG says how to read it as LADO's user).
+- **Tests.** Unit: a new home is `700`; a wide home is tightened and reported once; a home
+  owned by another uid is left and reported by doctor. Container: `stat` of `/home/lado`
+  and `~/.lado/lado.db` in the image.
+- **CHANGELOG.** Yes, `### Improved`: "**LADO's folder is closed to other users of the
+  machine.** …".
+- **Size / depends on.** S. —
 
 **Risks of M1 and how it limits them.** The split could slow every hook (an extra layer):
 M1-2 keeps one process and the prototype measures the socket. The prototype could grow
@@ -780,7 +810,8 @@ found (M2b-11).
 - **Goal.** The gate's proof. A CI job runs the integration suite's agents in the second
   backend, with canaries: a unique value in a file in `LADO_HOME`, in another session's
   secret, in another project's secret and in the tmux socket's path; the agents' fake
-  steps try to read each, and the job fails if any is found in an agent's output, an
+  steps try to read each (also in `ps` output and `/proc/*/cmdline`, which E10 found
+  readable across uids), and the job fails if any is found in an agent's output, an
   artifact or a commit.
 - **Scope.** In: the job in `.github/workflows/ci.yml`, a member of `ci-ok`; the fake
   agent's probing steps (`tests/integration/fake_agent.py`). Out: a same-uid native
@@ -788,6 +819,21 @@ found (M2b-11).
 - **Users see.** Nothing.
 - **Docs.** docs/testing.md; plan, M2b row status.
 - **CHANGELOG.** No. **Size / depends on.** M. M2b-8, M2b-10.
+
+#### M2b-12. No secrets in command lines or in tmux's `-e`
+
+- **Goal.** E10: an agent sees the command lines of LADO's processes in `ps`, even as
+  another uid. No secret may be in an argv of LADO's or in the variables LADO gives tmux
+  with `-e` (`tmux.popup_command` 317, the popups only).
+- **Scope.** In: a review of every `subprocess` and tmux call that carries a value from a
+  secret layer; values moved to files or the environment of the started process; a test
+  that fails when a canary secret appears in an argv. Out: the agent's own processes.
+- **Where.** `tmux.py` (`popup_command`), `runs.py` `_popup`, `logins.py`,
+  `git_servers.py`, `mcp_exec.py`.
+- **Users see.** Nothing.
+- **Tests.** Unit: the canary is in no argv LADO builds (the recorder of `fake_tmux`);
+  integration: `ps` of a running session shows no canary.
+- **CHANGELOG.** No. **Size / depends on.** S. —
 
 **Risks of M2b and how it limits them.** The refactors touch many call sites: each is
 mechanical and protected by the unchanged suite plus a grep test. Something still reads
@@ -811,7 +857,9 @@ conversation after a restart and which starts over (M3-1). Nothing changes by de
 "open (the proxy observes, but is never an open proxy)"). With the uid step (M3-5): T1 and
 T2 for the image, as the agents' user cannot read `~/.lado`.
 
-**Entry conditions.** M2b's gate. E12 for M3-1's labels; E10 for M3-5.
+**Entry conditions.** M2b's gate. E12 for M3-1's labels. M3-5 strictly after M2a-12 and
+M2b-5: E10 showed that hooks and `lado mcp` running as another uid fail on `lado.db`
+("attempt to write a readonly database"), which breaks the statuses and the tools.
 
 **Exit gate** (plan 7, M3): a restart mid-turn loses nothing.
 
@@ -894,20 +942,49 @@ T2 for the image, as the agents' user cannot read `~/.lado`.
   with an open request.
 - **CHANGELOG.** Yes, `### Docker image`. **Size / depends on.** M. M3-3a.
 
-#### M3-5. A separate uid for the agents (only if E10 passes)
+#### M3-5. A separate uid for the agents in the Docker image (E10 passed with conditions)
 
 - **Goal.** In LADO's Docker image, the agents' process tree runs as a second user that
-  cannot read `LADO_HOME`, the tmux socket or other sessions' folders; the bind-mounted
-  repositories stay writable for it (E10's threshold: "bind and the CLIs work").
-- **Scope.** In: the user in the image; the launch through `setpriv` or similar from the
-  backend's `launch`; file ownership and group of worktrees; `codex sandbox` as that user
-  (E10 includes making it work). Out: native Linux and macOS (Q-5).
-- **Where.** `docker/`, `execution.py` (local backend's launch), `providers/codex.py`.
-- **Users see.** In the image: nothing, unless something breaks (then the doctor says so).
-- **Switch / rollback.** An image setting, default as E10 and the human decide.
-- **Tests.** Container: an agent cannot read `~/.lado/lado.db`; the CLIs start; a commit
-  in a bind-mounted repository works.
-- **CHANGELOG.** Yes, `### Docker image`. **Size / depends on.** M. E10; M2b-8.
+  cannot read `LADO_HOME`, LADO's tmux socket or other sessions' folders, while the
+  bind-mounted repositories stay writable for both it and the human (E10's layout A: LADO
+  stays the uid of the workspace's owner, the agents get their own).
+- **Scope.** Split in three:
+  - **M3-5a (S): the agent's own HOME.** A `700` home per agent user with the CLIs'
+    configs in it; `CLAUDE_CONFIG_DIR` and `NPM_CONFIG_PREFIX` (Dockerfile 221, 227, today
+    in LADO's home) overridden for the agent; the CLIs' logins moved there or passed as
+    variables, as LADO's secrets already are (with real logins: E4). Codex needs a
+    writable HOME or an existing `CODEX_HOME`.
+  - **M3-5b (M): starting as the agent and its tmux.** A narrow helper in the image
+    (setuid root, `root:lado 4750`, it can only become the agent's user, with a check that
+    root cannot be regained) or a sudo rule limited to that user; `setpriv` and `runuser`
+    do not work without capabilities (E10). The agent's tmux server belongs to the agent;
+    LADO joins it with `server-access -a lado` (tmux ≥ 3.3; the image has 3.3a). The local
+    backend's `launch` (M2b-1) uses it. In the runner (M4, M5) the runtime sets the uid
+    (`docker exec -u`, `runsc exec --user`), no helper. Note: the helper brings back a
+    setuid-root path the entrypoint removes today; the threat model says so.
+  - **M3-5c (S): bind-mounted repositories.** ACLs on the workspace for the agents' uid
+    (`setfacl` with default entries, so the host's later files are covered too): set by
+    `install.sh` and by `lado doctor --fix`, checked by `lado doctor`. A shared group is not
+    enough (the host's new files with umask 022). `safe.directory '*'` stays in the image
+    for layout A. **Open item:** Docker Desktop's bind mounts on macOS and Windows
+    (virtiofs) were not checked; the host's ACLs may not get through. Check it before
+    offering the step there; until then the step is for a Linux host's Docker only.
+  - Out: native Linux and macOS (Q-5); `codex sandbox` under runc. It needs user
+    namespaces, which Docker's default seccomp refuses; opening them weakens the
+    container, so in this step codex runs without its own sandbox (labelled), and the
+    sandbox comes with runsc (M5).
+- **Where.** `docker/` (Dockerfile, entrypoint, install.sh), `execution.py` (the local
+  backend's launch), `tmux.py`, `providers/codex.py`, `providers/claude.py`, `doctor.py`.
+- **Users see.** In the image, with the setting on: the session's protection level
+  "separate user" (M4-8 or a first version of it here), the label that Codex's own sandbox
+  is off, a doctor line about the ACLs.
+- **Switch / rollback.** An image setting, off by default until the human decides.
+- **Tests.** Container: an agent cannot list `~/.lado` or copy `lado.db`, nor reach LADO's
+  tmux socket or processes; the four CLIs start; a commit by the agent and by the host in a
+  bind-mounted repository both ways, also for a file the host made later; LADO's own
+  `git worktree add` works. E10's table as the regression suite.
+- **CHANGELOG.** Yes, `### Docker image`. **Size / depends on.** M in all (3 tasks).
+  M1-10, M2a-12, M2b-5, M2b-8.
 
 **Risks of M3 and how it limits them.** A proxy is a new attack surface: E3's table is its
 regression suite, and it is opt-in. A CLI may ignore `HTTPS_PROXY`: the smoke layer checks
@@ -944,7 +1021,9 @@ restart.
 
 - **Goal.** The image splits: the panel (UI, server, database) and the runner (agent CLIs,
   tmux, git, the gateway). `safe.directory '*'` is removed from the panel's image
-  (Dockerfile 148; plan 6.3).
+  (Dockerfile 148; plan 6.3). The runner image's entrypoint needs no sudo or setuid: the
+  runtime sets the uid from outside (E10: today's image exits under runsc at the
+  entrypoint's sudo step, and works with `no-new-privileges` only by skipping it).
 - **Scope.** In: two Dockerfile targets or files; the release workflow builds and pushes
   both (openspec `image-release`); `make docker` builds both; compose runs the panel
   alone for today's users (the runner is not needed until a project chooses it). Out: the
@@ -1242,7 +1321,7 @@ kit's checks.
   default.
 - **Scope.** runsc in the runner image, updated through `lado update`; the nested
   runner's profile R-uid or R+net (Q5, after E1, E2, E7, E8); a narrow seccomp profile
-  with a loud fallback; AppArmor (`lado-runner-lite` with `userns,`, E15) installed by the
+  with a loud fallback; the image's entrypoint without the sudo step (E10); AppArmor (`lado-runner-lite` with `userns,`, E15) installed by the
   installer; `lado doctor`; cleaning device nodes; the integration suite inside the runner
   in CI (runc and runsc); then isolation by default.
 - **Dependencies.** M4b; E1, E2, E5, E6, E7, E8, E12, E13 closed; Q5.
@@ -1317,7 +1396,7 @@ together. The RC checks the way back on a test home (docs/release.md 4.4).
 | M1 | hook argv in settings.json (M1-2); event table (M1-5) | hook argv in config.toml; event table | the plugins' options carry the argv; `make test-js` |
 | M2a | hooks over the server; smoke | the same | the plugins spawn the same argv |
 | M2b | launch bundle M2b-3a; `edit_config` at materialize; credential helper | M2b-3b; CODEX_HOME; credential helper | M2b-3c |
-| M3 | conversation continue (E12); `HTTPS_PROXY` honoured? | the same; `codex sandbox` as a second uid (E10) | the same |
+| M3 | conversation continue (E12); `HTTPS_PROXY` honoured?; the agent's own `CLAUDE_CONFIG_DIR` (M3-5a) | the same; as a second uid its own HOME, `codex sandbox` off under runc (E10) | the same |
 | M4 | in a runner; keychain does not exist there (A1 4.5: say so loudly) | runc mode turns off its own sandbox (label) | the same |
 | M4b | base URL key injection; login per sandbox (setup-token, E4) | base URL; device login per sandbox; two sessions in parallel (the gate) | base URL; OAuth callback check |
 
@@ -1397,7 +1476,7 @@ Each blocks the epic named; a recommendation for each.
 | Q-2 | Once the server is mandatory, what does `lado server stop` do while sessions run? | M2a-12 | Refuse with the sessions named and the command that stops them (`lado stop --all`), with `--force` that stops anyway; `lado update` and `lado uninstall` already stop sessions first |
 | Q-3 | The CI time budget for running the integration suite in two modes (plan 6.1: an open item of M2a) | M2a-5 | Allow up to +50 % on the `integration` job while both modes exist, measured in M2a-5 before the flip; drop the old mode's run at M2a-13 |
 | Q-4 | **Gap in the plan.** M3 asks the observe proxy to run "under its own uid with owner rules" from day one, but owner rules need root or `NET_ADMIN`, which native installs and today's image do not have | M3-4 | Address checks in the proxy's code always (never an open proxy); kernel owner rules only where the proxy runs with `NET_ADMIN` (the image with an opt-in, then the runner); `lado doctor` says which; native installs get the proxy without owner rules |
-| Q-5 | The separate uid step (M3, Q4): only in the Docker image, or also native Linux and a separate macOS user? Native needs admin rights to create a user | M3-5 | The Docker image only in M3, if E10 passes; native only on real demand |
+| Q-5 | The separate uid step (M3, Q4): only in the Docker image, or also native Linux and a separate macOS user? Native needs admin rights to create a user | M3-5 | The Docker image only in M3 (E10 passed there, with conditions); native only on real demand |
 | Q-6 | **Deviation.** The brief asks for E8 before M4's limits. E8 measures cgroups per sandbox under runsc in the nested runner; for M4's runc mode (a container per session on the host) E9 and E14 already showed Docker's limits work | M4-7c | Let M4-7c go on E9/E14's evidence; keep E8 as the entry condition for limits in the nested runner (M5b) |
 | Q-7 | With secrets per session (M2b-9), which saved git servers may a session's agents use: all (today), or only the hosts of its project's remotes plus a per-project list? | M2b-6, M2b-9 | The hosts of the session repository's remotes plus an explicit per-project list; a refusal names the setting |
 | Q-8 | When "open a PR/MR" becomes a LADO tool (M4b-6), kits that call `gh pr create` lose the token in runner sessions. How do kits move? | M4b-6 | Only runner sessions lose the token; the kit's tool check refuses loudly there; the sdlc kit gets a release that uses the tool |

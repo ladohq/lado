@@ -1,6 +1,6 @@
 # Session isolation as the first step to a cloud: the plan
 
-Date: 2026-11-27. **Status: M0 under way: E14, E9, E3, E15 done (2026-11-27/28).** Next
+Date: 2026-11-27. **Status: M0 under way: E14, E9, E3, E15, E10 done (2026-11-27/28).** Next
 review after the M0 experiments and the M1 prototype. This plan is living: each later
 session updates the Status columns, the decisions and this header, as
 [cloud-workers-plan.md](cloud-workers-plan.md) does; the research and the archived inputs
@@ -48,7 +48,8 @@ analyses are A1-A3.
 | Q5 | The nested runner's profile: R-uid ([E15](session-isolation/m0-e15.md)) or R+net | Not decided. R-uid is the preferred candidate for the nested runner; the final choice after E1, E2, E7 and E8 (speed, density, environments, cgroups), at M5b | open |
 
 **Q2, the isolation ladder.** Step 0, as today → 1, the agent API boundary (M2) → 2, a
-separate uid for the agents' processes (M3, only if E10 passes) → 3, a runc container per
+separate uid for the agents' processes (M3; E10 passed with conditions: after M2, see
+E10's row) → 3, a runc container per
 session (M4) → 4, runsc (gVisor) (M5). This is the order of work. The default stays "as
 today" until the human decides at M5b's gate; whether steps 2 and 3 exist depends on E10
 and E9. The reasons:
@@ -89,7 +90,8 @@ information that only identifies the machine are acceptable". So:
   ([session-isolation.md](session-isolation.md), 4.3).
 
 **Q4, a native macOS install.** No isolation, but behind the agent API boundary (M2) and, if
-E10 passes, a separate macOS user (M3). Full isolation on a Mac only through Docker
+E10 passes, a separate macOS user (M3). E10 checked the Docker image only; a separate
+macOS user is not checked (and the development plan's Q-5 recommends the image only). Full isolation on a Mac only through Docker
 Desktop: one install for macOS, Windows and Linux; the UI and the docs say so. macOS
 Seatbelt (`sandbox-exec`) is not in the plan: deprecated, fragile, and it clashes with the
 CLIs' own sandboxes. Revisit only on real demand.
@@ -182,7 +184,7 @@ protected from the agent's code".
 ## 5. The M0 experiments
 
 The thresholds are written down before the experiments. **First batch:** E14, E1, E9, E3,
-E15. Status: E14, E9, E3, E15 done (2026-11-27/28), the rest not started.
+E15. Status: E14, E9, E3, E15, E10 done (2026-11-27/28), the rest not started.
 
 | # | Experiment | Platforms | Threshold → decision | Status |
 |---|---|---|---|---|
@@ -195,7 +197,7 @@ E15. Status: E14, E9, E3, E15 done (2026-11-27/28), the rest not started.
 | E4 | Logins: Codex device login per session; Claude `setup-token` and pasting the code; one Claude subscription in two sandboxes over a refresh | any | a shared Claude login breaks → a login per sandbox for Claude too | not started |
 | E7 | CI cells: Engine 29, Fedora with SELinux, rootless Docker, userns-remap | Linux | does not work → `lado doctor` says so, and runsc is not offered there | not started |
 | E8 | cgroups per sandbox under runsc | Linux, macOS | the limits do not work → limits at the level of a container per session | not started |
-| E10 | A separate uid for the agent's process tree in today's image | the Docker image | bind and the CLIs work → the uid step in M3 | not started |
+| E10 | A separate uid for the agent's process tree in today's image | the Docker image | bind and the CLIs work → the uid step in M3 | **done, passed with conditions**: as a second uid tmux, git in a bind-mounted repository, the four CLIs and `uv run` work. Conditions: (1) **after M2**: hooks and `lado mcp` open `lado.db` themselves and fail from another uid ("attempt to write a readonly database"), so the uid step needs the Agent API through `lado server`; (2) **`LADO_HOME` and LADO's home with mode `700`**: today `~/.lado` is `755` and `lado.db` `644`, and the agent copies and reads the database (everything LADO writes with `700`/`600`, the secrets, tokens and `server-token`, stays closed); (3) **the agent's own HOME** (`700`) with the CLIs' configs, `CLAUDE_CONFIG_DIR` and `NPM_CONFIG_PREFIX` overridden, the logins moved to the agent or passed as variables. Writing to a bind-mounted repository needs ACLs on the host (layout A: LADO stays the human's uid, the agents get their own; a shared group fails for the host's later files; the reverse layout B breaks LADO's own `git worktree add`). Starting as the agent: a narrow setuid helper or a sudo rule inside today's image (neither works under `no-new-privileges` or gVisor); in the runner the runtime sets the uid. tmux: the agent's server, LADO joins with `server-access -a lado` (tmux ≥ 3.3). `codex sandbox` as the second user needs user namespaces (not under runc's default seccomp; works under runsc) and, with a system bwrap, a writable HOME. LADO's image under runsc exits at the entrypoint's sudo step. Not checked: Docker Desktop's bind mounts (ACLs over virtiofs), real logins. [Report](session-isolation/m0-e10.md) |
 | E11 | Hook and MCP latency over a network against the 20 s and 60 s limits | a network | does not fit → asynchronous hooks before the hybrid | not started |
 | E12 | Each CLI continuing its conversation after a runner restart | 4 CLIs | Claude and Codex can → isolation by default may be switched on; a CLI that cannot is labelled loudly in the UI ("the conversation starts over"). Claude or Codex cannot → that blocks M5b | not started |
 | E13 | Docker Sandboxes as the path for macOS and Windows | macOS, Windows | VM isolation with nothing installed beyond Docker Desktop, our CLIs and network control work → a candidate "external provider" for M5b; otherwise the question is closed | not started |
@@ -305,11 +307,11 @@ The human's yes is needed at each milestone's gate.
 
 | Milestone | Content | Gate | Status |
 |---|---|---|---|
-| **M0** | The experiments of section 5, first batch E14, E1, E9, E3, E15 | the thresholds approved before the experiments; the human's decision on each result | under way: E14, E9, E3, E15 done |
+| **M0** | The experiments of section 5, first batch E14, E1, E9, E3, E15 | the thresholds approved before the experiments; the human's decision on each result | under way: E14, E9, E3, E15, E10 done |
 | **M1** | A token per agent; the hook split in two halves with the event classes; the `lado mcp` front as a proxy, `write_artifact(file=)` only from the agent's folders; a throwaway end-to-end prototype (not merged) | **the Agent API protocol spec** in `openspec/specs`, **a decision record on the process model** (`lado server`, `lado loop`, the entry), a review of the prototype and the threat model approved | not started |
 | **M2a** | The Agent API in `lado server` (a separate entry, automatic start, a test fixture, the sessions' passes in the server); the simple calls; then the tools one per release: `list_models` → `finish_worker` → `spawn_worker` → `start_session` | the integration suite green through the server; a server failure mid-turn checked by a test (6.1); the CI budget kept | not started |
 | **M2b** | The execution backend (the local one is tmux); `Workspace` with the rule of 6.3; the launch bundle; paths relative to the place of execution; the agent's environment without `LADO_HOME`, the tmux socket and others' secrets, secrets per session; a narrow `gh`/`glab` token and a check in `lado doctor`; a second backend in the tests and a contract test | **the CI cell "boundary":** the agent cannot reach `LADO_HOME`, the socket or others' secrets, the integration suite is green, no canaries found | not started |
-| **M3** | Conversations continue after a restart; work snapshots (6.3); the proxy in observe mode, never an open proxy: from day one under its own uid, with owner rules and the address check before connecting (E3); a separate uid if E10 passed | a restart mid-turn loses nothing | not started |
+| **M3** | Conversations continue after a restart; work snapshots (6.3); the proxy in observe mode, never an open proxy: from day one under its own uid, with owner rules and the address check before connecting (E3); a separate uid in the Docker image (E10 passed with conditions: after M2, `LADO_HOME` `700`, the agent's own HOME, ACLs on bind-mounted repositories) | a restart mid-turn loses nothing | not started |
 | **M4** | The `lado` and `runner` images; the runner → panel channel; lease, epochs, buffer, reconciliation (6.2); a session in the runner without a sandbox; the terminal and `lado attach` through the runner; a "sandbox provider" and runc mode (netns, limits). On an own server runc mode is a container per session of the host's Docker (E9, E14) in network scheme B, with the `INPUT`/`ip6tables` rules installed by the launching component at its start and checked by `lado doctor`; the launching component is a trusted part of the host with a narrow API | a LADO session reaches merge in a runner, also across a runner restart | not started |
 | **M4b, shared** | A strict proxy with an allowlist (E3): CONNECT only, strict head parsing and limits, the allowlist before DNS, all resolved addresses global and the connection to the checked address, no IP literals, a port list, owner rules on its uid, per-sandbox connection limits, E3's table kept as the proxy's regression suite; IPv6; the flow "a host outside the list is needed"; API key injection through each CLI's base URL; the git relay; "open a PR/MR" as an Agent API tool; logins per sandbox (size L, the UI designed ahead). **Open item:** what to do with the agent's configuration from the repository (T10) | rows T3 and T11 closed by tests; two Codex sessions in parallel | not started |
 | **M5a, cloud** | 1) panel protection (TLS, login, WebSocket) and a backup of `lado.db`; 2) panel and runner on one server (compose, the Docker network), runsc as the host's runtime (E14 passed), scheme B and the host's rules as in M4; 3) k8s with an external provider (a pod with a RuntimeClass per session); 4) the hybrid, by a separate decision | dogfooding LADO on the server, an 8-hour run | not started |
@@ -340,7 +342,8 @@ In the order of work.
 8. E8: cgroups per sandbox under runsc.
 9. E4: Codex and Claude logins in a sandbox, one subscription in two sandboxes.
 10. E12: each CLI continuing its conversation after a runner restart.
-11. E10: a separate uid for the agents in today's image.
+11. E10: a separate uid for the agents in today's image. Done
+    ([report](session-isolation/m0-e10.md)).
 12. E11: hook and MCP latency over a network against the limits.
 13. E5: runsc's changelog plus a short tmux and PTY regression.
 14. E13: Docker Sandboxes on macOS and Windows.

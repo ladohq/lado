@@ -71,7 +71,7 @@ the code moves.
 
 | Epic | In plain words | Depends on | Waits for experiments | Default for users changes? |
 |---|---|---|---|---|
-| **M1** Agent API groundwork | Agents get a personal pass; the code that agents run is cut in two halves; the protocol is written down | — | E9, E14, E15 (done) for the threat model | no |
+| **M1** Agent API groundwork | Agents get a personal pass; the code that agents run is cut in two halves; the protocol is written down | — | E9, E14, E15, E10 (done) for the threat model | no |
 | **M2a** Agent API in the server | The agents' requests go to `lado server` instead of touching LADO's files themselves | M1 gate | — | **yes, once (D2)**: `lado server` always runs |
 | **M2b** The boundary | An agent no longer gets LADO's folder, the tmux socket or other sessions' secrets; the code can run agents elsewhere | M2a's tools on the server | — | no |
 | **M3** Survive restarts | Work is snapshotted, conversations continue after a restart; a network proxy that watches; a separate user for agents if possible | M2b (hooks and `lado mcp` must no longer open `lado.db`: E10) | E12 (conversations); E10 done | no (all opt-in) |
@@ -98,9 +98,9 @@ M1 ──► M2a ──► M2b ──► M3 ──► M4 ──► M4b ──┬
 
 ### 2.3 What can run in parallel
 
-- **M0 and M1.** The M0 experiments (E1, E2, E4-E8, E10-E13) run on their own machines and
-  in their own sessions (plan, "How M0 and M1 run") while M1 is coded. M1 needs only the
-  results already in (E9, E14, E15) for the threat model at its gate.
+- **M0 and M1.** The M0 experiments still open (E1, E2, E4-E8, E11-E13) run on their own
+  machines and in their own sessions (plan, "How M0 and M1 run") while M1 is coded. M1
+  needs only the results already in (E9, E14, E15, E10) for the threat model at its gate.
 - **Inside M1.** M1-1 (token), M1-2 (hook split), M1-3 (MCP front) and M1-4 (artifact
   confinement) touch different files and can go in parallel; M1-10 (`LADO_HOME` closed)
   depends on nothing and can ship first; M1-6 (prototype) starts once
@@ -112,7 +112,8 @@ M1 ──► M2a ──► M2b ──► M3 ──► M4 ──► M4b ──┬
 - **Inside M2b.** The execution backend (M2b-1), the git workspace (M2b-2) and the launch
   bundle (M2b-3) are independent; the removal of LADO's variables from the agent's
   environment (M2b-8) waits for every agent-side reader to be moved (M2b-4 to M2b-7).
-- **M3's tasks** are independent of each other.
+- **M3's tasks** are independent of each other, except M3-4 after M3-3a; M3-5 needs
+  M1-10 and M2b's tasks M2b-5 and M2b-8 merged.
 - **M4's images (M4-1)** can start during M3; the runner's channel and backend wait for
   M3's snapshots only for the "across a runner restart" part of M4's gate.
 - **After M4b** the two tracks M5a and M5b run in parallel (plan 7).
@@ -164,7 +165,7 @@ refactoring with no change of behaviour.
 
 **Exit gate** (plan 7, M1): the Agent API protocol spec merged in `openspec/specs`; the
 decision record on the process model merged; the prototype reviewed; the threat model
-(plan, section 4) approved by the human, with the first M0 results (E9, E14, E15) in.
+(plan, section 4) approved by the human, with the first M0 results (E9, E14, E15, E10) in.
 
 #### M1-1. A token per agent
 
@@ -364,7 +365,9 @@ decision record on the process model merged; the prototype reviewed; the threat 
 - **Goal.** The human approves plan section 4 with the M0 results in. A docs task: update
   the plan's threat table with what M0 changed, bring it to the gate.
 - **Where.** `docs/research/session-isolation-plan.md`, section 4 and the M1 row.
-- **CHANGELOG.** No. **Size / depends on.** S. E9, E14, E15 (done).
+- **CHANGELOG.** No. **Size / depends on.** S. E9, E14, E15, E10 (done). E10 adds to
+  the table: the agents read `lado.db` across uids until M1-10; the uid step's setuid
+  helper is a new setuid-root path in the image (M3-5b).
 
 #### M1-10. LADO's folder closed to other users
 
@@ -1021,7 +1024,8 @@ restart.
 
 - **Goal.** The image splits: the panel (UI, server, database) and the runner (agent CLIs,
   tmux, git, the gateway). `safe.directory '*'` is removed from the panel's image
-  (Dockerfile 148; plan 6.3). The runner image's entrypoint needs no sudo or setuid: the
+  (Dockerfile 148; plan 6.3). The runner image keeps it while the agents' user is not the
+  owner of a bind-mounted repository (E10's layout A). The runner image's entrypoint needs no sudo or setuid: the
   runtime sets the uid from outside (E10: today's image exits under runsc at the
   entrypoint's sudo step, and works with `no-new-privileges` only by skipping it).
 - **Scope.** In: two Dockerfile targets or files; the release workflow builds and pushes
@@ -1387,7 +1391,7 @@ together. The RC checks the way back on a test home (docs/release.md 4.4).
 | Native macOS | the server always runs (M2a-12); boundary as on Linux | proxy observe (no owner rules); no uid step (Q-5) | runner only through Docker Desktop, no runc mode (E9) | M5b through Docker Desktop (Q4) |
 | Native Linux | the same | proxy observe; no uid step (Q-5) | runner with Docker; runc mode where E7 allows | M5a on an own server; M5b local |
 | WSL2 (Windows) | the same as Linux (native Windows is refused, `console.py`) | the same | runner with Docker Desktop's engine or Docker in WSL2: runc mode only with a Linux Docker engine, to be checked by E7 or E6 | M5b; E6 for the PowerShell path |
-| LADO's Docker image | nothing visible (the server is the container's process) | owner rules with an opt-in `NET_ADMIN` (M3-4); uid step (M3-5) | the panel image; the runner image beside it | M5a's compose |
+| LADO's Docker image | nothing visible (the server is the container's process) | owner rules with an opt-in `NET_ADMIN` (M3-4); uid step (M3-5) on a Linux host's Docker; on Docker Desktop only after its bind mounts are checked (M3-5c) | the panel image; the runner image beside it | M5a's compose |
 
 ### 4.4 The four providers
 

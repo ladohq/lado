@@ -23,6 +23,7 @@ The reports, the briefs and two diagrams are in [session-isolation/](session-iso
 | [M0 E9](session-isolation/m0-e9.md) | M0, GitHub runners: the runc step, a container per session without gVisor |
 | [M0 E3](session-isolation/m0-e3.md) | M0, GitHub runners: the proxy and the Agent API gateway inside the runner or in its own container |
 | [M0 E15](session-isolation/m0-e15.md) | M0, GitHub runners: rootless runsc with a uid per sandbox (the profile R-uid) |
+| [M0 E10](session-isolation/m0-e10.md) | M0, GitHub runners: a separate uid for the agents in today's LADO image |
 
 The briefs the spike agents worked from: [round 1](session-isolation/gvisor-spike-brief.md),
 [round 2](session-isolation/gvisor-spike-2-brief.md),

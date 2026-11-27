@@ -51,8 +51,9 @@ analyses are A1-A3.
 separate uid for the agents' processes (M3; E10 passed with conditions: after M2, see
 E10's row) → 3, a runc container per
 session (M4) → 4, runsc (gVisor) (M5). This is the order of work. The default stays "as
-today" until the human decides at M5b's gate; whether steps 2 and 3 exist depends on E10
-and E9. The reasons:
+today" until the human decides at M5b's gate. Whether steps 2 and 3 exist was left to E10
+and E9: step 2 exists in the Docker image, after M2 (E10, with conditions); step 3 only on a
+Linux host (E9, see "Q2 amended" below). The reasons:
 
 - the main threat (a prompt-injected agent reading other sessions or sending data out) is
   mostly closed already at runc, at near-native speed;
@@ -91,10 +92,11 @@ information that only identifies the machine are acceptable". So:
 
 **Q4, a native macOS install.** No isolation, but behind the agent API boundary (M2) and, if
 E10 passes, a separate macOS user (M3). E10 checked the Docker image only; a separate
-macOS user is not checked (and the development plan's Q-5 recommends the image only). Full isolation on a Mac only through Docker
-Desktop: one install for macOS, Windows and Linux; the UI and the docs say so. macOS
-Seatbelt (`sandbox-exec`) is not in the plan: deprecated, fragile, and it clashes with the
-CLIs' own sandboxes. Revisit only on real demand.
+macOS user is not checked (and the development plan's Q-5 recommends the image only).
+Full isolation on a Mac only through Docker Desktop: one install for macOS, Windows and
+Linux; the UI and the docs say so. macOS Seatbelt (`sandbox-exec`) is not in the plan:
+deprecated, fragile, and it clashes with the CLIs' own sandboxes. Revisit only on real
+demand.
 
 ## How M0 and M1 run (decided 2026-11-27)
 
@@ -112,7 +114,8 @@ CLIs' own sandboxes. Revisit only on real demand.
    layer between macOS, Windows and Linux". Their profile differs: rootless runsc,
    everything dropped except `SYS_CHROOT`, no network, one single-use sandbox. For our
    profile (a root runner with six capabilities, a netns per sandbox, many long-lived
-   sandboxes) the sources have no precedent. So the checks that narrow the runner's
+   sandboxes) the sources have no precedent. (Since then E15 found a candidate with three
+   capabilities, R-uid: Q5.) So the checks that narrow the runner's
    privileges (E7, E14, E15, mandatory AppArmor) come in the first batch. For k8s and a
    paid service the orchestrator gives the sandbox.
 2. **The past conclusions were too optimistic** (section 3; the second review confirmed it

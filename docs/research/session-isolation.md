@@ -9,8 +9,9 @@ decisions it led to are in the living plan,
 [cloud-workers-plan.md](cloud-workers-plan.md) (section 1, 2026-11-26). **Since 2026-11-27
 the work is planned in [session-isolation-plan.md](session-isolation-plan.md)** (experiments,
 threat model, milestones); some claims below were corrected then, see
-[Corrections](#corrections-2026-11-27). The reports, the briefs and two diagrams are in
-[session-isolation/](session-isolation/):
+[Corrections](#corrections-2026-11-27). The results of the M0 experiments (from
+2026-11-27) are in [the plan, section 5](session-isolation-plan.md#5-the-m0-experiments).
+The reports, the briefs and two diagrams are in [session-isolation/](session-isolation/):
 
 | Report | What about |
 |---|---|
@@ -18,11 +19,15 @@ threat model, milestones); some claims below were corrected then, see
 | [S2](session-isolation/s2-macos-phase-b.md) | round 2 Phase B on macOS: a narrow seccomp profile, the minimal capabilities, what an escapee gets |
 | [S3](session-isolation/s3-linux.md) | round 2, Linux x86 and arm64 (GitHub runners): AppArmor, `ptrace` in R, the `kvm` platform, Kata |
 | [S4](session-isolation/s4-windows-wsl2.md) | round 2, Windows WSL2 with Docker Engine (not Docker Desktop): bind places, line endings, KVM |
+| [M0 E14](session-isolation/m0-e14.md) | M0, GitHub runners: runsc as the host's Docker runtime against the nested runner |
+| [M0 E9](session-isolation/m0-e9.md) | M0, GitHub runners: the runc step, a container per session without gVisor |
+| [M0 E3](session-isolation/m0-e3.md) | M0, GitHub runners: the proxy and the Agent API gateway inside the runner or in its own container |
+| [M0 E15](session-isolation/m0-e15.md) | M0, GitHub runners: rootless runsc with a uid per sandbox (the profile R-uid) |
 
 The briefs the spike agents worked from: [round 1](session-isolation/gvisor-spike-brief.md),
 [round 2](session-isolation/gvisor-spike-2-brief.md),
 [round 3](session-isolation/gvisor-spike-3-brief.md) (Docker Desktop on Windows, not run
-yet). The reports were written in Russian and are kept here in English with all their
+yet), [M0](session-isolation/m0-experiments-brief.md) (the experiments run on GitHub). The reports were written in Russian and are kept here in English with all their
 tables and numbers. They refer to raw logs, scripts and seccomp profiles (`logs/`, `runs/<id>/`,
 `scripts/`, `seccomp/`) that stayed in the spike folders and **are not committed**; the
 profiles' content is given in the reports as diffs.

@@ -1,8 +1,8 @@
 # Session isolation as the first step to a cloud: the plan
 
-Date: 2026-11-27. **Status: plan agreed; nothing started.** Next review after the M0
-experiments and the M1 prototype. This plan is living: each later session updates the
-Status columns, the decisions and this header, as
+Date: 2026-11-27. **Status: M0 under way: E14, E9, E3, E15 done (2026-11-27/28).** Next
+review after the M0 experiments and the M1 prototype. This plan is living: each later
+session updates the Status columns, the decisions and this header, as
 [cloud-workers-plan.md](cloud-workers-plan.md) does; the research and the archived inputs
 stay as written.
 
@@ -19,9 +19,10 @@ versions 1 and 2 were session artifacts and are not kept. It is based on:
 
 **Names in this file.** D1, D2 are the human's decisions (the Russian draft's R1, R2; renamed
 so they do not clash with the cloud workers reports R1-R4 or the runner profiles R and
-R+net). Q1-Q4 are the questions of plan version 2. T1-T11 are threats. E1-E15 are the M0
-experiments. K1-K14 and P1-P10 are the reviews' points (P1-P10 are not the spikes'
-privilege profiles P1-P6). The analyses are A1-A3.
+R+net; E15 adds the candidate R-uid). Q1-Q4 are the questions of plan version 2; Q5 came
+with M0's first results. T1-T11 are threats. E1-E15 are the M0 experiments. K1-K14 and
+P1-P10 are the reviews' points (P1-P10 are not the spikes' privilege profiles P1-P6). The
+analyses are A1-A3.
 
 1. [Summary](#1-summary)
 2. [What the spikes proved](#2-what-the-spikes-proved)
@@ -39,9 +40,10 @@ privilege profiles P1-P6). The analyses are A1-A3.
 | D1 | The first cloud topology | Panel and runner on one server, connected over the Docker network. The hybrid (the panel apart from its runners, including a panel on a laptop with a reverse SSH tunnel) comes last in the cloud track, by a separate decision | decided, 2026-11-27 |
 | D2 | `lado server` | Becomes a required, always-running process. For native installs this is a change of the default behaviour, in M2a (section 6.1) | decided, 2026-11-27 |
 | Q1 | Connection direction | The runner connects to the panel (outbound from the runner). Decided finally before M4; until M4 it does not matter, as M0-M3 run on one machine. This reverses the direction of 2026-11-26 (the panel connects to the runner) and agrees with the older stage C1 of [cloud-workers-plan.md](cloud-workers-plan.md) | preliminary |
-| Q2 | The isolation ladder | See below | decided, 2026-11-27 |
+| Q2 | The isolation ladder | See below; amended after E9 | decided, 2026-11-27; amended 2026-11-27 |
 | Q3 | Where repositories live locally | See below | decided, 2026-11-27 |
 | Q4 | A native macOS install | See below | decided, 2026-11-27 |
+| Q5 | The nested runner's profile: R-uid ([E15](session-isolation/m0-e15.md)) or R+net | Not decided. R-uid is the preferred candidate for the nested runner; the final choice after E1, E2, E7 and E8 (speed, density, environments, cgroups), at M5b | open |
 
 **Q2, the isolation ladder.** Step 0, as today → 1, the agent API boundary (M2) → 2, a
 separate uid for the agents' processes (M3, only if E10 passes) → 3, a runc container per
@@ -55,6 +57,21 @@ and E9. The reasons:
 - others went the same way: OpenHands made sandboxing opt-in, Codex shipped its sandbox
   behind a flag (A2);
 - steps 3 and 4 share one runner base.
+
+**Q2 amended, 2026-11-27 (decided).** [E9](session-isolation/m0-e9.md) failed the strict
+threshold; on the human's decision the threshold is softened to "access closed; leaks of
+information that only identifies the machine are acceptable". So:
+
+- the runc step exists only where session containers are started by Docker on a Linux host
+  (an own server): network scheme B with `INPUT`/`ip6tables` REJECT from the session
+  bridges, plus `--dns 192.0.2.1 --cap-drop NET_RAW --tmpfs /sys/devices/virtual/dmi:ro`.
+  The host's `boot_id` and the overlay2 paths in mountinfo stay visible (identification
+  only);
+- on Docker Desktop (macOS, Windows) the ladder goes from the agent API boundary straight to
+  runsc: runc does not start in the nested runner unless it is widened (`SYS_PTRACE`,
+  `SYS_CHROOT`, `keyctl`);
+- under runc, `codex sandbox`, bwrap and `unshare -U` do not work. The UI says that in runc
+  mode Codex's own sandbox is off and the container takes its place.
 
 **Q3, where repositories live locally.** Both modes, chosen per project.
 
@@ -98,8 +115,8 @@ CLIs' own sandboxes. Revisit only on real demand.
    from the reports).
 3. **The main work is the agent API boundary between the agent and LADO.**
 4. **Decisions:** the runner calls in itself (Q1, preliminary); the ladder "as today → API
-   boundary → (uid) → runc → runsc" (Q2); the old mode stays supported; the security
-   boundary is the session; `lado server` is mandatory (D2).
+   boundary → (uid) → runc → runsc" (Q2; runc only on a Linux host, after E9); the old mode
+   stays supported; the security boundary is the session; `lado server` is mandatory (D2).
 5. **Milestones:** M0-M4, then the shared milestone M4b. After it two parallel tracks: the
    cloud (M5a) and local isolation (M5b).
 
@@ -140,19 +157,20 @@ All of it is checked in section 5.
 neighbouring session; another user (only in M6).
 
 **Columns:** M2b, the API boundary; M4, the runner in runc mode; M4b, plus the allowlist,
-keys and the relay; M5a, the cloud, runc or runsc by E14; M5b, runsc locally.
+keys and the relay; M5a, the cloud, on an own server runsc as the host's Docker runtime
+(E14); M5b, runsc locally.
 
 | Threat | Today | M2b | M4 | M4b | M5a | M5b | Never closed |
 |---|---|---|---|---|---|---|---|
 | T1. Reading other sessions' and the panel's files and secrets | open | partly (same uid) | closed with secrets per session (M2b) | closed | closed | closed | — |
 | T2. Driving other agents (tmux, `lado.db`) | open | closed for the API, not for the same uid | closed | closed | closed | closed | — |
-| T3. Sending data out over the network | open | open | open (the proxy observes) | closed outside the allowlist | closed outside the allowlist | the same | through the allowed hosts |
+| T3. Sending data out over the network | open | open | open (the proxy observes, but is never an open proxy: E3) | closed outside the allowlist (the strict proxy of E3) | closed outside the allowlist | the same | through the allowed hosts |
 | T4. The agent's code run by a trusted party | open | closed for the core (6.3) | the same | the same | the same | the same | bind mode: the human's IDE and git |
-| T5. An escape through the kernel | — | — | open | open | closed with runsc | mostly closed | bugs in gVisor and the runner |
-| T6. Neighbours exhausting resources | open | open | closed (cgroups) | closed | closed | closed if E8 passes | — |
+| T5. An escape through the kernel | — | — | open | open | closed with runsc; under the host's runtime AppArmor does not apply to runsc's processes, the protection is gVisor itself (E14) | mostly closed; under R-uid the network goes through the host kernel's TCP stack (E15) | bugs in gVisor and the runner |
+| T6. Neighbours exhausting resources | open | open | closed (cgroups; Docker's limits work under runc and the host's runsc, E9, E14) | closed, with per-sandbox connection limits on the shared proxy (E3) | closed | closed if E8 passes | — |
 | T7. Theft of the own session's subscription token | open | open | open | open | open | open | always, for subscriptions |
 | T8. An agent acting in its supervisor's name | open | open | open | open | open | open | the boundary is the session; dangerous tools need the human's answer |
-| T9. A compromised runner (the sessions' keys in the proxy, PTYs, the channel to the panel) | — | — | all its sessions | all its sessions; the panel checks epochs and event ids and does not trust git state from the runner (6.3) | the same; a runner per owner | the same | all the runner holds in memory |
+| T9. A compromised runner (the sessions' keys in the proxy, PTYs, the channel to the panel) | — | — | all its sessions | all its sessions; the panel checks epochs and event ids and does not trust git state from the runner (6.3) | the same; a runner per owner. On an own server the launching component holds the Docker socket, root on the host: a narrow API (E14) | the same | all the runner holds in memory |
 | T10. The agent's configuration in the repository (`.claude/settings.json` with hooks, `.mcp.json`) overrides LADO's hooks | open | open | limited by the sandbox | the same | the same | the same | the decision is an open item of M4b |
 | T11. A `gh`/`glab` token with broad rights | open | a narrow token per project plus `lado doctor` (before M5a) | the same | closed: PR/MR through the Agent API | closed | closed | — |
 
@@ -162,15 +180,15 @@ protected from the agent's code".
 ## 5. The M0 experiments
 
 The thresholds are written down before the experiments. **First batch:** E14, E1, E9, E3,
-E15. Status: all not started.
+E15. Status: E14, E9, E3, E15 done (2026-11-27/28), the rest not started.
 
 | # | Experiment | Platforms | Threshold → decision | Status |
 |---|---|---|---|---|
-| E14 | runsc as Docker's runtime on the host (`--runtime=runsc`, a container per session) against the nested runner | an own Linux server | if the isolation is the same, the install fits in one installer step and the speed is no worse → on an own server the runner uses the host's runtime, and the nested variant is needed only where nothing can be installed on the host (Docker Desktop). Such a runner holds the Docker socket, which on that host equals root, so it is a trusted part of the host, not an isolated container: fine for an own server, never to be handed to an untrusted party | not started |
+| E14 | runsc as Docker's runtime on the host (`--runtime=runsc`, a container per session) against the nested runner | an own Linux server | if the isolation is the same, the install fits in one installer step and the speed is no worse → on an own server the runner uses the host's runtime, and the nested variant is needed only where nothing can be installed on the host (Docker Desktop). Such a runner holds the Docker socket, which on that host equals root, so it is a trusted part of the host, not an isolated container: fine for an own server, never to be handed to an untrusted party | **done, passed**: on an own Linux server the sessions run as containers with `--runtime=runsc`. One installer step (download and sha512, unpack to `/usr/local/bin`, `runsc install`, restart dockerd ≈ 11 s; containers without a restart policy die). Isolation as nested R+net **only with `INPUT`/`ip6tables` REJECT from the session bridges** (else sessions reach the host's services). Speed equal to nested (H/B 0.96–1.01×); compatibility 29/29. The launching component holds `docker.sock`, root on the host (`default-runtime: runsc` does not stop `--runtime=runc`), so a narrow API only. Network scheme B (a bridge per session, the proxy in its own network, `DOCKER-USER` rules over the pool). Docker's DNS does not work under runsc: the proxy is reached by IP. [Report](session-isolation/m0-e14.md) |
 | E1 | An end-to-end "supervisor + worker" session on a fake endpoint; `make test-integration` in the sandbox; runc against runsc; volume and bind. Method: 8+ dedicated vCPU, 10 interleaved runs, median and spread; plus a Mac on an M chip | Linux, macOS, WSL2 | the read-only role's fingerprint over 2 s → the fingerprint becomes asynchronous. runsc over 3× slower than runc on the integration tests → runsc only by choice and in M5b | not started |
-| E9 | The runc step: the same runner, `runc` instead of `runsc`, the isolation table | Linux, macOS | the rows "processes, files, network, the runner's services" closed as under runsc → the runc step is accepted; any open → no such step, the ladder goes straight to runsc | not started |
-| E3 | The proxy and the gateway inside the runner; IPv6 link-local; DNS; CONNECT with the check before resolving | Linux, macOS | a hole in the proxy → the proxy goes into a separate container. The Agent API gateway stays reachable from the sandbox anyway: its own port only, strict parsing, a check of its own | not started |
-| E15 | Rootless runsc with a separate uid per sandbox | Linux, macOS | ptrace between sandboxes closed and the network works → a profile without a root runner becomes a candidate instead of R+net | not started |
+| E9 | The runc step: the same runner, `runc` instead of `runsc`, the isolation table | Linux, macOS | the rows "processes, files, network, the runner's services" closed as under runsc → the runc step is accepted; any open → no such step, the ladder goes straight to runsc | **done, strict threshold failed; softened** on the human's decision (2026-11-27) to "access closed; leaks of machine-identifying information only are acceptable" (Q2 amended). On the host DNS exfiltration, `NET_RAW` and DMI are closed by `--dns 192.0.2.1 --cap-drop NET_RAW --tmpfs /sys/devices/virtual/dmi:ro`; the host's `boot_id` and overlay2 paths in mountinfo stay (identification only). `codex sandbox`, bwrap and `unshare -U` do not work under runc. Nested runc in R+net does not start (needs `SYS_PTRACE`, `SYS_CHROOT`, `keyctl`), so no runc step on Docker Desktop. A correction: Docker's default capabilities do include `NET_RAW` for runc (E14 said otherwise). [Report](session-isolation/m0-e9.md) |
+| E3 | The proxy and the gateway inside the runner; IPv6 link-local; DNS; CONNECT with the check before resolving | Linux, macOS | a hole in the proxy → the proxy goes into a separate container. The Agent API gateway stays reachable from the sandbox anyway: its own port only, strict parsing, a check of its own | **done, passed**: a strict proxy can live inside the runner (CONNECT only, strict head parsing and limits, the allowlist before DNS, all resolved addresses global, the connection to the checked address, no IP literals, a port list); an open proxy is a hole anywhere and inside the runner bridges sandboxes. Second layer: `iptables -m owner` OUTPUT rules on the proxy's uid (no private, loopback, link-local except Docker's DNS `127.0.0.11`). Per-sandbox connection limits are needed (one client took all 256 slots, 503 for the neighbour). The gateway: its own port only open from `veth+`, nothing else on `0.0.0.0`/`[::]`, strict parsing, its own token check, answering only by the sandbox's veth address. `ip6tables` REJECT from `veth+` required (else IPv6 link-local reaches the runner's services even under runsc). Root in R+net has no `CAP_KILL`. [Report](session-isolation/m0-e3.md) |
+| E15 | Rootless runsc with a separate uid per sandbox | Linux, macOS | ptrace between sandboxes closed and the network works → a profile without a root runner becomes a candidate instead of R+net | **done, passed**: candidate profile "R-uid": the runner's root with `SETUID`, `SETGID`, `NET_ADMIN` only; seccomp Docker default + `clone`, `clone3`, `unshare`, `setns`, `mount`, `umount2`, `pivot_root`, `chroot`; AppArmor `lado-runner-lite` (with `userns,`; no host sysctl change on Ubuntu 24.04); each sandbox under its own host uid, rootless runsc `--network=host` in a per-sandbox netns held by `unshare -U -r -n`. Signal, ptrace, mem, environ, root, fd between sandboxes closed by the uid separation; 0/54 network holes. Costs: no gVisor netstack (`--network=sandbox` is unsupported rootless), so the host kernel's TCP stack; root inside the sandbox loses bwrap (agents must run as uid 1000; `codex sandbox` as uid 1000 not finished, moved to E10). Not checked: an escape with the sentry's own-userns capabilities, which of the 8 seccomp calls are needed, speed. [Report](session-isolation/m0-e15.md) |
 | E2 | Density: 1, 3 and 6 sessions; memory, start, disk; a shared read-only rootfs | macOS, Linux | 3 do not fit with the default settings → a shared rootfs and an installer warning | not started |
 | E4 | Logins: Codex device login per session; Claude `setup-token` and pasting the code; one Claude subscription in two sandboxes over a refresh | any | a shared Claude login breaks → a login per sandbox for Claude too | not started |
 | E7 | CI cells: Engine 29, Fedora with SELinux, rootless Docker, userns-remap | Linux | does not work → `lado doctor` says so, and runsc is not offered there | not started |
@@ -182,6 +200,12 @@ E15. Status: all not started.
 | E5 | Confirm from the changelog that the poll fixes (PR #12851) and the PTY fixes are in release-20261123.0; a short regression: tmux idle, resize, `stty -isig`, SIGHUP | Linux | a regression → pin to a release with the fix | not started |
 | E6 | Round 3: Docker Desktop under Windows ([brief](session-isolation/gvisor-spike-3-brief.md)) | Windows | the path from PowerShell does not work → fix the installer before M5b | not started |
 
+The briefs of the experiments run on GitHub are archived in
+[m0-experiments-brief.md](session-isolation/m0-experiments-brief.md). After the first four
+results the briefs of E10, E8 and E7 were updated: E10 now includes making `codex sandbox`
+work as a second user; E8 focuses on the nested runner in both profiles, R+net and R-uid;
+E7 covers R+net, R-uid and the host's runtime.
+
 ## 6. Failure semantics and decisions before code
 
 ### 6.1 The Agent API and a mandatory `lado server` (D2)
@@ -190,7 +214,10 @@ E15. Status: all not started.
   gateway with a buffer. The client (`lado mcp`, the hook) is one.
 - **A separate entry.** The Agent API listens on its own socket: locally a Unix socket
   outside the agents' folders, in the runner the gateway's port on the veth. It has its own
-  token check. The UI's routes are not reachable on this entry.
+  token check. The UI's routes are not reachable on this entry. In the runner (E3): only
+  the gateway's and the proxy's ports are open from `veth+`, nothing else listens on
+  `0.0.0.0`/`[::]`, the parsing is strict, and the gateway answers each sandbox only by its
+  own veth address.
 - **Two classes of hook events.** A table mapping each CLI's events to these classes is part
   of M1's spec.
   - **"Needs an answer":** the end of a turn (hand over the unread, "go on"), readiness to
@@ -276,15 +303,15 @@ The human's yes is needed at each milestone's gate.
 
 | Milestone | Content | Gate | Status |
 |---|---|---|---|
-| **M0** | The experiments of section 5, first batch E14, E1, E9, E3, E15 | the thresholds approved before the experiments; the human's decision on each result | not started |
+| **M0** | The experiments of section 5, first batch E14, E1, E9, E3, E15 | the thresholds approved before the experiments; the human's decision on each result | under way: E14, E9, E3, E15 done |
 | **M1** | A token per agent; the hook split in two halves with the event classes; the `lado mcp` front as a proxy, `write_artifact(file=)` only from the agent's folders; a throwaway end-to-end prototype (not merged) | **the Agent API protocol spec** in `openspec/specs`, **a decision record on the process model** (`lado server`, `lado loop`, the entry), a review of the prototype and the threat model approved | not started |
 | **M2a** | The Agent API in `lado server` (a separate entry, automatic start, a test fixture, the sessions' passes in the server); the simple calls; then the tools one per release: `list_models` → `finish_worker` → `spawn_worker` → `start_session` | the integration suite green through the server; a server failure mid-turn checked by a test (6.1); the CI budget kept | not started |
 | **M2b** | The execution backend (the local one is tmux); `Workspace` with the rule of 6.3; the launch bundle; paths relative to the place of execution; the agent's environment without `LADO_HOME`, the tmux socket and others' secrets, secrets per session; a narrow `gh`/`glab` token and a check in `lado doctor`; a second backend in the tests and a contract test | **the CI cell "boundary":** the agent cannot reach `LADO_HOME`, the socket or others' secrets, the integration suite is green, no canaries found | not started |
-| **M3** | Conversations continue after a restart; work snapshots (6.3); the proxy in observe mode; a separate uid if E10 passed | a restart mid-turn loses nothing | not started |
-| **M4** | The `lado` and `runner` images; the runner → panel channel; lease, epochs, buffer, reconciliation (6.2); a session in the runner without a sandbox; the terminal and `lado attach` through the runner; a "sandbox provider" and runc mode (netns, limits) | a LADO session reaches merge in a runner, also across a runner restart | not started |
-| **M4b, shared** | A proxy with an allowlist: the check before resolving, IPv6, the flow "a host outside the list is needed"; API key injection through each CLI's base URL; the git relay; "open a PR/MR" as an Agent API tool; logins per sandbox (size L, the UI designed ahead). **Open item:** what to do with the agent's configuration from the repository (T10) | rows T3 and T11 closed by tests; two Codex sessions in parallel | not started |
-| **M5a, cloud** | 1) panel protection (TLS, login, WebSocket) and a backup of `lado.db`; 2) panel and runner on one server (compose, the Docker network), runc or runsc by E14; 3) k8s with an external provider (a pod with a RuntimeClass per session); 4) the hybrid, by a separate decision | dogfooding LADO on the server, an 8-hour run | not started |
-| **M5b, local** | runsc mode: in the image, updated through `lado update`, a narrow seccomp profile with a loud fallback, AppArmor in the installer, `lado doctor`, cleaning device nodes; the integration suite inside the runner in CI (runc and runsc); then isolation by default | E1-E15 closed, an 8-hour run, a release cycle of dogfooding | not started |
+| **M3** | Conversations continue after a restart; work snapshots (6.3); the proxy in observe mode, never an open proxy: from day one under its own uid, with owner rules and the address check before connecting (E3); a separate uid if E10 passed | a restart mid-turn loses nothing | not started |
+| **M4** | The `lado` and `runner` images; the runner → panel channel; lease, epochs, buffer, reconciliation (6.2); a session in the runner without a sandbox; the terminal and `lado attach` through the runner; a "sandbox provider" and runc mode (netns, limits). On an own server runc mode is a container per session of the host's Docker (E9, E14) in network scheme B, with the `INPUT`/`ip6tables` rules installed by the launching component at its start and checked by `lado doctor`; the launching component is a trusted part of the host with a narrow API | a LADO session reaches merge in a runner, also across a runner restart | not started |
+| **M4b, shared** | A strict proxy with an allowlist (E3): CONNECT only, strict head parsing and limits, the allowlist before DNS, all resolved addresses global and the connection to the checked address, no IP literals, a port list, owner rules on its uid, per-sandbox connection limits, E3's table kept as the proxy's regression suite; IPv6; the flow "a host outside the list is needed"; API key injection through each CLI's base URL; the git relay; "open a PR/MR" as an Agent API tool; logins per sandbox (size L, the UI designed ahead). **Open item:** what to do with the agent's configuration from the repository (T10) | rows T3 and T11 closed by tests; two Codex sessions in parallel | not started |
+| **M5a, cloud** | 1) panel protection (TLS, login, WebSocket) and a backup of `lado.db`; 2) panel and runner on one server (compose, the Docker network), runsc as the host's runtime (E14 passed), scheme B and the host's rules as in M4; 3) k8s with an external provider (a pod with a RuntimeClass per session); 4) the hybrid, by a separate decision | dogfooding LADO on the server, an 8-hour run | not started |
+| **M5b, local** | runsc mode: in the image, updated through `lado update`, the nested runner's profile, R-uid or R+net (Q5), a narrow seccomp profile with a loud fallback, AppArmor in the installer, `lado doctor`, cleaning device nodes; the integration suite inside the runner in CI (runc and runsc); then isolation by default | E1-E15 closed, an 8-hour run, a release cycle of dogfooding | not started |
 | **M6** | The cloud service (BYOK) | after M5a and the lawyers | not started |
 
 The shared runsc parts (the image, seccomp, AppArmor, doctor) are done by whichever track
@@ -297,13 +324,15 @@ In the order of work.
 **M0**
 
 1. E14: runsc as Docker's runtime on an own Linux server against the nested runner
-   (isolation, speed, install steps).
+   (isolation, speed, install steps). Done ([report](session-isolation/m0-e14.md)).
 2. E1: an end-to-end session and `make test-integration` in runc and runsc, volume and bind,
    8+ vCPU, 10 interleaved runs, plus a Mac.
-3. E9: the runc step in the same runner, the isolation table.
+3. E9: the runc step in the same runner, the isolation table. Done
+   ([report](session-isolation/m0-e9.md)).
 4. E3: the proxy and the gateway in the runner, IPv6, DNS, CONNECT with the check before
-   resolving.
-5. E15: rootless runsc with a uid per sandbox, ptrace and the network.
+   resolving. Done ([report](session-isolation/m0-e3.md)).
+5. E15: rootless runsc with a uid per sandbox, ptrace and the network. Done
+   ([report](session-isolation/m0-e15.md)).
 6. E7: CI cells Engine 29, Fedora with SELinux, rootless Docker, userns-remap.
 7. E2: density of 1/3/6 sessions, memory, start, disk, a shared rootfs.
 8. E8: cgroups per sandbox under runsc.

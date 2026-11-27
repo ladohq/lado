@@ -75,13 +75,14 @@ Desktop: one install for macOS, Windows and Linux; the UI and the docs say so. m
 Seatbelt (`sandbox-exec`) is not in the plan: deprecated, fragile, and it clashes with the
 CLIs' own sandboxes. Revisit only on real demand.
 
-## Open before M0 and M1
+## How M0 and M1 run (decided 2026-11-27)
 
-- Which machines are available for M0 (an own Linux server for E14; a Mac on an M chip and
-  8+ dedicated vCPU for E1; Windows for E6 and E13).
-- Who runs the experiments (spike sessions by brief, as in rounds 1 and 2, or by hand).
-- Whether the M1 prototype branch may be pushed to ladohq (it is never merged).
-- When the human approves the threat model (section 4) and the thresholds (section 5).
+| Question | Decision |
+|---|---|
+| Machines | The human's Mac (M chip, Docker Desktop), a more powerful machine if needed; Linux created in a cloud with the needed parameters or given by the sysadmins (fewer cores are fine if they are dedicated: what matters is runc against runsc on the same machine); a Windows machine, not a powerful one |
+| Who runs the experiments | Yes/no checks on GitHub Actions, in a separate session that writes the workflow: E9, E3, E15, E7 (SELinux on a server or in a container), E5, E10, E8 on Linux, and a first E14. Measurements by a LADO session per machine from a brief, as in rounds 1 and 2: E1, E2, E14's speed, E6, E13. Logins with real subscriptions (E4) by the human by hand. GitHub first: it is cheap and can shorten the plan. The approach may change on the way |
+| The M1 prototype | Pushed to ladohq as a draft PR labelled "prototype, do not merge"; closed and its branch deleted once its findings are in the spec; no CHANGELOG line |
+| Approvals | The thresholds (section 5) are approved by the human before the experiments start. The threat model (section 4) stays a working version and is approved at M1's gate, together with the protocol spec, after the first results of M0 (E9, E14, E15) and the prototype |
 
 ## 1. Summary
 
@@ -275,8 +276,8 @@ The human's yes is needed at each milestone's gate.
 
 | Milestone | Content | Gate | Status |
 |---|---|---|---|
-| **M0** | The experiments of section 5, first batch E14, E1, E9, E3, E15; the threat model approved | the human's decision on each threshold | not started |
-| **M1** | A token per agent; the hook split in two halves with the event classes; the `lado mcp` front as a proxy, `write_artifact(file=)` only from the agent's folders; a throwaway end-to-end prototype (not merged) | **the Agent API protocol spec** in `openspec/specs`, **a decision record on the process model** (`lado server`, `lado loop`, the entry) and a review of the prototype | not started |
+| **M0** | The experiments of section 5, first batch E14, E1, E9, E3, E15 | the thresholds approved before the experiments; the human's decision on each result | not started |
+| **M1** | A token per agent; the hook split in two halves with the event classes; the `lado mcp` front as a proxy, `write_artifact(file=)` only from the agent's folders; a throwaway end-to-end prototype (not merged) | **the Agent API protocol spec** in `openspec/specs`, **a decision record on the process model** (`lado server`, `lado loop`, the entry), a review of the prototype and the threat model approved | not started |
 | **M2a** | The Agent API in `lado server` (a separate entry, automatic start, a test fixture, the sessions' passes in the server); the simple calls; then the tools one per release: `list_models` → `finish_worker` → `spawn_worker` → `start_session` | the integration suite green through the server; a server failure mid-turn checked by a test (6.1); the CI budget kept | not started |
 | **M2b** | The execution backend (the local one is tmux); `Workspace` with the rule of 6.3; the launch bundle; paths relative to the place of execution; the agent's environment without `LADO_HOME`, the tmux socket and others' secrets, secrets per session; a narrow `gh`/`glab` token and a check in `lado doctor`; a second backend in the tests and a contract test | **the CI cell "boundary":** the agent cannot reach `LADO_HOME`, the socket or others' secrets, the integration suite is green, no canaries found | not started |
 | **M3** | Conversations continue after a restart; work snapshots (6.3); the proxy in observe mode; a separate uid if E10 passed | a restart mid-turn loses nothing | not started |
@@ -313,7 +314,7 @@ In the order of work.
 13. E5: runsc's changelog plus a short tmux and PTY regression.
 14. E13: Docker Sandboxes on macOS and Windows.
 15. E6: round 3, Docker Desktop under Windows (the brief is ready).
-16. The human approves the threat model (section 4) and the decisions on the thresholds.
+16. The human decides on each result by its threshold (the thresholds are approved before step 1; the threat model at M1's gate).
 
 **M1**
 

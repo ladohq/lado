@@ -6,8 +6,11 @@ install anything beyond Docker. Research of 2026-11-25 and 2026-11-26: a desk st
 two rounds of hands-on spikes on real machines; no product code changed. It continues the
 cloud workers research ([cloud-workers.md](cloud-workers.md)) on the local side; the
 decisions it led to are in the living plan,
-[cloud-workers-plan.md](cloud-workers-plan.md) (section 1, 2026-11-26). The reports, the
-briefs and two diagrams are in [session-isolation/](session-isolation/):
+[cloud-workers-plan.md](cloud-workers-plan.md) (section 1, 2026-11-26). **Since 2026-11-27
+the work is planned in [session-isolation-plan.md](session-isolation-plan.md)** (experiments,
+threat model, milestones); some claims below were corrected then, see
+[Corrections](#corrections-2026-11-27). The reports, the briefs and two diagrams are in
+[session-isolation/](session-isolation/):
 
 | Report | What about |
 |---|---|
@@ -23,6 +26,45 @@ yet). The reports were written in Russian and are kept here in English with all 
 tables and numbers. They refer to raw logs, scripts and seccomp profiles (`logs/`, `runs/<id>/`,
 `scripts/`, `seccomp/`) that stayed in the spike folders and **are not committed**; the
 profiles' content is given in the reports as diffs.
+
+The inputs of the plan of 2026-11-27, archived beside the reports:
+
+| File | What about |
+|---|---|
+| [A1](session-isolation/a1-code-seams.md) | the code seams per-session sandboxes need, rechecked at `main` 1e565441 |
+| [A2](session-isolation/a2-prior-art.md) | how others moved from local agents to sandboxes, gVisor in production in 2026 |
+| [A3](session-isolation/a3-review.md) | a critical review of this research |
+| [Review of plan v1](session-isolation/review-plan-v1.md) | points K1-K14 |
+| [Review of plan v2](session-isolation/review-plan-v2.md) | points P1-P10, with a recheck of the reports, A1 and A2 |
+
+## Corrections (2026-11-27)
+
+A3 and the second review rechecked this research against its reports. What is now known to
+be wrong or overstated; the places in the text carry a short "Corrected" note:
+
+- **The speed headline** (1.4, 4.2) was measured on the sandbox's own disk
+  (`--overlay2=root:self`), where a repository cannot live. On a bind or a volume gVisor is
+  much slower: `git status` 7.8× on Linux (ext4 bind), 11.2× in WSL2 (named volume). The
+  macOS volume was not measured; the row "container disk / volume" of 4.3 is the container
+  disk only. The numbers are medians of three runs on 2 vCPU, and the ratio itself moved
+  about 2× between two VMs.
+- **"The runner's services are out of reach"** (1.5, 6) holds only for IPv4 and with the
+  proxy outside the runner, as in the spikes. IPv6 was not tested, and in the target layout
+  the proxy and the Agent API gateway run inside the runner.
+- **AppArmor `lado-runner-lite`** (5) is required on Linux hosts with AppArmor, not
+  optional: the runner is root with `SYS_ADMIN` in the host's user namespace, and
+  `unconfined` is the weak point. Loading it needs host root.
+- **Dangerzone**, cited during the planning as a precedent, backs only "runsc in a container
+  as a portability layer", not our privilege profile: it uses rootless runsc, drops all
+  capabilities but `SYS_CHROOT`, has no network and one single-use sandbox. Its rootless
+  profile is our profile R, which stays dropped (ptrace between sentries, 8.1); a uid per
+  sandbox is experiment E15 of the plan.
+- **"The code through git"** (7, 8.2) is not a detail: it changes today's main workflow. The
+  plan keeps both modes, bind and volume, chosen per project (its Q3).
+- **The subscription caveat** (8.5) is a legal constraint on a hosted service, not a
+  technical rule for self-hosting (A3 2.3).
+- **The connection direction** (7, 8.3) is preliminarily reversed: the runner connects to the
+  panel (the plan's Q1).
 
 1. [Summary](#1-summary)
 2. [Where LADO stands and how others isolate](#2-where-lado-stands-and-how-others-isolate)
@@ -49,10 +91,14 @@ profiles' content is given in the reports as diffs.
 4. **The cost is in system calls:** CPU 1.0×, LADO's tests 2-3× (4.5× on arm64), `git status`
    5-7×, an exec 5-9× (1-6 ms each). It is the same everywhere in kind. A macOS bind mount
    costs more than gVisor does (21× for `git status` without gVisor), and a bind from `C:\`
-   on Windows breaks git, so repositories live on a Docker volume.
+   on Windows breaks git, so repositories live on a Docker volume. *Corrected 2026-11-27:
+   these ratios are on the sandbox's own disk; on a bind or a volume `git status` is 7.8×
+   (Linux) and 11.2× (WSL2), on macOS not measured ([Corrections](#corrections-2026-11-27)).*
 5. **Each sandbox gets its own netns, and iptables in the runner let it reach only a proxy.**
    Nothing inside the sandbox, root included, can undo it. Processes, files, other sandboxes,
-   the runner's services and `docker.sock` are all out of reach.
+   the runner's services and `docker.sock` are all out of reach. *Corrected 2026-11-27:
+   over IPv4, with the proxy outside the runner; IPv6 and a proxy inside the runner are not
+   tested ([Corrections](#corrections-2026-11-27)).*
 6. **Rootless runsc (profile R) is dropped:** a process of the runner's uid can `ptrace` every
    other sandbox's sentry (section 8). R+net, with a root runner and a user namespace per
    sentry, is the base.
@@ -151,6 +197,8 @@ numbers are from an M2 with `--cpus 4`; Linux and WSL2 from Azure VMs with 2 vCP
 absolute times vary up to 2× between VMs of one type, so compare orders of magnitude. The
 last two columns are from one Linux x86 VM (run `45697843345`, A on that VM): gVisor's `kvm`
 platform and Kata 4.4.0 (QEMU, the guest's own ext4 disk), both on **nested** KVM.
+*Corrected 2026-11-27: a session's repository does not live on this disk; for a bind or a
+volume see 4.3 ([Corrections](#corrections-2026-11-27)).*
 
 | Workload | macOS M2 | Linux x86 | Linux arm64 | WSL2 | Linux x86, gVisor kvm | Linux x86, Kata |
 |---|---|---|---|---|---|---|
@@ -183,7 +231,7 @@ worse than runc.
 
 | Place | A `git status` ×20 | B `git status` ×20 | Verdict |
 |---|---|---|---|
-| macOS, container disk / volume | 0.43 s | 2.53 s | use |
+| macOS, container disk (a volume not measured; corrected 2026-11-27) | 0.43 s | 2.53 s | use |
 | macOS, bind mount of a Mac folder (VirtioFS) | 9.10 s | 36.68 s | 21× slower without gVisor; avoid |
 | Linux, container disk | 0.69 s | 3.65 s | use |
 | Linux, bind of a host ext4 folder | 0.68 s | 5.32 s | free for A, +50% for B; works, the folder must be writable by the sandbox's uid |
@@ -231,6 +279,8 @@ runner:
   `mount`, `umount`, `pivot_root` and `userns` allowed and without the `/proc` write rules
   that hit runsc, keeping the denials of `/sys/**`, `sysrq-trigger`, `kcore`) works for
   R+net and R; it is optional hardening, loaded by the installer with `apparmor_parser`.
+  *Corrected 2026-11-27: required, not optional, on Linux hosts with AppArmor
+  ([Corrections](#corrections-2026-11-27)).*
   Its text is in S3 4.3. macOS's Docker Desktop and WSL2 have no AppArmor.
 - **What an escapee gets.** From the sentry: its own user namespace with rights only there,
   an almost empty root, its own netns under the runner's rules; not the runner's SYS_ADMIN or
@@ -263,7 +313,10 @@ On all three platforms, for uid 1000 and for root inside the sandbox: the proxy 
 direct internet (by name and by IP) is blocked, the proxy's other ports and the runner's
 services are blocked, and `iptables -F`, `ip route/addr/link` and raw sockets from inside
 change nothing. Docker's DNS `127.0.0.11` is not reachable from the netns; with a proxy the
-sandbox needs no DNS.
+sandbox needs no DNS. *Corrected 2026-11-27: this holds for IPv4 (no `ip6tables` rules were
+set or tested) and for this layout, where the proxy is a separate container; in the target
+layout the proxy and the Agent API gateway are inside the runner (experiment E3 of the
+plan).*
 
 Isolation, two `runsc run -d` sandboxes with separate rootfs copies, judged by a random
 marker in the runner:
@@ -334,7 +387,8 @@ subscriptions are not possible there (see below).
 3. **The proxy is in the runner, not in the panel**, and the panel connects to the runner,
    not the other way round. This differs from the plan's stage C1, where `lado node`
    connects outbound to the panel; a runner behind NAT then needs a reverse tunnel. Recorded
-   as an open question in the plan.
+   as an open question in the plan. *Corrected 2026-11-27: the direction is preliminarily
+   reversed, the runner connects to the panel ([plan](session-isolation-plan.md), Q1).*
 4. **Local isolation needs the seam first.** A sandboxed agent can no longer write `lado.db`
    or drive tmux, so MCP and hooks over the network with a per-agent token (stage B of the
    cloud plan) are needed for the local mode too, not only for clouds. Stage B may have to
@@ -372,7 +426,8 @@ subscriptions are not possible there (see below).
 - **Not tested:** SELinux (Fedora), rootless Docker, Podman, Kubernetes with a gVisor
   RuntimeClass, the `kvm` platform and Kata on bare metal, Firecracker, Docker Desktop's other
   VMM on macOS, Apple `container` and nested KVM on M3+.
-- **A uid per sandbox** would make R viable again; not tried.
+- **A uid per sandbox** would make R viable again; not tried (experiment E15 of the
+  [plan](session-isolation-plan.md)).
 - **How the panel connects to a runner** (an SSH tunnel, a reverse connection behind NAT),
   and how that fits the plan's outbound `lado node` (C1).
 - **Where a user's own checkout meets the session's volume** locally: git only, or a sync.

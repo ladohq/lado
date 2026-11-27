@@ -6,6 +6,8 @@ session updates the Status columns, the decisions and this header, as
 [cloud-workers-plan.md](cloud-workers-plan.md) does; the research and the archived inputs
 stay as written.
 
+The epics and tasks that carry this plan out: [the development plan](session-isolation-dev-plan.md).
+
 This is version 3 of the plan, the last pass before the start, translated from Russian;
 versions 1 and 2 were session artifacts and are not kept. It is based on:
 

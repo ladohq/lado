@@ -5,7 +5,9 @@ in [cloud-workers/](cloud-workers/) (R1-R4). Approved by the human on 2026-10-18
 is living: it is updated after each step (the status of each step, the decisions taken),
 as [docker-install-plan.md](docker-install-plan.md) is; the research report stays as
 written. Updated on 2026-11-26 after the session isolation research,
-[session-isolation.md](session-isolation.md) (gVisor spikes on macOS, Linux and WSL2).
+[session-isolation.md](session-isolation.md) (gVisor spikes on macOS, Linux and WSL2), and
+on 2026-11-27 by the isolation plan,
+[session-isolation-plan.md](session-isolation-plan.md), which now leads the work.
 
 1. [Decisions taken](#1-decisions-taken)
 2. [How the work goes](#2-how-the-work-goes)
@@ -59,6 +61,52 @@ OAuth tokens (Claude Pro/Max, ChatGPT) must live inside the sandbox that runs th
 **Conflict, open** (section 5): stage C1 below has the node connect **outbound** to the
 control plane; the human's direction is that the panel connects to the runner. A runner
 behind NAT then needs a reverse tunnel.
+
+### 2026-11-27: isolation plan
+
+After three analyses and two independent reviews, the work on isolation and the cloud is
+planned in milestones M0-M6 in [session-isolation-plan.md](session-isolation-plan.md). That
+file is the living plan from now on; the stages below are kept for their history and their
+technical details. **Decided by the human:**
+
+| Question | Decision (2026-11-27) |
+|---|---|
+| D1. The first cloud topology | Panel and runner on one server, connected over the Docker network. The hybrid (the panel apart from its runners, including a panel on a laptop with a reverse SSH tunnel) comes last in the cloud track, by a separate decision |
+| D2. `lado server` | A required, always-running process. For native installs a change of the default behaviour, in milestone M2a |
+
+**Preliminary, decided finally before M4:** the runner connects to the panel (outbound from
+the runner), as stage C1 below had it. This reverses the direction of 2026-11-26 and settles
+the conflict above for now. Until M4 it does not matter: M0-M3 run on one machine.
+
+Where the stages of this file went:
+
+| Here | In the isolation plan |
+|---|---|
+| Step 0, isolation spikes | done (rounds 1 and 2); round 3 is experiment E6 |
+| Step 0, MCP over HTTP, HTTP hooks, latency | the M1 prototype and protocol spec; latency is E11 |
+| Step 0, Codex `auth.json` in a container | E4 |
+| Step 0, LADO's image on a remote Docker host | M5a, step 2 |
+| Step 0, the git sync for split D | not planned; the work snapshot fetched by the panel (plan 6.3) is the nearest piece |
+| A1, a safe remote UI | M5a, step 1 (with a backup of `lado.db`) |
+| A2, A3, launch recipes and repositories from a git URL | M5a, steps 2 (compose on one server) and 3 (k8s) |
+| A4, logins in the box | M4b (logins per sandbox) |
+| B1, the execution backend | M2b |
+| B2, a token per agent | M1 |
+| B3, hooks through LADO's API | M1 (the hook in two halves), M2a (the Agent API in `lado server`) |
+| B4, the launch bundle | M2b |
+| C1, `lado node` | M4 (the `runner` image and the runner → panel channel) |
+| C2, Docker over SSH | M5a: step 2 on one server; a runner on another machine is the hybrid, step 4 |
+| C3, Kubernetes | M5a, step 3 |
+| C4, the terminal through the node | M4 |
+| C5, choosing the place at session start | not placed yet |
+| D, mixed sessions | not in the isolation plan; still decided after C |
+| E, a paid service | M6 |
+| ROADMAP "Conversations survive a restart" | M3 |
+
+The recommendations of 2026-11-26 now depend on experiments: R+net as the base profile on
+E15 (rootless runsc with a uid per sandbox) and E14 (runsc as Docker's runtime on an own
+server); AppArmor `lado-runner-lite` is required, not optional, on Linux hosts with
+AppArmor; repositories in both modes, bind and volume, chosen per project (plan Q3).
 
 ## 2. How the work goes
 

@@ -162,7 +162,9 @@ column). M1-4 closes one concrete path of T1 (an artifact of `~/.lado/lado.db` o
 file, A1 C13). M1-1 is the base of T2's closure in M2b.
 
 **Entry conditions.** The thresholds approved (done before M0). Nothing else: M1 is
-refactoring with no change of behaviour, apart from the two small fixes M1-4 and M1-10.
+refactoring with no change of behaviour, apart from the two small fixes M1-4 and M1-10. Both fixes
+were accepted by the human on 2026-11-28 with their side effects (a kit making an artifact
+from a file elsewhere gets a loud refusal; another account can no longer read `~/.lado`).
 
 **Exit gate** (plan 7, M1): the Agent API protocol spec merged in `openspec/specs`; the
 decision record on the process model merged; the prototype reviewed; the threat model
@@ -379,19 +381,19 @@ decision record on the process model merged; the prototype reviewed; the threat 
   `700`/`600` (secrets, tokens, `server-token`) stays as it is. Useful without the uid
   step: on a shared Linux machine other local users can read `lado.db` today.
 - **Scope.** In: `state.home()` makes the folder with `700`; at start (`lado server`,
-  `lado start`) LADO tightens `LADO_HOME` to `700` when it owns it and it is wider, and
-  says so once; the server's umask `077` for the files it creates under `LADO_HOME`
+  `lado start`) LADO tightens `LADO_HOME` to `700` when it owns it and it is wider,
+  silently (the folder should have been closed from the start; the human, 2026-11-28);
+  the server's umask `077` for the files it creates under `LADO_HOME`
   (`lado.db`, `server.json`, lock files, messages, artifacts); the image's entrypoint does
   `chmod 700 /home/lado`; a `lado doctor` check "LADO's folder is readable by others" with
   the command that fixes it. Out: a `LADO_HOME` the user set to a folder LADO does not own
   (doctor warns, LADO does not change it); the agent's uid (M3-5).
 - **Where in the code.** `state.py` (`home` 1482), `server/run.py` and `cli.py` (the
   start), `docker/entrypoint.sh`, `doctor.py`.
-- **Users see.** On an install whose folder was wider, one line at start that LADO closed
-  it; a doctor check. Docs: docs/cli.md (`lado doctor`).
+- **Users see.** Nothing at start; a doctor check for a folder LADO cannot close. Docs: docs/cli.md (`lado doctor`).
 - **Switch / rollback.** No switch: a revert. A user who relied on reading `~/.lado` from
   another account loses that (CHANGELOG says how to read it as LADO's user).
-- **Tests.** Unit: a new home is `700`; a wide home is tightened and reported once; a home
+- **Tests.** Unit: a new home is `700`; a wide home is tightened, with no message; a home
   owned by another uid is left and reported by doctor. Container: `stat` of `/home/lado`
   and `~/.lado/lado.db` in the image.
 - **CHANGELOG.** Yes, `### Improved`: "**LADO's folder is closed to other users of the
@@ -1417,11 +1419,17 @@ and the live layer on the next RC.
 
 - **One epic per milestone in the tracker** (M1, M2a, M2b, M3, M4, M4b; M5a, M5b, M6 when
   they are near). Its description links to its section here. As in LAD-162
-  ([decisions](../epics/lad-162/decisions.md)), tasks are created one at a time when
-  their step is reached, and findings and leftovers go into the next task; this file's
-  task list is the plan, not a promise of tracker items.
-- **One task = one development session = one pull request**, reviewable in one sitting.
+  ([decisions](../epics/lad-162/decisions.md)), only the epic is created at the start;
+  its tasks are created one at a time when their step is reached, and findings and leftovers go into the next task; this file's task list is the
+  plan, not a promise of tracker items (the human, 2026-11-28).
+- **One development session per epic** (the human, 2026-11-28). Its lead gives each task
+  to a worker; tasks that do not depend on each other run in parallel. **One task = one
+  pull request**, reviewable in one sitting. After each task the lead reviews it and
+  carries its findings into the next tasks, or adapts this file in a docs pull request.
   An L task is split before it starts (the splits are named above).
+- **Releases are decided as the work goes** (Q-11). Every task is releasable on its own;
+  most likely a release follows each closed epic, and the human's own LADO instance is
+  updated to it to check it in real work.
 - **An epic's records** go to `docs/epics/<key>/` (brief, decisions, plan, report), as
   the earlier epics do.
 - **The gate** of each epic is the human's yes on the plan's milestone gate, with the
@@ -1489,8 +1497,8 @@ Each blocks the epic named; a recommendation for each.
 | Q-7 | With secrets per session (M2b-9), which saved git servers may a session's agents use: all (today), or only the hosts of its project's remotes plus a per-project list? | M2b-6, M2b-9 | The hosts of the session repository's remotes plus an explicit per-project list; a refusal names the setting |
 | Q-8 | When "open a PR/MR" becomes a LADO tool (M4b-6), kits that call `gh pr create` lose the token in runner sessions. How do kits move? | M4b-6 | Only runner sessions lose the token; the kit's tool check refuses loudly there; the sdlc kit gets a release that uses the tool |
 | Q-9 | Does a native install get M4's runner mode (it needs Docker on the machine)? | M4-9 | Yes, opt-in per project, offered only when Docker answers; `lado doctor` says why not otherwise |
-| Q-10 | Where do the decision records of M1 live (the process model, later the channel)? | M1-8 | A new design document `docs/design/agent-api.md` with a decisions table, linked from docs/design/agents.md and docs/design/modules.md |
-| Q-11 | The principle "every task is a release": tasks with an MCP or schema change force a minor release, and each minor needs an RC and a freeze. Release per task, or bundle? | all | Every task is releasable; releases bundle tasks at the human's pace, an RC per minor as today |
+| Q-10 | Where do the decision records of M1 live (the process model, later the channel)? | M1-8 | **Decided 2026-11-28:** in the repository; a new design document `docs/design/agent-api.md` with a decisions table, linked from docs/design/agents.md and docs/design/modules.md |
+| Q-11 | The principle "every task is a release": tasks with an MCP or schema change force a minor release, and each minor needs an RC and a freeze. Release per task, or bundle? | all | **Decided 2026-11-28:** no release plan up front; every task is releasable, releases are chosen as the work goes, most likely one after each closed epic, with the human's LADO instance updated to it (5.1) |
 
 Not questions, but points where this file goes beyond the plan, for the human to notice:
 

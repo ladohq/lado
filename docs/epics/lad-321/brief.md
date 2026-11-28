@@ -74,18 +74,23 @@ Every step merged into main with `ci-ok` green, its live run and its manual chec
 - **Secrets and credentials**: covered by S5 (token never in argv nor tmux's environment,
   a test), S4 (no artifact of `lado.db` or a token file), S3 (folder 700), S2 (no key or
   subscription token in logs, configs or evidence, a test).
-- **Update and rollback**: covered by S5, S6, S7, Check: agents of the previous version keep
-  working until restart (integration tests) and the human's manual `lado update` with a
-  running session; every step's rollback is a revert.
+- **Update and rollback**: covered by S5, Check: an in-place update under a running
+  session keeps its agents (no token) working, logged once; `lado update` restarts them with
+  tokens; `lado update <previous>` is the way back; by S6b, Check: a hook with the old argv
+  still works, and the way back rewrites the hook configs; by S7, Check: a `lado mcp` of the
+  previous version keeps serving its agent; every step's rollback is a revert.
 - **Removal**: not relevant: everything new is under `LADO_HOME`, which `lado uninstall`
   removes; a step that adds something outside it names its removal.
 - **Platforms**: covered by S1 and S2 (all four CLIs, Linux and macOS in CI, local live),
   S3 (native and Docker), S9 (the human's Mac), S10 (macOS socket path limit).
-- **Observability**: covered by S5 (a refused token in `hooks.log` and the error journal),
-  S4 (the refusal says where files may come from), S3 (doctor's check with the fix).
-- **Tests and what only a human can check**: covered by S1 (smoke able to fail), S2 (live
-  on demand), every code step's negative test seen red first and the human's manual
-  checklist (S3–S7, S9).
+- **Observability**: covered by S5, Check: a wrong token's refusal written to `hooks.log`
+  and the error journal; S4, Check: the refusal says where files may come from; S3, Check:
+  doctor reports a folder it cannot close with the command that fixes it.
+- **Tests and what only a human can check**: covered by S1 (each fixed smoke gap seen red
+  against a broken path), S2 (live on demand with its cost), S3–S7 (a negative test seen red
+  first, a standing rule in the State and in each step's Check), the human's manual
+  checklist in S3, S4, S5, S6b, S7 and S9's run on the Mac; S1, S2, S6a have none (open
+  question 4).
 - **Documentation**: covered by each step (docs and specs in the same pull request),
   CHANGELOG in S3 and S4 only, S10 the new `docs/design/agent-api.md`, S11 the spec.
 

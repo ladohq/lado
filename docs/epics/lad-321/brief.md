@@ -62,42 +62,32 @@ Every step merged into main with `ci-ok` green, its live run and its manual chec
 
 ## Readiness checklist
 
-- **Goal and "done"**: missing: a step — the plan maps each M1 task and the exit gate to
-  steps.
-- **Users and how they use it**: missing: a step — users see only M1-4's refusal and
-  M1-10's closed folder with its doctor check; developers of M2a use the seams and the
-  spec. Each step names what users see.
-- **Scope and what is out**: missing: a step — in: M1-1…M1-10 plus the safety net (smoke
-  review, frequent live runs); out: M2a and later (a transport, a mandatory server, the
-  boundary, a separate uid, containers), Q-1…Q-9.
-- **Data and migrations**: missing: a step — M1-1 adds key files under
-  `LADO_HOME/agent-api/keys/` (mode 600); whether it needs a schema change (the agent's
-  instance is already in the state) is the step's design to confirm; any schema change
-  names its way back.
-- **Secrets and credentials**: missing: a step — the token never in argv nor tmux's
-  environment (a test checks both), key files 600; M1-4 closes the artifact path to
-  `lado.db` and token files; M1-10 closes `LADO_HOME` to other uids; live runs keep the
-  OpenRouter key and the subscription out of logs and configs.
-- **Update and rollback**: missing: a step — agents launched before the update (no token,
-  the old hook argv) keep working until the session restarts; a present wrong token is
-  refused; every step's rollback is a revert (dev plan 4.1); each step checks it.
-- **Removal**: not relevant: nothing new to uninstall beyond `LADO_HOME`, which
-  `lado uninstall` already removes with the new key folder in it; a step that adds
-  something outside `LADO_HOME` names its removal.
-- **Platforms**: missing: a step — macOS and Linux native, the Docker image, all four
-  CLIs (Claude Code, Codex, Kilo, OpenCode) for the hook and MCP changes; Windows only
-  through WSL or Docker as today; macOS's 104-byte socket path limit for M1-8; the
-  prototype on the human's Mac.
-- **Observability**: missing: a step — a refused token logged to `hooks.log` and the error
-  journal; M1-4's refusal says where files may come from; M1-10's doctor check with the
-  fixing command.
-- **Tests and what only a human can check**: missing: a step — tests at the lowest layer,
-  a negative test seen red first; integration tests with the fake agent for everything
-  across processes; smoke reviewed and fixed first; a live run per step that touches
-  agents; the human's manual checklist per code step on another machine.
-- **Documentation**: missing: a step — docs and specs in the same pull request
-  (docs/design/agents.md, modules.md, artifacts.md, cli.md, openspec), CHANGELOG lines for
-  M1-4 and M1-10 only, the new `docs/design/agent-api.md`.
+- **Goal and "done"**: covered by S1–S12 and the M1 exit gate, Check: the four gate items
+  (S9 reviewed, S10, S11, S12 approved) and every step's check.
+- **Users and how they use it**: covered by S3 and S4, Check: the human's manual check of
+  the closed folder and of the artifact refusal; developers of M2a by S10 and S11.
+- **Scope and what is out**: covered by plan.md (S1–S12, Later), Check: each step's brief
+  names its frame; M2a and later, Q-1…Q-9 out.
+- **Data and migrations**: covered by S5, Check: key files 600 under
+  `LADO_HOME/agent-api/keys/`; a schema change, if the design needs one, names its way back
+  (open question 2).
+- **Secrets and credentials**: covered by S5 (token never in argv nor tmux's environment,
+  a test), S4 (no artifact of `lado.db` or a token file), S3 (folder 700), S2 (no key or
+  subscription token in logs, configs or evidence, a test).
+- **Update and rollback**: covered by S5, S6, S7, Check: agents of the previous version keep
+  working until restart (integration tests) and the human's manual `lado update` with a
+  running session; every step's rollback is a revert.
+- **Removal**: not relevant: everything new is under `LADO_HOME`, which `lado uninstall`
+  removes; a step that adds something outside it names its removal.
+- **Platforms**: covered by S1 and S2 (all four CLIs, Linux and macOS in CI, local live),
+  S3 (native and Docker), S9 (the human's Mac), S10 (macOS socket path limit).
+- **Observability**: covered by S5 (a refused token in `hooks.log` and the error journal),
+  S4 (the refusal says where files may come from), S3 (doctor's check with the fix).
+- **Tests and what only a human can check**: covered by S1 (smoke able to fail), S2 (live
+  on demand), every code step's negative test seen red first and the human's manual
+  checklist (S3–S7, S9).
+- **Documentation**: covered by each step (docs and specs in the same pull request),
+  CHANGELOG in S3 and S4 only, S10 the new `docs/design/agent-api.md`, S11 the spec.
 
 ## Branch strategy
 

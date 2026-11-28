@@ -172,4 +172,5 @@ their time comes.
   lock-in and any provider. Researched 2026-10-18 (docs/research/cloud-workers.md); the
   staged plan, from "the whole of LADO in a cloud" on: docs/research/cloud-workers-plan.md.
   Isolating each session (gVisor, a runner container) is its first step since 2026-11-27,
-  in milestones M0-M6: docs/research/session-isolation-plan.md
+  in milestones M0-M6: docs/research/session-isolation-plan.md; its epics and tasks:
+  docs/research/session-isolation-dev-plan.md

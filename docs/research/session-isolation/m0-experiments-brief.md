@@ -3,8 +3,9 @@
 > The briefs of the M0 experiments as given to the agent that ran them (2026-11-27),
 > archived as written; only this Russian preface for the human is translated, and the
 > report's section names in 0.4 (in Russian, as the reports were) get an English gloss.
-> The reports: [E14](m0-e14.md), [E9](m0-e9.md), [E3](m0-e3.md), [E15](m0-e15.md); the
-> results in the [plan](../session-isolation-plan.md#5-the-m0-experiments).
+> The reports: [E14](m0-e14.md), [E9](m0-e9.md), [E3](m0-e3.md), [E15](m0-e15.md),
+> [E10](m0-e10.md); the results in the
+> [plan](../session-isolation-plan.md#5-the-m0-experiments).
 >
 > The preface, translated. These are tasks for an agent (Claude Code or another CLI) that
 > works **on another machine, not inside LADO and not in LADO's Docker container**. One

@@ -107,6 +107,10 @@ The recommendations of 2026-11-26 now depend on experiments: R+net as the base p
 E15 (rootless runsc with a uid per sandbox) and E14 (runsc as Docker's runtime on an own
 server); AppArmor `lado-runner-lite` is required, not optional, on Linux hosts with
 AppArmor; repositories in both modes, bind and volume, chosen per project (plan Q3).
+Both experiments have since passed (2026-11-27): E14 puts sessions on an own server under
+the host's `--runtime=runsc`, and E15 made R-uid the preferred candidate for the nested
+runner, decided at M5b (plan Q5). The epics and tasks:
+[session-isolation-dev-plan.md](session-isolation-dev-plan.md).
 
 ## 2. How the work goes
 

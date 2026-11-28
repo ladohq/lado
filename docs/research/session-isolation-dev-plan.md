@@ -101,9 +101,10 @@ M1 ──► M2a ──► M2b ──► M3 ──► M4 ──► M4b ──┬
 - **M0 and M1.** The M0 experiments still open (E1, E2, E4-E8, E11-E13) run on their own
   machines and in their own sessions (plan, "How M0 and M1 run") while M1 is coded. M1
   needs only the results already in (E9, E14, E15, E10) for the threat model at its gate.
-- **Inside M1.** M1-1 (token), M1-2 (hook split), M1-3 (MCP front) and M1-4 (artifact
-  confinement) touch different files and can go in parallel; M1-10 (`LADO_HOME` closed)
-  depends on nothing and can ship first; M1-6 (prototype) starts once
+- **Inside M1.** M1-1 (token), M1-4 (artifact confinement) and M1-10 (`LADO_HOME`
+  closed) depend on nothing and can go in parallel; M1-10 can ship first. M1-2 (hook split)
+  and M1-3 (MCP front) take M1-1's token, touch different files and go in parallel once
+  M1-1 is merged (or from its branch); M1-6 (prototype) starts once
   M1-2 and M1-3 are merged or from their branches; M1-7 (spec) and M1-8 (decision record)
   close the epic.
 - **Inside M2a.** After M2a-1 to M2a-4, the session passes (M2a-6) and the simple calls
@@ -111,7 +112,7 @@ M1 ──► M2a ──► M2b ──► M3 ──► M4 ──► M4b ──┬
   order, as the plan says.
 - **Inside M2b.** The execution backend (M2b-1), the git workspace (M2b-2) and the launch
   bundle (M2b-3) are independent; the removal of LADO's variables from the agent's
-  environment (M2b-8) waits for every agent-side reader to be moved (M2b-4 to M2b-7).
+  environment (M2b-8) waits for every agent-side reader to be moved (M2b-5 to M2b-7).
 - **M3's tasks** are independent of each other, except M3-4 after M3-3a; M3-5 needs
   M1-10 and M2b's tasks M2b-5 and M2b-8 merged.
 - **M4's images (M4-1)** can start during M3; the runner's channel and backend wait for
@@ -161,7 +162,7 @@ column). M1-4 closes one concrete path of T1 (an artifact of `~/.lado/lado.db` o
 file, A1 C13). M1-1 is the base of T2's closure in M2b.
 
 **Entry conditions.** The thresholds approved (done before M0). Nothing else: M1 is
-refactoring with no change of behaviour.
+refactoring with no change of behaviour, apart from the two small fixes M1-4 and M1-10.
 
 **Exit gate** (plan 7, M1): the Agent API protocol spec merged in `openspec/specs`; the
 decision record on the process model merged; the prototype reviewed; the threat model
@@ -627,7 +628,8 @@ of plan 6.3 applies to the core's git); T11 a narrow token per project plus the 
 check.
 
 **Entry conditions.** M2a-11 merged (every tool runs on the server). The flip M2a-12 is
-not needed to start M2b's refactors, only for M2b-8.
+not needed to start M2b's refactors, only for M2b-5 to M2b-8 (the agent-side readers and
+the environment).
 
 **Exit gate** (plan 7, M2b): **the CI cell "boundary"**: the agent cannot reach
 `LADO_HOME`, the socket or others' secrets; the integration suite is green; no canaries
@@ -652,7 +654,9 @@ found (M2b-11).
 - **Users see.** Nothing.
 - **Tests.** The whole suite unchanged. New: a grep-style test (like
   `tests/test_lazy_imports.py`) that no module but `execution.py`, `tmux.py` and
-  `gui_session.py` imports `lado.tmux`.
+  `gui_session.py` imports `lado.tmux`. Today `mcp_server.py` (`tmux.TmuxError`),
+  `agent_env.py` (`tmux.without_agent_vars`) and `providers/base.py` (`tmux.socket`, gone
+  with M2b-8) import it too, for no agent verb: move those names or allow-list them.
 - **Docs.** docs/design/modules.md; docs/design/agents.md.
 - **CHANGELOG.** No. **Size / depends on.** M (mechanical). —
 
@@ -1498,6 +1502,9 @@ Not questions, but points where this file goes beyond the plan, for the human to
   same-uid setup. The plan's M2b column says the same ("partly, same uid").
 - **A Unix socket path limit** (104 bytes on macOS) may force the Agent API's socket out
   of `LADO_HOME` into a short path; M1-8 decides.
+- **Tasks from E10's results** that the plan's milestone rows do not list: M1-10
+  (`LADO_HOME` closed to other users, E10's condition 2) and M2b-12 (no secrets in command
+  lines, as `ps` shows them across uids). The plan's E10 row is their source.
 - **The on-disk hook queue** lives in the agent's own state folder (M2a-3), so it still
   works once the agent has no `LADO_HOME` (M2b-8); the server reads it with strict
   parsing, as a file an agent could have written.
